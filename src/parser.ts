@@ -1515,6 +1515,11 @@ export class Parser {
   parseExprToken(): void {
     const d = this.d;
     const k = this.cur();
+    // A directive is never part of the line (clang-format reads it aside).
+    if (k === P_HASH && d.ppKind[this.pos] !== PP_NONE && this.macro < 0) {
+      this.parsePPInline();
+      return;
+    }
     if (k === P_LPAREN) {
       this.parseParens();
       return;
@@ -1574,6 +1579,10 @@ export class Parser {
       }
       if (k === P_RPAREN) {
         return;
+      }
+      if (k === P_HASH && d.ppKind[this.pos] !== PP_NONE) {
+        this.parsePPInline();
+        continue;
       }
       this.parseExprToken();
     }
