@@ -89,13 +89,13 @@ the whole tree with 4 workers. Peak memory is the largest single process.
 | bitcoin | 1537 | 99.7% | 20.4 s | 0.66 s | 270 MB | 194 MB |
 | folly | 2398 | 99.8% | 29.5 s | 0.72 s | 140 MB | 104 MB |
 | abseil-cpp | 880 | 99.9% | 12.3 s | 0.43 s | 165 MB | 117 MB |
-| protobuf | 1183 | 99.9% | 63.4 s | 2.1 s | 1448 MB | 964 MB |
+| protobuf | 1183 | 100.0% | 63.4 s | 2.1 s | 1448 MB | 964 MB |
 | rocksdb | 1422 | 100.0% | 63.7 s | 6.8 s | 3732 MB | 1862 MB |
 | json | 629 | 99.7% | 40.2 s | 9.4 s | 3770 MB | 2863 MB |
 | godot | 7368 | 99.7% | 220.6 s | 10.0 s | 1794 MB | 1933 MB |
-| opencv | 3422 | 98.9% | 87.8 s | 10.6 s | 3853 MB | 2577 MB |
+| opencv | 3422 | 99.3% | 87.8 s | 10.6 s | 3853 MB | 2577 MB |
 | fmt | 73 | 97.3% | 15.0 s | 1.1 s | 3555 MB | 651 MB |
-| **all** | **19201** | **99.6%** | | | | |
+| **all** | **19201** | **99.7%** | | | | |
 
 Objective-C headers are left out of the counts (127 `.h` files, in godot,
 opencv and protobuf, with `@interface`, `@implementation`, `@protocol`,
