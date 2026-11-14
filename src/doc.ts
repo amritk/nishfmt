@@ -102,6 +102,12 @@ export class Doc {
   nCR: i32 = 0; // carriage returns and line feeds between tokens, for the line ending
   nLF: i32 = 0;
   strTabs: boolean = false; // a string literal holds a tab
+  // Rare features, so hot loops can skip their checks: a token that may be
+  // an implicit string literal (a stray character, `\`, an include header),
+  // and an `asm` keyword (inline assembly blocks).
+  anyImplicit: boolean = false;
+  anyAsm: boolean = false;
+  anyDefine: boolean = false; // a #define, which mergeDefines looks for
   nline: i32 = 0;
   topHead: i32 = -1;
   topTail: i32 = -1;
@@ -293,6 +299,35 @@ export class Doc {
       }
     }
     return c;
+  }
+
+  /** Whether token `t`'s text is `s` (no string is made). */
+  is(t: i32, s: string): boolean {
+    const a = this.start[t];
+    const n = this.end[t] - a;
+    if (n !== toI32(s.length)) {
+      return false;
+    }
+    for (let i = 0; i < n; i++) {
+      if (toI32(uncheckedGet(this.src, a + i)) !== s.charCodeAt(i)) {
+        return false;
+      }
+    }
+    return true;
+  }
+
+  /** Whether the bytes from `i` (before `e`) start with `s`. */
+  startsWithAt(i: i32, e: i32, s: string): boolean {
+    const n = toI32(s.length);
+    if (e - i < n) {
+      return false;
+    }
+    for (let k = 0; k < n; k++) {
+      if (toI32(uncheckedGet(this.src, i + k)) !== s.charCodeAt(k)) {
+        return false;
+      }
+    }
+    return true;
   }
 
   /** The first byte of token `t`. */

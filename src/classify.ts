@@ -188,6 +188,8 @@ export class Classifier {
   depth: i32 = 0;
   inClass: boolean = false; // the enclosing scope is a class body
   lineHasRequires: boolean = false; // the line being classified holds `requires`
+  lineHasOperator: boolean = false; // ... `operator`
+  lineHasStarSquare: boolean = false; // ... `*` right before `[`
 
   constructor(d: Doc) {
     this.d = d;
@@ -217,6 +219,9 @@ export class Classifier {
    */
   objcStarBrackets(): void {
     const d = this.d;
+    if (!this.lineHasStarSquare) {
+      return;
+    }
     for (let t = this.first; t >= 0; t = d.nxt[t]) {
       if (d.kind[t] !== P_STAR || d.type[t] !== TT_POINTER_OR_REFERENCE) {
         continue;
@@ -257,8 +262,7 @@ export class Classifier {
     if (d.kind[f] !== K_IDENT) {
       return false;
     }
-    const tx = d.text(f);
-    return tx === "__asm" || tx === "__asm__";
+    return d.is(f, "__asm") || d.is(f, "__asm__");
   }
 
   set(t: i32, tt: i32): void {
@@ -710,12 +714,8 @@ export class Classifier {
     this.inClass = d.lInClass[l] === 1;
     this.first = d.lFirst[l];
     this.lineHasRequires = false;
-    for (let t = this.first; t >= 0; t = d.nxt[t]) {
-      if (d.kind[t] === KW_REQUIRES) {
-        this.lineHasRequires = true;
-        break;
-      }
-    }
+    this.lineHasOperator = false;
+    this.lineHasStarSquare = false;
     const lt = d.lType[l];
     const pk = d.ppKind[this.first];
     if (lt === LT_IMPORT || (lt === LT_PREPROCESSOR && pk !== PP_DEFINE && pk !== PP_IF && pk !== PP_ELIF && pk !== PP_PRAGMA && pk !== PP_OTHER)) {
@@ -748,15 +748,24 @@ export class Classifier {
     // with `:`, which it cannot annotate either.
     let invalid = this.first >= 0 && d.kind[this.first] === P_COLON;
     let afterHeader = false; // past `__has_include(<...>`: the rest is implicit
+    const implicitOk = d.anyImplicit;
     for (let t = this.first; t >= 0; t = d.nxt[t]) {
       d.match[t] = -1;
+      const k0 = d.kind[t];
+      if (k0 === KW_REQUIRES) {
+        this.lineHasRequires = true;
+      } else if (k0 === KW_OPERATOR) {
+        this.lineHasOperator = true;
+      } else if (k0 === P_STAR && d.nxt[t] >= 0 && d.kind[d.nxt[t]] === P_LSQUARE) {
+        this.lineHasStarSquare = true;
+      }
       if (d.final[t] === 0) {
         // A stray character (`\`, a backtick) is an implicit string literal.
-        d.type[t] = (d.kind[t] === K_UNKNOWN || d.kind[t] === P_BACKSLASH || afterHeader) && d.kind[t] !== K_COMMENT ? TT_IMPLICIT_STRING_LITERAL : TT_UNKNOWN;
+        d.type[t] = implicitOk && (k0 === K_UNKNOWN || k0 === P_BACKSLASH || afterHeader) && k0 !== K_COMMENT ? TT_IMPLICIT_STRING_LITERAL : TT_UNKNOWN;
       }
       // clang-format's parseHasInclude: every token after the header's `<`
       // but comments is an implicit string literal.
-      if (d.kind[t] === K_HEADER && d.inPP[t] === 1) {
+      if (implicitOk && k0 === K_HEADER && d.inPP[t] === 1) {
         const p = d.prv[t];
         if (p >= 0 && d.kind[p] === P_LPAREN && d.prv[p] >= 0 && d.kind[d.prv[p]] === CW_HAS_INCLUDE) {
           afterHeader = true;
@@ -792,10 +801,10 @@ export class Classifier {
         this.expr[dep] = 0;
       }
       const pv = d.prv[t];
-      if (pv >= 0 && d.type[pv] === TT_CTOR_INITIALIZER_COLON) {
+      if (!this.ctorSeen && pv >= 0 && d.type[pv] === TT_CTOR_INITIALIZER_COLON) {
         this.ctorSeen = true;
       }
-      if (dep > 0 && this.lfd[dep] === 1 && k === K_IDENT) {
+      if (k === K_IDENT && dep > 0 && this.lfd[dep] === 1) {
         // clang-format's parseParens(LookForDecls): `if (a *b ...)` without
         // `=` after `b` reads the `*` as a multiplication.
         const p = this.prev(t);
@@ -1171,16 +1180,12 @@ export class Classifier {
       }
     }
     // `virtual` outside any brackets: a virtual function's declaration.
-    if (d.lType[l] === LT_OTHER) {
-      for (let t = this.first; t >= 0; t = d.nxt[t]) {
-        if (d.kind[t] === KW_VIRTUAL && d.nest[t] === 0) {
-          d.lType[l] = LT_VIRTUAL_FUNCTION_DECL;
-          break;
-        }
-      }
-    }
     // A trailing comma (or comment) before `}` puts the list one per line.
+    const other = d.lType[l] === LT_OTHER;
     for (let t = this.first; t >= 0; t = d.nxt[t]) {
+      if (other && d.kind[t] === KW_VIRTUAL && d.nest[t] === 0 && d.lType[l] === LT_OTHER) {
+        d.lType[l] = LT_VIRTUAL_FUNCTION_DECL;
+      }
       if (d.kind[t] === P_RBRACE && d.match[t] >= 0) {
         const o = d.match[t];
         let p = d.prv[t];
@@ -1618,7 +1623,7 @@ export class Classifier {
         t = this.prev(this.d.match[t]);
         continue;
       }
-      if (k === KW_CONST || k === KW_VOLATILE || (k === K_IDENT && (this.d.text(t) === "restrict" || this.d.text(t) === "__restrict" || this.d.text(t) === "_Nonnull" || this.d.text(t) === "_Nullable"))) {
+      if (k === KW_CONST || k === KW_VOLATILE || (k === K_IDENT && (this.d.is(t, "restrict") || this.d.is(t, "__restrict") || this.d.is(t, "_Nonnull") || this.d.is(t, "_Nullable")))) {
         t = this.prev(t);
         continue;
       }
@@ -1735,7 +1740,7 @@ export class Classifier {
       return false;
     }
     const lead = d.prv[d.match[p]];
-    return lead >= 0 && d.text(lead) === d.text(n);
+    return lead >= 0 && d.sameText(lead, n);
   }
 
   /** Marks the first `->` after the parameter list of function name `t` as a trailing return arrow. */
@@ -1847,6 +1852,9 @@ export class Classifier {
    */
   operatorCallOperands(): void {
     const d = this.d;
+    if (!this.lineHasOperator) {
+      return;
+    }
     let hasOp = false;
     for (let t = this.first; t >= 0; t = d.nxt[t]) {
       if (d.type[t] === TT_FUNCTION_DECLARATION_NAME) {
@@ -2041,7 +2049,7 @@ const ppSpace = (d: Doc, l: i32, r: i32): boolean => {
   }
   if (d.prv[left] === f) {
     // `#if (` and `#elif (`: a control statement's parenthesis.
-    if (d.kind[r] === P_LPAREN && (d.text(left) === "if" || d.text(left) === "elif")) {
+    if (d.kind[r] === P_LPAREN && (d.is(left, "if") || d.is(left, "elif"))) {
       return true;
     }
     return d.ws[r] === 1 || d.lType[l] === LT_IMPORT; // the directive's first argument
@@ -2088,15 +2096,17 @@ const spaceBeforeCode = (d: Doc, l: i32, r: i32): boolean => {
   const lt = d.type[left];
   const rt = d.type[r];
   // Around an implicit string literal the whitespace is as written.
-  if (lt === TT_IMPLICIT_STRING_LITERAL || rt === TT_IMPLICIT_STRING_LITERAL) {
+  if (d.anyImplicit && (lt === TT_IMPLICIT_STRING_LITERAL || rt === TT_IMPLICIT_STRING_LITERAL)) {
     return d.ws[r] === 1;
   }
   // After a finalized token (inline assembly) too; `asm {` is spaced.
-  if (d.asmFin[left] === 1) {
-    return d.ws[r] === 1;
-  }
-  if (rt === TT_INLINE_ASM_BRACE && rk === P_LBRACE) {
-    return true;
+  if (d.anyAsm) {
+    if (d.asmFin[left] === 1) {
+      return d.ws[r] === 1;
+    }
+    if (rt === TT_INLINE_ASM_BRACE && rk === P_LBRACE) {
+      return true;
+    }
   }
   // `@class`, `@"str"`: Objective-C's `@` keeps the word after it.
   if (lk === P_AT && (isWordKind(rk) || rk === K_STRING)) {
@@ -2349,7 +2359,7 @@ const spaceBeforeCode = (d: Doc, l: i32, r: i32): boolean => {
   }
   // (A name or a simple type: other keywords keep the space, `noexcept {}`,
   // and so does `_asm`, a keyword for clang-format.)
-  if (((lk === K_IDENT && !(d.at(d.start[left]) === 95 && (d.text(left) === "_asm" || d.text(left) === "__asm" || d.text(left) === "__asm__"))) || lk >= CW_OVERRIDE || isSimpleTypeKind(lk) || lk === P_GREATER || lk === P_RSQUARE || lk === P_RPAREN) && rk === P_LBRACE && d.bk[r] !== BK_BLOCK && d.nxt[r] >= 0) {
+  if (((lk === K_IDENT && !(d.at(d.start[left]) === 95 && (d.is(left, "_asm") || d.is(left, "__asm") || d.is(left, "__asm__")))) || lk >= CW_OVERRIDE || isSimpleTypeKind(lk) || lk === P_GREATER || lk === P_RSQUARE || lk === P_RPAREN) && rk === P_LBRACE && d.bk[r] !== BK_BLOCK && d.nxt[r] >= 0) {
     return false;
   }
   if (lk === P_PERIOD || rk === P_PERIOD) {
@@ -2485,6 +2495,5 @@ const operatorNameEndsAt = (d: Doc, t: i32): boolean => {
 
 /** Whether identifier `t` is a string literal prefix (`L`, `u`, `U`, `u8`, and their `R` forms). */
 const isStringPrefix = (d: Doc, t: i32): boolean => {
-  const x = d.text(t);
-  return x === "L" || x === "u" || x === "U" || x === "u8" || x === "LR" || x === "uR" || x === "UR" || x === "u8R";
+  return d.is(t, "L") || d.is(t, "u") || d.is(t, "U") || d.is(t, "u8") || d.is(t, "LR") || d.is(t, "uR") || d.is(t, "UR") || d.is(t, "u8R");
 };

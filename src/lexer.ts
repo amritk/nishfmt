@@ -180,6 +180,7 @@ const isIdentChar = (c: i32): boolean =>
 
 const isDigit = (c: i32): boolean => c >= 48 && c <= 57;
 
+
 /** Whether the `n` bytes of `d.src` at `a` spell `s`. */
 const wordIs = (src: u8[], a: i32, n: i32, s: string): boolean => {
   if (n !== toI32(s.length)) {
@@ -618,6 +619,9 @@ export const lex = (d: Doc): boolean => {
   // A UTF-8 byte order mark is not a token; the formatter writes it back.
   let i = hasBom(d) ? 3 : 0;
   d.strTabs = false;
+  d.anyImplicit = false;
+  d.anyAsm = false;
+  d.anyDefine = false;
   d.nCR = 0;
   d.nLF = 0;
   let lineStart = 0;
@@ -730,22 +734,16 @@ export const lex = (d: Doc): boolean => {
       }
     } else if (isIdentStart(c)) {
       i++;
+      let hi = c;
       while (i < n) {
         const e = toI32(uncheckedGet(src, i));
         if (!isIdentChar(e)) {
           break;
         }
+        hi = hi | e;
         i++;
       }
-      highByte = c >= 128;
-      if (!highByte) {
-        for (let j = a + 1; j < i; j++) {
-          if (toI32(uncheckedGet(src, j)) >= 128) {
-            highByte = true;
-            break;
-          }
-        }
-      }
+      highByte = hi >= 128;
       const q = d.at(i);
       const pre = q === 34 || q === 39 ? stringPrefix(src, a, i) : 0;
       if (pre === 2 && q === 34) {
@@ -806,6 +804,9 @@ export const lex = (d: Doc): boolean => {
           const pk = ppKindOf(src, a, i - a);
           if (ppHashTok >= 0) {
             d.ppKind[ppHashTok] = pk;
+            if (pk === PP_DEFINE) {
+              d.anyDefine = true;
+            }
           }
           if (pk === PP_INCLUDE) {
             ppIncludeNext = true;
@@ -1121,6 +1122,11 @@ export const lex = (d: Doc): boolean => {
       }
     }
     uncheckedSet(d.kind, t, k);
+    if (k === K_UNKNOWN || k === P_BACKSLASH || k === K_HEADER) {
+      d.anyImplicit = true;
+    } else if (k === KW_ASM) {
+      d.anyAsm = true;
+    }
     uncheckedSet(d.end, t, i);
     uncheckedSet(d.inPP, t, inPP ? 1 : 0);
     uncheckedSet(d.ppId, t, inPP ? ppHashTok : -1);

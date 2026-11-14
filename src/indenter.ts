@@ -987,7 +987,7 @@ export class Indenter {
     // An implicit string literal keeps the whitespace before it as written:
     // after a newline in it, the column is the written one (clang-format's
     // 1-based spelling column).
-    if (d.type[cur] === TT_IMPLICIT_STRING_LITERAL) {
+    if (d.anyImplicit && d.type[cur] === TT_IMPLICIT_STRING_LITERAL) {
       this.col = implicitColumn(d, cur, this.col);
       const fm0 = this.fm;
       if (!this.dry && fm0 !== null) {
@@ -1246,7 +1246,7 @@ export class Indenter {
     } else if ((mf & M_SOSLRESET) !== 0) {
       this.sosl = 0;
     }
-    this.col = this.col + this.widthAt(cur, this.col);
+    this.col = this.col + (d.kind[cur] !== K_COMMENT ? d.width[cur] : this.widthAt(cur, this.col));
     this.next = cur === this.lineLast ? -1 : d.nxt[cur];
     let pen: i64 = 0;
     if ((mf & M_EOL) !== 0) {
@@ -1935,7 +1935,7 @@ export class Indenter {
       this.hlen = this.hlen + 1;
       this.mix(d.kind[t] | (d.type[t] << 8) | (d.bk[t] << 16) | (d.multi[t] << 18) | (a.mustB[t] << 19) | (d.spaces[t] << 20) | (d.unesc[t] << 21) | (d.inPP[t] << 23) | (d.mustBreak[t] << 24) | (d.dec[t] << 25));
       this.mix(d.width[t] | ((d.nl[t] > 2 ? 2 : d.nl[t]) << 16));
-      if (d.type[t] === TT_IMPLICIT_STRING_LITERAL && t !== f) {
+      if (d.anyImplicit && d.type[t] === TT_IMPLICIT_STRING_LITERAL && t !== f) {
         this.mix(implicitColumn(d, t, 0));
       }
       this.mix(d.match[t] < 0 ? -1 : d.match[t] - t);
@@ -2144,12 +2144,12 @@ export class Indenter {
     let col = col0;
     for (let t = f; ; t = d.nxt[t]) {
       if (t !== f) {
-        col = d.type[t] === TT_IMPLICIT_STRING_LITERAL ? implicitColumn(d, t, col) : col + d.spaces[t];
+        col = d.anyImplicit && d.type[t] === TT_IMPLICIT_STRING_LITERAL ? implicitColumn(d, t, col) : col + d.spaces[t];
         if (fm !== null) {
           fm.emit(t, 0, col);
         }
       }
-      col = col + this.widthAt(t, col);
+      col = col + (d.kind[t] !== K_COMMENT ? d.width[t] : this.widthAt(t, col));
       const c = d.childHead[t];
       if (c >= 0) {
         if (fm !== null) {

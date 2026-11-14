@@ -566,7 +566,7 @@ export class Annot {
       this.crc[t] = 0;
       this.rqc[t] = 0;
       this.role[t] = -1;
-      if (t !== a && d.asmFin[t] === 1) {
+      if (t !== a && d.anyAsm && d.asmFin[t] === 1) {
         // Inline assembly keeps its whitespace, which clang-format's line
         // formatter does not count: what follows on the line is placed by
         // its spaces from where the text really ends (see the emitter).
@@ -1565,7 +1565,7 @@ export class Annot {
         return false;
       }
     }
-    if (rt === TT_IMPLICIT_STRING_LITERAL) {
+    if (d.anyImplicit && rt === TT_IMPLICIT_STRING_LITERAL) {
       return false;
     }
     if (rt === TT_TEMPLATE_CLOSER) {

@@ -681,8 +681,7 @@ export class Parser {
     if (d.kind[t] !== K_IDENT) {
       return false;
     }
-    const tx = d.text(t);
-    return tx === "_asm" || tx === "__asm" || tx === "__asm__";
+    return d.is(t, "_asm") || d.is(t, "__asm") || d.is(t, "__asm__");
   }
 
   /**
@@ -2525,8 +2524,7 @@ export function isQtWord(d: Doc, t: i32, signals: boolean): boolean {
   if (d.kind[t] !== K_IDENT) {
     return false;
   }
-  const w = d.text(t);
-  return w === "slots" || w === "Q_SLOTS" || (signals && (w === "signals" || w === "Q_SIGNALS"));
+  return d.is(t, "slots") || d.is(t, "Q_SLOTS") || (signals && (d.is(t, "signals") || d.is(t, "Q_SIGNALS")));
 }
 
 /** Whether kind `k` can follow a variable's name (clang-format's isCOperatorFollowingVar). */
@@ -2592,8 +2590,7 @@ export const isForEachMacro = (d: Doc, t: i32): boolean => {
   if (n !== 7 && n !== 9 && n !== 13) {
     return false;
   }
-  const s = d.text(t);
-  if (s !== "foreach" && s !== "Q_FOREACH" && s !== "BOOST_FOREACH") {
+  if (!d.is(t, "foreach") && !d.is(t, "Q_FOREACH") && !d.is(t, "BOOST_FOREACH")) {
     return false;
   }
   const p = d.prv[t];

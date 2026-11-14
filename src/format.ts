@@ -246,6 +246,13 @@ export class Formatter {
   fileStem: string = "";
   isMainFile: boolean = false;
   cpMax: i32 = 0; // commentPenalty's widest piece
+  // commentPenalty's memory, per token: valid while cpcGen holds cpGen.
+  cpGen: i32 = 1;
+  cpcGen: i32[];
+  cpcCol: i32[];
+  cpcLine: i32[];
+  cpcMax: i32[];
+  cpcVal: i64[];
   // sortIncludesText's current block: line and header name ranges, categories.
   incA: i32[];
   incE: i32[];
@@ -262,6 +269,11 @@ export class Formatter {
     this.words = new Parser(d);
     this.bcScratch = new Out(256);
     this.secScratch = new Out(256);
+    this.cpcGen = new Array<i32>(0);
+    this.cpcCol = new Array<i32>(0);
+    this.cpcLine = new Array<i32>(0);
+    this.cpcMax = new Array<i32>(0);
+    this.cpcVal = new Array<i64>(0);
     this.bcShift = new Out(256);
     this.incA = new Array<i32>(0);
     this.incE = new Array<i32>(0);
@@ -966,6 +978,9 @@ export class Formatter {
 
   /** Puts a `#define`'s one-line body back on its head line where it fits. */
   mergeDefines(): void {
+    if (!this.d.anyDefine) {
+      return;
+    }
     this.mergeDefinesIn(this.d.topHead);
   }
 
@@ -1365,7 +1380,7 @@ export class Formatter {
       }
       // Implicit string literals (`\`): their whitespace is as written;
       // so is all of an inline assembly block's body, newlines included.
-      for (let t = f; t >= 0; t = d.nxt[t]) {
+      for (let t = f; (d.anyAsm || d.anyImplicit) && t >= 0; t = d.nxt[t]) {
         if (d.asmFin[t] === 1) {
           this.untouched[t] = 3;
           this.untStamp[t] = g;
@@ -1386,7 +1401,7 @@ export class Formatter {
         const w = d.nxt[f];
         let first = w >= 0 ? d.nxt[w] : -1;
         if (d.ppKind[f] === PP_PRAGMA) {
-          if (first < 0 || !(d.text(first) === "mark" || d.text(first) === "region")) {
+          if (first < 0 || !(d.is(first, "mark") || d.is(first, "region"))) {
             continue;
           }
           first = d.nxt[first];
@@ -1930,11 +1945,11 @@ export class Formatter {
     while (i < d.end[t] && (d.at(i) === 32 || d.at(i) === 47 || d.at(i) === 42)) {
       i++;
     }
-    const rest = String.fromBytes(d.src, i, d.end[t]);
-    if (rest.startsWith("fastfmt off") || rest.startsWith("clang-format off")) {
+    const e = d.end[t];
+    if (d.startsWithAt(i, e, "fastfmt off") || d.startsWithAt(i, e, "clang-format off")) {
       return 1;
     }
-    if (rest.startsWith("fastfmt on") || rest.startsWith("clang-format on")) {
+    if (d.startsWithAt(i, e, "fastfmt on") || d.startsWithAt(i, e, "clang-format on")) {
       return 2;
     }
     return 0;
@@ -2109,6 +2124,7 @@ export class Formatter {
   /** One formatting pass over the document's (current) tokens. */
   runPass(out: Out, prof: i64[], mayRestart: boolean): i32 {
     const d = this.d;
+    this.cpGen = this.cpGen + 1;
     const t1 = monotonicNanos();
     const p = new Parser(d);
     p.parseFile();
@@ -2457,6 +2473,7 @@ export class Formatter {
   }
 
   filterTokens(vis: i32[]): void {
+    this.cpGen = this.cpGen + 1;
     const d = this.d;
     let j = 0;
     for (let t = 0; t < this.fullN; t++) {
@@ -2727,6 +2744,13 @@ export class Formatter {
     this.incCat = [];
     this.incEdits = [];
     this.incText = [];
+    // (The text as a string, for the runtime's byte search: a file with no
+    // include has nothing to sort, and one with no `R"` no raw string.)
+    const text = String.fromBytes(d.src, 0, n);
+    if (text.indexOf("include") < 0 && text.indexOf("import") < 0) {
+      return false;
+    }
+    const anyRaw = text.indexOf("R\"") >= 0;
     let prev = n >= 3 && toI32(d.src[0]) === 0xef && toI32(d.src[1]) === 0xbb && toI32(d.src[2]) === 0xbf ? 3 : 0;
     let searchFrom = 0;
     let firstBlock = true;
@@ -2734,7 +2758,7 @@ export class Formatter {
     let off = false;
     let rawTerm = ")\"";
     while (true) {
-      let pos = this.findByte(10, searchFrom);
+      let pos = text.indexOf("\n", searchFrom);
       let lineEnd = pos >= 0 ? pos : n;
       // Trimmed bounds.
       let ta = prev;
@@ -2745,12 +2769,13 @@ export class Formatter {
       while (te > ta && isTrimByte(toI32(d.src[te - 1]))) {
         te--;
       }
-      const term = this.rawStringTerm(ta, te);
+      const term = anyRaw ? this.rawStringTerm(ta, te) : "";
       if (term.length > 0) {
         rawTerm = term;
         off = true;
       }
-      if (this.textContains(ta, te, rawTerm)) {
+      // (Only a line inside a raw string can end it.)
+      if (off && this.textContains(ta, te, rawTerm)) {
         off = false;
       }
       if (this.isFormatOff(ta, te)) {
@@ -3709,7 +3734,7 @@ export class Formatter {
         // After a newline before an implicit string literal clang-format's
         // column is the 1-based spelling column, one past the written one,
         // and what follows is placed by spaces from there.
-        if (unt === 2 && d.nl[t] > 0 && d.type[t] === TT_IMPLICIT_STRING_LITERAL) {
+        if (unt === 2 && d.anyImplicit && d.nl[t] > 0 && d.type[t] === TT_IMPLICIT_STRING_LITERAL) {
           col = col + 1;
         }
         continue;
@@ -3723,7 +3748,7 @@ export class Formatter {
         this.asmSkew = 0;
       }
       let c = this.emCol[i] + this.asmSkew;
-      if (nl === 0 && t > 0 && d.prv[t] >= 0 && d.asmFin[d.prv[t]] === 1) {
+      if (d.anyAsm && nl === 0 && t > 0 && d.prv[t] >= 0 && d.asmFin[d.prv[t]] === 1) {
         // After inline assembly's text (columns as written): its own space,
         // and what follows keeps its distance.
         if (d.ws[t] === 1) {
@@ -4907,7 +4932,36 @@ export class Formatter {
     return pen + excessPenalty(csc + rem - lim);
   }
 
+  /**
+   * commentPenalty, remembered per comment for the last column and line it
+   * was asked for: the line formatter's search asks again and again.
+   */
   commentPenalty(t: i32, col: i32): i64 {
+    if (toI32(this.cpcVal.length) <= t) {
+      const n = (t > this.d.ntok ? t : this.d.ntok) + 64;
+      this.cpcGen = new Array<i32>(n);
+      this.cpcCol = new Array<i32>(n);
+      this.cpcLine = new Array<i32>(n);
+      this.cpcMax = new Array<i32>(n);
+      this.cpcVal = new Array<i64>(n);
+      // (What was remembered went with the old array.)
+      this.cpGen = this.cpGen + 1;
+    }
+    const ln = this.ind.line;
+    if (this.cpcGen[t] === this.cpGen && this.cpcCol[t] === col && this.cpcLine[t] === ln) {
+      this.cpMax = this.cpcMax[t];
+      return this.cpcVal[t];
+    }
+    const v = this.commentPenaltyAt(t, col);
+    this.cpcGen[t] = this.cpGen;
+    this.cpcCol[t] = col;
+    this.cpcLine[t] = ln;
+    this.cpcMax[t] = this.cpMax;
+    this.cpcVal[t] = v;
+    return v;
+  }
+
+  commentPenaltyAt(t: i32, col: i32): i64 {
     const d = this.d;
     const lim = d.opts.columnLimit;
     if (!d.opts.reflowComments || this.isPragma(t) || this.offMarker(t) !== 0 || d.multi[t] === 1) {
