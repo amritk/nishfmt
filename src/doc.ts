@@ -44,6 +44,7 @@ export class Doc {
   col: i32[]; // original column of the token's first byte
   width: i32[]; // column width (first line of a multi-line token)
   multi: i32[]; // 1 when the token spans lines
+  plain: i32[]; // 1 when the token's bytes are ASCII with no tab: its columns are its bytes
   inPP: i32[]; // 1 inside a preprocessor directive
   ppKind: i32[]; // on a directive's `#`: its PP_* id
   ppId: i32[]; // in a directive: its `#` token, else -1
@@ -103,7 +104,7 @@ export class Doc {
   nLF: i32 = 0;
   strTabs: boolean = false; // a string literal holds a tab
   // Rare features, so hot loops can skip their checks: a token that may be
-  // an implicit string literal (a stray character, `\`, an include header),
+  // an implicit string literal (a stray character, `\`, `__has_include`),
   // and an `asm` keyword (inline assembly blocks).
   anyImplicit: boolean = false;
   anyAsm: boolean = false;
@@ -127,6 +128,7 @@ export class Doc {
     this.col = new Array<i32>(cap);
     this.width = new Array<i32>(cap);
     this.multi = new Array<i32>(cap);
+    this.plain = new Array<i32>(cap);
     this.inPP = new Array<i32>(cap);
     this.ppKind = new Array<i32>(cap);
     this.ppId = new Array<i32>(cap);
@@ -196,6 +198,7 @@ export class Doc {
     this.col = growI32(this.col, n);
     this.width = growI32(this.width, n);
     this.multi = growI32(this.multi, n);
+    this.plain = growI32(this.plain, n);
     this.inPP = growI32(this.inPP, n);
     this.ppKind = growI32(this.ppKind, n);
     this.ppId = growI32(this.ppId, n);

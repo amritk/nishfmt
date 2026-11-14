@@ -681,6 +681,7 @@ export const lex = (d: Doc): boolean => {
     uncheckedSet(d.col, t, i - lineStart);
     uncheckedSet(d.start, t, i);
     uncheckedSet(d.multi, t, 0);
+    uncheckedSet(d.plain, t, 0);
     uncheckedSet(d.ppKind, t, PP_NONE);
     uncheckedSet(d.nxt, t, -1);
     uncheckedSet(d.prv, t, -1);
@@ -1122,7 +1123,7 @@ export const lex = (d: Doc): boolean => {
       }
     }
     uncheckedSet(d.kind, t, k);
-    if (k === K_UNKNOWN || k === P_BACKSLASH || k === K_HEADER) {
+    if (k === K_UNKNOWN || k === P_BACKSLASH || k === CW_HAS_INCLUDE) {
       d.anyImplicit = true;
     } else if (k === KW_ASM) {
       d.anyAsm = true;
@@ -1132,6 +1133,7 @@ export const lex = (d: Doc): boolean => {
     uncheckedSet(d.ppId, t, inPP ? ppHashTok : -1);
     if (!scanWidth && !highByte) {
       uncheckedSet(d.width, t, i - a);
+      uncheckedSet(d.plain, t, 1);
       t++;
       continue;
     }
@@ -1143,6 +1145,7 @@ export const lex = (d: Doc): boolean => {
     let end = i;
     let segHigh = false; // the piece since the last tab holds a byte >= 128
     let col0 = -1; // the token's display column, found at its first tab
+    let everHigh = false;
     for (let j = a; j < i; j++) {
       const b = toI32(uncheckedGet(src, j));
       if (b === 10) {
@@ -1167,9 +1170,11 @@ export const lex = (d: Doc): boolean => {
         segHigh = false;
       } else if (b >= 128) {
         segHigh = true;
+        everHigh = true;
       }
     }
     w = w + (segHigh ? utf8Width(src, seg, end) : end - seg);
+    uncheckedSet(d.plain, t, multi === 0 && col0 < 0 && !everHigh ? 1 : 0);
     if (multi === 1) {
       for (let j = lineStart; j < i; j++) {
         if (toI32(uncheckedGet(src, j)) === 10) {

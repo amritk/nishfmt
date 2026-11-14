@@ -180,6 +180,7 @@ export class Formatter {
   sCol: i32[];
   sWidth: i32[];
   sMulti: i32[];
+  sPlain: i32[];
   sInPP: i32[];
   sPPKind: i32[];
   sPPId: i32[];
@@ -299,6 +300,7 @@ export class Formatter {
     this.sCol = new Array<i32>(0);
     this.sWidth = new Array<i32>(0);
     this.sMulti = new Array<i32>(0);
+    this.sPlain = new Array<i32>(0);
     this.sInPP = new Array<i32>(0);
     this.sPPKind = new Array<i32>(0);
     this.sPPId = new Array<i32>(0);
@@ -2422,6 +2424,7 @@ export class Formatter {
       this.sCol = new Array<i32>(c);
       this.sWidth = new Array<i32>(c);
       this.sMulti = new Array<i32>(c);
+      this.sPlain = new Array<i32>(c);
       this.sInPP = new Array<i32>(c);
       this.sPPKind = new Array<i32>(c);
       this.sPPId = new Array<i32>(c);
@@ -2441,6 +2444,7 @@ export class Formatter {
       this.sCol[t] = d.col[t];
       this.sWidth[t] = d.width[t];
       this.sMulti[t] = d.multi[t];
+      this.sPlain[t] = d.plain[t];
       this.sInPP[t] = d.inPP[t];
       this.sPPKind[t] = d.ppKind[t];
       this.sPPId[t] = d.ppId[t];
@@ -2491,6 +2495,7 @@ export class Formatter {
       d.col[j] = this.sCol[t];
       d.width[j] = this.sWidth[t];
       d.multi[j] = this.sMulti[t];
+      d.plain[j] = this.sPlain[t];
       d.inPP[j] = this.sInPP[t];
       d.ppKind[j] = this.sPPKind[t];
       const pid = this.sPPId[t];
@@ -4755,6 +4760,11 @@ export class Formatter {
     return w + (ascii ? b - s : utf8Width(d.src, s, b));
   }
 
+  /** colsAt for bytes [a, b) of token `t`: their count when the token is plain. */
+  cw(t: i32, a: i32, b: i32, c: i32): i32 {
+    return this.d.plain[t] === 1 ? b - a : this.colsAt(a, b, c);
+  }
+
   /** Whether content [a, e) may take the previous line's words (clang-format's rule). */
   mayReflowContent(a0: i32, e0: i32): boolean {
     const d = this.d;
@@ -4994,7 +5004,7 @@ export class Formatter {
     const start = col + prefix;
     let a = sp;
     let csc = start;
-    let rem = this.colsAt(a, ce, csc);
+    let rem = this.cw(t, a, ce, csc);
     let pen: i64 = 0;
     let widest = 0;
     let breaks = 0;
@@ -5007,28 +5017,28 @@ export class Formatter {
       const after = a + sA + sN;
       // Blanks squeezed to one space may let the next piece stay on the
       // line: clang-format goes on there, at no cost.
-      const toSplit = this.colsAt(a, a + sA, csc);
+      const toSplit = this.cw(t, a, a + sA, csc);
       let toNext = 0;
       if (!this.commentSplit(after, ce, csc + toSplit + 1, lim)) {
-        toNext = this.colsAt(a, ce, csc);
+        toNext = this.cw(t, a, ce, csc);
       } else {
-        toNext = this.colsAt(a, after + this.scSplitA, csc);
+        toNext = this.cw(t, a, after + this.scSplitA, csc);
       }
       toNext = toNext + 1 - sN;
       if (csc + toNext <= lim) {
         csc = csc + toSplit + 1;
         a = after;
-        rem = this.colsAt(a, ce, csc);
+        rem = this.cw(t, a, ce, csc);
         continue;
       }
       this.scSplitA = sA;
       this.scSplitN = sN;
-      const nrem = this.colsAt(after, ce, start);
+      const nrem = this.cw(t, after, ce, start);
       if (nrem >= rem) {
         break;
       }
       // (A piece holds what blanks were squeezed for, before it.)
-      const piece = prefix + (csc - start) + this.colsAt(a, a + this.scSplitA, csc);
+      const piece = prefix + (csc - start) + this.cw(t, a, a + this.scSplitA, csc);
       if (piece > widest) {
         widest = piece;
       }
@@ -5396,7 +5406,7 @@ export class Formatter {
     const reflow = d.opts.reflowComments;
     let off = 0; // bytes into the current line's content
     let csc = this.scCol[0];
-    let rem = this.colsAt(this.scA[0], this.scE[0], csc);
+    let rem = this.cw(this.emTok[i], this.scA[0], this.scE[0], csc);
     let seg = this.scA[0];
     let reflowing = false;
     this.scPrefix(out, 0);
@@ -5413,13 +5423,13 @@ export class Formatter {
         }
         const sA = this.scSplitA;
         const sN = this.scSplitN;
-        const toSplit = this.colsAt(a + off, a + off + sA, csc);
+        const toSplit = this.cw(this.emTok[i + k], a + off, a + off + sA, csc);
         let toNext = 0;
         const after = a + off + sA + sN;
         if (!this.commentSplit(after, e, csc + toSplit + 1, lim)) {
-          toNext = this.colsAt(a + off, e, csc);
+          toNext = this.cw(this.emTok[i + k], a + off, e, csc);
         } else {
-          toNext = this.colsAt(a + off, after + this.scSplitA, csc);
+          toNext = this.cw(this.emTok[i + k], a + off, after + this.scSplitA, csc);
         }
         toNext = toNext + 1 - sN;
         if (csc + toNext <= lim) {
@@ -5430,7 +5440,7 @@ export class Formatter {
           seg = after;
           csc = csc + toSplit + 1;
           off = off + sA + sN;
-          rem = this.colsAt(a + off, e, csc);
+          rem = this.cw(this.emTok[i + k], a + off, e, csc);
           continue;
         }
         // A prefix left without its space (`///@name`) gets one on the next
@@ -5441,7 +5451,7 @@ export class Formatter {
         }
         const pad = 0;
         const ncsc = this.scCol[k] + pad;
-        const nrem = this.colsAt(after, e, ncsc);
+        const nrem = this.cw(this.emTok[i + k], after, e, ncsc);
         if (nrem >= rem) {
           break;
         }
@@ -5487,13 +5497,13 @@ export class Formatter {
               mlead++;
             }
             roff = mlead - na;
-            const rrem = this.colsAt(mlead, ne, ccsc);
+            const rrem = this.cw(this.emTok[i + k + 1], mlead, ne, ccsc);
             reflowing = true;
             if (ccsc + rrem > lim) {
               if (!this.commentSplit(mlead, ne, ccsc, lim)) {
                 reflowing = false;
               } else {
-                const ts = this.colsAt(mlead, mlead + this.scSplitA, ccsc);
+                const ts = this.cw(this.emTok[i + k + 1], mlead, mlead + this.scSplitA, ccsc);
                 if (ccsc + ts > lim) {
                   reflowing = false;
                 }
@@ -5520,7 +5530,7 @@ export class Formatter {
           this.scPrefix(out, k + 1);
           off = 0;
           csc = this.scCol[k + 1];
-          rem = this.colsAt(this.scA[k + 1], this.scE[k + 1], csc);
+          rem = this.cw(this.emTok[i + k + 1], this.scA[k + 1], this.scE[k + 1], csc);
           seg = this.scA[k + 1];
         }
       } else {
