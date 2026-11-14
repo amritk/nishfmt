@@ -3280,8 +3280,24 @@ export class Formatter {
         // A block comment reflowed to fit: its first line counts.
         this.blockCommentPenalty(t, cmin);
         w = this.bcFirstW;
+      } else if (t >= 0 && d.kind[t] === K_COMMENT && d.type[t] === TT_BLOCK_COMMENT && d.multi[t] === 1 && d.inPP[t] === 1 && !this.verbatimAt(i)) {
+        // Over several lines of a directive: its first line, without the
+        // blanks and the backslash that end it.
+        let q = d.start[t];
+        while (q < d.end[t] && d.at(q) !== 10) {
+          q++;
+        }
+        while (q > d.start[t] && (d.at(q - 1) === 32 || d.at(q - 1) === 9 || d.at(q - 1) === 13 || d.at(q - 1) === 92)) {
+          q--;
+        }
+        w = q - d.start[t];
       }
-      const cmax = this.verbatimAt(i) ? cmin : lim >= w ? lim - w : cmin;
+      let cmax = this.verbatimAt(i) ? cmin : lim >= w ? lim - w : cmin;
+      // (A comment the directive goes on after, past an escaped newline, or
+      // whose own lines are, leaves room for the backslash.)
+      if (t >= 0 && d.multi[t] === 1 && d.inPP[t] === 1 && cmax >= 2 && !this.verbatimAt(i)) {
+        cmax = cmax - 2;
+      }
       let wasAligned = false;
       if (this.emNl[i] >= 1 && t >= 0) {
         const cc = d.col[t];
