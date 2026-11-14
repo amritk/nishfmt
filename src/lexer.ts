@@ -468,6 +468,8 @@ export const wordKind = (src: u8[], a: i32, n: i32): i32 => {
       }
       return K_IDENT;
     case 10:
+      // (clang-format takes `__declspec(...)` for an attribute.)
+      if (c === 95 && wordIs(src, a, n, "__declspec")) return KW_ATTRIBUTE;
       return wordIs(src, a, n, "const_cast") ? KW_CONST_CAST : K_IDENT;
     case 11:
       if (wordIs(src, a, n, "static_cast")) return KW_STATIC_CAST;
