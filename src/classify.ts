@@ -2099,7 +2099,7 @@ const spaceBeforeCode = (d: Doc, l: i32, r: i32): boolean => {
     return true;
   }
   // `@class`, `@"str"`: Objective-C's `@` keeps the word after it.
-  if (lk === P_AT && rk !== K_COMMENT) {
+  if (lk === P_AT && (isWordKind(rk) || rk === K_STRING)) {
     return false;
   }
   // `Args &&...a`: nothing after a pack's `...` that follows `&`, `&&` or `*`.
