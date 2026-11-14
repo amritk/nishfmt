@@ -3547,7 +3547,9 @@ export class Formatter {
       return true;
     }
     const n = this.emTok[i + 1];
-    return this.emNl[i + 1] > 0 || (n >= 0 && this.d.kind[n] === K_EOF);
+    // (A block comment over several lines is trailing by its own line
+    // breaks: clang-format re-indents them with changes inside the token.)
+    return this.emNl[i + 1] > 0 || (n >= 0 && this.d.kind[n] === K_EOF) || (t >= 0 && this.d.multi[t] === 1 && this.d.type[t] === TT_BLOCK_COMMENT && !this.verbatimAt(i));
   }
 
   /** The column a trailing comment at `i` needs: one past the code before it. */
