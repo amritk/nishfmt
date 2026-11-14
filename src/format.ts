@@ -1756,9 +1756,15 @@ export class Formatter {
         // before's source line: then it is untouched altogether).
         const nl0 = d.nl[f] === 0 && prev >= 0 ? 0 : this.newlinesBefore(l, prev, prev < 0, nested);
         this.firstEmitted = true;
+        const hostStart = this.nem;
         for (let t = f; t >= 0; t = d.nxt[t]) {
           this.emit(t, t === f ? nl0 : d.nl[t], d.col[t]);
           this.verbatimChildren(t);
+        }
+        // (Directives found inside it go back in, in source order.)
+        if (pend >= 0) {
+          this.interleave(pend, hostStart);
+          pend = -1;
         }
       } else {
         const inlinePP = this.isInlineDirective(l);
