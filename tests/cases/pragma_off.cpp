@@ -1,0 +1,5 @@
+int  a=1;
+// clang-format off
+int   keep   =   2 ;
+// clang-format on
+int  b=3;

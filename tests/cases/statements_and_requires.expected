@@ -1,0 +1,56 @@
+#include "b.h"
+#include FT_FREETYPE_H
+#include "a.h"
+struct S {
+  int a;
+} s = {1}, t{2};
+union {
+  int a;
+} u = {0};
+template <typename M> inline constexpr bool k = requires(M &m) { m.lock(); };
+template <class T>
+concept C = requires { typename T::x; } && requires(T a) { a + a; };
+template <class T>
+  requires(!std::is_reference_v<T> && requires { ref_wrapped_t{std::move(t)}; })
+void f();
+struct R {
+  [[nodiscard]] T &&value_or_throw() &&
+    requires(!std::is_reference_v<T>)
+  {
+    return x;
+  }
+  explicit TryBase(Args &&...args) noexcept(std::is_nothrow_constructible<T, Args &&...>::value) {}
+};
+void g() {
+  while (x)
+    ;
+  for (;;)
+    ;
+  foreach (x, y) {
+    h();
+  }
+  Q_FOREACH (x, y)
+    h();
+  if (likely(x)) [[likely]] {
+    return;
+  }
+  {}
+  __asm__ volatile("cpuid \n\t"
+                   : "=a"(cpu_info[0]), "=b"(cpu_info[1]), "=c"(cpu_info[2]), "=d"(cpu_info[3])
+                   : "a"(info_type), "c"(0));
+  if (u)
+    // c
+    g = 1;
+  else // d
+  {
+    g = 2;
+  }
+  auto r = [&]() {
+    SCOPE_EXIT { ++c; };
+  };
+  return ResolveArena<&UntypedMapBase::resolver_>(this);
+}
+#  warning Detected X11 Status macro definition, it can cause build conflicts. Please, include this header before any X11 headers.
+#error                                                                                                                 \
+    "Hardware acceleration is required by ABSL_OPTION_INLINE_HW_ACCEL_STRATEGY but not supported on this platform; see x"
+#define END }

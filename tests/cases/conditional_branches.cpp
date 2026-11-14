@@ -1,0 +1,31 @@
+void f() {
+    constexpr bool kUseSync =
+#ifdef ROCKSDB_MODIFY_NPHASH
+        true;
+#else
+        false;
+#endif // ROCKSDB_MODIFY_NPHASH
+#if defined(A)
+  if (a) {
+#else
+  if (b)  {
+#endif
+    x  = 1;
+  }
+#if 0
+  this   is    not   formatted ( ;
+#else
+  int   y=2;
+#endif
+}
+#ifdef X
+int g() {
+#  if Y
+  return 1;
+#  elif Z
+  return  2;
+#  else
+  return 3 ;
+#  endif
+}
+#endif

@@ -1,0 +1,13 @@
+#define M1(_Tpvec)                                                                                                     \
+  inline _Tpvec v_mul(const _Tpvec &a, const _Tpvec &b) { return a; }
+#define M2(T)                                                                                                          \
+  inline T f(const T &a) { return a; }
+#define M3(T) T f(const T &a);
+#define M4                                                                                                             \
+  int f(const Foo &a) { return a; }
+#define M5                                                                                                             \
+  inline int f(const Foo &a) { return 1; }
+#define M(_Tpvec)                                                                                                      \
+  template <> inline _Tpvec v_rotate_left<0>(const _Tpvec &a) { return a; }
+#define N(_Tpvec) x = f<0>(const _Tpvec &a);
+#define O(_Tpvec) g<0>(a & b);

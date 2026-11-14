@@ -1,0 +1,30 @@
+void f() {
+  {
+    auto toDestroy = std::move(sender);
+  }
+  SCOPE_EXIT {
+    EXPECT_EQ(barrier.fetch_sub(1), 1);
+  };
+  if (x)
+  {
+    y();
+  }
+  {
+    a();
+    b();
+  }
+  {
+    // c
+    d();
+  }
+}
+template <typename T> SpanReader &operator>>(T &&obj) { return *this; }
+std::istream &operator>>(std::istream &is, X &x);
+bool operator>(const A &a) const;
+A &operator>>=(int n);
+x = a >> b;
+std::vector<std::vector<int>> v;
+static bool LoadKey(CWallet *pwallet, DataStream &ssKey) EXCLUSIVE_LOCKS_REQUIRED(pwallet->cs_wallet) {
+  return true;
+}
+auto f() noexcept(a->b) -> int;

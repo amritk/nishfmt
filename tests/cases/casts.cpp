@@ -1,0 +1,12 @@
+void f() {
+  if (exact && ((uint_fast64_t)(uint_fast32_t)absZ << shiftDist != sig)) {
+  }
+  auto x = (a::b) * c;
+  int y = (int)-1;
+  delete[] (char *)p;
+  z = (foo *const)&y;
+  w = (T)(x);
+  q = f(a)(b);
+  r = (int)sizeof(x);
+  s = (unsigned char)*p;
+}

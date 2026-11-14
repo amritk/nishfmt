@@ -1,0 +1,29 @@
+#if defined(MBEDTLS_AES_ALT) // no-check-names
+#error "MBEDTLS_AES_ALT was removed in Mbed TLS 4.0." //no-check-names
+#endif
+#pragma mark Some   Section
+#warning this  is   a  warning
+// clang-format off
+struct A {
+	int   x;
+};
+// clang-format on
+void f() {
+  switch (x) {
+  case 1: {
+  }
+  default: {
+  }
+  }
+}
+#define FT_FREETYPE_H <freetype/freetype.h>
+#define X <a/b.h>
+#define Y a<b / c> d
+#define Z <a / b.h> // c
+#define X <a / b.h>
+#define X2 < a / b.h > 1
+#define X3 <a/b.h>
+#define X4 (<a / b.h>)
+int x = <a / b.h>;
+#define X5 a / b
+#define X6 <a>

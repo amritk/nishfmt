@@ -1,0 +1,10 @@
+#ifndef GUARD_H
+#define GUARD_H
+#if defined(_WIN32)
+#  include <windows.h>
+#else
+#include <unistd.h>
+#endif
+#define MAX(a,b) ((a)>(b)?(a):(b))
+int value = MAX(1,2);
+#endif

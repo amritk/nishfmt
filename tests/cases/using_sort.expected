@@ -1,0 +1,22 @@
+namespace a {
+using ::abc;
+using B;
+using a::B;
+using a::b::C;
+using std::map; // trailing
+using std::Map;
+using std::map;
+using std::vector;
+using typename T::x;
+using namespace foo;
+using w::x;
+using z::y;
+
+using p::s;
+using q::r;
+void f() {
+  using std::begin;
+  using std::swap;
+  auto l = [] { return 1; };
+}
+} // namespace a

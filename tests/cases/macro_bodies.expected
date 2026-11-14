@@ -1,0 +1,28 @@
+#define XR_LIST(_)                                                                                                     \
+  _(XR_SUCCESS, 0)                                                                                                     \
+  _(XR_TIMEOUT_EXPIRED, 1)                                                                                             \
+  _(XR_ERROR_VALIDATION_FAILURE, -1)
+#define CALLS(_avail, _unavail)                                                                                        \
+  _avail(XrApiLayerProperties, XR_TYPE_API_LAYER_PROPERTIES) _avail(XrExtensionProperties, XR_TYPE_EXTENSION_PROPERTIES)
+#define SHORT(x)                                                                                                       \
+  do {                                                                                                                 \
+    f(x);                                                                                                              \
+  } while (0)
+#define LONG(a, b)                                                                                                     \
+  if (a) {                                                                                                             \
+    first_function_with_a_long_name(a, b);                                                                             \
+    second_function_with_a_long_name(b, a);                                                                            \
+  }
+namespace ns {
+void f() {
+  if (__has_include(<optional>)) {
+  }
+}
+} // namespace ns
+#if FOO && BAR
+#endif
+#if A * B > 2 && C & D
+#endif
+#elif X && Y
+#if defined(X) && (Y || Z)
+#endif

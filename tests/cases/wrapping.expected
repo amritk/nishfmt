@@ -1,0 +1,12 @@
+void declare_something_long(const std::string &first_parameter_name, const std::vector<int> &second_parameter_name,
+                            int third);
+void caller() {
+  some_object.some_method(first_argument_value, second_argument_value, third_argument_value,
+                          fourth_argument_value_here);
+  auto result =
+      compute_something_quite_long(alpha_parameter, beta_parameter) + compute_another_thing(gamma, delta_value);
+  std::unique_ptr<SomeVeryLongTypeNameForTesting> pointer_with_a_long_name =
+      std::make_unique<SomeVeryLongTypeNameForTesting>();
+}
+std::map<std::string, std::vector<std::pair<int, int>>> function_with_a_long_return_type_name(int argument_one,
+                                                                                              int argument_two);

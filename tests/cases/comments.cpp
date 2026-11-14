@@ -1,0 +1,6 @@
+// A short comment.
+/// A documentation comment that is far too long to fit within the column limit of one hundred and twenty characters, so it wraps.
+int x = 1;  // trailing
+int yy = 2; // another trailing
+/* block */ int z = 3;
+//no space after slashes

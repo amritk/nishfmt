@@ -1,0 +1,9 @@
+#include <vector>
+int *p = nullptr;
+const std::vector<int> &ref(const std::vector<int> &v) { return v; }
+int f(int a, int b) { return a * b + a / b - (a % b); }
+void g(char **argv, int &&r, const int *const q);
+template <typename T> T max_of(T a, T b) { return a > b ? a : b; }
+bool h(int x) { return !x || x && x != 3; }
+auto lam = [](int x) -> int { return x + 1; };
+int arr[3] = {1, 2, 3};

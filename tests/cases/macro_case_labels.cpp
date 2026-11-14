@@ -1,0 +1,12 @@
+#define CASE(N, S)                                                                                                     \
+  case N:                                                                                                              \
+    yyformat = S;                                                                                                      \
+    break
+void f() {
+  if (x)
+    goto do_not_strip_quotes;
+do_not_strip_quotes:;
+  switch (y) {
+  case 1:;
+  }
+}

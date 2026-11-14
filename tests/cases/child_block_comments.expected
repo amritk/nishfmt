@@ -1,0 +1,25 @@
+void f() {
+  EXPECT_THROW_MSG(
+      { // NOLINT
+        a_++;
+        throw_exception();
+      },
+      test_exception, "test");
+  g([&] { // comment
+    x++;
+  });
+  h({// c
+     1, 2});
+}
+auto a = [] { // c
+  return 1;
+};
+auto b = [] { /* c */ return 1; };
+void k() {
+  run([&]() { /* x */
+              y();
+  });
+  std::thread t([this] { // worker
+    loop();
+  });
+}

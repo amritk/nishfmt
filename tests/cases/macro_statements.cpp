@@ -1,0 +1,24 @@
+void f() {
+  switch (act) {
+  case 2:
+  {{p = ((te))-1;} found_syllable (x); }
+  break;
+  }
+  {
+    a();
+  }
+}
+GTEST_DISABLE_MSC_WARNINGS_POP_()  //  4251
+
+// A set of macros
+#define EXPECT_FATAL_FAILURE(statement, substr) \
+  do { \
+    statement; \
+  } while (::testing::internal::AlwaysFalse())
+
+GTEST_DISABLE_MSC_WARNINGS_PUSH_(4251 \
+/* class A */)
+
+namespace testing {
+int x;
+}

@@ -1,0 +1,38 @@
+#define CV_CPU_CALL_SSE(fn, args)                                                                                      \
+  if (CV_CPU_HAS_SUPPORT_SSE)                                                                                          \
+  return (opt_SSE::fn args)
+#define A(x)                                                                                                           \
+  while (x)                                                                                                            \
+  x--
+#define B(x)                                                                                                           \
+  if (x)                                                                                                               \
+    a();                                                                                                               \
+  else                                                                                                                 \
+    b()
+void f() {
+  if (a) {
+    x();
+  } else
+#if A
+    y();
+#else
+    z();
+#endif
+  if (b) {
+  }
+}
+void f() {
+  switch (yyn) {
+  case 2: /* variable_identifier: IDENTIFIER  */
+#line 362 "MachineIndependent/glslang.y"
+  {
+    a = b;
+  }
+#line 5457 "x.cpp"
+  break;
+  case 3: // c
+  {
+    q();
+  } break;
+  }
+}

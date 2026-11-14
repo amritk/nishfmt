@@ -1,0 +1,23 @@
+namespace outer {
+namespace inner {
+class Widget : public Base {
+public:
+  Widget(int a, int b) : a_(a), b_(b) {}
+  ~Widget() = default;
+  int value() const { return a_; }
+
+private:
+  int a_;
+  int b_;
+};
+enum class Color : int { Red, Green, Blue };
+enum Mode {
+  kOne,
+  kTwo,
+};
+struct Point {
+  int x;
+  int y;
+};
+} // namespace inner
+} // namespace outer

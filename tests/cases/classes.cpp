@@ -1,0 +1,17 @@
+template<typename T, typename Alloc=std::allocator<T>>
+class Container : public Base<T>, private Mixin {
+public:
+  using value_type=T;
+  static constexpr int kSize=16;
+  virtual ~Container() override;
+  virtual void process(const T& item) = 0;
+  T& operator[](size_t i){return data_[i];}
+  bool operator==(const Container& other) const;
+  explicit operator bool() const { return !data_.empty(); }
+protected:
+  std::vector<T, Alloc> data_;
+};
+extern "C" {
+int c_function(int);
+}
+typedef struct { int a; } Plain;
