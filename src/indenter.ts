@@ -281,6 +281,7 @@ export class Indenter {
   nPendI: i32[];
   nCnt: i32[];
   lazyKids: boolean = false;
+  asWritten: boolean = false; // noLineBreak for a line with no layout: its blocks' lines are written too
   pendHead: i32 = -1;
   childPen: i64 = 0;
   pendInd: i32 = 0;
@@ -2094,7 +2095,10 @@ export class Indenter {
       // after the first and its blocks' lines keep their whitespace.
       this.keepAsWritten(l, false);
       this.dry = false;
-      return this.noLineBreak();
+      this.asWritten = true;
+      const kp = this.noLineBreak();
+      this.asWritten = false;
+      return kp;
     }
     return pen;
   }
@@ -2208,7 +2212,11 @@ export class Indenter {
     let pen: i64 = 0;
     this.initialState();
     while (this.next >= 0) {
-      const cp = this.formatChildren(false);
+      let cp = this.formatChildren(false);
+      // A line written as it is still has its blocks' lines, as written.
+      if (cp < 0 && this.asWritten) {
+        cp = this.formatChildren(true);
+      }
       if (cp > 0) {
         pen = pen + cp;
       }
