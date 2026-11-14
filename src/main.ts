@@ -12,6 +12,8 @@ const MODE_CHECK: i32 = 2;
 
 class Cli {
   trace: boolean = false;
+  once: boolean = false; // FFONCE: one run per file, to compare with a single clang-format run
+  showReruns: boolean = false; // FFRERUN: name each file run again
   mode: i32 = 0;
   width: i32 = 120;
   indent: i32 = 2;
@@ -190,11 +192,11 @@ const formatFile = (path: string, cli: Cli, stats: Stats, eng: Engine): i32 => {
   // breaks are.
   const crlf = d.nCR * 2 > d.nLF;
   // (FFONCE: one run only, to compare with a single clang-format run.)
-  let runs = getenv("FFONCE") !== null ? 8 : 0;
+  let runs = cli.once ? 8 : 0;
   while (okRun && f.rerun && runs < 8 && (runs === 0 || f.rerunMacro)) {
     // clang-format's fixed point: format the result once more.
     runs++;
-    if (getenv("FFRERUN") !== null) {
+    if (cli.showReruns) {
       console.error(`rerun ${runs} ${path}`);
     }
     const once = out.buf.slice(0, out.n);
@@ -377,6 +379,8 @@ export const main = (): i32 => {
   const t0 = monotonicNanos();
   const cli = new Cli();
   cli.trace = getenv("FFTRACE") !== null;
+  cli.once = getenv("FFONCE") !== null;
+  cli.showReruns = getenv("FFRERUN") !== null;
   const pr = parseArgs(cli);
   if (pr >= 0) {
     return pr;

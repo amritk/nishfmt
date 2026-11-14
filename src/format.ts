@@ -213,6 +213,8 @@ export class Formatter {
   bcScratch: Out; // blockCommentPenalty's dry run
   secScratch: Out; // sectionWidth's dry run
   secW: i32 = 0; // sectionWidth: the widest line
+  idStamp: i32[]; // isInlineDirective's memory: valid while equal to untGen
+  idNext: i32[]; // and the line after the directive run
   secEnd: i32 = -1; // sectionWidth: the section's last entry
   bcShift: Out; // a block comment reflowed before alignment, then shifted
   splitDecoStar: boolean = false;
@@ -270,6 +272,8 @@ export class Formatter {
     this.words = new Parser(d);
     this.bcScratch = new Out(256);
     this.secScratch = new Out(256);
+    this.idStamp = new Array<i32>(0);
+    this.idNext = new Array<i32>(0);
     this.cpcGen = new Array<i32>(0);
     this.cpcCol = new Array<i32>(0);
     this.cpcLine = new Array<i32>(0);
@@ -1850,9 +1854,24 @@ export class Formatter {
     if (d.lType[l] !== LT_PREPROCESSOR && d.lType[l] !== LT_IMPORT && d.lPP[l] !== 1 && d.lInlineCmt[l] !== 1) {
       return false;
     }
-    let h = d.lSibling[l];
-    while (h >= 0 && (d.lType[h] === LT_PREPROCESSOR || d.lType[h] === LT_IMPORT || d.lPP[h] === 1 || d.lInlineCmt[h] === 1)) {
-      h = d.lSibling[h];
+    // The line after the run of directive lines: found once per run (a
+    // long run would be walked again for each of its lines).
+    if (toI32(this.idStamp.length) < d.nline) {
+      this.idStamp = growI32(this.idStamp, d.nline + 64);
+      this.idNext = growI32(this.idNext, d.nline + 64);
+    }
+    let h = -2;
+    if (this.idStamp[l] === this.untGen) {
+      h = this.idNext[l];
+    } else {
+      h = d.lSibling[l];
+      while (h >= 0 && (d.lType[h] === LT_PREPROCESSOR || d.lType[h] === LT_IMPORT || d.lPP[h] === 1 || d.lInlineCmt[h] === 1)) {
+        h = d.lSibling[h];
+      }
+      for (let x = d.lSibling[l]; x >= 0 && x !== h; x = d.lSibling[x]) {
+        this.idStamp[x] = this.untGen;
+        this.idNext[x] = h;
+      }
     }
     return h >= 0 && d.lFirst[h] < d.lFirst[l];
   }
