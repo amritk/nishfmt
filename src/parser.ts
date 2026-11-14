@@ -89,6 +89,12 @@ import {
   P_RSQUARE,
   P_SEMI,
   KW_AUTO,
+  KW_TRUE,
+  KW_FALSE,
+  KW_TYPENAME,
+  KW_CONSTEVAL,
+  KW_MUTABLE,
+  KW_STATIC,
   KW_CONST,
   KW_VOLATILE,
   P_AMP,
@@ -1758,10 +1764,10 @@ export class Parser {
       } else if (pdepth === 0) {
         if (k === P_ARROW) {
           seenArrow = true;
-        } else if (seenArrow && (k === P_PLUS || k === P_MINUS || k === P_EXCLAIM || k === P_TILDE || k === P_SLASH || k === P_PERCENT || k === P_LESSLESS || k === P_PIPE || k === P_PIPEPIPE || k === P_CARET || k === P_EQUALEQUAL || k === P_EXCLAIMEQUAL || k === P_GREATEREQUAL || k === P_LESSEQUAL || k === P_QUESTION || k === P_COLON)) {
+        } else if (seenArrow && (k === KW_TRUE || k === KW_FALSE || k === P_PLUS || k === P_MINUS || k === P_EXCLAIM || k === P_TILDE || k === P_SLASH || k === P_PERCENT || k === P_LESSLESS || k === P_PIPE || k === P_PIPEPIPE || k === P_CARET || k === P_EQUALEQUAL || k === P_EXCLAIMEQUAL || k === P_GREATEREQUAL || k === P_LESSEQUAL || k === P_QUESTION || k === P_COLON)) {
           // (clang-format's tryToParseLambda takes operators after the arrow:
           // a template argument's arithmetic, or C++/CX's `^`.)
-        } else if (!(isWordKind(k) || k === K_NUMBER || k === P_COLONCOLON || k === P_AMP || k === P_AMPAMP || k === P_STAR || k === P_COMMA || k === P_ELLIPSIS)) {
+        } else if (!(lambdaWord(k) || k === K_NUMBER || k === P_COLONCOLON || k === P_AMP || k === P_AMPAMP || k === P_STAR || k === P_COMMA || k === P_ELLIPSIS)) {
           return false;
         }
       } else if (k === P_SEMI || k === P_LBRACE || k === P_RBRACE) {
@@ -2477,6 +2483,33 @@ export class Parser {
 
 // Unused placeholder kind; keeps `if constexpr` handling readable above.
 const P_EXCLAIM_SENTINEL: i32 = -1000;
+
+/**
+ * The words clang-format's tryToParseLambda reads between a lambda's `]`
+ * and its `{`: names, simple types and a few keywords. Any other keyword
+ * (`public`, `__attribute__`) means no lambda.
+ */
+const lambdaWord = (k: i32): boolean => {
+  if (isIdentKind(k) || isSimpleTypeKind(k)) {
+    return true;
+  }
+  switch (k) {
+    case KW_AUTO:
+    case KW_CLASS:
+    case KW_TEMPLATE:
+    case KW_TYPENAME:
+    case KW_CONST:
+    case KW_CONSTEXPR:
+    case KW_CONSTEVAL:
+    case KW_MUTABLE:
+    case KW_NOEXCEPT:
+    case KW_STATIC:
+    case KW_REQUIRES:
+      return true;
+    default:
+      return false;
+  }
+};
 
 /** Whether token `t` is Qt's `slots`/`Q_SLOTS` (or, with `signals`, also `signals`/`Q_SIGNALS`). */
 export function isQtWord(d: Doc, t: i32, signals: boolean): boolean {
