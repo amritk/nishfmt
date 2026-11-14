@@ -6,7 +6,7 @@
 
 import { uncheckedGet, uncheckedSet } from "nish:unsafe";
 import { Doc } from "./doc";
-import { utf8Width } from "./uwidth";
+import { utf8Width } from "../core/uwidth";
 import {
   CW_FINAL,
   CW_HAS_INCLUDE,

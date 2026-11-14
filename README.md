@@ -122,24 +122,24 @@ What is left, roughly by size:
 fastfmt is a rewrite in Nish, not a port: its own data layout and passes,
 written to make the same decisions clang-format makes.
 
-1. **Lexer** (`src/lexer.ts`). Builds token columns in one pass: kind,
+1. **Lexer** (`src/cpp/lexer.ts`). Builds token columns in one pass: kind,
    offsets, preceding newlines and whitespace, original column and width.
    Directives and header names are marked, and `>>` is split so templates
    close one bracket at a time.
-2. **Parser** (`src/parser.ts`). Cuts the tokens into unwrapped lines with an
+2. **Parser** (`src/cpp/parser.ts`). Cuts the tokens into unwrapped lines with an
    indent level. Lambda bodies, requires-expressions and other blocks inside
    expressions become child lines of their `{`. A comment alone on the line
    under a trailing comment continues it. If a file's brackets do not balance,
    the parse fails and the file is left untouched.
-3. **Classifier** (`src/classify.ts`). One forward pass over each line with a
+3. **Classifier** (`src/cpp/classify.ts`). One forward pass over each line with a
    bracket stack gives each token its role (template bracket, pointer or
    multiplication, unary or binary operator, declaration name, kind of colon)
    and the spacing before it.
-4. **Annotator** (`src/annotate.ts`). For every line: widths, forced breaks
+4. **Annotator** (`src/cpp/annotate.ts`). For every line: widths, forced breaks
    and spacing. For lines that need breaking: the implicit parentheses of
    operator precedence, where a break may go and what it costs, unbreakable
    tails, braced-list column layouts, and per-token flags for the breaker.
-5. **Line breaker** (`src/indenter.ts`). A line that fits is written as is.
+5. **Line breaker** (`src/cpp/indenter.ts`). A line that fits is written as is.
    Otherwise the breaker runs clang-format's search: states are expanded
    cheapest first, ties going to the state made first, under clang-format's
    rules for where each token goes after a break and what each break costs.
@@ -155,7 +155,7 @@ written to make the same decisions clang-format makes.
    - results are cached by line and indent within a file, and by a 64-bit
      hash of everything the search reads across files, so a statement that
      recurs (common in generated code) is searched once.
-6. **Formatter** (`src/format.ts`). Indentation, blank lines, joining short
+6. **Formatter** (`src/cpp/format.ts`). Indentation, blank lines, joining short
    functions and empty blocks, include sorting (a source file's own header
    first), namespace end comments (added or corrected), chained-conditional
    and trailing-comment alignment, line-comment reflow, and writing.

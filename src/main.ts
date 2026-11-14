@@ -2,9 +2,19 @@
 // style. The CLI walks the paths it is given, formats every C++ source in
 // parallel worker processes, and prints a timing summary.
 
-import { Doc, Options } from "./doc";
-import { Formatter } from "./format";
-import { Out } from "./out";
+import { Out } from "./core/out";
+import { Ignore, walk } from "./core/files";
+import { CppEngine, formatCpp, isCppName } from "./cpp/run";
+
+/** Languages, by the extension or name of a file; 0 is not ours. */
+const LANG_CPP: i32 = 1;
+
+const langOf = (name: string): i32 => {
+  if (isCppName(name)) {
+    return LANG_CPP;
+  }
+  return 0;
+};
 
 const MODE_STDOUT: i32 = 0;
 const MODE_WRITE: i32 = 1;
@@ -27,14 +37,14 @@ class Cli {
   }
 }
 
-/** One worker's reusable state: the token tables, formatter and output buffer. */
+/** One worker's reusable state: one engine per language and the output buffer. */
 class Engine {
-  d: Doc;
-  f: Formatter;
+  cpp: CppEngine;
   out: Out;
-  constructor(opts: Options) {
-    this.d = new Doc(new Array<u8>(0), 0, opts);
-    this.f = new Formatter(this.d);
+  constructor(cli: Cli) {
+    this.cpp = new CppEngine(cli.width, cli.indent);
+    this.cpp.once = cli.once;
+    this.cpp.showReruns = cli.showReruns;
     this.out = new Out(1 << 16);
   }
 }
@@ -72,99 +82,6 @@ const usage = (): string =>
     "untouched and counted as skipped.",
   ].join("\n");
 
-const hasExt = (name: string): boolean =>
-  name.endsWith(".cpp") ||
-  name.endsWith(".cc") ||
-  name.endsWith(".cxx") ||
-  name.endsWith(".hpp") ||
-  name.endsWith(".hh") ||
-  name.endsWith(".hxx") ||
-  name.endsWith(".h");
-
-/** Patterns from one .gitignore: plain names, `dir/`, `/name`, `*.ext`. */
-class Ignore {
-  names: string[];
-  exts: string[];
-  constructor() {
-    this.names = [];
-    this.exts = [];
-  }
-}
-
-const readIgnore = (dir: string, into: Ignore): void => {
-  const text = readFileSyncOrNull(`${dir}/.gitignore`);
-  if (text === null) {
-    return;
-  }
-  let a = 0;
-  const n = toI32(text.length);
-  for (let i = 0; i <= n; i++) {
-    if (i === n || text.charCodeAt(i) === 10) {
-      let s = text.substring(a, i);
-      a = i + 1;
-      while (s.endsWith(" ") || s.endsWith("\r")) {
-        s = s.substring(0, toI32(s.length) - 1);
-      }
-      if (s.length === 0 || s.startsWith("#") || s.startsWith("!")) {
-        continue;
-      }
-      if (s.startsWith("/")) {
-        s = s.substring(1);
-      }
-      if (s.endsWith("/")) {
-        s = s.substring(0, toI32(s.length) - 1);
-      }
-      if (s.startsWith("*.") && s.indexOf("/") < 0) {
-        into.exts.push(s.substring(1));
-      } else if (s.indexOf("*") < 0 && s.indexOf("/") < 0) {
-        into.names.push(s);
-      }
-    }
-  }
-};
-
-const ignored = (name: string, ig: Ignore): boolean => {
-  for (const x of ig.names) {
-    if (x === name) {
-      return true;
-    }
-  }
-  for (const e of ig.exts) {
-    if (name.endsWith(e)) {
-      return true;
-    }
-  }
-  return false;
-};
-
-const walk = (dir: string, out: string[], parent: Ignore): void => {
-  const names = readdirSync(dir);
-  if (names === null) {
-    return;
-  }
-  const ig = new Ignore();
-  for (const x of parent.names) {
-    ig.names.push(x);
-  }
-  for (const x of parent.exts) {
-    ig.exts.push(x);
-  }
-  readIgnore(dir, ig);
-  for (const name of names) {
-    if (name.startsWith(".") || ignored(name, ig)) {
-      continue;
-    }
-    const p = `${dir}/${name}`;
-    if (hasExt(name)) {
-      out.push(p);
-    } else if (name.indexOf(".") < 0 || !name.endsWith(".json")) {
-      if (isDirectorySync(p)) {
-        walk(p, out, ig);
-      }
-    }
-  }
-};
-
 /** Formats one file; answers 0 unchanged, 1 changed, 2 skipped. */
 const formatFile = (path: string, cli: Cli, stats: Stats, eng: Engine): i32 => {
   if (cli.trace) {
@@ -179,33 +96,9 @@ const formatFile = (path: string, cli: Cli, stats: Stats, eng: Engine): i32 => {
   const n = toI32(src.length);
   stats.files = stats.files + 1;
   stats.bytes = stats.bytes + toI64(n);
-  const d = eng.d;
-  d.reset(src, n);
-  const f = eng.f;
-  f.reset();
-  f.setPath(path);
   const out = eng.out;
-  out.n = 0;
   const tr0 = monotonicNanos();
-  let okRun = f.run(out, stats.prof);
-  // clang-format's derived line ending: CRLF when more than half the line
-  // breaks are.
-  const crlf = d.nCR * 2 > d.nLF;
-  // (FFONCE: one run only, to compare with a single clang-format run.)
-  let runs = cli.once ? 8 : 0;
-  while (okRun && f.rerun && runs < 8 && (runs === 0 || f.rerunMacro)) {
-    // clang-format's fixed point: format the result once more.
-    runs++;
-    if (cli.showReruns) {
-      console.error(`rerun ${runs} ${path}`);
-    }
-    const once = out.buf.slice(0, out.n);
-    d.reset(once, toI32(once.length));
-    f.reset();
-    f.setPath(path);
-    out.n = 0;
-    okRun = f.run(out, stats.prof);
-  }
+  const okRun = formatCpp(eng.cpp, path, src, n, out, stats.prof);
   stats.prof[5] = stats.prof[5] + (monotonicNanos() - tr0);
   if (!okRun) {
     stats.skipped = stats.skipped + 1;
@@ -215,9 +108,6 @@ const formatFile = (path: string, cli: Cli, stats: Stats, eng: Engine): i32 => {
       console.error(`fastfmt: skipped ${path} (does not parse)`);
     }
     return 2;
-  }
-  if (crlf) {
-    toCRLF(out);
   }
   let same = out.n === n;
   if (same) {
@@ -297,12 +187,7 @@ const parseArgs = (cli: Cli): i32 => {
   return -1;
 };
 
-const engineFor = (cli: Cli): Engine => {
-  const opts = new Options();
-  opts.columnLimit = cli.width;
-  opts.indentWidth = cli.indent;
-  return new Engine(opts);
-};
+const engineFor = (cli: Cli): Engine => new Engine(cli);
 
 /**
  * Files in the next claim, `left` being unclaimed: large while much is left,
@@ -396,7 +281,7 @@ export const main = (): i32 => {
   const root = new Ignore();
   for (const p of cli.paths) {
     if (isDirectorySync(p)) {
-      walk(p, files, root);
+      walk(p, files, root, langOf);
     } else {
       files.push(p);
     }
@@ -417,7 +302,7 @@ export const main = (): i32 => {
       formatFile(p, cli, stats, eng);
     }
     if (getenv("FFPROF") !== null) {
-      console.error(`searches ${eng.f.ind.stSearches} nodes ${eng.f.ind.stNodes} pops ${eng.f.ind.stPops} depth ${eng.f.ind.stDepth} listMiss ${eng.f.ind.stListMiss} listHit ${eng.f.ind.stListHit}`);
+      console.error(`searches ${eng.cpp.f.ind.stSearches} nodes ${eng.cpp.f.ind.stNodes} pops ${eng.cpp.f.ind.stPops} depth ${eng.cpp.f.ind.stDepth} listMiss ${eng.cpp.f.ind.stListMiss} listHit ${eng.cpp.f.ind.stListHit}`);
       console.error(`lex ${ms(stats.prof[0])} parse ${ms(stats.prof[1])} classify ${ms(stats.prof[2])} layout ${ms(stats.prof[3])} write ${ms(stats.prof[4])} run-total ${ms(stats.prof[5])} ms`);
     }
   } else {
@@ -472,28 +357,3 @@ export const main = (): i32 => {
   return 0;
 };
 
-/** Writes each line feed of `out` that has no carriage return before it as CRLF. */
-function toCRLF(out: Out): void {
-  let add = 0;
-  for (let i = 0; i < out.n; i++) {
-    if (out.buf[i] === 10 && (i === 0 || out.buf[i - 1] !== 13)) {
-      add++;
-    }
-  }
-  if (add === 0) {
-    return;
-  }
-  const n = out.n;
-  out.reserve(add);
-  let j = n + add - 1;
-  for (let i = n - 1; i >= 0; i--) {
-    const b = out.buf[i];
-    out.buf[j] = b;
-    j--;
-    if (b === 10 && (i === 0 || out.buf[i - 1] !== 13)) {
-      out.buf[j] = 13;
-      j--;
-    }
-  }
-  out.n = n + add;
-}

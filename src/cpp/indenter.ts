@@ -71,7 +71,7 @@ import {
   PEN_FIRST_LESSLESS,
 } from "./annotate";
 import { Doc, growI32 } from "./doc";
-import { utf8Width } from "./uwidth";
+import { utf8Width } from "../core/uwidth";
 import { Formatter } from "./format";
 import {
   BK_BLOCK,

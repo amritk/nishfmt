@@ -11,8 +11,8 @@ import { Doc, growI32 } from "./doc";
 import { Annot } from "./annotate";
 import { Indenter } from "./indenter";
 import { displayColumn, hasBom, lex, widthOf } from "./lexer";
-import { Out } from "./out";
-import { utf8Width } from "./uwidth";
+import { Out } from "../core/out";
+import { utf8Width } from "../core/uwidth";
 import { Parser, isOperatorAfterVar, isQtWord, tokenCanStartNewLine } from "./parser";
 import {
   BK_BLOCK,
