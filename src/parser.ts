@@ -148,6 +148,7 @@ export class Parser {
   mustDecl: boolean = true;
   listParent: i32 = -1; // the `{` collecting child lines, or -1 for the top
   rbraceOpen: i32 = -1; // line index of the block a `}` line closes
+  macroList: i32 = -2; // the list a macro body's own lines go to
 
   constructor(d: Doc) {
     this.d = d;
@@ -235,7 +236,9 @@ export class Parser {
     d.lMightFn[l] = 0;
     d.lMultiVar[l] = 0;
     d.lSibling[l] = -1;
-    d.lAbs[l] = 0;
+    // A macro body's line is indented from the margin even inside a block
+    // (clang-format moves directives out of the line being built).
+    d.lAbs[l] = this.macro >= 0 && this.listParent === this.macroList ? 1 : 0;
     d.lInlineCmt[l] = 0;
     d.lParent[l] = this.listParent;
     d.lOpen[l] = -1;
@@ -469,11 +472,14 @@ export class Parser {
     this.macro = hash;
     const saveBodyStart = this.macroBodyStart;
     this.macroBodyStart = this.d.nline;
+    const saveList = this.macroList;
+    this.macroList = this.listParent;
     // clang-format parses a macro body with MustBeDeclaration off.
     this.mustDecl = false;
     this.parseLevel(false);
     this.addLine();
     this.macroBodyStart = saveBodyStart;
+    this.macroList = saveList;
     this.macro = -1;
     this.level = saveLevel;
     this.mustDecl = saveDecl;

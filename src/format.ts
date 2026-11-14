@@ -966,10 +966,20 @@ export class Formatter {
 
   /** Puts a `#define`'s one-line body back on its head line where it fits. */
   mergeDefines(): void {
+    this.mergeDefinesIn(this.d.topHead);
+  }
+
+  /** mergeDefines over the lines from `head` on and their blocks' lines (a lambda's body holds directives too). */
+  mergeDefinesIn(head: i32): void {
     const d = this.d;
     const an = this.ann;
-    let l = d.topHead;
+    let l = head;
     while (l >= 0) {
+      for (let t = d.lFirst[l]; t >= 0; t = d.nxt[t]) {
+        if (d.childHead[t] >= 0) {
+          this.mergeDefinesIn(d.childHead[t]);
+        }
+      }
       const f = d.lFirst[l];
       const b = d.lSibling[l];
       if (d.kind[f] === P_HASH && d.ppKind[f] === PP_DEFINE && b >= 0 && d.ppId[d.lFirst[b]] === f) {
