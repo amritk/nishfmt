@@ -3730,6 +3730,11 @@ export class Formatter {
       // (A line comment a backslash spliced over lines is written as it is:
       // clang-format's multiline token.)
       if (d.kind[t] === K_COMMENT && d.type[t] === TT_LINE_COMMENT && !this.verbatimAt(i) && !inInclude && d.multi[t] === 0) {
+        // `//x` gets its space, which takes a comment that just fit past the
+        // limit: the next run lays the line out with it.
+        if (!this.rerun && d.opts.reflowComments && col + d.width[t] <= d.opts.columnLimit && col + d.width[t] + this.missingCommentSpace(t) > d.opts.columnLimit) {
+          this.rerun = true;
+        }
         const o0 = out.n;
         i = this.writeSection(out, i, col);
         col = this.wsCol;
