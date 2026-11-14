@@ -208,6 +208,7 @@ export class Formatter {
   rerunMacro: boolean = false; // the rerun is for a macro call left alone: run until it settles
   rerun: boolean = false; // writeBlockComment inside a directive (drops `\`, keeps room for it)
   bcFirstW: i32 = 0; // blockCommentPenalty: the width of the comment's first line
+  bcShrink: i32 = 0; // blockCommentPenalty: how much narrower the comment got, kept on one line
   bcScratch: Out; // blockCommentPenalty's dry run
   bcShift: Out; // a block comment reflowed before alignment, then shifted
   splitDecoStar: boolean = false;
@@ -4753,6 +4754,7 @@ export class Formatter {
     let pen: i64 = 0;
     this.splitDecoStar = false;
     this.bcFirstW = d.width[t];
+    this.bcShrink = 0;
     while (csc + rem > lim) {
       if (!this.commentSplit(a + off, e, csc, lim)) {
         break;
@@ -4785,6 +4787,10 @@ export class Formatter {
       off = off + sA + sN;
       csc = ind;
       rem = nrem;
+    }
+    // Kept on its line with its blanks squeezed: that much narrower.
+    if (pen === 0) {
+      this.bcShrink = col + d.width[t] - (csc + rem - tail);
     }
     return pen + excessPenalty(csc + rem - lim);
   }

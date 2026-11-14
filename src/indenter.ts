@@ -1467,8 +1467,12 @@ export class Indenter {
       // A line comment is split to fit, as clang-format's breakProtrudingToken.
       pen = pen + fmc.commentPenalty(cur, this.col - d.width[cur]);
     } else if (d.kind[cur] === K_COMMENT && d.type[cur] === TT_BLOCK_COMMENT && fmc !== null && (this.col > this.lim || d.multi[cur] === 1 || (this.col + a.tot[this.lineLast] - a.tot[cur] > this.lim && this.col + fmc.unbreakableTail(cur) > this.lim))) {
-      // So is a block comment, reflowed.
+      // So is a block comment, reflowed; one whose blanks were squeezed to
+      // fit ends that much sooner.
       pen = pen + fmc.blockCommentPenalty(cur, this.col - d.width[cur]);
+      if (d.multi[cur] === 0 && fmc.bcShrink > 0) {
+        this.col = this.col - fmc.bcShrink;
+      }
     } else if (this.col > this.lim) {
       pen = pen + PEN_EXCESS * toI64(this.col - this.lim);
     }
