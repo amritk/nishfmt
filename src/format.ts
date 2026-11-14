@@ -3889,6 +3889,11 @@ export class Formatter {
           }
           return r + sh;
         }
+        // A one-line comment broken here is several lines on the next run,
+        // which can lay out what is around it anew: run again.
+        if (d.multi[t] === 0 && !this.rerun) {
+          this.rerun = true;
+        }
         return this.writeBlockComment(out, t, col);
       }
       // Several lines inside a directive: each line break is escaped at the
