@@ -121,6 +121,7 @@ import {
   KW_TEMPLATE,
   PP_DEFINE,
   P_CARET,
+  P_TILDE,
   P_EQUALEQUAL,
   P_EXCLAIMEQUAL,
   P_GREATEREQUAL,
@@ -1734,6 +1735,7 @@ export class Parser {
     // Scan the declarator up to the body's `{`.
     let j = this.nextNonComment(rsq);
     let pdepth = 0;
+    let seenArrow = false;
     while (j < d.ntok - 1) {
       const k = d.kind[j];
       if (k === P_LBRACE && pdepth === 0) {
@@ -1754,7 +1756,12 @@ export class Parser {
       } else if (k === P_GREATER) {
         pdepth--;
       } else if (pdepth === 0) {
-        if (!(isWordKind(k) || k === P_ARROW || k === P_COLONCOLON || k === P_AMP || k === P_AMPAMP || k === P_STAR || k === P_COMMA || k === P_ELLIPSIS)) {
+        if (k === P_ARROW) {
+          seenArrow = true;
+        } else if (seenArrow && (k === P_PLUS || k === P_MINUS || k === P_EXCLAIM || k === P_TILDE || k === P_SLASH || k === P_PERCENT || k === P_LESSLESS || k === P_PIPE || k === P_PIPEPIPE || k === P_CARET || k === P_EQUALEQUAL || k === P_EXCLAIMEQUAL || k === P_GREATEREQUAL || k === P_LESSEQUAL || k === P_QUESTION || k === P_COLON)) {
+          // (clang-format's tryToParseLambda takes operators after the arrow:
+          // a template argument's arithmetic, or C++/CX's `^`.)
+        } else if (!(isWordKind(k) || k === K_NUMBER || k === P_COLONCOLON || k === P_AMP || k === P_AMPAMP || k === P_STAR || k === P_COMMA || k === P_ELLIPSIS)) {
           return false;
         }
       } else if (k === P_SEMI || k === P_LBRACE || k === P_RBRACE) {
