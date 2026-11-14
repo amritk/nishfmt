@@ -1491,6 +1491,10 @@ export class Annot {
     if (lt === TT_POINTER_OR_REFERENCE) {
       return false;
     }
+    // Never right after an attribute's `(` (clang-format's TT_AttributeLParen).
+    if (lk === P_LPAREN && d.prv[left] >= 0 && d.kind[d.prv[left]] === KW_ATTRIBUTE && rk === P_LPAREN) {
+      return false;
+    }
     if (this.isTrailingComment(t)) {
       return d.bk[left] === BK_BRACED_INIT && d.eqList[left] === 0;
     }
