@@ -1164,6 +1164,16 @@ export class Parser {
       if (this.eofLine >= 0 && this.eofLine === d.nline - 1) {
         this.eofLine = -1;
       }
+      // Comments between the body and a directive take the body's level,
+      // as after any control statement's body (parseControlBody).
+      if (this.first < 0 && this.commentsThenDirective()) {
+        this.flushComments();
+      } else if (this.first < 0 && this.macro < 0 && this.directivesCommentsDirective()) {
+        while (d.kind[this.pos] === P_HASH && d.ppKind[this.pos] !== PP_NONE) {
+          this.parsePPInline();
+        }
+        this.flushComments();
+      }
       this.level = this.level - 1;
       return;
     }
