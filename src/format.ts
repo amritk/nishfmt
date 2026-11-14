@@ -210,6 +210,9 @@ export class Formatter {
   bcFirstW: i32 = 0; // blockCommentPenalty: the width of the comment's first line
   bcShrink: i32 = 0; // blockCommentPenalty: how much narrower the comment got, kept on one line
   bcScratch: Out; // blockCommentPenalty's dry run
+  secScratch: Out; // sectionWidth's dry run
+  secW: i32 = 0; // sectionWidth: the widest line
+  secEnd: i32 = -1; // sectionWidth: the section's last entry
   bcShift: Out; // a block comment reflowed before alignment, then shifted
   splitDecoStar: boolean = false;
   rawPP: i32[]; // per raw entry: its directive's `#`, or -1
@@ -258,6 +261,7 @@ export class Formatter {
   constructor(d: Doc) {
     this.words = new Parser(d);
     this.bcScratch = new Out(256);
+    this.secScratch = new Out(256);
     this.bcShift = new Out(256);
     this.incA = new Array<i32>(0);
     this.incE = new Array<i32>(0);
@@ -545,6 +549,63 @@ export class Formatter {
       return this.pieceWidth(PIECE - t);
     }
     return toI32(this.synth[-t - 1].length);
+  }
+
+  /**
+   * The widest line, from column `col`, of the line comment section that
+   * starts at entry `i` once written there (a dry run of writeSection); also
+   * left in secW, with the section's last entry in secEnd.
+   */
+  /**
+   * Whether a line of the line comment section at entry `i` overflows at
+   * column `col` as written; if so its reflowed width is measured
+   * (sectionWidth).
+   */
+  sectionOverflows(i: i32, col: i32): boolean {
+    const d = this.d;
+    let j = i;
+    let over = col + d.width[this.emTok[i]] > d.opts.columnLimit;
+    while (j + 1 < this.nem && this.continuesSection(j + 1)) {
+      j++;
+      if (col + d.width[this.emTok[j]] > d.opts.columnLimit) {
+        over = true;
+      }
+    }
+    if (!over) {
+      return false;
+    }
+    this.sectionWidth(i, col);
+    return true;
+  }
+
+  sectionWidth(i: i32, col: i32): i32 {
+    let j = i;
+    while (j + 1 < this.nem && this.continuesSection(j + 1)) {
+      j++;
+    }
+    this.secEnd = j;
+    const o = this.secScratch;
+    o.n = 0;
+    const saveRerun = this.rerun;
+    const saveWs = this.wsCol;
+    this.writeSection(o, i, col);
+    this.rerun = saveRerun;
+    this.wsCol = saveWs;
+    let w = 0;
+    let ls = 0;
+    let first = true;
+    for (let q = 0; q <= o.n; q++) {
+      if (q === o.n || o.buf[q] === 10) {
+        const lw = widthOf(o.buf, ls, q) - (first ? 0 : col);
+        if (lw > w) {
+          w = lw;
+        }
+        first = false;
+        ls = q + 1;
+      }
+    }
+    this.secW = w;
+    return w;
   }
 
   /** Whether line `l` starts with `public:`, `protected:` or `private:` (the blank-line rules). */
@@ -3239,6 +3300,8 @@ export class Formatter {
     let breakBeforeNext = false;
     let prevI = -1; // the entry before, among those this pass formats
     let prevJoined = false; // that entry is a line comment a directive's line went on to take
+    let secEnd = -1; // the last entry of a line comment section measured reflowed
+    let secW = 0; // and its widest line
     for (let i = 0; i < n; i++) {
       if (this.isFin(i)) {
         continue;
@@ -3275,7 +3338,16 @@ export class Formatter {
       const cmin = this.emCol[i];
       let w = t >= 0 ? (d.kind[t] === K_COMMENT && d.multi[t] === 0 ? d.end[t] - d.start[t] : d.width[t]) : this.emWidth(t);
       // (An include line's comment is never split.)
-      if (t >= 0 && d.kind[t] === K_COMMENT && d.type[t] === TT_LINE_COMMENT && !this.verbatimAt(i) && !(d.ppId[t] >= 0 && d.ppKind[d.ppId[t]] === PP_INCLUDE)) {
+      if (i <= secEnd) {
+        // A line of a section reflowed below: the section's widest line.
+        w = secW;
+      } else if (t >= 0 && d.kind[t] === K_COMMENT && d.type[t] === TT_LINE_COMMENT && !this.verbatimAt(i) && !(d.ppId[t] >= 0 && d.ppKind[d.ppId[t]] === PP_INCLUDE) && d.opts.reflowComments && i + 1 < n && this.continuesSection(i + 1) && this.sectionOverflows(i, cmin)) {
+        // A section that must reflow: clang-format reflows it where the line
+        // formatter put it, and each of its lines takes part.
+        w = this.secW;
+        secW = w;
+        secEnd = this.secEnd;
+      } else if (t >= 0 && d.kind[t] === K_COMMENT && d.type[t] === TT_LINE_COMMENT && !this.verbatimAt(i) && !(d.ppId[t] >= 0 && d.ppKind[d.ppId[t]] === PP_INCLUDE)) {
         w = this.commentPieceMax(t, cmin);
       } else if (t >= 0 && d.kind[t] === K_COMMENT && d.type[t] === TT_BLOCK_COMMENT && d.multi[t] === 0 && d.inPP[t] === 0 && cmin + d.width[t] > lim && !this.verbatimAt(i)) {
         // A block comment reflowed to fit: its first line counts.
