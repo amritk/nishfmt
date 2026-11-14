@@ -2997,11 +2997,17 @@ export class Formatter {
 
   /** Whether trimmed line [a, e) turns formatting off (`// clang-format off`...). */
   isFormatOff(a: i32, e: i32): boolean {
+    if (e - a < 2 || toI32(this.d.src[a]) !== 47) {
+      return false;
+    }
     return this.textIs(a, e, "/* clang-format off */") || this.markerAt(a, e, "// clang-format off") || this.textIs(a, e, "/* fastfmt off */") || this.markerAt(a, e, "// fastfmt off");
   }
 
   /** Whether trimmed line [a, e) turns formatting back on. */
   isFormatOn(a: i32, e: i32): boolean {
+    if (e - a < 2 || toI32(this.d.src[a]) !== 47) {
+      return false;
+    }
     return this.textIs(a, e, "/* clang-format on */") || this.markerAt(a, e, "// clang-format on") || this.textIs(a, e, "/* fastfmt on */") || this.markerAt(a, e, "// fastfmt on");
   }
 
@@ -3038,8 +3044,14 @@ export class Formatter {
 
   /** Whether `m` occurs anywhere in [a, e). */
   textContains(a: i32, e: i32, m: string): boolean {
-    for (let i = a; i + toI32(m.length) <= e; i++) {
-      if (this.textHas(i, e, m)) {
+    const n = toI32(m.length);
+    if (n === 0) {
+      return true;
+    }
+    const src = this.d.src;
+    const c0 = m.charCodeAt(0);
+    for (let i = a; i + n <= e; i++) {
+      if (toI32(src[i]) === c0 && this.textHas(i, e, m)) {
         return true;
       }
     }
