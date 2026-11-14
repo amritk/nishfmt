@@ -6,6 +6,7 @@
 // next file and keeps the columns, so memory stays at the largest file's.
 
 import { uncheckedGet } from "nish:unsafe";
+import { growI32 } from "../core/arr";
 
 /** Formatting options (the LLVM style's knobs this formatter exposes). */
 export class Options {
@@ -16,20 +17,6 @@ export class Options {
   sortIncludes: boolean = true;
   reflowComments: boolean = true;
 }
-
-/** Grows `xs` to at least `n` elements, keeping its contents. */
-export const growI32 = (xs: i32[], n: i32): i32[] => {
-  if (toI32(xs.length) >= n) {
-    return xs;
-  }
-  let cap = toI32(xs.length) * 2;
-  if (cap < n) {
-    cap = n;
-  }
-  const out = new Array<i32>(cap);
-  out.set(xs);
-  return out;
-};
 
 export class Doc {
   src: u8[];

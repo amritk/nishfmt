@@ -7,7 +7,8 @@
 
 import { LT_OTHER, P_ARROW, P_ARROWSTAR, P_COLONCOLON, P_LPAREN, P_PERIOD } from "./tok";
 import { Classifier, isTrailingComment, spaceBefore } from "./classify";
-import { Doc, growI32 } from "./doc";
+import { Doc } from "./doc";
+import { growI32 } from "../core/arr";
 import { Annot } from "./annotate";
 import { Indenter } from "./indenter";
 import { displayColumn, hasBom, lex, widthOf } from "./lexer";

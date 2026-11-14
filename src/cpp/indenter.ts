@@ -70,7 +70,8 @@ import {
   PEN_EXCESS,
   PEN_FIRST_LESSLESS,
 } from "./annotate";
-import { Doc, growI32 } from "./doc";
+import { Doc } from "./doc";
+import { growI32 } from "../core/arr";
 import { utf8Width } from "../core/uwidth";
 import { Formatter } from "./format";
 import {

@@ -5,13 +5,18 @@
 import { Out } from "./core/out";
 import { Ignore, walk } from "./core/files";
 import { CppEngine, formatCpp, isCppName } from "./cpp/run";
+import { JavaEngine, formatJava, isJavaName } from "./java/run";
 
 /** Languages, by the extension or name of a file; 0 is not ours. */
 const LANG_CPP: i32 = 1;
+const LANG_JAVA: i32 = 2;
 
 const langOf = (name: string): i32 => {
   if (isCppName(name)) {
     return LANG_CPP;
+  }
+  if (isJavaName(name)) {
+    return LANG_JAVA;
   }
   return 0;
 };
@@ -40,8 +45,11 @@ class Cli {
 /** One worker's reusable state: one engine per language and the output buffer. */
 class Engine {
   cpp: CppEngine;
+  java: JavaEngine;
   out: Out;
   constructor(cli: Cli) {
+    this.java = new JavaEngine();
+    this.java.debug = getenv("FFDEBUG") !== null;
     this.cpp = new CppEngine(cli.width, cli.indent);
     this.cpp.once = cli.once;
     this.cpp.showReruns = cli.showReruns;
@@ -98,7 +106,8 @@ const formatFile = (path: string, cli: Cli, stats: Stats, eng: Engine): i32 => {
   stats.bytes = stats.bytes + toI64(n);
   const out = eng.out;
   const tr0 = monotonicNanos();
-  const okRun = formatCpp(eng.cpp, path, src, n, out, stats.prof);
+  const lang = langOf(path);
+  const okRun = lang === LANG_JAVA ? formatJava(eng.java, path, src, n, out) : formatCpp(eng.cpp, path, src, n, out, stats.prof);
   stats.prof[5] = stats.prof[5] + (monotonicNanos() - tr0);
   if (!okRun) {
     stats.skipped = stats.skipped + 1;

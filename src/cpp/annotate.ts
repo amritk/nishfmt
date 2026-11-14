@@ -9,7 +9,8 @@
 
 import { uncheckedGet, uncheckedSet } from "nish:unsafe";
 import { requiresIsClause, spaceBefore } from "./classify";
-import { Doc, growI32 } from "./doc";
+import { Doc } from "./doc";
+import { growI32 } from "../core/arr";
 import {
   BK_BLOCK,
   BK_BRACED_INIT,
