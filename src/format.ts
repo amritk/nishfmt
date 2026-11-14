@@ -5287,25 +5287,34 @@ export class Formatter {
           const na = this.scA[k + 1];
           const ne = this.scE[k + 1];
           if (this.scSamePrefix(k + 1) && this.mayReflowContent(na, ne) && !this.isPragma(this.emTok[i + k + 1])) {
-            // (A tab after the prefix is content: clang-format keeps it.)
+            // (A tab after the prefix is content: clang-format keeps it, but
+            // measures and splits the line without it. The next run measures
+            // it where it landed: run again.)
             let lead = na;
             while (lead < ne && d.at(lead) === 32) {
               lead++;
             }
-            roff = lead - na;
-            const rrem = this.colsAt(lead, ne, ccsc);
+            let mlead = lead;
+            while (mlead < ne && (d.at(mlead) === 32 || d.at(mlead) === 9)) {
+              mlead++;
+            }
+            roff = mlead - na;
+            const rrem = this.colsAt(mlead, ne, ccsc);
             reflowing = true;
             if (ccsc + rrem > lim) {
-              if (!this.commentSplit(lead, ne, ccsc, lim)) {
+              if (!this.commentSplit(mlead, ne, ccsc, lim)) {
                 reflowing = false;
               } else {
-                const ts = this.colsAt(lead, lead + this.scSplitA, ccsc);
+                const ts = this.colsAt(mlead, mlead + this.scSplitA, ccsc);
                 if (ccsc + ts > lim) {
                   reflowing = false;
                 }
               }
             }
             if (reflowing) {
+              if (mlead > lead) {
+                this.rerun = true;
+              }
               out.range(d.src, seg, e);
               out.byte(32);
               seg = lead;
