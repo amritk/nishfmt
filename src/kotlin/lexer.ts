@@ -281,6 +281,17 @@ export class KLexemes {
     const l0 = this.letterLen(i);
     if (l0 > 0) {
       let j = i + l0;
+      // ASCII letters, digits and `_` without the code point decoder.
+      const src = this.src;
+      const n = this.n;
+      while (j < n) {
+        const d = toI32(src[j]);
+        if ((d >= 97 && d <= 122) || (d >= 65 && d <= 90) || (d >= 48 && d <= 57) || d === 95) {
+          j++;
+        } else {
+          break;
+        }
+      }
       let k = this.identPartLen(j);
       while (k > 0) {
         j += k;

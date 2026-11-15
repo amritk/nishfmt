@@ -85,6 +85,13 @@ export class KPasses {
     this.eStart = [];
     this.eEnd = [];
     this.eText = [];
+    this.mInStart = [];
+    this.mInEnd = [];
+    this.mOutStart = [];
+    this.mOutEnd = [];
+    this.mBuf = new Array<u8>(0);
+    this.removed = new Array<u8>(0);
+    this.nlSemis = [];
   }
 
   reset(src: u8[], n: i32): void {
@@ -295,6 +302,176 @@ export class KPasses {
 
   thisPackage: string = "";
 
+  // The combined passes: semicolons dropped (by node) and where those that
+  // become a line break were.
+  removedOn: boolean = false;
+  removed: u8[];
+  nlSemis: i32[];
+
+  /**
+   * sortedAndDistinctImports, dropRedundantElements and addRedundantElements
+   * at once, all read off the tree of the text before them, so the text is
+   * parsed again once rather than after each: -1 when that cannot be done
+   * (a semicolon among the imports) and the caller runs them one by one, 0
+   * when nothing changes, 1 when the new text is in `out`.
+   */
+  combined(root: i32, out: Out): i32 {
+    const t = this.t;
+    const il = this.child(root, N_IMPORT_LIST);
+    if (il >= 0) {
+      for (let i = t.start[il]; i < t.end[il]; i++) {
+        if (toI32(this.src[i]) === 59) {
+          return -1;
+        }
+      }
+    }
+    // The imports, sorted and without duplicates.
+    const imports: i32[] = [];
+    const comments: i32[] = [];
+    const keys: string[] = [];
+    const hasImports = il >= 0 && this.child(il, N_IMPORT_DIRECTIVE) >= 0;
+    if (hasImports) {
+      for (let c = t.first[il]; c >= 0; c = t.next[c]) {
+        const ty = t.type[c];
+        if (kIsComment(ty)) {
+          comments.push(c);
+        } else if (ty === N_IMPORT_DIRECTIVE) {
+          imports.push(c);
+        } else if (ty !== T_WHITE_SPACE) {
+          this.failed = true;
+          this.failure = "Imports not contiguous";
+          return 0;
+        }
+      }
+      for (let i = 0; i < toI32(imports.length); i++) {
+        const imp = imports[i];
+        const alias = this.child(imp, N_IMPORT_ALIAS);
+        const aliasText = alias >= 0 ? kpRemoveBackticks(this.text(alias)) : "null";
+        keys.push(`${this.fqName(imp)} ${aliasText} ${this.child(imp, T_MUL) >= 0 ? "*" : ""}`);
+      }
+    }
+    const order: i32[] = [];
+    for (let i = 0; i < toI32(imports.length); i++) {
+      order.push(i);
+    }
+    order.sort((x: i32, y: i32): i32 => {
+      const c = kpCompareUtf16(keys[x], keys[y]);
+      return c !== 0 ? c : x - y;
+    });
+    const kept: i32[] = [];
+    for (let q = 0; q < toI32(order.length); q++) {
+      if (q > 0 && keys[order[q]] === keys[order[q - 1]]) {
+        continue;
+      }
+      kept.push(imports[order[q]]);
+    }
+    // Uses, redundant semicolons, and which of the kept imports go.
+    const used: string[] = [];
+    const semis: i32[] = [];
+    this.thisPackage = "";
+    this.scan(root, used, semis, false);
+    const drop = this.redundantAmong(kept, used);
+    if (hasImports) {
+      const parts: string[] = [];
+      for (let i = 0; i < toI32(comments.length); i++) {
+        parts.push(this.text(comments[i]));
+      }
+      for (let i = 0; i < toI32(kept.length); i++) {
+        parts.push(this.text(kept[i]));
+      }
+      const sortedBody = parts.join("\n");
+      const nl = kpLastIndexOf(sortedBody, 10);
+      const terminator = nl >= 0 && sortedBody.indexOf("//", nl + 1) >= 0;
+      for (let i = 0; i < toI32(kept.length); i++) {
+        if (drop[i] === 1) {
+          parts[toI32(comments.length) + i] = "";
+        }
+      }
+      const body = parts.join("\n") + (terminator ? "\n" : "");
+      if (!this.textIs(il, body)) {
+        this.edit(t.start[il], t.end[il], body);
+      }
+    }
+    this.removed = new Array<u8>(t.n);
+    this.nlSemis = [];
+    for (let i = 0; i < toI32(semis.length); i++) {
+      const sm = semis[i];
+      const nx = t.next[sm];
+      const keepLine = nx >= 0 && t.type[nx] === T_WHITE_SPACE && this.hasNewline(nx);
+      this.edit(t.start[sm], t.end[sm], keepLine ? "" : "\n");
+      this.removed[sm] = 1;
+      if (!keepLine) {
+        this.nlSemis.push(t.start[sm]);
+      }
+    }
+    this.removedOn = true;
+    this.suggest(root);
+    this.removedOn = false;
+    this.nlSemis = [];
+    return this.apply(out) ? 1 : 0;
+  }
+
+  textIs(n: i32, s: string): boolean {
+    const a = this.t.start[n];
+    const k = toI32(s.length);
+    if (this.t.end[n] - a !== k) {
+      return false;
+    }
+    for (let i = 0; i < k; i++) {
+      if (toI32(this.src[a + i]) !== s.charCodeAt(i)) {
+        return false;
+      }
+    }
+    return true;
+  }
+
+  /** RedundantImportDetector over the imports `imps` (in order): 1 for each that goes. */
+  redundantAmong(imps: i32[], used: string[]): u8[] {
+    const res = new Array<u8>(imps.length);
+    const ids: string[] = [];
+    const cand: u8[] = new Array<u8>(imps.length);
+    for (let i = 0; i < toI32(imps.length); i++) {
+      const c = imps[i];
+      ids.push("");
+      if (this.child(c, T_MUL) >= 0 || this.importRef(c) < 0) {
+        continue;
+      }
+      const id = this.importIdentifier(c);
+      if (kpIsOperatorName(id) || kpIsComponentN(id)) {
+        continue;
+      }
+      cand[i] = 1;
+      ids[i] = id;
+    }
+    for (let i = 0; i < toI32(imps.length); i++) {
+      if (cand[i] === 0) {
+        continue;
+      }
+      const id = ids[i];
+      let isUsed = false;
+      for (let j = 0; j < toI32(used.length) && !isUsed; j++) {
+        if (used[j] === id) {
+          isUsed = true;
+        }
+      }
+      const fq = this.fqName(imps[i]);
+      const dot = kpLastIndexOf(fq, 46);
+      const parent = dot >= 0 ? fq.substring(0, dot) : "";
+      const fromThisPackage = !this.lastSegmentHasDot(imps[i]) && parent === this.thisPackage;
+      const hasAlias = this.child(imps[i], N_IMPORT_ALIAS) >= 0;
+      let count = 0;
+      for (let j = 0; j < toI32(imps.length); j++) {
+        if (cand[j] === 1 && ids[j] === id) {
+          count++;
+        }
+      }
+      if (!isUsed || (fromThisPackage && !hasAlias && count <= 1)) {
+        res[i] = 1;
+      }
+    }
+    return res;
+  }
+
   scan(n: i32, used: string[], semis: i32[], skipRefs: boolean): void {
     const t = this.t;
     const ty = t.type[n];
@@ -451,17 +628,22 @@ export class KPasses {
   /** EnumEntryList's last token of the last entry, past whitespace and comments. */
   enumLastToken(entry: i32): i32 {
     let c = this.t.last[entry];
-    while (c >= 0 && this.isWsOrComment(c)) {
+    while (c >= 0 && (this.isWsOrComment(c) || this.isRemoved(c))) {
       c = this.t.prev[c];
     }
     return c;
+  }
+
+  /** Whether the combined passes drop node `c` (a semicolon) before the comma pass reads the tree. */
+  isRemoved(c: i32): boolean {
+    return this.removedOn && this.removed[c] === 1;
   }
 
   enumTerminatingSemicolon(body: i32): i32 {
     const last = this.lastEnumEntry(body);
     if (last < 0) {
       for (let c = this.t.first[body]; c >= 0; c = this.t.next[c]) {
-        if (this.t.type[c] === T_SEMICOLON) {
+        if (this.t.type[c] === T_SEMICOLON && !this.isRemoved(c)) {
           return c;
         }
       }
@@ -566,6 +748,88 @@ export class KPasses {
     return this.apply(out);
   }
 
+  // Mapped mode: the tree is of the text before pretty printing, the commas
+  // go into its output. Code lexemes correspond one to one; `mIn` holds each
+  // one's input start and end, `mOut` its output start and end.
+  mapped: boolean = false;
+  mapFailed: boolean = false;
+  mInStart: i32[];
+  mInEnd: i32[];
+  mOutStart: i32[];
+  mOutEnd: i32[];
+  mBuf: u8[];
+  mN: i32 = 0;
+  mCount: i32 = 0;
+
+  /**
+   * addRedundantElements over the pretty printer's output `buf[0, n)`, read
+   * through the tree of the text it came from; answers -1 when a position
+   * does not map (the caller reparses), else 1 when commas went in, 0 when not.
+   */
+  addTrailingCommasMapped(root: i32, buf: u8[], n: i32, inStart: i32[], inEnd: i32[], outStart: i32[], outEnd: i32[], count: i32, out: Out): i32 {
+    this.mCount = count;
+    this.mapped = true;
+    this.mapFailed = false;
+    this.mInStart = inStart;
+    this.mInEnd = inEnd;
+    this.mOutStart = outStart;
+    this.mOutEnd = outEnd;
+    this.mBuf = buf;
+    this.mN = n;
+    this.suggest(root);
+    this.mapped = false;
+    if (this.mapFailed) {
+      return -1;
+    }
+    this.src = buf;
+    this.n = n;
+    return this.apply(out) ? 1 : 0;
+  }
+
+  /** The output offset of input offset `p`, a code lexeme's start (`end` false) or end. */
+  mapPos(p: i32, end: boolean): i32 {
+    const a = end ? this.mInEnd : this.mInStart;
+    let lo = 0;
+    let hi = this.mCount - 1;
+    while (lo <= hi) {
+      const mid = (lo + hi) >> 1;
+      if (a[mid] < p) {
+        lo = mid + 1;
+      } else if (a[mid] > p) {
+        hi = mid - 1;
+      } else {
+        return end ? this.mOutEnd[mid] : this.mOutStart[mid];
+      }
+    }
+    this.mapFailed = true;
+    return 0;
+  }
+
+  /** hasNewline of a bracketed list, measured in the output. */
+  listHasNewline(n: i32): boolean {
+    if (!this.mapped) {
+      if (this.hasNewline(n)) {
+        return true;
+      }
+      // A dropped semicolon that became a line break inside the list.
+      for (let i = 0; i < toI32(this.nlSemis.length); i++) {
+        const p = this.nlSemis[i];
+        if (p >= this.t.start[n] && p < this.t.end[n]) {
+          return true;
+        }
+      }
+      return false;
+    }
+    const a = this.mapPos(this.t.start[n], false);
+    const b = this.mapPos(this.t.end[n], true);
+    for (let i = a; i < b; i++) {
+      if (toI32(this.mBuf[i]) === 10) {
+        return true;
+      }
+    }
+    return false;
+  }
+
   suggest(n: i32): void {
     const t = this.t;
     if (t.leaf[n] === 1) {
@@ -621,11 +885,12 @@ export class KPasses {
     } else {
       return;
     }
-    if (!this.hasNewline(n) || count <= 1 || hasComma) {
+    if (count <= 1 || hasComma || !this.listHasNewline(n)) {
       return;
     }
     const leaf = this.leftLeaf(last);
-    this.edit(t.end[leaf], t.end[leaf], ",");
+    const at = this.mapped ? this.mapPos(t.end[leaf], true) : t.end[leaf];
+    this.edit(at, at, ",");
   }
 
   trailingCommaBefore(list: i32, close: i32): boolean {

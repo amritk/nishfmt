@@ -1,10 +1,11 @@
 // The Kotlin entry point: ktfmt's pipeline over one file.
 
+import { growI32 } from "../core/arr";
 import { guessSep } from "../core/files";
 import { Out } from "../core/out";
 import { GEngine } from "../gdoc/engine";
 import { GInput } from "../gdoc/input";
-import { KBuilder } from "./builder";
+import { KBuilder, isWsOrComment } from "./builder";
 import { rewriteKotlinComment } from "./comments";
 import { tokenizeKotlin } from "./input";
 import { KLexemes } from "./lexer";
@@ -17,6 +18,12 @@ import { KVisitor } from "./visitor";
 /** One worker's reusable Kotlin state. */
 export class KotlinEngine {
   lx: KLexemes;
+  lx2: KLexemes;
+  // The code lexemes of the text before and after pretty printing.
+  mInStart: i32[];
+  mInEnd: i32[];
+  mOutStart: i32[];
+  mOutEnd: i32[];
   b: KBuilder;
   p: KParser;
   inp: GInput;
@@ -34,6 +41,11 @@ export class KotlinEngine {
   dump: boolean = false;
   constructor() {
     this.lx = new KLexemes();
+    this.lx2 = new KLexemes();
+    this.mInStart = new Array<i32>(256);
+    this.mInEnd = new Array<i32>(256);
+    this.mOutStart = new Array<i32>(256);
+    this.mOutEnd = new Array<i32>(256);
     this.b = new KBuilder(this.lx);
     this.p = new KParser(this.b);
     this.inp = new GInput();
@@ -42,8 +54,8 @@ export class KotlinEngine {
     this.vis = new KVisitor(this.g, this.b.tree);
     this.passes = new KPasses(this.b.tree);
     this.ml = new KMultilineStrings(this.b.tree);
-    this.buf1 = new Out(1 << 16);
-    this.buf2 = new Out(1 << 16);
+    this.buf1 = new Out(1 << 12);
+    this.buf2 = new Out(1 << 12);
     this.cur = new Array<u8>(0);
   }
 }
@@ -130,18 +142,19 @@ export const formatKotlin = (e: KotlinEngine, path: string, src0: u8[], n0: i32,
   // convertLineSeparators: every \r\n and \r becomes \n.
   const b1 = e.buf1;
   b1.n = 0;
+  let a = start;
   for (let i = start; i < n0; i++) {
-    const c = toI32(src0[i]);
-    if (c === 13) {
+    if (toI32(src0[i]) === 13) {
+      b1.range(src0, a, i);
       b1.byte(10);
       if (i + 1 < n0 && toI32(src0[i + 1]) === 10) {
         i++;
       }
-    } else {
-      b1.byte(c);
+      a = i + 1;
     }
   }
-  e.cur = b1.buf.slice(0, b1.n);
+  b1.range(src0, a, n0);
+  e.cur = b1.buf;
   e.curN = b1.n;
   e.parsed = false;
   if (e.dump) {
@@ -152,8 +165,23 @@ export const formatKotlin = (e: KotlinEngine, path: string, src0: u8[], n0: i32,
     dumpKotlin(e, out);
     return true;
   }
-  // sortedAndDistinctImports, dropRedundantElements, addRedundantElements.
-  for (let step = 0; step < 3; step++) {
+  // sortedAndDistinctImports, dropRedundantElements, addRedundantElements:
+  // at once off the first tree, else one by one.
+  if (!ensureParsed(e, path)) {
+    return false;
+  }
+  e.passes.reset(e.cur, e.curN);
+  const all = e.passes.combined(0, e.buf2);
+  if (e.passes.failed) {
+    if (e.debug) {
+      console.error(`${path}: ${e.passes.failure}`);
+    }
+    return false;
+  }
+  if (all === 1) {
+    setCur(e, e.buf2.buf, e.buf2.n);
+  }
+  for (let step = 0; step < 3 && all === -1; step++) {
     if (!ensureParsed(e, path)) {
       return false;
     }
@@ -187,18 +215,30 @@ export const formatKotlin = (e: KotlinEngine, path: string, src0: u8[], n0: i32,
       po.buf[i] = toU8(32);
     }
   }
-  setCur(e, po.buf, po.n);
-  if (!ensureParsed(e, path)) {
-    return false;
+  // addRedundantElements again, read through the tree of the text before
+  // pretty printing (whose code tokens the output keeps), unless that fails.
+  let mapped = 0;
+  if (!sameText(po.buf, po.n, e.cur, e.curN)) {
+    mapped = addCommasMapped(e, po.buf, po.n);
   }
-  e.passes.reset(e.cur, e.curN);
-  if (e.passes.addTrailingCommas(0, e.buf2)) {
+  if (mapped === 1) {
     setCur(e, e.buf2.buf, e.buf2.n);
+  } else {
+    setCur(e, po.buf, po.n);
+    if (mapped === -1 || e.parsed) {
+      if (!ensureParsed(e, path)) {
+        return false;
+      }
+      e.passes.reset(e.cur, e.curN);
+      if (e.passes.addTrailingCommas(0, e.buf2)) {
+        setCur(e, e.buf2.buf, e.buf2.n);
+      }
+    }
   }
-  if (!ensureParsed(e, path)) {
+  if (kHasTrimCall(e.cur, e.curN) && !ensureParsed(e, path)) {
     return false;
   }
-  if (e.ml.format(e.cur, e.curN, e.buf2)) {
+  if (e.parsed && e.ml.format(e.cur, e.curN, e.buf2)) {
     setCur(e, e.buf2.buf, e.buf2.n);
   }
   const res = e.cur;
@@ -207,15 +247,105 @@ export const formatKotlin = (e: KotlinEngine, path: string, src0: u8[], n0: i32,
     out.range(src0, 0, shebangEnd);
     out.str("\n");
   }
-  for (let i = 0; i < e.curN; i++) {
-    const c = toI32(res[i]);
-    if (c === 10 && sep !== "\n") {
-      out.str(sep);
-    } else {
-      out.byte(c);
+  if (sep === "\n") {
+    out.range(res, 0, e.curN);
+  } else {
+    let q = 0;
+    for (let i = 0; i < e.curN; i++) {
+      if (toI32(res[i]) === 10) {
+        out.range(res, q, i);
+        out.str(sep);
+        q = i + 1;
+      }
+    }
+    out.range(res, q, e.curN);
+  }
+  return true;
+};
+
+const sameText = (a: u8[], an: i32, b: u8[], bn: i32): boolean => {
+  if (an !== bn) {
+    return false;
+  }
+  for (let i = 0; i < an; i++) {
+    if (a[i] !== b[i]) {
+      return false;
     }
   }
   return true;
+};
+
+/**
+ * The trailing-comma pass over the pretty printer's output `buf[0, n)` with
+ * the current tree: -1 when the output's code lexemes do not line up with
+ * the input's, 1 when commas went into `e.buf2`, 0 when none were needed.
+ */
+const addCommasMapped = (e: KotlinEngine, buf: u8[], n: i32): i32 => {
+  const a = e.lx;
+  const b = e.lx2;
+  b.lex(buf, n);
+  if (b.failed) {
+    return -1;
+  }
+  const need = a.count + 1;
+  if (toI32(e.mInStart.length) < need) {
+    e.mInStart = growI32(e.mInStart, need * 2);
+    e.mInEnd = growI32(e.mInEnd, need * 2);
+    e.mOutStart = growI32(e.mOutStart, need * 2);
+    e.mOutEnd = growI32(e.mOutEnd, need * 2);
+  }
+  const inStart = e.mInStart;
+  const inEnd = e.mInEnd;
+  const outStart = e.mOutStart;
+  const outEnd = e.mOutEnd;
+  let m = 0;
+  let j = 0;
+  for (let i = 0; i < a.count; i++) {
+    const ty = a.type[i];
+    if (isWsOrComment(ty)) {
+      continue;
+    }
+    while (j < b.count && isWsOrComment(b.type[j])) {
+      j++;
+    }
+    const len = a.end[i] - a.start[i];
+    if (j >= b.count || b.end[j] - b.start[j] !== len) {
+      return -1;
+    }
+    // Soft keywords the parser remapped carry another type; compare text.
+    for (let k = 0; k < len; k++) {
+      if (a.src[a.start[i] + k] !== buf[b.start[j] + k]) {
+        return -1;
+      }
+    }
+    inStart[m] = a.start[i];
+    inEnd[m] = a.end[i];
+    outStart[m] = b.start[j];
+    outEnd[m] = b.end[j];
+    m++;
+    j++;
+  }
+  while (j < b.count && isWsOrComment(b.type[j])) {
+    j++;
+  }
+  if (j !== b.count) {
+    return -1;
+  }
+  e.passes.reset(e.cur, e.curN);
+  return e.passes.addTrailingCommasMapped(0, buf, n, inStart, inEnd, outStart, outEnd, m, e.buf2);
+};
+
+/** Whether `.trimIndent()` or `.trimMargin()` occurs, so the multi-line string pass has work. */
+const kHasTrimCall = (src: u8[], n: i32): boolean => {
+  for (let i = 0; i + 12 <= n; i++) {
+    if (toI32(src[i]) === 116 && toI32(src[i + 1]) === 114 && toI32(src[i + 2]) === 105 && toI32(src[i + 3]) === 109) {
+      const c = toI32(src[i + 4]);
+      if ((c === 73 || c === 77) && toI32(src[i + 10]) === 40 && toI32(src[i + 11]) === 41) {
+        return true;
+      }
+    }
+  }
+  return false;
 };
 
 /** Makes `buf[0, n)` the current text, unless it already is. */
@@ -232,7 +362,10 @@ const setCur = (e: KotlinEngine, buf: u8[], n: i32): void => {
       return;
     }
   }
-  e.cur = buf.slice(0, n);
+  // The current text lives in buf1, which only the first step writes.
+  e.buf1.n = 0;
+  e.buf1.range(buf, 0, n);
+  e.cur = e.buf1.buf;
   e.curN = n;
   e.parsed = false;
 };

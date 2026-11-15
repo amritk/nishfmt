@@ -28,9 +28,9 @@ export class JavaEngine {
   debug: boolean = false;
   constructor() {
     this.imports = new ImportFixer();
-    this.buf1 = new Out(1 << 16);
-    this.buf2 = new Out(1 << 16);
-    this.buf3 = new Out(1 << 16);
+    this.buf1 = new Out(1 << 12);
+    this.buf2 = new Out(1 << 12);
+    this.buf3 = new Out(1 << 12);
     this.inp = new GInput();
     this.tree = new JTree();
     this.parser = new JParser(this.inp, this.tree);

@@ -55,8 +55,7 @@ export class KMultilineStrings {
     this.src = src;
     this.n = n;
     this.found = [];
-    this.collect(0, false);
-    if (this.found.length === 0) {
+    if (!kmMentionsTrim(src, n)) {
       return false;
     }
     this.ls = [];
@@ -71,6 +70,10 @@ export class KMultilineStrings {
     }
     this.ls.push(a);
     this.le.push(n);
+    this.collect(0, false);
+    if (this.found.length === 0) {
+      return false;
+    }
     // sortedByDescending(openStringOffset), stable.
     const order: i32[] = [];
     for (let i = 0; i < toI32(this.found.length); i++) {
@@ -203,14 +206,19 @@ export class KMultilineStrings {
     return true;
   }
 
+  /** The number of newlines before `end`: the index of the line holding it. */
   countNewlines(end: i32): i32 {
-    let k = 0;
-    for (let i = 0; i < end; i++) {
-      if (toI32(this.src[i]) === 10) {
-        k++;
+    let lo = 0;
+    let hi = toI32(this.ls.length) - 1;
+    while (lo < hi) {
+      const mid = (lo + hi + 1) >> 1;
+      if (this.ls[mid] <= end) {
+        lo = mid;
+      } else {
+        hi = mid - 1;
       }
     }
-    return k;
+    return lo;
   }
 
   /** The replacement text, or null when the string is left as it is. */
@@ -325,6 +333,27 @@ export class KMultilineStrings {
     return String.fromBytes(src, a, b);
   }
 }
+
+/** Whether `trimIndent()` or `trimMargin()` occurs at all (most files skip the pass). */
+const kmMentionsTrim = (src: u8[], n: i32): boolean => {
+  for (let i = 0; i + 12 <= n; i++) {
+    if (toI32(src[i]) === 116 && toI32(src[i + 1]) === 114 && toI32(src[i + 2]) === 105 && toI32(src[i + 3]) === 109) {
+      if (kmAt(src, i + 4, "Indent()") || kmAt(src, i + 4, "Margin()")) {
+        return true;
+      }
+    }
+  }
+  return false;
+};
+
+const kmAt = (src: u8[], i: i32, s: string): boolean => {
+  for (let j = 0; j < toI32(s.length); j++) {
+    if (toI32(src[i + j]) !== s.charCodeAt(j)) {
+      return false;
+    }
+  }
+  return true;
+};
 
 const kmCharLen = (c: i32): i32 => (c < 0xc0 ? 1 : c < 0xe0 ? 2 : c < 0xf0 ? 3 : 4);
 

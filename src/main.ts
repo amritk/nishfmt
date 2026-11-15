@@ -7,6 +7,7 @@ import { Ignore, walk } from "./core/files";
 import { CppEngine, formatCpp, isCppName } from "./cpp/run";
 import { JavaEngine, formatJava, isJavaName } from "./java/run";
 import { KotlinEngine, formatKotlin, isKotlinName } from "./kotlin/run";
+import { free, regionWith } from "nish:region";
 
 /** Languages, by the extension or name of a file; 0 is not ours. */
 const LANG_CPP: i32 = 1;
@@ -53,7 +54,9 @@ class Engine {
   java: JavaEngine;
   kotlin: KotlinEngine;
   out: Out;
+  job: Job;
   constructor(cli: Cli) {
+    this.job = new Job();
     this.kotlin = new KotlinEngine();
     this.kotlin.debug = getenv("FFDEBUG") !== null;
     this.kotlin.dump = getenv("FFKTDUMP") !== null;
@@ -99,8 +102,119 @@ const usage = (): string =>
     "untouched and counted as skipped.",
   ].join("\n");
 
+/** A Java or Kotlin file to format in a region of its own: what goes in, and the numbers that come out. */
+class Job {
+  path: string = "";
+  lang: i32 = 0;
+  mode: i32 = 0;
+  quiet: boolean = false;
+  // 0: the result (0 unchanged, 1 changed, 2 skipped, 3 unreadable), 1: bytes read.
+  res: i32[];
+  constructor() {
+    this.res = new Array<i32>(2);
+  }
+}
+
+class JobRoot {
+  done: i32 = 0;
+}
+
+/**
+ * Formats a Java or Kotlin file with a fresh engine, leaving the result code
+ * in `job.res`; the caller runs it in a region of its own and frees it, so all it
+ * allocates is given back when the file is done and a worker's memory does
+ * not grow with the files it has formatted.
+ */
+const runJob = (job: Job): JobRoot => {
+  const root = new JobRoot();
+  // The engines keep what they are given, so the path and the bytes are
+  // copies the region allocates.
+  let path = "";
+  for (let i = 0; i < toI32(job.path.length); i++) {
+    path = path + String.fromCharCode(job.path.charCodeAt(i));
+  }
+  const read = readFileBytesSync(path);
+  if (read === null) {
+    job.res[0] = 3;
+    return root;
+  }
+  const n = toI32(read.length);
+  const src = new Array<u8>(n);
+  src.set(read);
+  job.res[1] = n;
+  const out = new Out(n + 1024);
+  let ok = false;
+  if (job.lang === LANG_KOTLIN) {
+    const k = new KotlinEngine();
+    k.debug = getenv("FFDEBUG") !== null;
+    k.dump = getenv("FFKTDUMP") !== null;
+    ok = formatKotlin(k, path, src, n, out);
+  } else {
+    const j = new JavaEngine();
+    j.debug = getenv("FFDEBUG") !== null;
+    ok = formatJava(j, path, src, n, out);
+  }
+  if (!ok) {
+    job.res[0] = 2;
+    if (job.mode === MODE_STDOUT) {
+      writeBytes(src, 0, n);
+    } else if (!job.quiet) {
+      console.error(`fastfmt: skipped ${path} (does not parse)`);
+    }
+    return root;
+  }
+  let same = out.n === n;
+  if (same) {
+    for (let i = 0; i < n; i++) {
+      if (out.buf[i] !== src[i]) {
+        same = false;
+        break;
+      }
+    }
+  }
+  job.res[0] = same ? 0 : 1;
+  if (job.mode === MODE_STDOUT) {
+    writeBytes(out.buf, 0, out.n);
+  } else if (!same && job.mode === MODE_WRITE) {
+    if (writeFileBytesSync(path, out.buf.slice(0, out.n)) < 0) {
+      console.error(`fastfmt: cannot write ${path}`);
+    }
+  } else if (!same && job.mode === MODE_CHECK) {
+    console.log(path);
+  }
+  return root;
+};
+
 /** Formats one file; answers 0 unchanged, 1 changed, 2 skipped. */
 const formatFile = (path: string, cli: Cli, stats: Stats, eng: Engine): i32 => {
+  const lang0 = langOf(path);
+  if (lang0 === LANG_JAVA || lang0 === LANG_KOTLIN) {
+    if (cli.trace) {
+      console.error(`file ${path}`);
+    }
+    const job = eng.job;
+    job.path = path;
+    job.lang = lang0;
+    job.mode = cli.mode;
+    job.quiet = cli.quiet;
+    const tr0 = monotonicNanos();
+    free(regionWith(job, runJob));
+    stats.prof[5] = stats.prof[5] + (monotonicNanos() - tr0);
+    const res = job.res[0];
+    if (res === 3) {
+      console.error(`fastfmt: cannot read ${path}`);
+      stats.skipped = stats.skipped + 1;
+      return 2;
+    }
+    stats.files = stats.files + 1;
+    stats.bytes = stats.bytes + toI64(job.res[1]);
+    if (res === 2) {
+      stats.skipped = stats.skipped + 1;
+    } else if (res === 1) {
+      stats.changed = stats.changed + 1;
+    }
+    return res;
+  }
   if (cli.trace) {
     console.error(`file ${path}`);
   }
@@ -158,6 +272,24 @@ const formatFile = (path: string, cli: Cli, stats: Stats, eng: Engine): i32 => {
     console.log(path);
   }
   return 1;
+};
+
+/**
+ * A worker's command line run through env(1) with glibc's heap trimming
+ * off: each Java or Kotlin file is formatted in a region that is freed
+ * after it, and with trimming on glibc hands that memory back to the kernel
+ * every time, so the next file faults it in again (about a third of the run's
+ * time). Unchanged when GLIBC_TUNABLES is already set or env(1) is missing.
+ */
+const withMallocTunables = (argv: string[]): string[] => {
+  if (getenv("GLIBC_TUNABLES") !== null || !isExecutableSync("/usr/bin/env")) {
+    return argv;
+  }
+  const out: string[] = ["/usr/bin/env", "GLIBC_TUNABLES=glibc.malloc.trim_threshold=4294967295:glibc.malloc.mmap_threshold=33554432"];
+  for (const a of argv) {
+    out.push(a);
+  }
+  return out;
 };
 
 const parseArgs = (cli: Cli): i32 => {
@@ -345,7 +477,7 @@ export const main = (): i32 => {
       if (cli.quiet) {
         argv.push("-q");
       }
-      pids.push(spawn(argv));
+      pids.push(spawn(withMallocTunables(argv)));
     }
     for (let k = 0; k < jobs; k++) {
       if (pids[k] > 0) {

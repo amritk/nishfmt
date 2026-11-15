@@ -139,38 +139,38 @@ export class GEngine {
     this.constCache = new Array<i32>(513);
     this.tagTaken = new Array<i32>(256);
     this.flats = ["", " "];
-    this.oKind = new Array<i32>(1024);
-    this.oA = new Array<i32>(1024);
-    this.oB = new Array<i32>(1024);
-    this.oC = new Array<i32>(1024);
-    this.oD = new Array<i32>(1024);
+    this.oKind = new Array<i32>(256);
+    this.oA = new Array<i32>(256);
+    this.oB = new Array<i32>(256);
+    this.oC = new Array<i32>(256);
+    this.oD = new Array<i32>(256);
     this.xKey = new Array<i32>(256);
     this.xKind = new Array<i32>(256);
     this.xA = new Array<i32>(256);
     this.xB = new Array<i32>(256);
     this.xC = new Array<i32>(256);
     this.xD = new Array<i32>(256);
-    this.fKind = new Array<i32>(1024);
-    this.fA = new Array<i32>(1024);
-    this.fB = new Array<i32>(1024);
-    this.fC = new Array<i32>(1024);
-    this.fD = new Array<i32>(1024);
-    this.dKind = new Array<i32>(1024);
-    this.dA = new Array<i32>(1024);
-    this.dB = new Array<i32>(1024);
-    this.dC = new Array<i32>(1024);
-    this.dD = new Array<i32>(1024);
-    this.dFirst = new Array<i32>(1024);
-    this.dLast = new Array<i32>(1024);
-    this.dNext = new Array<i32>(1024);
-    this.dW = new Array<i32>(1024);
-    this.dLo = new Array<i32>(1024);
-    this.dHi = new Array<i32>(1024);
-    this.dOne = new Array<i32>(1024);
-    this.dIndent = new Array<i32>(1024);
+    this.fKind = new Array<i32>(256);
+    this.fA = new Array<i32>(256);
+    this.fB = new Array<i32>(256);
+    this.fC = new Array<i32>(256);
+    this.fD = new Array<i32>(256);
+    this.dKind = new Array<i32>(256);
+    this.dA = new Array<i32>(256);
+    this.dB = new Array<i32>(256);
+    this.dC = new Array<i32>(256);
+    this.dD = new Array<i32>(256);
+    this.dFirst = new Array<i32>(256);
+    this.dLast = new Array<i32>(256);
+    this.dNext = new Array<i32>(256);
+    this.dW = new Array<i32>(256);
+    this.dLo = new Array<i32>(256);
+    this.dHi = new Array<i32>(256);
+    this.dOne = new Array<i32>(256);
+    this.dIndent = new Array<i32>(256);
     this.dText = [];
     this.stack = new Array<i32>(256);
-    this.out = new Out(1 << 16);
+    this.out = new Out(1 << 12);
     this.scratch = new Out(1 << 12);
     this.blMode = new Array<i32>(256);
     this.blTag = new Array<i32>(256);
@@ -764,31 +764,30 @@ export class GEngine {
         }
       }
     }
-    // Stable order of the extras by key (a counting sort).
-    const counts = new Array<i32>(opsN + 2);
-    for (let x = 0; x < this.nExtra; x++) {
-      counts[this.xKey[x] + 1] = counts[this.xKey[x] + 1] + 1;
+    // The extras are generated in key order (a token's leading comments key
+    // at or after the previous token's trailing ones), so they merge in with
+    // one pointer; a counting sort covers any other order.
+    let sorted = true;
+    for (let x = 1; x < this.nExtra; x++) {
+      if (this.xKey[x] < this.xKey[x - 1]) {
+        sorted = false;
+        break;
+      }
     }
-    for (let x = 1; x <= opsN + 1; x++) {
-      counts[x] = counts[x] + counts[x - 1];
-    }
-    const order = new Array<i32>(this.nExtra);
-    const fill = counts.slice(0, opsN + 2);
-    for (let x = 0; x < this.nExtra; x++) {
-      const key = this.xKey[x];
-      order[fill[key]] = x;
-      fill[key] = fill[key] + 1;
+    if (!sorted) {
+      this.sortExtras(opsN);
     }
     this.nFin = 0;
     let afterForcedBreak = false;
+    let x = 0;
     for (let i = 0; i <= opsN; i++) {
-      for (let q = counts[i]; q < counts[i + 1]; q++) {
-        const x = order[q];
+      while (x < this.nExtra && this.xKey[x] === i) {
         const kind = this.xKind[x];
         if (!(afterForcedBreak && kind === K_SPACE)) {
           this.pushFin(kind, this.xA[x], this.xB[x], this.xC[x], this.xD[x]);
           afterForcedBreak = kind === K_BREAK && this.xA[x] === FORCED;
         }
+        x++;
       }
       if (i === opsN) {
         break;
@@ -801,6 +800,42 @@ export class GEngine {
       if (kind !== K_OPEN) {
         afterForcedBreak = kind === K_BREAK && this.oA[i] === FORCED;
       }
+    }
+  }
+
+  /** Reorders the extras stably by key (a counting sort). */
+  private sortExtras(opsN: i32): void {
+    const counts = new Array<i32>(opsN + 2);
+    for (let x = 0; x < this.nExtra; x++) {
+      counts[this.xKey[x] + 1] = counts[this.xKey[x] + 1] + 1;
+    }
+    for (let x = 1; x <= opsN + 1; x++) {
+      counts[x] = counts[x] + counts[x - 1];
+    }
+    const k = this.nExtra;
+    const key = new Array<i32>(k);
+    const kind = new Array<i32>(k);
+    const a = new Array<i32>(k);
+    const b = new Array<i32>(k);
+    const c = new Array<i32>(k);
+    const d = new Array<i32>(k);
+    for (let x = 0; x < k; x++) {
+      const q = counts[this.xKey[x]];
+      counts[this.xKey[x]] = q + 1;
+      key[q] = this.xKey[x];
+      kind[q] = this.xKind[x];
+      a[q] = this.xA[x];
+      b[q] = this.xB[x];
+      c[q] = this.xC[x];
+      d[q] = this.xD[x];
+    }
+    for (let x = 0; x < k; x++) {
+      this.xKey[x] = key[x];
+      this.xKind[x] = kind[x];
+      this.xA[x] = a[x];
+      this.xB[x] = b[x];
+      this.xC[x] = c[x];
+      this.xD[x] = d[x];
     }
   }
 
@@ -1235,16 +1270,19 @@ export class GEngine {
       this.nSpaces = 0;
     } else {
       const out = this.out;
-      for (let i = a; i < b; i++) {
+      let i = a;
+      while (i < b) {
         const c = toI32(buf[i]);
         if (c === 32 || c === 9) {
           this.pushSpace(c);
+          i++;
         } else if (c === 13 || c === 10) {
           if (c === 13 && i + 1 < b && toI32(buf[i + 1]) === 10) {
             i++;
           }
           this.nSpaces = 0;
           this.newlinesPending = this.newlinesPending + 1;
+          i++;
         } else {
           while (this.newlinesPending > 0) {
             if (this.nOutLines > 0 || out.n > this.lineStart) {
@@ -1258,7 +1296,17 @@ export class GEngine {
             out.range(this.spaces, 0, this.nSpaces);
             this.nSpaces = 0;
           }
-          out.byte(c);
+          // The run of other characters goes out at once.
+          let j = i + 1;
+          while (j < b) {
+            const d = toI32(buf[j]);
+            if (d === 32 || d === 9 || d === 10 || d === 13) {
+              break;
+            }
+            j++;
+          }
+          out.range(buf, i, j);
+          i = j;
         }
       }
     }

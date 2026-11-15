@@ -61,7 +61,7 @@ export class KTree {
   leaf: i32[]; // 1 for a leaf
 
   constructor() {
-    const c = 4096;
+    const c = 512;
     this.type = new Array<i32>(c);
     this.start = new Array<i32>(c);
     this.end = new Array<i32>(c);
@@ -143,7 +143,7 @@ export class KBuilder {
 
   constructor(lx: KLexemes) {
     this.lx = lx;
-    const c = 4096;
+    const c = 512;
     this.pKind = new Array<i32>(c);
     this.pLex = new Array<i32>(c);
     this.pType = new Array<i32>(c);
@@ -234,11 +234,16 @@ export class KBuilder {
 
   /** SemanticWhitespaceAwarePsiBuilderImpl.getTokenType: `?.`, `?:` and `!!` joined. */
   tt(): i32 {
-    if (this.eofLimit >= 0 && this.eof()) {
+    const c = this.cur;
+    const lx = this.lx;
+    if (c >= lx.count) {
       return -1;
     }
-    const raw = this.rawTokenType();
-    if (!this.joining()) {
+    if (this.eofLimit >= 0 && lx.start[c] >= this.eofLimit) {
+      return -1;
+    }
+    const raw = lx.type[c];
+    if ((raw !== T_QUEST && raw !== T_EXCL) || !this.joining()) {
       return raw;
     }
     return this.joined(raw, 1);
