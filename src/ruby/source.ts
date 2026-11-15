@@ -282,19 +282,23 @@ const rbParseDirective = (text: string): RbDirective | null => {
   while (p < k && rbIsSpace(text.charCodeAt(p))) {
     p++;
   }
-  let w = p;
-  while (w < k && text.charCodeAt(w) >= 97 && text.charCodeAt(w) <= 122) {
-    w++;
-  }
-  const word = text.substring(p, w);
+  // MODES_PATTERN followed by \b: the longest mode the text starts with.
+  const modes = ["disable-next", "enable-next", "todo-next", "disable", "enable", "todo", "push", "pop", "next"];
   let mode = 0;
-  if (word === "disable" || word === "todo") {
-    mode = 1;
-  } else if (word === "enable") {
-    mode = 2;
-  } else if (word === "push" || word === "pop" || word.endsWith("next")) {
-    mode = 3;
-  } else {
+  let w = p;
+  for (const m of modes) {
+    const mk = toI32(m.length);
+    if (text.substring(p, p + mk) === m) {
+      const c = p + mk < k ? text.charCodeAt(p + mk) : 32;
+      const wordc = (c >= 97 && c <= 122) || (c >= 65 && c <= 90) || (c >= 48 && c <= 57) || c === 95;
+      if (!wordc) {
+        w = p + mk;
+        mode = m === "disable" || m === "todo" ? 1 : m === "enable" ? 2 : 3;
+        break;
+      }
+    }
+  }
+  if (mode === 0) {
     return null;
   }
   // Names: [A-Za-z/_0-9]+ separated by commas.
