@@ -208,7 +208,7 @@ export const formatRuby = (e: RubyEngine, path: string, src: u8[], n: i32, out: 
   }
   if (last !== null && wantRcdd) {
     const rcdd = e.team.lintRedundantCopDisableDirective;
-    rcdd.runWith(last, e.team.cops, false);
+    rcdd.runWith(last, e.team.cops, true);
     if (!rcdd.c.rw.empty()) {
       const text = rcdd.c.rw.process(last.pts);
       const r2 = rbInspectionLoop(e, path, rbEncode(text));
