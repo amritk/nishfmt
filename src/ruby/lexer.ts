@@ -2598,6 +2598,7 @@ export class RbLexer {
   commentE: i32[];
   // Every token, for RuboCop's token list.
   allType: i32[];
+  allVal: string[];
   allS: i32[];
   allE: i32[];
 
@@ -2620,6 +2621,7 @@ export class RbLexer {
     this.commentS = [];
     this.commentE = [];
     this.allType = [];
+    this.allVal = [];
     this.allS = [];
     this.allE = [];
     if (pts.length > 0 && pts[0] === 0xfeff) {
@@ -2746,6 +2748,7 @@ export class RbLexer {
     this.qE.push(e);
     this.qTail = this.qTail + 1;
     this.allType.push(type);
+    this.allVal.push(value);
     this.allS.push(s);
     this.allE.push(e);
   }
@@ -2789,6 +2792,7 @@ export class RbLexer {
     this.commentS.push(s);
     this.commentE.push(e);
     this.allType.push(-2);
+    this.allVal.push(this.tok2(s, e));
     this.allS.push(s);
     this.allE.push(e);
   }

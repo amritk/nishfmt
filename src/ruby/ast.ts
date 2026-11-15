@@ -296,6 +296,10 @@ export class RbAst {
     return m >= 0 && this.fS(m, f) >= 0;
   }
 
+  mapKind(m: i32): i32 {
+    return m >= 0 ? this.mKind[m] : -1;
+  }
+
   // ---- Nodes -------------------------------------------------------------------
 
   node(type: i32, kids: i32, map: i32): i32 {

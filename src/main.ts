@@ -7,12 +7,14 @@ import { Ignore, walk } from "./core/files";
 import { CppEngine, formatCpp, isCppName } from "./cpp/run";
 import { JavaEngine, formatJava, isJavaName } from "./java/run";
 import { KotlinEngine, formatKotlin, isKotlinName } from "./kotlin/run";
+import { RubyEngine, formatRuby, isRubyName } from "./ruby/run";
 import { free, regionWith } from "nish:region";
 
 /** Languages, by the extension or name of a file; 0 is not ours. */
 const LANG_CPP: i32 = 1;
 const LANG_JAVA: i32 = 2;
 const LANG_KOTLIN: i32 = 3;
+const LANG_RUBY: i32 = 4;
 
 const langOf = (name: string): i32 => {
   if (isCppName(name)) {
@@ -23,6 +25,9 @@ const langOf = (name: string): i32 => {
   }
   if (isKotlinName(name)) {
     return LANG_KOTLIN;
+  }
+  if (isRubyName(name)) {
+    return LANG_RUBY;
   }
   return 0;
 };
@@ -149,6 +154,10 @@ const runJob = (job: Job): JobRoot => {
     k.debug = getenv("FFDEBUG") !== null;
     k.dump = getenv("FFKTDUMP") !== null;
     ok = formatKotlin(k, path, src, n, out);
+  } else if (job.lang === LANG_RUBY) {
+    const r = new RubyEngine();
+    r.debug = getenv("FFDEBUG") !== null;
+    ok = formatRuby(r, path, src, n, out);
   } else {
     const j = new JavaEngine();
     j.debug = getenv("FFDEBUG") !== null;
@@ -188,7 +197,7 @@ const runJob = (job: Job): JobRoot => {
 /** Formats one file; answers 0 unchanged, 1 changed, 2 skipped. */
 const formatFile = (path: string, cli: Cli, stats: Stats, eng: Engine): i32 => {
   const lang0 = langOf(path);
-  if (lang0 === LANG_JAVA || lang0 === LANG_KOTLIN) {
+  if (lang0 === LANG_JAVA || lang0 === LANG_KOTLIN || lang0 === LANG_RUBY) {
     if (cli.trace) {
       console.error(`file ${path}`);
     }
