@@ -201,6 +201,11 @@ export class RbParser {
     return V_NIL;
   }
 
+  /** val[k]: nil past the values the rule has. */
+  va(v: i32[], k: i32): i32 {
+    return k < toI32(v.length) ? v[k] : V_NIL;
+  }
+
   hb(b: boolean): i32 {
     return b ? RB_TRUE : RB_FALSE;
   }
@@ -1419,14 +1424,14 @@ export class RbParser {
 
   r2(v: i32[]): i32 {
     let result = v.length > 0 ? v[0] : V_NIL;
-    result = v[1];
+    result = this.va(v, 1);
     this.st.argPop();
     this.st.npPop();
     return result;
   }
 
   r3(v: i32[]): i32 {
-    return this.b.compstmt(v[0]);
+    return this.b.compstmt(this.va(v, 0));
   }
 
   r4(v: i32[]): i32 {
@@ -1434,19 +1439,19 @@ export class RbParser {
   }
 
   r5(v: i32[]): i32 {
-    return this.ls([v[0]], 0);
+    return this.ls([this.va(v, 0)], 0);
   }
 
   r6(v: i32[]): i32 {
-    return this.a.push(v[0], v[2]);
+    return this.a.push(this.va(v, 0), this.va(v, 2));
   }
 
   r7(v: i32[]): i32 {
-    return this.ls([v[1]], 0);
+    return this.ls([this.va(v, 1)], 0);
   }
 
   r9(v: i32[]): i32 {
-    return this.b.preexe(v[0], this.a.at(v[1], 0), this.a.at(v[1], 1), this.a.at(v[1], 2));
+    return this.b.preexe(this.va(v, 0), this.a.at(this.va(v, 1), 0), this.a.at(this.va(v, 1), 1), this.a.at(this.va(v, 1), 2));
   }
 
   r10(v: i32[]): i32 {
@@ -1459,19 +1464,19 @@ export class RbParser {
     let else_: i32 = V_NIL;
     let ensure_t: i32 = V_NIL;
     let ensure_: i32 = V_NIL;
-    rescue_bodies = v[1];
-    else_t = this.a.at(v[2], 0);
-    else_ = this.a.at(v[2], 1);
-    ensure_t = this.a.at(v[3], 0);
-    ensure_ = this.a.at(v[3], 1);
+    rescue_bodies = this.va(v, 1);
+    else_t = this.a.at(this.va(v, 2), 0);
+    else_ = this.a.at(this.va(v, 2), 1);
+    ensure_t = this.a.at(this.va(v, 3), 0);
+    ensure_ = this.a.at(this.va(v, 3), 1);
     if (((this.a.len(rescue_bodies) === 0) && !(else_t === V_NIL))) {
       return this.fail();
     }
-    return this.b.beginBody(v[0], rescue_bodies, else_t, else_, ensure_t, ensure_);
+    return this.b.beginBody(this.va(v, 0), rescue_bodies, else_t, else_, ensure_t, ensure_);
   }
 
   r12(v: i32[]): i32 {
-    return this.b.compstmt(v[0]);
+    return this.b.compstmt(this.va(v, 0));
   }
 
   r13(v: i32[]): i32 {
@@ -1479,15 +1484,15 @@ export class RbParser {
   }
 
   r14(v: i32[]): i32 {
-    return this.ls([v[0]], 0);
+    return this.ls([this.va(v, 0)], 0);
   }
 
   r15(v: i32[]): i32 {
-    return this.a.push(v[0], v[2]);
+    return this.a.push(this.va(v, 0), this.va(v, 2));
   }
 
   r16(v: i32[]): i32 {
-    return this.ls([v[1]], 0);
+    return this.ls([this.va(v, 1)], 0);
   }
 
   r18(v: i32[]): i32 {
@@ -1500,15 +1505,15 @@ export class RbParser {
   }
 
   r20(v: i32[]): i32 {
-    return this.b.alias(v[0], v[1], v[3]);
+    return this.b.alias(this.va(v, 0), this.va(v, 1), this.va(v, 3));
   }
 
   r21(v: i32[]): i32 {
-    return this.b.alias(v[0], this.b.gvar(v[1]), this.b.gvar(v[2]));
+    return this.b.alias(this.va(v, 0), this.b.gvar(this.va(v, 1)), this.b.gvar(this.va(v, 2)));
   }
 
   r22(v: i32[]): i32 {
-    return this.b.alias(v[0], this.b.gvar(v[1]), this.b.backRef(v[2]));
+    return this.b.alias(this.va(v, 0), this.b.gvar(this.va(v, 1)), this.b.backRef(this.va(v, 2)));
   }
 
   r23(v: i32[]): i32 {
@@ -1516,83 +1521,83 @@ export class RbParser {
   }
 
   r24(v: i32[]): i32 {
-    return this.b.undefMethod(v[0], v[1]);
+    return this.b.undefMethod(this.va(v, 0), this.va(v, 1));
   }
 
   r25(v: i32[]): i32 {
-    return this.b.conditionMod(v[0], V_NIL, v[1], v[2]);
+    return this.b.conditionMod(this.va(v, 0), V_NIL, this.va(v, 1), this.va(v, 2));
   }
 
   r26(v: i32[]): i32 {
-    return this.b.conditionMod(V_NIL, v[0], v[1], v[2]);
+    return this.b.conditionMod(V_NIL, this.va(v, 0), this.va(v, 1), this.va(v, 2));
   }
 
   r27(v: i32[]): i32 {
-    return this.b.loopMod(NT_WHILE, NT_WHILE_POST, v[0], v[1], v[2]);
+    return this.b.loopMod(NT_WHILE, NT_WHILE_POST, this.va(v, 0), this.va(v, 1), this.va(v, 2));
   }
 
   r28(v: i32[]): i32 {
-    return this.b.loopMod(NT_UNTIL, NT_UNTIL_POST, v[0], v[1], v[2]);
+    return this.b.loopMod(NT_UNTIL, NT_UNTIL_POST, this.va(v, 0), this.va(v, 1), this.va(v, 2));
   }
 
   r29(v: i32[]): i32 {
     let rescue_body: i32 = V_NIL;
-    rescue_body = this.b.rescueBody(v[1], V_NIL, V_NIL, V_NIL, V_NIL, v[2]);
-    return this.b.beginBody(v[0], this.ls([rescue_body], 0));
+    rescue_body = this.b.rescueBody(this.va(v, 1), V_NIL, V_NIL, V_NIL, V_NIL, this.va(v, 2));
+    return this.b.beginBody(this.va(v, 0), this.ls([rescue_body], 0));
   }
 
   r30(v: i32[]): i32 {
-    return this.b.postexe(v[0], v[1], v[2], v[3]);
+    return this.b.postexe(this.va(v, 0), this.va(v, 1), this.va(v, 2), this.va(v, 3));
   }
 
   r32(v: i32[]): i32 {
-    return this.b.multiAssign(v[0], v[1], v[2]);
+    return this.b.multiAssign(this.va(v, 0), this.va(v, 1), this.va(v, 2));
   }
 
   r33(v: i32[]): i32 {
-    return this.b.assign(v[0], v[1], this.b.array(V_NIL, v[2], V_NIL));
+    return this.b.assign(this.va(v, 0), this.va(v, 1), this.b.array(V_NIL, this.va(v, 2), V_NIL));
   }
 
   r34(v: i32[]): i32 {
     let rescue_body: i32 = V_NIL;
     let begin_body: i32 = V_NIL;
-    rescue_body = this.b.rescueBody(v[3], V_NIL, V_NIL, V_NIL, V_NIL, v[4]);
-    begin_body = this.b.beginBody(v[2], this.ls([rescue_body], 0));
-    return this.b.multiAssign(v[0], v[1], begin_body);
+    rescue_body = this.b.rescueBody(this.va(v, 3), V_NIL, V_NIL, V_NIL, V_NIL, this.va(v, 4));
+    begin_body = this.b.beginBody(this.va(v, 2), this.ls([rescue_body], 0));
+    return this.b.multiAssign(this.va(v, 0), this.va(v, 1), begin_body);
   }
 
   r35(v: i32[]): i32 {
-    return this.b.multiAssign(v[0], v[1], v[2]);
+    return this.b.multiAssign(this.va(v, 0), this.va(v, 1), this.va(v, 2));
   }
 
   r37(v: i32[]): i32 {
-    return this.b.assign(v[0], v[1], v[2]);
+    return this.b.assign(this.va(v, 0), this.va(v, 1), this.va(v, 2));
   }
 
   r38(v: i32[]): i32 {
-    return this.b.opAssign(v[0], v[1], v[2]);
+    return this.b.opAssign(this.va(v, 0), this.va(v, 1), this.va(v, 2));
   }
 
   r39(v: i32[]): i32 {
-    return this.b.opAssign(this.b.index(v[0], v[1], v[2], v[3]), v[4], v[5]);
+    return this.b.opAssign(this.b.index(this.va(v, 0), this.va(v, 1), this.va(v, 2), this.va(v, 3)), this.va(v, 4), this.va(v, 5));
   }
 
   r40(v: i32[]): i32 {
-    return this.b.opAssign(this.b.callMethod(v[0], v[1], v[2]), v[3], v[4]);
+    return this.b.opAssign(this.b.callMethod(this.va(v, 0), this.va(v, 1), this.va(v, 2)), this.va(v, 3), this.va(v, 4));
   }
 
   r41(v: i32[]): i32 {
-    return this.b.opAssign(this.b.callMethod(v[0], v[1], v[2]), v[3], v[4]);
+    return this.b.opAssign(this.b.callMethod(this.va(v, 0), this.va(v, 1), this.va(v, 2)), this.va(v, 3), this.va(v, 4));
   }
 
   r42(v: i32[]): i32 {
     let const_: i32 = V_NIL;
-    const_ = this.b.constOpAssignable(this.b.constFetch(v[0], v[1], v[2]));
-    return this.b.opAssign(const_, v[3], v[4]);
+    const_ = this.b.constOpAssignable(this.b.constFetch(this.va(v, 0), this.va(v, 1), this.va(v, 2)));
+    return this.b.opAssign(const_, this.va(v, 3), this.va(v, 4));
   }
 
   r43(v: i32[]): i32 {
-    return this.b.opAssign(this.b.callMethod(v[0], v[1], v[2]), v[3], v[4]);
+    return this.b.opAssign(this.b.callMethod(this.va(v, 0), this.va(v, 1), this.va(v, 2)), this.va(v, 3), this.va(v, 4));
   }
 
   r44(v: i32[]): i32 {
@@ -1601,12 +1606,12 @@ export class RbParser {
     let t1: i32 = V_NIL;
     let name_t: i32 = V_NIL;
     let ctx: i32 = V_NIL;
-    def_t = this.a.at(v[0], 0);
-    t1 = this.a.at(v[0], 1);
+    def_t = this.a.at(this.va(v, 0), 0);
+    t1 = this.a.at(this.va(v, 0), 1);
     name_t = this.a.at(t1, 0);
     ctx = this.a.at(t1, 1);
     this.endlessMethodName(name_t);
-    result = this.b.defEndlessMethod(def_t, name_t, v[1], v[2], v[3]);
+    result = this.b.defEndlessMethod(def_t, name_t, this.va(v, 1), this.va(v, 2), this.va(v, 3));
     this.localPop();
     this.st.argPop();
     this.ctx.in_def = this.cb(ctx, 8);
@@ -1621,14 +1626,14 @@ export class RbParser {
     let t1: i32 = V_NIL;
     let name_t: i32 = V_NIL;
     let ctx: i32 = V_NIL;
-    def_t = this.a.at(v[0], 0);
-    recv = this.a.at(v[0], 1);
-    dot_t = this.a.at(v[0], 2);
-    t1 = this.a.at(v[0], 3);
+    def_t = this.a.at(this.va(v, 0), 0);
+    recv = this.a.at(this.va(v, 0), 1);
+    dot_t = this.a.at(this.va(v, 0), 2);
+    t1 = this.a.at(this.va(v, 0), 3);
     name_t = this.a.at(t1, 0);
     ctx = this.a.at(t1, 1);
     this.endlessMethodName(name_t);
-    result = this.b.defEndlessSingleton(def_t, recv, dot_t, name_t, v[1], v[2], v[3]);
+    result = this.b.defEndlessSingleton(def_t, recv, dot_t, name_t, this.va(v, 1), this.va(v, 2), this.va(v, 3));
     this.localPop();
     this.st.argPop();
     this.ctx.in_def = this.cb(ctx, 8);
@@ -1636,54 +1641,54 @@ export class RbParser {
   }
 
   r46(v: i32[]): i32 {
-    this.b.opAssign(v[0], v[1], v[2]);
+    this.b.opAssign(this.va(v, 0), this.va(v, 1), this.va(v, 2));
     return v.length > 0 ? v[0] : V_NIL;
   }
 
   r48(v: i32[]): i32 {
     let rescue_body: i32 = V_NIL;
-    rescue_body = this.b.rescueBody(v[1], V_NIL, V_NIL, V_NIL, V_NIL, v[2]);
-    return this.b.beginBody(v[0], this.ls([rescue_body], 0));
+    rescue_body = this.b.rescueBody(this.va(v, 1), V_NIL, V_NIL, V_NIL, V_NIL, this.va(v, 2));
+    return this.b.beginBody(this.va(v, 0), this.ls([rescue_body], 0));
   }
 
   r49(v: i32[]): i32 {
-    return this.b.notOp(v[0], V_NIL, v[2], V_NIL);
+    return this.b.notOp(this.va(v, 0), V_NIL, this.va(v, 2), V_NIL);
   }
 
   r51(v: i32[]): i32 {
     let rescue_body: i32 = V_NIL;
-    rescue_body = this.b.rescueBody(v[1], V_NIL, V_NIL, V_NIL, V_NIL, v[2]);
-    return this.b.beginBody(v[0], this.ls([rescue_body], 0));
+    rescue_body = this.b.rescueBody(this.va(v, 1), V_NIL, V_NIL, V_NIL, V_NIL, this.va(v, 2));
+    return this.b.beginBody(this.va(v, 0), this.ls([rescue_body], 0));
   }
 
   r54(v: i32[]): i32 {
-    return this.b.logicalOp(NT_AND, v[0], v[1], v[2]);
+    return this.b.logicalOp(NT_AND, this.va(v, 0), this.va(v, 1), this.va(v, 2));
   }
 
   r55(v: i32[]): i32 {
-    return this.b.logicalOp(NT_OR, v[0], v[1], v[2]);
+    return this.b.logicalOp(NT_OR, this.va(v, 0), this.va(v, 1), this.va(v, 2));
   }
 
   r56(v: i32[]): i32 {
-    return this.b.notOp(v[0], V_NIL, v[2], V_NIL);
+    return this.b.notOp(this.va(v, 0), V_NIL, this.va(v, 2), V_NIL);
   }
 
   r57(v: i32[]): i32 {
-    return this.b.notOp(v[0], V_NIL, v[1], V_NIL);
+    return this.b.notOp(this.va(v, 0), V_NIL, this.va(v, 1), V_NIL);
   }
 
   r58(v: i32[]): i32 {
     this.st.varsPop(false);
     this.st.varsPop(true);
-    this.ctx.in_kwarg = this.truthy(v[2]);
-    return this.b.matchPattern(v[0], v[1], v[5]);
+    this.ctx.in_kwarg = this.truthy(this.va(v, 2));
+    return this.b.matchPattern(this.va(v, 0), this.va(v, 1), this.va(v, 5));
   }
 
   r59(v: i32[]): i32 {
     this.st.varsPop(false);
     this.st.varsPop(true);
-    this.ctx.in_kwarg = this.truthy(v[2]);
-    return this.b.matchPatternP(v[0], v[1], v[5]);
+    this.ctx.in_kwarg = this.truthy(this.va(v, 2));
+    return this.b.matchPatternP(this.va(v, 0), this.va(v, 1), this.va(v, 5));
   }
 
   r62(v: i32[]): i32 {
@@ -1693,20 +1698,20 @@ export class RbParser {
 
   r63(v: i32[]): i32 {
     this.lx.cond.pop();
-    return this.ls([v[1], v[2]], 0);
+    return this.ls([this.va(v, 1), this.va(v, 2)], 0);
   }
 
   r64(v: i32[]): i32 {
     let result = v.length > 0 ? v[0] : V_NIL;
     this.localPush();
     this.st.argPush("");
-    result = this.ls([v[0], this.a.scalar(this.ctx.bits())], 0);
+    result = this.ls([this.va(v, 0), this.a.scalar(this.ctx.bits())], 0);
     this.ctx.in_def = true;
     return result;
   }
 
   r65(v: i32[]): i32 {
-    return this.ls([v[0], v[1]], 0);
+    return this.ls([this.va(v, 0), this.va(v, 1)], 0);
   }
 
   r66(v: i32[]): i32 {
@@ -1716,11 +1721,11 @@ export class RbParser {
   }
 
   r67(v: i32[]): i32 {
-    return this.ls([v[0], v[1], v[2], v[4]], 0);
+    return this.ls([this.va(v, 0), this.va(v, 1), this.va(v, 2), this.va(v, 4)], 0);
   }
 
   r71(v: i32[]): i32 {
-    return this.b.callMethod(v[0], v[1], v[2], V_NIL, v[3], V_NIL);
+    return this.b.callMethod(this.va(v, 0), this.va(v, 1), this.va(v, 2), V_NIL, this.va(v, 3), V_NIL);
   }
 
   r72(v: i32[]): i32 {
@@ -1731,12 +1736,12 @@ export class RbParser {
   }
 
   r73(v: i32[]): i32 {
-    this.ctx.in_block = this.cb(v[1], 32);
-    return this.ls([v[0], v[2], v[3]], 2);
+    this.ctx.in_block = this.cb(this.va(v, 1), 32);
+    return this.ls([this.va(v, 0), this.va(v, 2), this.va(v, 3)], 2);
   }
 
   r75(v: i32[]): i32 {
-    return this.b.callMethod(V_NIL, V_NIL, v[0], V_NIL, v[1], V_NIL);
+    return this.b.callMethod(V_NIL, V_NIL, this.va(v, 0), V_NIL, this.va(v, 1), V_NIL);
   }
 
   r76(v: i32[]): i32 {
@@ -1745,16 +1750,16 @@ export class RbParser {
     let args: i32 = V_NIL;
     let body: i32 = V_NIL;
     let end_t: i32 = V_NIL;
-    method_call = this.b.callMethod(V_NIL, V_NIL, v[0], V_NIL, v[1], V_NIL);
-    begin_t = this.a.at(v[2], 0);
-    args = this.a.at(v[2], 1);
-    body = this.a.at(v[2], 2);
-    end_t = this.a.at(v[2], 3);
+    method_call = this.b.callMethod(V_NIL, V_NIL, this.va(v, 0), V_NIL, this.va(v, 1), V_NIL);
+    begin_t = this.a.at(this.va(v, 2), 0);
+    args = this.a.at(this.va(v, 2), 1);
+    body = this.a.at(this.va(v, 2), 2);
+    end_t = this.a.at(this.va(v, 2), 3);
     return this.b.block(method_call, begin_t, args, body, end_t);
   }
 
   r77(v: i32[]): i32 {
-    return this.b.callMethod(v[0], v[1], v[2], V_NIL, v[3], V_NIL);
+    return this.b.callMethod(this.va(v, 0), this.va(v, 1), this.va(v, 2), V_NIL, this.va(v, 3), V_NIL);
   }
 
   r78(v: i32[]): i32 {
@@ -1763,16 +1768,16 @@ export class RbParser {
     let args: i32 = V_NIL;
     let body: i32 = V_NIL;
     let end_t: i32 = V_NIL;
-    method_call = this.b.callMethod(v[0], v[1], v[2], V_NIL, v[3], V_NIL);
-    begin_t = this.a.at(v[4], 0);
-    args = this.a.at(v[4], 1);
-    body = this.a.at(v[4], 2);
-    end_t = this.a.at(v[4], 3);
+    method_call = this.b.callMethod(this.va(v, 0), this.va(v, 1), this.va(v, 2), V_NIL, this.va(v, 3), V_NIL);
+    begin_t = this.a.at(this.va(v, 4), 0);
+    args = this.a.at(this.va(v, 4), 1);
+    body = this.a.at(this.va(v, 4), 2);
+    end_t = this.a.at(this.va(v, 4), 3);
     return this.b.block(method_call, begin_t, args, body, end_t);
   }
 
   r79(v: i32[]): i32 {
-    return this.b.callMethod(v[0], v[1], v[2], V_NIL, v[3], V_NIL);
+    return this.b.callMethod(this.va(v, 0), this.va(v, 1), this.va(v, 2), V_NIL, this.va(v, 3), V_NIL);
   }
 
   r80(v: i32[]): i32 {
@@ -1781,11 +1786,11 @@ export class RbParser {
     let args: i32 = V_NIL;
     let body: i32 = V_NIL;
     let end_t: i32 = V_NIL;
-    method_call = this.b.callMethod(v[0], v[1], v[2], V_NIL, v[3], V_NIL);
-    begin_t = this.a.at(v[4], 0);
-    args = this.a.at(v[4], 1);
-    body = this.a.at(v[4], 2);
-    end_t = this.a.at(v[4], 3);
+    method_call = this.b.callMethod(this.va(v, 0), this.va(v, 1), this.va(v, 2), V_NIL, this.va(v, 3), V_NIL);
+    begin_t = this.a.at(this.va(v, 4), 0);
+    args = this.a.at(this.va(v, 4), 1);
+    body = this.a.at(this.va(v, 4), 2);
+    end_t = this.a.at(this.va(v, 4), 3);
     return this.b.block(method_call, begin_t, args, body, end_t);
   }
 
@@ -1793,114 +1798,114 @@ export class RbParser {
     let method_call: i32 = V_NIL;
     let args: i32 = V_NIL;
     let body: i32 = V_NIL;
-    method_call = this.b.callMethod(v[0], v[1], v[2], V_NIL, this.a.list(), V_NIL);
-    args = this.a.at(v[4], 0);
-    body = this.a.at(v[4], 1);
-    return this.b.block(method_call, v[3], args, body, v[5]);
+    method_call = this.b.callMethod(this.va(v, 0), this.va(v, 1), this.va(v, 2), V_NIL, this.a.list(), V_NIL);
+    args = this.a.at(this.va(v, 4), 0);
+    body = this.a.at(this.va(v, 4), 1);
+    return this.b.block(method_call, this.va(v, 3), args, body, this.va(v, 5));
   }
 
   r82(v: i32[]): i32 {
-    return this.b.keywordCmd(NT_SUPER, v[0], V_NIL, v[1], V_NIL);
+    return this.b.keywordCmd(NT_SUPER, this.va(v, 0), V_NIL, this.va(v, 1), V_NIL);
   }
 
   r83(v: i32[]): i32 {
-    return this.b.keywordCmd(NT_YIELD, v[0], V_NIL, v[1], V_NIL);
+    return this.b.keywordCmd(NT_YIELD, this.va(v, 0), V_NIL, this.va(v, 1), V_NIL);
   }
 
   r84(v: i32[]): i32 {
-    return this.b.keywordCmd(NT_RETURN, v[0], V_NIL, v[1], V_NIL);
+    return this.b.keywordCmd(NT_RETURN, this.va(v, 0), V_NIL, this.va(v, 1), V_NIL);
   }
 
   r85(v: i32[]): i32 {
-    return this.b.keywordCmd(NT_BREAK, v[0], V_NIL, v[1], V_NIL);
+    return this.b.keywordCmd(NT_BREAK, this.va(v, 0), V_NIL, this.va(v, 1), V_NIL);
   }
 
   r86(v: i32[]): i32 {
-    return this.b.keywordCmd(NT_NEXT, v[0], V_NIL, v[1], V_NIL);
+    return this.b.keywordCmd(NT_NEXT, this.va(v, 0), V_NIL, this.va(v, 1), V_NIL);
   }
 
   r87(v: i32[]): i32 {
-    return this.b.multiLhs(V_NIL, v[0], V_NIL);
+    return this.b.multiLhs(V_NIL, this.va(v, 0), V_NIL);
   }
 
   r88(v: i32[]): i32 {
-    return this.b.begin(v[0], v[1], v[2]);
+    return this.b.begin(this.va(v, 0), this.va(v, 1), this.va(v, 2));
   }
 
   r89(v: i32[]): i32 {
-    return this.b.multiLhs(V_NIL, v[0], V_NIL);
+    return this.b.multiLhs(V_NIL, this.va(v, 0), V_NIL);
   }
 
   r90(v: i32[]): i32 {
-    return this.b.multiLhs(v[0], v[1], v[2]);
+    return this.b.multiLhs(this.va(v, 0), this.va(v, 1), this.va(v, 2));
   }
 
   r92(v: i32[]): i32 {
-    return this.a.push(v[0], v[1]);
+    return this.a.push(this.va(v, 0), this.va(v, 1));
   }
 
   r93(v: i32[]): i32 {
-    return this.a.push(v[0], this.b.splat(v[1], v[2]));
+    return this.a.push(this.va(v, 0), this.b.splat(this.va(v, 1), this.va(v, 2)));
   }
 
   r94(v: i32[]): i32 {
-    return this.a.append(this.a.push(v[0], this.b.splat(v[1], v[2])), v[4]);
+    return this.a.append(this.a.push(this.va(v, 0), this.b.splat(this.va(v, 1), this.va(v, 2))), this.va(v, 4));
   }
 
   r95(v: i32[]): i32 {
-    return this.a.push(v[0], this.b.splat(v[1]));
+    return this.a.push(this.va(v, 0), this.b.splat(this.va(v, 1)));
   }
 
   r96(v: i32[]): i32 {
-    return this.a.append(this.a.push(v[0], this.b.splat(v[1])), v[3]);
+    return this.a.append(this.a.push(this.va(v, 0), this.b.splat(this.va(v, 1))), this.va(v, 3));
   }
 
   r97(v: i32[]): i32 {
-    return this.ls([this.b.splat(v[0], v[1])], 0);
+    return this.ls([this.b.splat(this.va(v, 0), this.va(v, 1))], 0);
   }
 
   r98(v: i32[]): i32 {
-    return this.ls([this.b.splat(v[0], v[1]), v[3]], 2);
+    return this.ls([this.b.splat(this.va(v, 0), this.va(v, 1)), this.va(v, 3)], 2);
   }
 
   r99(v: i32[]): i32 {
-    return this.ls([this.b.splat(v[0])], 0);
+    return this.ls([this.b.splat(this.va(v, 0))], 0);
   }
 
   r100(v: i32[]): i32 {
-    return this.ls([this.b.splat(v[0]), v[2]], 2);
+    return this.ls([this.b.splat(this.va(v, 0)), this.va(v, 2)], 2);
   }
 
   r102(v: i32[]): i32 {
-    return this.b.begin(v[0], v[1], v[2]);
+    return this.b.mlhsItem(v[0], v[1], v[2]);
   }
 
   r103(v: i32[]): i32 {
-    return this.ls([v[0]], 0);
+    return this.ls([this.va(v, 0)], 0);
   }
 
   r104(v: i32[]): i32 {
-    return this.a.push(v[0], v[1]);
+    return this.a.push(this.va(v, 0), this.va(v, 1));
   }
 
   r105(v: i32[]): i32 {
-    return this.ls([v[0]], 0);
+    return this.ls([this.va(v, 0)], 0);
   }
 
   r106(v: i32[]): i32 {
-    return this.a.push(v[0], v[2]);
+    return this.a.push(this.va(v, 0), this.va(v, 2));
   }
 
   r107(v: i32[]): i32 {
-    return this.b.assignable(v[0]);
+    return this.b.assignable(this.va(v, 0));
   }
 
   r108(v: i32[]): i32 {
-    return this.b.assignable(v[0]);
+    return this.b.assignable(this.va(v, 0));
   }
 
   r109(v: i32[]): i32 {
-    return this.b.indexAsgn(v[0], v[1], v[2], v[3]);
+    return this.b.indexAsgn(this.va(v, 0), this.va(v, 1), this.va(v, 2), this.va(v, 3));
   }
 
   r110(v: i32[]): i32 {
@@ -1911,7 +1916,7 @@ export class RbParser {
   }
 
   r111(v: i32[]): i32 {
-    return this.b.attrAsgn(v[0], v[1], v[2]);
+    return this.b.attrAsgn(this.va(v, 0), this.va(v, 1), this.va(v, 2));
   }
 
   r112(v: i32[]): i32 {
@@ -1922,51 +1927,51 @@ export class RbParser {
   }
 
   r113(v: i32[]): i32 {
-    return this.b.assignable(this.b.constFetch(v[0], v[1], v[2]));
+    return this.b.assignable(this.b.constFetch(this.va(v, 0), this.va(v, 1), this.va(v, 2)));
   }
 
   r114(v: i32[]): i32 {
-    return this.b.assignable(this.b.constGlobal(v[0], v[1]));
+    return this.b.assignable(this.b.constGlobal(this.va(v, 0), this.va(v, 1)));
   }
 
   r115(v: i32[]): i32 {
-    return this.b.assignable(v[0]);
+    return this.b.assignable(this.va(v, 0));
   }
 
   r116(v: i32[]): i32 {
-    return this.b.assignable(v[0]);
+    return this.b.assignable(this.va(v, 0));
   }
 
   r117(v: i32[]): i32 {
-    return this.b.assignable(v[0]);
+    return this.b.assignable(this.va(v, 0));
   }
 
   r118(v: i32[]): i32 {
-    return this.b.indexAsgn(v[0], v[1], v[2], v[3]);
+    return this.b.indexAsgn(this.va(v, 0), this.va(v, 1), this.va(v, 2), this.va(v, 3));
   }
 
   r119(v: i32[]): i32 {
-    return this.b.attrAsgn(v[0], v[1], v[2]);
+    return this.b.attrAsgn(this.va(v, 0), this.va(v, 1), this.va(v, 2));
   }
 
   r120(v: i32[]): i32 {
-    return this.b.attrAsgn(v[0], v[1], v[2]);
+    return this.b.attrAsgn(this.va(v, 0), this.va(v, 1), this.va(v, 2));
   }
 
   r121(v: i32[]): i32 {
-    return this.b.attrAsgn(v[0], v[1], v[2]);
+    return this.b.attrAsgn(this.va(v, 0), this.va(v, 1), this.va(v, 2));
   }
 
   r122(v: i32[]): i32 {
-    return this.b.assignable(this.b.constFetch(v[0], v[1], v[2]));
+    return this.b.assignable(this.b.constFetch(this.va(v, 0), this.va(v, 1), this.va(v, 2)));
   }
 
   r123(v: i32[]): i32 {
-    return this.b.assignable(this.b.constGlobal(v[0], v[1]));
+    return this.b.assignable(this.b.constGlobal(this.va(v, 0), this.va(v, 1)));
   }
 
   r124(v: i32[]): i32 {
-    return this.b.assignable(v[0]);
+    return this.b.assignable(this.va(v, 0));
   }
 
   r125(v: i32[]): i32 {
@@ -1974,23 +1979,23 @@ export class RbParser {
   }
 
   r127(v: i32[]): i32 {
-    return this.b.constGlobal(v[0], v[1]);
+    return this.b.constGlobal(this.va(v, 0), this.va(v, 1));
   }
 
   r128(v: i32[]): i32 {
-    return this.b.const_(v[0]);
+    return this.b.const_(this.va(v, 0));
   }
 
   r129(v: i32[]): i32 {
-    return this.b.constFetch(v[0], v[1], v[2]);
+    return this.b.constFetch(this.va(v, 0), this.va(v, 1), this.va(v, 2));
   }
 
   r135(v: i32[]): i32 {
-    return this.b.symbolInternal(v[0]);
+    return this.b.symbolInternal(this.va(v, 0));
   }
 
   r137(v: i32[]): i32 {
-    return this.ls([v[0]], 0);
+    return this.ls([this.va(v, 0)], 0);
   }
 
   r138(v: i32[]): i32 {
@@ -1999,176 +2004,176 @@ export class RbParser {
   }
 
   r139(v: i32[]): i32 {
-    return this.a.push(v[0], v[3]);
+    return this.a.push(this.va(v, 0), this.va(v, 3));
   }
 
   r211(v: i32[]): i32 {
-    return this.b.assign(v[0], v[1], v[2]);
+    return this.b.assign(this.va(v, 0), this.va(v, 1), this.va(v, 2));
   }
 
   r212(v: i32[]): i32 {
-    return this.b.opAssign(v[0], v[1], v[2]);
+    return this.b.opAssign(this.va(v, 0), this.va(v, 1), this.va(v, 2));
   }
 
   r213(v: i32[]): i32 {
-    return this.b.opAssign(this.b.index(v[0], v[1], v[2], v[3]), v[4], v[5]);
+    return this.b.opAssign(this.b.index(this.va(v, 0), this.va(v, 1), this.va(v, 2), this.va(v, 3)), this.va(v, 4), this.va(v, 5));
   }
 
   r214(v: i32[]): i32 {
-    return this.b.opAssign(this.b.callMethod(v[0], v[1], v[2]), v[3], v[4]);
+    return this.b.opAssign(this.b.callMethod(this.va(v, 0), this.va(v, 1), this.va(v, 2)), this.va(v, 3), this.va(v, 4));
   }
 
   r215(v: i32[]): i32 {
-    return this.b.opAssign(this.b.callMethod(v[0], v[1], v[2]), v[3], v[4]);
+    return this.b.opAssign(this.b.callMethod(this.va(v, 0), this.va(v, 1), this.va(v, 2)), this.va(v, 3), this.va(v, 4));
   }
 
   r216(v: i32[]): i32 {
-    return this.b.opAssign(this.b.callMethod(v[0], v[1], v[2]), v[3], v[4]);
+    return this.b.opAssign(this.b.callMethod(this.va(v, 0), this.va(v, 1), this.va(v, 2)), this.va(v, 3), this.va(v, 4));
   }
 
   r217(v: i32[]): i32 {
     let const_: i32 = V_NIL;
-    const_ = this.b.constOpAssignable(this.b.constFetch(v[0], v[1], v[2]));
-    return this.b.opAssign(const_, v[3], v[4]);
+    const_ = this.b.constOpAssignable(this.b.constFetch(this.va(v, 0), this.va(v, 1), this.va(v, 2)));
+    return this.b.opAssign(const_, this.va(v, 3), this.va(v, 4));
   }
 
   r218(v: i32[]): i32 {
     let const_: i32 = V_NIL;
-    const_ = this.b.constOpAssignable(this.b.constGlobal(v[0], v[1]));
-    return this.b.opAssign(const_, v[2], v[3]);
+    const_ = this.b.constOpAssignable(this.b.constGlobal(this.va(v, 0), this.va(v, 1)));
+    return this.b.opAssign(const_, this.va(v, 2), this.va(v, 3));
   }
 
   r219(v: i32[]): i32 {
-    return this.b.opAssign(v[0], v[1], v[2]);
+    return this.b.opAssign(this.va(v, 0), this.va(v, 1), this.va(v, 2));
   }
 
   r220(v: i32[]): i32 {
-    return this.b.rangeInclusive(v[0], v[1], v[2]);
+    return this.b.rangeInclusive(this.va(v, 0), this.va(v, 1), this.va(v, 2));
   }
 
   r221(v: i32[]): i32 {
-    return this.b.rangeExclusive(v[0], v[1], v[2]);
+    return this.b.rangeExclusive(this.va(v, 0), this.va(v, 1), this.va(v, 2));
   }
 
   r222(v: i32[]): i32 {
-    return this.b.rangeInclusive(v[0], v[1], V_NIL);
+    return this.b.rangeInclusive(this.va(v, 0), this.va(v, 1), V_NIL);
   }
 
   r223(v: i32[]): i32 {
-    return this.b.rangeExclusive(v[0], v[1], V_NIL);
+    return this.b.rangeExclusive(this.va(v, 0), this.va(v, 1), V_NIL);
   }
 
   r224(v: i32[]): i32 {
-    return this.b.rangeInclusive(V_NIL, v[0], v[1]);
+    return this.b.rangeInclusive(V_NIL, this.va(v, 0), this.va(v, 1));
   }
 
   r225(v: i32[]): i32 {
-    return this.b.rangeExclusive(V_NIL, v[0], v[1]);
+    return this.b.rangeExclusive(V_NIL, this.va(v, 0), this.va(v, 1));
   }
 
   r226(v: i32[]): i32 {
-    return this.b.binaryOp(v[0], v[1], v[2]);
+    return this.b.binaryOp(this.va(v, 0), this.va(v, 1), this.va(v, 2));
   }
 
   r227(v: i32[]): i32 {
-    return this.b.binaryOp(v[0], v[1], v[2]);
+    return this.b.binaryOp(this.va(v, 0), this.va(v, 1), this.va(v, 2));
   }
 
   r228(v: i32[]): i32 {
-    return this.b.binaryOp(v[0], v[1], v[2]);
+    return this.b.binaryOp(this.va(v, 0), this.va(v, 1), this.va(v, 2));
   }
 
   r229(v: i32[]): i32 {
-    return this.b.binaryOp(v[0], v[1], v[2]);
+    return this.b.binaryOp(this.va(v, 0), this.va(v, 1), this.va(v, 2));
   }
 
   r230(v: i32[]): i32 {
-    return this.b.binaryOp(v[0], v[1], v[2]);
+    return this.b.binaryOp(this.va(v, 0), this.va(v, 1), this.va(v, 2));
   }
 
   r231(v: i32[]): i32 {
-    return this.b.binaryOp(v[0], v[1], v[2]);
+    return this.b.binaryOp(this.va(v, 0), this.va(v, 1), this.va(v, 2));
   }
 
   r232(v: i32[]): i32 {
-    return this.b.unaryOp(v[0], this.b.binaryOp(v[1], v[2], v[3]));
+    return this.b.unaryOp(this.va(v, 0), this.b.binaryOp(this.va(v, 1), this.va(v, 2), this.va(v, 3)));
   }
 
   r233(v: i32[]): i32 {
-    return this.b.unaryOp(v[0], v[1]);
+    return this.b.unaryOp(this.va(v, 0), this.va(v, 1));
   }
 
   r234(v: i32[]): i32 {
-    return this.b.unaryOp(v[0], v[1]);
+    return this.b.unaryOp(this.va(v, 0), this.va(v, 1));
   }
 
   r235(v: i32[]): i32 {
-    return this.b.binaryOp(v[0], v[1], v[2]);
+    return this.b.binaryOp(this.va(v, 0), this.va(v, 1), this.va(v, 2));
   }
 
   r236(v: i32[]): i32 {
-    return this.b.binaryOp(v[0], v[1], v[2]);
+    return this.b.binaryOp(this.va(v, 0), this.va(v, 1), this.va(v, 2));
   }
 
   r237(v: i32[]): i32 {
-    return this.b.binaryOp(v[0], v[1], v[2]);
+    return this.b.binaryOp(this.va(v, 0), this.va(v, 1), this.va(v, 2));
   }
 
   r238(v: i32[]): i32 {
-    return this.b.binaryOp(v[0], v[1], v[2]);
+    return this.b.binaryOp(this.va(v, 0), this.va(v, 1), this.va(v, 2));
   }
 
   r240(v: i32[]): i32 {
-    return this.b.binaryOp(v[0], v[1], v[2]);
+    return this.b.binaryOp(this.va(v, 0), this.va(v, 1), this.va(v, 2));
   }
 
   r241(v: i32[]): i32 {
-    return this.b.binaryOp(v[0], v[1], v[2]);
+    return this.b.binaryOp(this.va(v, 0), this.va(v, 1), this.va(v, 2));
   }
 
   r242(v: i32[]): i32 {
-    return this.b.binaryOp(v[0], v[1], v[2]);
+    return this.b.binaryOp(this.va(v, 0), this.va(v, 1), this.va(v, 2));
   }
 
   r243(v: i32[]): i32 {
-    return this.b.matchOp(v[0], v[1], v[2]);
+    return this.b.matchOp(this.va(v, 0), this.va(v, 1), this.va(v, 2));
   }
 
   r244(v: i32[]): i32 {
-    return this.b.binaryOp(v[0], v[1], v[2]);
+    return this.b.binaryOp(this.va(v, 0), this.va(v, 1), this.va(v, 2));
   }
 
   r245(v: i32[]): i32 {
-    return this.b.notOp(v[0], V_NIL, v[1], V_NIL);
+    return this.b.notOp(this.va(v, 0), V_NIL, this.va(v, 1), V_NIL);
   }
 
   r246(v: i32[]): i32 {
-    return this.b.unaryOp(v[0], v[1]);
+    return this.b.unaryOp(this.va(v, 0), this.va(v, 1));
   }
 
   r247(v: i32[]): i32 {
-    return this.b.binaryOp(v[0], v[1], v[2]);
+    return this.b.binaryOp(this.va(v, 0), this.va(v, 1), this.va(v, 2));
   }
 
   r248(v: i32[]): i32 {
-    return this.b.binaryOp(v[0], v[1], v[2]);
+    return this.b.binaryOp(this.va(v, 0), this.va(v, 1), this.va(v, 2));
   }
 
   r249(v: i32[]): i32 {
-    return this.b.logicalOp(NT_AND, v[0], v[1], v[2]);
+    return this.b.logicalOp(NT_AND, this.va(v, 0), this.va(v, 1), this.va(v, 2));
   }
 
   r250(v: i32[]): i32 {
-    return this.b.logicalOp(NT_OR, v[0], v[1], v[2]);
+    return this.b.logicalOp(NT_OR, this.va(v, 0), this.va(v, 1), this.va(v, 2));
   }
 
   r251(v: i32[]): i32 {
-    this.ctx.in_defined = this.cb(v[2], 1);
-    return this.b.keywordCmd(NT_DEFINED_P, v[0], V_NIL, this.ls([v[3]], 0), V_NIL);
+    this.ctx.in_defined = this.cb(this.va(v, 2), 1);
+    return this.b.keywordCmd(NT_DEFINED_P, this.va(v, 0), V_NIL, this.ls([this.va(v, 3)], 0), V_NIL);
   }
 
   r252(v: i32[]): i32 {
-    return this.b.ternary(v[0], v[1], v[2], v[4], v[5]);
+    return this.b.ternary(this.va(v, 0), this.va(v, 1), this.va(v, 2), this.va(v, 4), this.va(v, 5));
   }
 
   r253(v: i32[]): i32 {
@@ -2177,12 +2182,12 @@ export class RbParser {
     let t1: i32 = V_NIL;
     let name_t: i32 = V_NIL;
     let ctx: i32 = V_NIL;
-    def_t = this.a.at(v[0], 0);
-    t1 = this.a.at(v[0], 1);
+    def_t = this.a.at(this.va(v, 0), 0);
+    t1 = this.a.at(this.va(v, 0), 1);
     name_t = this.a.at(t1, 0);
     ctx = this.a.at(t1, 1);
     this.endlessMethodName(name_t);
-    result = this.b.defEndlessMethod(def_t, name_t, v[1], v[2], v[3]);
+    result = this.b.defEndlessMethod(def_t, name_t, this.va(v, 1), this.va(v, 2), this.va(v, 3));
     this.localPop();
     this.st.argPop();
     this.ctx.in_def = this.cb(ctx, 8);
@@ -2197,14 +2202,14 @@ export class RbParser {
     let t1: i32 = V_NIL;
     let name_t: i32 = V_NIL;
     let ctx: i32 = V_NIL;
-    def_t = this.a.at(v[0], 0);
-    recv = this.a.at(v[0], 1);
-    dot_t = this.a.at(v[0], 2);
-    t1 = this.a.at(v[0], 3);
+    def_t = this.a.at(this.va(v, 0), 0);
+    recv = this.a.at(this.va(v, 0), 1);
+    dot_t = this.a.at(this.va(v, 0), 2);
+    t1 = this.a.at(this.va(v, 0), 3);
     name_t = this.a.at(t1, 0);
     ctx = this.a.at(t1, 1);
     this.endlessMethodName(name_t);
-    result = this.b.defEndlessSingleton(def_t, recv, dot_t, name_t, v[1], v[2], v[3]);
+    result = this.b.defEndlessSingleton(def_t, recv, dot_t, name_t, this.va(v, 1), this.va(v, 2), this.va(v, 3));
     this.localPop();
     this.st.argPop();
     this.ctx.in_def = this.cb(ctx, 8);
@@ -2213,20 +2218,20 @@ export class RbParser {
 
   r257(v: i32[]): i32 {
     let rescue_body: i32 = V_NIL;
-    rescue_body = this.b.rescueBody(v[1], V_NIL, V_NIL, V_NIL, V_NIL, v[2]);
-    return this.b.beginBody(v[0], this.ls([rescue_body], 0));
+    rescue_body = this.b.rescueBody(this.va(v, 1), V_NIL, V_NIL, V_NIL, V_NIL, this.va(v, 2));
+    return this.b.beginBody(this.va(v, 0), this.ls([rescue_body], 0));
   }
 
   r258(v: i32[]): i32 {
-    return this.b.notOp(v[0], V_NIL, v[2], V_NIL);
+    return this.b.notOp(this.va(v, 0), V_NIL, this.va(v, 2), V_NIL);
   }
 
   r263(v: i32[]): i32 {
-    return this.b.binaryOp(v[0], v[1], v[2]);
+    return this.b.binaryOp(this.va(v, 0), this.va(v, 1), this.va(v, 2));
   }
 
   r264(v: i32[]): i32 {
-    return this.b.binaryOp(v[0], v[1], v[2]);
+    return this.b.binaryOp(this.va(v, 0), this.va(v, 1), this.va(v, 2));
   }
 
   r265(v: i32[]): i32 {
@@ -2234,17 +2239,17 @@ export class RbParser {
   }
 
   r269(v: i32[]): i32 {
-    return this.a.push(v[0], this.b.associate(V_NIL, v[2], V_NIL));
+    return this.a.push(this.va(v, 0), this.b.associate(V_NIL, this.va(v, 2), V_NIL));
   }
 
   r270(v: i32[]): i32 {
-    return this.ls([this.b.associate(V_NIL, v[0], V_NIL)], 0);
+    return this.ls([this.b.associate(V_NIL, this.va(v, 0), V_NIL)], 0);
   }
 
   r272(v: i32[]): i32 {
     let rescue_body: i32 = V_NIL;
-    rescue_body = this.b.rescueBody(v[1], V_NIL, V_NIL, V_NIL, V_NIL, v[2]);
-    return this.b.beginBody(v[0], this.ls([rescue_body], 0));
+    rescue_body = this.b.rescueBody(this.va(v, 1), V_NIL, V_NIL, V_NIL, V_NIL, this.va(v, 2));
+    return this.b.beginBody(this.va(v, 0), this.ls([rescue_body], 0));
   }
 
   r273(v: i32[]): i32 {
@@ -2255,14 +2260,14 @@ export class RbParser {
     if (!(this.declaredForwardArgsP())) {
       return this.fail();
     }
-    return this.ls([v[0], this.ls([v[1], this.b.forwardedArgs(v[3])], 1), v[4]], 0);
+    return this.ls([this.va(v, 0), this.ls([this.va(v, 1), this.b.forwardedArgs(this.va(v, 3))], 1), this.va(v, 4)], 0);
   }
 
   r275(v: i32[]): i32 {
     if (!(this.declaredForwardArgsP())) {
       return this.fail();
     }
-    return this.ls([v[0], this.ls([this.b.forwardedArgs(v[1])], 0), v[2]], 0);
+    return this.ls([this.va(v, 0), this.ls([this.b.forwardedArgs(this.va(v, 1))], 0), this.va(v, 2)], 0);
   }
 
   r276(v: i32[]): i32 {
@@ -2274,39 +2279,39 @@ export class RbParser {
   }
 
   r281(v: i32[]): i32 {
-    return this.a.push(v[0], this.b.associate(V_NIL, v[2], V_NIL));
+    return this.a.push(this.va(v, 0), this.b.associate(V_NIL, this.va(v, 2), V_NIL));
   }
 
   r282(v: i32[]): i32 {
-    return this.ls([this.b.associate(V_NIL, v[0], V_NIL)], 0);
+    return this.ls([this.b.associate(V_NIL, this.va(v, 0), V_NIL)], 0);
   }
 
   r283(v: i32[]): i32 {
-    return this.ls([v[0]], 0);
+    return this.ls([this.va(v, 0)], 0);
   }
 
   r284(v: i32[]): i32 {
-    return this.a.append(v[0], v[1]);
+    return this.a.append(this.va(v, 0), this.va(v, 1));
   }
 
   r285(v: i32[]): i32 {
     let result = v.length > 0 ? v[0] : V_NIL;
-    result = this.ls([this.b.associate(V_NIL, v[0], V_NIL)], 0);
-    this.a.append(result, v[1]);
+    result = this.ls([this.b.associate(V_NIL, this.va(v, 0), V_NIL)], 0);
+    this.a.append(result, this.va(v, 1));
     return result;
   }
 
   r286(v: i32[]): i32 {
     let result = v.length > 0 ? v[0] : V_NIL;
     let assocs: i32 = V_NIL;
-    assocs = this.b.associate(V_NIL, v[2], V_NIL);
-    result = this.a.push(v[0], assocs);
-    this.a.append(result, v[3]);
+    assocs = this.b.associate(V_NIL, this.va(v, 2), V_NIL);
+    result = this.a.push(this.va(v, 0), assocs);
+    this.a.append(result, this.va(v, 3));
     return result;
   }
 
   r287(v: i32[]): i32 {
-    return this.ls([v[0]], 0);
+    return this.ls([this.va(v, 0)], 0);
   }
 
   r288(v: i32[]): i32 {
@@ -2338,11 +2343,11 @@ export class RbParser {
     } else {
       this.lx.cmdarg.pop();
     }
-    return v[1];
+    return this.va(v, 1);
   }
 
   r290(v: i32[]): i32 {
-    return this.b.blockPass(v[0], v[1]);
+    return this.b.blockPass(this.va(v, 0), this.va(v, 1));
   }
 
   r291(v: i32[]): i32 {
@@ -2352,11 +2357,11 @@ export class RbParser {
     if ((((this.ctx.inDynamicBlock() && this.ctx.in_def) && this.declaredAnonymousBlockargInCurrentScpeP()) && this.parentHasAnonymousBlockargP())) {
       return this.fail();
     }
-    return this.b.blockPass(v[0], V_NIL);
+    return this.b.blockPass(this.va(v, 0), V_NIL);
   }
 
   r292(v: i32[]): i32 {
-    return this.ls([v[1]], 0);
+    return this.ls([this.va(v, 1)], 0);
   }
 
   r293(v: i32[]): i32 {
@@ -2364,19 +2369,19 @@ export class RbParser {
   }
 
   r294(v: i32[]): i32 {
-    return this.ls([v[0]], 0);
+    return this.ls([this.va(v, 0)], 0);
   }
 
   r296(v: i32[]): i32 {
-    return this.a.push(v[0], v[2]);
+    return this.a.push(this.va(v, 0), this.va(v, 2));
   }
 
   r297(v: i32[]): i32 {
-    return this.a.append(v[0], v[2]);
+    return this.a.append(this.va(v, 0), this.va(v, 2));
   }
 
   r298(v: i32[]): i32 {
-    return this.ls([this.b.splat(v[0], v[1])], 0);
+    return this.ls([this.b.splat(this.va(v, 0), this.va(v, 1))], 0);
   }
 
   r299(v: i32[]): i32 {
@@ -2386,27 +2391,27 @@ export class RbParser {
     if ((((this.ctx.inDynamicBlock() && this.ctx.in_def) && this.declaredAnonymousRestargInCurrentScopeP()) && this.parentHasAnonymousRestargP())) {
       return this.fail();
     }
-    return this.ls([this.b.forwardedRestarg(v[0])], 0);
+    return this.ls([this.b.forwardedRestarg(this.va(v, 0))], 0);
   }
 
   r300(v: i32[]): i32 {
-    return this.b.array(V_NIL, v[0], V_NIL);
+    return this.b.array(V_NIL, this.va(v, 0), V_NIL);
   }
 
   r302(v: i32[]): i32 {
-    return this.a.push(v[0], v[2]);
+    return this.a.push(this.va(v, 0), this.va(v, 2));
   }
 
   r303(v: i32[]): i32 {
-    return this.a.push(v[0], this.b.splat(v[2], v[3]));
+    return this.a.push(this.va(v, 0), this.b.splat(this.va(v, 2), this.va(v, 3)));
   }
 
   r304(v: i32[]): i32 {
-    return this.ls([this.b.splat(v[0], v[1])], 0);
+    return this.ls([this.b.splat(this.va(v, 0), this.va(v, 1))], 0);
   }
 
   r315(v: i32[]): i32 {
-    return this.b.callMethod(V_NIL, V_NIL, v[0]);
+    return this.b.callMethod(V_NIL, V_NIL, this.va(v, 0));
   }
 
   r316(v: i32[]): i32 {
@@ -2416,7 +2421,7 @@ export class RbParser {
 
   r317(v: i32[]): i32 {
     this.lx.cmdarg.pop();
-    return this.b.beginKeyword(v[0], v[2], v[3]);
+    return this.b.beginKeyword(this.va(v, 0), this.va(v, 2), this.va(v, 3));
   }
 
   r318(v: i32[]): i32 {
@@ -2425,56 +2430,56 @@ export class RbParser {
   }
 
   r319(v: i32[]): i32 {
-    return this.b.begin(v[0], v[1], v[3]);
+    return this.b.begin(this.va(v, 0), this.va(v, 1), this.va(v, 3));
   }
 
   r320(v: i32[]): i32 {
-    return this.b.begin(v[0], v[1], v[2]);
+    return this.b.begin(this.va(v, 0), this.va(v, 1), this.va(v, 2));
   }
 
   r321(v: i32[]): i32 {
-    return this.b.constFetch(v[0], v[1], v[2]);
+    return this.b.constFetch(this.va(v, 0), this.va(v, 1), this.va(v, 2));
   }
 
   r322(v: i32[]): i32 {
-    return this.b.constGlobal(v[0], v[1]);
+    return this.b.constGlobal(this.va(v, 0), this.va(v, 1));
   }
 
   r323(v: i32[]): i32 {
-    return this.b.array(v[0], v[1], v[2]);
+    return this.b.array(this.va(v, 0), this.va(v, 1), this.va(v, 2));
   }
 
   r324(v: i32[]): i32 {
-    return this.b.associate(v[0], v[1], v[2]);
+    return this.b.associate(this.va(v, 0), this.va(v, 1), this.va(v, 2));
   }
 
   r325(v: i32[]): i32 {
-    return this.b.keywordCmd(NT_RETURN, v[0]);
+    return this.b.keywordCmd(NT_RETURN, this.va(v, 0));
   }
 
   r326(v: i32[]): i32 {
-    return this.b.keywordCmd(NT_YIELD, v[0], v[1], v[2], v[3]);
+    return this.b.keywordCmd(NT_YIELD, this.va(v, 0), this.va(v, 1), this.va(v, 2), this.va(v, 3));
   }
 
   r327(v: i32[]): i32 {
-    return this.b.keywordCmd(NT_YIELD, v[0], v[1], this.a.list(), v[2]);
+    return this.b.keywordCmd(NT_YIELD, this.va(v, 0), this.va(v, 1), this.a.list(), this.va(v, 2));
   }
 
   r328(v: i32[]): i32 {
-    return this.b.keywordCmd(NT_YIELD, v[0]);
+    return this.b.keywordCmd(NT_YIELD, this.va(v, 0));
   }
 
   r329(v: i32[]): i32 {
-    this.ctx.in_defined = this.cb(v[3], 1);
-    return this.b.keywordCmd(NT_DEFINED_P, v[0], v[2], this.ls([v[4]], 0), v[5]);
+    this.ctx.in_defined = this.cb(this.va(v, 3), 1);
+    return this.b.keywordCmd(NT_DEFINED_P, this.va(v, 0), this.va(v, 2), this.ls([this.va(v, 4)], 0), this.va(v, 5));
   }
 
   r330(v: i32[]): i32 {
-    return this.b.notOp(v[0], v[1], v[2], v[3]);
+    return this.b.notOp(this.va(v, 0), this.va(v, 1), this.va(v, 2), this.va(v, 3));
   }
 
   r331(v: i32[]): i32 {
-    return this.b.notOp(v[0], v[1], V_NIL, v[2]);
+    return this.b.notOp(this.va(v, 0), this.va(v, 1), V_NIL, this.va(v, 2));
   }
 
   r332(v: i32[]): i32 {
@@ -2483,11 +2488,11 @@ export class RbParser {
     let args: i32 = V_NIL;
     let body: i32 = V_NIL;
     let end_t: i32 = V_NIL;
-    method_call = this.b.callMethod(V_NIL, V_NIL, v[0]);
-    begin_t = this.a.at(v[1], 0);
-    args = this.a.at(v[1], 1);
-    body = this.a.at(v[1], 2);
-    end_t = this.a.at(v[1], 3);
+    method_call = this.b.callMethod(V_NIL, V_NIL, this.va(v, 0));
+    begin_t = this.a.at(this.va(v, 1), 0);
+    args = this.a.at(this.va(v, 1), 1);
+    body = this.a.at(this.va(v, 1), 2);
+    end_t = this.a.at(this.va(v, 1), 3);
     return this.b.block(method_call, begin_t, args, body, end_t);
   }
 
@@ -2496,35 +2501,35 @@ export class RbParser {
     let args: i32 = V_NIL;
     let body: i32 = V_NIL;
     let end_t: i32 = V_NIL;
-    begin_t = this.a.at(v[1], 0);
-    args = this.a.at(v[1], 1);
-    body = this.a.at(v[1], 2);
-    end_t = this.a.at(v[1], 3);
-    return this.b.block(v[0], begin_t, args, body, end_t);
+    begin_t = this.a.at(this.va(v, 1), 0);
+    args = this.a.at(this.va(v, 1), 1);
+    body = this.a.at(this.va(v, 1), 2);
+    end_t = this.a.at(this.va(v, 1), 3);
+    return this.b.block(this.va(v, 0), begin_t, args, body, end_t);
   }
 
   r336(v: i32[]): i32 {
     let else_t: i32 = V_NIL;
     let else_: i32 = V_NIL;
-    else_t = this.a.at(v[4], 0);
-    else_ = this.a.at(v[4], 1);
-    return this.b.condition(v[0], v[1], v[2], v[3], else_t, else_, v[5]);
+    else_t = this.a.at(this.va(v, 4), 0);
+    else_ = this.a.at(this.va(v, 4), 1);
+    return this.b.condition(this.va(v, 0), this.va(v, 1), this.va(v, 2), this.va(v, 3), else_t, else_, this.va(v, 5));
   }
 
   r337(v: i32[]): i32 {
     let else_t: i32 = V_NIL;
     let else_: i32 = V_NIL;
-    else_t = this.a.at(v[4], 0);
-    else_ = this.a.at(v[4], 1);
-    return this.b.condition(v[0], v[1], v[2], else_, else_t, v[3], v[5]);
+    else_t = this.a.at(this.va(v, 4), 0);
+    else_ = this.a.at(this.va(v, 4), 1);
+    return this.b.condition(this.va(v, 0), this.va(v, 1), this.va(v, 2), else_, else_t, this.va(v, 3), this.va(v, 5));
   }
 
   r338(v: i32[]): i32 {
-    return this.b.loop(NT_WHILE, v[0], this.a.at(v[1], 0), this.a.at(v[1], 1), v[2], v[3]);
+    return this.b.loop(NT_WHILE, this.va(v, 0), this.a.at(this.va(v, 1), 0), this.a.at(this.va(v, 1), 1), this.va(v, 2), this.va(v, 3));
   }
 
   r339(v: i32[]): i32 {
-    return this.b.loop(NT_UNTIL, v[0], this.a.at(v[1], 0), this.a.at(v[1], 1), v[2], v[3]);
+    return this.b.loop(NT_UNTIL, this.va(v, 0), this.a.at(this.va(v, 1), 0), this.a.at(this.va(v, 1), 1), this.va(v, 2), this.va(v, 3));
   }
 
   r340(v: i32[]): i32 {
@@ -2532,11 +2537,11 @@ export class RbParser {
     let t1: i32 = V_NIL;
     let else_t: i32 = V_NIL;
     let else_body: i32 = V_NIL;
-    when_bodies = this.a.slice(v[3], 0, this.a.len(v[3]) - 1);
-    t1 = this.a.at(v[3], -1);
+    when_bodies = this.a.slice(this.va(v, 3), 0, this.a.len(this.va(v, 3)) - 1);
+    t1 = this.a.at(this.va(v, 3), -1);
     else_t = this.a.at(t1, 0);
     else_body = this.a.at(t1, 1);
-    return this.b.case_(v[0], v[1], when_bodies, else_t, else_body, v[4]);
+    return this.b.case_(this.va(v, 0), this.va(v, 1), when_bodies, else_t, else_body, this.va(v, 4));
   }
 
   r341(v: i32[]): i32 {
@@ -2544,11 +2549,11 @@ export class RbParser {
     let t1: i32 = V_NIL;
     let else_t: i32 = V_NIL;
     let else_body: i32 = V_NIL;
-    when_bodies = this.a.slice(v[2], 0, this.a.len(v[2]) - 1);
-    t1 = this.a.at(v[2], -1);
+    when_bodies = this.a.slice(this.va(v, 2), 0, this.a.len(this.va(v, 2)) - 1);
+    t1 = this.a.at(this.va(v, 2), -1);
     else_t = this.a.at(t1, 0);
     else_body = this.a.at(t1, 1);
-    return this.b.case_(v[0], V_NIL, when_bodies, else_t, else_body, v[3]);
+    return this.b.case_(this.va(v, 0), V_NIL, when_bodies, else_t, else_body, this.va(v, 3));
   }
 
   r342(v: i32[]): i32 {
@@ -2556,15 +2561,15 @@ export class RbParser {
     let t1: i32 = V_NIL;
     let else_t: i32 = V_NIL;
     let else_body: i32 = V_NIL;
-    in_bodies = this.a.slice(v[3], 0, this.a.len(v[3]) - 1);
-    t1 = this.a.at(v[3], -1);
+    in_bodies = this.a.slice(this.va(v, 3), 0, this.a.len(this.va(v, 3)) - 1);
+    t1 = this.a.at(this.va(v, 3), -1);
     else_t = this.a.at(t1, 0);
     else_body = this.a.at(t1, 1);
-    return this.b.caseMatch(v[0], v[1], in_bodies, else_t, else_body, v[4]);
+    return this.b.caseMatch(this.va(v, 0), this.va(v, 1), in_bodies, else_t, else_body, this.va(v, 4));
   }
 
   r343(v: i32[]): i32 {
-    return this.b.for_(v[0], v[1], v[2], this.a.at(v[3], 0), this.a.at(v[3], 1), v[4], v[5]);
+    return this.b.for_(this.va(v, 0), this.va(v, 1), this.va(v, 2), this.a.at(this.va(v, 3), 0), this.a.at(this.va(v, 3), 1), this.va(v, 4), this.va(v, 5));
   }
 
   r344(v: i32[]): i32 {
@@ -2579,14 +2584,14 @@ export class RbParser {
     let ctx: i32 = V_NIL;
     let lt_t: i32 = V_NIL;
     let superclass: i32 = V_NIL;
-    k_class = this.a.at(v[0], 0);
-    ctx = this.a.at(v[0], 1);
+    k_class = this.a.at(this.va(v, 0), 0);
+    ctx = this.a.at(this.va(v, 0), 1);
     if (this.ctx.in_def) {
       return this.fail();
     }
-    lt_t = this.a.at(v[2], 0);
-    superclass = this.a.at(v[2], 1);
-    result = this.b.defClass(k_class, v[1], lt_t, superclass, v[4], v[5]);
+    lt_t = this.a.at(this.va(v, 2), 0);
+    superclass = this.a.at(this.va(v, 2), 1);
+    result = this.b.defClass(k_class, this.va(v, 1), lt_t, superclass, this.va(v, 4), this.va(v, 5));
     this.localPop();
     this.ctx.in_class = this.cb(ctx, 16);
     return result;
@@ -2603,9 +2608,9 @@ export class RbParser {
     let result = v.length > 0 ? v[0] : V_NIL;
     let k_class: i32 = V_NIL;
     let ctx: i32 = V_NIL;
-    k_class = this.a.at(v[0], 0);
-    ctx = this.a.at(v[0], 1);
-    result = this.b.defSclass(k_class, v[1], v[2], v[5], v[6]);
+    k_class = this.a.at(this.va(v, 0), 0);
+    ctx = this.a.at(this.va(v, 0), 1);
+    result = this.b.defSclass(k_class, this.va(v, 1), this.va(v, 2), this.va(v, 5), this.va(v, 6));
     this.localPop();
     this.ctx.in_def = this.cb(ctx, 8);
     this.ctx.in_class = this.cb(ctx, 16);
@@ -2622,12 +2627,12 @@ export class RbParser {
     let result = v.length > 0 ? v[0] : V_NIL;
     let k_mod: i32 = V_NIL;
     let ctx: i32 = V_NIL;
-    k_mod = this.a.at(v[0], 0);
-    ctx = this.a.at(v[0], 1);
+    k_mod = this.a.at(this.va(v, 0), 0);
+    ctx = this.a.at(this.va(v, 0), 1);
     if (this.ctx.in_def) {
       return this.fail();
     }
-    result = this.b.defModule(k_mod, v[1], v[3], v[4]);
+    result = this.b.defModule(k_mod, this.va(v, 1), this.va(v, 3), this.va(v, 4));
     this.localPop();
     this.ctx.in_class = this.cb(ctx, 16);
     return result;
@@ -2639,11 +2644,11 @@ export class RbParser {
     let t1: i32 = V_NIL;
     let name_t: i32 = V_NIL;
     let ctx: i32 = V_NIL;
-    def_t = this.a.at(v[0], 0);
-    t1 = this.a.at(v[0], 1);
+    def_t = this.a.at(this.va(v, 0), 0);
+    t1 = this.a.at(this.va(v, 0), 1);
     name_t = this.a.at(t1, 0);
     ctx = this.a.at(t1, 1);
-    result = this.b.defMethod(def_t, name_t, v[1], v[2], v[3]);
+    result = this.b.defMethod(def_t, name_t, this.va(v, 1), this.va(v, 2), this.va(v, 3));
     this.localPop();
     this.st.argPop();
     this.ctx.in_def = this.cb(ctx, 8);
@@ -2658,13 +2663,13 @@ export class RbParser {
     let t1: i32 = V_NIL;
     let name_t: i32 = V_NIL;
     let ctx: i32 = V_NIL;
-    def_t = this.a.at(v[0], 0);
-    recv = this.a.at(v[0], 1);
-    dot_t = this.a.at(v[0], 2);
-    t1 = this.a.at(v[0], 3);
+    def_t = this.a.at(this.va(v, 0), 0);
+    recv = this.a.at(this.va(v, 0), 1);
+    dot_t = this.a.at(this.va(v, 0), 2);
+    t1 = this.a.at(this.va(v, 0), 3);
     name_t = this.a.at(t1, 0);
     ctx = this.a.at(t1, 1);
-    result = this.b.defSingleton(def_t, recv, dot_t, name_t, v[1], v[2], v[3]);
+    result = this.b.defSingleton(def_t, recv, dot_t, name_t, this.va(v, 1), this.va(v, 2), this.va(v, 3));
     this.localPop();
     this.st.argPop();
     this.ctx.in_def = this.cb(ctx, 8);
@@ -2672,32 +2677,32 @@ export class RbParser {
   }
 
   r352(v: i32[]): i32 {
-    return this.b.keywordCmd(NT_BREAK, v[0]);
+    return this.b.keywordCmd(NT_BREAK, this.va(v, 0));
   }
 
   r353(v: i32[]): i32 {
-    return this.b.keywordCmd(NT_NEXT, v[0]);
+    return this.b.keywordCmd(NT_NEXT, this.va(v, 0));
   }
 
   r354(v: i32[]): i32 {
-    return this.b.keywordCmd(NT_REDO, v[0]);
+    return this.b.keywordCmd(NT_REDO, this.va(v, 0));
   }
 
   r355(v: i32[]): i32 {
-    return this.b.keywordCmd(NT_RETRY, v[0]);
+    return this.b.keywordCmd(NT_RETRY, this.va(v, 0));
   }
 
   r357(v: i32[]): i32 {
-    return this.ls([v[0], this.a.scalar(this.ctx.bits())], 0);
+    return this.ls([this.va(v, 0), this.a.scalar(this.ctx.bits())], 0);
   }
 
   r358(v: i32[]): i32 {
-    return this.ls([v[0], this.a.scalar(this.ctx.bits())], 0);
+    return this.ls([this.va(v, 0), this.a.scalar(this.ctx.bits())], 0);
   }
 
   r359(v: i32[]): i32 {
     let result = v.length > 0 ? v[0] : V_NIL;
-    result = v[0];
+    result = this.va(v, 0);
     this.ctx.in_argdef = true;
     return result;
   }
@@ -2710,15 +2715,15 @@ export class RbParser {
   }
 
   r363(v: i32[]): i32 {
-    return v[1];
+    return this.va(v, 1);
   }
 
   r367(v: i32[]): i32 {
     let else_t: i32 = V_NIL;
     let else_: i32 = V_NIL;
-    else_t = this.a.at(v[4], 0);
-    else_ = this.a.at(v[4], 1);
-    return this.ls([v[0], this.b.condition(v[0], v[1], v[2], v[3], else_t, else_, V_NIL)], 0);
+    else_t = this.a.at(this.va(v, 4), 0);
+    else_ = this.a.at(this.va(v, 4), 1);
+    return this.ls([this.va(v, 0), this.b.condition(this.va(v, 0), this.va(v, 1), this.va(v, 2), this.va(v, 3), else_t, else_, V_NIL)], 0);
   }
 
   r369(v: i32[]): i32 {
@@ -2726,43 +2731,43 @@ export class RbParser {
   }
 
   r372(v: i32[]): i32 {
-    return this.b.arg(v[0]);
+    return this.b.arg(this.va(v, 0));
   }
 
   r373(v: i32[]): i32 {
-    return this.b.multiLhs(v[0], v[1], v[2]);
+    return this.b.multiLhs(this.va(v, 0), this.va(v, 1), this.va(v, 2));
   }
 
   r374(v: i32[]): i32 {
-    return this.ls([v[0]], 0);
+    return this.ls([this.va(v, 0)], 0);
   }
 
   r375(v: i32[]): i32 {
-    return this.a.push(v[0], v[2]);
+    return this.a.push(this.va(v, 0), this.va(v, 2));
   }
 
   r377(v: i32[]): i32 {
-    return this.a.push(v[0], v[2]);
+    return this.a.push(this.va(v, 0), this.va(v, 2));
   }
 
   r378(v: i32[]): i32 {
-    return this.a.append(this.a.push(v[0], v[2]), v[4]);
+    return this.a.append(this.a.push(this.va(v, 0), this.va(v, 2)), this.va(v, 4));
   }
 
   r379(v: i32[]): i32 {
-    return this.ls([v[0]], 0);
+    return this.ls([this.va(v, 0)], 0);
   }
 
   r380(v: i32[]): i32 {
-    return this.ls([v[0], v[2]], 2);
+    return this.ls([this.va(v, 0), this.va(v, 2)], 2);
   }
 
   r381(v: i32[]): i32 {
-    return this.b.restarg(v[0], v[1]);
+    return this.b.restarg(this.va(v, 0), this.va(v, 1));
   }
 
   r382(v: i32[]): i32 {
-    return this.b.restarg(v[0]);
+    return this.b.restarg(this.va(v, 0));
   }
 
   r385(v: i32[]): i32 {
@@ -2771,27 +2776,27 @@ export class RbParser {
   }
 
   r386(v: i32[]): i32 {
-    return v[1];
+    return this.va(v, 1);
   }
 
   r387(v: i32[]): i32 {
-    return this.a.append(this.a.append(v[0], v[2]), v[3]);
+    return this.a.append(this.a.append(this.va(v, 0), this.va(v, 2)), this.va(v, 3));
   }
 
   r388(v: i32[]): i32 {
-    return this.a.append(v[0], v[1]);
+    return this.a.append(this.va(v, 0), this.va(v, 1));
   }
 
   r389(v: i32[]): i32 {
-    return this.a.append(v[0], v[1]);
+    return this.a.append(this.va(v, 0), this.va(v, 1));
   }
 
   r390(v: i32[]): i32 {
-    return this.ls([v[0]], 0);
+    return this.ls([this.va(v, 0)], 0);
   }
 
   r391(v: i32[]): i32 {
-    return v[1];
+    return this.va(v, 1);
   }
 
   r392(v: i32[]): i32 {
@@ -2799,61 +2804,61 @@ export class RbParser {
   }
 
   r394(v: i32[]): i32 {
-    return this.a.append(this.a.append(this.a.append(v[0], v[2]), v[4]), v[5]);
+    return this.a.append(this.a.append(this.a.append(this.va(v, 0), this.va(v, 2)), this.va(v, 4)), this.va(v, 5));
   }
 
   r395(v: i32[]): i32 {
-    return this.a.append(this.a.append(this.a.append(this.a.append(v[0], v[2]), v[4]), v[6]), v[7]);
+    return this.a.append(this.a.append(this.a.append(this.a.append(this.va(v, 0), this.va(v, 2)), this.va(v, 4)), this.va(v, 6)), this.va(v, 7));
   }
 
   r396(v: i32[]): i32 {
-    return this.a.append(this.a.append(v[0], v[2]), v[3]);
+    return this.a.append(this.a.append(this.va(v, 0), this.va(v, 2)), this.va(v, 3));
   }
 
   r397(v: i32[]): i32 {
-    return this.a.append(this.a.append(this.a.append(v[0], v[2]), v[4]), v[5]);
+    return this.a.append(this.a.append(this.a.append(this.va(v, 0), this.va(v, 2)), this.va(v, 4)), this.va(v, 5));
   }
 
   r398(v: i32[]): i32 {
-    return this.a.append(this.a.append(v[0], v[2]), v[3]);
+    return this.a.append(this.a.append(this.va(v, 0), this.va(v, 2)), this.va(v, 3));
   }
 
   r400(v: i32[]): i32 {
-    return this.a.append(this.a.append(this.a.append(v[0], v[2]), v[4]), v[5]);
+    return this.a.append(this.a.append(this.a.append(this.va(v, 0), this.va(v, 2)), this.va(v, 4)), this.va(v, 5));
   }
 
   r401(v: i32[]): i32 {
     let result = v.length > 0 ? v[0] : V_NIL;
-    if (((this.a.len(v[1]) === 0) && (this.a.len(v[0]) === 1))) {
-      result = this.ls([this.b.procarg0(this.a.at(v[0], 0))], 0);
+    if (((this.a.len(this.va(v, 1)) === 0) && (this.a.len(this.va(v, 0)) === 1))) {
+      result = this.ls([this.b.procarg0(this.a.at(this.va(v, 0), 0))], 0);
     } else {
-      result = this.a.append(v[0], v[1]);
+      result = this.a.append(this.va(v, 0), this.va(v, 1));
     }
     return result;
   }
 
   r402(v: i32[]): i32 {
-    return this.a.append(this.a.append(v[0], v[2]), v[3]);
+    return this.a.append(this.a.append(this.va(v, 0), this.va(v, 2)), this.va(v, 3));
   }
 
   r403(v: i32[]): i32 {
-    return this.a.append(this.a.append(this.a.append(v[0], v[2]), v[4]), v[5]);
+    return this.a.append(this.a.append(this.a.append(this.va(v, 0), this.va(v, 2)), this.va(v, 4)), this.va(v, 5));
   }
 
   r404(v: i32[]): i32 {
-    return this.a.append(v[0], v[1]);
+    return this.a.append(this.va(v, 0), this.va(v, 1));
   }
 
   r405(v: i32[]): i32 {
-    return this.a.append(this.a.append(v[0], v[2]), v[3]);
+    return this.a.append(this.a.append(this.va(v, 0), this.va(v, 2)), this.va(v, 3));
   }
 
   r406(v: i32[]): i32 {
-    return this.a.append(v[0], v[1]);
+    return this.a.append(this.va(v, 0), this.va(v, 1));
   }
 
   r407(v: i32[]): i32 {
-    return this.a.append(this.a.append(v[0], v[2]), v[3]);
+    return this.a.append(this.a.append(this.va(v, 0), this.va(v, 2)), this.va(v, 3));
   }
 
   r409(v: i32[]): i32 {
@@ -2869,14 +2874,14 @@ export class RbParser {
     this.st.setOrdinaryParams();
     this.st.argSet("");
     this.ctx.in_argdef = false;
-    return this.b.args(v[0], v[1], v[2]);
+    return this.b.args(this.va(v, 0), this.va(v, 1), this.va(v, 2));
   }
 
   r412(v: i32[]): i32 {
     this.st.setOrdinaryParams();
     this.st.argSet("");
     this.ctx.in_argdef = false;
-    return this.b.args(v[0], this.a.append(v[1], v[2]), v[3]);
+    return this.b.args(this.va(v, 0), this.a.append(this.va(v, 1), this.va(v, 2)), this.va(v, 3));
   }
 
   r413(v: i32[]): i32 {
@@ -2884,20 +2889,20 @@ export class RbParser {
   }
 
   r414(v: i32[]): i32 {
-    return v[2];
+    return this.va(v, 2);
   }
 
   r415(v: i32[]): i32 {
-    return this.ls([v[0]], 0);
+    return this.ls([this.va(v, 0)], 0);
   }
 
   r416(v: i32[]): i32 {
-    return this.a.push(v[0], v[2]);
+    return this.a.push(this.va(v, 0), this.va(v, 2));
   }
 
   r417(v: i32[]): i32 {
-    this.env.declare(this.a.tokValue(v[0]));
-    return this.b.shadowarg(v[0]);
+    this.env.declare(this.a.tokValue(this.va(v, 0)));
+    return this.b.shadowarg(this.va(v, 0));
   }
 
   r419(v: i32[]): i32 {
@@ -2920,30 +2925,30 @@ export class RbParser {
     let begin_t: i32 = V_NIL;
     let body: i32 = V_NIL;
     let end_t: i32 = V_NIL;
-    lambda_call = this.b.callLambda(v[0]);
-    args = (this.st.hasNumparams() ? this.b.numargs(this.st.npTop()) : v[2]);
-    begin_t = this.a.at(v[4], 0);
-    body = this.a.at(v[4], 1);
-    end_t = this.a.at(v[4], 2);
+    lambda_call = this.b.callLambda(this.va(v, 0));
+    args = (this.st.hasNumparams() ? this.b.numargs(this.st.npTop()) : this.va(v, 2));
+    begin_t = this.a.at(this.va(v, 4), 0);
+    body = this.a.at(this.va(v, 4), 1);
+    end_t = this.a.at(this.va(v, 4), 2);
     this.st.npPop();
     this.unextend();
     this.lx.cmdarg.pop();
-    this.ctx.in_lambda = this.cb(v[1], 64);
+    this.ctx.in_lambda = this.cb(this.va(v, 1), 64);
     return this.b.block(lambda_call, begin_t, args, body, end_t);
   }
 
   r422(v: i32[]): i32 {
     this.ctx.in_argdef = false;
     this.st.setOrdinaryParams();
-    return this.b.args(v[0], this.a.append(v[1], v[2]), v[3]);
+    return this.b.args(this.va(v, 0), this.a.append(this.va(v, 1), this.va(v, 2)), this.va(v, 3));
   }
 
   r423(v: i32[]): i32 {
     this.ctx.in_argdef = false;
-    if ((this.a.len(v[0]) > 0)) {
+    if ((this.a.len(this.va(v, 0)) > 0)) {
       this.st.setOrdinaryParams();
     }
-    return this.b.args(V_NIL, v[0], V_NIL);
+    return this.b.args(V_NIL, this.va(v, 0), V_NIL);
   }
 
   r424(v: i32[]): i32 {
@@ -2954,8 +2959,8 @@ export class RbParser {
   }
 
   r425(v: i32[]): i32 {
-    this.ctx.in_lambda = this.cb(v[1], 64);
-    return this.ls([v[0], v[2], v[3]], 0);
+    this.ctx.in_lambda = this.cb(this.va(v, 1), 64);
+    return this.ls([this.va(v, 0), this.va(v, 2), this.va(v, 3)], 0);
   }
 
   r426(v: i32[]): i32 {
@@ -2966,8 +2971,8 @@ export class RbParser {
   }
 
   r427(v: i32[]): i32 {
-    this.ctx.in_lambda = this.cb(v[1], 64);
-    return this.ls([v[0], v[2], v[3]], 0);
+    this.ctx.in_lambda = this.cb(this.va(v, 1), 64);
+    return this.ls([this.va(v, 0), this.va(v, 2), this.va(v, 3)], 0);
   }
 
   r428(v: i32[]): i32 {
@@ -2978,8 +2983,8 @@ export class RbParser {
   }
 
   r429(v: i32[]): i32 {
-    this.ctx.in_block = this.cb(v[1], 32);
-    return this.ls([v[0], v[2], v[3]], 2);
+    this.ctx.in_block = this.cb(this.va(v, 1), 32);
+    return this.ls([this.va(v, 0), this.va(v, 2), this.va(v, 3)], 2);
   }
 
   r430(v: i32[]): i32 {
@@ -2987,21 +2992,21 @@ export class RbParser {
     let block_args: i32 = V_NIL;
     let body: i32 = V_NIL;
     let end_t: i32 = V_NIL;
-    begin_t = this.a.at(v[1], 0);
-    block_args = this.a.at(v[1], 1);
-    body = this.a.at(v[1], 2);
-    end_t = this.a.at(v[1], 3);
-    return this.b.block(v[0], begin_t, block_args, body, end_t);
+    begin_t = this.a.at(this.va(v, 1), 0);
+    block_args = this.a.at(this.va(v, 1), 1);
+    body = this.a.at(this.va(v, 1), 2);
+    end_t = this.a.at(this.va(v, 1), 3);
+    return this.b.block(this.va(v, 0), begin_t, block_args, body, end_t);
   }
 
   r431(v: i32[]): i32 {
     let lparen_t: i32 = V_NIL;
     let args: i32 = V_NIL;
     let rparen_t: i32 = V_NIL;
-    lparen_t = this.a.at(v[3], 0);
-    args = this.a.at(v[3], 1);
-    rparen_t = this.a.at(v[3], 2);
-    return this.b.callMethod(v[0], v[1], v[2], lparen_t, args, rparen_t);
+    lparen_t = this.a.at(this.va(v, 3), 0);
+    args = this.a.at(this.va(v, 3), 1);
+    rparen_t = this.a.at(this.va(v, 3), 2);
+    return this.b.callMethod(this.va(v, 0), this.va(v, 1), this.va(v, 2), lparen_t, args, rparen_t);
   }
 
   r432(v: i32[]): i32 {
@@ -3012,14 +3017,14 @@ export class RbParser {
     let begin_t: i32 = V_NIL;
     let body: i32 = V_NIL;
     let end_t: i32 = V_NIL;
-    lparen_t = this.a.at(v[3], 0);
-    args = this.a.at(v[3], 1);
-    rparen_t = this.a.at(v[3], 2);
-    method_call = this.b.callMethod(v[0], v[1], v[2], lparen_t, args, rparen_t);
-    begin_t = this.a.at(v[4], 0);
-    args = this.a.at(v[4], 1);
-    body = this.a.at(v[4], 2);
-    end_t = this.a.at(v[4], 3);
+    lparen_t = this.a.at(this.va(v, 3), 0);
+    args = this.a.at(this.va(v, 3), 1);
+    rparen_t = this.a.at(this.va(v, 3), 2);
+    method_call = this.b.callMethod(this.va(v, 0), this.va(v, 1), this.va(v, 2), lparen_t, args, rparen_t);
+    begin_t = this.a.at(this.va(v, 4), 0);
+    args = this.a.at(this.va(v, 4), 1);
+    body = this.a.at(this.va(v, 4), 2);
+    end_t = this.a.at(this.va(v, 4), 3);
     return this.b.block(method_call, begin_t, args, body, end_t);
   }
 
@@ -3029,11 +3034,11 @@ export class RbParser {
     let args: i32 = V_NIL;
     let body: i32 = V_NIL;
     let end_t: i32 = V_NIL;
-    method_call = this.b.callMethod(v[0], v[1], v[2], V_NIL, v[3], V_NIL);
-    begin_t = this.a.at(v[4], 0);
-    args = this.a.at(v[4], 1);
-    body = this.a.at(v[4], 2);
-    end_t = this.a.at(v[4], 3);
+    method_call = this.b.callMethod(this.va(v, 0), this.va(v, 1), this.va(v, 2), V_NIL, this.va(v, 3), V_NIL);
+    begin_t = this.a.at(this.va(v, 4), 0);
+    args = this.a.at(this.va(v, 4), 1);
+    body = this.a.at(this.va(v, 4), 2);
+    end_t = this.a.at(this.va(v, 4), 3);
     return this.b.block(method_call, begin_t, args, body, end_t);
   }
 
@@ -3041,72 +3046,72 @@ export class RbParser {
     let lparen_t: i32 = V_NIL;
     let args: i32 = V_NIL;
     let rparen_t: i32 = V_NIL;
-    lparen_t = this.a.at(v[1], 0);
-    args = this.a.at(v[1], 1);
-    rparen_t = this.a.at(v[1], 2);
-    return this.b.callMethod(V_NIL, V_NIL, v[0], lparen_t, args, rparen_t);
+    lparen_t = this.a.at(this.va(v, 1), 0);
+    args = this.a.at(this.va(v, 1), 1);
+    rparen_t = this.a.at(this.va(v, 1), 2);
+    return this.b.callMethod(V_NIL, V_NIL, this.va(v, 0), lparen_t, args, rparen_t);
   }
 
   r435(v: i32[]): i32 {
     let lparen_t: i32 = V_NIL;
     let args: i32 = V_NIL;
     let rparen_t: i32 = V_NIL;
-    lparen_t = this.a.at(v[3], 0);
-    args = this.a.at(v[3], 1);
-    rparen_t = this.a.at(v[3], 2);
-    return this.b.callMethod(v[0], v[1], v[2], lparen_t, args, rparen_t);
+    lparen_t = this.a.at(this.va(v, 3), 0);
+    args = this.a.at(this.va(v, 3), 1);
+    rparen_t = this.a.at(this.va(v, 3), 2);
+    return this.b.callMethod(this.va(v, 0), this.va(v, 1), this.va(v, 2), lparen_t, args, rparen_t);
   }
 
   r436(v: i32[]): i32 {
     let lparen_t: i32 = V_NIL;
     let args: i32 = V_NIL;
     let rparen_t: i32 = V_NIL;
-    lparen_t = this.a.at(v[3], 0);
-    args = this.a.at(v[3], 1);
-    rparen_t = this.a.at(v[3], 2);
-    return this.b.callMethod(v[0], v[1], v[2], lparen_t, args, rparen_t);
+    lparen_t = this.a.at(this.va(v, 3), 0);
+    args = this.a.at(this.va(v, 3), 1);
+    rparen_t = this.a.at(this.va(v, 3), 2);
+    return this.b.callMethod(this.va(v, 0), this.va(v, 1), this.va(v, 2), lparen_t, args, rparen_t);
   }
 
   r437(v: i32[]): i32 {
-    return this.b.callMethod(v[0], v[1], v[2]);
+    return this.b.callMethod(this.va(v, 0), this.va(v, 1), this.va(v, 2));
   }
 
   r438(v: i32[]): i32 {
     let lparen_t: i32 = V_NIL;
     let args: i32 = V_NIL;
     let rparen_t: i32 = V_NIL;
-    lparen_t = this.a.at(v[2], 0);
-    args = this.a.at(v[2], 1);
-    rparen_t = this.a.at(v[2], 2);
-    return this.b.callMethod(v[0], v[1], V_NIL, lparen_t, args, rparen_t);
+    lparen_t = this.a.at(this.va(v, 2), 0);
+    args = this.a.at(this.va(v, 2), 1);
+    rparen_t = this.a.at(this.va(v, 2), 2);
+    return this.b.callMethod(this.va(v, 0), this.va(v, 1), V_NIL, lparen_t, args, rparen_t);
   }
 
   r439(v: i32[]): i32 {
     let lparen_t: i32 = V_NIL;
     let args: i32 = V_NIL;
     let rparen_t: i32 = V_NIL;
-    lparen_t = this.a.at(v[2], 0);
-    args = this.a.at(v[2], 1);
-    rparen_t = this.a.at(v[2], 2);
-    return this.b.callMethod(v[0], v[1], V_NIL, lparen_t, args, rparen_t);
+    lparen_t = this.a.at(this.va(v, 2), 0);
+    args = this.a.at(this.va(v, 2), 1);
+    rparen_t = this.a.at(this.va(v, 2), 2);
+    return this.b.callMethod(this.va(v, 0), this.va(v, 1), V_NIL, lparen_t, args, rparen_t);
   }
 
   r440(v: i32[]): i32 {
     let lparen_t: i32 = V_NIL;
     let args: i32 = V_NIL;
     let rparen_t: i32 = V_NIL;
-    lparen_t = this.a.at(v[1], 0);
-    args = this.a.at(v[1], 1);
-    rparen_t = this.a.at(v[1], 2);
-    return this.b.keywordCmd(NT_SUPER, v[0], lparen_t, args, rparen_t);
+    lparen_t = this.a.at(this.va(v, 1), 0);
+    args = this.a.at(this.va(v, 1), 1);
+    rparen_t = this.a.at(this.va(v, 1), 2);
+    return this.b.keywordCmd(NT_SUPER, this.va(v, 0), lparen_t, args, rparen_t);
   }
 
   r441(v: i32[]): i32 {
-    return this.b.keywordCmd(NT_ZSUPER, v[0]);
+    return this.b.keywordCmd(NT_ZSUPER, this.va(v, 0));
   }
 
   r442(v: i32[]): i32 {
-    return this.b.index(v[0], v[1], v[2], v[3]);
+    return this.b.index(this.va(v, 0), this.va(v, 1), this.va(v, 2), this.va(v, 3));
   }
 
   r443(v: i32[]): i32 {
@@ -3117,8 +3122,8 @@ export class RbParser {
   }
 
   r444(v: i32[]): i32 {
-    this.ctx.in_block = this.cb(v[1], 32);
-    return this.ls([v[0], v[2], v[3]], 2);
+    this.ctx.in_block = this.cb(this.va(v, 1), 32);
+    return this.ls([this.va(v, 0), this.va(v, 2), this.va(v, 3)], 2);
   }
 
   r445(v: i32[]): i32 {
@@ -3129,8 +3134,8 @@ export class RbParser {
   }
 
   r446(v: i32[]): i32 {
-    this.ctx.in_block = this.cb(v[1], 32);
-    return this.ls([v[0], v[2], v[3]], 2);
+    this.ctx.in_block = this.cb(this.va(v, 1), 32);
+    return this.ls([this.va(v, 0), this.va(v, 2), this.va(v, 3)], 2);
   }
 
   r447(v: i32[]): i32 {
@@ -3142,8 +3147,8 @@ export class RbParser {
   r448(v: i32[]): i32 {
     let result = v.length > 0 ? v[0] : V_NIL;
     let args: i32 = V_NIL;
-    args = (this.st.hasNumparams() ? this.b.numargs(this.st.npTop()) : v[1]);
-    result = this.ls([args, v[2]], 0);
+    args = (this.st.hasNumparams() ? this.b.numargs(this.st.npTop()) : this.va(v, 1));
+    result = this.ls([args, this.va(v, 2)], 0);
     this.st.npPop();
     this.unextend();
     return result;
@@ -3163,8 +3168,8 @@ export class RbParser {
   r451(v: i32[]): i32 {
     let result = v.length > 0 ? v[0] : V_NIL;
     let args: i32 = V_NIL;
-    args = (this.st.hasNumparams() ? this.b.numargs(this.st.npTop()) : v[2]);
-    result = this.ls([args, v[3]], 0);
+    args = (this.st.hasNumparams() ? this.b.numargs(this.st.npTop()) : this.va(v, 2));
+    result = this.ls([args, this.va(v, 3)], 0);
     this.st.npPop();
     this.unextend();
     this.lx.cmdarg.pop();
@@ -3172,11 +3177,11 @@ export class RbParser {
   }
 
   r452(v: i32[]): i32 {
-    return this.ls([this.b.when(v[0], v[1], v[2], v[3]), v[4]], 2);
+    return this.ls([this.b.when(this.va(v, 0), this.va(v, 1), this.va(v, 2), this.va(v, 3)), this.va(v, 4)], 2);
   }
 
   r453(v: i32[]): i32 {
-    return this.ls([v[0]], 0);
+    return this.ls([this.va(v, 0)], 0);
   }
 
   r455(v: i32[]): i32 {
@@ -3201,70 +3206,70 @@ export class RbParser {
   r458(v: i32[]): i32 {
     this.st.varsPop(false);
     this.st.varsPop(true);
-    this.ctx.in_kwarg = this.truthy(v[1]);
+    this.ctx.in_kwarg = this.truthy(this.va(v, 1));
     return v.length > 0 ? v[0] : V_NIL;
   }
 
   r459(v: i32[]): i32 {
-    return this.ls([this.b.inPattern(v[0], this.a.at(v[4], 0), this.a.at(v[4], 1), v[5], v[7]), v[8]], 2);
+    return this.ls([this.b.inPattern(this.va(v, 0), this.a.at(this.va(v, 4), 0), this.a.at(this.va(v, 4), 1), this.va(v, 5), this.va(v, 7)), this.va(v, 8)], 2);
   }
 
   r460(v: i32[]): i32 {
-    return this.ls([v[0]], 0);
+    return this.ls([this.va(v, 0)], 0);
   }
 
   r462(v: i32[]): i32 {
-    return this.ls([v[0], V_NIL], 0);
+    return this.ls([this.va(v, 0), V_NIL], 0);
   }
 
   r463(v: i32[]): i32 {
-    return this.ls([v[0], this.b.ifGuard(v[1], v[2])], 0);
+    return this.ls([this.va(v, 0), this.b.ifGuard(this.va(v, 1), this.va(v, 2))], 0);
   }
 
   r464(v: i32[]): i32 {
-    return this.ls([v[0], this.b.unlessGuard(v[1], v[2])], 0);
+    return this.ls([this.va(v, 0), this.b.unlessGuard(this.va(v, 1), this.va(v, 2))], 0);
   }
 
   r466(v: i32[]): i32 {
     let item: i32 = V_NIL;
-    item = this.b.matchWithTrailingComma(v[0], v[1]);
+    item = this.b.matchWithTrailingComma(this.va(v, 0), this.va(v, 1));
     return this.b.arrayPattern(V_NIL, this.ls([item], 0), V_NIL);
   }
 
   r467(v: i32[]): i32 {
-    return this.b.arrayPattern(V_NIL, this.a.append(this.ls([v[0]], 0), v[2]), V_NIL);
+    return this.b.arrayPattern(V_NIL, this.a.append(this.ls([this.va(v, 0)], 0), this.va(v, 2)), V_NIL);
   }
 
   r468(v: i32[]): i32 {
-    return this.b.findPattern(V_NIL, v[0], V_NIL);
+    return this.b.findPattern(V_NIL, this.va(v, 0), V_NIL);
   }
 
   r469(v: i32[]): i32 {
-    return this.b.arrayPattern(V_NIL, v[0], V_NIL);
+    return this.b.arrayPattern(V_NIL, this.va(v, 0), V_NIL);
   }
 
   r470(v: i32[]): i32 {
-    return this.b.hashPattern(V_NIL, v[0], V_NIL);
+    return this.b.hashPattern(V_NIL, this.va(v, 0), V_NIL);
   }
 
   r472(v: i32[]): i32 {
-    return this.b.matchAs(v[0], v[1], v[2]);
+    return this.b.matchAs(this.va(v, 0), this.va(v, 1), this.va(v, 2));
   }
 
   r474(v: i32[]): i32 {
-    return this.b.matchAlt(v[0], v[1], v[2]);
+    return this.b.matchAlt(this.va(v, 0), this.va(v, 1), this.va(v, 2));
   }
 
   r476(v: i32[]): i32 {
     let result = v.length > 0 ? v[0] : V_NIL;
-    result = v[0];
+    result = this.va(v, 0);
     this.st.varsPush(true);
     return result;
   }
 
   r477(v: i32[]): i32 {
     let result = v.length > 0 ? v[0] : V_NIL;
-    result = v[0];
+    result = this.va(v, 0);
     this.st.varsPush(true);
     return result;
   }
@@ -3272,67 +3277,67 @@ export class RbParser {
   r480(v: i32[]): i32 {
     let pattern: i32 = V_NIL;
     this.st.varsPop(true);
-    pattern = this.b.arrayPattern(V_NIL, v[2], V_NIL);
-    return this.b.constPattern(v[0], v[1], pattern, v[3]);
+    pattern = this.b.arrayPattern(V_NIL, this.va(v, 2), V_NIL);
+    return this.b.constPattern(this.va(v, 0), this.va(v, 1), pattern, this.va(v, 3));
   }
 
   r481(v: i32[]): i32 {
     let pattern: i32 = V_NIL;
     this.st.varsPop(true);
-    pattern = this.b.findPattern(V_NIL, v[2], V_NIL);
-    return this.b.constPattern(v[0], v[1], pattern, v[3]);
+    pattern = this.b.findPattern(V_NIL, this.va(v, 2), V_NIL);
+    return this.b.constPattern(this.va(v, 0), this.va(v, 1), pattern, this.va(v, 3));
   }
 
   r482(v: i32[]): i32 {
     let pattern: i32 = V_NIL;
     this.st.varsPop(true);
-    pattern = this.b.hashPattern(V_NIL, v[2], V_NIL);
-    return this.b.constPattern(v[0], v[1], pattern, v[3]);
+    pattern = this.b.hashPattern(V_NIL, this.va(v, 2), V_NIL);
+    return this.b.constPattern(this.va(v, 0), this.va(v, 1), pattern, this.va(v, 3));
   }
 
   r483(v: i32[]): i32 {
     let pattern: i32 = V_NIL;
-    pattern = this.b.arrayPattern(v[1], V_NIL, v[2]);
-    return this.b.constPattern(v[0], v[1], pattern, v[2]);
+    pattern = this.b.arrayPattern(this.va(v, 1), V_NIL, this.va(v, 2));
+    return this.b.constPattern(this.va(v, 0), this.va(v, 1), pattern, this.va(v, 2));
   }
 
   r484(v: i32[]): i32 {
     let pattern: i32 = V_NIL;
     this.st.varsPop(true);
-    pattern = this.b.arrayPattern(V_NIL, v[2], V_NIL);
-    return this.b.constPattern(v[0], v[1], pattern, v[3]);
+    pattern = this.b.arrayPattern(V_NIL, this.va(v, 2), V_NIL);
+    return this.b.constPattern(this.va(v, 0), this.va(v, 1), pattern, this.va(v, 3));
   }
 
   r485(v: i32[]): i32 {
     let pattern: i32 = V_NIL;
     this.st.varsPop(true);
-    pattern = this.b.findPattern(V_NIL, v[2], V_NIL);
-    return this.b.constPattern(v[0], v[1], pattern, v[3]);
+    pattern = this.b.findPattern(V_NIL, this.va(v, 2), V_NIL);
+    return this.b.constPattern(this.va(v, 0), this.va(v, 1), pattern, this.va(v, 3));
   }
 
   r486(v: i32[]): i32 {
     let pattern: i32 = V_NIL;
     this.st.varsPop(true);
-    pattern = this.b.hashPattern(V_NIL, v[2], V_NIL);
-    return this.b.constPattern(v[0], v[1], pattern, v[3]);
+    pattern = this.b.hashPattern(V_NIL, this.va(v, 2), V_NIL);
+    return this.b.constPattern(this.va(v, 0), this.va(v, 1), pattern, this.va(v, 3));
   }
 
   r487(v: i32[]): i32 {
     let pattern: i32 = V_NIL;
-    pattern = this.b.arrayPattern(v[1], V_NIL, v[2]);
-    return this.b.constPattern(v[0], v[1], pattern, v[2]);
+    pattern = this.b.arrayPattern(this.va(v, 1), V_NIL, this.va(v, 2));
+    return this.b.constPattern(this.va(v, 0), this.va(v, 1), pattern, this.va(v, 2));
   }
 
   r488(v: i32[]): i32 {
-    return this.b.arrayPattern(v[0], v[1], v[2]);
+    return this.b.arrayPattern(this.va(v, 0), this.va(v, 1), this.va(v, 2));
   }
 
   r489(v: i32[]): i32 {
-    return this.b.findPattern(v[0], v[1], v[2]);
+    return this.b.findPattern(this.va(v, 0), this.va(v, 1), this.va(v, 2));
   }
 
   r490(v: i32[]): i32 {
-    return this.b.arrayPattern(v[0], this.a.list(), v[1]);
+    return this.b.arrayPattern(this.va(v, 0), this.a.list(), this.va(v, 1));
   }
 
   r491(v: i32[]): i32 {
@@ -3345,12 +3350,12 @@ export class RbParser {
 
   r492(v: i32[]): i32 {
     this.st.varsPop(true);
-    this.ctx.in_kwarg = this.truthy(v[1]);
-    return this.b.hashPattern(v[0], v[2], v[3]);
+    this.ctx.in_kwarg = this.truthy(this.va(v, 1));
+    return this.b.hashPattern(this.va(v, 0), this.va(v, 2), this.va(v, 3));
   }
 
   r493(v: i32[]): i32 {
-    return this.b.hashPattern(v[0], this.a.list(), v[1]);
+    return this.b.hashPattern(this.va(v, 0), this.a.list(), this.va(v, 1));
   }
 
   r494(v: i32[]): i32 {
@@ -3360,99 +3365,99 @@ export class RbParser {
 
   r495(v: i32[]): i32 {
     this.st.varsPop(true);
-    return this.b.begin(v[0], v[2], v[3]);
+    return this.b.begin(this.va(v, 0), this.va(v, 2), this.va(v, 3));
   }
 
   r496(v: i32[]): i32 {
-    return this.ls([v[0]], 0);
+    return this.ls([this.va(v, 0)], 0);
   }
 
   r497(v: i32[]): i32 {
-    return v[0];
+    return this.va(v, 0);
   }
 
   r498(v: i32[]): i32 {
-    return this.ls([v[0], v[1]], 1);
+    return this.ls([this.va(v, 0), this.va(v, 1)], 1);
   }
 
   r499(v: i32[]): i32 {
-    return this.ls([v[0], v[1]], 1);
+    return this.ls([this.va(v, 0), this.va(v, 1)], 1);
   }
 
   r500(v: i32[]): i32 {
-    return this.ls([v[0], v[1], v[3]], 5);
+    return this.ls([this.va(v, 0), this.va(v, 1), this.va(v, 3)], 5);
   }
 
   r502(v: i32[]): i32 {
     let item: i32 = V_NIL;
-    item = this.b.matchWithTrailingComma(v[0], v[1]);
+    item = this.b.matchWithTrailingComma(this.va(v, 0), this.va(v, 1));
     return this.ls([item], 0);
   }
 
   r503(v: i32[]): i32 {
     let last_item: i32 = V_NIL;
-    last_item = this.b.matchWithTrailingComma(v[1], v[2]);
-    return this.ls([v[0], last_item], 1);
+    last_item = this.b.matchWithTrailingComma(this.va(v, 1), this.va(v, 2));
+    return this.ls([this.va(v, 0), last_item], 1);
   }
 
   r504(v: i32[]): i32 {
-    return this.ls([v[0]], 0);
+    return this.ls([this.va(v, 0)], 0);
   }
 
   r505(v: i32[]): i32 {
-    return this.ls([v[0], v[2]], 2);
+    return this.ls([this.va(v, 0), this.va(v, 2)], 2);
   }
 
   r506(v: i32[]): i32 {
-    return this.ls([v[0], v[2], v[4]], 2);
+    return this.ls([this.va(v, 0), this.va(v, 2), this.va(v, 4)], 2);
   }
 
   r507(v: i32[]): i32 {
-    return this.b.matchRest(v[0], v[1]);
+    return this.b.matchRest(this.va(v, 0), this.va(v, 1));
   }
 
   r508(v: i32[]): i32 {
-    return this.b.matchRest(v[0]);
+    return this.b.matchRest(this.va(v, 0));
   }
 
   r509(v: i32[]): i32 {
-    return this.ls([v[0]], 0);
+    return this.ls([this.va(v, 0)], 0);
   }
 
   r510(v: i32[]): i32 {
-    return this.ls([v[0], v[2]], 1);
+    return this.ls([this.va(v, 0), this.va(v, 2)], 1);
   }
 
   r512(v: i32[]): i32 {
-    return this.ls([v[0], v[2]], 3);
+    return this.ls([this.va(v, 0), this.va(v, 2)], 3);
   }
 
   r513(v: i32[]): i32 {
-    return v[0];
+    return this.va(v, 0);
   }
 
   r514(v: i32[]): i32 {
-    return v[0];
+    return this.va(v, 0);
   }
 
   r515(v: i32[]): i32 {
-    return v[0];
+    return this.va(v, 0);
   }
 
   r516(v: i32[]): i32 {
-    return this.ls([v[0]], 0);
+    return this.ls([this.va(v, 0)], 0);
   }
 
   r517(v: i32[]): i32 {
-    return this.ls([v[0], v[2]], 1);
+    return this.ls([this.va(v, 0), this.va(v, 2)], 1);
   }
 
   r518(v: i32[]): i32 {
-    return this.b.matchPair(this.a.at(v[0], 0), this.a.at(v[0], 1), v[1]);
+    return this.b.matchPair(this.a.at(this.va(v, 0), 0), this.a.at(this.va(v, 0), 1), this.va(v, 1));
   }
 
   r519(v: i32[]): i32 {
-    return this.b.matchLabel(this.a.at(v[0], 0), this.a.at(v[0], 1));
+    return this.b.matchLabel(this.a.at(this.va(v, 0), 0), this.a.at(this.va(v, 0), 1));
   }
 
   r520(v: i32[]): i32 {
@@ -3460,15 +3465,15 @@ export class RbParser {
   }
 
   r521(v: i32[]): i32 {
-    return this.ls([this.a.scalar(2), this.ls([v[0], v[1], v[2]], 0)], 0);
+    return this.ls([this.a.scalar(2), this.ls([this.va(v, 0), this.va(v, 1), this.va(v, 2)], 0)], 0);
   }
 
   r522(v: i32[]): i32 {
-    return this.ls([this.b.matchRest(v[0], v[1])], 0);
+    return this.ls([this.b.matchRest(this.va(v, 0), this.va(v, 1))], 0);
   }
 
   r523(v: i32[]): i32 {
-    return this.ls([this.b.matchRest(v[0], V_NIL)], 0);
+    return this.ls([this.b.matchRest(this.va(v, 0), V_NIL)], 0);
   }
 
   r524(v: i32[]): i32 {
@@ -3476,86 +3481,86 @@ export class RbParser {
   }
 
   r526(v: i32[]): i32 {
-    return this.ls([this.b.matchNilPattern(this.a.at(v[0], 0), this.a.at(v[0], 1))], 0);
+    return this.ls([this.b.matchNilPattern(this.a.at(this.va(v, 0), 0), this.a.at(this.va(v, 0), 1))], 0);
   }
 
   r528(v: i32[]): i32 {
-    return this.b.rangeInclusive(v[0], v[1], v[2]);
+    return this.b.rangeInclusive(this.va(v, 0), this.va(v, 1), this.va(v, 2));
   }
 
   r529(v: i32[]): i32 {
-    return this.b.rangeExclusive(v[0], v[1], v[2]);
+    return this.b.rangeExclusive(this.va(v, 0), this.va(v, 1), this.va(v, 2));
   }
 
   r530(v: i32[]): i32 {
-    return this.b.rangeInclusive(v[0], v[1], V_NIL);
+    return this.b.rangeInclusive(this.va(v, 0), this.va(v, 1), V_NIL);
   }
 
   r531(v: i32[]): i32 {
-    return this.b.rangeExclusive(v[0], v[1], V_NIL);
+    return this.b.rangeExclusive(this.va(v, 0), this.va(v, 1), V_NIL);
   }
 
   r535(v: i32[]): i32 {
-    return this.b.rangeInclusive(V_NIL, v[0], v[1]);
+    return this.b.rangeInclusive(V_NIL, this.va(v, 0), this.va(v, 1));
   }
 
   r536(v: i32[]): i32 {
-    return this.b.rangeExclusive(V_NIL, v[0], v[1]);
+    return this.b.rangeExclusive(V_NIL, this.va(v, 0), this.va(v, 1));
   }
 
   r545(v: i32[]): i32 {
-    return this.b.accessible(v[0]);
+    return this.b.accessible(this.va(v, 0));
   }
 
   r547(v: i32[]): i32 {
-    return this.b.assignable(this.b.matchVar(v[0]));
+    return this.b.assignable(this.b.matchVar(this.va(v, 0)));
   }
 
   r548(v: i32[]): i32 {
     let name: string = "";
     let lvar: i32 = V_NIL;
-    name = this.a.tokValue(v[1]);
-    lvar = this.b.accessible(this.b.ident(v[1]));
+    name = this.a.tokValue(this.va(v, 1));
+    lvar = this.b.accessible(this.b.ident(this.va(v, 1)));
     if (!(this.env.declared(name))) {
       return this.fail();
     }
-    return this.b.pin(v[0], lvar);
+    return this.b.pin(this.va(v, 0), lvar);
   }
 
   r549(v: i32[]): i32 {
     let non_lvar: i32 = V_NIL;
-    non_lvar = this.b.accessible(v[1]);
-    return this.b.pin(v[0], non_lvar);
+    non_lvar = this.b.accessible(this.va(v, 1));
+    return this.b.pin(this.va(v, 0), non_lvar);
   }
 
   r550(v: i32[]): i32 {
     let expr: i32 = V_NIL;
-    expr = this.b.begin(v[1], v[2], v[3]);
-    return this.b.pin(v[0], expr);
+    expr = this.b.begin(this.va(v, 1), this.va(v, 2), this.va(v, 3));
+    return this.b.pin(this.va(v, 0), expr);
   }
 
   r551(v: i32[]): i32 {
-    return this.b.constGlobal(v[0], v[1]);
+    return this.b.constGlobal(this.va(v, 0), this.va(v, 1));
   }
 
   r552(v: i32[]): i32 {
-    return this.b.constFetch(v[0], v[1], v[2]);
+    return this.b.constFetch(this.va(v, 0), this.va(v, 1), this.va(v, 2));
   }
 
   r553(v: i32[]): i32 {
-    return this.b.const_(v[0]);
+    return this.b.const_(this.va(v, 0));
   }
 
   r554(v: i32[]): i32 {
     let assoc_t: i32 = V_NIL;
     let exc_var: i32 = V_NIL;
     let exc_list: i32 = V_NIL;
-    assoc_t = this.a.at(v[2], 0);
-    exc_var = this.a.at(v[2], 1);
-    if (this.truthy(v[1])) {
-      exc_list = this.b.array(V_NIL, v[1], V_NIL);
+    assoc_t = this.a.at(this.va(v, 2), 0);
+    exc_var = this.a.at(this.va(v, 2), 1);
+    if (this.truthy(this.va(v, 1))) {
+      exc_list = this.b.array(V_NIL, this.va(v, 1), V_NIL);
     }
-    return this.ls([this.b.rescueBody(v[0], exc_list, assoc_t, exc_var, v[3], v[4]), v[5]], 2);
+    return this.ls([this.b.rescueBody(this.va(v, 0), exc_list, assoc_t, exc_var, this.va(v, 3), this.va(v, 4)), this.va(v, 5)], 2);
   }
 
   r555(v: i32[]): i32 {
@@ -3563,59 +3568,59 @@ export class RbParser {
   }
 
   r556(v: i32[]): i32 {
-    return this.ls([v[0]], 0);
+    return this.ls([this.va(v, 0)], 0);
   }
 
   r559(v: i32[]): i32 {
-    return this.ls([v[0], v[1]], 0);
+    return this.ls([this.va(v, 0), this.va(v, 1)], 0);
   }
 
   r561(v: i32[]): i32 {
-    return this.ls([v[0], v[1]], 0);
+    return this.ls([this.va(v, 0), this.va(v, 1)], 0);
   }
 
   r565(v: i32[]): i32 {
-    return this.b.stringCompose(V_NIL, v[0], V_NIL);
+    return this.b.stringCompose(V_NIL, this.va(v, 0), V_NIL);
   }
 
   r566(v: i32[]): i32 {
-    return this.ls([v[0]], 0);
+    return this.ls([this.va(v, 0)], 0);
   }
 
   r567(v: i32[]): i32 {
-    return this.a.push(v[0], v[1]);
+    return this.a.push(this.va(v, 0), this.va(v, 1));
   }
 
   r568(v: i32[]): i32 {
     let string_: i32 = V_NIL;
-    string_ = this.b.stringCompose(v[0], v[1], v[2]);
+    string_ = this.b.stringCompose(this.va(v, 0), this.va(v, 1), this.va(v, 2));
     return this.b.dedentString(string_, this.lx.dedent_level());
   }
 
   r569(v: i32[]): i32 {
     let string_: i32 = V_NIL;
-    string_ = this.b.string(v[0]);
+    string_ = this.b.string(this.va(v, 0));
     return this.b.dedentString(string_, this.lx.dedent_level());
   }
 
   r570(v: i32[]): i32 {
-    return this.b.character(v[0]);
+    return this.b.character(this.va(v, 0));
   }
 
   r571(v: i32[]): i32 {
     let string_: i32 = V_NIL;
-    string_ = this.b.xstringCompose(v[0], v[1], v[2]);
+    string_ = this.b.xstringCompose(this.va(v, 0), this.va(v, 1), this.va(v, 2));
     return this.b.dedentString(string_, this.lx.dedent_level());
   }
 
   r572(v: i32[]): i32 {
     let opts: i32 = V_NIL;
-    opts = this.b.regexpOptions(v[3]);
-    return this.b.regexpCompose(v[0], v[1], v[2], opts);
+    opts = this.b.regexpOptions(this.va(v, 3));
+    return this.b.regexpCompose(this.va(v, 0), this.va(v, 1), this.va(v, 2), opts);
   }
 
   r575(v: i32[]): i32 {
-    return this.b.wordsCompose(v[0], v[1], v[2]);
+    return this.b.wordsCompose(this.va(v, 0), this.va(v, 1), this.va(v, 2));
   }
 
   r576(v: i32[]): i32 {
@@ -3623,19 +3628,19 @@ export class RbParser {
   }
 
   r577(v: i32[]): i32 {
-    return this.a.push(v[0], this.b.word(v[1]));
+    return this.a.push(this.va(v, 0), this.b.word(this.va(v, 1)));
   }
 
   r578(v: i32[]): i32 {
-    return this.ls([v[0]], 0);
+    return this.ls([this.va(v, 0)], 0);
   }
 
   r579(v: i32[]): i32 {
-    return this.a.push(v[0], v[1]);
+    return this.a.push(this.va(v, 0), this.va(v, 1));
   }
 
   r580(v: i32[]): i32 {
-    return this.b.symbolsCompose(v[0], v[1], v[2]);
+    return this.b.symbolsCompose(this.va(v, 0), this.va(v, 1), this.va(v, 2));
   }
 
   r581(v: i32[]): i32 {
@@ -3643,15 +3648,15 @@ export class RbParser {
   }
 
   r582(v: i32[]): i32 {
-    return this.a.push(v[0], this.b.word(v[1]));
+    return this.a.push(this.va(v, 0), this.b.word(this.va(v, 1)));
   }
 
   r583(v: i32[]): i32 {
-    return this.b.wordsCompose(v[0], v[1], v[2]);
+    return this.b.wordsCompose(this.va(v, 0), this.va(v, 1), this.va(v, 2));
   }
 
   r584(v: i32[]): i32 {
-    return this.b.symbolsCompose(v[0], v[1], v[2]);
+    return this.b.symbolsCompose(this.va(v, 0), this.va(v, 1), this.va(v, 2));
   }
 
   r585(v: i32[]): i32 {
@@ -3659,7 +3664,7 @@ export class RbParser {
   }
 
   r586(v: i32[]): i32 {
-    return this.a.push(v[0], this.b.stringInternal(v[1]));
+    return this.a.push(this.va(v, 0), this.b.stringInternal(this.va(v, 1)));
   }
 
   r587(v: i32[]): i32 {
@@ -3667,7 +3672,7 @@ export class RbParser {
   }
 
   r588(v: i32[]): i32 {
-    return this.a.push(v[0], this.b.symbolInternal(v[1]));
+    return this.a.push(this.va(v, 0), this.b.symbolInternal(this.va(v, 1)));
   }
 
   r589(v: i32[]): i32 {
@@ -3675,7 +3680,7 @@ export class RbParser {
   }
 
   r590(v: i32[]): i32 {
-    return this.a.push(v[0], v[1]);
+    return this.a.push(this.va(v, 0), this.va(v, 1));
   }
 
   r591(v: i32[]): i32 {
@@ -3683,7 +3688,7 @@ export class RbParser {
   }
 
   r592(v: i32[]): i32 {
-    return this.a.push(v[0], v[1]);
+    return this.a.push(this.va(v, 0), this.va(v, 1));
   }
 
   r593(v: i32[]): i32 {
@@ -3691,15 +3696,15 @@ export class RbParser {
   }
 
   r594(v: i32[]): i32 {
-    return this.a.push(v[0], v[1]);
+    return this.a.push(this.va(v, 0), this.va(v, 1));
   }
 
   r595(v: i32[]): i32 {
-    return this.b.stringInternal(v[0]);
+    return this.b.stringInternal(this.va(v, 0));
   }
 
   r596(v: i32[]): i32 {
-    return v[1];
+    return this.va(v, 1);
   }
 
   r597(v: i32[]): i32 {
@@ -3711,25 +3716,25 @@ export class RbParser {
   r598(v: i32[]): i32 {
     this.lx.cmdarg.pop();
     this.lx.cond.pop();
-    return this.b.begin(v[0], v[2], v[3]);
+    return this.b.begin(this.va(v, 0), this.va(v, 2), this.va(v, 3));
   }
 
   r600(v: i32[]): i32 {
-    return this.b.accessible(v[0]);
+    return this.b.accessible(this.va(v, 0));
   }
 
   r604(v: i32[]): i32 {
     this.lx.setState(RL_LEX_EN_EXPR_END);
-    return this.b.symbol(v[0]);
+    return this.b.symbol(this.va(v, 0));
   }
 
   r605(v: i32[]): i32 {
     this.lx.setState(RL_LEX_EN_EXPR_END);
-    return this.b.symbolCompose(v[0], v[1], v[2]);
+    return this.b.symbolCompose(this.va(v, 0), this.va(v, 1), this.va(v, 2));
   }
 
   r606(v: i32[]): i32 {
-    return v[0];
+    return this.va(v, 0);
   }
 
   r607(v: i32[]): i32 {
@@ -3741,94 +3746,94 @@ export class RbParser {
 
   r608(v: i32[]): i32 {
     this.lx.setState(RL_LEX_EN_EXPR_END);
-    return this.b.numeric(NT_INT, v[0]);
+    return this.b.numeric(NT_INT, this.va(v, 0));
   }
 
   r609(v: i32[]): i32 {
     this.lx.setState(RL_LEX_EN_EXPR_END);
-    return this.b.numeric(NT_FLOAT, v[0]);
+    return this.b.numeric(NT_FLOAT, this.va(v, 0));
   }
 
   r610(v: i32[]): i32 {
     this.lx.setState(RL_LEX_EN_EXPR_END);
-    return this.b.numeric(NT_RATIONAL, v[0]);
+    return this.b.numeric(NT_RATIONAL, this.va(v, 0));
   }
 
   r611(v: i32[]): i32 {
     this.lx.setState(RL_LEX_EN_EXPR_END);
-    return this.b.numeric(NT_COMPLEX, v[0]);
+    return this.b.numeric(NT_COMPLEX, this.va(v, 0));
   }
 
   r612(v: i32[]): i32 {
-    return this.b.ivar(v[0]);
+    return this.b.ivar(this.va(v, 0));
   }
 
   r613(v: i32[]): i32 {
-    return this.b.gvar(v[0]);
+    return this.b.gvar(this.va(v, 0));
   }
 
   r614(v: i32[]): i32 {
-    return this.b.cvar(v[0]);
+    return this.b.cvar(this.va(v, 0));
   }
 
   r615(v: i32[]): i32 {
-    return this.b.ident(v[0]);
+    return this.b.ident(this.va(v, 0));
   }
 
   r616(v: i32[]): i32 {
-    return this.b.const_(v[0]);
+    return this.b.const_(this.va(v, 0));
   }
 
   r618(v: i32[]): i32 {
-    return this.b.nil(v[0]);
+    return this.b.nil(this.va(v, 0));
   }
 
   r619(v: i32[]): i32 {
-    return this.b.self_(v[0]);
+    return this.b.self_(this.va(v, 0));
   }
 
   r620(v: i32[]): i32 {
-    return this.b.true_(v[0]);
+    return this.b.true_(this.va(v, 0));
   }
 
   r621(v: i32[]): i32 {
-    return this.b.false_(v[0]);
+    return this.b.false_(this.va(v, 0));
   }
 
   r622(v: i32[]): i32 {
-    return this.b.__FILE__(v[0]);
+    return this.b.__FILE__(this.va(v, 0));
   }
 
   r623(v: i32[]): i32 {
-    return this.b.__LINE__(v[0]);
+    return this.b.__LINE__(this.va(v, 0));
   }
 
   r624(v: i32[]): i32 {
-    return this.b.__ENCODING__(v[0]);
+    return this.b.__ENCODING__(this.va(v, 0));
   }
 
   r625(v: i32[]): i32 {
-    return this.b.accessible(v[0]);
+    return this.b.accessible(this.va(v, 0));
   }
 
   r626(v: i32[]): i32 {
-    return this.b.accessible(v[0]);
+    return this.b.accessible(this.va(v, 0));
   }
 
   r627(v: i32[]): i32 {
-    return this.b.assignable(v[0]);
+    return this.b.assignable(this.va(v, 0));
   }
 
   r628(v: i32[]): i32 {
-    return this.b.assignable(v[0]);
+    return this.b.assignable(this.va(v, 0));
   }
 
   r629(v: i32[]): i32 {
-    return this.b.nthRef(v[0]);
+    return this.b.nthRef(this.va(v, 0));
   }
 
   r630(v: i32[]): i32 {
-    return this.b.backRef(v[0]);
+    return this.b.backRef(this.va(v, 0));
   }
 
   r631(v: i32[]): i32 {
@@ -3837,7 +3842,7 @@ export class RbParser {
   }
 
   r632(v: i32[]): i32 {
-    return this.ls([v[0], v[2]], 0);
+    return this.ls([this.va(v, 0), this.va(v, 2)], 0);
   }
 
   r633(v: i32[]): i32 {
@@ -3851,7 +3856,7 @@ export class RbParser {
 
   r636(v: i32[]): i32 {
     let result = v.length > 0 ? v[0] : V_NIL;
-    result = this.b.args(v[0], v[1], v[2]);
+    result = this.b.args(this.va(v, 0), this.va(v, 1), this.va(v, 2));
     this.lx.setState(RL_LEX_EN_EXPR_VALUE);
     this.ctx.in_argdef = false;
     return result;
@@ -3866,34 +3871,34 @@ export class RbParser {
   }
 
   r639(v: i32[]): i32 {
-    this.ctx.in_kwarg = this.cb(v[0], 2);
+    this.ctx.in_kwarg = this.cb(this.va(v, 0), 2);
     this.ctx.in_argdef = false;
-    return this.b.args(V_NIL, v[1], V_NIL);
+    return this.b.args(V_NIL, this.va(v, 1), V_NIL);
   }
 
   r640(v: i32[]): i32 {
-    return this.a.append(this.a.append(v[0], v[2]), v[3]);
+    return this.a.append(this.a.append(this.va(v, 0), this.va(v, 2)), this.va(v, 3));
   }
 
   r641(v: i32[]): i32 {
-    return this.a.append(v[0], v[1]);
+    return this.a.append(this.va(v, 0), this.va(v, 1));
   }
 
   r642(v: i32[]): i32 {
-    return this.a.append(v[0], v[1]);
+    return this.a.append(this.va(v, 0), this.va(v, 1));
   }
 
   r643(v: i32[]): i32 {
-    return this.ls([v[0]], 0);
+    return this.ls([this.va(v, 0)], 0);
   }
 
   r644(v: i32[]): i32 {
     this.declareForwardArgs();
-    return this.ls([this.b.forwardArg(v[0])], 0);
+    return this.ls([this.b.forwardArg(this.va(v, 0))], 0);
   }
 
   r645(v: i32[]): i32 {
-    return v[1];
+    return this.va(v, 1);
   }
 
   r646(v: i32[]): i32 {
@@ -3901,59 +3906,59 @@ export class RbParser {
   }
 
   r647(v: i32[]): i32 {
-    return this.a.append(this.a.append(this.a.append(v[0], v[2]), v[4]), v[5]);
+    return this.a.append(this.a.append(this.a.append(this.va(v, 0), this.va(v, 2)), this.va(v, 4)), this.va(v, 5));
   }
 
   r648(v: i32[]): i32 {
-    return this.a.append(this.a.append(this.a.append(this.a.append(v[0], v[2]), v[4]), v[6]), v[7]);
+    return this.a.append(this.a.append(this.a.append(this.a.append(this.va(v, 0), this.va(v, 2)), this.va(v, 4)), this.va(v, 6)), this.va(v, 7));
   }
 
   r649(v: i32[]): i32 {
-    return this.a.append(this.a.append(v[0], v[2]), v[3]);
+    return this.a.append(this.a.append(this.va(v, 0), this.va(v, 2)), this.va(v, 3));
   }
 
   r650(v: i32[]): i32 {
-    return this.a.append(this.a.append(this.a.append(v[0], v[2]), v[4]), v[5]);
+    return this.a.append(this.a.append(this.a.append(this.va(v, 0), this.va(v, 2)), this.va(v, 4)), this.va(v, 5));
   }
 
   r651(v: i32[]): i32 {
-    return this.a.append(this.a.append(v[0], v[2]), v[3]);
+    return this.a.append(this.a.append(this.va(v, 0), this.va(v, 2)), this.va(v, 3));
   }
 
   r652(v: i32[]): i32 {
-    return this.a.append(this.a.append(this.a.append(v[0], v[2]), v[4]), v[5]);
+    return this.a.append(this.a.append(this.a.append(this.va(v, 0), this.va(v, 2)), this.va(v, 4)), this.va(v, 5));
   }
 
   r653(v: i32[]): i32 {
-    return this.a.append(v[0], v[1]);
+    return this.a.append(this.va(v, 0), this.va(v, 1));
   }
 
   r654(v: i32[]): i32 {
-    return this.a.append(this.a.append(v[0], v[2]), v[3]);
+    return this.a.append(this.a.append(this.va(v, 0), this.va(v, 2)), this.va(v, 3));
   }
 
   r655(v: i32[]): i32 {
-    return this.a.append(this.a.append(this.a.append(v[0], v[2]), v[4]), v[5]);
+    return this.a.append(this.a.append(this.a.append(this.va(v, 0), this.va(v, 2)), this.va(v, 4)), this.va(v, 5));
   }
 
   r656(v: i32[]): i32 {
-    return this.a.append(v[0], v[1]);
+    return this.a.append(this.va(v, 0), this.va(v, 1));
   }
 
   r657(v: i32[]): i32 {
-    return this.a.append(this.a.append(v[0], v[2]), v[3]);
+    return this.a.append(this.a.append(this.va(v, 0), this.va(v, 2)), this.va(v, 3));
   }
 
   r658(v: i32[]): i32 {
-    return this.a.append(v[0], v[1]);
+    return this.a.append(this.va(v, 0), this.va(v, 1));
   }
 
   r659(v: i32[]): i32 {
-    return this.a.append(this.a.append(v[0], v[2]), v[3]);
+    return this.a.append(this.a.append(this.va(v, 0), this.va(v, 2)), this.va(v, 3));
   }
 
   r660(v: i32[]): i32 {
-    return v[0];
+    return this.va(v, 0);
   }
 
   r661(v: i32[]): i32 {
@@ -3961,7 +3966,7 @@ export class RbParser {
   }
 
   r662(v: i32[]): i32 {
-    return v[0];
+    return this.va(v, 0);
   }
 
   r663(v: i32[]): i32 {
@@ -3981,144 +3986,144 @@ export class RbParser {
   }
 
   r668(v: i32[]): i32 {
-    this.env.declare(this.a.tokValue(v[0]));
+    this.env.declare(this.a.tokValue(this.va(v, 0)));
     this.st.setOrdinaryParams();
-    return v[0];
+    return this.va(v, 0);
   }
 
   r669(v: i32[]): i32 {
-    this.st.argSet(this.a.tokValue(v[0]));
-    return v[0];
+    this.st.argSet(this.a.tokValue(this.va(v, 0)));
+    return this.va(v, 0);
   }
 
   r670(v: i32[]): i32 {
     this.st.argSet("");
-    return this.b.arg(v[0]);
+    return this.b.arg(this.va(v, 0));
   }
 
   r671(v: i32[]): i32 {
-    return this.b.multiLhs(v[0], v[1], v[2]);
+    return this.b.multiLhs(this.va(v, 0), this.va(v, 1), this.va(v, 2));
   }
 
   r672(v: i32[]): i32 {
-    return this.ls([v[0]], 0);
+    return this.ls([this.va(v, 0)], 0);
   }
 
   r673(v: i32[]): i32 {
-    return this.a.push(v[0], v[2]);
+    return this.a.push(this.va(v, 0), this.va(v, 2));
   }
 
   r674(v: i32[]): i32 {
-    this.checkKwargName(v[0]);
-    this.env.declare(this.a.tokValue(v[0]));
+    this.checkKwargName(this.va(v, 0));
+    this.env.declare(this.a.tokValue(this.va(v, 0)));
     this.st.setOrdinaryParams();
-    this.st.argSet(this.a.tokValue(v[0]));
+    this.st.argSet(this.a.tokValue(this.va(v, 0)));
     this.ctx.in_argdef = false;
-    return v[0];
+    return this.va(v, 0);
   }
 
   r675(v: i32[]): i32 {
     this.st.argSet("");
     this.ctx.in_argdef = true;
-    return this.b.kwoptarg(v[0], v[1]);
+    return this.b.kwoptarg(this.va(v, 0), this.va(v, 1));
   }
 
   r676(v: i32[]): i32 {
     this.st.argSet("");
     this.ctx.in_argdef = true;
-    return this.b.kwarg(v[0]);
+    return this.b.kwarg(this.va(v, 0));
   }
 
   r677(v: i32[]): i32 {
     this.ctx.in_argdef = true;
-    return this.b.kwoptarg(v[0], v[1]);
+    return this.b.kwoptarg(this.va(v, 0), this.va(v, 1));
   }
 
   r678(v: i32[]): i32 {
     this.ctx.in_argdef = true;
-    return this.b.kwarg(v[0]);
+    return this.b.kwarg(this.va(v, 0));
   }
 
   r679(v: i32[]): i32 {
-    return this.ls([v[0]], 0);
+    return this.ls([this.va(v, 0)], 0);
   }
 
   r680(v: i32[]): i32 {
-    return this.a.push(v[0], v[2]);
+    return this.a.push(this.va(v, 0), this.va(v, 2));
   }
 
   r681(v: i32[]): i32 {
-    return this.ls([v[0]], 0);
+    return this.ls([this.va(v, 0)], 0);
   }
 
   r682(v: i32[]): i32 {
-    return this.a.push(v[0], v[2]);
+    return this.a.push(this.va(v, 0), this.va(v, 2));
   }
 
   r685(v: i32[]): i32 {
-    return this.ls([this.b.kwnilarg(this.a.at(v[0], 0), this.a.at(v[0], 1))], 0);
+    return this.ls([this.b.kwnilarg(this.a.at(this.va(v, 0), 0), this.a.at(this.va(v, 0), 1))], 0);
   }
 
   r686(v: i32[]): i32 {
-    this.env.declare(this.a.tokValue(v[1]));
-    return this.ls([this.b.kwrestarg(v[0], v[1])], 0);
+    this.env.declare(this.a.tokValue(this.va(v, 1)));
+    return this.ls([this.b.kwrestarg(this.va(v, 0), this.va(v, 1))], 0);
   }
 
   r687(v: i32[]): i32 {
     this.declareAnonymousKwrestarg();
-    return this.ls([this.b.kwrestarg(v[0])], 0);
+    return this.ls([this.b.kwrestarg(this.va(v, 0))], 0);
   }
 
   r688(v: i32[]): i32 {
     this.st.argSet("");
     this.ctx.in_argdef = true;
-    return this.b.optarg(v[0], v[1], v[2]);
+    return this.b.optarg(this.va(v, 0), this.va(v, 1), this.va(v, 2));
   }
 
   r689(v: i32[]): i32 {
     this.st.argSet("");
     this.ctx.in_argdef = true;
-    return this.b.optarg(v[0], v[1], v[2]);
+    return this.b.optarg(this.va(v, 0), this.va(v, 1), this.va(v, 2));
   }
 
   r690(v: i32[]): i32 {
-    return this.ls([v[0]], 0);
+    return this.ls([this.va(v, 0)], 0);
   }
 
   r691(v: i32[]): i32 {
-    return this.a.push(v[0], v[2]);
+    return this.a.push(this.va(v, 0), this.va(v, 2));
   }
 
   r692(v: i32[]): i32 {
-    return this.ls([v[0]], 0);
+    return this.ls([this.va(v, 0)], 0);
   }
 
   r693(v: i32[]): i32 {
-    return this.a.push(v[0], v[2]);
+    return this.a.push(this.va(v, 0), this.va(v, 2));
   }
 
   r696(v: i32[]): i32 {
-    this.env.declare(this.a.tokValue(v[1]));
-    return this.ls([this.b.restarg(v[0], v[1])], 0);
+    this.env.declare(this.a.tokValue(this.va(v, 1)));
+    return this.ls([this.b.restarg(this.va(v, 0), this.va(v, 1))], 0);
   }
 
   r697(v: i32[]): i32 {
     this.declareAnonymousRestarg();
-    return this.ls([this.b.restarg(v[0])], 0);
+    return this.ls([this.b.restarg(this.va(v, 0))], 0);
   }
 
   r700(v: i32[]): i32 {
-    this.env.declare(this.a.tokValue(v[1]));
-    return this.b.blockarg(v[0], v[1]);
+    this.env.declare(this.a.tokValue(this.va(v, 1)));
+    return this.b.blockarg(this.va(v, 0), this.va(v, 1));
   }
 
   r701(v: i32[]): i32 {
     this.declareAnonymousBlockarg();
-    return this.b.blockarg(v[0], V_NIL);
+    return this.b.blockarg(this.va(v, 0), V_NIL);
   }
 
   r702(v: i32[]): i32 {
-    return this.ls([v[1]], 0);
+    return this.ls([this.va(v, 1)], 0);
   }
 
   r703(v: i32[]): i32 {
@@ -4126,7 +4131,7 @@ export class RbParser {
   }
 
   r705(v: i32[]): i32 {
-    return v[1];
+    return this.va(v, 1);
   }
 
   r706(v: i32[]): i32 {
@@ -4134,31 +4139,31 @@ export class RbParser {
   }
 
   r708(v: i32[]): i32 {
-    return this.ls([v[0]], 0);
+    return this.ls([this.va(v, 0)], 0);
   }
 
   r709(v: i32[]): i32 {
-    return this.a.push(v[0], v[2]);
+    return this.a.push(this.va(v, 0), this.va(v, 2));
   }
 
   r710(v: i32[]): i32 {
-    return this.b.pair(v[0], v[1], v[2]);
+    return this.b.pair(this.va(v, 0), this.va(v, 1), this.va(v, 2));
   }
 
   r711(v: i32[]): i32 {
-    return this.b.pairKeyword(v[0], v[1]);
+    return this.b.pairKeyword(this.va(v, 0), this.va(v, 1));
   }
 
   r712(v: i32[]): i32 {
-    return this.b.pairLabel(v[0]);
+    return this.b.pairLabel(this.va(v, 0));
   }
 
   r713(v: i32[]): i32 {
-    return this.b.pairQuoted(v[0], v[1], v[2], v[3]);
+    return this.b.pairQuoted(this.va(v, 0), this.va(v, 1), this.va(v, 2), this.va(v, 3));
   }
 
   r714(v: i32[]): i32 {
-    return this.b.kwsplat(v[0], v[1]);
+    return this.b.kwsplat(this.va(v, 0), this.va(v, 1));
   }
 
   r715(v: i32[]): i32 {
@@ -4168,7 +4173,7 @@ export class RbParser {
     if ((((this.ctx.inDynamicBlock() && this.ctx.in_def) && this.declaredAnonymousKwrestargInCurrentScopeP()) && this.parentHasAnonymousKwrestargP())) {
       return this.fail();
     }
-    return this.b.forwardedKwrestarg(v[0]);
+    return this.b.forwardedKwrestarg(this.va(v, 0));
   }
 
   r726(v: i32[]): i32 {
@@ -4180,15 +4185,15 @@ export class RbParser {
   }
 
   r732(v: i32[]): i32 {
-    return v[1];
+    return this.va(v, 1);
   }
 
   r733(v: i32[]): i32 {
-    return v[1];
+    return this.va(v, 1);
   }
 
   r734(v: i32[]): i32 {
-    return v[1];
+    return this.va(v, 1);
   }
 
   r737(v: i32[]): i32 {

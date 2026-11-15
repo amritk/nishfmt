@@ -201,6 +201,11 @@ export class RbParser {
     return V_NIL;
   }
 
+  /** val[k]: nil past the values the rule has. */
+  va(v: i32[], k: i32): i32 {
+    return k < toI32(v.length) ? v[k] : V_NIL;
+  }
+
   hb(b: boolean): i32 {
     return b ? RB_TRUE : RB_FALSE;
   }

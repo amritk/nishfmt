@@ -460,6 +460,10 @@ const rbPlainSymbol = (s: string): boolean => {
     if (k === 2 && "~*$?!@/\\;,.=:<>\"&`'+0123456789".indexOf(s.substring(1, 2)) >= 0) {
       return true;
     }
+    if (k === 3 && s.charCodeAt(1) === 45) {
+      const d = s.charCodeAt(2);
+      return d === 95 || (d >= 48 && d <= 57) || (d >= 65 && d <= 90) || (d >= 97 && d <= 122);
+    }
   } else if (s.charCodeAt(0) === 64) {
     i = k > 1 && s.charCodeAt(1) === 64 ? 2 : 1;
   }
@@ -511,7 +515,7 @@ export const rbInspectStr = (s: string): string => {
     } else if (c === 35 && i + 1 < k && (s.charCodeAt(i + 1) === 123 || s.charCodeAt(i + 1) === 36 || s.charCodeAt(i + 1) === 64)) {
       out = `${out}\\#`;
     } else if (c < 32 || c === 127) {
-      out = `${out}\\x${rbHex2(c)}`;
+      out = `${out}\\u00${rbHex2(c)}`;
     } else if (c < 0x80) {
       out = out + s.substring(i, i + 1);
     } else {
@@ -525,7 +529,17 @@ export const rbInspectStr = (s: string): string => {
         }
       }
       if (ok) {
-        out = out + s.substring(i, i + n);
+        // Code points Ruby 3.3 does not print: C1 controls, the line and
+        // paragraph separators, surrogates.
+        let cp = n === 2 ? c & 0x1f : n === 3 ? c & 0x0f : c & 0x07;
+        for (let j = 1; j < n; j++) {
+          cp = (cp << 6) | (s.charCodeAt(i + j) & 0x3f);
+        }
+        if ((cp >= 0x80 && cp <= 0x9f) || cp === 0x2028 || cp === 0x2029 || (cp >= 0xd800 && cp <= 0xdfff)) {
+          out = `${out}\\u${rbHex2(cp >> 8)}${rbHex2(cp & 0xff)}`;
+        } else {
+          out = out + s.substring(i, i + n);
+        }
         i += n;
         continue;
       }

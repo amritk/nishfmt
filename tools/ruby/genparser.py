@@ -28,6 +28,8 @@ OVERRIDES = {
     # Prism, which RuboCop parses 3.3 with, reads a sign followed by a space
     # as the unary method: `- 1` is (send (int 1) :-@).
     607: "if (this.a.tokE(v[0]) !== this.a.exS(v[1])) {\n  return this.b.unaryOp(v[0], v[1]);\n}\nreturn this.b.unaryNum(v[0], v[1]);",
+    # mlhs_item: tLPAREN mlhs_inner rparen (Prism's nesting).
+    102: "return this.b.mlhsItem(v[0], v[1], v[2]);",
     # p_kw_label: tLABEL / tSTRING_BEG string_contents tLABEL_END
     520: "return this.a.list2(this.a.scalar(1), v[0]);",
 }
@@ -442,7 +444,8 @@ class Translator:
         self.take("[")
         k = int(self.take()[1])
         self.take("]")
-        return E(f"v[{k}]", "h")
+        # Mid-rule actions read val[] past their (empty) right-hand side: nil in Ruby.
+        return E(f"this.va(v, {k})", "h")
 
 
 def read_builder_arity(path):

@@ -274,13 +274,20 @@ export class RbParseState {
   // VariablesStack.
   varsPush(keys: boolean): void {
     const l: string[] = [];
-    (keys ? this.patternKeys : this.patternVars).push(l);
+    if (keys) {
+      this.patternKeys.push(l);
+    } else {
+      this.patternVars.push(l);
+    }
   }
 
   varsPop(keys: boolean): void {
-    const s = keys ? this.patternKeys : this.patternVars;
-    if (s.length > 0) {
-      s.pop();
+    if (keys) {
+      if (this.patternKeys.length > 0) {
+        this.patternKeys.pop();
+      }
+    } else if (this.patternVars.length > 0) {
+      this.patternVars.pop();
     }
   }
 
@@ -298,9 +305,16 @@ export class RbParseState {
   }
 
   varsDeclare(keys: boolean, name: string): void {
-    const s = keys ? this.patternKeys : this.patternVars;
-    if (s.length > 0) {
-      s[s.length - 1].push(name);
+    if (keys) {
+      const k = toI32(this.patternKeys.length);
+      if (k > 0) {
+        this.patternKeys[k - 1].push(name);
+      }
+    } else {
+      const k = toI32(this.patternVars.length);
+      if (k > 0) {
+        this.patternVars[k - 1].push(name);
+      }
     }
   }
 
@@ -943,7 +957,10 @@ export class RbBuilder {
       this.a.setF(m, F_NAME, s, e);
       value = this.n(NT_IDENT, this.a.list1(this.a.sym(label)), m);
     }
-    return this.pairKeyword(keyT, this.accessible(value));
+    // Prism's pair for a value omission spans the whole label, colon included.
+    const pair = this.pairKeyword(keyT, this.accessible(value));
+    this.a.setF(this.a.map(pair), F_EXPRESSION, s, this.tE(keyT));
+    return pair;
   }
 
   kwsplat(dstarT: i32, arg: i32): i32 {
@@ -1134,8 +1151,23 @@ export class RbBuilder {
     return lhs;
   }
 
-  multiLhs(beginT: i32, items: i32, endT: i32): i32 {
+  multiLhs(beginT: i32, items0: i32, endT: i32): i32 {
+    // `[*items]`: a node spreads its children. Prism keeps a parenthesized
+    // inner mlhs as one item instead.
+    let items = items0;
+    if (this.a.isNode(items0)) {
+      items = this.a.has(this.a.map(items0), F_BEGIN) ? this.a.list1(items0) : this.a.kids(items0);
+    }
     return this.n(NT_MLHS, this.a.copyList(items), this.collectionMap(beginT, items, endT));
+  }
+
+  /** mlhs_item: tLPAREN mlhs_inner rparen. Prism nests a parenthesized inner mlhs. */
+  mlhsItem(beginT: i32, body: i32, endT: i32): i32 {
+    if (this.a.isNode(body) && this.a.type(body) === NT_MLHS && this.a.has(this.a.map(body), F_BEGIN)) {
+      const l = this.a.list1(body);
+      return this.n(NT_MLHS, l, this.collectionMap(beginT, l, endT));
+    }
+    return this.begin(beginT, body, endT);
   }
 
   multiAssign(lhs: i32, eqlT: i32, rhs: i32): i32 {
@@ -1729,7 +1761,7 @@ export class RbBuilder {
 
   /** match_pair; `label` is a token (kind 1) or a [begin_t, parts, end_t] list (kind 2). */
   matchPair(kind: i32, label: i32, value: i32): i32 {
-    if (kind === 1) {
+    if (vIdx(kind) === 1) {
       this.checkDuplicatePatternKey(this.value(label));
       return this.pairKeyword(label, value);
     }
@@ -1746,7 +1778,7 @@ export class RbBuilder {
   }
 
   matchLabel(kind: i32, label: i32): i32 {
-    if (kind === 1) {
+    if (vIdx(kind) === 1) {
       return this.matchHashVar(label);
     }
     return this.matchHashVarFromStr(this.a.at(label, 0), this.a.at(label, 1), this.a.at(label, 2));
