@@ -508,6 +508,8 @@ export class RbTeam {
   cops: RbCop[];
   // FFRBONLY: run only these cops (comma-separated names).
   only: string = "";
+  // Run the detection-only cops too (the pass before RedundantCopDisableDirective).
+  detect: boolean = false;
 
   constructor() {
     this.bundlerInsecureProtocolSource = new CopBundlerInsecureProtocolSource();

@@ -96,15 +96,33 @@ const rbEncode = (s: string): i32[] => {
 export class RubyEngine {
   team: RbTeam;
   debug: boolean = false;
+  // FFRBOFFENSES: print the final pass's offenses (to check cops against RuboCop's).
+  dumpOffenses: boolean = false;
 
   constructor() {
     this.team = new RbTeam();
+    this.dumpOffenses = getenv("FFRBOFFENSES") !== null;
     const only = getenv("FFRBONLY");
     if (only !== null) {
       this.team.only = only;
     }
   }
 }
+
+/** One line per offense: `path:line:col:last_line:last_col Cop` (1-based lines, 0-based columns). */
+const rbDumpOffenses = (e: RubyEngine, path: string, src: RbSource): void => {
+  const out: string[] = [];
+  for (const c of e.team.cops) {
+    for (let i = 0; i < toI32(c.offS.length); i++) {
+      const s = c.offS[i];
+      const t = c.offE[i];
+      out.push(`${path}:${src.line(s)}:${src.column(s)}:${src.line(t)}:${src.column(t)} ${c.name}`);
+    }
+  }
+  if (out.length > 0) {
+    console.error(out.join("\n"));
+  }
+};
 
 /** Formats one Ruby file into `out`; false leaves it alone (does not parse, or not handled). */
 /** The outcome of one inspection loop. */
@@ -176,8 +194,19 @@ export const formatRuby = (e: RubyEngine, path: string, src: u8[], n: i32, out: 
   // corrects, the inspection loop runs again on the result.
   const last = r.last;
   // (disabled_line_ranges is never empty: config-disabled cops count, so any
-  // file with a directive comment is checked.)
-  if (last !== null && e.team.only.length === 0 && last.hasDirectiveText) {
+  // file with a directive comment is checked.) The detection-only cops run
+  // once, on the settled source, when their offenses are wanted: for
+  // RedundantCopDisableDirective, or FFRBOFFENSES.
+  const wantRcdd = last !== null && e.team.only.length === 0 && last.hasDirectiveText;
+  if (last !== null && (wantRcdd || e.dumpOffenses)) {
+    e.team.detect = true;
+    e.team.run(last);
+    e.team.detect = false;
+    if (e.dumpOffenses) {
+      rbDumpOffenses(e, path, last);
+    }
+  }
+  if (last !== null && wantRcdd) {
     const rcdd = e.team.lintRedundantCopDisableDirective;
     rcdd.runWith(last, e.team.cops, false);
     if (!rcdd.c.rw.empty()) {

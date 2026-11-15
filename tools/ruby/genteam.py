@@ -27,7 +27,10 @@ for f in sorted(os.listdir(cops_dir)):
         name = nm.group(1)
         if name not in rank:
             raise SystemExit(f"{name} is not in the registry order")
-        cops.append((rank[name], name, cls, f[:-3]))
+        # A detection-only cop (no corrections; its offenses only tell
+        # Lint/RedundantCopDisableDirective which directives are needed).
+        detect = "fastfmt: detect-only" in m.group(2)
+        cops.append((rank[name], name, cls, f[:-3], detect))
 cops.sort()
 
 def field(cls):
@@ -41,22 +44,24 @@ out = ['''// RuboCop::Cop::Team for `rubocop -a`: every cop inspects the source,
 // Ported from RuboCop 1.92.2 (MIT License, Copyright (c) 2012-24 Bozhidar
 // Batsov).
 ''', 'import { RbCop } from "./cop";']
-for _, _, cls, mod in sorted(cops, key=lambda c: c[3]):
+for _, _, cls, mod, _ in sorted(cops, key=lambda c: c[3]):
     out.append(f'import {{ {cls} }} from "./cops/{mod}";')
 out.append('import { rbIncompatible } from "./registry";')
 out.append('import { RbRewriter } from "./rewriter";')
 out.append('import { RbSource } from "./source";')
 out.append('')
 out.append('export class RbTeam {')
-for _, _, cls, _ in cops:
+for _, _, cls, _, _ in cops:
     out.append(f'  {field(cls)}: {cls};')
 out.append('  // The cops\' shared state, in registry order.')
 out.append('  cops: RbCop[];')
 out.append('  // FFRBONLY: run only these cops (comma-separated names).')
 out.append('  only: string = "";')
+out.append('  // Run the detection-only cops too (the pass before RedundantCopDisableDirective).')
+out.append('  detect: boolean = false;')
 out.append('')
 out.append('  constructor() {')
-for _, _, cls, _ in cops:
+for _, _, cls, _, _ in cops:
     out.append(f'    this.{field(cls)} = new {cls}();')
 out.append('    this.cops = [' + ', '.join(f'this.{field(c[2])}.c' for c in cops) + '];')
 out.append('  }')
@@ -70,9 +75,10 @@ out.append('''
 
   /** One pass: the merged corrections, or null when no cop corrects anything. */
   run(src: RbSource): RbRewriter | null {''')
-for _, name, cls, _ in cops:
+for _, name, cls, _, detect in cops:
     f = field(cls)
-    out.append(f'    if (this.on("{name}")) {{\n      this.{f}.run(src);\n    }} else {{\n      this.{f}.c.begin(src);\n    }}')
+    cond = f'this.detect && this.on("{name}")' if detect else f'this.on("{name}")'
+    out.append(f'    if ({cond}) {{\n      this.{f}.run(src);\n    }} else {{\n      this.{f}.c.begin(src);\n    }}')
 out.append('''    const merged = new RbRewriter(src.n);
     const applied: string[] = [];
     for (const c of this.cops) {
