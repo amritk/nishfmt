@@ -18,8 +18,13 @@ for f in sorted(os.listdir(cops_dir)):
     if not f.endswith(".ts"):
         continue
     src = open(os.path.join(cops_dir, f)).read()
-    for m in re.finditer(r"export class (Cop\w+) \{\n  c: RbCop;\n\n  constructor\(\) \{\n    this\.c = new RbCop\(\"([\w/]+)\"\);", src):
-        cls, name = m.groups()
+    # Each exported Cop class, with the name its constructor gives its RbCop.
+    for m in re.finditer(r"export class (Cop\w+) \{(.*?)(?=\nexport |\Z)", src, re.S):
+        cls = m.group(1)
+        nm = re.search(r'this\.c = new RbCop\("([\w/]+)"\)', m.group(2))
+        if not nm:
+            continue
+        name = nm.group(1)
         if name not in rank:
             raise SystemExit(f"{name} is not in the registry order")
         cops.append((rank[name], name, cls, f[:-3]))

@@ -7,6 +7,50 @@
 // Batsov).
 
 import { RbCop } from "./cop";
+import { CopLayoutEmptyComment } from "./cops/layout_empty_comment";
+import { CopLayoutEmptyLineAfterGuardClause } from "./cops/layout_empty_line_after_guard_clause";
+import { CopLayoutEmptyLineAfterMagicComment } from "./cops/layout_empty_line_after_magic_comment";
+import { CopLayoutEmptyLineBetweenDefs } from "./cops/layout_empty_line_between_defs";
+import { CopLayoutEmptyLines } from "./cops/layout_empty_lines";
+import { CopLayoutEmptyLinesAroundAccessModifier } from "./cops/layout_empty_lines_around_access_modifier";
+import { CopLayoutEmptyLinesAroundArguments } from "./cops/layout_empty_lines_around_arguments";
+import { CopLayoutEmptyLinesAroundAttributeAccessor } from "./cops/layout_empty_lines_around_attribute_accessor";
+import { CopLayoutEmptyLinesAroundBeginBody } from "./cops/layout_empty_lines_around_begin_body";
+import { CopLayoutEmptyLinesAroundBlockBody } from "./cops/layout_empty_lines_around_block_body";
+import { CopLayoutEmptyLinesAroundClassBody } from "./cops/layout_empty_lines_around_class_body";
+import { CopLayoutEmptyLinesAroundExceptionHandlingKeywords } from "./cops/layout_empty_lines_around_exception_handling_keywords";
+import { CopLayoutEmptyLinesAroundMethodBody } from "./cops/layout_empty_lines_around_method_body";
+import { CopLayoutEmptyLinesAroundModuleBody } from "./cops/layout_empty_lines_around_module_body";
+import { CopLayoutInitialIndentation } from "./cops/layout_initial_indentation";
+import { CopLayoutLeadingCommentSpace } from "./cops/layout_leading_comment_space";
+import { CopLayoutLeadingEmptyLines } from "./cops/layout_leading_empty_lines";
+import { CopLayoutSpaceAroundOperators } from "./cops/layout_space_around_operators";
+import { CopLayoutSpaceBeforeFirstArg } from "./cops/layout_space_around_operators";
+import { CopLayoutSpaceInsideArrayLiteralBrackets } from "./cops/layout_space_brackets";
+import { CopLayoutSpaceInsideReferenceBrackets } from "./cops/layout_space_brackets";
+import { CopLayoutSpaceInsideStringInterpolation } from "./cops/layout_space_brackets";
+import { CopLayoutSpaceInsideBlockBraces } from "./cops/layout_space_inside_block_braces";
+import { CopLayoutSpaceInsideHashLiteralBraces } from "./cops/layout_space_inside_hash_literal_braces";
+import { CopLayoutSpaceInsideParens } from "./cops/layout_space_inside_parens";
+import { CopLayoutSpaceAroundBlockParameters } from "./cops/layout_space_keyword";
+import { CopLayoutSpaceAroundKeyword } from "./cops/layout_space_keyword";
+import { CopLayoutSpaceAfterColon } from "./cops/layout_space_misc";
+import { CopLayoutSpaceAfterMethodName } from "./cops/layout_space_misc";
+import { CopLayoutSpaceAfterNot } from "./cops/layout_space_misc";
+import { CopLayoutSpaceAroundEqualsInParameterDefault } from "./cops/layout_space_misc";
+import { CopLayoutSpaceAroundMethodCallOperator } from "./cops/layout_space_misc";
+import { CopLayoutSpaceBeforeBlockBraces } from "./cops/layout_space_misc";
+import { CopLayoutSpaceInLambdaLiteral } from "./cops/layout_space_misc";
+import { CopLayoutSpaceInsideRangeLiteral } from "./cops/layout_space_misc";
+import { CopLayoutSpaceInsideArrayPercentLiteral } from "./cops/layout_space_percent";
+import { CopLayoutSpaceInsidePercentLiteralDelimiters } from "./cops/layout_space_percent";
+import { CopLayoutSpaceAfterComma } from "./cops/layout_space_punctuation";
+import { CopLayoutSpaceAfterSemicolon } from "./cops/layout_space_punctuation";
+import { CopLayoutSpaceBeforeComma } from "./cops/layout_space_punctuation";
+import { CopLayoutSpaceBeforeComment } from "./cops/layout_space_punctuation";
+import { CopLayoutSpaceBeforeSemicolon } from "./cops/layout_space_punctuation";
+import { CopLayoutTrailingEmptyLines } from "./cops/layout_trailing_empty_lines";
+import { CopLayoutTrailingWhitespace } from "./cops/layout_trailing_whitespace";
 import { CopStyleHashSyntax } from "./cops/style_hash_syntax";
 import { CopStyleStringLiterals } from "./cops/style_strings";
 import { rbIncompatible } from "./registry";
@@ -14,6 +58,50 @@ import { RbRewriter } from "./rewriter";
 import { RbSource } from "./source";
 
 export class RbTeam {
+  layoutEmptyComment: CopLayoutEmptyComment;
+  layoutEmptyLineAfterGuardClause: CopLayoutEmptyLineAfterGuardClause;
+  layoutEmptyLineAfterMagicComment: CopLayoutEmptyLineAfterMagicComment;
+  layoutEmptyLineBetweenDefs: CopLayoutEmptyLineBetweenDefs;
+  layoutEmptyLinesAroundAccessModifier: CopLayoutEmptyLinesAroundAccessModifier;
+  layoutEmptyLinesAroundArguments: CopLayoutEmptyLinesAroundArguments;
+  layoutEmptyLinesAroundAttributeAccessor: CopLayoutEmptyLinesAroundAttributeAccessor;
+  layoutEmptyLinesAroundBeginBody: CopLayoutEmptyLinesAroundBeginBody;
+  layoutEmptyLinesAroundBlockBody: CopLayoutEmptyLinesAroundBlockBody;
+  layoutEmptyLinesAroundClassBody: CopLayoutEmptyLinesAroundClassBody;
+  layoutEmptyLinesAroundExceptionHandlingKeywords: CopLayoutEmptyLinesAroundExceptionHandlingKeywords;
+  layoutEmptyLinesAroundMethodBody: CopLayoutEmptyLinesAroundMethodBody;
+  layoutEmptyLinesAroundModuleBody: CopLayoutEmptyLinesAroundModuleBody;
+  layoutEmptyLines: CopLayoutEmptyLines;
+  layoutInitialIndentation: CopLayoutInitialIndentation;
+  layoutLeadingCommentSpace: CopLayoutLeadingCommentSpace;
+  layoutLeadingEmptyLines: CopLayoutLeadingEmptyLines;
+  layoutSpaceAfterColon: CopLayoutSpaceAfterColon;
+  layoutSpaceAfterComma: CopLayoutSpaceAfterComma;
+  layoutSpaceAfterMethodName: CopLayoutSpaceAfterMethodName;
+  layoutSpaceAfterNot: CopLayoutSpaceAfterNot;
+  layoutSpaceAfterSemicolon: CopLayoutSpaceAfterSemicolon;
+  layoutSpaceAroundBlockParameters: CopLayoutSpaceAroundBlockParameters;
+  layoutSpaceAroundEqualsInParameterDefault: CopLayoutSpaceAroundEqualsInParameterDefault;
+  layoutSpaceAroundKeyword: CopLayoutSpaceAroundKeyword;
+  layoutSpaceAroundMethodCallOperator: CopLayoutSpaceAroundMethodCallOperator;
+  layoutSpaceAroundOperators: CopLayoutSpaceAroundOperators;
+  layoutSpaceBeforeBlockBraces: CopLayoutSpaceBeforeBlockBraces;
+  layoutSpaceBeforeComma: CopLayoutSpaceBeforeComma;
+  layoutSpaceBeforeComment: CopLayoutSpaceBeforeComment;
+  layoutSpaceBeforeFirstArg: CopLayoutSpaceBeforeFirstArg;
+  layoutSpaceBeforeSemicolon: CopLayoutSpaceBeforeSemicolon;
+  layoutSpaceInLambdaLiteral: CopLayoutSpaceInLambdaLiteral;
+  layoutSpaceInsideArrayPercentLiteral: CopLayoutSpaceInsideArrayPercentLiteral;
+  layoutSpaceInsideArrayLiteralBrackets: CopLayoutSpaceInsideArrayLiteralBrackets;
+  layoutSpaceInsideBlockBraces: CopLayoutSpaceInsideBlockBraces;
+  layoutSpaceInsideHashLiteralBraces: CopLayoutSpaceInsideHashLiteralBraces;
+  layoutSpaceInsideParens: CopLayoutSpaceInsideParens;
+  layoutSpaceInsidePercentLiteralDelimiters: CopLayoutSpaceInsidePercentLiteralDelimiters;
+  layoutSpaceInsideRangeLiteral: CopLayoutSpaceInsideRangeLiteral;
+  layoutSpaceInsideReferenceBrackets: CopLayoutSpaceInsideReferenceBrackets;
+  layoutSpaceInsideStringInterpolation: CopLayoutSpaceInsideStringInterpolation;
+  layoutTrailingEmptyLines: CopLayoutTrailingEmptyLines;
+  layoutTrailingWhitespace: CopLayoutTrailingWhitespace;
   styleHashSyntax: CopStyleHashSyntax;
   styleStringLiterals: CopStyleStringLiterals;
   // The cops' shared state, in registry order.
@@ -22,9 +110,53 @@ export class RbTeam {
   only: string = "";
 
   constructor() {
+    this.layoutEmptyComment = new CopLayoutEmptyComment();
+    this.layoutEmptyLineAfterGuardClause = new CopLayoutEmptyLineAfterGuardClause();
+    this.layoutEmptyLineAfterMagicComment = new CopLayoutEmptyLineAfterMagicComment();
+    this.layoutEmptyLineBetweenDefs = new CopLayoutEmptyLineBetweenDefs();
+    this.layoutEmptyLinesAroundAccessModifier = new CopLayoutEmptyLinesAroundAccessModifier();
+    this.layoutEmptyLinesAroundArguments = new CopLayoutEmptyLinesAroundArguments();
+    this.layoutEmptyLinesAroundAttributeAccessor = new CopLayoutEmptyLinesAroundAttributeAccessor();
+    this.layoutEmptyLinesAroundBeginBody = new CopLayoutEmptyLinesAroundBeginBody();
+    this.layoutEmptyLinesAroundBlockBody = new CopLayoutEmptyLinesAroundBlockBody();
+    this.layoutEmptyLinesAroundClassBody = new CopLayoutEmptyLinesAroundClassBody();
+    this.layoutEmptyLinesAroundExceptionHandlingKeywords = new CopLayoutEmptyLinesAroundExceptionHandlingKeywords();
+    this.layoutEmptyLinesAroundMethodBody = new CopLayoutEmptyLinesAroundMethodBody();
+    this.layoutEmptyLinesAroundModuleBody = new CopLayoutEmptyLinesAroundModuleBody();
+    this.layoutEmptyLines = new CopLayoutEmptyLines();
+    this.layoutInitialIndentation = new CopLayoutInitialIndentation();
+    this.layoutLeadingCommentSpace = new CopLayoutLeadingCommentSpace();
+    this.layoutLeadingEmptyLines = new CopLayoutLeadingEmptyLines();
+    this.layoutSpaceAfterColon = new CopLayoutSpaceAfterColon();
+    this.layoutSpaceAfterComma = new CopLayoutSpaceAfterComma();
+    this.layoutSpaceAfterMethodName = new CopLayoutSpaceAfterMethodName();
+    this.layoutSpaceAfterNot = new CopLayoutSpaceAfterNot();
+    this.layoutSpaceAfterSemicolon = new CopLayoutSpaceAfterSemicolon();
+    this.layoutSpaceAroundBlockParameters = new CopLayoutSpaceAroundBlockParameters();
+    this.layoutSpaceAroundEqualsInParameterDefault = new CopLayoutSpaceAroundEqualsInParameterDefault();
+    this.layoutSpaceAroundKeyword = new CopLayoutSpaceAroundKeyword();
+    this.layoutSpaceAroundMethodCallOperator = new CopLayoutSpaceAroundMethodCallOperator();
+    this.layoutSpaceAroundOperators = new CopLayoutSpaceAroundOperators();
+    this.layoutSpaceBeforeBlockBraces = new CopLayoutSpaceBeforeBlockBraces();
+    this.layoutSpaceBeforeComma = new CopLayoutSpaceBeforeComma();
+    this.layoutSpaceBeforeComment = new CopLayoutSpaceBeforeComment();
+    this.layoutSpaceBeforeFirstArg = new CopLayoutSpaceBeforeFirstArg();
+    this.layoutSpaceBeforeSemicolon = new CopLayoutSpaceBeforeSemicolon();
+    this.layoutSpaceInLambdaLiteral = new CopLayoutSpaceInLambdaLiteral();
+    this.layoutSpaceInsideArrayPercentLiteral = new CopLayoutSpaceInsideArrayPercentLiteral();
+    this.layoutSpaceInsideArrayLiteralBrackets = new CopLayoutSpaceInsideArrayLiteralBrackets();
+    this.layoutSpaceInsideBlockBraces = new CopLayoutSpaceInsideBlockBraces();
+    this.layoutSpaceInsideHashLiteralBraces = new CopLayoutSpaceInsideHashLiteralBraces();
+    this.layoutSpaceInsideParens = new CopLayoutSpaceInsideParens();
+    this.layoutSpaceInsidePercentLiteralDelimiters = new CopLayoutSpaceInsidePercentLiteralDelimiters();
+    this.layoutSpaceInsideRangeLiteral = new CopLayoutSpaceInsideRangeLiteral();
+    this.layoutSpaceInsideReferenceBrackets = new CopLayoutSpaceInsideReferenceBrackets();
+    this.layoutSpaceInsideStringInterpolation = new CopLayoutSpaceInsideStringInterpolation();
+    this.layoutTrailingEmptyLines = new CopLayoutTrailingEmptyLines();
+    this.layoutTrailingWhitespace = new CopLayoutTrailingWhitespace();
     this.styleHashSyntax = new CopStyleHashSyntax();
     this.styleStringLiterals = new CopStyleStringLiterals();
-    this.cops = [this.styleHashSyntax.c, this.styleStringLiterals.c];
+    this.cops = [this.layoutEmptyComment.c, this.layoutEmptyLineAfterGuardClause.c, this.layoutEmptyLineAfterMagicComment.c, this.layoutEmptyLineBetweenDefs.c, this.layoutEmptyLinesAroundAccessModifier.c, this.layoutEmptyLinesAroundArguments.c, this.layoutEmptyLinesAroundAttributeAccessor.c, this.layoutEmptyLinesAroundBeginBody.c, this.layoutEmptyLinesAroundBlockBody.c, this.layoutEmptyLinesAroundClassBody.c, this.layoutEmptyLinesAroundExceptionHandlingKeywords.c, this.layoutEmptyLinesAroundMethodBody.c, this.layoutEmptyLinesAroundModuleBody.c, this.layoutEmptyLines.c, this.layoutInitialIndentation.c, this.layoutLeadingCommentSpace.c, this.layoutLeadingEmptyLines.c, this.layoutSpaceAfterColon.c, this.layoutSpaceAfterComma.c, this.layoutSpaceAfterMethodName.c, this.layoutSpaceAfterNot.c, this.layoutSpaceAfterSemicolon.c, this.layoutSpaceAroundBlockParameters.c, this.layoutSpaceAroundEqualsInParameterDefault.c, this.layoutSpaceAroundKeyword.c, this.layoutSpaceAroundMethodCallOperator.c, this.layoutSpaceAroundOperators.c, this.layoutSpaceBeforeBlockBraces.c, this.layoutSpaceBeforeComma.c, this.layoutSpaceBeforeComment.c, this.layoutSpaceBeforeFirstArg.c, this.layoutSpaceBeforeSemicolon.c, this.layoutSpaceInLambdaLiteral.c, this.layoutSpaceInsideArrayPercentLiteral.c, this.layoutSpaceInsideArrayLiteralBrackets.c, this.layoutSpaceInsideBlockBraces.c, this.layoutSpaceInsideHashLiteralBraces.c, this.layoutSpaceInsideParens.c, this.layoutSpaceInsidePercentLiteralDelimiters.c, this.layoutSpaceInsideRangeLiteral.c, this.layoutSpaceInsideReferenceBrackets.c, this.layoutSpaceInsideStringInterpolation.c, this.layoutTrailingEmptyLines.c, this.layoutTrailingWhitespace.c, this.styleHashSyntax.c, this.styleStringLiterals.c];
   }
 
   private on(name: string): boolean {
@@ -36,6 +168,226 @@ export class RbTeam {
 
   /** One pass: the merged corrections, or null when no cop corrects anything. */
   run(src: RbSource): RbRewriter | null {
+    if (this.on("Layout/EmptyComment")) {
+      this.layoutEmptyComment.run(src);
+    } else {
+      this.layoutEmptyComment.c.begin(src);
+    }
+    if (this.on("Layout/EmptyLineAfterGuardClause")) {
+      this.layoutEmptyLineAfterGuardClause.run(src);
+    } else {
+      this.layoutEmptyLineAfterGuardClause.c.begin(src);
+    }
+    if (this.on("Layout/EmptyLineAfterMagicComment")) {
+      this.layoutEmptyLineAfterMagicComment.run(src);
+    } else {
+      this.layoutEmptyLineAfterMagicComment.c.begin(src);
+    }
+    if (this.on("Layout/EmptyLineBetweenDefs")) {
+      this.layoutEmptyLineBetweenDefs.run(src);
+    } else {
+      this.layoutEmptyLineBetweenDefs.c.begin(src);
+    }
+    if (this.on("Layout/EmptyLinesAroundAccessModifier")) {
+      this.layoutEmptyLinesAroundAccessModifier.run(src);
+    } else {
+      this.layoutEmptyLinesAroundAccessModifier.c.begin(src);
+    }
+    if (this.on("Layout/EmptyLinesAroundArguments")) {
+      this.layoutEmptyLinesAroundArguments.run(src);
+    } else {
+      this.layoutEmptyLinesAroundArguments.c.begin(src);
+    }
+    if (this.on("Layout/EmptyLinesAroundAttributeAccessor")) {
+      this.layoutEmptyLinesAroundAttributeAccessor.run(src);
+    } else {
+      this.layoutEmptyLinesAroundAttributeAccessor.c.begin(src);
+    }
+    if (this.on("Layout/EmptyLinesAroundBeginBody")) {
+      this.layoutEmptyLinesAroundBeginBody.run(src);
+    } else {
+      this.layoutEmptyLinesAroundBeginBody.c.begin(src);
+    }
+    if (this.on("Layout/EmptyLinesAroundBlockBody")) {
+      this.layoutEmptyLinesAroundBlockBody.run(src);
+    } else {
+      this.layoutEmptyLinesAroundBlockBody.c.begin(src);
+    }
+    if (this.on("Layout/EmptyLinesAroundClassBody")) {
+      this.layoutEmptyLinesAroundClassBody.run(src);
+    } else {
+      this.layoutEmptyLinesAroundClassBody.c.begin(src);
+    }
+    if (this.on("Layout/EmptyLinesAroundExceptionHandlingKeywords")) {
+      this.layoutEmptyLinesAroundExceptionHandlingKeywords.run(src);
+    } else {
+      this.layoutEmptyLinesAroundExceptionHandlingKeywords.c.begin(src);
+    }
+    if (this.on("Layout/EmptyLinesAroundMethodBody")) {
+      this.layoutEmptyLinesAroundMethodBody.run(src);
+    } else {
+      this.layoutEmptyLinesAroundMethodBody.c.begin(src);
+    }
+    if (this.on("Layout/EmptyLinesAroundModuleBody")) {
+      this.layoutEmptyLinesAroundModuleBody.run(src);
+    } else {
+      this.layoutEmptyLinesAroundModuleBody.c.begin(src);
+    }
+    if (this.on("Layout/EmptyLines")) {
+      this.layoutEmptyLines.run(src);
+    } else {
+      this.layoutEmptyLines.c.begin(src);
+    }
+    if (this.on("Layout/InitialIndentation")) {
+      this.layoutInitialIndentation.run(src);
+    } else {
+      this.layoutInitialIndentation.c.begin(src);
+    }
+    if (this.on("Layout/LeadingCommentSpace")) {
+      this.layoutLeadingCommentSpace.run(src);
+    } else {
+      this.layoutLeadingCommentSpace.c.begin(src);
+    }
+    if (this.on("Layout/LeadingEmptyLines")) {
+      this.layoutLeadingEmptyLines.run(src);
+    } else {
+      this.layoutLeadingEmptyLines.c.begin(src);
+    }
+    if (this.on("Layout/SpaceAfterColon")) {
+      this.layoutSpaceAfterColon.run(src);
+    } else {
+      this.layoutSpaceAfterColon.c.begin(src);
+    }
+    if (this.on("Layout/SpaceAfterComma")) {
+      this.layoutSpaceAfterComma.run(src);
+    } else {
+      this.layoutSpaceAfterComma.c.begin(src);
+    }
+    if (this.on("Layout/SpaceAfterMethodName")) {
+      this.layoutSpaceAfterMethodName.run(src);
+    } else {
+      this.layoutSpaceAfterMethodName.c.begin(src);
+    }
+    if (this.on("Layout/SpaceAfterNot")) {
+      this.layoutSpaceAfterNot.run(src);
+    } else {
+      this.layoutSpaceAfterNot.c.begin(src);
+    }
+    if (this.on("Layout/SpaceAfterSemicolon")) {
+      this.layoutSpaceAfterSemicolon.run(src);
+    } else {
+      this.layoutSpaceAfterSemicolon.c.begin(src);
+    }
+    if (this.on("Layout/SpaceAroundBlockParameters")) {
+      this.layoutSpaceAroundBlockParameters.run(src);
+    } else {
+      this.layoutSpaceAroundBlockParameters.c.begin(src);
+    }
+    if (this.on("Layout/SpaceAroundEqualsInParameterDefault")) {
+      this.layoutSpaceAroundEqualsInParameterDefault.run(src);
+    } else {
+      this.layoutSpaceAroundEqualsInParameterDefault.c.begin(src);
+    }
+    if (this.on("Layout/SpaceAroundKeyword")) {
+      this.layoutSpaceAroundKeyword.run(src);
+    } else {
+      this.layoutSpaceAroundKeyword.c.begin(src);
+    }
+    if (this.on("Layout/SpaceAroundMethodCallOperator")) {
+      this.layoutSpaceAroundMethodCallOperator.run(src);
+    } else {
+      this.layoutSpaceAroundMethodCallOperator.c.begin(src);
+    }
+    if (this.on("Layout/SpaceAroundOperators")) {
+      this.layoutSpaceAroundOperators.run(src);
+    } else {
+      this.layoutSpaceAroundOperators.c.begin(src);
+    }
+    if (this.on("Layout/SpaceBeforeBlockBraces")) {
+      this.layoutSpaceBeforeBlockBraces.run(src);
+    } else {
+      this.layoutSpaceBeforeBlockBraces.c.begin(src);
+    }
+    if (this.on("Layout/SpaceBeforeComma")) {
+      this.layoutSpaceBeforeComma.run(src);
+    } else {
+      this.layoutSpaceBeforeComma.c.begin(src);
+    }
+    if (this.on("Layout/SpaceBeforeComment")) {
+      this.layoutSpaceBeforeComment.run(src);
+    } else {
+      this.layoutSpaceBeforeComment.c.begin(src);
+    }
+    if (this.on("Layout/SpaceBeforeFirstArg")) {
+      this.layoutSpaceBeforeFirstArg.run(src);
+    } else {
+      this.layoutSpaceBeforeFirstArg.c.begin(src);
+    }
+    if (this.on("Layout/SpaceBeforeSemicolon")) {
+      this.layoutSpaceBeforeSemicolon.run(src);
+    } else {
+      this.layoutSpaceBeforeSemicolon.c.begin(src);
+    }
+    if (this.on("Layout/SpaceInLambdaLiteral")) {
+      this.layoutSpaceInLambdaLiteral.run(src);
+    } else {
+      this.layoutSpaceInLambdaLiteral.c.begin(src);
+    }
+    if (this.on("Layout/SpaceInsideArrayPercentLiteral")) {
+      this.layoutSpaceInsideArrayPercentLiteral.run(src);
+    } else {
+      this.layoutSpaceInsideArrayPercentLiteral.c.begin(src);
+    }
+    if (this.on("Layout/SpaceInsideArrayLiteralBrackets")) {
+      this.layoutSpaceInsideArrayLiteralBrackets.run(src);
+    } else {
+      this.layoutSpaceInsideArrayLiteralBrackets.c.begin(src);
+    }
+    if (this.on("Layout/SpaceInsideBlockBraces")) {
+      this.layoutSpaceInsideBlockBraces.run(src);
+    } else {
+      this.layoutSpaceInsideBlockBraces.c.begin(src);
+    }
+    if (this.on("Layout/SpaceInsideHashLiteralBraces")) {
+      this.layoutSpaceInsideHashLiteralBraces.run(src);
+    } else {
+      this.layoutSpaceInsideHashLiteralBraces.c.begin(src);
+    }
+    if (this.on("Layout/SpaceInsideParens")) {
+      this.layoutSpaceInsideParens.run(src);
+    } else {
+      this.layoutSpaceInsideParens.c.begin(src);
+    }
+    if (this.on("Layout/SpaceInsidePercentLiteralDelimiters")) {
+      this.layoutSpaceInsidePercentLiteralDelimiters.run(src);
+    } else {
+      this.layoutSpaceInsidePercentLiteralDelimiters.c.begin(src);
+    }
+    if (this.on("Layout/SpaceInsideRangeLiteral")) {
+      this.layoutSpaceInsideRangeLiteral.run(src);
+    } else {
+      this.layoutSpaceInsideRangeLiteral.c.begin(src);
+    }
+    if (this.on("Layout/SpaceInsideReferenceBrackets")) {
+      this.layoutSpaceInsideReferenceBrackets.run(src);
+    } else {
+      this.layoutSpaceInsideReferenceBrackets.c.begin(src);
+    }
+    if (this.on("Layout/SpaceInsideStringInterpolation")) {
+      this.layoutSpaceInsideStringInterpolation.run(src);
+    } else {
+      this.layoutSpaceInsideStringInterpolation.c.begin(src);
+    }
+    if (this.on("Layout/TrailingEmptyLines")) {
+      this.layoutTrailingEmptyLines.run(src);
+    } else {
+      this.layoutTrailingEmptyLines.c.begin(src);
+    }
+    if (this.on("Layout/TrailingWhitespace")) {
+      this.layoutTrailingWhitespace.run(src);
+    } else {
+      this.layoutTrailingWhitespace.c.begin(src);
+    }
     if (this.on("Style/HashSyntax")) {
       this.styleHashSyntax.run(src);
     } else {
