@@ -11,8 +11,17 @@ import { CopLayoutAccessModifierIndentation } from "./cops/layout_access_modifie
 import { CopLayoutArgumentAlignment } from "./cops/layout_argument_alignment";
 import { CopLayoutArrayAlignment } from "./cops/layout_array_alignment";
 import { CopLayoutAssignmentIndentation } from "./cops/layout_assignment_indentation";
+import { CopLayoutBeginEndAlignment } from "./cops/layout_begin_end_alignment";
+import { CopLayoutBlockAlignment } from "./cops/layout_block_alignment";
+import { CopLayoutBlockEndNewline } from "./cops/layout_block_end_newline";
+import { CopLayoutCaseIndentation } from "./cops/layout_case_indentation";
+import { CopLayoutClosingHeredocIndentation } from "./cops/layout_closing_heredoc_indentation";
 import { CopLayoutClosingParenthesisIndentation } from "./cops/layout_closing_parenthesis_indentation";
 import { CopLayoutCommentIndentation } from "./cops/layout_comment_indentation";
+import { CopLayoutConditionPosition } from "./cops/layout_condition_position";
+import { CopLayoutDefEndAlignment } from "./cops/layout_def_end_alignment";
+import { CopLayoutDotPosition } from "./cops/layout_dot_position";
+import { CopLayoutElseAlignment } from "./cops/layout_else_alignment";
 import { CopLayoutEmptyComment } from "./cops/layout_empty_comment";
 import { CopLayoutEmptyLineAfterGuardClause } from "./cops/layout_empty_line_after_guard_clause";
 import { CopLayoutEmptyLineAfterMagicComment } from "./cops/layout_empty_line_after_magic_comment";
@@ -27,18 +36,29 @@ import { CopLayoutEmptyLinesAroundClassBody } from "./cops/layout_empty_lines_ar
 import { CopLayoutEmptyLinesAroundExceptionHandlingKeywords } from "./cops/layout_empty_lines_around_exception_handling_keywords";
 import { CopLayoutEmptyLinesAroundMethodBody } from "./cops/layout_empty_lines_around_method_body";
 import { CopLayoutEmptyLinesAroundModuleBody } from "./cops/layout_empty_lines_around_module_body";
+import { CopLayoutEndAlignment } from "./cops/layout_end_alignment";
+import { CopLayoutExtraSpacing } from "./cops/layout_extra_spacing";
 import { CopLayoutFirstArgumentIndentation } from "./cops/layout_first_argument_indentation";
 import { CopLayoutFirstArrayElementIndentation } from "./cops/layout_first_array_element_indentation";
 import { CopLayoutFirstHashElementIndentation } from "./cops/layout_first_hash_element_indentation";
 import { CopLayoutFirstParameterIndentation } from "./cops/layout_first_parameter_indentation";
 import { CopLayoutHashAlignment } from "./cops/layout_hash_alignment";
+import { CopLayoutHeredocIndentation } from "./cops/layout_heredoc_indentation";
 import { CopLayoutIndentationConsistency } from "./cops/layout_indentation_consistency";
 import { CopLayoutIndentationStyle } from "./cops/layout_indentation_style";
 import { CopLayoutIndentationWidth } from "./cops/layout_indentation_width";
 import { CopLayoutInitialIndentation } from "./cops/layout_initial_indentation";
 import { CopLayoutLeadingCommentSpace } from "./cops/layout_leading_comment_space";
 import { CopLayoutLeadingEmptyLines } from "./cops/layout_leading_empty_lines";
+import { CopLayoutMultilineArrayBraceLayout } from "./cops/layout_multiline_array_brace_layout";
+import { CopLayoutMultilineBlockLayout } from "./cops/layout_multiline_block_layout";
+import { CopLayoutMultilineHashBraceLayout } from "./cops/layout_multiline_hash_brace_layout";
+import { CopLayoutMultilineMethodCallBraceLayout } from "./cops/layout_multiline_method_call_brace_layout";
+import { CopLayoutMultilineMethodCallIndentation } from "./cops/layout_multiline_method_call_indentation";
+import { CopLayoutMultilineMethodDefinitionBraceLayout } from "./cops/layout_multiline_method_definition_brace_layout";
+import { CopLayoutMultilineOperationIndentation } from "./cops/layout_multiline_operation_indentation";
 import { CopLayoutParameterAlignment } from "./cops/layout_parameter_alignment";
+import { CopLayoutRescueEnsureAlignment } from "./cops/layout_rescue_ensure_alignment";
 import { CopLayoutSpaceAroundOperators } from "./cops/layout_space_around_operators";
 import { CopLayoutSpaceBeforeFirstArg } from "./cops/layout_space_around_operators";
 import { CopLayoutSpaceInsideArrayLiteralBrackets } from "./cops/layout_space_brackets";
@@ -120,8 +140,17 @@ export class RbTeam {
   layoutArgumentAlignment: CopLayoutArgumentAlignment;
   layoutArrayAlignment: CopLayoutArrayAlignment;
   layoutAssignmentIndentation: CopLayoutAssignmentIndentation;
+  layoutBeginEndAlignment: CopLayoutBeginEndAlignment;
+  layoutBlockAlignment: CopLayoutBlockAlignment;
+  layoutBlockEndNewline: CopLayoutBlockEndNewline;
+  layoutCaseIndentation: CopLayoutCaseIndentation;
+  layoutClosingHeredocIndentation: CopLayoutClosingHeredocIndentation;
   layoutClosingParenthesisIndentation: CopLayoutClosingParenthesisIndentation;
   layoutCommentIndentation: CopLayoutCommentIndentation;
+  layoutConditionPosition: CopLayoutConditionPosition;
+  layoutDefEndAlignment: CopLayoutDefEndAlignment;
+  layoutDotPosition: CopLayoutDotPosition;
+  layoutElseAlignment: CopLayoutElseAlignment;
   layoutEmptyComment: CopLayoutEmptyComment;
   layoutEmptyLineAfterGuardClause: CopLayoutEmptyLineAfterGuardClause;
   layoutEmptyLineAfterMagicComment: CopLayoutEmptyLineAfterMagicComment;
@@ -136,18 +165,29 @@ export class RbTeam {
   layoutEmptyLinesAroundMethodBody: CopLayoutEmptyLinesAroundMethodBody;
   layoutEmptyLinesAroundModuleBody: CopLayoutEmptyLinesAroundModuleBody;
   layoutEmptyLines: CopLayoutEmptyLines;
+  layoutEndAlignment: CopLayoutEndAlignment;
+  layoutExtraSpacing: CopLayoutExtraSpacing;
   layoutFirstArgumentIndentation: CopLayoutFirstArgumentIndentation;
   layoutFirstArrayElementIndentation: CopLayoutFirstArrayElementIndentation;
   layoutFirstHashElementIndentation: CopLayoutFirstHashElementIndentation;
   layoutFirstParameterIndentation: CopLayoutFirstParameterIndentation;
   layoutHashAlignment: CopLayoutHashAlignment;
+  layoutHeredocIndentation: CopLayoutHeredocIndentation;
   layoutIndentationConsistency: CopLayoutIndentationConsistency;
   layoutIndentationStyle: CopLayoutIndentationStyle;
   layoutIndentationWidth: CopLayoutIndentationWidth;
   layoutInitialIndentation: CopLayoutInitialIndentation;
   layoutLeadingCommentSpace: CopLayoutLeadingCommentSpace;
   layoutLeadingEmptyLines: CopLayoutLeadingEmptyLines;
+  layoutMultilineArrayBraceLayout: CopLayoutMultilineArrayBraceLayout;
+  layoutMultilineBlockLayout: CopLayoutMultilineBlockLayout;
+  layoutMultilineHashBraceLayout: CopLayoutMultilineHashBraceLayout;
+  layoutMultilineMethodCallBraceLayout: CopLayoutMultilineMethodCallBraceLayout;
+  layoutMultilineMethodCallIndentation: CopLayoutMultilineMethodCallIndentation;
+  layoutMultilineMethodDefinitionBraceLayout: CopLayoutMultilineMethodDefinitionBraceLayout;
+  layoutMultilineOperationIndentation: CopLayoutMultilineOperationIndentation;
   layoutParameterAlignment: CopLayoutParameterAlignment;
+  layoutRescueEnsureAlignment: CopLayoutRescueEnsureAlignment;
   layoutSpaceAfterColon: CopLayoutSpaceAfterColon;
   layoutSpaceAfterComma: CopLayoutSpaceAfterComma;
   layoutSpaceAfterMethodName: CopLayoutSpaceAfterMethodName;
@@ -230,8 +270,17 @@ export class RbTeam {
     this.layoutArgumentAlignment = new CopLayoutArgumentAlignment();
     this.layoutArrayAlignment = new CopLayoutArrayAlignment();
     this.layoutAssignmentIndentation = new CopLayoutAssignmentIndentation();
+    this.layoutBeginEndAlignment = new CopLayoutBeginEndAlignment();
+    this.layoutBlockAlignment = new CopLayoutBlockAlignment();
+    this.layoutBlockEndNewline = new CopLayoutBlockEndNewline();
+    this.layoutCaseIndentation = new CopLayoutCaseIndentation();
+    this.layoutClosingHeredocIndentation = new CopLayoutClosingHeredocIndentation();
     this.layoutClosingParenthesisIndentation = new CopLayoutClosingParenthesisIndentation();
     this.layoutCommentIndentation = new CopLayoutCommentIndentation();
+    this.layoutConditionPosition = new CopLayoutConditionPosition();
+    this.layoutDefEndAlignment = new CopLayoutDefEndAlignment();
+    this.layoutDotPosition = new CopLayoutDotPosition();
+    this.layoutElseAlignment = new CopLayoutElseAlignment();
     this.layoutEmptyComment = new CopLayoutEmptyComment();
     this.layoutEmptyLineAfterGuardClause = new CopLayoutEmptyLineAfterGuardClause();
     this.layoutEmptyLineAfterMagicComment = new CopLayoutEmptyLineAfterMagicComment();
@@ -246,18 +295,29 @@ export class RbTeam {
     this.layoutEmptyLinesAroundMethodBody = new CopLayoutEmptyLinesAroundMethodBody();
     this.layoutEmptyLinesAroundModuleBody = new CopLayoutEmptyLinesAroundModuleBody();
     this.layoutEmptyLines = new CopLayoutEmptyLines();
+    this.layoutEndAlignment = new CopLayoutEndAlignment();
+    this.layoutExtraSpacing = new CopLayoutExtraSpacing();
     this.layoutFirstArgumentIndentation = new CopLayoutFirstArgumentIndentation();
     this.layoutFirstArrayElementIndentation = new CopLayoutFirstArrayElementIndentation();
     this.layoutFirstHashElementIndentation = new CopLayoutFirstHashElementIndentation();
     this.layoutFirstParameterIndentation = new CopLayoutFirstParameterIndentation();
     this.layoutHashAlignment = new CopLayoutHashAlignment();
+    this.layoutHeredocIndentation = new CopLayoutHeredocIndentation();
     this.layoutIndentationConsistency = new CopLayoutIndentationConsistency();
     this.layoutIndentationStyle = new CopLayoutIndentationStyle();
     this.layoutIndentationWidth = new CopLayoutIndentationWidth();
     this.layoutInitialIndentation = new CopLayoutInitialIndentation();
     this.layoutLeadingCommentSpace = new CopLayoutLeadingCommentSpace();
     this.layoutLeadingEmptyLines = new CopLayoutLeadingEmptyLines();
+    this.layoutMultilineArrayBraceLayout = new CopLayoutMultilineArrayBraceLayout();
+    this.layoutMultilineBlockLayout = new CopLayoutMultilineBlockLayout();
+    this.layoutMultilineHashBraceLayout = new CopLayoutMultilineHashBraceLayout();
+    this.layoutMultilineMethodCallBraceLayout = new CopLayoutMultilineMethodCallBraceLayout();
+    this.layoutMultilineMethodCallIndentation = new CopLayoutMultilineMethodCallIndentation();
+    this.layoutMultilineMethodDefinitionBraceLayout = new CopLayoutMultilineMethodDefinitionBraceLayout();
+    this.layoutMultilineOperationIndentation = new CopLayoutMultilineOperationIndentation();
     this.layoutParameterAlignment = new CopLayoutParameterAlignment();
+    this.layoutRescueEnsureAlignment = new CopLayoutRescueEnsureAlignment();
     this.layoutSpaceAfterColon = new CopLayoutSpaceAfterColon();
     this.layoutSpaceAfterComma = new CopLayoutSpaceAfterComma();
     this.layoutSpaceAfterMethodName = new CopLayoutSpaceAfterMethodName();
@@ -330,7 +390,7 @@ export class RbTeam {
     this.styleTrailingCommaInHashLiteral = new CopStyleTrailingCommaInHashLiteral();
     this.styleTrivialAccessors = new CopStyleTrivialAccessors();
     this.styleUnpackFirst = new CopStyleUnpackFirst();
-    this.cops = [this.layoutAccessModifierIndentation.c, this.layoutArgumentAlignment.c, this.layoutArrayAlignment.c, this.layoutAssignmentIndentation.c, this.layoutClosingParenthesisIndentation.c, this.layoutCommentIndentation.c, this.layoutEmptyComment.c, this.layoutEmptyLineAfterGuardClause.c, this.layoutEmptyLineAfterMagicComment.c, this.layoutEmptyLineBetweenDefs.c, this.layoutEmptyLinesAroundAccessModifier.c, this.layoutEmptyLinesAroundArguments.c, this.layoutEmptyLinesAroundAttributeAccessor.c, this.layoutEmptyLinesAroundBeginBody.c, this.layoutEmptyLinesAroundBlockBody.c, this.layoutEmptyLinesAroundClassBody.c, this.layoutEmptyLinesAroundExceptionHandlingKeywords.c, this.layoutEmptyLinesAroundMethodBody.c, this.layoutEmptyLinesAroundModuleBody.c, this.layoutEmptyLines.c, this.layoutFirstArgumentIndentation.c, this.layoutFirstArrayElementIndentation.c, this.layoutFirstHashElementIndentation.c, this.layoutFirstParameterIndentation.c, this.layoutHashAlignment.c, this.layoutIndentationConsistency.c, this.layoutIndentationStyle.c, this.layoutIndentationWidth.c, this.layoutInitialIndentation.c, this.layoutLeadingCommentSpace.c, this.layoutLeadingEmptyLines.c, this.layoutParameterAlignment.c, this.layoutSpaceAfterColon.c, this.layoutSpaceAfterComma.c, this.layoutSpaceAfterMethodName.c, this.layoutSpaceAfterNot.c, this.layoutSpaceAfterSemicolon.c, this.layoutSpaceAroundBlockParameters.c, this.layoutSpaceAroundEqualsInParameterDefault.c, this.layoutSpaceAroundKeyword.c, this.layoutSpaceAroundMethodCallOperator.c, this.layoutSpaceAroundOperators.c, this.layoutSpaceBeforeBlockBraces.c, this.layoutSpaceBeforeComma.c, this.layoutSpaceBeforeComment.c, this.layoutSpaceBeforeFirstArg.c, this.layoutSpaceBeforeSemicolon.c, this.layoutSpaceInLambdaLiteral.c, this.layoutSpaceInsideArrayPercentLiteral.c, this.layoutSpaceInsideArrayLiteralBrackets.c, this.layoutSpaceInsideBlockBraces.c, this.layoutSpaceInsideHashLiteralBraces.c, this.layoutSpaceInsideParens.c, this.layoutSpaceInsidePercentLiteralDelimiters.c, this.layoutSpaceInsideRangeLiteral.c, this.layoutSpaceInsideReferenceBrackets.c, this.layoutSpaceInsideStringInterpolation.c, this.layoutTrailingEmptyLines.c, this.layoutTrailingWhitespace.c, this.styleAccessorGrouping.c, this.styleAlias.c, this.styleArrayJoin.c, this.styleAttr.c, this.styleCaseEquality.c, this.styleClassCheck.c, this.styleClassMethods.c, this.styleColonMethodCall.c, this.styleColonMethodDefinition.c, this.styleDefWithParentheses.c, this.styleDir.c, this.styleEachWithObject.c, this.styleEmptyBlockParameter.c, this.styleEmptyLambdaParameter.c, this.styleEmptyLiteral.c, this.styleEmptyMethod.c, this.styleEvalWithLocation.c, this.styleEvenOdd.c, this.styleHashAsLastArrayItem.c, this.styleHashSyntax.c, this.styleLambda.c, this.styleLambdaCall.c, this.styleMethodCallWithoutArgsParentheses.c, this.styleMethodDefParentheses.c, this.styleNestedParenthesizedCalls.c, this.styleNilComparison.c, this.styleNot.c, this.stylePerlBackrefs.c, this.styleProc.c, this.styleRandomWithOffset.c, this.styleRedundantSelf.c, this.styleRedundantSortBy.c, this.styleRescueStandardError.c, this.styleSample.c, this.styleSelfAssignment.c, this.styleSignalException.c, this.styleStabbyLambdaParentheses.c, this.styleStderrPuts.c, this.styleStringLiterals.c, this.styleStrip.c, this.styleTrailingCommaInArguments.c, this.styleTrailingCommaInArrayLiteral.c, this.styleTrailingCommaInHashLiteral.c, this.styleTrivialAccessors.c, this.styleUnpackFirst.c];
+    this.cops = [this.layoutAccessModifierIndentation.c, this.layoutArgumentAlignment.c, this.layoutArrayAlignment.c, this.layoutAssignmentIndentation.c, this.layoutBeginEndAlignment.c, this.layoutBlockAlignment.c, this.layoutBlockEndNewline.c, this.layoutCaseIndentation.c, this.layoutClosingHeredocIndentation.c, this.layoutClosingParenthesisIndentation.c, this.layoutCommentIndentation.c, this.layoutConditionPosition.c, this.layoutDefEndAlignment.c, this.layoutDotPosition.c, this.layoutElseAlignment.c, this.layoutEmptyComment.c, this.layoutEmptyLineAfterGuardClause.c, this.layoutEmptyLineAfterMagicComment.c, this.layoutEmptyLineBetweenDefs.c, this.layoutEmptyLinesAroundAccessModifier.c, this.layoutEmptyLinesAroundArguments.c, this.layoutEmptyLinesAroundAttributeAccessor.c, this.layoutEmptyLinesAroundBeginBody.c, this.layoutEmptyLinesAroundBlockBody.c, this.layoutEmptyLinesAroundClassBody.c, this.layoutEmptyLinesAroundExceptionHandlingKeywords.c, this.layoutEmptyLinesAroundMethodBody.c, this.layoutEmptyLinesAroundModuleBody.c, this.layoutEmptyLines.c, this.layoutEndAlignment.c, this.layoutExtraSpacing.c, this.layoutFirstArgumentIndentation.c, this.layoutFirstArrayElementIndentation.c, this.layoutFirstHashElementIndentation.c, this.layoutFirstParameterIndentation.c, this.layoutHashAlignment.c, this.layoutHeredocIndentation.c, this.layoutIndentationConsistency.c, this.layoutIndentationStyle.c, this.layoutIndentationWidth.c, this.layoutInitialIndentation.c, this.layoutLeadingCommentSpace.c, this.layoutLeadingEmptyLines.c, this.layoutMultilineArrayBraceLayout.c, this.layoutMultilineBlockLayout.c, this.layoutMultilineHashBraceLayout.c, this.layoutMultilineMethodCallBraceLayout.c, this.layoutMultilineMethodCallIndentation.c, this.layoutMultilineMethodDefinitionBraceLayout.c, this.layoutMultilineOperationIndentation.c, this.layoutParameterAlignment.c, this.layoutRescueEnsureAlignment.c, this.layoutSpaceAfterColon.c, this.layoutSpaceAfterComma.c, this.layoutSpaceAfterMethodName.c, this.layoutSpaceAfterNot.c, this.layoutSpaceAfterSemicolon.c, this.layoutSpaceAroundBlockParameters.c, this.layoutSpaceAroundEqualsInParameterDefault.c, this.layoutSpaceAroundKeyword.c, this.layoutSpaceAroundMethodCallOperator.c, this.layoutSpaceAroundOperators.c, this.layoutSpaceBeforeBlockBraces.c, this.layoutSpaceBeforeComma.c, this.layoutSpaceBeforeComment.c, this.layoutSpaceBeforeFirstArg.c, this.layoutSpaceBeforeSemicolon.c, this.layoutSpaceInLambdaLiteral.c, this.layoutSpaceInsideArrayPercentLiteral.c, this.layoutSpaceInsideArrayLiteralBrackets.c, this.layoutSpaceInsideBlockBraces.c, this.layoutSpaceInsideHashLiteralBraces.c, this.layoutSpaceInsideParens.c, this.layoutSpaceInsidePercentLiteralDelimiters.c, this.layoutSpaceInsideRangeLiteral.c, this.layoutSpaceInsideReferenceBrackets.c, this.layoutSpaceInsideStringInterpolation.c, this.layoutTrailingEmptyLines.c, this.layoutTrailingWhitespace.c, this.styleAccessorGrouping.c, this.styleAlias.c, this.styleArrayJoin.c, this.styleAttr.c, this.styleCaseEquality.c, this.styleClassCheck.c, this.styleClassMethods.c, this.styleColonMethodCall.c, this.styleColonMethodDefinition.c, this.styleDefWithParentheses.c, this.styleDir.c, this.styleEachWithObject.c, this.styleEmptyBlockParameter.c, this.styleEmptyLambdaParameter.c, this.styleEmptyLiteral.c, this.styleEmptyMethod.c, this.styleEvalWithLocation.c, this.styleEvenOdd.c, this.styleHashAsLastArrayItem.c, this.styleHashSyntax.c, this.styleLambda.c, this.styleLambdaCall.c, this.styleMethodCallWithoutArgsParentheses.c, this.styleMethodDefParentheses.c, this.styleNestedParenthesizedCalls.c, this.styleNilComparison.c, this.styleNot.c, this.stylePerlBackrefs.c, this.styleProc.c, this.styleRandomWithOffset.c, this.styleRedundantSelf.c, this.styleRedundantSortBy.c, this.styleRescueStandardError.c, this.styleSample.c, this.styleSelfAssignment.c, this.styleSignalException.c, this.styleStabbyLambdaParentheses.c, this.styleStderrPuts.c, this.styleStringLiterals.c, this.styleStrip.c, this.styleTrailingCommaInArguments.c, this.styleTrailingCommaInArrayLiteral.c, this.styleTrailingCommaInHashLiteral.c, this.styleTrivialAccessors.c, this.styleUnpackFirst.c];
   }
 
   private on(name: string): boolean {
@@ -362,6 +422,31 @@ export class RbTeam {
     } else {
       this.layoutAssignmentIndentation.c.begin(src);
     }
+    if (this.on("Layout/BeginEndAlignment")) {
+      this.layoutBeginEndAlignment.run(src);
+    } else {
+      this.layoutBeginEndAlignment.c.begin(src);
+    }
+    if (this.on("Layout/BlockAlignment")) {
+      this.layoutBlockAlignment.run(src);
+    } else {
+      this.layoutBlockAlignment.c.begin(src);
+    }
+    if (this.on("Layout/BlockEndNewline")) {
+      this.layoutBlockEndNewline.run(src);
+    } else {
+      this.layoutBlockEndNewline.c.begin(src);
+    }
+    if (this.on("Layout/CaseIndentation")) {
+      this.layoutCaseIndentation.run(src);
+    } else {
+      this.layoutCaseIndentation.c.begin(src);
+    }
+    if (this.on("Layout/ClosingHeredocIndentation")) {
+      this.layoutClosingHeredocIndentation.run(src);
+    } else {
+      this.layoutClosingHeredocIndentation.c.begin(src);
+    }
     if (this.on("Layout/ClosingParenthesisIndentation")) {
       this.layoutClosingParenthesisIndentation.run(src);
     } else {
@@ -371,6 +456,26 @@ export class RbTeam {
       this.layoutCommentIndentation.run(src);
     } else {
       this.layoutCommentIndentation.c.begin(src);
+    }
+    if (this.on("Layout/ConditionPosition")) {
+      this.layoutConditionPosition.run(src);
+    } else {
+      this.layoutConditionPosition.c.begin(src);
+    }
+    if (this.on("Layout/DefEndAlignment")) {
+      this.layoutDefEndAlignment.run(src);
+    } else {
+      this.layoutDefEndAlignment.c.begin(src);
+    }
+    if (this.on("Layout/DotPosition")) {
+      this.layoutDotPosition.run(src);
+    } else {
+      this.layoutDotPosition.c.begin(src);
+    }
+    if (this.on("Layout/ElseAlignment")) {
+      this.layoutElseAlignment.run(src);
+    } else {
+      this.layoutElseAlignment.c.begin(src);
     }
     if (this.on("Layout/EmptyComment")) {
       this.layoutEmptyComment.run(src);
@@ -442,6 +547,16 @@ export class RbTeam {
     } else {
       this.layoutEmptyLines.c.begin(src);
     }
+    if (this.on("Layout/EndAlignment")) {
+      this.layoutEndAlignment.run(src);
+    } else {
+      this.layoutEndAlignment.c.begin(src);
+    }
+    if (this.on("Layout/ExtraSpacing")) {
+      this.layoutExtraSpacing.run(src);
+    } else {
+      this.layoutExtraSpacing.c.begin(src);
+    }
     if (this.on("Layout/FirstArgumentIndentation")) {
       this.layoutFirstArgumentIndentation.run(src);
     } else {
@@ -466,6 +581,11 @@ export class RbTeam {
       this.layoutHashAlignment.run(src);
     } else {
       this.layoutHashAlignment.c.begin(src);
+    }
+    if (this.on("Layout/HeredocIndentation")) {
+      this.layoutHeredocIndentation.run(src);
+    } else {
+      this.layoutHeredocIndentation.c.begin(src);
     }
     if (this.on("Layout/IndentationConsistency")) {
       this.layoutIndentationConsistency.run(src);
@@ -497,10 +617,50 @@ export class RbTeam {
     } else {
       this.layoutLeadingEmptyLines.c.begin(src);
     }
+    if (this.on("Layout/MultilineArrayBraceLayout")) {
+      this.layoutMultilineArrayBraceLayout.run(src);
+    } else {
+      this.layoutMultilineArrayBraceLayout.c.begin(src);
+    }
+    if (this.on("Layout/MultilineBlockLayout")) {
+      this.layoutMultilineBlockLayout.run(src);
+    } else {
+      this.layoutMultilineBlockLayout.c.begin(src);
+    }
+    if (this.on("Layout/MultilineHashBraceLayout")) {
+      this.layoutMultilineHashBraceLayout.run(src);
+    } else {
+      this.layoutMultilineHashBraceLayout.c.begin(src);
+    }
+    if (this.on("Layout/MultilineMethodCallBraceLayout")) {
+      this.layoutMultilineMethodCallBraceLayout.run(src);
+    } else {
+      this.layoutMultilineMethodCallBraceLayout.c.begin(src);
+    }
+    if (this.on("Layout/MultilineMethodCallIndentation")) {
+      this.layoutMultilineMethodCallIndentation.run(src);
+    } else {
+      this.layoutMultilineMethodCallIndentation.c.begin(src);
+    }
+    if (this.on("Layout/MultilineMethodDefinitionBraceLayout")) {
+      this.layoutMultilineMethodDefinitionBraceLayout.run(src);
+    } else {
+      this.layoutMultilineMethodDefinitionBraceLayout.c.begin(src);
+    }
+    if (this.on("Layout/MultilineOperationIndentation")) {
+      this.layoutMultilineOperationIndentation.run(src);
+    } else {
+      this.layoutMultilineOperationIndentation.c.begin(src);
+    }
     if (this.on("Layout/ParameterAlignment")) {
       this.layoutParameterAlignment.run(src);
     } else {
       this.layoutParameterAlignment.c.begin(src);
+    }
+    if (this.on("Layout/RescueEnsureAlignment")) {
+      this.layoutRescueEnsureAlignment.run(src);
+    } else {
+      this.layoutRescueEnsureAlignment.c.begin(src);
     }
     if (this.on("Layout/SpaceAfterColon")) {
       this.layoutSpaceAfterColon.run(src);
