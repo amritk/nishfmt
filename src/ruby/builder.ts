@@ -196,6 +196,7 @@ export class RbParseState {
     this.patternVars = [[]];
     this.patternKeys = [[]];
     this.lineStarts = [];
+    this.lineAt = [];
   }
 
   error(): void {
@@ -318,8 +319,29 @@ export class RbParseState {
     }
   }
 
+  // The line of every code point offset (0..n), filled by fillLines.
+  lineAt: i32[];
+
+  /** Builds lineAt from lineStarts for a source of n code points. */
+  fillLines(n: i32): void {
+    const t: i32[] = [];
+    let l = 1;
+    const k = toI32(this.lineStarts.length);
+    for (let i = 0; i <= n; i++) {
+      while (l < k && this.lineStarts[l] <= i) {
+        l++;
+      }
+      t.push(l);
+    }
+    this.lineAt = t;
+  }
+
   /** The 1-based line of a code point offset. */
   lineOf(pos: i32): i32 {
+    const k = toI32(this.lineAt.length);
+    if (k > 0) {
+      return pos < 0 ? 1 : pos < k ? this.lineAt[pos] : this.lineAt[k - 1];
+    }
     let lo = 0;
     let hi = toI32(this.lineStarts.length) - 1;
     while (lo < hi) {
@@ -332,6 +354,7 @@ export class RbParseState {
     }
     return lo + 1;
   }
+
 }
 
 export class RbBuilder {

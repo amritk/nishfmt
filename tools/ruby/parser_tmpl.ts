@@ -55,20 +55,31 @@ import {
   RL_LEX_EN_EXPR_FNAME,
   RL_LEX_EN_EXPR_VALUE,
   RP_ACTION_CHECK,
+  RP_ACTION_CHECK_D,
   RP_ACTION_DEFAULT,
+  RP_ACTION_DEFAULT_D,
   RP_ACTION_POINTER,
+  RP_ACTION_POINTER_D,
   RP_ACTION_TABLE,
+  RP_ACTION_TABLE_D,
   RP_ACTION_TABLE_N,
   RP_GOTO_CHECK,
+  RP_GOTO_CHECK_D,
   RP_GOTO_DEFAULT,
+  RP_GOTO_DEFAULT_D,
   RP_GOTO_POINTER,
+  RP_GOTO_POINTER_D,
   RP_GOTO_TABLE,
+  RP_GOTO_TABLE_D,
   RP_GOTO_TABLE_N,
   RP_NT_BASE,
   RP_REDUCE_ACT,
+  RP_REDUCE_ACT_D,
   RP_REDUCE_LEN,
+  RP_REDUCE_LEN_D,
   RP_REDUCE_N,
   RP_REDUCE_NT,
+  RP_REDUCE_NT_D,
   RP_SHIFT_N,
   TK_tLBRACE_ARG,
   TK_tLBRACK,
@@ -76,6 +87,7 @@ import {
   TK_tNL,
   TK_tSTRING_DVAR,
   rbAt,
+  rbTablesInit,
 } from "./tables";
 
 // Booleans the grammar keeps on the value stack (Context#in_kwarg).
@@ -93,6 +105,7 @@ export class RbParser {
   failed: boolean = false;
 
   constructor(pts: i32[]) {
+    rbTablesInit();
     this.a = new RbAst(pts);
     this.ctx = new RbContext();
     this.env = new RbStaticEnv();
@@ -105,6 +118,7 @@ export class RbParser {
         this.st.lineStarts.push(i + 1);
       }
     }
+    this.st.fillLines(toI32(pts.length));
   }
 
   /** The program's AST, or V_NIL; `failed` tells an empty program from a syntax error. */
@@ -120,7 +134,7 @@ export class RbParser {
         return V_NIL;
       }
       const s = states[states.length - 1];
-      const ptr = rbAt(RP_ACTION_POINTER, s);
+      const ptr = RP_ACTION_POINTER_D[s];
       let act = 0;
       if (ptr !== RB_NIL) {
         if (readNext) {
@@ -136,12 +150,12 @@ export class RbParser {
           readNext = false;
         }
         const i = ptr + t;
-        act = i >= 0 && i < RP_ACTION_TABLE_N ? rbAt(RP_ACTION_TABLE, i) : RB_NIL;
-        if (act === RB_NIL || rbAt(RP_ACTION_CHECK, i) !== s) {
-          act = rbAt(RP_ACTION_DEFAULT, s);
+        act = i >= 0 && i < RP_ACTION_TABLE_N ? RP_ACTION_TABLE_D[i] : RB_NIL;
+        if (act === RB_NIL || RP_ACTION_CHECK_D[i] !== s) {
+          act = RP_ACTION_DEFAULT_D[s];
         }
       } else {
-        act = rbAt(RP_ACTION_DEFAULT, s);
+        act = RP_ACTION_DEFAULT_D[s];
       }
       if (act > 0 && act < RP_SHIFT_N) {
         vals.push(tokH);
@@ -149,9 +163,9 @@ export class RbParser {
         readNext = true;
       } else if (act < 0 && act > -RP_REDUCE_N) {
         const r = -act;
-        const len = rbAt(RP_REDUCE_LEN, r);
-        const nt = rbAt(RP_REDUCE_NT, r);
-        const fn = rbAt(RP_REDUCE_ACT, r);
+        const len = RP_REDUCE_LEN_D[r];
+        const nt = RP_REDUCE_NT_D[r];
+        const fn = RP_REDUCE_ACT_D[r];
         const v: i32[] = [];
         const base = toI32(vals.length) - len;
         for (let j = 0; j < len; j++) {
@@ -169,19 +183,19 @@ export class RbParser {
         }
         vals.push(res);
         const k1 = nt - RP_NT_BASE;
-        const gp = rbAt(RP_GOTO_POINTER, k1);
+        const gp = RP_GOTO_POINTER_D[k1];
         let next = RB_NIL;
         if (gp !== RB_NIL) {
           const gi = gp + states[states.length - 1];
           if (gi >= 0 && gi < RP_GOTO_TABLE_N) {
-            const cs = rbAt(RP_GOTO_TABLE, gi);
-            if (cs !== RB_NIL && rbAt(RP_GOTO_CHECK, gi) === k1) {
+            const cs = RP_GOTO_TABLE_D[gi];
+            if (cs !== RB_NIL && RP_GOTO_CHECK_D[gi] === k1) {
               next = cs;
             }
           }
         }
         if (next === RB_NIL) {
-          next = rbAt(RP_GOTO_DEFAULT, k1);
+          next = RP_GOTO_DEFAULT_D[k1];
         }
         states.push(next);
       } else if (act === RP_SHIFT_N) {

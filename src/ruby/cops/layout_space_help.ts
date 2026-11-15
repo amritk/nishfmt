@@ -24,64 +24,13 @@ export class LspToks {
   n: i32;
 
   constructor(src: RbSource) {
-    const n = toI32(src.tokT.length);
-    this.n = n;
-    let idx: i32[] = [];
-    for (let i = 0; i < n; i++) {
-      idx.push(i);
-    }
-    // Bottom-up merge sort (stable).
-    let tmp: i32[] = [];
-    for (let i = 0; i < n; i++) {
-      tmp.push(0);
-    }
-    let w = 1;
-    while (w < n) {
-      let lo = 0;
-      while (lo < n) {
-        const mid = lo + w < n ? lo + w : n;
-        const hi = lo + 2 * w < n ? lo + 2 * w : n;
-        let i = lo;
-        let j = mid;
-        let k = lo;
-        while (i < mid && j < hi) {
-          if (src.tokS[idx[j]] < src.tokS[idx[i]]) {
-            tmp[k] = idx[j];
-            j++;
-          } else {
-            tmp[k] = idx[i];
-            i++;
-          }
-          k++;
-        }
-        while (i < mid) {
-          tmp[k] = idx[i];
-          i++;
-          k++;
-        }
-        while (j < hi) {
-          tmp[k] = idx[j];
-          j++;
-          k++;
-        }
-        lo = hi;
-      }
-      const sw = idx;
-      idx = tmp;
-      tmp = sw;
-      w = w * 2;
-    }
-    this.t = [];
-    this.v = [];
-    this.s = [];
-    this.e = [];
-    for (let i = 0; i < n; i++) {
-      const o = idx[i];
-      this.t.push(src.tokT[o]);
-      this.v.push(src.tokV[o]);
-      this.s.push(src.tokS[o]);
-      this.e.push(src.tokE[o]);
-    }
+    // The sort is done once per source and shared (the arrays are read-only).
+    src.sortTokens();
+    this.n = toI32(src.tokT.length);
+    this.t = src.sortT;
+    this.v = src.sortV;
+    this.s = src.sortS;
+    this.e = src.sortE;
   }
 
   /** first_token_index: bsearch_index { begin_pos >= pos } (-1 for nil). */

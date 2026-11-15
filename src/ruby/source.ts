@@ -30,6 +30,18 @@ export class RbSource {
   tokV: string[];
   tokS: i32[];
   tokE: i32[];
+  // Shared derived data, computed on first use: the tokens sorted by
+  // position (sorted_tokens) and processed_source.lines.
+  sortDone: boolean = false;
+  sortT: i32[];
+  sortV: string[];
+  sortS: i32[];
+  sortE: i32[];
+  layDone: boolean = false;
+  layS: i32[];
+  layE: i32[];
+  layPhys: i32 = 0;
+  layN: i32 = 0;
   // Directive comments: whether the file has any we cannot interpret.
   unsupportedDirectives: boolean = false;
   // The source mentions `rubocop` (CommentConfig's @no_directives test).
@@ -55,6 +67,12 @@ export class RbSource {
     this.tokV = this.p.lx.allVal;
     this.tokS = this.p.lx.allS;
     this.tokE = this.p.lx.allE;
+    this.sortT = [];
+    this.sortV = [];
+    this.sortS = [];
+    this.sortE = [];
+    this.layS = [];
+    this.layE = [];
     this.dirNames = [];
     this.dirFrom = [];
     this.dirTo = [];
@@ -66,6 +84,104 @@ export class RbSource {
     }
     if (this.valid) {
       this.analyzeDirectives();
+    }
+  }
+
+  sortTokens(): void {
+    if (this.sortDone) {
+      return;
+    }
+    this.sortDone = true;
+    const src = this;
+    const n = toI32(src.tokT.length);
+    let idx: i32[] = [];
+    for (let i = 0; i < n; i++) {
+      idx.push(i);
+    }
+    // Bottom-up merge sort (stable).
+    let tmp: i32[] = [];
+    for (let i = 0; i < n; i++) {
+      tmp.push(0);
+    }
+    let w = 1;
+    while (w < n) {
+      let lo = 0;
+      while (lo < n) {
+        const mid = lo + w < n ? lo + w : n;
+        const hi = lo + 2 * w < n ? lo + 2 * w : n;
+        let i = lo;
+        let j = mid;
+        let k = lo;
+        while (i < mid && j < hi) {
+          if (src.tokS[idx[j]] < src.tokS[idx[i]]) {
+            tmp[k] = idx[j];
+            j++;
+          } else {
+            tmp[k] = idx[i];
+            i++;
+          }
+          k++;
+        }
+        while (i < mid) {
+          tmp[k] = idx[i];
+          i++;
+          k++;
+        }
+        while (j < hi) {
+          tmp[k] = idx[j];
+          j++;
+          k++;
+        }
+        lo = hi;
+      }
+      const sw = idx;
+      idx = tmp;
+      tmp = sw;
+      w = w * 2;
+    }
+    this.sortT = [];
+    this.sortV = [];
+    this.sortS = [];
+    this.sortE = [];
+    for (let i = 0; i < n; i++) {
+      const o = idx[i];
+      this.sortT.push(src.tokT[o]);
+      this.sortV.push(src.tokV[o]);
+      this.sortS.push(src.tokS[o]);
+      this.sortE.push(src.tokE[o]);
+    }
+  }
+
+  layLines(): void {
+    if (this.layDone) {
+      return;
+    }
+    this.layDone = true;
+    const src = this;
+    this.layS = [];
+    this.layE = [];
+    this.layPhys = 0;
+    this.layN = 0;
+    const k = src.n;
+    if (k > 0) {
+      this.layS.push(0);
+      for (let i = 0; i < k; i++) {
+        if (src.pts[i] === 10) {
+          this.layE.push(i);
+          this.layS.push(i + 1);
+        }
+      }
+      this.layE.push(k);
+    }
+    this.layPhys = toI32(this.layS.length);
+    this.layN = this.layPhys;
+    const nt = toI32(src.tokS.length);
+    const lastTokLine = nt > 0 ? src.line(src.tokS[nt - 1]) : this.layPhys;
+    for (let ix = lastTokLine; ix < this.layPhys; ix++) {
+      if (this.layE[ix] - this.layS[ix] === 7 && src.src(this.layS[ix], this.layE[ix]) === "__END__") {
+        this.layN = ix;
+        break;
+      }
     }
   }
 
@@ -95,11 +211,11 @@ export class RbSource {
   // ---- Text --------------------------------------------------------------------
 
   src(s: i32, e: i32): string {
-    return rbText(this.pts, s, e);
+    return this.p.lx.textOf(s, e);
   }
 
   nodeSrc(n: i32): string {
-    return rbText(this.pts, this.a.exS(n), this.a.exE(n));
+    return this.p.lx.textOf(this.a.exS(n), this.a.exE(n));
   }
 
   at(i: i32): i32 {

@@ -251,3 +251,134 @@ export const rbAt = (t: string, i: i32): i32 => {
 
 /** racc's nil. */
 export const RB_NIL: i32 = -2147483647;
+
+// The tables decoded once per process into module storage, read as `T_D[i]`.
+export const RL_LEX_TRANS_KEYS_D = new Int32Array(RL_LEX_TRANS_KEYS_N);
+export const RL_LEX_KEY_SPANS_D = new Int32Array(RL_LEX_KEY_SPANS_N);
+export const RL_LEX_INDEX_OFFSETS_D = new Int32Array(RL_LEX_INDEX_OFFSETS_N);
+export const RL_LEX_INDICIES_D = new Int32Array(RL_LEX_INDICIES_N);
+export const RL_LEX_TRANS_TARGS_D = new Int32Array(RL_LEX_TRANS_TARGS_N);
+export const RL_LEX_TRANS_ACTIONS_D = new Int32Array(RL_LEX_TRANS_ACTIONS_N);
+export const RL_LEX_TO_STATE_ACTIONS_D = new Int32Array(RL_LEX_TO_STATE_ACTIONS_N);
+export const RL_LEX_FROM_STATE_ACTIONS_D = new Int32Array(RL_LEX_FROM_STATE_ACTIONS_N);
+export const RL_LEX_EOF_TRANS_D = new Int32Array(RL_LEX_EOF_TRANS_N);
+export const RS_LEX_ACTIONS_D = new Int32Array(RS_LEX_ACTIONS_N);
+export const RS_LEX_TRANS_KEYS_D = new Int32Array(RS_LEX_TRANS_KEYS_N);
+export const RS_LEX_KEY_SPANS_D = new Int32Array(RS_LEX_KEY_SPANS_N);
+export const RS_LEX_INDEX_OFFSETS_D = new Int32Array(RS_LEX_INDEX_OFFSETS_N);
+export const RS_LEX_INDICIES_D = new Int32Array(RS_LEX_INDICIES_N);
+export const RS_LEX_TRANS_TARGS_D = new Int32Array(RS_LEX_TRANS_TARGS_N);
+export const RS_LEX_TRANS_ACTIONS_D = new Int32Array(RS_LEX_TRANS_ACTIONS_N);
+export const RS_LEX_TO_STATE_ACTIONS_D = new Int32Array(RS_LEX_TO_STATE_ACTIONS_N);
+export const RS_LEX_FROM_STATE_ACTIONS_D = new Int32Array(RS_LEX_FROM_STATE_ACTIONS_N);
+export const RS_LEX_EOF_TRANS_D = new Int32Array(RS_LEX_EOF_TRANS_N);
+export const RP_ACTION_TABLE_D = new Int32Array(RP_ACTION_TABLE_N);
+export const RP_ACTION_CHECK_D = new Int32Array(RP_ACTION_CHECK_N);
+export const RP_ACTION_POINTER_D = new Int32Array(RP_ACTION_POINTER_N);
+export const RP_ACTION_DEFAULT_D = new Int32Array(RP_ACTION_DEFAULT_N);
+export const RP_GOTO_TABLE_D = new Int32Array(RP_GOTO_TABLE_N);
+export const RP_GOTO_CHECK_D = new Int32Array(RP_GOTO_CHECK_N);
+export const RP_GOTO_POINTER_D = new Int32Array(RP_GOTO_POINTER_N);
+export const RP_GOTO_DEFAULT_D = new Int32Array(RP_GOTO_DEFAULT_N);
+export const RP_REDUCE_LEN_D = new Int32Array(RP_REDUCE_LEN_N);
+export const RP_REDUCE_NT_D = new Int32Array(RP_REDUCE_NT_N);
+export const RP_REDUCE_ACT_D = new Int32Array(RP_REDUCE_ACT_N);
+const RB_TABLES_READY = new Int32Array(1);
+
+/** Decodes every table on the first call. */
+export const rbTablesInit = (): void => {
+  if (RB_TABLES_READY[0] === 1) {
+    return;
+  }
+  for (let i = 0; i < RL_LEX_TRANS_KEYS_N; i++) {
+    RL_LEX_TRANS_KEYS_D[i] = rbAt(RL_LEX_TRANS_KEYS, i);
+  }
+  for (let i = 0; i < RL_LEX_KEY_SPANS_N; i++) {
+    RL_LEX_KEY_SPANS_D[i] = rbAt(RL_LEX_KEY_SPANS, i);
+  }
+  for (let i = 0; i < RL_LEX_INDEX_OFFSETS_N; i++) {
+    RL_LEX_INDEX_OFFSETS_D[i] = rbAt(RL_LEX_INDEX_OFFSETS, i);
+  }
+  for (let i = 0; i < RL_LEX_INDICIES_N; i++) {
+    RL_LEX_INDICIES_D[i] = rbAt(RL_LEX_INDICIES, i);
+  }
+  for (let i = 0; i < RL_LEX_TRANS_TARGS_N; i++) {
+    RL_LEX_TRANS_TARGS_D[i] = rbAt(RL_LEX_TRANS_TARGS, i);
+  }
+  for (let i = 0; i < RL_LEX_TRANS_ACTIONS_N; i++) {
+    RL_LEX_TRANS_ACTIONS_D[i] = rbAt(RL_LEX_TRANS_ACTIONS, i);
+  }
+  for (let i = 0; i < RL_LEX_TO_STATE_ACTIONS_N; i++) {
+    RL_LEX_TO_STATE_ACTIONS_D[i] = rbAt(RL_LEX_TO_STATE_ACTIONS, i);
+  }
+  for (let i = 0; i < RL_LEX_FROM_STATE_ACTIONS_N; i++) {
+    RL_LEX_FROM_STATE_ACTIONS_D[i] = rbAt(RL_LEX_FROM_STATE_ACTIONS, i);
+  }
+  for (let i = 0; i < RL_LEX_EOF_TRANS_N; i++) {
+    RL_LEX_EOF_TRANS_D[i] = rbAt(RL_LEX_EOF_TRANS, i);
+  }
+  for (let i = 0; i < RS_LEX_ACTIONS_N; i++) {
+    RS_LEX_ACTIONS_D[i] = rbAt(RS_LEX_ACTIONS, i);
+  }
+  for (let i = 0; i < RS_LEX_TRANS_KEYS_N; i++) {
+    RS_LEX_TRANS_KEYS_D[i] = rbAt(RS_LEX_TRANS_KEYS, i);
+  }
+  for (let i = 0; i < RS_LEX_KEY_SPANS_N; i++) {
+    RS_LEX_KEY_SPANS_D[i] = rbAt(RS_LEX_KEY_SPANS, i);
+  }
+  for (let i = 0; i < RS_LEX_INDEX_OFFSETS_N; i++) {
+    RS_LEX_INDEX_OFFSETS_D[i] = rbAt(RS_LEX_INDEX_OFFSETS, i);
+  }
+  for (let i = 0; i < RS_LEX_INDICIES_N; i++) {
+    RS_LEX_INDICIES_D[i] = rbAt(RS_LEX_INDICIES, i);
+  }
+  for (let i = 0; i < RS_LEX_TRANS_TARGS_N; i++) {
+    RS_LEX_TRANS_TARGS_D[i] = rbAt(RS_LEX_TRANS_TARGS, i);
+  }
+  for (let i = 0; i < RS_LEX_TRANS_ACTIONS_N; i++) {
+    RS_LEX_TRANS_ACTIONS_D[i] = rbAt(RS_LEX_TRANS_ACTIONS, i);
+  }
+  for (let i = 0; i < RS_LEX_TO_STATE_ACTIONS_N; i++) {
+    RS_LEX_TO_STATE_ACTIONS_D[i] = rbAt(RS_LEX_TO_STATE_ACTIONS, i);
+  }
+  for (let i = 0; i < RS_LEX_FROM_STATE_ACTIONS_N; i++) {
+    RS_LEX_FROM_STATE_ACTIONS_D[i] = rbAt(RS_LEX_FROM_STATE_ACTIONS, i);
+  }
+  for (let i = 0; i < RS_LEX_EOF_TRANS_N; i++) {
+    RS_LEX_EOF_TRANS_D[i] = rbAt(RS_LEX_EOF_TRANS, i);
+  }
+  for (let i = 0; i < RP_ACTION_TABLE_N; i++) {
+    RP_ACTION_TABLE_D[i] = rbAt(RP_ACTION_TABLE, i);
+  }
+  for (let i = 0; i < RP_ACTION_CHECK_N; i++) {
+    RP_ACTION_CHECK_D[i] = rbAt(RP_ACTION_CHECK, i);
+  }
+  for (let i = 0; i < RP_ACTION_POINTER_N; i++) {
+    RP_ACTION_POINTER_D[i] = rbAt(RP_ACTION_POINTER, i);
+  }
+  for (let i = 0; i < RP_ACTION_DEFAULT_N; i++) {
+    RP_ACTION_DEFAULT_D[i] = rbAt(RP_ACTION_DEFAULT, i);
+  }
+  for (let i = 0; i < RP_GOTO_TABLE_N; i++) {
+    RP_GOTO_TABLE_D[i] = rbAt(RP_GOTO_TABLE, i);
+  }
+  for (let i = 0; i < RP_GOTO_CHECK_N; i++) {
+    RP_GOTO_CHECK_D[i] = rbAt(RP_GOTO_CHECK, i);
+  }
+  for (let i = 0; i < RP_GOTO_POINTER_N; i++) {
+    RP_GOTO_POINTER_D[i] = rbAt(RP_GOTO_POINTER, i);
+  }
+  for (let i = 0; i < RP_GOTO_DEFAULT_N; i++) {
+    RP_GOTO_DEFAULT_D[i] = rbAt(RP_GOTO_DEFAULT, i);
+  }
+  for (let i = 0; i < RP_REDUCE_LEN_N; i++) {
+    RP_REDUCE_LEN_D[i] = rbAt(RP_REDUCE_LEN, i);
+  }
+  for (let i = 0; i < RP_REDUCE_NT_N; i++) {
+    RP_REDUCE_NT_D[i] = rbAt(RP_REDUCE_NT, i);
+  }
+  for (let i = 0; i < RP_REDUCE_ACT_N; i++) {
+    RP_REDUCE_ACT_D[i] = rbAt(RP_REDUCE_ACT, i);
+  }
+  RB_TABLES_READY[0] = 1;
+};

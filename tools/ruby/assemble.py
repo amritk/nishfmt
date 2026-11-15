@@ -139,12 +139,12 @@ def apply(block, rules):
 
 main = open(T + 'main_actions.ts').read()
 mainsw = switch_block(main, 'switch (_lex_trans_actions[_trans]) {')
-mainsw = mainsw.replace('switch (_lex_trans_actions[_trans]) {', 'switch (rbAt(RL_LEX_TRANS_ACTIONS, _trans)) {', 1)
+mainsw = mainsw.replace('switch (_lex_trans_actions[_trans]) {', 'switch (RL_LEX_TRANS_ACTIONS_D[_trans]) {', 1)
 mainsw = apply(mainsw, COMMON + MAIN).replace('this.strings.', 'this.st().')
 st = open(T + 'str_actions.ts').read()
 b = st.index('while (_nacts > 0) {')
 strsw = switch_block(st[b:], 'switch (_lex_actions[_acts - 1]) {')
-strsw = strsw.replace('switch (_lex_actions[_acts - 1]) {', 'switch (rbAt(RS_LEX_ACTIONS, _acts - 1)) {', 1)
+strsw = strsw.replace('switch (_lex_actions[_acts - 1]) {', 'switch (RS_LEX_ACTIONS_D[_acts - 1]) {', 1)
 strsw = apply(strsw, COMMON + STR)
 for m in STR_METHODS:
     strsw = re.sub(r'(?<![\w.])' + m + r'\b(?!\()', 'this.' + m + '()', strsw)

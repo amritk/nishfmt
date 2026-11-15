@@ -45,31 +45,12 @@ export class RbLayLines {
 
   constructor(src: RbSource) {
     this.src = src;
-    this.s = [];
-    this.e = [];
-    this.phys = 0;
-    this.n = 0;
-    const k = src.n;
-    if (k > 0) {
-      this.s.push(0);
-      for (let i = 0; i < k; i++) {
-        if (src.pts[i] === 10) {
-          this.e.push(i);
-          this.s.push(i + 1);
-        }
-      }
-      this.e.push(k);
-    }
-    this.phys = toI32(this.s.length);
-    this.n = this.phys;
-    const nt = toI32(src.tokS.length);
-    const lastTokLine = nt > 0 ? src.line(src.tokS[nt - 1]) : this.phys;
-    for (let ix = lastTokLine; ix < this.phys; ix++) {
-      if (this.e[ix] - this.s[ix] === 7 && src.src(this.s[ix], this.e[ix]) === "__END__") {
-        this.n = ix;
-        break;
-      }
-    }
+    // Computed once per source and shared (the arrays are read-only).
+    src.layLines();
+    this.s = src.layS;
+    this.e = src.layE;
+    this.phys = src.layPhys;
+    this.n = src.layN;
   }
 
   /** The Ruby index `i` (negative counts from the end) as 0-based, or -1 when out of range. */

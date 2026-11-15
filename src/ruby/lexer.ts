@@ -16,16 +16,27 @@ import {
   RL_LEX_EN_EXPR_VALUE,
   RL_LEX_EN_INSIDE_STRING,
   RL_LEX_EN_LINE_BEGIN,
-  RL_LEX_ERROR,
   RL_LEX_EOF_TRANS,
+  RL_LEX_EOF_TRANS_D,
+  RL_LEX_ERROR,
   RL_LEX_FROM_STATE_ACTIONS,
+  RL_LEX_FROM_STATE_ACTIONS_D,
   RL_LEX_INDEX_OFFSETS,
+  RL_LEX_INDEX_OFFSETS_D,
   RL_LEX_INDICIES,
+  RL_LEX_INDICIES_D,
   RL_LEX_KEY_SPANS,
+  RL_LEX_KEY_SPANS_D,
   RL_LEX_TO_STATE_ACTIONS,
+  RL_LEX_TO_STATE_ACTIONS_D,
   RL_LEX_TRANS_ACTIONS,
+  RL_LEX_TRANS_ACTIONS_D,
   RL_LEX_TRANS_KEYS,
+  RL_LEX_TRANS_KEYS_D,
   RL_LEX_TRANS_TARGS,
+  RL_LEX_TRANS_TARGS_D,
+  RS_LEX_ACTIONS,
+  RS_LEX_ACTIONS_D,
   RS_LEX_EN_CHARACTER,
   RS_LEX_EN_INTERP_BACKSLASH_DELIMITED,
   RS_LEX_EN_INTERP_BACKSLASH_DELIMITED_WORDS,
@@ -37,16 +48,24 @@ import {
   RS_LEX_EN_PLAIN_WORDS,
   RS_LEX_EN_REGEXP_MODIFIERS,
   RS_LEX_EN_UNKNOWN,
-  RS_LEX_ACTIONS,
   RS_LEX_EOF_TRANS,
+  RS_LEX_EOF_TRANS_D,
   RS_LEX_FROM_STATE_ACTIONS,
+  RS_LEX_FROM_STATE_ACTIONS_D,
   RS_LEX_INDEX_OFFSETS,
+  RS_LEX_INDEX_OFFSETS_D,
   RS_LEX_INDICIES,
+  RS_LEX_INDICIES_D,
   RS_LEX_KEY_SPANS,
+  RS_LEX_KEY_SPANS_D,
   RS_LEX_TO_STATE_ACTIONS,
+  RS_LEX_TO_STATE_ACTIONS_D,
   RS_LEX_TRANS_ACTIONS,
+  RS_LEX_TRANS_ACTIONS_D,
   RS_LEX_TRANS_KEYS,
+  RS_LEX_TRANS_KEYS_D,
   RS_LEX_TRANS_TARGS,
+  RS_LEX_TRANS_TARGS_D,
   TK_kALIAS,
   TK_kAND,
   TK_kBEGIN,
@@ -192,6 +211,7 @@ import {
   TK_tWORDS_BEG,
   TK_tXSTRING_BEG,
   rbAt,
+  rbTablesInit,
 } from "./tables";
 
 // Numeric suffix transformations (@num_xfrm).
@@ -745,7 +765,7 @@ export class RbStrings {
   }
 
   tok2(s: i32, e: i32): string {
-    return rbText(this.pts, s, e);
+    return this.lexer.textOf(s, e);
   }
 
   emit_invalid_escapes(): boolean {
@@ -990,36 +1010,36 @@ export class RbStrings {
         }
       }
       if (_goto_level <= _resume) {
-        _acts = rbAt(RS_LEX_FROM_STATE_ACTIONS, this.cs);
-        _nacts = rbAt(RS_LEX_ACTIONS, _acts);
+        _acts = RS_LEX_FROM_STATE_ACTIONS_D[this.cs];
+        _nacts = RS_LEX_ACTIONS_D[_acts];
         _acts += 1;
         while (_nacts > 0) {
           _nacts -= 1;
           _acts += 1;
-          if (rbAt(RS_LEX_ACTIONS, _acts - 1) === 24) {
+          if (RS_LEX_ACTIONS_D[_acts - 1] === 24) {
             this.ts = p;
           }
         }
         _keys = this.cs << 1;
-        _inds = rbAt(RS_LEX_INDEX_OFFSETS, this.cs);
-        _slen = rbAt(RS_LEX_KEY_SPANS, this.cs);
+        _inds = RS_LEX_INDEX_OFFSETS_D[this.cs];
+        _slen = RS_LEX_KEY_SPANS_D[this.cs];
         _wide = p < toI32(pts.length) ? pts[p] : 0;
-        if (_slen > 0 && rbAt(RS_LEX_TRANS_KEYS, _keys) <= _wide && _wide <= rbAt(RS_LEX_TRANS_KEYS, _keys + 1)) {
-          _trans = rbAt(RS_LEX_INDICIES, _inds + _wide - rbAt(RS_LEX_TRANS_KEYS, _keys));
+        if (_slen > 0 && RS_LEX_TRANS_KEYS_D[_keys] <= _wide && _wide <= RS_LEX_TRANS_KEYS_D[_keys + 1]) {
+          _trans = RS_LEX_INDICIES_D[_inds + _wide - RS_LEX_TRANS_KEYS_D[_keys]];
         } else {
-          _trans = rbAt(RS_LEX_INDICIES, _inds + _slen);
+          _trans = RS_LEX_INDICIES_D[_inds + _slen];
         }
       }
       if (_goto_level <= _eof_trans) {
-        this.cs = rbAt(RS_LEX_TRANS_TARGS, _trans);
-        if (rbAt(RS_LEX_TRANS_ACTIONS, _trans) !== 0) {
-          _acts = rbAt(RS_LEX_TRANS_ACTIONS, _trans);
-          _nacts = rbAt(RS_LEX_ACTIONS, _acts);
+        this.cs = RS_LEX_TRANS_TARGS_D[_trans];
+        if (RS_LEX_TRANS_ACTIONS_D[_trans] !== 0) {
+          _acts = RS_LEX_TRANS_ACTIONS_D[_trans];
+          _nacts = RS_LEX_ACTIONS_D[_acts];
           _acts += 1;
           actsLoop: while (_nacts > 0) {
             _nacts -= 1;
             _acts += 1;
-            switch (rbAt(RS_LEX_ACTIONS, _acts - 1)) {
+            switch (RS_LEX_ACTIONS_D[_acts - 1]) {
 case 0: {
 {
 this.newline_s = p;
@@ -2447,13 +2467,13 @@ break;
         }
       }
       if (_goto_level <= _again) {
-        _acts = rbAt(RS_LEX_TO_STATE_ACTIONS, this.cs);
-        _nacts = rbAt(RS_LEX_ACTIONS, _acts);
+        _acts = RS_LEX_TO_STATE_ACTIONS_D[this.cs];
+        _nacts = RS_LEX_ACTIONS_D[_acts];
         _acts += 1;
         while (_nacts > 0) {
           _nacts -= 1;
           _acts += 1;
-          if (rbAt(RS_LEX_ACTIONS, _acts - 1) === 23) {
+          if (RS_LEX_ACTIONS_D[_acts - 1] === 23) {
             this.ts = -1;
           }
         }
@@ -2469,8 +2489,8 @@ break;
       }
       if (_goto_level <= _test_eof) {
         if (p === eof) {
-          if (rbAt(RS_LEX_EOF_TRANS, this.cs) > 0) {
-            _trans = rbAt(RS_LEX_EOF_TRANS, this.cs) - 1;
+          if (RS_LEX_EOF_TRANS_D[this.cs] > 0) {
+            _trans = RS_LEX_EOF_TRANS_D[this.cs] - 1;
             _goto_level = _eof_trans;
             continue;
           }
@@ -2558,6 +2578,9 @@ const rbRemoveBackslashNewlines = (s: string): string => {
 /** Parser::Lexer. */
 export class RbLexer {
   source_pts: i32[];
+  // The source as UTF-8 and the byte offset of every code point (n + 1 of them).
+  bytes: u8[];
+  boff: i32[];
   cs: i32 = 0;
   p: i32 = 0;
   ts: i32 = -1;
@@ -2607,6 +2630,39 @@ export class RbLexer {
   allE: i32[];
 
   constructor(pts: i32[], env: RbStaticEnv, ctx: RbContext) {
+    rbTablesInit();
+    this.boff = [];
+    let nb = 0;
+    for (let i = 0; i < toI32(pts.length); i++) {
+      this.boff.push(nb);
+      const c = pts[i];
+      nb += c < 0x80 ? 1 : c < 0x800 ? 2 : c < 0x10000 ? 3 : 4;
+    }
+    this.boff.push(nb);
+    this.bytes = new Array<u8>(nb);
+    let w = 0;
+    for (let i = 0; i < toI32(pts.length); i++) {
+      const c = pts[i];
+      if (c < 0x80) {
+        this.bytes[w] = toU8(c);
+        w++;
+      } else if (c < 0x800) {
+        this.bytes[w] = toU8(0xc0 | (c >> 6));
+        this.bytes[w + 1] = toU8(0x80 | (c & 0x3f));
+        w += 2;
+      } else if (c < 0x10000) {
+        this.bytes[w] = toU8(0xe0 | (c >> 12));
+        this.bytes[w + 1] = toU8(0x80 | ((c >> 6) & 0x3f));
+        this.bytes[w + 2] = toU8(0x80 | (c & 0x3f));
+        w += 3;
+      } else {
+        this.bytes[w] = toU8(0xf0 | (c >> 18));
+        this.bytes[w + 1] = toU8(0x80 | ((c >> 12) & 0x3f));
+        this.bytes[w + 2] = toU8(0x80 | ((c >> 6) & 0x3f));
+        this.bytes[w + 3] = toU8(0x80 | (c & 0x3f));
+        w += 4;
+      }
+    }
     this.source_pts = pts;
     this.static_env = env;
     this.ctx = ctx;
@@ -2725,7 +2781,15 @@ export class RbLexer {
   }
 
   tok2(s: i32, e: i32): string {
-    return rbText(this.source_pts, s, e);
+    return this.textOf(s, e);
+  }
+
+  /** The source text of the code points [s, e), clamped to the source. */
+  textOf(s0: i32, e0: i32): string {
+    const n = toI32(this.source_pts.length);
+    const s = s0 < 0 ? 0 : s0 > n ? n : s0;
+    const e = e0 > n ? n : e0 < s ? s : e0;
+    return String.fromBytes(this.bytes, this.boff[s], this.boff[e]);
   }
 
   /** Whether the code points [s, e) are the ASCII string `t`. */
@@ -2987,23 +3051,23 @@ export class RbLexer {
         }
       }
       if (_goto_level <= _resume) {
-        if (rbAt(RL_LEX_FROM_STATE_ACTIONS, this.cs) === 85) {
+        if (RL_LEX_FROM_STATE_ACTIONS_D[this.cs] === 85) {
           this.ts = p;
         }
         _keys = this.cs << 1;
-        _inds = rbAt(RL_LEX_INDEX_OFFSETS, this.cs);
-        _slen = rbAt(RL_LEX_KEY_SPANS, this.cs);
+        _inds = RL_LEX_INDEX_OFFSETS_D[this.cs];
+        _slen = RL_LEX_KEY_SPANS_D[this.cs];
         _wide = p < toI32(pts.length) ? pts[p] : 0;
-        if (_slen > 0 && rbAt(RL_LEX_TRANS_KEYS, _keys) <= _wide && _wide <= rbAt(RL_LEX_TRANS_KEYS, _keys + 1)) {
-          _trans = rbAt(RL_LEX_INDICIES, _inds + _wide - rbAt(RL_LEX_TRANS_KEYS, _keys));
+        if (_slen > 0 && RL_LEX_TRANS_KEYS_D[_keys] <= _wide && _wide <= RL_LEX_TRANS_KEYS_D[_keys + 1]) {
+          _trans = RL_LEX_INDICIES_D[_inds + _wide - RL_LEX_TRANS_KEYS_D[_keys]];
         } else {
-          _trans = rbAt(RL_LEX_INDICIES, _inds + _slen);
+          _trans = RL_LEX_INDICIES_D[_inds + _slen];
         }
       }
       if (_goto_level <= _eof_trans) {
-        this.cs = rbAt(RL_LEX_TRANS_TARGS, _trans);
-        if (rbAt(RL_LEX_TRANS_ACTIONS, _trans) !== 0) {
-          switch (rbAt(RL_LEX_TRANS_ACTIONS, _trans)) {
+        this.cs = RL_LEX_TRANS_TARGS_D[_trans];
+        if (RL_LEX_TRANS_ACTIONS_D[_trans] !== 0) {
+          switch (RL_LEX_TRANS_ACTIONS_D[_trans]) {
 case 14: {
 {
 this.newline_s = p;
@@ -9522,7 +9586,7 @@ break;
         }
       }
       if (_goto_level <= _again) {
-        if (rbAt(RL_LEX_TO_STATE_ACTIONS, this.cs) === 84) {
+        if (RL_LEX_TO_STATE_ACTIONS_D[this.cs] === 84) {
           this.ts = -1;
         }
         if (this.cs === 0) {
@@ -9537,8 +9601,8 @@ break;
       }
       if (_goto_level <= _test_eof) {
         if (p === eof) {
-          if (rbAt(RL_LEX_EOF_TRANS, this.cs) > 0) {
-            _trans = rbAt(RL_LEX_EOF_TRANS, this.cs) - 1;
+          if (RL_LEX_EOF_TRANS_D[this.cs] > 0) {
+            _trans = RL_LEX_EOF_TRANS_D[this.cs] - 1;
             _goto_level = _eof_trans;
             continue;
           }
