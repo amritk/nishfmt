@@ -5,8 +5,9 @@
 // Ported from rubocop-ast 1.51.0 and RuboCop 1.92.2 (MIT License, Copyright
 // (c) 2012-24 Bozhidar Batsov).
 
-import { RbAst, V_NIL, vIdx } from "./ast";
+import { F_HEREDOC_END, M_HEREDOC, NT_BEGIN, RbAst, V_NIL, rbSplitComma, vIdx } from "./ast";
 import { rbText } from "./lexer";
+import { RB_COP_NAMES } from "./registry";
 import { RbParser } from "./parser";
 
 /** The token type RuboCop gives comments (:tCOMMENT). */
@@ -150,59 +151,128 @@ export class RbSource {
     return true;
   }
 
-  // ---- Directives ---------------------------------------------------------------------
+  // ---- Directives (CommentConfig) ------------------------------------------------------
 
-  /** The disabled line ranges, per cop, department or "all" (CommentConfig#analyze). */
+  /** CommentConfig#analyze: the disabled line ranges of every cop. */
   private analyzeDirectives(): void {
-    // Open disables: name -> start line.
-    const openNames: string[] = [];
-    const openFrom: i32[] = [];
+    if (!rbHasRubocop(this.pts)) {
+      return;
+    }
+    const all = rbSplitComma(RB_COP_NAMES);
+    const index = new Map<string, i32>();
+    for (let i = 0; i < toI32(all.length); i++) {
+      index.set(all[i], i);
+    }
+    const nc = toI32(all.length);
+    // CopAnalysis per cop: open start line (-1 nil); closed ranges go to dir*.
+    const start: i32[] = [];
+    for (let i = 0; i < nc; i++) {
+      start.push(-1);
+    }
+    const stack: i32[][] = [];
     for (let ci = 0; ci < toI32(this.commS.length); ci++) {
-      const s = this.commS[ci];
-      const text = this.src(s, this.commE[ci]);
-      const at = text.indexOf("rubocop");
-      if (at < 0) {
+      const cs = this.commS[ci];
+      const text = this.src(cs, this.commE[ci]);
+      if (text.indexOf("rubocop") < 0) {
         continue;
       }
       const d = rbParseDirective(text);
       if (d === null) {
         continue;
       }
-      if (d.mode === 3) {
-        this.unsupportedDirectives = true;
-        return;
-      }
-      const line = this.line(s);
-      const single = !d.leading || !this.commentOnlyLine(line);
-      for (const name of d.names) {
-        if (single) {
-          if (d.mode === 1) {
-            this.addRange(name, line, line);
+      const line = this.line(cs);
+      const m = d.mode;
+      if (m === "push") {
+        const snap: i32[] = [];
+        for (let i = 0; i < nc; i++) {
+          snap.push(start[i]);
+        }
+        stack.push(snap);
+        const sg = this.signed(d, all, index);
+        for (let j = 0; j + 1 < toI32(sg.length); j += 2) {
+          const op = sg[j];
+          const ix = sg[j + 1];
+          if (op === 45 && start[ix] < 0) {
+            start[ix] = line;
+          } else if (op === 43 && start[ix] >= 0) {
+            this.closeAt(all[ix], start[ix], line);
+            start[ix] = -1;
           }
+        }
+      } else if (m === "pop") {
+        if (stack.length > 0) {
+          const restored = stack[stack.length - 1];
+          stack.pop();
+          for (let i = 0; i < nc; i++) {
+            if (start[i] >= 0) {
+              this.closeAt(all[i], start[i], line - 1);
+            }
+            start[i] = restored[i] >= 0 ? line : -1;
+          }
+        }
+      } else if (m === "disable-next" || m === "todo-next" || m === "next" || m === "enable-next") {
+        const bounds = this.statementScopeAfter(line);
+        if (bounds.length === 0) {
           continue;
         }
-        // close
-        let k = -1;
-        for (let j = 0; j < toI32(openNames.length); j++) {
-          if (openNames[j] === name) {
-            k = j;
+        const from = bounds[0];
+        const to = bounds[1];
+        if (m === "next") {
+          const sg = this.signed(d, all, index);
+          for (let j = 0; j + 1 < toI32(sg.length); j += 2) {
+            const ix = sg[j + 1];
+            if (sg[j] === 45) {
+              this.addRange(all[ix], from, to);
+            } else if (start[ix] >= 0) {
+              this.closeAt(all[ix], start[ix], from - 1);
+              start[ix] = to + 1;
+            }
+          }
+        } else {
+          for (const name of this.copNames(d, all, index)) {
+            const ix = index.get(name) ?? -1;
+            if (m === "enable-next") {
+              if (ix >= 0 && start[ix] >= 0) {
+                this.closeAt(name, start[ix], from - 1);
+                start[ix] = to + 1;
+              }
+            } else {
+              this.addRange(name, from, to);
+            }
           }
         }
-        if (k >= 0) {
-          if (openFrom[k] >= 0) {
-            this.addRange(name, openFrom[k], line);
+      } else {
+        const single = !d.leading || !this.commentOnlyLine(line);
+        const disabled = m === "disable" || m === "todo";
+        for (const name of this.copNames(d, all, index)) {
+          const ix = index.get(name) ?? -1;
+          if (single) {
+            if (disabled) {
+              this.addRange(name, line, line);
+            }
+            continue;
           }
-          openFrom[k] = d.mode === 1 ? line : -1;
-        } else if (d.mode === 1) {
-          openNames.push(name);
-          openFrom.push(line);
+          if (ix < 0) {
+            continue; // a cop this port does not run
+          }
+          if (start[ix] >= 0) {
+            this.closeAt(name, start[ix], line);
+          }
+          start[ix] = disabled ? line : -1;
         }
       }
     }
-    for (let j = 0; j < toI32(openNames.length); j++) {
-      if (openFrom[j] >= 0) {
-        this.addRange(openNames[j], openFrom[j], 1 << 30);
+    for (let i = 0; i < nc; i++) {
+      if (start[i] >= 0) {
+        this.addRange(all[i], start[i], 1 << 30);
       }
+    }
+  }
+
+  /** CopAnalysis#close(line): the open range up to `line`, unless the line precedes it. */
+  private closeAt(name: string, from: i32, line: i32): void {
+    if (line >= from) {
+      this.addRange(name, from, line);
     }
   }
 
@@ -212,128 +282,401 @@ export class RbSource {
     this.dirTo.push(to);
   }
 
+  /** DirectiveComment#cop_names: departments and `all` expanded, names qualified. */
+  private copNames(d: RbDirective, all: string[], index: Map<string, i32>): string[] {
+    const out: string[] = [];
+    if (d.cops === "all") {
+      for (const n of all) {
+        if (n !== "Lint/RedundantCopDisableDirective" && n !== "Lint/Syntax") {
+          out.push(n);
+        }
+      }
+      return out;
+    }
+    for (const raw of rbSplitCopList(d.cops)) {
+      if (raw.indexOf("/") < 0 && rbIsDepartment(raw)) {
+        for (const n of all) {
+          if (n.startsWith(`${raw}/`) && !(raw === "Lint" && (n === "Lint/RedundantCopDisableDirective" || n === "Lint/Syntax"))) {
+            out.push(n);
+          }
+        }
+        continue;
+      }
+      const q = rbQualify(rbStrip(raw), all, index);
+      if (q !== "Lint/Syntax") {
+        out.push(q);
+      }
+    }
+    return out;
+  }
+
+  /** The +/- arguments of push and next, each cop name expanded and qualified. */
+  private signed(d: RbDirective, all: string[], index: Map<string, i32>): i32[] {
+    const res: i32[] = [];
+    const ops: i32[] = [];
+    const idx: i32[] = [];
+    let p = 0;
+    const t = d.cops;
+    const k = toI32(t.length);
+    // `+` operations first, then `-` (the Hash keeps first-seen order).
+    let firstOp = 0;
+    while (p < k) {
+      while (p < k && rbIsWsByte(t.charCodeAt(p))) {
+        p++;
+      }
+      let q = p;
+      while (q < k && !rbIsWsByte(t.charCodeAt(q))) {
+        q++;
+      }
+      if (q > p) {
+        const op = t.charCodeAt(p);
+        if (op === 43 || op === 45) {
+          if (firstOp === 0) {
+            firstOp = op;
+          }
+          const name = t.substring(p + 1, q);
+          const names: string[] = [];
+          if (name.indexOf("/") < 0 && rbIsDepartment(name)) {
+            for (const n of all) {
+              if (n.startsWith(`${name}/`)) {
+                names.push(n);
+              }
+            }
+          } else {
+            names.push(rbQualify(name, all, index));
+          }
+          for (const n of names) {
+            if (index.has(n)) {
+              ops.push(op);
+              idx.push(index.get(n) ?? -1);
+            }
+          }
+        }
+      }
+      p = q;
+    }
+    // resolved_cops.each: the first-seen operation's cops, then the other's.
+    const order: i32[] = firstOp === 45 ? [45, 43] : [43, 45];
+    for (const o of order) {
+      for (let i = 0; i < toI32(ops.length); i++) {
+        if (ops[i] === o) {
+          res.push(o);
+          res.push(idx[i]);
+        }
+      }
+    }
+    return res;
+  }
+
+  /** DisableNext#statement_scope_after: [first, last] lines, or [] when detached. */
+  private statementScopeAfter(line: i32): i32[] {
+    const none: i32[] = [];
+    if (!this.commentOnlyLine(line)) {
+      return none;
+    }
+    // attached_code_line
+    let code = -1;
+    const nl = this.lineCount();
+    for (let l = line + 1; l <= nl; l++) {
+      if (!this.commentOnlyLine(l)) {
+        code = l;
+        break;
+      }
+      if (rbBlankText(this.lineText(l - 1))) {
+        return none;
+      }
+    }
+    if (code < 0) {
+      return none;
+    }
+    // statement_bounds_at: the node starting on the line that ends last.
+    let best = V_NIL;
+    let bestLast = -1;
+    for (const n of this.pre) {
+      if (this.a.type(n) !== NT_BEGIN && this.line(this.a.exS(n)) === code) {
+        const last = this.line(this.a.exE(n));
+        if (last > bestLast) {
+          best = n;
+          bestLast = last;
+        }
+      }
+    }
+    if (best === V_NIL) {
+      return [code, code];
+    }
+    // statement_end_line: the last line of any node in it, heredoc bodies included.
+    let end = bestLast;
+    const stack: i32[] = [best];
+    while (stack.length > 0) {
+      const n = stack[stack.length - 1];
+      stack.pop();
+      const m = this.a.map(n);
+      const e = this.a.mapKind(m) === M_HEREDOC ? this.line(this.a.fS(m, F_HEREDOC_END)) : this.line(this.a.exE(n));
+      if (e > end) {
+        end = e;
+      }
+      for (let i = 0; i < this.a.nKid(n); i++) {
+        const c = this.a.kid(n, i);
+        if (this.a.isNode(c)) {
+          stack.push(c);
+        }
+      }
+    }
+    return [code, end];
+  }
+
   /** cop_enabled_at_lines? for a cop name such as "Style/StringLiterals". */
   copEnabledAt(cop: string, first: i32, last: i32): boolean {
     const k = toI32(this.dirNames.length);
-    if (k === 0) {
-      return true;
-    }
-    const slash = cop.indexOf("/");
-    const dept = slash >= 0 ? cop.substring(0, slash) : cop;
     for (let i = 0; i < k; i++) {
-      const nm = this.dirNames[i];
-      if (nm === cop || nm === dept || nm === "all") {
-        if (this.dirTo[i] >= first && this.dirFrom[i] <= last) {
-          return false;
-        }
+      if (this.dirNames[i] === cop && this.dirTo[i] >= first && this.dirFrom[i] <= last) {
+        return false;
       }
     }
     return true;
   }
 }
 
-/** A directive comment: mode 1 disable/todo, 2 enable, 3 a form not handled (push, pop, next). */
+/** A directive comment: its mode, the cop names text, and whether it opens the comment. */
 class RbDirective {
-  mode: i32;
-  names: string[];
+  mode: string;
+  cops: string;
   leading: boolean;
 
-  constructor(mode: i32, names: string[], leading: boolean) {
+  constructor(mode: string, cops: string, leading: boolean) {
     this.mode = mode;
-    this.names = names;
+    this.cops = cops;
     this.leading = leading;
   }
 }
 
-const rbIsSpace = (c: i32): boolean => c === 32 || c === 9;
+const rbIsWsByte = (c: i32): boolean => c === 32 || c === 9 || c === 10 || c === 11 || c === 12 || c === 13;
+const rbIsWordByte = (c: i32): boolean => (c >= 97 && c <= 122) || (c >= 65 && c <= 90) || (c >= 48 && c <= 57) || c === 95;
+const rbIsAlpha = (c: i32): boolean => (c >= 97 && c <= 122) || (c >= 65 && c <= 90);
 
-/** DirectiveComment's DIRECTIVE_COMMENT_REGEXP: `# rubocop : disable A/B, C`. */
-const rbParseDirective = (text: string): RbDirective | null => {
-  const k = toI32(text.length);
-  // Find "#" then optional spaces then "rubocop".
-  let i = text.indexOf("rubocop");
-  while (i >= 0) {
-    let j = i - 1;
-    while (j >= 0 && rbIsSpace(text.charCodeAt(j))) {
-      j--;
+const rbBlankText = (s: string): boolean => {
+  for (let i = 0; i < toI32(s.length); i++) {
+    if (!rbIsWsByte(s.charCodeAt(i))) {
+      return false;
     }
-    if (j >= 0 && text.charCodeAt(j) === 35) {
+  }
+  return true;
+};
+
+const rbStrip = (s: string): string => {
+  let a = 0;
+  let b = toI32(s.length);
+  while (a < b && rbIsWsByte(s.charCodeAt(a))) {
+    a++;
+  }
+  while (b > a && rbIsWsByte(s.charCodeAt(b - 1))) {
+    b--;
+  }
+  return s.substring(a, b);
+};
+
+const rbHasRubocop = (pts: i32[]): boolean => {
+  const n = toI32(pts.length);
+  for (let i = 0; i + 7 <= n; i++) {
+    if (pts[i] === 114 && pts[i + 1] === 117 && pts[i + 2] === 98 && pts[i + 3] === 111 && pts[i + 4] === 99 && pts[i + 5] === 111 && pts[i + 6] === 112) {
+      return true;
+    }
+  }
+  return false;
+};
+
+const rbIsDepartment = (s: string): boolean =>
+  s === "Bundler" || s === "Gemspec" || s === "Layout" || s === "Lint" || s === "Metrics" || s === "Migration" || s === "Naming" || s === "Security" || s === "Style";
+
+/** Registry.qualified_cop_name: an unqualified name gets its only department. */
+const rbQualify = (name: string, all: string[], index: Map<string, i32>): string => {
+  if (index.has(name) || name.indexOf("/") >= 0) {
+    return name;
+  }
+  let found = "";
+  let count = 0;
+  for (const n of all) {
+    if (n.endsWith(`/${name}`)) {
+      found = n;
+      count++;
+    }
+  }
+  return count === 1 ? found : name;
+};
+
+/** raw_cop_names: the cops text split at commas and the spaces after them. */
+const rbSplitCopList = (s: string): string[] => {
+  const out: string[] = [];
+  let a = 0;
+  const k = toI32(s.length);
+  let i = 0;
+  while (i < k) {
+    if (s.charCodeAt(i) === 44) {
+      out.push(s.substring(a, i));
+      i++;
+      while (i < k && rbIsWsByte(s.charCodeAt(i))) {
+        i++;
+      }
+      a = i;
+      continue;
+    }
+    i++;
+  }
+  if (a < k) {
+    out.push(s.substring(a, k));
+  }
+  return out;
+};
+
+/** COP_NAME_PATTERN at p: ([A-Za-z]\w+/)*[A-Za-z]\w+; the end, or -1. */
+const rbMatchCopName = (t: string, p: i32): i32 => {
+  const k = toI32(t.length);
+  let q = p;
+  let lastEnd = -1;
+  while (q < k && rbIsAlpha(t.charCodeAt(q))) {
+    let r = q + 1;
+    while (r < k && rbIsWordByte(t.charCodeAt(r))) {
+      r++;
+    }
+    if (r - q < 2) {
       break;
     }
-    const nx = text.substring(i + 7, k).indexOf("rubocop");
-    i = nx < 0 ? -1 : i + 7 + nx;
-  }
-  if (i < 0) {
-    return null;
-  }
-  let hash = i - 1;
-  while (hash >= 0 && rbIsSpace(text.charCodeAt(hash))) {
-    hash--;
-  }
-  const leading = hash === 0;
-  let p = i + 7;
-  while (p < k && rbIsSpace(text.charCodeAt(p))) {
-    p++;
-  }
-  if (p >= k || text.charCodeAt(p) !== 58) {
-    return null;
-  }
-  p++;
-  while (p < k && rbIsSpace(text.charCodeAt(p))) {
-    p++;
-  }
-  // MODES_PATTERN followed by \b: the longest mode the text starts with.
-  const modes = ["disable-next", "enable-next", "todo-next", "disable", "enable", "todo", "push", "pop", "next"];
-  let mode = 0;
-  let w = p;
-  for (const m of modes) {
-    const mk = toI32(m.length);
-    if (text.substring(p, p + mk) === m) {
-      const c = p + mk < k ? text.charCodeAt(p + mk) : 32;
-      const wordc = (c >= 97 && c <= 122) || (c >= 65 && c <= 90) || (c >= 48 && c <= 57) || c === 95;
-      if (!wordc) {
-        w = p + mk;
-        mode = m === "disable" || m === "todo" ? 1 : m === "enable" ? 2 : 3;
-        break;
-      }
-    }
-  }
-  if (mode === 0) {
-    return null;
-  }
-  // Names: [A-Za-z/_0-9]+ separated by commas.
-  const names: string[] = [];
-  p = w;
-  while (p < k) {
-    while (p < k && rbIsSpace(text.charCodeAt(p))) {
-      p++;
-    }
-    let q = p;
-    while (q < k) {
-      const c = text.charCodeAt(q);
-      if ((c >= 65 && c <= 90) || (c >= 97 && c <= 122) || (c >= 48 && c <= 57) || c === 47 || c === 95) {
-        q++;
-      } else {
-        break;
-      }
-    }
-    if (q === p) {
-      break;
-    }
-    names.push(text.substring(p, q));
-    p = q;
-    while (p < k && rbIsSpace(text.charCodeAt(p))) {
-      p++;
-    }
-    if (p < k && text.charCodeAt(p) === 44) {
-      p++;
+    lastEnd = r;
+    if (r < k && t.charCodeAt(r) === 47) {
+      q = r + 1;
       continue;
     }
     break;
   }
-  if (names.length === 0) {
-    return mode === 3 ? new RbDirective(3, names, leading) : null;
-  }
-  return new RbDirective(mode, names, leading);
+  return lastEnd;
 };
 
+/** COPS_PATTERN at p: `all`, or names separated by \s*,\s*; the end, or -1. */
+const rbMatchCops = (t: string, p: i32): i32 => {
+  if (t.substring(p, p + 3) === "all") {
+    return p + 3;
+  }
+  let e = rbMatchCopName(t, p);
+  if (e < 0) {
+    return -1;
+  }
+  const k = toI32(t.length);
+  while (true) {
+    let q = e;
+    while (q < k && rbIsWsByte(t.charCodeAt(q))) {
+      q++;
+    }
+    if (q >= k || t.charCodeAt(q) !== 44) {
+      return e;
+    }
+    q++;
+    while (q < k && rbIsWsByte(t.charCodeAt(q))) {
+      q++;
+    }
+    const e2 = rbMatchCopName(t, q);
+    if (e2 < 0) {
+      return e;
+    }
+    e = e2;
+  }
+};
+
+/** PUSH_POP_ARGS_PATTERN at p: [+-]name(\s+[+-]name)*; the end, or -1. */
+const rbMatchSigned = (t: string, p: i32): i32 => {
+  const k = toI32(t.length);
+  const c = p < k ? t.charCodeAt(p) : 0;
+  if (c !== 43 && c !== 45) {
+    return -1;
+  }
+  let e = rbMatchCopName(t, p + 1);
+  if (e < 0) {
+    return -1;
+  }
+  while (true) {
+    let q = e;
+    while (q < k && rbIsWsByte(t.charCodeAt(q))) {
+      q++;
+    }
+    if (q === e || q >= k) {
+      return e;
+    }
+    const d = t.charCodeAt(q);
+    if (d !== 43 && d !== 45) {
+      return e;
+    }
+    const e2 = rbMatchCopName(t, q + 1);
+    if (e2 < 0) {
+      return e;
+    }
+    e = e2;
+  }
+};
+
+const RB_DIRECTIVE_MODES: string = "disable-next,enable-next,todo-next,disable,enable,todo,push,pop,next";
+
+/** DIRECTIVE_COMMENT_REGEXP matched at the first `#` where it matches (null: none, or `##` prefix). */
+const rbParseDirective = (text: string): RbDirective | null => {
+  const k = toI32(text.length);
+  const modes = rbSplitComma(RB_DIRECTIVE_MODES);
+  for (let h = 0; h < k; h++) {
+    if (text.charCodeAt(h) !== 35) {
+      continue;
+    }
+    let p = h + 1;
+    while (p < k && rbIsWsByte(text.charCodeAt(p))) {
+      p++;
+    }
+    if (text.substring(p, p + 7) !== "rubocop") {
+      continue;
+    }
+    p += 7;
+    while (p < k && rbIsWsByte(text.charCodeAt(p))) {
+      p++;
+    }
+    if (p >= k || text.charCodeAt(p) !== 58) {
+      continue;
+    }
+    p++;
+    while (p < k && rbIsWsByte(text.charCodeAt(p))) {
+      p++;
+    }
+    let mode = "";
+    for (const m of modes) {
+      const mk = toI32(m.length);
+      if (text.substring(p, p + mk) === m && !(p + mk < k && rbIsWordByte(text.charCodeAt(p + mk)))) {
+        mode = m;
+        break;
+      }
+    }
+    if (mode.length === 0) {
+      continue;
+    }
+    // pre_match =~ /\A#\s*\z/: a `#` (and spaces) before the match voids it.
+    let pre = h - 1;
+    while (pre >= 0 && rbIsWsByte(text.charCodeAt(pre))) {
+      pre--;
+    }
+    if (h > 0 && text.charCodeAt(0) === 35 && pre === 0) {
+      return null;
+    }
+    p += toI32(mode.length);
+    let cops = "";
+    let q = p;
+    while (q < k && rbIsWsByte(text.charCodeAt(q))) {
+      q++;
+    }
+    if (q > p) {
+      const e = rbMatchCops(text, q);
+      if (e >= 0) {
+        cops = text.substring(q, e);
+      } else {
+        const e2 = rbMatchSigned(text, q);
+        if (e2 >= 0) {
+          cops = text.substring(q, e2);
+        }
+      }
+    }
+    return new RbDirective(mode, cops, h === 0);
+  }
+  return null;
+};
