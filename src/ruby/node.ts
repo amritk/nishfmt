@@ -4,7 +4,7 @@
 // Ported from rubocop-ast 1.51.0 (MIT License, Copyright (c) 2012-24 Bozhidar
 // Batsov).
 
-import { F_HEREDOC_END, M_HEREDOC, V_NIL } from "./ast";
+import { F_BEGIN, F_HEREDOC_END, M_HEREDOC, NT_PAIR, NT_SEND, V_NIL } from "./ast";
 import { RbSource } from "./source";
 
 /** The node's type. */
@@ -62,3 +62,45 @@ export const rnHasAncestor = (src: RbSource, n: i32, t: i32): boolean => {
   return false;
 };
 
+
+// ---- Sends --------------------------------------------------------------------
+
+/** The receiver of a send/csend (or V_NIL). */
+export const rnReceiver = (src: RbSource, n: i32): i32 => src.a.kid(n, 0);
+
+/** The method name of a send/csend. */
+export const rnMethod = (src: RbSource, n: i32): string => src.a.text(src.a.kid(n, 1));
+
+/** The number of arguments of a send/csend. */
+export const rnArgCount = (src: RbSource, n: i32): i32 => src.a.nKid(n) - 2;
+
+export const rnArg = (src: RbSource, n: i32, i: i32): i32 => src.a.kid(n, i + 2);
+
+/** Node#argument?: one of the arguments of a send parent. */
+export const rnIsArgument = (src: RbSource, n: i32): boolean => {
+  const p = src.parent(n);
+  if (p === V_NIL || src.a.type(p) !== NT_SEND) {
+    return false;
+  }
+  for (let i = 2; i < src.a.nKid(p); i++) {
+    if (src.a.kid(p, i) === n) {
+      return true;
+    }
+  }
+  return false;
+};
+
+/** HashNode#pairs: the pair children. */
+export const rnPairs = (src: RbSource, n: i32): i32[] => {
+  const out: i32[] = [];
+  for (let i = 0; i < src.a.nKid(n); i++) {
+    const c = src.a.kid(n, i);
+    if (src.a.isNode(c) && src.a.type(c) === NT_PAIR) {
+      out.push(c);
+    }
+  }
+  return out;
+};
+
+/** HashNode#braces? */
+export const rnBraces = (src: RbSource, n: i32): boolean => rnHas(src, n, F_BEGIN);
