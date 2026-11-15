@@ -7,6 +7,9 @@
 // Batsov).
 
 import { RbCop } from "./cop";
+import { CopBundlerInsecureProtocolSource } from "./cops/bundler_insecure_protocol_source";
+import { CopBundlerOrderedGems } from "./cops/bundler_ordered_gems";
+import { CopGemspecOrderedDependencies } from "./cops/gemspec_ordered_dependencies";
 import { CopLayoutAccessModifierIndentation } from "./cops/layout_access_modifier_indentation";
 import { CopLayoutArgumentAlignment } from "./cops/layout_argument_alignment";
 import { CopLayoutArrayAlignment } from "./cops/layout_array_alignment";
@@ -50,6 +53,7 @@ import { CopLayoutIndentationWidth } from "./cops/layout_indentation_width";
 import { CopLayoutInitialIndentation } from "./cops/layout_initial_indentation";
 import { CopLayoutLeadingCommentSpace } from "./cops/layout_leading_comment_space";
 import { CopLayoutLeadingEmptyLines } from "./cops/layout_leading_empty_lines";
+import { CopLayoutLineLength } from "./cops/layout_line_length";
 import { CopLayoutMultilineArrayBraceLayout } from "./cops/layout_multiline_array_brace_layout";
 import { CopLayoutMultilineBlockLayout } from "./cops/layout_multiline_block_layout";
 import { CopLayoutMultilineHashBraceLayout } from "./cops/layout_multiline_hash_brace_layout";
@@ -189,6 +193,9 @@ import { RbRewriter } from "./rewriter";
 import { RbSource } from "./source";
 
 export class RbTeam {
+  bundlerInsecureProtocolSource: CopBundlerInsecureProtocolSource;
+  bundlerOrderedGems: CopBundlerOrderedGems;
+  gemspecOrderedDependencies: CopGemspecOrderedDependencies;
   layoutAccessModifierIndentation: CopLayoutAccessModifierIndentation;
   layoutArgumentAlignment: CopLayoutArgumentAlignment;
   layoutArrayAlignment: CopLayoutArrayAlignment;
@@ -232,6 +239,7 @@ export class RbTeam {
   layoutInitialIndentation: CopLayoutInitialIndentation;
   layoutLeadingCommentSpace: CopLayoutLeadingCommentSpace;
   layoutLeadingEmptyLines: CopLayoutLeadingEmptyLines;
+  layoutLineLength: CopLayoutLineLength;
   layoutMultilineArrayBraceLayout: CopLayoutMultilineArrayBraceLayout;
   layoutMultilineBlockLayout: CopLayoutMultilineBlockLayout;
   layoutMultilineHashBraceLayout: CopLayoutMultilineHashBraceLayout;
@@ -372,6 +380,9 @@ export class RbTeam {
   only: string = "";
 
   constructor() {
+    this.bundlerInsecureProtocolSource = new CopBundlerInsecureProtocolSource();
+    this.bundlerOrderedGems = new CopBundlerOrderedGems();
+    this.gemspecOrderedDependencies = new CopGemspecOrderedDependencies();
     this.layoutAccessModifierIndentation = new CopLayoutAccessModifierIndentation();
     this.layoutArgumentAlignment = new CopLayoutArgumentAlignment();
     this.layoutArrayAlignment = new CopLayoutArrayAlignment();
@@ -415,6 +426,7 @@ export class RbTeam {
     this.layoutInitialIndentation = new CopLayoutInitialIndentation();
     this.layoutLeadingCommentSpace = new CopLayoutLeadingCommentSpace();
     this.layoutLeadingEmptyLines = new CopLayoutLeadingEmptyLines();
+    this.layoutLineLength = new CopLayoutLineLength();
     this.layoutMultilineArrayBraceLayout = new CopLayoutMultilineArrayBraceLayout();
     this.layoutMultilineBlockLayout = new CopLayoutMultilineBlockLayout();
     this.layoutMultilineHashBraceLayout = new CopLayoutMultilineHashBraceLayout();
@@ -549,7 +561,7 @@ export class RbTeam {
     this.styleWhileUntilDo = new CopStyleWhileUntilDo();
     this.styleWhileUntilModifier = new CopStyleWhileUntilModifier();
     this.styleWordArray = new CopStyleWordArray();
-    this.cops = [this.layoutAccessModifierIndentation.c, this.layoutArgumentAlignment.c, this.layoutArrayAlignment.c, this.layoutAssignmentIndentation.c, this.layoutBeginEndAlignment.c, this.layoutBlockAlignment.c, this.layoutBlockEndNewline.c, this.layoutCaseIndentation.c, this.layoutClosingHeredocIndentation.c, this.layoutClosingParenthesisIndentation.c, this.layoutCommentIndentation.c, this.layoutConditionPosition.c, this.layoutDefEndAlignment.c, this.layoutDotPosition.c, this.layoutElseAlignment.c, this.layoutEmptyComment.c, this.layoutEmptyLineAfterGuardClause.c, this.layoutEmptyLineAfterMagicComment.c, this.layoutEmptyLineBetweenDefs.c, this.layoutEmptyLinesAroundAccessModifier.c, this.layoutEmptyLinesAroundArguments.c, this.layoutEmptyLinesAroundAttributeAccessor.c, this.layoutEmptyLinesAroundBeginBody.c, this.layoutEmptyLinesAroundBlockBody.c, this.layoutEmptyLinesAroundClassBody.c, this.layoutEmptyLinesAroundExceptionHandlingKeywords.c, this.layoutEmptyLinesAroundMethodBody.c, this.layoutEmptyLinesAroundModuleBody.c, this.layoutEmptyLines.c, this.layoutEndAlignment.c, this.layoutExtraSpacing.c, this.layoutFirstArgumentIndentation.c, this.layoutFirstArrayElementIndentation.c, this.layoutFirstHashElementIndentation.c, this.layoutFirstParameterIndentation.c, this.layoutHashAlignment.c, this.layoutHeredocIndentation.c, this.layoutIndentationConsistency.c, this.layoutIndentationStyle.c, this.layoutIndentationWidth.c, this.layoutInitialIndentation.c, this.layoutLeadingCommentSpace.c, this.layoutLeadingEmptyLines.c, this.layoutMultilineArrayBraceLayout.c, this.layoutMultilineBlockLayout.c, this.layoutMultilineHashBraceLayout.c, this.layoutMultilineMethodCallBraceLayout.c, this.layoutMultilineMethodCallIndentation.c, this.layoutMultilineMethodDefinitionBraceLayout.c, this.layoutMultilineOperationIndentation.c, this.layoutParameterAlignment.c, this.layoutRescueEnsureAlignment.c, this.layoutSpaceAfterColon.c, this.layoutSpaceAfterComma.c, this.layoutSpaceAfterMethodName.c, this.layoutSpaceAfterNot.c, this.layoutSpaceAfterSemicolon.c, this.layoutSpaceAroundBlockParameters.c, this.layoutSpaceAroundEqualsInParameterDefault.c, this.layoutSpaceAroundKeyword.c, this.layoutSpaceAroundMethodCallOperator.c, this.layoutSpaceAroundOperators.c, this.layoutSpaceBeforeBlockBraces.c, this.layoutSpaceBeforeComma.c, this.layoutSpaceBeforeComment.c, this.layoutSpaceBeforeFirstArg.c, this.layoutSpaceBeforeSemicolon.c, this.layoutSpaceInLambdaLiteral.c, this.layoutSpaceInsideArrayPercentLiteral.c, this.layoutSpaceInsideArrayLiteralBrackets.c, this.layoutSpaceInsideBlockBraces.c, this.layoutSpaceInsideHashLiteralBraces.c, this.layoutSpaceInsideParens.c, this.layoutSpaceInsidePercentLiteralDelimiters.c, this.layoutSpaceInsideRangeLiteral.c, this.layoutSpaceInsideReferenceBrackets.c, this.layoutSpaceInsideStringInterpolation.c, this.layoutTrailingEmptyLines.c, this.layoutTrailingWhitespace.c, this.lintAmbiguousRegexpLiteral.c, this.lintPercentSymbolArray.c, this.styleAccessorGrouping.c, this.styleAlias.c, this.styleArrayJoin.c, this.styleAttr.c, this.styleBarePercentLiterals.c, this.styleCaseEquality.c, this.styleCharacterLiteral.c, this.styleClassCheck.c, this.styleClassMethods.c, this.styleColonMethodCall.c, this.styleColonMethodDefinition.c, this.styleCommandLiteral.c, this.styleConditionalAssignment.c, this.styleDefWithParentheses.c, this.styleDir.c, this.styleEachWithObject.c, this.styleEmptyBlockParameter.c, this.styleEmptyCaseCondition.c, this.styleEmptyElse.c, this.styleEmptyLambdaParameter.c, this.styleEmptyLiteral.c, this.styleEmptyMethod.c, this.styleEncoding.c, this.styleEvalWithLocation.c, this.styleEvenOdd.c, this.styleExpandPathArguments.c, this.styleGuardClause.c, this.styleHashAsLastArrayItem.c, this.styleHashSyntax.c, this.styleIfInsideElse.c, this.styleIfUnlessModifier.c, this.styleIfUnlessModifierOfIfUnless.c, this.styleIfWithSemicolon.c, this.styleLambda.c, this.styleLambdaCall.c, this.styleMethodCallWithoutArgsParentheses.c, this.styleSoleNestedConditional.c, this.styleMethodDefParentheses.c, this.styleMinMax.c, this.styleMultilineIfThen.c, this.styleMultilineIfModifier.c, this.styleMultilineTernaryOperator.c, this.styleMultilineWhenThen.c, this.styleMultipleComparison.c, this.styleNegatedIf.c, this.styleNegatedUnless.c, this.styleNegatedWhile.c, this.styleNestedModifier.c, this.styleNestedParenthesizedCalls.c, this.styleNestedTernaryOperator.c, this.styleNext.c, this.styleNilComparison.c, this.styleNonNilCheck.c, this.styleNot.c, this.styleNumericLiterals.c, this.styleNumericLiteralPrefix.c, this.styleOneLineConditional.c, this.styleOrAssignment.c, this.styleParenthesesAroundCondition.c, this.stylePercentLiteralDelimiters.c, this.stylePercentQLiterals.c, this.stylePerlBackrefs.c, this.styleProc.c, this.styleRandomWithOffset.c, this.styleRedundantCapitalW.c, this.styleRedundantCondition.c, this.styleRedundantConditional.c, this.styleRedundantFreeze.c, this.styleRedundantPercentQ.c, this.styleRedundantRegexpCharacterClass.c, this.styleRedundantRegexpEscape.c, this.styleRedundantSelf.c, this.styleRedundantSortBy.c, this.styleRegexpLiteral.c, this.styleRescueStandardError.c, this.styleSample.c, this.styleSelfAssignment.c, this.styleSignalException.c, this.styleStabbyLambdaParentheses.c, this.styleStderrPuts.c, this.styleStringLiterals.c, this.styleStringLiteralsInInterpolation.c, this.styleStrip.c, this.styleSymbolArray.c, this.styleSymbolLiteral.c, this.styleTernaryParentheses.c, this.styleTrailingCommaInArguments.c, this.styleTrailingCommaInArrayLiteral.c, this.styleTrailingCommaInHashLiteral.c, this.styleTrivialAccessors.c, this.styleUnlessElse.c, this.styleUnpackFirst.c, this.styleWhenThen.c, this.styleWhileUntilDo.c, this.styleWhileUntilModifier.c, this.styleWordArray.c];
+    this.cops = [this.bundlerInsecureProtocolSource.c, this.bundlerOrderedGems.c, this.gemspecOrderedDependencies.c, this.layoutAccessModifierIndentation.c, this.layoutArgumentAlignment.c, this.layoutArrayAlignment.c, this.layoutAssignmentIndentation.c, this.layoutBeginEndAlignment.c, this.layoutBlockAlignment.c, this.layoutBlockEndNewline.c, this.layoutCaseIndentation.c, this.layoutClosingHeredocIndentation.c, this.layoutClosingParenthesisIndentation.c, this.layoutCommentIndentation.c, this.layoutConditionPosition.c, this.layoutDefEndAlignment.c, this.layoutDotPosition.c, this.layoutElseAlignment.c, this.layoutEmptyComment.c, this.layoutEmptyLineAfterGuardClause.c, this.layoutEmptyLineAfterMagicComment.c, this.layoutEmptyLineBetweenDefs.c, this.layoutEmptyLinesAroundAccessModifier.c, this.layoutEmptyLinesAroundArguments.c, this.layoutEmptyLinesAroundAttributeAccessor.c, this.layoutEmptyLinesAroundBeginBody.c, this.layoutEmptyLinesAroundBlockBody.c, this.layoutEmptyLinesAroundClassBody.c, this.layoutEmptyLinesAroundExceptionHandlingKeywords.c, this.layoutEmptyLinesAroundMethodBody.c, this.layoutEmptyLinesAroundModuleBody.c, this.layoutEmptyLines.c, this.layoutEndAlignment.c, this.layoutExtraSpacing.c, this.layoutFirstArgumentIndentation.c, this.layoutFirstArrayElementIndentation.c, this.layoutFirstHashElementIndentation.c, this.layoutFirstParameterIndentation.c, this.layoutHashAlignment.c, this.layoutHeredocIndentation.c, this.layoutIndentationConsistency.c, this.layoutIndentationStyle.c, this.layoutIndentationWidth.c, this.layoutInitialIndentation.c, this.layoutLeadingCommentSpace.c, this.layoutLeadingEmptyLines.c, this.layoutLineLength.c, this.layoutMultilineArrayBraceLayout.c, this.layoutMultilineBlockLayout.c, this.layoutMultilineHashBraceLayout.c, this.layoutMultilineMethodCallBraceLayout.c, this.layoutMultilineMethodCallIndentation.c, this.layoutMultilineMethodDefinitionBraceLayout.c, this.layoutMultilineOperationIndentation.c, this.layoutParameterAlignment.c, this.layoutRescueEnsureAlignment.c, this.layoutSpaceAfterColon.c, this.layoutSpaceAfterComma.c, this.layoutSpaceAfterMethodName.c, this.layoutSpaceAfterNot.c, this.layoutSpaceAfterSemicolon.c, this.layoutSpaceAroundBlockParameters.c, this.layoutSpaceAroundEqualsInParameterDefault.c, this.layoutSpaceAroundKeyword.c, this.layoutSpaceAroundMethodCallOperator.c, this.layoutSpaceAroundOperators.c, this.layoutSpaceBeforeBlockBraces.c, this.layoutSpaceBeforeComma.c, this.layoutSpaceBeforeComment.c, this.layoutSpaceBeforeFirstArg.c, this.layoutSpaceBeforeSemicolon.c, this.layoutSpaceInLambdaLiteral.c, this.layoutSpaceInsideArrayPercentLiteral.c, this.layoutSpaceInsideArrayLiteralBrackets.c, this.layoutSpaceInsideBlockBraces.c, this.layoutSpaceInsideHashLiteralBraces.c, this.layoutSpaceInsideParens.c, this.layoutSpaceInsidePercentLiteralDelimiters.c, this.layoutSpaceInsideRangeLiteral.c, this.layoutSpaceInsideReferenceBrackets.c, this.layoutSpaceInsideStringInterpolation.c, this.layoutTrailingEmptyLines.c, this.layoutTrailingWhitespace.c, this.lintAmbiguousRegexpLiteral.c, this.lintPercentSymbolArray.c, this.styleAccessorGrouping.c, this.styleAlias.c, this.styleArrayJoin.c, this.styleAttr.c, this.styleBarePercentLiterals.c, this.styleCaseEquality.c, this.styleCharacterLiteral.c, this.styleClassCheck.c, this.styleClassMethods.c, this.styleColonMethodCall.c, this.styleColonMethodDefinition.c, this.styleCommandLiteral.c, this.styleConditionalAssignment.c, this.styleDefWithParentheses.c, this.styleDir.c, this.styleEachWithObject.c, this.styleEmptyBlockParameter.c, this.styleEmptyCaseCondition.c, this.styleEmptyElse.c, this.styleEmptyLambdaParameter.c, this.styleEmptyLiteral.c, this.styleEmptyMethod.c, this.styleEncoding.c, this.styleEvalWithLocation.c, this.styleEvenOdd.c, this.styleExpandPathArguments.c, this.styleGuardClause.c, this.styleHashAsLastArrayItem.c, this.styleHashSyntax.c, this.styleIfInsideElse.c, this.styleIfUnlessModifier.c, this.styleIfUnlessModifierOfIfUnless.c, this.styleIfWithSemicolon.c, this.styleLambda.c, this.styleLambdaCall.c, this.styleMethodCallWithoutArgsParentheses.c, this.styleSoleNestedConditional.c, this.styleMethodDefParentheses.c, this.styleMinMax.c, this.styleMultilineIfThen.c, this.styleMultilineIfModifier.c, this.styleMultilineTernaryOperator.c, this.styleMultilineWhenThen.c, this.styleMultipleComparison.c, this.styleNegatedIf.c, this.styleNegatedUnless.c, this.styleNegatedWhile.c, this.styleNestedModifier.c, this.styleNestedParenthesizedCalls.c, this.styleNestedTernaryOperator.c, this.styleNext.c, this.styleNilComparison.c, this.styleNonNilCheck.c, this.styleNot.c, this.styleNumericLiterals.c, this.styleNumericLiteralPrefix.c, this.styleOneLineConditional.c, this.styleOrAssignment.c, this.styleParenthesesAroundCondition.c, this.stylePercentLiteralDelimiters.c, this.stylePercentQLiterals.c, this.stylePerlBackrefs.c, this.styleProc.c, this.styleRandomWithOffset.c, this.styleRedundantCapitalW.c, this.styleRedundantCondition.c, this.styleRedundantConditional.c, this.styleRedundantFreeze.c, this.styleRedundantPercentQ.c, this.styleRedundantRegexpCharacterClass.c, this.styleRedundantRegexpEscape.c, this.styleRedundantSelf.c, this.styleRedundantSortBy.c, this.styleRegexpLiteral.c, this.styleRescueStandardError.c, this.styleSample.c, this.styleSelfAssignment.c, this.styleSignalException.c, this.styleStabbyLambdaParentheses.c, this.styleStderrPuts.c, this.styleStringLiterals.c, this.styleStringLiteralsInInterpolation.c, this.styleStrip.c, this.styleSymbolArray.c, this.styleSymbolLiteral.c, this.styleTernaryParentheses.c, this.styleTrailingCommaInArguments.c, this.styleTrailingCommaInArrayLiteral.c, this.styleTrailingCommaInHashLiteral.c, this.styleTrivialAccessors.c, this.styleUnlessElse.c, this.styleUnpackFirst.c, this.styleWhenThen.c, this.styleWhileUntilDo.c, this.styleWhileUntilModifier.c, this.styleWordArray.c];
   }
 
   private on(name: string): boolean {
@@ -561,6 +573,21 @@ export class RbTeam {
 
   /** One pass: the merged corrections, or null when no cop corrects anything. */
   run(src: RbSource): RbRewriter | null {
+    if (this.on("Bundler/InsecureProtocolSource")) {
+      this.bundlerInsecureProtocolSource.run(src);
+    } else {
+      this.bundlerInsecureProtocolSource.c.begin(src);
+    }
+    if (this.on("Bundler/OrderedGems")) {
+      this.bundlerOrderedGems.run(src);
+    } else {
+      this.bundlerOrderedGems.c.begin(src);
+    }
+    if (this.on("Gemspec/OrderedDependencies")) {
+      this.gemspecOrderedDependencies.run(src);
+    } else {
+      this.gemspecOrderedDependencies.c.begin(src);
+    }
     if (this.on("Layout/AccessModifierIndentation")) {
       this.layoutAccessModifierIndentation.run(src);
     } else {
@@ -775,6 +802,11 @@ export class RbTeam {
       this.layoutLeadingEmptyLines.run(src);
     } else {
       this.layoutLeadingEmptyLines.c.begin(src);
+    }
+    if (this.on("Layout/LineLength")) {
+      this.layoutLineLength.run(src);
+    } else {
+      this.layoutLineLength.c.begin(src);
     }
     if (this.on("Layout/MultilineArrayBraceLayout")) {
       this.layoutMultilineArrayBraceLayout.run(src);

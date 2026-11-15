@@ -6,16 +6,39 @@
 // Batsov).
 
 import { Out } from "../core/out";
+import { rbSplitComma } from "./ast";
 import { RbSource } from "./source";
 import { RbTeam } from "./team";
 
 const RB_MAX_ITERATIONS: i32 = 200;
 
+// RuboCop's AllCops Include patterns (config/default.yml).
+const RB_EXTENSIONS: string = ".rb,.arb,.axlsx,.builder,.gemfile,.gemspec,.jb,.jbuilder,.mspec,.opal,.pluginspec,.podspec,.rabl,.rake,.rbw,.ru,.ruby,.schema,.spec,.thor";
+const RB_BASENAMES: string =
+  ".irbrc,.pryrc,.simplecov,buildfile,Appraisals,Berksfile,Brewfile,Buildfile,Capfile,Dangerfile,Deliverfile,Fastfile,Gemfile,Guardfile,Jarfile,Mavenfile,Podfile,Puppetfile,Rakefile,rakefile,Schemafile,Snapfile,Steepfile,Thorfile,Vagrantfile";
+
+/** Whether RuboCop inspects a file of this name by default. */
 export const isRubyName = (name: string): boolean => {
-  if (name.endsWith(".rb") || name.endsWith(".rake") || name.endsWith(".gemspec") || name.endsWith(".ru")) {
+  for (const ext of rbSplitComma(RB_EXTENSIONS)) {
+    if (name.endsWith(ext)) {
+      return true;
+    }
+  }
+  let base = name;
+  let i = name.indexOf("/");
+  while (i >= 0) {
+    base = name.substring(i + 1, toI32(name.length));
+    i = name.indexOf("/", i + 1);
+  }
+  if (base.endsWith("Fastfile")) {
     return true;
   }
-  return name === "Gemfile" || name === "Rakefile" || name.endsWith("/Gemfile") || name.endsWith("/Rakefile");
+  for (const b of rbSplitComma(RB_BASENAMES)) {
+    if (base === b) {
+      return true;
+    }
+  }
+  return false;
 };
 
 /** UTF-8 bytes to code points; null for invalid UTF-8. */

@@ -379,6 +379,10 @@ export class RbLiteral {
         return false;
       }
       const k = toI32(d.length) - toI32(this.end_delim.length);
+      // Prism (which RuboCop parses with) closes a plain <<X heredoc only at column 0.
+      if (k > 0 && !this.indent) {
+        return false;
+      }
       for (let i = 0; i < k; i++) {
         const c = d.charCodeAt(i);
         if (c !== 32 && c !== 9) {
