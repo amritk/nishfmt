@@ -8,6 +8,7 @@ import { KBuilder } from "./builder";
 import { rewriteKotlinComment } from "./comments";
 import { tokenizeKotlin } from "./input";
 import { KLexemes } from "./lexer";
+import { KMultilineStrings } from "./mlstring";
 import { KParser } from "./parser";
 import { KPasses } from "./passes";
 import { ktTypeName } from "./types";
@@ -22,6 +23,7 @@ export class KotlinEngine {
   g: GEngine;
   vis: KVisitor;
   passes: KPasses;
+  ml: KMultilineStrings;
   buf1: Out;
   buf2: Out;
   // The text the current step works on, and whether `b.tree` is its parse.
@@ -39,6 +41,7 @@ export class KotlinEngine {
     this.g.rewrite = rewriteKotlinComment;
     this.vis = new KVisitor(this.g, this.b.tree);
     this.passes = new KPasses(this.b.tree);
+    this.ml = new KMultilineStrings(this.b.tree);
     this.buf1 = new Out(1 << 16);
     this.buf2 = new Out(1 << 16);
     this.cur = new Array<u8>(0);
@@ -190,6 +193,12 @@ export const formatKotlin = (e: KotlinEngine, path: string, src0: u8[], n0: i32,
   }
   e.passes.reset(e.cur, e.curN);
   if (e.passes.addTrailingCommas(0, e.buf2)) {
+    setCur(e, e.buf2.buf, e.buf2.n);
+  }
+  if (!ensureParsed(e, path)) {
+    return false;
+  }
+  if (e.ml.format(e.cur, e.curN, e.buf2)) {
     setCur(e, e.buf2.buf, e.buf2.n);
   }
   const res = e.cur;
