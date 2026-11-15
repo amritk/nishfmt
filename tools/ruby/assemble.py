@@ -57,6 +57,8 @@ MAIN = [
 STR_LATE = [
     (r'^if \(\(state = this\.pop_literal\(\)\)\) \{$', 'state = this.pop_literal(); if (state >= 0) {'),
     (r'unknown_options\.any\(\)', 'unknown_options'),
+    # Lexer-strings' emit defaults to its own token range, not the root lexer's.
+    (r'this\.emit1\((\w+)\)', r'this.lexer.emit4(\1, this.tok2(this.ts, this.te), this.ts, this.te)'),
     (r'this\.emit(\d)\(', r'this.lexer.emit\1('),
     (r'^escape = ESCAPE_WHITESPACE.*$', ''),
     (r'^if \(\(!current_literal\.heredoc\(\) && \(token = current_literal\.nest_and_try_closing\((.*)\)\)\)\) \{$', r'token = -1; if (!current_literal.heredoc()) { token = current_literal.nest_and_try_closing(\1); } if (token >= 0) {'),

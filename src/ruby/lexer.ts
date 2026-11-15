@@ -2343,7 +2343,7 @@ unknown_options = rbUnknownRegexpOptions(this.tok2(this.ts, this.te));
 if ((unknown_options)) {
 this.lexer.diagError();
 }
-this.lexer.emit1(TK_tREGEXP_OPT);
+this.lexer.emit4(TK_tREGEXP_OPT, this.tok2(this.ts, this.te), this.ts, this.te);
 this.rootState = RL_LEX_EN_EXPR_END;
 {
 p += 1;

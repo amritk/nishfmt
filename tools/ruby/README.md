@@ -13,6 +13,16 @@ and racc). To regenerate:
     python3 post.py sadvance.rb 'switch (_lex_actions[_acts - 1]) {' > str_actions.ts
     python3 assemble.py
 
+The parser (`src/ruby/parser.ts`) is racc's driver over the tables, with the
+grammar's reduce actions translated from the generated ruby33.rb:
+
+    python3 genparser.py $G/ruby33.rb ../../src/ruby/parser.ts
+
+`src/ruby/builder.ts` (Builders::Default with RuboCop's flags) and
+`src/ruby/ast.ts` are hand-written. RuboCop parses TargetRubyVersion 3.3
+through Prism's parser-gem translation, so where Prism builds a different
+tree the port follows Prism (see the overrides in `genparser.py`).
+
 `rl2ts.py` translates the Ruby of the Ragel actions, `post.py` the idioms it
 leaves, and `assemble.py` splices both machines into `lexer_tmpl.ts`.
 `astdump.rb` and `toklog.rb` print RuboCop's AST and the parser's tokens, the
