@@ -9,6 +9,8 @@ import { JParser } from "./parser";
 import { JVisitor } from "./visitor";
 import { rewriteJavaComment } from "./comments";
 import { ImportFixer } from "./imports";
+import { StringWrapper, needWrapping } from "./strings";
+import { reorderModifiers } from "./modifiers";
 
 /** One worker's reusable Java state. */
 export class JavaEngine {
@@ -20,17 +22,21 @@ export class JavaEngine {
   imports: ImportFixer;
   buf1: Out;
   buf2: Out;
+  buf3: Out;
+  wrapper: StringWrapper;
   debug: boolean = false;
   constructor() {
     this.imports = new ImportFixer();
     this.buf1 = new Out(1 << 16);
     this.buf2 = new Out(1 << 16);
+    this.buf3 = new Out(1 << 16);
     this.inp = new GInput();
     this.tree = new JTree();
     this.parser = new JParser(this.inp, this.tree);
     this.g = new GEngine(this.inp);
     this.vis = new JVisitor(this.g, this.tree);
     this.g.rewrite = rewriteJavaComment;
+    this.wrapper = new StringWrapper(this.inp, this.tree);
   }
 }
 
@@ -78,6 +84,14 @@ export const formatJava = (e: JavaEngine, path: string, src0: u8[], n0: i32, out
     }
     return false;
   }
+  // ModifierOrderer, on the tokens.
+  if (reorderModifiers(e.inp, e.buf1)) {
+    src = e.buf1.buf.slice(0, e.buf1.n);
+    n = e.buf1.n;
+    if (!lexJava(e.inp, src, n)) {
+      return false;
+    }
+  }
   const root = e.parser.parse();
   if (e.parser.err) {
     if (e.debug) {
@@ -98,13 +112,24 @@ export const formatJava = (e: JavaEngine, path: string, src0: u8[], n0: i32, out
     }
     return false;
   }
+  // StringWrapper, on the formatted text.
+  let res = g.out;
+  if (needWrapping(g.out.buf, g.out.n)) {
+    const fmt = g.out.buf.slice(0, g.out.n);
+    if (lexJava(e.inp, fmt, toI32(fmt.length))) {
+      e.parser.parse();
+      if (!e.parser.err && e.wrapper.wrap("\n", e.buf3)) {
+        res = e.buf3;
+      }
+    }
+  }
   out.n = 0;
   const sep = guessSep(src0, n0);
   if (sep === "\n") {
-    out.range(g.out.buf, 0, g.out.n);
+    out.range(res.buf, 0, res.n);
   } else {
-    for (let i = 0; i < g.out.n; i++) {
-      const c = toI32(g.out.buf[i]);
+    for (let i = 0; i < res.n; i++) {
+      const c = toI32(res.buf[i]);
       if (c === 10) {
         out.str(sep);
       } else {

@@ -50,7 +50,7 @@ export const guessSeparator = (src: u8[], n: i32): string => {
   return "\n";
 };
 
-const isJavaWs = (c: i32): boolean => c === 32 || c === 9 || c === 10 || c === 13 || c === 12 || c === 11 || c === 28 || c === 29 || c === 30 || c === 31;
+const isJavaWs = (c: i32): boolean => c === 32 || c === 9 || c === 10 || c === 13 || c === 12 || c === 11;
 
 /**
  * ImportOrderer.reorderImports over lexed toks. Answers null when the text

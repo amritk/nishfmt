@@ -12,7 +12,7 @@ import { formatJavadoc } from "./javadoc";
 
 const MAX_LINE_LENGTH: i32 = 100;
 
-const isWsc = (c: i32): boolean => c === 32 || c === 9 || c === 10 || c === 13 || c === 12 || c === 11 || (c >= 28 && c <= 31);
+const isWsc = (c: i32): boolean => c === 32 || c === 9 || c === 10 || c === 13 || c === 12 || c === 11;
 
 const trimBoth = (s: string): string => {
   let a = 0;
