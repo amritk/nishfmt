@@ -32,6 +32,8 @@ export class RbSource {
   tokE: i32[];
   // Directive comments: whether the file has any we cannot interpret.
   unsupportedDirectives: boolean = false;
+  // The source mentions `rubocop` (CommentConfig's @no_directives test).
+  hasDirectiveText: boolean = false;
   dirNames: string[];
   dirFrom: i32[];
   dirTo: i32[];
@@ -158,6 +160,7 @@ export class RbSource {
     if (!rbHasRubocop(this.pts)) {
       return;
     }
+    this.hasDirectiveText = true;
     const all = rbSplitComma(RB_COP_NAMES);
     const index = new Map<string, i32>();
     for (let i = 0; i < toI32(all.length); i++) {
@@ -369,7 +372,7 @@ export class RbSource {
   }
 
   /** DisableNext#statement_scope_after: [first, last] lines, or [] when detached. */
-  private statementScopeAfter(line: i32): i32[] {
+  statementScopeAfter(line: i32): i32[] {
     const none: i32[] = [];
     if (!this.commentOnlyLine(line)) {
       return none;

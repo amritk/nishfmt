@@ -107,6 +107,56 @@ export class RubyEngine {
 }
 
 /** Formats one Ruby file into `out`; false leaves it alone (does not parse, or not handled). */
+/** The outcome of one inspection loop. */
+class RbLoopResult {
+  ok: boolean = true; // false: the source does not parse
+  changed: boolean = false;
+  text: string = "";
+  pts: i32[];
+  last: RbSource | null = null; // the source of the pass that corrected nothing
+  looped: boolean = false; // stopped by the infinite-loop check
+
+  constructor(pts: i32[]) {
+    this.pts = pts;
+  }
+}
+
+/** Runner#do_inspection_loop from `pts`. */
+const rbInspectionLoop = (e: RubyEngine, path: string, pts0: i32[]): RbLoopResult => {
+  const res = new RbLoopResult(pts0);
+  let pts = pts0;
+  const seen: string[] = [];
+  for (let it = 0; it < RB_MAX_ITERATIONS; it++) {
+    const rs = new RbSource(pts, path);
+    if (!rs.valid) {
+      res.ok = it > 0;
+      return res;
+    }
+    const rw = e.team.run(rs);
+    if (rw === null) {
+      res.last = rs;
+      return res;
+    }
+    res.text = rw.process(pts);
+    res.changed = true;
+    // Runner#check_for_infinite_loop: a source seen before ends the loop.
+    for (const s of seen) {
+      if (s === res.text) {
+        res.looped = true;
+      }
+    }
+    if (res.looped) {
+      return res;
+    }
+    seen.push(res.text);
+    pts = rbEncode(res.text);
+    res.pts = pts;
+  }
+  res.looped = true;
+  return res;
+};
+
+/** Formats one Ruby file into `out`; false leaves it alone (does not parse, or not handled). */
 export const formatRuby = (e: RubyEngine, path: string, src: u8[], n: i32, out: Out): boolean => {
   for (let i = 0; i < n; i++) {
     if (toI32(src[i]) === 13) {
@@ -117,41 +167,35 @@ export const formatRuby = (e: RubyEngine, path: string, src: u8[], n: i32, out: 
   if (pts0 === null) {
     return false;
   }
-  let pts: i32[] = pts0;
-  const seen: string[] = [];
-  let text = "";
-  let changed = false;
-  for (let it = 0; it < RB_MAX_ITERATIONS; it++) {
-    const rs = new RbSource(pts, path);
-    if (!rs.valid || rs.unsupportedDirectives) {
-      if (it === 0) {
-        return false;
-      }
-      break;
-    }
-    const rw = e.team.run(rs);
-    if (rw === null) {
-      break;
-    }
-    text = rw.process(pts);
-    changed = true;
-    // Runner#check_for_infinite_loop: a source seen before ends the loop.
-    let loop = false;
-    for (const s of seen) {
-      if (s === text) {
-        loop = true;
-      }
-    }
-    if (loop) {
-      break;
-    }
-    seen.push(text);
-    pts = rbEncode(text);
+  let r = rbInspectionLoop(e, path, pts0);
+  if (!r.ok) {
+    return false;
   }
-  if (!changed) {
+  // Runner#add_redundant_disables: one pass of Lint/RedundantCopDisableDirective
+  // over the settled source, reading the last pass's offenses; when it
+  // corrects, the inspection loop runs again on the result.
+  const last = r.last;
+  // (disabled_line_ranges is never empty: config-disabled cops count, so any
+  // file with a directive comment is checked.)
+  if (last !== null && e.team.only.length === 0 && last.hasDirectiveText) {
+    const rcdd = e.team.lintRedundantCopDisableDirective;
+    rcdd.runWith(last, e.team.cops, false);
+    if (!rcdd.c.rw.empty()) {
+      const text = rcdd.c.rw.process(last.pts);
+      const r2 = rbInspectionLoop(e, path, rbEncode(text));
+      if (r2.ok) {
+        if (!r2.changed) {
+          r2.text = text;
+          r2.changed = true;
+        }
+        r = r2;
+      }
+    }
+  }
+  if (!r.changed) {
     out.range(src, 0, n);
     return true;
   }
-  out.str(text);
+  out.str(r.text);
   return true;
 };

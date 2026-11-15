@@ -90,13 +90,53 @@ import { CopLayoutSpaceBeforeComment } from "./cops/layout_space_punctuation";
 import { CopLayoutSpaceBeforeSemicolon } from "./cops/layout_space_punctuation";
 import { CopLayoutTrailingEmptyLines } from "./cops/layout_trailing_empty_lines";
 import { CopLayoutTrailingWhitespace } from "./cops/layout_trailing_whitespace";
+import { CopLintAmbiguousBlockAssociation } from "./cops/lint_ambiguous_block_association";
+import { CopLintAmbiguousOperator } from "./cops/lint_ambiguous_operator";
 import { CopLintAmbiguousRegexpLiteral } from "./cops/lint_ambiguous_regexp_literal";
+import { CopLintBigDecimalNew } from "./cops/lint_big_decimal_new";
+import { CopLintDeprecatedClassMethods } from "./cops/lint_deprecated_class_methods";
+import { CopLintDeprecatedOpenSSLConstant } from "./cops/lint_deprecated_open_ssl_constant";
+import { CopLintElseLayout } from "./cops/lint_else_layout";
+import { CopLintEmptyEnsure } from "./cops/lint_empty_ensure";
+import { CopLintEmptyInterpolation } from "./cops/lint_empty_interpolation";
+import { CopLintErbNewArguments } from "./cops/lint_erb_new_arguments";
+import { CopLintIdentityComparison } from "./cops/lint_identity_comparison";
+import { CopLintLiteralInInterpolation } from "./cops/lint_literal_in_interpolation";
+import { CopLintMultipleComparison } from "./cops/lint_multiple_comparison";
+import { CopLintParenthesesAsGroupedExpression } from "./cops/lint_parentheses_as_grouped_expression";
 import { CopLintPercentSymbolArray } from "./cops/lint_percent_symbol_array";
+import { CopLintRedundantCopDisableDirective } from "./cops/lint_redundant_cop_disable_directive";
+import { CopLintRedundantCopEnableDirective } from "./cops/lint_redundant_cop_enable_directive";
+import { CopLintRedundantRequireStatement } from "./cops/lint_redundant_require_statement";
+import { CopLintRedundantSplatExpansion } from "./cops/lint_redundant_splat_expansion";
+import { CopLintRedundantStringCoercion } from "./cops/lint_redundant_string_coercion";
+import { CopLintRedundantWithIndex } from "./cops/lint_redundant_with_index";
+import { CopLintRegexpAsCondition } from "./cops/lint_regexp_as_condition";
+import { CopLintRescueType } from "./cops/lint_rescue_type";
+import { CopLintSafeNavigationWithEmpty } from "./cops/lint_safe_navigation_with_empty";
+import { CopLintSendWithMixinArgument } from "./cops/lint_send_with_mixin_argument";
+import { CopLintToJSON } from "./cops/lint_to_json";
+import { CopLintTopLevelReturnWithArgument } from "./cops/lint_top_level_return_with_argument";
+import { CopLintTrailingCommaInAttributeDeclaration } from "./cops/lint_trailing_comma_in_attribute_declaration";
+import { CopLintUnifiedInteger } from "./cops/lint_unified_integer";
+import { CopLintUnusedBlockArgument } from "./cops/lint_unused_block_argument";
+import { CopLintUnusedMethodArgument } from "./cops/lint_unused_method_argument";
+import { CopLintUriRegexp } from "./cops/lint_uri_regexp";
+import { CopLintUselessAccessModifier } from "./cops/lint_useless_access_modifier";
+import { CopLintUselessAssignment } from "./cops/lint_useless_assignment";
+import { CopLintVoid } from "./cops/lint_void";
+import { CopMigrationDepartmentName } from "./cops/migration_department_name";
+import { CopNamingBinaryOperatorParameterName } from "./cops/naming_binary_operator_parameter_name";
+import { CopNamingHeredocDelimiterCase } from "./cops/naming_heredoc_delimiter_case";
+import { CopNamingRescuedExceptionsVariableName } from "./cops/naming_rescued_exceptions_variable_name";
 import { CopStyleAccessorGrouping } from "./cops/style_accessor_grouping";
 import { CopStyleAlias } from "./cops/style_alias";
 import { CopStyleArrayJoin } from "./cops/style_array_join";
 import { CopStyleAttr } from "./cops/style_attr";
 import { CopStyleBarePercentLiterals } from "./cops/style_bare_percent_literals";
+import { CopStyleBisectedAttrAccessor } from "./cops/style_bisected_attr_accessor";
+import { CopStyleBlockComments } from "./cops/style_block_comments";
+import { CopStyleBlockDelimiters } from "./cops/style_block_delimiters";
 import { CopStyleCaseEquality } from "./cops/style_case_equality";
 import { CopStyleCharacterLiteral } from "./cops/style_character_literal";
 import { CopStyleClassCheck } from "./cops/style_class_check";
@@ -104,9 +144,11 @@ import { CopStyleClassMethods } from "./cops/style_class_methods";
 import { CopStyleColonMethodCall } from "./cops/style_colon_method_call";
 import { CopStyleColonMethodDefinition } from "./cops/style_colon_method_definition";
 import { CopStyleCommandLiteral } from "./cops/style_command_literal";
+import { CopStyleCommentAnnotation } from "./cops/style_comment_annotation";
 import { CopStyleConditionalAssignment } from "./cops/style_conditional_assignment";
 import { CopStyleDefWithParentheses } from "./cops/style_def_with_parentheses";
 import { CopStyleDir } from "./cops/style_dir";
+import { CopStyleEachForSimpleLoop } from "./cops/style_each_for_simple_loop";
 import { CopStyleEachWithObject } from "./cops/style_each_with_object";
 import { CopStyleEmptyBlockParameter } from "./cops/style_empty_block_parameter";
 import { CopStyleEmptyCaseCondition } from "./cops/style_empty_case_condition";
@@ -115,9 +157,13 @@ import { CopStyleEmptyLambdaParameter } from "./cops/style_empty_lambda_paramete
 import { CopStyleEmptyLiteral } from "./cops/style_empty_literal";
 import { CopStyleEmptyMethod } from "./cops/style_empty_method";
 import { CopStyleEncoding } from "./cops/style_encoding";
+import { CopStyleEndBlock } from "./cops/style_end_block";
 import { CopStyleEvalWithLocation } from "./cops/style_eval_with_location";
 import { CopStyleEvenOdd } from "./cops/style_even_odd";
 import { CopStyleExpandPathArguments } from "./cops/style_expand_path_arguments";
+import { CopStyleExplicitBlockArgument } from "./cops/style_explicit_block_argument";
+import { CopStyleFormatString } from "./cops/style_format_string";
+import { CopStyleFormatStringToken } from "./cops/style_format_string_token";
 import { CopStyleGuardClause } from "./cops/style_guard_clause";
 import { CopStyleHashAsLastArrayItem } from "./cops/style_hash_as_last_array_item";
 import { CopStyleHashSyntax } from "./cops/style_hash_syntax";
@@ -125,13 +171,16 @@ import { CopStyleIfInsideElse } from "./cops/style_if_inside_else";
 import { CopStyleIfUnlessModifier } from "./cops/style_if_unless_modifier";
 import { CopStyleIfUnlessModifierOfIfUnless } from "./cops/style_if_unless_modifier_of_if_unless";
 import { CopStyleIfWithSemicolon } from "./cops/style_if_with_semicolon";
+import { CopStyleKeywordParametersOrder } from "./cops/style_keyword_parameters_order";
 import { CopStyleLambda } from "./cops/style_lambda";
 import { CopStyleLambdaCall } from "./cops/style_lambda_call";
 import { CopStyleMethodCallWithoutArgsParentheses } from "./cops/style_method_call_without_args_parentheses";
 import { CopStyleMethodDefParentheses } from "./cops/style_method_def_parentheses";
 import { CopStyleMinMax } from "./cops/style_min_max";
+import { CopStyleMixinGrouping } from "./cops/style_mixin_grouping";
 import { CopStyleMultilineIfModifier } from "./cops/style_multiline_if_modifier";
 import { CopStyleMultilineIfThen } from "./cops/style_multiline_if_then";
+import { CopStyleMultilineMemoization } from "./cops/style_multiline_memoization";
 import { CopStyleMultilineTernaryOperator } from "./cops/style_multiline_ternary_operator";
 import { CopStyleMultilineWhenThen } from "./cops/style_multiline_when_then";
 import { CopStyleMultipleComparison } from "./cops/style_multiple_comparison";
@@ -149,26 +198,36 @@ import { CopStyleNumericLiteralPrefix } from "./cops/style_numeric_literal_prefi
 import { CopStyleNumericLiterals } from "./cops/style_numeric_literals";
 import { CopStyleOneLineConditional } from "./cops/style_one_line_conditional";
 import { CopStyleOrAssignment } from "./cops/style_or_assignment";
+import { CopStyleParallelAssignment } from "./cops/style_parallel_assignment";
 import { CopStyleParenthesesAroundCondition } from "./cops/style_parentheses_around_condition";
 import { CopStylePercentLiteralDelimiters } from "./cops/style_percent_literal_delimiters";
 import { CopStylePercentQLiterals } from "./cops/style_percent_q_literals";
 import { CopStylePerlBackrefs } from "./cops/style_perl_backrefs";
 import { CopStyleProc } from "./cops/style_proc";
 import { CopStyleRandomWithOffset } from "./cops/style_random_with_offset";
+import { CopStyleRedundantAssignment } from "./cops/style_redundant_assignment";
+import { CopStyleRedundantBegin } from "./cops/style_redundant_begin";
 import { CopStyleRedundantCapitalW } from "./cops/style_redundant_capital_w";
 import { CopStyleRedundantCondition } from "./cops/style_redundant_condition";
 import { CopStyleRedundantConditional } from "./cops/style_redundant_conditional";
+import { CopStyleRedundantException } from "./cops/style_redundant_exception";
+import { CopStyleRedundantFileExtensionInRequire } from "./cops/style_redundant_file_extension_in_require";
 import { CopStyleRedundantFreeze } from "./cops/style_redundant_freeze";
+import { CopStyleRedundantParentheses } from "./cops/style_redundant_parentheses";
 import { CopStyleRedundantPercentQ } from "./cops/style_redundant_percent_q";
 import { CopStyleRedundantRegexpCharacterClass } from "./cops/style_redundant_regexp_character_class";
 import { CopStyleRedundantRegexpEscape } from "./cops/style_redundant_regexp_escape";
+import { CopStyleRedundantReturn } from "./cops/style_redundant_return";
 import { CopStyleRedundantSelf } from "./cops/style_redundant_self";
 import { CopStyleRedundantSortBy } from "./cops/style_redundant_sort_by";
 import { CopStyleRegexpLiteral } from "./cops/style_regexp_literal";
+import { CopStyleRescueModifier } from "./cops/style_rescue_modifier";
 import { CopStyleRescueStandardError } from "./cops/style_rescue_standard_error";
 import { CopStyleSample } from "./cops/style_sample";
 import { CopStyleSelfAssignment } from "./cops/style_self_assignment";
+import { CopStyleSemicolon } from "./cops/style_semicolon";
 import { CopStyleSignalException } from "./cops/style_signal_exception";
+import { CopStyleSingleLineMethods } from "./cops/style_single_line_methods";
 import { CopStyleSoleNestedConditional } from "./cops/style_sole_nested_conditional";
 import { CopStyleStabbyLambdaParentheses } from "./cops/style_stabby_lambda_parentheses";
 import { CopStyleStderrPuts } from "./cops/style_stderr_puts";
@@ -178,12 +237,18 @@ import { CopStyleStrip } from "./cops/style_strip";
 import { CopStyleSymbolArray } from "./cops/style_symbol_array";
 import { CopStyleSymbolLiteral } from "./cops/style_symbol_literal";
 import { CopStyleTernaryParentheses } from "./cops/style_ternary_parentheses";
+import { CopStyleTrailingBodyOnClass } from "./cops/style_trailing_body_on_class";
+import { CopStyleTrailingBodyOnMethodDefinition } from "./cops/style_trailing_body_on_method_definition";
+import { CopStyleTrailingBodyOnModule } from "./cops/style_trailing_body_on_module";
 import { CopStyleTrailingCommaInArguments } from "./cops/style_trailing_comma_in_arguments";
 import { CopStyleTrailingCommaInArrayLiteral } from "./cops/style_trailing_comma_in_array_literal";
 import { CopStyleTrailingCommaInHashLiteral } from "./cops/style_trailing_comma_in_hash_literal";
+import { CopStyleTrailingMethodEndStatement } from "./cops/style_trailing_method_end_statement";
+import { CopStyleTrailingUnderscoreVariable } from "./cops/style_trailing_underscore_variable";
 import { CopStyleTrivialAccessors } from "./cops/style_trivial_accessors";
 import { CopStyleUnlessElse } from "./cops/style_unless_else";
 import { CopStyleUnpackFirst } from "./cops/style_unpack_first";
+import { CopStyleVariableInterpolation } from "./cops/style_variable_interpolation";
 import { CopStyleWhenThen } from "./cops/style_when_then";
 import { CopStyleWhileUntilDo } from "./cops/style_while_until_do";
 import { CopStyleWhileUntilModifier } from "./cops/style_while_until_modifier";
@@ -276,13 +341,53 @@ export class RbTeam {
   layoutSpaceInsideStringInterpolation: CopLayoutSpaceInsideStringInterpolation;
   layoutTrailingEmptyLines: CopLayoutTrailingEmptyLines;
   layoutTrailingWhitespace: CopLayoutTrailingWhitespace;
+  lintAmbiguousBlockAssociation: CopLintAmbiguousBlockAssociation;
+  lintAmbiguousOperator: CopLintAmbiguousOperator;
   lintAmbiguousRegexpLiteral: CopLintAmbiguousRegexpLiteral;
+  lintBigDecimalNew: CopLintBigDecimalNew;
+  lintDeprecatedClassMethods: CopLintDeprecatedClassMethods;
+  lintDeprecatedOpenSSLConstant: CopLintDeprecatedOpenSSLConstant;
+  lintElseLayout: CopLintElseLayout;
+  lintEmptyEnsure: CopLintEmptyEnsure;
+  lintEmptyInterpolation: CopLintEmptyInterpolation;
+  lintErbNewArguments: CopLintErbNewArguments;
+  lintIdentityComparison: CopLintIdentityComparison;
+  lintLiteralInInterpolation: CopLintLiteralInInterpolation;
+  lintMultipleComparison: CopLintMultipleComparison;
+  lintParenthesesAsGroupedExpression: CopLintParenthesesAsGroupedExpression;
   lintPercentSymbolArray: CopLintPercentSymbolArray;
+  lintRedundantCopDisableDirective: CopLintRedundantCopDisableDirective;
+  lintRedundantCopEnableDirective: CopLintRedundantCopEnableDirective;
+  lintRedundantRequireStatement: CopLintRedundantRequireStatement;
+  lintRedundantSplatExpansion: CopLintRedundantSplatExpansion;
+  lintRedundantStringCoercion: CopLintRedundantStringCoercion;
+  lintRedundantWithIndex: CopLintRedundantWithIndex;
+  lintRegexpAsCondition: CopLintRegexpAsCondition;
+  lintRescueType: CopLintRescueType;
+  lintSafeNavigationWithEmpty: CopLintSafeNavigationWithEmpty;
+  lintSendWithMixinArgument: CopLintSendWithMixinArgument;
+  lintToJSON: CopLintToJSON;
+  lintTopLevelReturnWithArgument: CopLintTopLevelReturnWithArgument;
+  lintTrailingCommaInAttributeDeclaration: CopLintTrailingCommaInAttributeDeclaration;
+  lintUnifiedInteger: CopLintUnifiedInteger;
+  lintUnusedBlockArgument: CopLintUnusedBlockArgument;
+  lintUnusedMethodArgument: CopLintUnusedMethodArgument;
+  lintUriRegexp: CopLintUriRegexp;
+  lintUselessAccessModifier: CopLintUselessAccessModifier;
+  lintUselessAssignment: CopLintUselessAssignment;
+  lintVoid: CopLintVoid;
+  migrationDepartmentName: CopMigrationDepartmentName;
+  namingHeredocDelimiterCase: CopNamingHeredocDelimiterCase;
+  namingBinaryOperatorParameterName: CopNamingBinaryOperatorParameterName;
+  namingRescuedExceptionsVariableName: CopNamingRescuedExceptionsVariableName;
   styleAccessorGrouping: CopStyleAccessorGrouping;
   styleAlias: CopStyleAlias;
   styleArrayJoin: CopStyleArrayJoin;
   styleAttr: CopStyleAttr;
   styleBarePercentLiterals: CopStyleBarePercentLiterals;
+  styleBisectedAttrAccessor: CopStyleBisectedAttrAccessor;
+  styleBlockComments: CopStyleBlockComments;
+  styleBlockDelimiters: CopStyleBlockDelimiters;
   styleCaseEquality: CopStyleCaseEquality;
   styleCharacterLiteral: CopStyleCharacterLiteral;
   styleClassCheck: CopStyleClassCheck;
@@ -290,9 +395,11 @@ export class RbTeam {
   styleColonMethodCall: CopStyleColonMethodCall;
   styleColonMethodDefinition: CopStyleColonMethodDefinition;
   styleCommandLiteral: CopStyleCommandLiteral;
+  styleCommentAnnotation: CopStyleCommentAnnotation;
   styleConditionalAssignment: CopStyleConditionalAssignment;
   styleDefWithParentheses: CopStyleDefWithParentheses;
   styleDir: CopStyleDir;
+  styleEachForSimpleLoop: CopStyleEachForSimpleLoop;
   styleEachWithObject: CopStyleEachWithObject;
   styleEmptyBlockParameter: CopStyleEmptyBlockParameter;
   styleEmptyCaseCondition: CopStyleEmptyCaseCondition;
@@ -301,9 +408,13 @@ export class RbTeam {
   styleEmptyLiteral: CopStyleEmptyLiteral;
   styleEmptyMethod: CopStyleEmptyMethod;
   styleEncoding: CopStyleEncoding;
+  styleEndBlock: CopStyleEndBlock;
   styleEvalWithLocation: CopStyleEvalWithLocation;
   styleEvenOdd: CopStyleEvenOdd;
   styleExpandPathArguments: CopStyleExpandPathArguments;
+  styleExplicitBlockArgument: CopStyleExplicitBlockArgument;
+  styleFormatString: CopStyleFormatString;
+  styleFormatStringToken: CopStyleFormatStringToken;
   styleGuardClause: CopStyleGuardClause;
   styleHashAsLastArrayItem: CopStyleHashAsLastArrayItem;
   styleHashSyntax: CopStyleHashSyntax;
@@ -311,14 +422,19 @@ export class RbTeam {
   styleIfUnlessModifier: CopStyleIfUnlessModifier;
   styleIfUnlessModifierOfIfUnless: CopStyleIfUnlessModifierOfIfUnless;
   styleIfWithSemicolon: CopStyleIfWithSemicolon;
+  styleKeywordParametersOrder: CopStyleKeywordParametersOrder;
   styleLambda: CopStyleLambda;
   styleLambdaCall: CopStyleLambdaCall;
   styleMethodCallWithoutArgsParentheses: CopStyleMethodCallWithoutArgsParentheses;
+  styleRedundantAssignment: CopStyleRedundantAssignment;
+  styleRedundantFileExtensionInRequire: CopStyleRedundantFileExtensionInRequire;
   styleSoleNestedConditional: CopStyleSoleNestedConditional;
   styleMethodDefParentheses: CopStyleMethodDefParentheses;
   styleMinMax: CopStyleMinMax;
+  styleMixinGrouping: CopStyleMixinGrouping;
   styleMultilineIfThen: CopStyleMultilineIfThen;
   styleMultilineIfModifier: CopStyleMultilineIfModifier;
+  styleMultilineMemoization: CopStyleMultilineMemoization;
   styleMultilineTernaryOperator: CopStyleMultilineTernaryOperator;
   styleMultilineWhenThen: CopStyleMultilineWhenThen;
   styleMultipleComparison: CopStyleMultipleComparison;
@@ -336,26 +452,34 @@ export class RbTeam {
   styleNumericLiteralPrefix: CopStyleNumericLiteralPrefix;
   styleOneLineConditional: CopStyleOneLineConditional;
   styleOrAssignment: CopStyleOrAssignment;
+  styleParallelAssignment: CopStyleParallelAssignment;
   styleParenthesesAroundCondition: CopStyleParenthesesAroundCondition;
   stylePercentLiteralDelimiters: CopStylePercentLiteralDelimiters;
   stylePercentQLiterals: CopStylePercentQLiterals;
   stylePerlBackrefs: CopStylePerlBackrefs;
   styleProc: CopStyleProc;
   styleRandomWithOffset: CopStyleRandomWithOffset;
+  styleRedundantBegin: CopStyleRedundantBegin;
   styleRedundantCapitalW: CopStyleRedundantCapitalW;
   styleRedundantCondition: CopStyleRedundantCondition;
   styleRedundantConditional: CopStyleRedundantConditional;
+  styleRedundantException: CopStyleRedundantException;
   styleRedundantFreeze: CopStyleRedundantFreeze;
+  styleRedundantParentheses: CopStyleRedundantParentheses;
   styleRedundantPercentQ: CopStyleRedundantPercentQ;
   styleRedundantRegexpCharacterClass: CopStyleRedundantRegexpCharacterClass;
   styleRedundantRegexpEscape: CopStyleRedundantRegexpEscape;
+  styleRedundantReturn: CopStyleRedundantReturn;
   styleRedundantSelf: CopStyleRedundantSelf;
   styleRedundantSortBy: CopStyleRedundantSortBy;
   styleRegexpLiteral: CopStyleRegexpLiteral;
+  styleRescueModifier: CopStyleRescueModifier;
   styleRescueStandardError: CopStyleRescueStandardError;
   styleSample: CopStyleSample;
   styleSelfAssignment: CopStyleSelfAssignment;
+  styleSemicolon: CopStyleSemicolon;
   styleSignalException: CopStyleSignalException;
+  styleSingleLineMethods: CopStyleSingleLineMethods;
   styleStabbyLambdaParentheses: CopStyleStabbyLambdaParentheses;
   styleStderrPuts: CopStyleStderrPuts;
   styleStringLiterals: CopStyleStringLiterals;
@@ -364,12 +488,18 @@ export class RbTeam {
   styleSymbolArray: CopStyleSymbolArray;
   styleSymbolLiteral: CopStyleSymbolLiteral;
   styleTernaryParentheses: CopStyleTernaryParentheses;
+  styleTrailingBodyOnClass: CopStyleTrailingBodyOnClass;
+  styleTrailingBodyOnMethodDefinition: CopStyleTrailingBodyOnMethodDefinition;
+  styleTrailingBodyOnModule: CopStyleTrailingBodyOnModule;
   styleTrailingCommaInArguments: CopStyleTrailingCommaInArguments;
   styleTrailingCommaInArrayLiteral: CopStyleTrailingCommaInArrayLiteral;
   styleTrailingCommaInHashLiteral: CopStyleTrailingCommaInHashLiteral;
+  styleTrailingMethodEndStatement: CopStyleTrailingMethodEndStatement;
+  styleTrailingUnderscoreVariable: CopStyleTrailingUnderscoreVariable;
   styleTrivialAccessors: CopStyleTrivialAccessors;
   styleUnlessElse: CopStyleUnlessElse;
   styleUnpackFirst: CopStyleUnpackFirst;
+  styleVariableInterpolation: CopStyleVariableInterpolation;
   styleWhenThen: CopStyleWhenThen;
   styleWhileUntilDo: CopStyleWhileUntilDo;
   styleWhileUntilModifier: CopStyleWhileUntilModifier;
@@ -463,13 +593,53 @@ export class RbTeam {
     this.layoutSpaceInsideStringInterpolation = new CopLayoutSpaceInsideStringInterpolation();
     this.layoutTrailingEmptyLines = new CopLayoutTrailingEmptyLines();
     this.layoutTrailingWhitespace = new CopLayoutTrailingWhitespace();
+    this.lintAmbiguousBlockAssociation = new CopLintAmbiguousBlockAssociation();
+    this.lintAmbiguousOperator = new CopLintAmbiguousOperator();
     this.lintAmbiguousRegexpLiteral = new CopLintAmbiguousRegexpLiteral();
+    this.lintBigDecimalNew = new CopLintBigDecimalNew();
+    this.lintDeprecatedClassMethods = new CopLintDeprecatedClassMethods();
+    this.lintDeprecatedOpenSSLConstant = new CopLintDeprecatedOpenSSLConstant();
+    this.lintElseLayout = new CopLintElseLayout();
+    this.lintEmptyEnsure = new CopLintEmptyEnsure();
+    this.lintEmptyInterpolation = new CopLintEmptyInterpolation();
+    this.lintErbNewArguments = new CopLintErbNewArguments();
+    this.lintIdentityComparison = new CopLintIdentityComparison();
+    this.lintLiteralInInterpolation = new CopLintLiteralInInterpolation();
+    this.lintMultipleComparison = new CopLintMultipleComparison();
+    this.lintParenthesesAsGroupedExpression = new CopLintParenthesesAsGroupedExpression();
     this.lintPercentSymbolArray = new CopLintPercentSymbolArray();
+    this.lintRedundantCopDisableDirective = new CopLintRedundantCopDisableDirective();
+    this.lintRedundantCopEnableDirective = new CopLintRedundantCopEnableDirective();
+    this.lintRedundantRequireStatement = new CopLintRedundantRequireStatement();
+    this.lintRedundantSplatExpansion = new CopLintRedundantSplatExpansion();
+    this.lintRedundantStringCoercion = new CopLintRedundantStringCoercion();
+    this.lintRedundantWithIndex = new CopLintRedundantWithIndex();
+    this.lintRegexpAsCondition = new CopLintRegexpAsCondition();
+    this.lintRescueType = new CopLintRescueType();
+    this.lintSafeNavigationWithEmpty = new CopLintSafeNavigationWithEmpty();
+    this.lintSendWithMixinArgument = new CopLintSendWithMixinArgument();
+    this.lintToJSON = new CopLintToJSON();
+    this.lintTopLevelReturnWithArgument = new CopLintTopLevelReturnWithArgument();
+    this.lintTrailingCommaInAttributeDeclaration = new CopLintTrailingCommaInAttributeDeclaration();
+    this.lintUnifiedInteger = new CopLintUnifiedInteger();
+    this.lintUnusedBlockArgument = new CopLintUnusedBlockArgument();
+    this.lintUnusedMethodArgument = new CopLintUnusedMethodArgument();
+    this.lintUriRegexp = new CopLintUriRegexp();
+    this.lintUselessAccessModifier = new CopLintUselessAccessModifier();
+    this.lintUselessAssignment = new CopLintUselessAssignment();
+    this.lintVoid = new CopLintVoid();
+    this.migrationDepartmentName = new CopMigrationDepartmentName();
+    this.namingHeredocDelimiterCase = new CopNamingHeredocDelimiterCase();
+    this.namingBinaryOperatorParameterName = new CopNamingBinaryOperatorParameterName();
+    this.namingRescuedExceptionsVariableName = new CopNamingRescuedExceptionsVariableName();
     this.styleAccessorGrouping = new CopStyleAccessorGrouping();
     this.styleAlias = new CopStyleAlias();
     this.styleArrayJoin = new CopStyleArrayJoin();
     this.styleAttr = new CopStyleAttr();
     this.styleBarePercentLiterals = new CopStyleBarePercentLiterals();
+    this.styleBisectedAttrAccessor = new CopStyleBisectedAttrAccessor();
+    this.styleBlockComments = new CopStyleBlockComments();
+    this.styleBlockDelimiters = new CopStyleBlockDelimiters();
     this.styleCaseEquality = new CopStyleCaseEquality();
     this.styleCharacterLiteral = new CopStyleCharacterLiteral();
     this.styleClassCheck = new CopStyleClassCheck();
@@ -477,9 +647,11 @@ export class RbTeam {
     this.styleColonMethodCall = new CopStyleColonMethodCall();
     this.styleColonMethodDefinition = new CopStyleColonMethodDefinition();
     this.styleCommandLiteral = new CopStyleCommandLiteral();
+    this.styleCommentAnnotation = new CopStyleCommentAnnotation();
     this.styleConditionalAssignment = new CopStyleConditionalAssignment();
     this.styleDefWithParentheses = new CopStyleDefWithParentheses();
     this.styleDir = new CopStyleDir();
+    this.styleEachForSimpleLoop = new CopStyleEachForSimpleLoop();
     this.styleEachWithObject = new CopStyleEachWithObject();
     this.styleEmptyBlockParameter = new CopStyleEmptyBlockParameter();
     this.styleEmptyCaseCondition = new CopStyleEmptyCaseCondition();
@@ -488,9 +660,13 @@ export class RbTeam {
     this.styleEmptyLiteral = new CopStyleEmptyLiteral();
     this.styleEmptyMethod = new CopStyleEmptyMethod();
     this.styleEncoding = new CopStyleEncoding();
+    this.styleEndBlock = new CopStyleEndBlock();
     this.styleEvalWithLocation = new CopStyleEvalWithLocation();
     this.styleEvenOdd = new CopStyleEvenOdd();
     this.styleExpandPathArguments = new CopStyleExpandPathArguments();
+    this.styleExplicitBlockArgument = new CopStyleExplicitBlockArgument();
+    this.styleFormatString = new CopStyleFormatString();
+    this.styleFormatStringToken = new CopStyleFormatStringToken();
     this.styleGuardClause = new CopStyleGuardClause();
     this.styleHashAsLastArrayItem = new CopStyleHashAsLastArrayItem();
     this.styleHashSyntax = new CopStyleHashSyntax();
@@ -498,14 +674,19 @@ export class RbTeam {
     this.styleIfUnlessModifier = new CopStyleIfUnlessModifier();
     this.styleIfUnlessModifierOfIfUnless = new CopStyleIfUnlessModifierOfIfUnless();
     this.styleIfWithSemicolon = new CopStyleIfWithSemicolon();
+    this.styleKeywordParametersOrder = new CopStyleKeywordParametersOrder();
     this.styleLambda = new CopStyleLambda();
     this.styleLambdaCall = new CopStyleLambdaCall();
     this.styleMethodCallWithoutArgsParentheses = new CopStyleMethodCallWithoutArgsParentheses();
+    this.styleRedundantAssignment = new CopStyleRedundantAssignment();
+    this.styleRedundantFileExtensionInRequire = new CopStyleRedundantFileExtensionInRequire();
     this.styleSoleNestedConditional = new CopStyleSoleNestedConditional();
     this.styleMethodDefParentheses = new CopStyleMethodDefParentheses();
     this.styleMinMax = new CopStyleMinMax();
+    this.styleMixinGrouping = new CopStyleMixinGrouping();
     this.styleMultilineIfThen = new CopStyleMultilineIfThen();
     this.styleMultilineIfModifier = new CopStyleMultilineIfModifier();
+    this.styleMultilineMemoization = new CopStyleMultilineMemoization();
     this.styleMultilineTernaryOperator = new CopStyleMultilineTernaryOperator();
     this.styleMultilineWhenThen = new CopStyleMultilineWhenThen();
     this.styleMultipleComparison = new CopStyleMultipleComparison();
@@ -523,26 +704,34 @@ export class RbTeam {
     this.styleNumericLiteralPrefix = new CopStyleNumericLiteralPrefix();
     this.styleOneLineConditional = new CopStyleOneLineConditional();
     this.styleOrAssignment = new CopStyleOrAssignment();
+    this.styleParallelAssignment = new CopStyleParallelAssignment();
     this.styleParenthesesAroundCondition = new CopStyleParenthesesAroundCondition();
     this.stylePercentLiteralDelimiters = new CopStylePercentLiteralDelimiters();
     this.stylePercentQLiterals = new CopStylePercentQLiterals();
     this.stylePerlBackrefs = new CopStylePerlBackrefs();
     this.styleProc = new CopStyleProc();
     this.styleRandomWithOffset = new CopStyleRandomWithOffset();
+    this.styleRedundantBegin = new CopStyleRedundantBegin();
     this.styleRedundantCapitalW = new CopStyleRedundantCapitalW();
     this.styleRedundantCondition = new CopStyleRedundantCondition();
     this.styleRedundantConditional = new CopStyleRedundantConditional();
+    this.styleRedundantException = new CopStyleRedundantException();
     this.styleRedundantFreeze = new CopStyleRedundantFreeze();
+    this.styleRedundantParentheses = new CopStyleRedundantParentheses();
     this.styleRedundantPercentQ = new CopStyleRedundantPercentQ();
     this.styleRedundantRegexpCharacterClass = new CopStyleRedundantRegexpCharacterClass();
     this.styleRedundantRegexpEscape = new CopStyleRedundantRegexpEscape();
+    this.styleRedundantReturn = new CopStyleRedundantReturn();
     this.styleRedundantSelf = new CopStyleRedundantSelf();
     this.styleRedundantSortBy = new CopStyleRedundantSortBy();
     this.styleRegexpLiteral = new CopStyleRegexpLiteral();
+    this.styleRescueModifier = new CopStyleRescueModifier();
     this.styleRescueStandardError = new CopStyleRescueStandardError();
     this.styleSample = new CopStyleSample();
     this.styleSelfAssignment = new CopStyleSelfAssignment();
+    this.styleSemicolon = new CopStyleSemicolon();
     this.styleSignalException = new CopStyleSignalException();
+    this.styleSingleLineMethods = new CopStyleSingleLineMethods();
     this.styleStabbyLambdaParentheses = new CopStyleStabbyLambdaParentheses();
     this.styleStderrPuts = new CopStyleStderrPuts();
     this.styleStringLiterals = new CopStyleStringLiterals();
@@ -551,17 +740,23 @@ export class RbTeam {
     this.styleSymbolArray = new CopStyleSymbolArray();
     this.styleSymbolLiteral = new CopStyleSymbolLiteral();
     this.styleTernaryParentheses = new CopStyleTernaryParentheses();
+    this.styleTrailingBodyOnClass = new CopStyleTrailingBodyOnClass();
+    this.styleTrailingBodyOnMethodDefinition = new CopStyleTrailingBodyOnMethodDefinition();
+    this.styleTrailingBodyOnModule = new CopStyleTrailingBodyOnModule();
     this.styleTrailingCommaInArguments = new CopStyleTrailingCommaInArguments();
     this.styleTrailingCommaInArrayLiteral = new CopStyleTrailingCommaInArrayLiteral();
     this.styleTrailingCommaInHashLiteral = new CopStyleTrailingCommaInHashLiteral();
+    this.styleTrailingMethodEndStatement = new CopStyleTrailingMethodEndStatement();
+    this.styleTrailingUnderscoreVariable = new CopStyleTrailingUnderscoreVariable();
     this.styleTrivialAccessors = new CopStyleTrivialAccessors();
     this.styleUnlessElse = new CopStyleUnlessElse();
     this.styleUnpackFirst = new CopStyleUnpackFirst();
+    this.styleVariableInterpolation = new CopStyleVariableInterpolation();
     this.styleWhenThen = new CopStyleWhenThen();
     this.styleWhileUntilDo = new CopStyleWhileUntilDo();
     this.styleWhileUntilModifier = new CopStyleWhileUntilModifier();
     this.styleWordArray = new CopStyleWordArray();
-    this.cops = [this.bundlerInsecureProtocolSource.c, this.bundlerOrderedGems.c, this.gemspecOrderedDependencies.c, this.layoutAccessModifierIndentation.c, this.layoutArgumentAlignment.c, this.layoutArrayAlignment.c, this.layoutAssignmentIndentation.c, this.layoutBeginEndAlignment.c, this.layoutBlockAlignment.c, this.layoutBlockEndNewline.c, this.layoutCaseIndentation.c, this.layoutClosingHeredocIndentation.c, this.layoutClosingParenthesisIndentation.c, this.layoutCommentIndentation.c, this.layoutConditionPosition.c, this.layoutDefEndAlignment.c, this.layoutDotPosition.c, this.layoutElseAlignment.c, this.layoutEmptyComment.c, this.layoutEmptyLineAfterGuardClause.c, this.layoutEmptyLineAfterMagicComment.c, this.layoutEmptyLineBetweenDefs.c, this.layoutEmptyLinesAroundAccessModifier.c, this.layoutEmptyLinesAroundArguments.c, this.layoutEmptyLinesAroundAttributeAccessor.c, this.layoutEmptyLinesAroundBeginBody.c, this.layoutEmptyLinesAroundBlockBody.c, this.layoutEmptyLinesAroundClassBody.c, this.layoutEmptyLinesAroundExceptionHandlingKeywords.c, this.layoutEmptyLinesAroundMethodBody.c, this.layoutEmptyLinesAroundModuleBody.c, this.layoutEmptyLines.c, this.layoutEndAlignment.c, this.layoutExtraSpacing.c, this.layoutFirstArgumentIndentation.c, this.layoutFirstArrayElementIndentation.c, this.layoutFirstHashElementIndentation.c, this.layoutFirstParameterIndentation.c, this.layoutHashAlignment.c, this.layoutHeredocIndentation.c, this.layoutIndentationConsistency.c, this.layoutIndentationStyle.c, this.layoutIndentationWidth.c, this.layoutInitialIndentation.c, this.layoutLeadingCommentSpace.c, this.layoutLeadingEmptyLines.c, this.layoutLineLength.c, this.layoutMultilineArrayBraceLayout.c, this.layoutMultilineBlockLayout.c, this.layoutMultilineHashBraceLayout.c, this.layoutMultilineMethodCallBraceLayout.c, this.layoutMultilineMethodCallIndentation.c, this.layoutMultilineMethodDefinitionBraceLayout.c, this.layoutMultilineOperationIndentation.c, this.layoutParameterAlignment.c, this.layoutRescueEnsureAlignment.c, this.layoutSpaceAfterColon.c, this.layoutSpaceAfterComma.c, this.layoutSpaceAfterMethodName.c, this.layoutSpaceAfterNot.c, this.layoutSpaceAfterSemicolon.c, this.layoutSpaceAroundBlockParameters.c, this.layoutSpaceAroundEqualsInParameterDefault.c, this.layoutSpaceAroundKeyword.c, this.layoutSpaceAroundMethodCallOperator.c, this.layoutSpaceAroundOperators.c, this.layoutSpaceBeforeBlockBraces.c, this.layoutSpaceBeforeComma.c, this.layoutSpaceBeforeComment.c, this.layoutSpaceBeforeFirstArg.c, this.layoutSpaceBeforeSemicolon.c, this.layoutSpaceInLambdaLiteral.c, this.layoutSpaceInsideArrayPercentLiteral.c, this.layoutSpaceInsideArrayLiteralBrackets.c, this.layoutSpaceInsideBlockBraces.c, this.layoutSpaceInsideHashLiteralBraces.c, this.layoutSpaceInsideParens.c, this.layoutSpaceInsidePercentLiteralDelimiters.c, this.layoutSpaceInsideRangeLiteral.c, this.layoutSpaceInsideReferenceBrackets.c, this.layoutSpaceInsideStringInterpolation.c, this.layoutTrailingEmptyLines.c, this.layoutTrailingWhitespace.c, this.lintAmbiguousRegexpLiteral.c, this.lintPercentSymbolArray.c, this.styleAccessorGrouping.c, this.styleAlias.c, this.styleArrayJoin.c, this.styleAttr.c, this.styleBarePercentLiterals.c, this.styleCaseEquality.c, this.styleCharacterLiteral.c, this.styleClassCheck.c, this.styleClassMethods.c, this.styleColonMethodCall.c, this.styleColonMethodDefinition.c, this.styleCommandLiteral.c, this.styleConditionalAssignment.c, this.styleDefWithParentheses.c, this.styleDir.c, this.styleEachWithObject.c, this.styleEmptyBlockParameter.c, this.styleEmptyCaseCondition.c, this.styleEmptyElse.c, this.styleEmptyLambdaParameter.c, this.styleEmptyLiteral.c, this.styleEmptyMethod.c, this.styleEncoding.c, this.styleEvalWithLocation.c, this.styleEvenOdd.c, this.styleExpandPathArguments.c, this.styleGuardClause.c, this.styleHashAsLastArrayItem.c, this.styleHashSyntax.c, this.styleIfInsideElse.c, this.styleIfUnlessModifier.c, this.styleIfUnlessModifierOfIfUnless.c, this.styleIfWithSemicolon.c, this.styleLambda.c, this.styleLambdaCall.c, this.styleMethodCallWithoutArgsParentheses.c, this.styleSoleNestedConditional.c, this.styleMethodDefParentheses.c, this.styleMinMax.c, this.styleMultilineIfThen.c, this.styleMultilineIfModifier.c, this.styleMultilineTernaryOperator.c, this.styleMultilineWhenThen.c, this.styleMultipleComparison.c, this.styleNegatedIf.c, this.styleNegatedUnless.c, this.styleNegatedWhile.c, this.styleNestedModifier.c, this.styleNestedParenthesizedCalls.c, this.styleNestedTernaryOperator.c, this.styleNext.c, this.styleNilComparison.c, this.styleNonNilCheck.c, this.styleNot.c, this.styleNumericLiterals.c, this.styleNumericLiteralPrefix.c, this.styleOneLineConditional.c, this.styleOrAssignment.c, this.styleParenthesesAroundCondition.c, this.stylePercentLiteralDelimiters.c, this.stylePercentQLiterals.c, this.stylePerlBackrefs.c, this.styleProc.c, this.styleRandomWithOffset.c, this.styleRedundantCapitalW.c, this.styleRedundantCondition.c, this.styleRedundantConditional.c, this.styleRedundantFreeze.c, this.styleRedundantPercentQ.c, this.styleRedundantRegexpCharacterClass.c, this.styleRedundantRegexpEscape.c, this.styleRedundantSelf.c, this.styleRedundantSortBy.c, this.styleRegexpLiteral.c, this.styleRescueStandardError.c, this.styleSample.c, this.styleSelfAssignment.c, this.styleSignalException.c, this.styleStabbyLambdaParentheses.c, this.styleStderrPuts.c, this.styleStringLiterals.c, this.styleStringLiteralsInInterpolation.c, this.styleStrip.c, this.styleSymbolArray.c, this.styleSymbolLiteral.c, this.styleTernaryParentheses.c, this.styleTrailingCommaInArguments.c, this.styleTrailingCommaInArrayLiteral.c, this.styleTrailingCommaInHashLiteral.c, this.styleTrivialAccessors.c, this.styleUnlessElse.c, this.styleUnpackFirst.c, this.styleWhenThen.c, this.styleWhileUntilDo.c, this.styleWhileUntilModifier.c, this.styleWordArray.c];
+    this.cops = [this.bundlerInsecureProtocolSource.c, this.bundlerOrderedGems.c, this.gemspecOrderedDependencies.c, this.layoutAccessModifierIndentation.c, this.layoutArgumentAlignment.c, this.layoutArrayAlignment.c, this.layoutAssignmentIndentation.c, this.layoutBeginEndAlignment.c, this.layoutBlockAlignment.c, this.layoutBlockEndNewline.c, this.layoutCaseIndentation.c, this.layoutClosingHeredocIndentation.c, this.layoutClosingParenthesisIndentation.c, this.layoutCommentIndentation.c, this.layoutConditionPosition.c, this.layoutDefEndAlignment.c, this.layoutDotPosition.c, this.layoutElseAlignment.c, this.layoutEmptyComment.c, this.layoutEmptyLineAfterGuardClause.c, this.layoutEmptyLineAfterMagicComment.c, this.layoutEmptyLineBetweenDefs.c, this.layoutEmptyLinesAroundAccessModifier.c, this.layoutEmptyLinesAroundArguments.c, this.layoutEmptyLinesAroundAttributeAccessor.c, this.layoutEmptyLinesAroundBeginBody.c, this.layoutEmptyLinesAroundBlockBody.c, this.layoutEmptyLinesAroundClassBody.c, this.layoutEmptyLinesAroundExceptionHandlingKeywords.c, this.layoutEmptyLinesAroundMethodBody.c, this.layoutEmptyLinesAroundModuleBody.c, this.layoutEmptyLines.c, this.layoutEndAlignment.c, this.layoutExtraSpacing.c, this.layoutFirstArgumentIndentation.c, this.layoutFirstArrayElementIndentation.c, this.layoutFirstHashElementIndentation.c, this.layoutFirstParameterIndentation.c, this.layoutHashAlignment.c, this.layoutHeredocIndentation.c, this.layoutIndentationConsistency.c, this.layoutIndentationStyle.c, this.layoutIndentationWidth.c, this.layoutInitialIndentation.c, this.layoutLeadingCommentSpace.c, this.layoutLeadingEmptyLines.c, this.layoutLineLength.c, this.layoutMultilineArrayBraceLayout.c, this.layoutMultilineBlockLayout.c, this.layoutMultilineHashBraceLayout.c, this.layoutMultilineMethodCallBraceLayout.c, this.layoutMultilineMethodCallIndentation.c, this.layoutMultilineMethodDefinitionBraceLayout.c, this.layoutMultilineOperationIndentation.c, this.layoutParameterAlignment.c, this.layoutRescueEnsureAlignment.c, this.layoutSpaceAfterColon.c, this.layoutSpaceAfterComma.c, this.layoutSpaceAfterMethodName.c, this.layoutSpaceAfterNot.c, this.layoutSpaceAfterSemicolon.c, this.layoutSpaceAroundBlockParameters.c, this.layoutSpaceAroundEqualsInParameterDefault.c, this.layoutSpaceAroundKeyword.c, this.layoutSpaceAroundMethodCallOperator.c, this.layoutSpaceAroundOperators.c, this.layoutSpaceBeforeBlockBraces.c, this.layoutSpaceBeforeComma.c, this.layoutSpaceBeforeComment.c, this.layoutSpaceBeforeFirstArg.c, this.layoutSpaceBeforeSemicolon.c, this.layoutSpaceInLambdaLiteral.c, this.layoutSpaceInsideArrayPercentLiteral.c, this.layoutSpaceInsideArrayLiteralBrackets.c, this.layoutSpaceInsideBlockBraces.c, this.layoutSpaceInsideHashLiteralBraces.c, this.layoutSpaceInsideParens.c, this.layoutSpaceInsidePercentLiteralDelimiters.c, this.layoutSpaceInsideRangeLiteral.c, this.layoutSpaceInsideReferenceBrackets.c, this.layoutSpaceInsideStringInterpolation.c, this.layoutTrailingEmptyLines.c, this.layoutTrailingWhitespace.c, this.lintAmbiguousBlockAssociation.c, this.lintAmbiguousOperator.c, this.lintAmbiguousRegexpLiteral.c, this.lintBigDecimalNew.c, this.lintDeprecatedClassMethods.c, this.lintDeprecatedOpenSSLConstant.c, this.lintElseLayout.c, this.lintEmptyEnsure.c, this.lintEmptyInterpolation.c, this.lintErbNewArguments.c, this.lintIdentityComparison.c, this.lintLiteralInInterpolation.c, this.lintMultipleComparison.c, this.lintParenthesesAsGroupedExpression.c, this.lintPercentSymbolArray.c, this.lintRedundantCopDisableDirective.c, this.lintRedundantCopEnableDirective.c, this.lintRedundantRequireStatement.c, this.lintRedundantSplatExpansion.c, this.lintRedundantStringCoercion.c, this.lintRedundantWithIndex.c, this.lintRegexpAsCondition.c, this.lintRescueType.c, this.lintSafeNavigationWithEmpty.c, this.lintSendWithMixinArgument.c, this.lintToJSON.c, this.lintTopLevelReturnWithArgument.c, this.lintTrailingCommaInAttributeDeclaration.c, this.lintUnifiedInteger.c, this.lintUnusedBlockArgument.c, this.lintUnusedMethodArgument.c, this.lintUriRegexp.c, this.lintUselessAccessModifier.c, this.lintUselessAssignment.c, this.lintVoid.c, this.migrationDepartmentName.c, this.namingHeredocDelimiterCase.c, this.namingBinaryOperatorParameterName.c, this.namingRescuedExceptionsVariableName.c, this.styleAccessorGrouping.c, this.styleAlias.c, this.styleArrayJoin.c, this.styleAttr.c, this.styleBarePercentLiterals.c, this.styleBisectedAttrAccessor.c, this.styleBlockComments.c, this.styleBlockDelimiters.c, this.styleCaseEquality.c, this.styleCharacterLiteral.c, this.styleClassCheck.c, this.styleClassMethods.c, this.styleColonMethodCall.c, this.styleColonMethodDefinition.c, this.styleCommandLiteral.c, this.styleCommentAnnotation.c, this.styleConditionalAssignment.c, this.styleDefWithParentheses.c, this.styleDir.c, this.styleEachForSimpleLoop.c, this.styleEachWithObject.c, this.styleEmptyBlockParameter.c, this.styleEmptyCaseCondition.c, this.styleEmptyElse.c, this.styleEmptyLambdaParameter.c, this.styleEmptyLiteral.c, this.styleEmptyMethod.c, this.styleEncoding.c, this.styleEndBlock.c, this.styleEvalWithLocation.c, this.styleEvenOdd.c, this.styleExpandPathArguments.c, this.styleExplicitBlockArgument.c, this.styleFormatString.c, this.styleFormatStringToken.c, this.styleGuardClause.c, this.styleHashAsLastArrayItem.c, this.styleHashSyntax.c, this.styleIfInsideElse.c, this.styleIfUnlessModifier.c, this.styleIfUnlessModifierOfIfUnless.c, this.styleIfWithSemicolon.c, this.styleKeywordParametersOrder.c, this.styleLambda.c, this.styleLambdaCall.c, this.styleMethodCallWithoutArgsParentheses.c, this.styleRedundantAssignment.c, this.styleRedundantFileExtensionInRequire.c, this.styleSoleNestedConditional.c, this.styleMethodDefParentheses.c, this.styleMinMax.c, this.styleMixinGrouping.c, this.styleMultilineIfThen.c, this.styleMultilineIfModifier.c, this.styleMultilineMemoization.c, this.styleMultilineTernaryOperator.c, this.styleMultilineWhenThen.c, this.styleMultipleComparison.c, this.styleNegatedIf.c, this.styleNegatedUnless.c, this.styleNegatedWhile.c, this.styleNestedModifier.c, this.styleNestedParenthesizedCalls.c, this.styleNestedTernaryOperator.c, this.styleNext.c, this.styleNilComparison.c, this.styleNonNilCheck.c, this.styleNot.c, this.styleNumericLiterals.c, this.styleNumericLiteralPrefix.c, this.styleOneLineConditional.c, this.styleOrAssignment.c, this.styleParallelAssignment.c, this.styleParenthesesAroundCondition.c, this.stylePercentLiteralDelimiters.c, this.stylePercentQLiterals.c, this.stylePerlBackrefs.c, this.styleProc.c, this.styleRandomWithOffset.c, this.styleRedundantBegin.c, this.styleRedundantCapitalW.c, this.styleRedundantCondition.c, this.styleRedundantConditional.c, this.styleRedundantException.c, this.styleRedundantFreeze.c, this.styleRedundantParentheses.c, this.styleRedundantPercentQ.c, this.styleRedundantRegexpCharacterClass.c, this.styleRedundantRegexpEscape.c, this.styleRedundantReturn.c, this.styleRedundantSelf.c, this.styleRedundantSortBy.c, this.styleRegexpLiteral.c, this.styleRescueModifier.c, this.styleRescueStandardError.c, this.styleSample.c, this.styleSelfAssignment.c, this.styleSemicolon.c, this.styleSignalException.c, this.styleSingleLineMethods.c, this.styleStabbyLambdaParentheses.c, this.styleStderrPuts.c, this.styleStringLiterals.c, this.styleStringLiteralsInInterpolation.c, this.styleStrip.c, this.styleSymbolArray.c, this.styleSymbolLiteral.c, this.styleTernaryParentheses.c, this.styleTrailingBodyOnClass.c, this.styleTrailingBodyOnMethodDefinition.c, this.styleTrailingBodyOnModule.c, this.styleTrailingCommaInArguments.c, this.styleTrailingCommaInArrayLiteral.c, this.styleTrailingCommaInHashLiteral.c, this.styleTrailingMethodEndStatement.c, this.styleTrailingUnderscoreVariable.c, this.styleTrivialAccessors.c, this.styleUnlessElse.c, this.styleUnpackFirst.c, this.styleVariableInterpolation.c, this.styleWhenThen.c, this.styleWhileUntilDo.c, this.styleWhileUntilModifier.c, this.styleWordArray.c];
   }
 
   private on(name: string): boolean {
@@ -988,15 +1183,200 @@ export class RbTeam {
     } else {
       this.layoutTrailingWhitespace.c.begin(src);
     }
+    if (this.on("Lint/AmbiguousBlockAssociation")) {
+      this.lintAmbiguousBlockAssociation.run(src);
+    } else {
+      this.lintAmbiguousBlockAssociation.c.begin(src);
+    }
+    if (this.on("Lint/AmbiguousOperator")) {
+      this.lintAmbiguousOperator.run(src);
+    } else {
+      this.lintAmbiguousOperator.c.begin(src);
+    }
     if (this.on("Lint/AmbiguousRegexpLiteral")) {
       this.lintAmbiguousRegexpLiteral.run(src);
     } else {
       this.lintAmbiguousRegexpLiteral.c.begin(src);
     }
+    if (this.on("Lint/BigDecimalNew")) {
+      this.lintBigDecimalNew.run(src);
+    } else {
+      this.lintBigDecimalNew.c.begin(src);
+    }
+    if (this.on("Lint/DeprecatedClassMethods")) {
+      this.lintDeprecatedClassMethods.run(src);
+    } else {
+      this.lintDeprecatedClassMethods.c.begin(src);
+    }
+    if (this.on("Lint/DeprecatedOpenSSLConstant")) {
+      this.lintDeprecatedOpenSSLConstant.run(src);
+    } else {
+      this.lintDeprecatedOpenSSLConstant.c.begin(src);
+    }
+    if (this.on("Lint/ElseLayout")) {
+      this.lintElseLayout.run(src);
+    } else {
+      this.lintElseLayout.c.begin(src);
+    }
+    if (this.on("Lint/EmptyEnsure")) {
+      this.lintEmptyEnsure.run(src);
+    } else {
+      this.lintEmptyEnsure.c.begin(src);
+    }
+    if (this.on("Lint/EmptyInterpolation")) {
+      this.lintEmptyInterpolation.run(src);
+    } else {
+      this.lintEmptyInterpolation.c.begin(src);
+    }
+    if (this.on("Lint/ErbNewArguments")) {
+      this.lintErbNewArguments.run(src);
+    } else {
+      this.lintErbNewArguments.c.begin(src);
+    }
+    if (this.on("Lint/IdentityComparison")) {
+      this.lintIdentityComparison.run(src);
+    } else {
+      this.lintIdentityComparison.c.begin(src);
+    }
+    if (this.on("Lint/LiteralInInterpolation")) {
+      this.lintLiteralInInterpolation.run(src);
+    } else {
+      this.lintLiteralInInterpolation.c.begin(src);
+    }
+    if (this.on("Lint/MultipleComparison")) {
+      this.lintMultipleComparison.run(src);
+    } else {
+      this.lintMultipleComparison.c.begin(src);
+    }
+    if (this.on("Lint/ParenthesesAsGroupedExpression")) {
+      this.lintParenthesesAsGroupedExpression.run(src);
+    } else {
+      this.lintParenthesesAsGroupedExpression.c.begin(src);
+    }
     if (this.on("Lint/PercentSymbolArray")) {
       this.lintPercentSymbolArray.run(src);
     } else {
       this.lintPercentSymbolArray.c.begin(src);
+    }
+    if (this.on("Lint/RedundantCopDisableDirective")) {
+      this.lintRedundantCopDisableDirective.run(src);
+    } else {
+      this.lintRedundantCopDisableDirective.c.begin(src);
+    }
+    if (this.on("Lint/RedundantCopEnableDirective")) {
+      this.lintRedundantCopEnableDirective.run(src);
+    } else {
+      this.lintRedundantCopEnableDirective.c.begin(src);
+    }
+    if (this.on("Lint/RedundantRequireStatement")) {
+      this.lintRedundantRequireStatement.run(src);
+    } else {
+      this.lintRedundantRequireStatement.c.begin(src);
+    }
+    if (this.on("Lint/RedundantSplatExpansion")) {
+      this.lintRedundantSplatExpansion.run(src);
+    } else {
+      this.lintRedundantSplatExpansion.c.begin(src);
+    }
+    if (this.on("Lint/RedundantStringCoercion")) {
+      this.lintRedundantStringCoercion.run(src);
+    } else {
+      this.lintRedundantStringCoercion.c.begin(src);
+    }
+    if (this.on("Lint/RedundantWithIndex")) {
+      this.lintRedundantWithIndex.run(src);
+    } else {
+      this.lintRedundantWithIndex.c.begin(src);
+    }
+    if (this.on("Lint/RegexpAsCondition")) {
+      this.lintRegexpAsCondition.run(src);
+    } else {
+      this.lintRegexpAsCondition.c.begin(src);
+    }
+    if (this.on("Lint/RescueType")) {
+      this.lintRescueType.run(src);
+    } else {
+      this.lintRescueType.c.begin(src);
+    }
+    if (this.on("Lint/SafeNavigationWithEmpty")) {
+      this.lintSafeNavigationWithEmpty.run(src);
+    } else {
+      this.lintSafeNavigationWithEmpty.c.begin(src);
+    }
+    if (this.on("Lint/SendWithMixinArgument")) {
+      this.lintSendWithMixinArgument.run(src);
+    } else {
+      this.lintSendWithMixinArgument.c.begin(src);
+    }
+    if (this.on("Lint/ToJSON")) {
+      this.lintToJSON.run(src);
+    } else {
+      this.lintToJSON.c.begin(src);
+    }
+    if (this.on("Lint/TopLevelReturnWithArgument")) {
+      this.lintTopLevelReturnWithArgument.run(src);
+    } else {
+      this.lintTopLevelReturnWithArgument.c.begin(src);
+    }
+    if (this.on("Lint/TrailingCommaInAttributeDeclaration")) {
+      this.lintTrailingCommaInAttributeDeclaration.run(src);
+    } else {
+      this.lintTrailingCommaInAttributeDeclaration.c.begin(src);
+    }
+    if (this.on("Lint/UnifiedInteger")) {
+      this.lintUnifiedInteger.run(src);
+    } else {
+      this.lintUnifiedInteger.c.begin(src);
+    }
+    if (this.on("Lint/UnusedBlockArgument")) {
+      this.lintUnusedBlockArgument.run(src);
+    } else {
+      this.lintUnusedBlockArgument.c.begin(src);
+    }
+    if (this.on("Lint/UnusedMethodArgument")) {
+      this.lintUnusedMethodArgument.run(src);
+    } else {
+      this.lintUnusedMethodArgument.c.begin(src);
+    }
+    if (this.on("Lint/UriRegexp")) {
+      this.lintUriRegexp.run(src);
+    } else {
+      this.lintUriRegexp.c.begin(src);
+    }
+    if (this.on("Lint/UselessAccessModifier")) {
+      this.lintUselessAccessModifier.run(src);
+    } else {
+      this.lintUselessAccessModifier.c.begin(src);
+    }
+    if (this.on("Lint/UselessAssignment")) {
+      this.lintUselessAssignment.run(src);
+    } else {
+      this.lintUselessAssignment.c.begin(src);
+    }
+    if (this.on("Lint/Void")) {
+      this.lintVoid.run(src);
+    } else {
+      this.lintVoid.c.begin(src);
+    }
+    if (this.on("Migration/DepartmentName")) {
+      this.migrationDepartmentName.run(src);
+    } else {
+      this.migrationDepartmentName.c.begin(src);
+    }
+    if (this.on("Naming/HeredocDelimiterCase")) {
+      this.namingHeredocDelimiterCase.run(src);
+    } else {
+      this.namingHeredocDelimiterCase.c.begin(src);
+    }
+    if (this.on("Naming/BinaryOperatorParameterName")) {
+      this.namingBinaryOperatorParameterName.run(src);
+    } else {
+      this.namingBinaryOperatorParameterName.c.begin(src);
+    }
+    if (this.on("Naming/RescuedExceptionsVariableName")) {
+      this.namingRescuedExceptionsVariableName.run(src);
+    } else {
+      this.namingRescuedExceptionsVariableName.c.begin(src);
     }
     if (this.on("Style/AccessorGrouping")) {
       this.styleAccessorGrouping.run(src);
@@ -1022,6 +1402,21 @@ export class RbTeam {
       this.styleBarePercentLiterals.run(src);
     } else {
       this.styleBarePercentLiterals.c.begin(src);
+    }
+    if (this.on("Style/BisectedAttrAccessor")) {
+      this.styleBisectedAttrAccessor.run(src);
+    } else {
+      this.styleBisectedAttrAccessor.c.begin(src);
+    }
+    if (this.on("Style/BlockComments")) {
+      this.styleBlockComments.run(src);
+    } else {
+      this.styleBlockComments.c.begin(src);
+    }
+    if (this.on("Style/BlockDelimiters")) {
+      this.styleBlockDelimiters.run(src);
+    } else {
+      this.styleBlockDelimiters.c.begin(src);
     }
     if (this.on("Style/CaseEquality")) {
       this.styleCaseEquality.run(src);
@@ -1058,6 +1453,11 @@ export class RbTeam {
     } else {
       this.styleCommandLiteral.c.begin(src);
     }
+    if (this.on("Style/CommentAnnotation")) {
+      this.styleCommentAnnotation.run(src);
+    } else {
+      this.styleCommentAnnotation.c.begin(src);
+    }
     if (this.on("Style/ConditionalAssignment")) {
       this.styleConditionalAssignment.run(src);
     } else {
@@ -1072,6 +1472,11 @@ export class RbTeam {
       this.styleDir.run(src);
     } else {
       this.styleDir.c.begin(src);
+    }
+    if (this.on("Style/EachForSimpleLoop")) {
+      this.styleEachForSimpleLoop.run(src);
+    } else {
+      this.styleEachForSimpleLoop.c.begin(src);
     }
     if (this.on("Style/EachWithObject")) {
       this.styleEachWithObject.run(src);
@@ -1113,6 +1518,11 @@ export class RbTeam {
     } else {
       this.styleEncoding.c.begin(src);
     }
+    if (this.on("Style/EndBlock")) {
+      this.styleEndBlock.run(src);
+    } else {
+      this.styleEndBlock.c.begin(src);
+    }
     if (this.on("Style/EvalWithLocation")) {
       this.styleEvalWithLocation.run(src);
     } else {
@@ -1127,6 +1537,21 @@ export class RbTeam {
       this.styleExpandPathArguments.run(src);
     } else {
       this.styleExpandPathArguments.c.begin(src);
+    }
+    if (this.on("Style/ExplicitBlockArgument")) {
+      this.styleExplicitBlockArgument.run(src);
+    } else {
+      this.styleExplicitBlockArgument.c.begin(src);
+    }
+    if (this.on("Style/FormatString")) {
+      this.styleFormatString.run(src);
+    } else {
+      this.styleFormatString.c.begin(src);
+    }
+    if (this.on("Style/FormatStringToken")) {
+      this.styleFormatStringToken.run(src);
+    } else {
+      this.styleFormatStringToken.c.begin(src);
     }
     if (this.on("Style/GuardClause")) {
       this.styleGuardClause.run(src);
@@ -1163,6 +1588,11 @@ export class RbTeam {
     } else {
       this.styleIfWithSemicolon.c.begin(src);
     }
+    if (this.on("Style/KeywordParametersOrder")) {
+      this.styleKeywordParametersOrder.run(src);
+    } else {
+      this.styleKeywordParametersOrder.c.begin(src);
+    }
     if (this.on("Style/Lambda")) {
       this.styleLambda.run(src);
     } else {
@@ -1177,6 +1607,16 @@ export class RbTeam {
       this.styleMethodCallWithoutArgsParentheses.run(src);
     } else {
       this.styleMethodCallWithoutArgsParentheses.c.begin(src);
+    }
+    if (this.on("Style/RedundantAssignment")) {
+      this.styleRedundantAssignment.run(src);
+    } else {
+      this.styleRedundantAssignment.c.begin(src);
+    }
+    if (this.on("Style/RedundantFileExtensionInRequire")) {
+      this.styleRedundantFileExtensionInRequire.run(src);
+    } else {
+      this.styleRedundantFileExtensionInRequire.c.begin(src);
     }
     if (this.on("Style/SoleNestedConditional")) {
       this.styleSoleNestedConditional.run(src);
@@ -1193,6 +1633,11 @@ export class RbTeam {
     } else {
       this.styleMinMax.c.begin(src);
     }
+    if (this.on("Style/MixinGrouping")) {
+      this.styleMixinGrouping.run(src);
+    } else {
+      this.styleMixinGrouping.c.begin(src);
+    }
     if (this.on("Style/MultilineIfThen")) {
       this.styleMultilineIfThen.run(src);
     } else {
@@ -1202,6 +1647,11 @@ export class RbTeam {
       this.styleMultilineIfModifier.run(src);
     } else {
       this.styleMultilineIfModifier.c.begin(src);
+    }
+    if (this.on("Style/MultilineMemoization")) {
+      this.styleMultilineMemoization.run(src);
+    } else {
+      this.styleMultilineMemoization.c.begin(src);
     }
     if (this.on("Style/MultilineTernaryOperator")) {
       this.styleMultilineTernaryOperator.run(src);
@@ -1288,6 +1738,11 @@ export class RbTeam {
     } else {
       this.styleOrAssignment.c.begin(src);
     }
+    if (this.on("Style/ParallelAssignment")) {
+      this.styleParallelAssignment.run(src);
+    } else {
+      this.styleParallelAssignment.c.begin(src);
+    }
     if (this.on("Style/ParenthesesAroundCondition")) {
       this.styleParenthesesAroundCondition.run(src);
     } else {
@@ -1318,6 +1773,11 @@ export class RbTeam {
     } else {
       this.styleRandomWithOffset.c.begin(src);
     }
+    if (this.on("Style/RedundantBegin")) {
+      this.styleRedundantBegin.run(src);
+    } else {
+      this.styleRedundantBegin.c.begin(src);
+    }
     if (this.on("Style/RedundantCapitalW")) {
       this.styleRedundantCapitalW.run(src);
     } else {
@@ -1333,10 +1793,20 @@ export class RbTeam {
     } else {
       this.styleRedundantConditional.c.begin(src);
     }
+    if (this.on("Style/RedundantException")) {
+      this.styleRedundantException.run(src);
+    } else {
+      this.styleRedundantException.c.begin(src);
+    }
     if (this.on("Style/RedundantFreeze")) {
       this.styleRedundantFreeze.run(src);
     } else {
       this.styleRedundantFreeze.c.begin(src);
+    }
+    if (this.on("Style/RedundantParentheses")) {
+      this.styleRedundantParentheses.run(src);
+    } else {
+      this.styleRedundantParentheses.c.begin(src);
     }
     if (this.on("Style/RedundantPercentQ")) {
       this.styleRedundantPercentQ.run(src);
@@ -1353,6 +1823,11 @@ export class RbTeam {
     } else {
       this.styleRedundantRegexpEscape.c.begin(src);
     }
+    if (this.on("Style/RedundantReturn")) {
+      this.styleRedundantReturn.run(src);
+    } else {
+      this.styleRedundantReturn.c.begin(src);
+    }
     if (this.on("Style/RedundantSelf")) {
       this.styleRedundantSelf.run(src);
     } else {
@@ -1367,6 +1842,11 @@ export class RbTeam {
       this.styleRegexpLiteral.run(src);
     } else {
       this.styleRegexpLiteral.c.begin(src);
+    }
+    if (this.on("Style/RescueModifier")) {
+      this.styleRescueModifier.run(src);
+    } else {
+      this.styleRescueModifier.c.begin(src);
     }
     if (this.on("Style/RescueStandardError")) {
       this.styleRescueStandardError.run(src);
@@ -1383,10 +1863,20 @@ export class RbTeam {
     } else {
       this.styleSelfAssignment.c.begin(src);
     }
+    if (this.on("Style/Semicolon")) {
+      this.styleSemicolon.run(src);
+    } else {
+      this.styleSemicolon.c.begin(src);
+    }
     if (this.on("Style/SignalException")) {
       this.styleSignalException.run(src);
     } else {
       this.styleSignalException.c.begin(src);
+    }
+    if (this.on("Style/SingleLineMethods")) {
+      this.styleSingleLineMethods.run(src);
+    } else {
+      this.styleSingleLineMethods.c.begin(src);
     }
     if (this.on("Style/StabbyLambdaParentheses")) {
       this.styleStabbyLambdaParentheses.run(src);
@@ -1428,6 +1918,21 @@ export class RbTeam {
     } else {
       this.styleTernaryParentheses.c.begin(src);
     }
+    if (this.on("Style/TrailingBodyOnClass")) {
+      this.styleTrailingBodyOnClass.run(src);
+    } else {
+      this.styleTrailingBodyOnClass.c.begin(src);
+    }
+    if (this.on("Style/TrailingBodyOnMethodDefinition")) {
+      this.styleTrailingBodyOnMethodDefinition.run(src);
+    } else {
+      this.styleTrailingBodyOnMethodDefinition.c.begin(src);
+    }
+    if (this.on("Style/TrailingBodyOnModule")) {
+      this.styleTrailingBodyOnModule.run(src);
+    } else {
+      this.styleTrailingBodyOnModule.c.begin(src);
+    }
     if (this.on("Style/TrailingCommaInArguments")) {
       this.styleTrailingCommaInArguments.run(src);
     } else {
@@ -1443,6 +1948,16 @@ export class RbTeam {
     } else {
       this.styleTrailingCommaInHashLiteral.c.begin(src);
     }
+    if (this.on("Style/TrailingMethodEndStatement")) {
+      this.styleTrailingMethodEndStatement.run(src);
+    } else {
+      this.styleTrailingMethodEndStatement.c.begin(src);
+    }
+    if (this.on("Style/TrailingUnderscoreVariable")) {
+      this.styleTrailingUnderscoreVariable.run(src);
+    } else {
+      this.styleTrailingUnderscoreVariable.c.begin(src);
+    }
     if (this.on("Style/TrivialAccessors")) {
       this.styleTrivialAccessors.run(src);
     } else {
@@ -1457,6 +1972,11 @@ export class RbTeam {
       this.styleUnpackFirst.run(src);
     } else {
       this.styleUnpackFirst.c.begin(src);
+    }
+    if (this.on("Style/VariableInterpolation")) {
+      this.styleVariableInterpolation.run(src);
+    } else {
+      this.styleVariableInterpolation.c.begin(src);
     }
     if (this.on("Style/WhenThen")) {
       this.styleWhenThen.run(src);
