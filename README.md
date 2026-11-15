@@ -1,6 +1,7 @@
 # fastfmt
 
-A fast C++ formatter written in [Nish](https://github.com/amritk/nish). Its
+A fast C++ formatter written in [Nish](https://github.com/amritk/nish), which also
+formats Java, Kotlin and Ruby (see [Other languages](#other-languages)). Its
 output aims to match `clang-format`'s LLVM style (the target is
 `{BasedOnStyle: LLVM, ColumnLimit: 120}`) byte for byte, many times faster.
 
@@ -8,6 +9,28 @@ This is a rewrite, not a port: its own lexer, parser, classifier and data
 layout, written to make the same decisions clang-format makes. Its rules and
 penalties were checked against clang-format's behaviour and source as a
 reference.
+
+## Other languages
+
+The same binary formats Java, Kotlin and Ruby, each to match one tool's
+output byte for byte:
+
+| Language | Files | Matches | Corpus result | fastfmt | Reference tool |
+| --- | --- | --- | ---: | ---: | ---: |
+| Java | `.java` | google-java-format 1.28 | 6645 / 6645 | 7.5 s | |
+| Kotlin | `.kt .kts` | ktfmt 0.64 (default style) | 6270 / 6270 | 1.6 s | ktrs 1.7 s |
+| Ruby | RuboCop's default `Include` (`.rb`, `Gemfile`, `.gemspec`, ...) | `rubocop -a` 1.92.2, default config, `TargetRubyVersion: 3.3` | 4239 / 4239 | 1.2 s (739 files) | `rubocop -a`: 115 s |
+
+The Ruby side ports RuboCop's whole pipeline: the parser gem's lexer, racc
+grammar and AST builder (following Prism, which RuboCop parses Ruby 3.3 with,
+where the two differ), the TreeRewriter and corrector merging, rubocop
+directive comments, the inspect-correct loop and every cop RuboCop enables by
+default (393; the ones that never correct under `-a` run once, so that
+Lint/RedundantCopDisableDirective can judge directives). The Ruby corpus is
+three samples of Rails, Discourse, Homebrew, RuboCop, the parser gem, Jekyll,
+Sinatra, Devise and rspec-core (739, 1500 and 2000 files); times are on 4
+workers (one worker: 6.4 s, against RuboCop's 115 s). `tools/ruby/README.md`
+lists the generators.
 
 ## Build and use
 
