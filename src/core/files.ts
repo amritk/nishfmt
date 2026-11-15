@@ -113,3 +113,17 @@ export function toCRLF(out: Out): void {
   }
   out.n = n + add;
 }
+
+/** Newlines.guessLineSeparator: the first line break in src[0, n), or "\n". */
+export const guessSep = (src: u8[], n: i32): string => {
+  for (let i = 0; i < n; i++) {
+    const c = toI32(src[i]);
+    if (c === 13) {
+      return i + 1 < n && toI32(src[i + 1]) === 10 ? "\r\n" : "\r";
+    }
+    if (c === 10) {
+      return "\n";
+    }
+  }
+  return "\n";
+};

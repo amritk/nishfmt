@@ -9,7 +9,7 @@
 
 import { growI32, strUtf16Len } from "../core/arr";
 import { Out } from "../core/out";
-import { GInput, TF_BLOCK_COMMENT, TF_COMMENT, TF_JAVADOC, TF_LINE_COMMENT, TF_NEWLINE } from "./input";
+import { GInput, TF_BLOCK_COMMENT, TF_COMMENT, TF_JAVADOC, TF_LINE_COMMENT, TF_NEWLINE, TF_TOMB } from "./input";
 
 export const MAX_LINE_WIDTH: i32 = 1000;
 
@@ -26,6 +26,7 @@ const K_SPACE: i32 = 4;
 const K_BREAK: i32 = 5;
 const K_TOK: i32 = 6;
 const K_LEVEL: i32 = 7;
+const K_FENCE: i32 = 8; // ktfmt's FenceCommentsOp: stops comments moving past it, emits nothing
 
 // Blank-line wishes (OpsBuilder.BlankLineWanted).
 export const BL_NONE: i32 = 0;
@@ -329,6 +330,11 @@ export class GEngine {
     this.addOp(K_CLOSE, 0, 0, 0, 0);
   }
 
+  /** ktfmt's FenceCommentsOp. */
+  fence(): void {
+    this.addOp(K_FENCE, 0, 0, 0, 0);
+  }
+
   space(): void {
     this.addOp(K_SPACE, 0, 0, 0, 0);
   }
@@ -397,6 +403,27 @@ export class GEngine {
 
   tok(s: string): void {
     this.token(s, true, 0, -1);
+  }
+
+  /** token(text of src[a, b)): outputs the next input token when its text is those bytes. */
+  tokBytes(a: i32, b: i32, plusIndentCommentsBefore: i32): void {
+    const p = this.peekTok(0);
+    const inp = this.inp;
+    let same = p >= 0 && inp.tEnd[p] - inp.tPos[p] === b - a;
+    if (same && inp.tPos[p] !== a) {
+      for (let i = 0; i < b - a; i++) {
+        if (inp.src[inp.tPos[p] + i] !== inp.src[a + i]) {
+          same = false;
+          break;
+        }
+      }
+    }
+    if (same) {
+      this.addOp(K_TOKEN, this.tokenI, 1, plusIndentCommentsBefore, -1);
+      this.tokenI = this.tokenI + 1;
+    } else {
+      this.fail(`expected token '${p >= 0 ? inp.text(p) : "EOF"}'; generated ${String.fromBytes(inp.src, a, b)} instead`);
+    }
   }
 
   /** token(text of tok `t`): outputs the next input token when its text is the same. */
@@ -849,6 +876,8 @@ export class GEngine {
         this.nStack = this.nStack - 1;
         const top = this.stack[this.nStack];
         this.addChild(this.stack[this.nStack - 1], top);
+      } else if (kind === K_FENCE) {
+        continue;
       } else if (kind === K_BREAK) {
         this.appendLevel = this.stack[this.nStack - 1];
         this.addChild(this.appendLevel, this.newDoc(K_BREAK, this.fA[i], this.fB[i], this.fC[i], this.fD[i]));
@@ -1123,7 +1152,20 @@ export class GEngine {
     } else if (kind === K_TOKEN) {
       const t = this.inp.kTok[this.dA[d]];
       const k = this.inp.tIdx[t];
-      this.append(this.inp.src, this.inp.tPos[t], this.inp.tEnd[t], k, k + 1);
+      if ((this.inp.tFlags[t] & TF_TOMB) !== 0) {
+        // The last space before each newline goes out as U+0003, which
+        // survives the trailing-space trim and becomes a space again later.
+        const a = this.inp.tPos[t];
+        const e = this.inp.tEnd[t];
+        const tmp = new Array<u8>(e - a);
+        for (let i = a; i < e; i++) {
+          const c = toI32(this.inp.src[i]);
+          tmp[i - a] = c === 32 && i + 1 < e && toI32(this.inp.src[i + 1]) === 10 ? toU8(3) : toU8(c);
+        }
+        this.append(tmp, 0, e - a, k, k + 1);
+      } else {
+        this.append(this.inp.src, this.inp.tPos[t], this.inp.tEnd[t], k, k + 1);
+      }
     } else if (kind === K_SPACE) {
       this.appendStr(" ", -1, -1);
     } else if (kind === K_BREAK) {

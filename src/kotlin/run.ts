@@ -1,22 +1,47 @@
 // The Kotlin entry point: ktfmt's pipeline over one file.
 
+import { guessSep } from "../core/files";
 import { Out } from "../core/out";
+import { GEngine } from "../gdoc/engine";
+import { GInput } from "../gdoc/input";
 import { KBuilder } from "./builder";
+import { rewriteKotlinComment } from "./comments";
+import { tokenizeKotlin } from "./input";
 import { KLexemes } from "./lexer";
 import { KParser } from "./parser";
+import { KPasses } from "./passes";
 import { ktTypeName } from "./types";
+import { KVisitor } from "./visitor";
 
 /** One worker's reusable Kotlin state. */
 export class KotlinEngine {
   lx: KLexemes;
   b: KBuilder;
   p: KParser;
+  inp: GInput;
+  g: GEngine;
+  vis: KVisitor;
+  passes: KPasses;
+  buf1: Out;
+  buf2: Out;
+  // The text the current step works on, and whether `b.tree` is its parse.
+  cur: u8[];
+  curN: i32 = 0;
+  parsed: boolean = false;
   debug: boolean = false;
   dump: boolean = false;
   constructor() {
     this.lx = new KLexemes();
     this.b = new KBuilder(this.lx);
     this.p = new KParser(this.b);
+    this.inp = new GInput();
+    this.g = new GEngine(this.inp);
+    this.g.rewrite = rewriteKotlinComment;
+    this.vis = new KVisitor(this.g, this.b.tree);
+    this.passes = new KPasses(this.b.tree);
+    this.buf1 = new Out(1 << 16);
+    this.buf2 = new Out(1 << 16);
+    this.cur = new Array<u8>(0);
   }
 }
 
@@ -77,20 +102,157 @@ const dumpNode = (e: KotlinEngine, node: i32, depth: i32, u16: i32[], out: Out):
   }
 };
 
-/** Formats `src[0, n)` into `out`; answers false when the file cannot be formatted. */
-export const formatKotlin = (e: KotlinEngine, path: string, src: u8[], n: i32, out: Out): boolean => {
-  if (!parseKotlin(e, src, n)) {
+/** Formats `src0[0, n0)` into `out` as ktfmt does; answers false when the file cannot be formatted. */
+export const formatKotlin = (e: KotlinEngine, path: string, src0: u8[], n0: i32, out: Out): boolean => {
+  // A shebang line is set aside and put back in front.
+  let start = 0;
+  if (n0 >= 2 && toI32(src0[0]) === 35 && toI32(src0[1]) === 33) {
+    while (start < n0 && toI32(src0[start]) !== 10) {
+      start++;
+    }
+    start = start < n0 ? start + 1 : n0;
+  }
+  const shebangEnd = start > 0 && toI32(src0[start - 1]) === 10 ? start - 1 : start;
+  const sep = start > 0 ? guessSep(src0.slice(start, n0), n0 - start) : guessSep(src0, n0);
+  // Tombstones and comment escapes ktfmt reserves.
+  for (let i = start; i < n0; i++) {
+    const c = toI32(src0[i]);
+    if (c === 3 || c === 4 || c === 5) {
+      if (e.debug) {
+        console.error(`${path}: contains a reserved control character`);
+      }
+      return false;
+    }
+  }
+  // convertLineSeparators: every \r\n and \r becomes \n.
+  const b1 = e.buf1;
+  b1.n = 0;
+  for (let i = start; i < n0; i++) {
+    const c = toI32(src0[i]);
+    if (c === 13) {
+      b1.byte(10);
+      if (i + 1 < n0 && toI32(src0[i + 1]) === 10) {
+        i++;
+      }
+    } else {
+      b1.byte(c);
+    }
+  }
+  e.cur = b1.buf.slice(0, b1.n);
+  e.curN = b1.n;
+  e.parsed = false;
+  if (e.dump) {
+    if (!ensureParsed(e, path)) {
+      return false;
+    }
+    out.n = 0;
+    dumpKotlin(e, out);
+    return true;
+  }
+  // sortedAndDistinctImports, dropRedundantElements, addRedundantElements.
+  for (let step = 0; step < 3; step++) {
+    if (!ensureParsed(e, path)) {
+      return false;
+    }
+    const ps = e.passes;
+    ps.reset(e.cur, e.curN);
+    const b2 = e.buf2;
+    const changed = step === 0 ? ps.sortImports(0, b2) : step === 1 ? ps.dropRedundant(0, b2) : ps.addTrailingCommas(0, b2);
+    if (ps.failed) {
+      if (e.debug) {
+        console.error(`${path}: ${ps.failure}`);
+      }
+      return false;
+    }
+    if (changed) {
+      setCur(e, b2.buf, b2.n);
+    }
+  }
+  if (!ensureParsed(e, path)) {
+    return false;
+  }
+  if (!prettyPrint(e, e.cur, e.curN)) {
+    if (e.debug) {
+      console.error(`${path}: ${e.g.failure}`);
+    }
+    return false;
+  }
+  // WhitespaceTombstones: back to spaces.
+  const po = e.g.out;
+  for (let i = 0; i < po.n; i++) {
+    if (toI32(po.buf[i]) === 3) {
+      po.buf[i] = toU8(32);
+    }
+  }
+  setCur(e, po.buf, po.n);
+  if (!ensureParsed(e, path)) {
+    return false;
+  }
+  e.passes.reset(e.cur, e.curN);
+  if (e.passes.addTrailingCommas(0, e.buf2)) {
+    setCur(e, e.buf2.buf, e.buf2.n);
+  }
+  const res = e.cur;
+  out.n = 0;
+  if (start > 0) {
+    out.range(src0, 0, shebangEnd);
+    out.str("\n");
+  }
+  for (let i = 0; i < e.curN; i++) {
+    const c = toI32(res[i]);
+    if (c === 10 && sep !== "\n") {
+      out.str(sep);
+    } else {
+      out.byte(c);
+    }
+  }
+  return true;
+};
+
+/** Makes `buf[0, n)` the current text, unless it already is. */
+const setCur = (e: KotlinEngine, buf: u8[], n: i32): void => {
+  if (n === e.curN) {
+    let same = true;
+    for (let i = 0; i < n; i++) {
+      if (buf[i] !== e.cur[i]) {
+        same = false;
+        break;
+      }
+    }
+    if (same) {
+      return;
+    }
+  }
+  e.cur = buf.slice(0, n);
+  e.curN = n;
+  e.parsed = false;
+};
+
+/** FormatterContext's lazy parse of the current text. */
+const ensureParsed = (e: KotlinEngine, path: string): boolean => {
+  if (e.parsed) {
+    return true;
+  }
+  if (!parseKotlin(e, e.cur, e.curN)) {
     if (e.debug) {
       console.error(`${path}: does not parse`);
     }
     return false;
   }
-  if (e.dump) {
-    out.n = 0;
-    dumpKotlin(e, out);
-    return true;
-  }
-  return false;
+  e.parsed = true;
+  return true;
+};
+
+/** Formatter.prettyPrint over the parsed tree: the result is left in `e.g.out`. */
+const prettyPrint = (e: KotlinEngine, src: u8[], n: i32): boolean => {
+  tokenizeKotlin(e.inp, e.b.tree, 0, src, n);
+  const g = e.g;
+  g.reset();
+  e.vis.reset(src);
+  e.vis.visit(0);
+  g.sync(n);
+  g.drain();
+  return g.layout();
 };
 
 export const isKotlinName = (name: string): boolean => name.endsWith(".kt") || name.endsWith(".kts");

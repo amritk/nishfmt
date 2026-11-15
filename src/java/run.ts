@@ -1,5 +1,6 @@
 // The Java entry point: google-java-format's pipeline over one file.
 
+import { guessSep } from "../core/files";
 import { Out } from "../core/out";
 import { GEngine } from "../gdoc/engine";
 import { GInput } from "../gdoc/input";
@@ -138,19 +139,6 @@ export const formatJava = (e: JavaEngine, path: string, src0: u8[], n0: i32, out
     }
   }
   return true;
-};
-
-const guessSep = (src: u8[], n: i32): string => {
-  for (let i = 0; i < n; i++) {
-    const c = toI32(src[i]);
-    if (c === 13) {
-      return i + 1 < n && toI32(src[i + 1]) === 10 ? "\r\n" : "\r";
-    }
-    if (c === 10) {
-      return "\n";
-    }
-  }
-  return "\n";
 };
 
 export const isJavaName = (name: string): boolean => name.endsWith(".java");
