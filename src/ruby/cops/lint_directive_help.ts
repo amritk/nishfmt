@@ -216,7 +216,7 @@ export class LdhDirective {
   }
 
   /** DIRECTIVE_COMMENT_REGEXP at position i (a `#`). */
-  private matchAt(src: RbSource, i: i32): boolean {
+  matchAt(src: RbSource, i: i32): boolean {
     let p = this.skipWs(src, i + 1);
     if (src.src(p, p + 7) !== "rubocop" || p + 7 > this.ce) {
       return false;

@@ -15,7 +15,7 @@ import { ssxAstEqual } from "./style_syntax_reparse";
 import { ssxFE, ssxFS, ssxHas, ssxIsWord } from "./style_syntax_help";
 
 /** One match of FormatString::SEQUENCE: positions in the contents, captures as [s, e) (-1: not matched). */
-class SbhFstSeq {
+export class SbhFstSeq {
   s: i32 = 0;
   e: i32 = 0;
   percent: boolean = false;
@@ -35,7 +35,7 @@ class SbhFstSeq {
 }
 
 /** The SEQUENCE matcher over one string's code points. */
-class SbhFstMatcher {
+export class SbhFstMatcher {
   t: i32[];
 
   constructor(t: i32[]) {

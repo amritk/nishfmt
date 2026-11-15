@@ -70,6 +70,8 @@ export class VfVar {
   // Assignment indices, in order.
   asg: i32[];
   nref: i32 = 0;
+  // The reference nodes, in order (lvar, an operator assignment, zsuper, binding).
+  refs: i32[];
   captured: boolean = false;
 
   constructor(name: string, decl: i32, scope: i32) {
@@ -77,6 +79,7 @@ export class VfVar {
     this.decl = decl;
     this.scope = scope;
     this.asg = [];
+    this.refs = [];
   }
 }
 
@@ -88,10 +91,13 @@ export class VfAsgn {
   reassigned: boolean = false;
   brDone: boolean = false;
   br: i32 = 0;
+  // Assignment#references: the reference nodes that reached this assignment.
+  refs: i32[];
 
   constructor(node: i32, v: i32) {
     this.node = node;
     this.v = v;
+    this.refs = [];
   }
 }
 
@@ -553,6 +559,7 @@ export class VfForce {
   referenceVar(vi: i32, node: i32): void {
     const v = this.vars[vi];
     v.nref += 1;
+    v.refs.push(node);
     const si = v.scope;
     const refBr = this.branchOf(node, si);
     const consumed: i32[] = [];
@@ -573,6 +580,7 @@ export class VfForce {
       const excl = abr !== V_NIL && refBr !== V_NIL && this.exclusiveWith(abr, refBr, si);
       if (!excl) {
         this.asgns[k].referenced = true;
+        this.asgns[k].refs.push(node);
       }
       if (this.inModifierConditional(this.asgns[k].node, node)) {
         continue;
@@ -971,12 +979,14 @@ export class VfForce {
           const t = a.type(p);
           if (t === NT_IF || t === NT_CASE || t === NT_CASE_MATCH || t === NT_RESCUE) {
             this.asgns[k].referenced = true;
+            this.asgns[k].refs.push(loop);
             break;
           }
           p = src.parent(p);
         }
       }
       this.asgns[inLoop[inLoop.length - 1]].referenced = true;
+      this.asgns[inLoop[inLoop.length - 1]].refs.push(loop);
     }
   }
 }
