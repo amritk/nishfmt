@@ -34,6 +34,7 @@ import {
   SW_RULE_GENERIC_EXTENSIONS,
   SW_RULE_HEADER_FILE_NAME,
   SW_RULE_HOIST_AWAIT,
+  SW_RULE_HOIST_PATTERN_LET,
   SW_RULE_HOIST_TRY,
   SW_RULE_INDENT,
   SW_RULE_INIT_CODER_UNAVAILABLE,
@@ -79,6 +80,7 @@ import {
   SW_RULE_STRONGIFIED_SELF,
   SW_RULE_STRONG_OUTLETS,
   SW_RULE_TODOS,
+  SW_RULE_TRAILING_COMMAS,
   SW_RULE_TRAILING_SPACE,
   SW_RULE_TYPE_SUGAR,
   SW_RULE_VOID,
@@ -128,11 +130,17 @@ import {
   swRuleWrapMultilineStatementBraces,
 } from "./rules_braces";
 import {
+  swRuleTrailingCommas,
+} from "./rules_commas";
+import {
   swRuleDocComments,
 } from "./rules_doc";
 import {
   swRuleHoistTry,
 } from "./rules_hoist";
+import {
+  swRuleHoistPatternLet,
+} from "./rules_hoistlet";
 import {
   swRuleBlankLinesBetweenChainedFunctions,
   swRuleSemicolons,
@@ -448,6 +456,12 @@ export const swRunRule = (f: SwFormatter, r: i32): boolean => {
       return true;
     case SW_RULE_REDUNDANT_STATIC_SELF:
       swRuleRedundantStaticSelf(f);
+      return true;
+    case SW_RULE_TRAILING_COMMAS:
+      swRuleTrailingCommas(f);
+      return true;
+    case SW_RULE_HOIST_PATTERN_LET:
+      swRuleHoistPatternLet(f);
       return true;
     default:
       return false;
