@@ -35,7 +35,8 @@ Corpus (`WORK=/work/out-swift2 bash bench/corpus/cmp.sh <bin> swift`): 6710 / 67
 Every default rule is ported (no guards left).
 
 Timings on the corpus (6710 files): swiftformat 131.7 s wall on 4 cores, 262.5 s with
-`taskset -c 0`; fastfmt: see the Performance section.
+`taskset -c 0`; fastfmt 13.8 s with cmp.sh on 4 cores and 28.6 s with `taskset -c 0 ffk -i -q
+-j 1` (best of 3), both measured on a shared, loaded machine (see Performance).
 
 Ported rules: everything in `tools/swift/rules.txt` with a module other than `noop`.
 No-op rules (`noop`) do nothing with the default options and an undefined Swift version.
@@ -104,6 +105,30 @@ combining scalar would move a Character boundary (todos, spaceInsideComments, do
 
 ## Performance
 
-endOfScope(at:) and the current scope are memoised per mutation count; replacing a token with
-an equal one is not a mutation. The next hot spots are `lastIndexInType` (scope-aware backward
-scans), `isInStringLiteral` (rebuilt after every edit) and wrapArguments.
+Measured with `taskset -c 0 <bin> -i -q -j 1 <copy of raw>`, best of 3 (the machine was shared
+and loaded, so compare builds back to back): 36.6 s with every rule ported (commit b47ac19),
+28.6 s after the caching and scope-code commits. Profile with `nish tools/dev/swift.ts -g
+--link devg` and `valgrind --tool=callgrind devg <file>` (one file), or the full binary with
+`--trace-children=yes` (fastfmt formats in worker processes).
+
+What is in place:
+
+- endOfScope(at:) and the current scope (`index(of: .startOfScope, before:)`) and the last
+  keyword at the current scope (`index(of: .keyword, before:)`) are memoised per mutation
+  count; replacing a token with an equal one is not a mutation.
+- parseDeclarations() is cached across rules while nothing changes (SwiftFormat does the same;
+  `swReleaseDecls` keeps a still-valid cache), hasImport keeps the module names per mutation.
+  Neither cache is used when the file has directives.
+- Each token has a scope code (`SwTokList.c`, `swScopeCode`), so `indexInType`,
+  `lastIndexInType` and `closes` compare integers (`swClosesByCode`, `swTokIsAt`).
+- removeTokens moves the token arrays once; consecutiveBlankLines only looks for the enclosing
+  scope inside multiline strings.
+
+Still hot (in that order): scope-aware backward scans after an edit (`lastIndexInType` from
+startOfScope / isInResultBuilder / indexOfLastSignificantKeyword: every edit invalidates the
+memo, and a scan walks every token of the sibling blocks it passes; a per-END-token jump
+offset kept up to date during the array shifts would make those O(siblings), but the scan's
+`linebreakEncountered` / `case` / `:` quirks must be preserved), the element-wise array shifts
+of insertAt/removeAt (four parallel arrays; `set` cannot block-copy `string[]`, and
+`slice`+`set` was slower), `swParseType`'s forward scans, and isInStringLiteral (rebuilt from
+scratch after every edit).
