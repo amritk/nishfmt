@@ -109,7 +109,7 @@ redundantClosure guards swGuardRedundantClosure bool
 trailingClosures rules_trailing swRuleTrailingClosures
 redundantVariable rules_misc2 swRuleRedundantVariable
 simplifyGenericConstraints guards swGuardSimplifyGenericConstraints bool
-repeatedGuard guards swGuardRepeatedGuard bool
+repeatedGuard rules_guard swRuleRepeatedGuard
 redundantInit rules_misc2 swRuleRedundantInit
 contentBuilder guards swGuardContentBuilder bool
 redundantMemberwiseInit guards swGuardRedundantMemberwiseInit bool
