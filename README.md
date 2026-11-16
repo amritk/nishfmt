@@ -1,7 +1,7 @@
 # fastfmt
 
 A fast C++ formatter written in [Nish](https://github.com/amritk/nish), which also
-formats Java, Kotlin, Ruby, C#, Dart, Swift and Rust (see [Other languages](#other-languages)). Its
+formats Java, Kotlin, Ruby, C#, Dart, Swift and Rust (see [Languages and speed](#languages-and-speed)). Its
 output aims to match `clang-format`'s LLVM style (the target is
 `{BasedOnStyle: LLVM, ColumnLimit: 120}`) byte for byte, many times faster.
 
@@ -10,41 +10,48 @@ layout, written to make the same decisions clang-format makes. Its rules and
 penalties were checked against clang-format's behaviour and source as a
 reference.
 
-## Other languages
+## Languages and speed
 
-The same binary formats Java, Kotlin, Ruby, C#, Dart, Swift and Rust, each to match one tool's
-output byte for byte:
+One binary formats eight languages, each to match one reference tool's
+output byte for byte. Times are for formatting the whole corpus in place
+(`fastfmt -i`), on a 4-core container and pinned to one core:
 
-| Language | Files | Matches | Corpus result |
-| --- | --- | --- | ---: |
-| Java | `.java` | google-java-format 1.28 | 7627 / 7627 |
-| Kotlin | `.kt .kts` | ktfmt 0.64 (default style) | 9602 / 9602 |
-| C# | `.cs` | CSharpier 1.4.0, default options | 13988 / 13988 |
-| Dart | `.dart` | `dart format` (Dart 3.14; tall style, short style below 3.7) | 10313 / 10313 |
-| Swift | `.swift` | SwiftFormat 0.64.7, default rules | 6710 / 6710 |
-| Rust | `.rs` | rustfmt 1.9.0, default config, edition 2021 | 7899 / 7899 |
-| Ruby | RuboCop's default `Include` (`.rb`, `Gemfile`, `.gemspec`, ...) | `rubocop -a` 1.92.2, default config, `TargetRubyVersion: 3.3` | 1998 / 1998 |
+| Language | Matches | Files | Identical | Reference tool, 4 cores / 1 core | Rust reimplementation, 4 cores / 1 core | fastfmt, 4 cores / 1 core |
+| --- | --- | ---: | ---: | ---: | ---: | ---: |
+| C++ | clang-format 18, `{BasedOnStyle: LLVM, ColumnLimit: 120}` | 10344 | 10306 | 87.0 s / 212.9 s | none | **7.07 s / 28.9 s** |
+| Java | google-java-format 1.28 | 7627 | 7627 | 75.2 s / 252.9 s | none | **2.17 s / 8.64 s** |
+| Kotlin | ktfmt 0.64, default style | 9602 | 9602 | 92.9 s / not run | ktrs 0.5.1: 2.43 s / 8.96 s | **2.03 s / 7.02 s** |
+| C# | CSharpier 1.4.0, default options | 13988 | 13988 | 63.0 s / 122.7 s | none | **3.10 s / 6.63 s** |
+| Dart, tall style | `dart format` 3.14 | 10313 | 10313 | 55.2 s / 59.9 s | none | **3.08 s / 8.50 s** |
+| Dart, short style (below 3.7) | `dart format` 3.14 | 8218 | 8218 | 25.4 s / 25.6 s | none | **3.76 s / 6.27 s** |
+| Swift | SwiftFormat 0.64.7, default rules | 6710 | 6710 | 131.7 s / 262.5 s | none | **10.2 s / 29.4 s** |
+| Rust | rustfmt 1.9.0, default config, edition 2021 | 7899 | 7899 | 7.6 s / 29.1 s | none (rustfmt is native) | **1.35 s / 5.0 s** |
+| Ruby | `rubocop -a` 1.92.2, default config, `TargetRubyVersion: 3.3` | 1998 | 1998 | 303.9 s / 289.6 s | rbcop 0.1.4: 6.55 s / 20.4 s | **4.00 s / 12.7 s** |
 
-Against the reference tools and the Rust reimplementations, on a 4-core
-container (identical = byte for byte with the reference tool's output):
+- **Files** counts the corpus files the reference tool accepts, and
+  **Identical** how many of them fastfmt formats byte for byte as it does.
+  Times cover the whole corpus directory, including the few files the
+  reference rejects.
+- One core is `taskset -c 0`, with `-j 1` for fastfmt. fastfmt's times are
+  the best of three. The C++, Java and Ruby rows were measured together on
+  an otherwise idle machine, the reference tools one run each; the others
+  during porting on a busier shared machine, so compare within a row.
+- How the reference tools ran: clang-format 50 files a process; one
+  google-java-format JVM over all files; CSharpier on .NET 10 with
+  `--no-cache`; rustfmt 100 files a process; RuboCop with `--parallel` on 4
+  cores. ktfmt was not run on one core.
+- fastfmt picks the language from the file name: `.cpp .cc .cxx .hpp .hh
+  .hxx .h`, `.java`, `.kt .kts`, `.cs`, `.dart`, `.swift`, `.rs`, and
+  RuboCop's default `Include` for Ruby (`.rb`, `Gemfile`, `.gemspec`, ...).
+- nitrocop, another Rust reimplementation of RuboCop, matched on fewer than
+  a quarter of the files of an earlier sample and is left out.
 
-| Kotlin, 9602 files | Identical | 4 cores | 1 core |
-| --- | ---: | ---: | ---: |
-| ktfmt 0.64 (JVM) | reference | 92.9 s | |
-| ktrs 0.5.1 | 9602 | 2.43 s | 8.96 s |
-| fastfmt | 9602 | 2.03 s | 7.02 s |
+The corpora are the sources of public repositories as found
+(`bench/corpus/repos.txt` lists them; `bench/corpus/mk.sh` rebuilds a corpus
+and `cmp.sh` compares against it). Each language's sources and second
+corpora are described below.
 
-| Java, 7627 files (78 MB) | Identical | 4 cores | 1 core |
-| --- | ---: | ---: | ---: |
-| google-java-format 1.28 (JVM, one run over all files) | reference | 75.2 s | 252.9 s |
-| fastfmt | 7627 | 2.17 s | 8.64 s |
-
-There is no native reimplementation of google-java-format to compare with.
-
-| C#, 13992 files (164 MB) | Identical | 4 cores | 1 core |
-| --- | ---: | ---: | ---: |
-| CSharpier 1.4.0 (.NET 10, `--no-cache`) | reference | 63.0 s | 122.7 s |
-| fastfmt | 13988 | 3.10 s | 6.63 s |
+### Notes by language
 
 The C# side ports CSharpier's whole pipeline onto a Roslyn-shaped syntax tree
 of its own: the lexer with Roslyn's trivia, the parser (C# 14), every node
@@ -55,17 +62,7 @@ Polly, Serilog, Dapper, NUnit, xUnit, CSharpier, Humanizer,
 CleanArchitecture, EF Core, NLog, RestSharp and FluentValidation; a second
 corpus of the same files first formatted with other widths and indents
 (`cs2`) also matches on all 13988. The 4 files CSharpier refuses are left
-out. There is no native reimplementation of CSharpier to compare with.
-
-| Dart, 10313 files (tall style) | Identical | 4 cores | 1 core |
-| --- | ---: | ---: | ---: |
-| `dart format` 3.14 | reference | 55.2 s | 59.9 s |
-| fastfmt | 10313 | 3.08 s | 8.50 s |
-
-| Dart, 8218 files (short style) | Identical | 4 cores | 1 core |
-| --- | ---: | ---: | ---: |
-| `dart format` 3.14 | reference | 25.4 s | 25.6 s |
-| fastfmt | 8218 | 3.76 s | 6.27 s |
+out.
 
 The Dart side ports dart_style whole: a scanner and parser to the
 analyzer's AST shapes; the tall style's piece builder, solver and cost
@@ -80,16 +77,10 @@ riverpod, bloc, http, getx, flame, dart_style, shelf, dio and test, plus
 (8218 / 8218), and `dart4`, marked `3.7`, `3.8` or `3.12` (8663 / 8663).
 Files the reference rejects at their version are left out.
 
-| Rust, 8349 files (108 MB) | Identical | 4 cores | 1 core |
-| --- | ---: | ---: | ---: |
-| rustfmt 1.9.0, 100 files a process | reference | 7.6 s | 29.1 s |
-| fastfmt | 7899 | 1.35 s | 5.0 s |
-
 The Rust side ports rustfmt 1.9.0 onto a lexer and parser modelled on
 rustc_parse (a struct-of-arrays AST with rustc's spans): its items,
 expressions, chains, patterns, types, comments, imports and macros, with
-`macro_rules!` bodies formatted as rustfmt does by default. rustfmt is
-itself native, so it is the only comparison. The corpus is cargo, tokio,
+`macro_rules!` bodies formatted as rustfmt does by default. The corpus is cargo, tokio,
 serde, ripgrep, clap, hyper, alacritty, diesel, bevy, regex, fd, bat and
 nushell; the 450 files rustfmt
 rejects under edition 2021 (mostly let chains) are left out. `rust2`, the
@@ -97,11 +88,6 @@ same files first formatted with five other rustfmt configs, also matches on
 all 7899, as do the 3306 crates of a cargo registry and rustfmt's own test
 inputs. Macros 2.0 bodies and `rustfmt::skip::macros` are not ported; such
 files are left unchanged.
-
-| Swift, 6710 files | Identical | 4 cores | 1 core |
-| --- | ---: | ---: | ---: |
-| SwiftFormat 0.64.7 | reference | 131.7 s | 262.5 s |
-| fastfmt | 6710 | 10.2 s | 29.4 s |
 
 The Swift side ports SwiftFormat's tokenizer, its Formatter and helpers,
 the rule loop and every default rule, `swiftformat:` directive comments
@@ -112,26 +98,7 @@ Unicode data may differ from SwiftFormat's, make fastfmt skip the file and
 leave it as it is; no corpus file needs that. The corpus
 is swift-nio, Alamofire, Vapor, the Composable Architecture, RxSwift,
 Kingfisher, SnapKit, SwiftLint, swift-argument-parser, swift-collections,
-Moya, swift-format, SourceKitten and the Kickstarter iOS app. The
-reference tools' times are from the porting runs, on the same busy machine.
-
-The Java and Kotlin corpora are the sources of public repositories as found
-(`bench/corpus/repos.txt` lists them; `bench/corpus/mk.sh` rebuilds a corpus
-and `cmp.sh` compares against it). Times are the best of three on a busy
-4-core container, so they compare tools with each other rather than measure
-the machine.
-
-| Ruby, `rubocop -a`, 1998 files | Identical | 4 cores | 1 core |
-| --- | ---: | ---: | ---: |
-| RuboCop 1.92.2 (`--parallel` on 4 cores) | reference | 303.9 s | 289.6 s |
-| rbcop 0.1.4 (Rust) | 1998 | 6.55 s | 20.4 s |
-| fastfmt | 1998 | 4.00 s | 12.7 s |
-
-The Java, Ruby and C++ times were measured together on an otherwise idle
-4-core container: fastfmt the best of three, the other tools one run each,
-every run on a fresh copy of the corpus. nitrocop, another Rust
-reimplementation of RuboCop, matched on fewer than a quarter of the files of
-an earlier sample and is left out.
+Moya, swift-format, SourceKitten and the Kickstarter iOS app.
 
 The Ruby side ports RuboCop's whole pipeline: the parser gem's lexer, racc
 grammar and AST builder (following Prism, which RuboCop parses Ruby 3.3 with,
@@ -244,16 +211,7 @@ The regression corpus (`bench/corpus`, 10344 files from the same kind of
 repositories, each capped at 250 KB, the reference one `clang-format -i`
 run) matches on 10306. Of the 38 left, 26 are files on which a second
 clang-format run changes its own output; fastfmt gives the settled output
-there, as above.
-
-| C++, 10344 files (160 MB) | Identical | 4 cores | 1 core |
-| --- | ---: | ---: | ---: |
-| clang-format 18 (50 files a process) | reference | 87.0 s | 212.9 s |
-| fastfmt | 10306 | 7.07 s | 28.9 s |
-
-Measured with the Java and Ruby times (see Other languages), on an otherwise idle 4-core
-container. There is no native reimplementation of clang-format to compare
-with.
+there, as above. Its times are in [Languages and speed](#languages-and-speed).
 
 On a generated corpus of 30,194 files (108.8 MB) of SDK code, every file
 matches clang-format's output (2 of its files are still unstable under
