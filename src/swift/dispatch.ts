@@ -128,7 +128,6 @@ import {
   swGuardContentBuilder,
   swGuardNoForceUnwrapInTests,
   swGuardPreferForLoop,
-  swGuardRedundantClosure,
   swGuardRedundantEmptyView,
   swGuardRedundantEnumerated,
   swGuardRedundantEquatable,
@@ -172,6 +171,9 @@ import {
   swRuleElseOnSameLine,
   swRuleWrapMultilineStatementBraces,
 } from "./rules_braces";
+import {
+  swRuleRedundantClosure,
+} from "./rules_closure";
 import {
   swRuleTrailingCommas,
 } from "./rules_commas";
@@ -592,7 +594,8 @@ export const swRunRule = (f: SwFormatter, r: i32): boolean => {
     case SW_RULE_PREFER_FOR_LOOP:
       return swGuardPreferForLoop(f);
     case SW_RULE_REDUNDANT_CLOSURE:
-      return swGuardRedundantClosure(f);
+      swRuleRedundantClosure(f);
+      return true;
     case SW_RULE_TRAILING_CLOSURES:
       swRuleTrailingClosures(f);
       return true;
