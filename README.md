@@ -21,7 +21,7 @@ output byte for byte:
 | Kotlin | `.kt .kts` | ktfmt 0.64 (default style) | 9602 / 9602 |
 | C# | `.cs` | CSharpier 1.4.0, default options | 13988 / 13988 |
 | Dart | `.dart` | `dart format` (Dart 3.14; tall style, short style below 3.7) | 10313 / 10313 |
-| Swift | `.swift` | SwiftFormat 0.64.7, default rules | 5959 / 6710 (the rest skipped) |
+| Swift | `.swift` | SwiftFormat 0.64.7, default rules | 6710 / 6710 |
 | Rust | `.rs` | rustfmt 1.9.0, default config, edition 2021 | 7899 / 7899 |
 | Ruby | RuboCop's default `Include` (`.rb`, `Gemfile`, `.gemspec`, ...) | `rubocop -a` 1.92.2, default config, `TargetRubyVersion: 3.3` | 4239 / 4239 |
 
@@ -94,13 +94,15 @@ files are left unchanged.
 | Swift, 6710 files | Identical | 4 cores | 1 core |
 | --- | ---: | ---: | ---: |
 | SwiftFormat 0.64.7 | reference | 131.7 s | 262.5 s |
-| fastfmt | 5959 | 8.17 s | 25.7 s |
+| fastfmt | 6710 | 10.2 s | 29.4 s |
 
 The Swift side ports SwiftFormat's tokenizer, its Formatter and helpers,
-the rule loop and all but three of its default rules (redundantMemberwiseInit,
-noForceUnwrapInTests, preferForLoop). A file one of those would change, or
-one with `swiftformat:` directives, is skipped and left as it is (751
-files); every file fastfmt formats matches. The corpus
+the rule loop and every default rule, `swiftformat:` directive comments
+(`disable`, `enable`, `:next`, `:previous`, `:this`), and Swift's grapheme
+counting and Unicode case data where SwiftFormat's decisions depend on them.
+Directives that set options or sort declarations, and code points whose
+Unicode data may differ from SwiftFormat's, make fastfmt skip the file and
+leave it as it is; no corpus file needs that. The corpus
 is swift-nio, Alamofire, Vapor, the Composable Architecture, RxSwift,
 Kingfisher, SnapKit, SwiftLint, swift-argument-parser, swift-collections,
 Moya, swift-format, SourceKitten and the Kickstarter iOS app. The
