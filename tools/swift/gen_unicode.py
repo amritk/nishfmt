@@ -47,6 +47,9 @@ for line in out.splitlines():
         ep = [int(x) for x in line[2:].split()]
 
 N = 0x110000
+# Existing letters that gained case mappings after Unicode 15.1 (16.0: LATIN SMALL LETTER LAMBDA
+# WITH STROKE and RAMS HORN, found by tools/swift/oracle_case.py against swiftformat).
+NEW_CASE_MAPPINGS = {0x019B, 0x0264}
 vals = [0] * N
 for k, s in enumerate(gcb_starts):
     e = gcb_starts[k + 1] if k + 1 < len(gcb_starts) else N
@@ -62,7 +65,7 @@ for cp in range(N):
     c = chr(cp)
     cat = unicodedata.category(c)
     v = vals[cp]
-    if cat == "Cn" or unicodedata.combining(c) == 9:
+    if cat == "Cn" or unicodedata.combining(c) == 9 or cp in NEW_CASE_MAPPINGS:
         v |= 1 << 5
     if c.isupper():
         v |= 1 << 6

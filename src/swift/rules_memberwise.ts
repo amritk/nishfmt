@@ -5,7 +5,6 @@
 // Lockwood).
 
 import {
-  SwDecl,
   SW_DECL_TYPE,
   swDeclIsStoredInstanceProperty,
   swDeclKeywordIndex,
@@ -18,7 +17,7 @@ import {
   swVisibilityRank,
 } from "./decl";
 import { swParsePropertyDeclaration } from "./expr";
-import { SwFormatter } from "./formatter";
+import { SwDecl, SwFormatter } from "./formatter";
 import { swParseFunctionDeclaration } from "./funcdecl";
 import { swHasModifier, swIsDocComment, swModifiersForDeclaration, swStartOfModifiers } from "./modifiers";
 import { swEndOfScope, swIsAttribute, swParseType, swStartOfScope } from "./parsing";

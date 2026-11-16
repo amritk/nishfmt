@@ -270,14 +270,29 @@ export const swParseImports = (f: SwFormatter): SwImportGroup[] => {
 
 /** hasImport(_:). */
 export const swHasImport = (f: SwFormatter, module: string): boolean => {
-  for (const g of swParseImports(f)) {
-    for (const r of g.items) {
-      if (r.module === module) {
-        return true;
+  if (f.hasDirectives()) {
+    // Which imports parseImports sees depends on the current rule's enablement.
+    for (const g of swParseImports(f)) {
+      for (const r of g.items) {
+        if (r.module === module) {
+          return true;
+        }
       }
     }
+    return false;
   }
-  return false;
+  if (f.impMut !== f.mutations) {
+    const parts: string[] = [""];
+    for (const g of swParseImports(f)) {
+      for (const r of g.items) {
+        parts.push(r.module);
+      }
+    }
+    parts.push("");
+    f.impNames = parts.join(" ");
+    f.impMut = f.mutations;
+  }
+  return f.impNames.indexOf(` ${module} `) >= 0;
 };
 
 /** ImportRange `<`. */

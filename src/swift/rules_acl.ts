@@ -6,7 +6,6 @@
 // Lockwood).
 
 import {
-  SwDecl,
   SW_DECL_IFDEF,
   SW_DECL_TYPE,
   swDeclarationName,
@@ -17,7 +16,7 @@ import {
   swParseDeclarations,
   swReleaseDecls,
 } from "./decl";
-import { SwFormatter } from "./formatter";
+import { SwDecl, SwFormatter } from "./formatter";
 import { swHasModifier, swIndexOfModifier, swStartOfModifiers } from "./modifiers";
 import { swIndexOfLastSignificantKeyword, swStartOfScope, SW_EX_WHERE } from "./parsing";
 import { SW_KEYWORD, SW_SPACE, SW_START, SW_T_NON_SPACE_OR_COMMENT, SW_T_NON_SPACE_OR_COMMENT_OR_LINEBREAK, SwTok } from "./token";

@@ -70,9 +70,13 @@ const swHasParsingError = (t: SwTokList): boolean => {
 /** applyRules: answers the formatted tokens, or null when the file cannot be formatted. */
 const swApplyRules = (e: SwiftEngine, path: string, tokens0: SwTokList, directives: boolean): SwTokList | null => {
   // The rules, in order; the first pass runs trailingSpace and indent first.
+  const names: string[] = [];
+  for (let r = 0; r < SW_RULE_COUNT; r++) {
+    names.push(swRuleName(r));
+  }
   const ordered: i32[] = [];
   for (let r = 0; r < SW_RULE_COUNT; r++) {
-    if (e.only.length !== 0 && swRuleName(r) !== e.only) {
+    if (e.only.length !== 0 && names[r] !== e.only) {
       continue;
     }
     ordered.push(r);
@@ -99,7 +103,7 @@ const swApplyRules = (e: SwiftEngine, path: string, tokens0: SwTokList, directiv
       return null;
     }
     for (const r of rules) {
-      f.rule = swRuleName(r);
+      f.rule = names[r];
       f.ruleDisabled = false;
       f.disabled = false;
       if (f.hasDirectives()) {

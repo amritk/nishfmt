@@ -13,6 +13,7 @@ import {
   SW_SPACE,
   SW_START,
   SW_STRBODY,
+  SW_T_KEYWORD,
   SW_T_START_OF_SCOPE,
   SwTok,
   SwTokList,
@@ -22,6 +23,21 @@ import {
   swKindIsComment,
   swTokIs,
 } from "./token";
+
+/** A declaration; its range is an auto-updating reference in the formatter. */
+export class SwDecl {
+  keyword: string;
+  kind: i32;
+  h: i32;
+  body: SwDecl[];
+  parent: SwDecl | null = null;
+  constructor(keyword: string, kind: i32, h: i32) {
+    this.keyword = keyword;
+    this.kind = kind;
+    this.h = h;
+    this.body = [];
+  }
+}
 
 export class SwFormatter {
   t: SwTokList;
@@ -49,6 +65,15 @@ export class SwFormatter {
   // index(of: .startOfScope, before:) results, stamped the same way.
   csVal: i32[];
   csGen: i32[];
+  // index(of: .keyword, before:) results, stamped the same way.
+  kwVal: i32[];
+  kwGen: i32[];
+  // hasImport: the imported module names as " a b ", valid while impMut equals mutations.
+  impNames: string = "";
+  impMut: i32 = -1;
+  // parseDeclarations(), kept while declCacheMut equals mutations (no directives).
+  declCache: SwDecl[] | null = null;
+  declCacheMut: i32 = -1;
   // `swiftformat:` directives (Formatter.directives), parallel arrays: type (0 enable,
   // 1 disable), toggle, line, index in line, and the rule names as " a b ".
   dirType: i32[];
@@ -74,6 +99,8 @@ export class SwFormatter {
     this.eoGen = [];
     this.csVal = [];
     this.csGen = [];
+    this.kwVal = [];
+    this.kwGen = [];
     this.dirType = [];
     this.dirToggle = [];
     this.dirLine = [];
@@ -394,11 +421,23 @@ export class SwFormatter {
     }
   }
 
-  /** removeTokens(in: lo ..< hi), last first. */
+  /** removeTokens(in: lo ..< hi), last first (references and the enumeration index are updated
+   *  as for one removal at a time; the tokens move once). */
   removeTokens(lo: i32, hi: i32): void {
-    for (let i = hi - 1; i >= lo; i--) {
-      this.removeToken(i);
+    if (hi - lo <= 1) {
+      if (hi - lo === 1) {
+        this.removeToken(lo);
+      }
+      return;
     }
+    for (let i = hi - 1; i >= lo; i--) {
+      this.updateRefs(i, -1);
+      if (this.ei >= i) {
+        this.ei = this.ei - 1;
+      }
+    }
+    this.t.removeRange(lo, hi);
+    this.mutations = this.mutations + 1;
   }
 
   removeLastToken(): void {
@@ -624,6 +663,21 @@ export class SwFormatter {
   indexBefore(type: i32, i: i32): i32 {
     if (i <= 0) {
       return -1;
+    }
+    if (type === SW_T_KEYWORD && i <= this.count()) {
+      // The last keyword at the current scope is asked for constantly too.
+      while (toI32(this.kwGen.length) <= i) {
+        this.kwGen.push(0);
+        this.kwVal.push(0);
+      }
+      const kstamp = this.mutations + 1;
+      if (this.kwGen[i] === kstamp) {
+        return this.kwVal[i];
+      }
+      const kr = this.lastIndexInType(type, 0, i);
+      this.kwGen[i] = kstamp;
+      this.kwVal[i] = kr;
+      return kr;
     }
     if (type !== SW_T_START_OF_SCOPE || i > this.count()) {
       return this.lastIndexInType(type, 0, i);

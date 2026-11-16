@@ -3,9 +3,9 @@
 // Ported from SwiftFormat 0.64.7 (MIT License, Copyright (c) 2016 Nick
 // Lockwood).
 
-import { SwDecl, swDeclHi, swDeclIsStoredInstanceProperty, swDeclKeywordIndex, swDeclLo, swParseEnclosingType, swReleaseDecls } from "./decl";
+import { swDeclHi, swDeclIsStoredInstanceProperty, swDeclKeywordIndex, swDeclLo, swParseEnclosingType, swReleaseDecls } from "./decl";
 import { swParsePropertyDeclaration } from "./expr";
-import { SwFormatter } from "./formatter";
+import { SwDecl, SwFormatter } from "./formatter";
 import { swCurrentScope, swEndOfScope, swLastSignificantKeyword } from "./parsing";
 import { swIsInResultBuilder } from "./rules_simple";
 import {

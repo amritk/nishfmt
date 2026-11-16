@@ -6,7 +6,7 @@
 // Lockwood).
 
 import { swParsePropertyDeclaration, swParseExpressionEnd } from "./expr";
-import { SwFormatter, swIndexAfterWhere, swIndexBeforeWhere } from "./formatter";
+import { SwDecl, SwFormatter, swIndexAfterWhere, swIndexBeforeWhere } from "./formatter";
 import { swIsFunctionDeclarationKeyword, swParseFunctionDeclaration } from "./funcdecl";
 import { swIsModifierKeyword, swModifiersForDeclaration, swStartOfModifiers } from "./modifiers";
 import {
@@ -44,20 +44,6 @@ export const SW_DECL_SIMPLE: i32 = 0;
 export const SW_DECL_TYPE: i32 = 1;
 export const SW_DECL_IFDEF: i32 = 2;
 
-/** A declaration; its range is an auto-updating reference in the formatter. */
-export class SwDecl {
-  keyword: string;
-  kind: i32;
-  h: i32;
-  body: SwDecl[];
-  parent: SwDecl | null = null;
-  constructor(keyword: string, kind: i32, h: i32) {
-    this.keyword = keyword;
-    this.kind = kind;
-    this.h = h;
-    this.body = [];
-  }
-}
 
 export const swDeclLo = (f: SwFormatter, d: SwDecl): i32 => f.refLo[d.h];
 export const swDeclHi = (f: SwFormatter, d: SwDecl): i32 => f.refHi[d.h];
@@ -400,7 +386,18 @@ export const swParseDeclarationsIn = (f: SwFormatter, lo: i32, hi0: i32, useForE
 };
 
 /** parseDeclarations(). */
-export const swParseDeclarations = (f: SwFormatter): SwDecl[] => swParseDeclarationsIn(f, 0, f.count());
+export const swParseDeclarations = (f: SwFormatter): SwDecl[] => {
+  // As parseDeclarations() caches its result per mutation count (canCacheDeclarations: no
+  // directives): rules that change nothing share one parse.
+  const cached = f.declCache;
+  if (cached !== null && f.declCacheMut === f.mutations && !f.hasDirectives()) {
+    return cached;
+  }
+  const ds = swParseDeclarationsIn(f, 0, f.count());
+  f.declCache = ds;
+  f.declCacheMut = f.mutations;
+  return ds;
+};
 
 /** parseEnclosingType(containing:), or null. */
 export const swParseEnclosingType = (f: SwFormatter, index: i32): SwDecl | null => {
@@ -614,8 +611,20 @@ export const swParseConformances = (f: SwFormatter, keywordIndex: i32): SwConfor
 
 /** Releases the declarations' range references. */
 export const swReleaseDecls = (f: SwFormatter, ds: SwDecl[]): void => {
+  const cached = f.declCache;
+  if (cached !== null && cached === ds) {
+    if (f.declCacheMut === f.mutations && !f.hasDirectives()) {
+      // Still valid: keep it for the next rule.
+      return;
+    }
+    f.declCache = null;
+  }
+  swReleaseDeclTree(f, ds);
+};
+
+const swReleaseDeclTree = (f: SwFormatter, ds: SwDecl[]): void => {
   for (const d of ds) {
     f.unref(d.h);
-    swReleaseDecls(f, d.body);
+    swReleaseDeclTree(f, d.body);
   }
 };

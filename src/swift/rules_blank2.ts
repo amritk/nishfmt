@@ -6,8 +6,8 @@
 // Lockwood).
 
 import { SW_UNI_UNCERTAIN } from "./unicode";
-import { SwDecl, swDeclKeywordIndex, swDeclLo, swParseDeclarations, swReleaseDecls } from "./decl";
-import { SwFormatter, swIndexAfterWhere, swIndexBeforeWhere } from "./formatter";
+import { swDeclKeywordIndex, swDeclLo, swParseDeclarations, swReleaseDecls } from "./decl";
+import { SwDecl, SwFormatter, swIndexAfterWhere, swIndexBeforeWhere } from "./formatter";
 import { swCommentDirective } from "./imports";
 import { swIsModifier, swStartOfModifiers } from "./modifiers";
 import { swEndOfScope, swIsDeclarationTypeKeyword, swIsLabel, swParseType, swStartOfScope, swSwitchStatementBranches } from "./parsing";
