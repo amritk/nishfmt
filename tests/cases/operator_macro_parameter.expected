@@ -1,0 +1,18 @@
+#define LOGIC128(op)                                                                                                   \
+  inline uint128 operator op(const uint128 &lhs, const uint128 &rhs) {                                                 \
+    return uint128(Uint128High64(lhs) op Uint128High64(rhs), Uint128Low64(lhs) op Uint128Low64(rhs));                  \
+  }
+
+#define LOGICASSIGN128(op)                                                                                             \
+  inline uint128 &uint128::operator op(const uint128 & other) {                                                        \
+    hi_ op other.hi_;                                                                                                  \
+    lo_ op other.lo_;                                                                                                  \
+    return *this;                                                                                                      \
+  }
+
+#define X(op)                                                                                                          \
+  inline uint128 &uint128::operator op(const uint128 & other) { return *this; }
+#define Y(op)                                                                                                          \
+  inline uint128 &operator op(const uint128 & other) { return *this; }
+#define Z(op)                                                                                                          \
+  inline uint128 uint128::operator op(const uint128 & other) { return *this; }

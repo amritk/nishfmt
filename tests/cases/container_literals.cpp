@@ -1,0 +1,41 @@
+#define GENERATOR(TYPE) \
+  ::folly::gen::detail::GeneratorBuilder<TYPE>() + [=](auto&& yield)
+#define GENERATOR_WITH_THIS(TYPE) \
+  ::folly::gen::detail::GeneratorBuilder<TYPE>() + [ =, this ](auto&& yield)
+#define GENERATOR_REF(TYPE) \
+  ::folly::gen::detail::GeneratorBuilder<TYPE>() + [&](auto&& yield)
+
+/*
+ * empty() - for producing empty sequences.
+ */
+template <class Value>
+detail::Empty<Value> empty() {
+  return {};
+}
+#define A x + [=, this](int y)
+#define B x + [&, this](int y)
+#define C2 x + [this, &a](int y)
+#define D [=, this](int y)
+#define A1 x + [&, this](int y)
+#define A2 x + [*this, a](int y)
+#define A3 x + [-a, b](int y)
+#define A4 x + [a, b]
+#define A5 x + [a, &b]
+#define A6 x + [a, *b]
+#define A7 x + [!a, b]
+#define A8 x + [~a, b]
+#define A9 x + [a](int y)
+#define A10 x + [a]
+#define A11 x + [a b]
+#define A12 x + [a, b, c]
+#define A13 (x, [a, b])
+#define A14 f(x, [a, b])
+#define A15 x + [&](int y)
+#define A16 x + [&a, b](int y)
+#define A17 x + [&a](int y)
+#define A18 x + [a.b, c]
+#define A19 x + [a + b, c]
+#define A20 x + [=, &a](int y)
+void f() { g(x, [a, b]); }
+void g() { y = x + [a, b]; }
+void h() { y = x ? [a, b] : c; }

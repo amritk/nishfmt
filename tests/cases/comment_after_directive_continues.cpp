@@ -1,0 +1,27 @@
+namespace cv {
+namespace details {
+int a;
+}  // namespace details
+
+
+// Should depend on target compilation architecture only
+#if defined(X)
+  // preserve configuration overloading through ports
+#elif defined(Y)
+typedef int T;
+#endif
+}  // namespace cv
+namespace ev {
+int a;  // x
+#ifdef X
+  // c1
+#endif
+int d;  // x
+#define FOO 1
+  // c3
+int f;  // x
+#if A
+#endif
+  // c5
+int g;
+}  // namespace ev

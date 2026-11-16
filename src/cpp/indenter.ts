@@ -74,6 +74,7 @@ import { Doc } from "./doc";
 import { growI32 } from "../core/arr";
 import { utf8Width } from "../core/uwidth";
 import { Formatter } from "./format";
+import { requiresExprBrace } from "./classify";
 import {
   BK_BLOCK,
   BK_BRACED_INIT,
@@ -131,6 +132,10 @@ import {
   TT_BLOCK_LITERAL_LBRACE,
   TT_CTOR_INITIALIZER_COLON,
   TT_INLINE_ASM_COLON,
+  TT_SELECTOR_NAME,
+  TT_OBJC_METHOD_EXPR,
+  TT_OBJC_METHOD_SPECIFIER,
+  P_AT,
   TT_CTOR_INITIALIZER_COMMA,
   TT_DESIGNATED_INITIALIZER_LSQUARE,
   TT_DESIGNATED_INITIALIZER_PERIOD,
@@ -162,9 +167,9 @@ const S_DEPTH: i32 = 7;
 const S_TOP: i32 = 8; // the top record
 
 // One record per open bracket or implicit paren.
-const PS: i32 = 11;
+const PS: i32 = 12;
 // A record in the pool: its parent, its hash (with everything under it), then the PS fields.
-const RS: i32 = 13;
+const RS: i32 = 14;
 const RP: i32 = 0;
 const RH: i32 = 1;
 const RF: i32 = 2;
@@ -178,7 +183,8 @@ const R_SOFC: i32 = 6; // start of the function call
 const R_SOAS: i32 = 7; // start of array subscripts
 const R_CC: i32 = 8; // call continuation column
 const R_VP: i32 = 9; // variable position (after `=`)
-const R_FL: i32 = 10;
+const R_COLON: i32 = 10; // where an Objective-C selector's colons align (ColonPos)
+const R_FL: i32 = 11;
 
 const F_ALIGNED: i32 = 1;
 const F_BBCB: i32 = 2; // break before the closing brace
@@ -193,6 +199,8 @@ const F_HMNB: i32 = 1024; // has multiple nested blocks
 const F_NBI: i32 = 2048; // nested block inlined
 const F_ICC: i32 = 4096; // chained conditional
 const F_IWC: i32 = 8192; // wrapped conditional
+const F_OSNF: i32 = 16384; // an Objective-C selector part was placed (ObjCSelectorNameFound)
+const F_NOALIGN: i32 = 32768; // the selector's colons are not aligned (AlignColons off)
 const F_CMP: i32 = 0x7ffffbbf; // every flag but NOLBOP and HMNB
 
 const MAXCOUNT: i32 = 25000000;
@@ -564,6 +572,7 @@ export class Indenter {
     x[o + R_SOAS] = 0;
     x[o + R_CC] = 0;
     x[o + R_VP] = 0;
+    x[o + R_COLON] = 0;
     x[o + R_FL] = F_LOW | (avoid ? F_AVOID : 0) | (noLB ? F_NOLB : 0);
     this.topRec = r;
     this.sp = this.sp + 1;
@@ -801,6 +810,14 @@ export class Indenter {
     if (ct === TT_CTOR_INITIALIZER_COLON && (this.col + a.tot[this.lineLast] - a.tot[prev] > this.lim || this.topHas(F_BBP)) && (!a.isTrailingComment(cur) || d.nl[cur] > 0)) {
       return true;
     }
+    // An Objective-C method declaration: a `:` after no selector part, and
+    // every selector part once one broke before a parameter.
+    if (ct === TT_OBJC_METHOD_EXPR && pt !== TT_SELECTOR_NAME && d.type[d.lFirst[this.line]] === TT_OBJC_METHOD_SPECIFIER) {
+      return true;
+    }
+    if (ct === TT_SELECTOR_NAME && pk !== P_AT && this.topHas(F_OSNF) && this.topHas(F_BBP)) {
+      return true;
+    }
     const nlc = this.newLineColumn();
     if (a.isMemberAccess(cur) && this.col + this.lengthToNextOperator(cur) > d.opts.columnLimit && (this.col > nlc || a.nest[cur] < this.sol)) {
       return true;
@@ -879,6 +896,61 @@ export class Indenter {
     return n < 0 ? 0 : this.a.tot[n] - this.a.tot[t];
   }
 
+  /**
+   * clang-format's getNewLineColumn for a selector part: before the first is
+   * placed, indented so its colon is past the longest of the others; after,
+   * at the aligned colons.
+   */
+  selectorColumn(cur: i32, ind: i32): i32 {
+    const d = this.d;
+    const w = d.width[cur];
+    if (!this.topHas(F_OSNF)) {
+      let minInd = ind;
+      const ci = this.firstIndent + d.opts.continuationIndent;
+      if (d.type[d.lFirst[this.line]] === TT_OBJC_METHOD_SPECIFIER && ci > minInd) {
+        minInd = ci;
+      }
+      const longest = this.longestSelector(cur);
+      return minInd + (longest > w ? longest : w) - w;
+    }
+    if (this.topHas(F_NOALIGN)) {
+      return ind;
+    }
+    const cp = this.top(R_COLON);
+    return cp > w ? cp - w : ind;
+  }
+
+  /**
+   * clang-format's LongestObjCSelectorName of selector part `t`: for the
+   * first part of a method declaration, the widest of the parts after it at
+   * its level; 0 for any other.
+   */
+  longestSelector(t: i32): i32 {
+    const d = this.d;
+    const a = this.a;
+    const f = d.lFirst[this.line];
+    if (d.type[f] !== TT_OBJC_METHOD_SPECIFIER) {
+      return 0;
+    }
+    const lv = a.nest[t];
+    let first = -1;
+    let longest = 0;
+    for (let q = f; q >= 0; q = d.nxt[q]) {
+      if (d.type[q] !== TT_SELECTOR_NAME || a.nest[q] !== lv) {
+        continue;
+      }
+      if (first < 0) {
+        first = q;
+        if (q !== t) {
+          return 0;
+        }
+      } else if (d.width[q] > longest) {
+        longest = d.width[q];
+      }
+    }
+    return longest;
+  }
+
   newLineColumn(): i32 {
     const cur = this.next;
     if (cur < 0 || uncheckedGet(this.d.prv, cur) < 0) {
@@ -908,6 +980,9 @@ export class Indenter {
     }
     if ((r & N_STRING) !== 0 && this.sosl !== 0) {
       return this.sosl;
+    }
+    if (uncheckedGet(this.d.type, cur) === TT_SELECTOR_NAME) {
+      return this.selectorColumn(cur, ind);
     }
     if ((r & N_LESSLESS) !== 0) {
       const fll = uncheckedGet(rc, o + R_FLL);
@@ -1033,6 +1108,19 @@ export class Indenter {
     if ((r & C_NOLBOP) !== 0 || ((r & C_NOLBOP_LOW) !== 0 && !this.topHas(F_LOW))) {
       this.setTopFlag(F_NOLBOP, true);
     }
+    if (d.type[cur] === TT_SELECTOR_NAME && !this.topHas(F_OSNF)) {
+      // The first selector part on the line sets where the colons align.
+      const ci = this.firstIndent + d.opts.continuationIndent;
+      const ind = this.top(R_IND);
+      const minInd = ci > ind ? ci : ind;
+      const firstColon = this.col + spaces + d.width[cur];
+      const longest = this.longestSelector(cur);
+      if (longest === 0) {
+        this.setTopFlag(F_NOALIGN, true);
+      } else {
+        this.setTop(R_COLON, minInd + longest > firstColon ? minInd + longest : firstColon);
+      }
+    }
     this.col = this.col + spaces;
     const ls = (r >> C_LS_SHIFT) & 7;
     if (ls === 1) {
@@ -1090,6 +1178,24 @@ export class Indenter {
       pen = pen + toI64(PEN_FIRST_LESSLESS);
     }
     this.col = this.newLineColumn();
+    if (d.type[nnc] === TT_SELECTOR_NAME) {
+      const w = d.width[nnc];
+      if (!this.topHas(F_OSNF)) {
+        const longest = this.longestSelector(nnc);
+        if (longest === 0) {
+          this.setTopFlag(F_NOALIGN, true);
+        } else {
+          let base = this.top(R_IND);
+          const ci = this.firstIndent + d.opts.continuationIndent;
+          if (d.type[d.lFirst[this.line]] === TT_OBJC_METHOD_SPECIFIER && ci > base) {
+            base = ci;
+          }
+          this.setTop(R_COLON, base + (longest > w ? longest : w));
+        }
+      } else if (!this.topHas(F_NOALIGN) && this.top(R_COLON) <= w) {
+        this.setTop(R_COLON, this.col + w);
+      }
+    }
     if (d.type[cur] !== TT_TRAILING_RETURN_ARROW && !a.isTrailingReturnArrow(cur)) {
       this.setTop(R_NBI, this.col);
     }
@@ -1139,7 +1245,11 @@ export class Indenter {
     }
     this.sol = a.nest[cur];
     this.lowest = a.nest[cur];
-    this.flagAll(F_BBP, false);
+    // Any break means the levels around have broken (clang-format's
+    // NestedBlockSpecialCase: not for the `}` of a requires expression).
+    if (!(d.kind[cur] === P_RBRACE && d.match[cur] >= 0 && requiresExprBrace(d, d.match[cur]))) {
+      this.flagAll(F_BBP, false);
+    }
     if (
       pnc >= 0 &&
       pnk !== P_COMMA &&
@@ -1170,6 +1280,9 @@ export class Indenter {
     const a = this.a;
     const cur = this.next;
     const mf = uncheckedGet(a.mf, cur);
+    if (d.type[cur] === TT_SELECTOR_NAME) {
+      this.setTopFlag(F_OSNF, true);
+    }
     if ((mf & M_NOLBOP_CLR) !== 0) {
       this.setTopFlag(F_NOLBOP, false);
     }
@@ -2485,6 +2598,11 @@ export class Indenter {
     const dry = this.dry;
     this.dry = true;
     this.initialState();
+    // clang-format's OptimizingLineFormatter: an Objective-C method
+    // declaration that does not fit takes one selector part per line.
+    if (this.d.type[this.d.lFirst[this.line]] === TT_OBJC_METHOD_SPECIFIER) {
+      this.setTopFlag(F_BBP, true);
+    }
     const root = this.newNode(-1, 0);
     let count = 0;
     this.nCnt[root] = 0;

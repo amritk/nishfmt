@@ -1,0 +1,34 @@
+template <typename Iter>
+using iterator_concept_t = conditional_apply_t<
+    requires { typename std::iterator_traits<Iter>::iterator_concept; },
+    detail::traits_iterator_concept_t,
+    detail::member_iterator_concept_or_category_t,
+    Iter>;
+template <typename Iter>
+using a_t = f<requires { typename Iter::x; }, Iter>;
+template <typename Iter>
+constexpr bool b = f<requires { typename Iter::x; }, Iter>;
+template <typename Iter>
+using c_t = f<requires(Iter i) { i.x(); }, Iter>;
+template <typename Iter>
+constexpr bool iterator_concept_t = conditional_apply_t<
+    requires { typename std::iterator_traits<Iter>::iterator_concept; },
+    detail::traits_iterator_concept_t,
+    detail::member_iterator_concept_or_category_t,
+    Iter>;
+void f() {
+  auto iterator_concept_t = conditional_apply(
+      [] { typename std::iterator_traits<Iter>::iterator_concept; return 1; },
+      detail::traits_iterator_concept_t,
+      detail::member_iterator_concept_or_category_t,
+      Iter);
+  auto iterator_concept_t = conditional_apply(
+      requires { typename std::iterator_traits<Iter>::iterator_concept; },
+      detail::traits_iterator_concept_t,
+      detail::member_iterator_concept_or_category_t,
+      Iter);
+}
+using iterator_concept_t = conditional_apply_t<requires { typename std::iterator_traits<Iter>::iterator_concept; }, a>;
+using iterator_concept_t = conditional_apply_t<requires { typename std::iterator_traits<Iter>::iterator_concept_xxxxx; }, a>;
+using iterator_concept_t = conditional_apply_t<requires { typename std::iterator_traits<Iter>::iterator_conceptxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx; }, a>;
+using iterator_concept_t = conditional_apply_t<a, requires { typename std::iterator_traits<Iter>::iterator_concept_xxxxx; }>;

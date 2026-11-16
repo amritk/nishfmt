@@ -15,8 +15,10 @@ import {
   BK_BLOCK,
   BK_BRACED_INIT,
   binPrecedence,
+  isIdentKind,
   K_COMMENT,
   K_IDENT,
+  P_AT,
   K_STRING,
   KW_CLASS,
   KW_CONCEPT,
@@ -97,6 +99,9 @@ import {
   TT_TEMPLATE_CLOSER,
   TT_TEMPLATE_OPENER,
   TT_TRAILING_ANNOTATION,
+  TT_SELECTOR_NAME,
+  TT_OBJC_METHOD_EXPR,
+  TT_OBJC_METHOD_SPECIFIER,
   TT_TRAILING_RETURN_ARROW,
   TT_TYPE_DECLARATION_PAREN,
   TT_UNKNOWN,
@@ -1006,6 +1011,31 @@ export class Annot {
     }
   }
 
+  /**
+   * The binding part of token `t`'s split penalty: 20 per level, but for an
+   * Objective-C file's selector parts after the first (clang-format's
+   * ParameterIndex), 5 per level for the second and none after.
+   */
+  bindingPenalty(t: i32): i32 {
+    const d = this.d;
+    if (d.objcLang && d.type[t] === TT_SELECTOR_NAME) {
+      let idx = 0;
+      const lv = this.nest[t];
+      for (let q = d.prv[t]; q >= 0; q = d.prv[q]) {
+        if (this.nest[q] < lv) {
+          break;
+        }
+        if (d.type[q] === TT_SELECTOR_NAME && this.nest[q] === lv) {
+          idx++;
+        }
+      }
+      if (idx > 0) {
+        return idx === 1 ? 5 * this.bind[t] : 0;
+      }
+    }
+    return 20 * this.bind[t];
+  }
+
   /** Where a break may go in segment [a, b] of line `l`, and what each costs. */
   breakCosts(l: i32, a: i32, b: i32): void {
     const d = this.d;
@@ -1020,7 +1050,7 @@ export class Annot {
       if (d.type[t] === TT_CTOR_INITIALIZER_COLON) {
         inFnDecl = false;
       }
-      this.pen[t] = this.splitPenalty(l, t, inFnDecl) + 20 * this.bind[t];
+      this.pen[t] = this.splitPenalty(l, t, inFnDecl) + this.bindingPenalty(t);
       if (t === b) {
         break;
       }
@@ -1425,6 +1455,10 @@ export class Annot {
     if (lk === K_STRING && rk === K_STRING) {
       return true;
     }
+    // `__attribute__((x))` then `@interface`: a line of its own.
+    if (d.type[left] === TT_ATTRIBUTE_RPAREN && rk === P_AT && isObjCDeclAt(d, t)) {
+      return true;
+    }
     if (d.lType[l] !== LT_IMPORT) {
       let bcb = -1;
       if ((lk === P_LBRACE || d.type[left] === TT_ARRAY_INITIALIZER_LSQUARE) && d.bk[left] !== BK_BLOCK && d.match[left] > left) {
@@ -1514,8 +1548,19 @@ export class Annot {
     if (rt === TT_INHERITANCE_COLON) {
       return true;
     }
+    // Objective-C: before a `:` no selector part precedes, after a
+    // selector's `:`, and before a selector part.
+    if (rt === TT_OBJC_METHOD_EXPR && lt !== TT_SELECTOR_NAME) {
+      return true;
+    }
     if (rk === P_COLON && rt !== TT_CTOR_INITIALIZER_COLON && rt !== TT_INLINE_ASM_COLON) {
       return false;
+    }
+    if (lk === P_COLON && lt === TT_OBJC_METHOD_EXPR) {
+      return true;
+    }
+    if (rt === TT_SELECTOR_NAME || (isIdentKind(rk) && d.nxt[t] >= 0 && d.type[d.nxt[t]] === TT_OBJC_METHOD_EXPR)) {
+      return lk !== P_PERIOD;
     }
     if (rk === KW_CONCEPT) {
       return true;
@@ -1701,12 +1746,23 @@ export class Annot {
     if (rt === TT_TRAILING_ANNOTATION) {
       const n = d.nxt[t];
       if (n < 0 || d.kind[n] !== P_LPAREN) {
+        // (Fine to move to the next line in an Objective-C method declaration.)
+        if (d.type[d.lFirst[l]] === TT_OBJC_METHOD_SPECIFIER) {
+          return 10;
+        }
         return (lk === P_RPAREN ? 100 : 120) + (d.len(t) < 10 ? 50 : 0);
       }
     }
     const lineFor = d.kind[d.lFirst[l]] === KW_FOR;
     if (lineFor && lk === P_EQUAL) {
       return 4;
+    }
+    // Objective-C: breaking before a selector part over after its `:`.
+    if (rt === TT_SELECTOR_NAME) {
+      return 0;
+    }
+    if (lk === P_COLON && lt === TT_OBJC_METHOD_EXPR) {
+      return d.lMightFn[l] === 1 ? 50 : 500;
     }
     if (lk === P_LPAREN && inFnDecl) {
       return 100;
@@ -1974,3 +2030,9 @@ export class Annot {
 }
 
 export const ANNOT_KINDS: i32 = P_STAR + TT_LAMBDA_LBRACE + TT_FUNCTION_LBRACE + TT_DESIGNATED_INITIALIZER_PERIOD;
+
+/** Whether `@` at `t` starts `@interface`, `@implementation` or `@protocol` (clang-format's TT_ObjCDecl). */
+export const isObjCDeclAt = (d: Doc, t: i32): boolean => {
+  const n = d.nxt[t];
+  return n >= 0 && d.kind[n] === K_IDENT && (d.is(n, "interface") || d.is(n, "implementation") || d.is(n, "protocol"));
+};

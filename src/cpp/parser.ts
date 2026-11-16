@@ -134,6 +134,7 @@ import {
   P_LESSEQUAL,
   P_MINUS,
   P_MINUSMINUS,
+  P_AT,
   P_PIPE,
   P_PLUS,
   P_PLUSPLUS,
@@ -145,6 +146,11 @@ export class Parser {
   macroBodyStart: i32 = 0; // the first line of the macro body being parsed
   inUnbraced: boolean = false; // parsing an unbraced control body's statement
   inRequiresExpr: boolean = false; // parsing a requires expression's body
+  objcDepth: i32 = 0; // inside an Objective-C @interface/@protocol body (parseObjCUntilAtEnd)
+  // Per line list (index: its parent `{` + 1, 0 for the top): the last line
+  // that is no directive, and the line before it in the list (-1: none).
+  codeTail: i32[];
+  codeTailPrev: i32[];
   d: Doc;
   pos: i32 = 0;
   first: i32 = -1;
@@ -159,6 +165,8 @@ export class Parser {
 
   constructor(d: Doc) {
     this.d = d;
+    this.codeTail = new Array<i32>(0);
+    this.codeTailPrev = new Array<i32>(0);
   }
 
   cur(): i32 {
@@ -254,8 +262,19 @@ export class Parser {
     d.lInClass[l] = 0;
     d.lRetWrap[l] = 0;
     d.lDefCode[l] = 0;
+    d.lObjC[l] = 0;
     if (d.kind[this.first] === P_RBRACE) {
       d.lOpen[l] = this.rbraceOpen;
+    }
+    if (this.linePP === 0 && d.kind[this.first] !== K_COMMENT) {
+      const li = this.listParent + 1;
+      if (toI32(this.codeTail.length) <= li) {
+        const n = (li > d.ntok ? li : d.ntok) + 2;
+        this.codeTail = growFill(this.codeTail, n);
+        this.codeTailPrev = growFill(this.codeTailPrev, n);
+      }
+      this.codeTail[li] = l;
+      this.codeTailPrev[li] = this.listParent < 0 ? d.topTail : d.childTail[this.listParent];
     }
     if (this.listParent < 0) {
       if (d.topTail < 0) {
@@ -322,7 +341,7 @@ export class Parser {
     let any = false;
     while (this.cur() === K_COMMENT && this.first < 0 && this.continuesTrailingComment()) {
       // An own-line comment under a trailing comment continues it: same line.
-      const prevLine = this.listParent < 0 ? d.topTail : d.childTail[this.listParent];
+      const prevLine = this.pendingLine(true);
       const t = this.pos;
       const last = d.lLast[prevLine];
       d.nxt[last] = t;
@@ -393,7 +412,7 @@ export class Parser {
     if (this.alignedWithNext(t)) {
       return false;
     }
-    const prevLine = this.listParent < 0 ? d.topTail : d.childTail[this.listParent];
+    const prevLine = this.pendingLine(false);
     if (prevLine < 0 || d.lPP[prevLine] === 1) {
       return false;
     }
@@ -416,6 +435,81 @@ export class Parser {
     }
     const isLine = d.kind[minTok] === K_COMMENT && d.at(d.start[minTok] + 1) === 47;
     return d.origCol(t) >= d.origCol(minTok) + (isLine ? 0 : 1);
+  }
+
+  /**
+   * The line a comment read now is distributed against (clang-format's
+   * pending Line): the list's last line, or, when directive lines end the
+   * list, the line they were read after (clang-format adds directives read
+   * while a line is pending after that line). With `move`, those directive
+   * lines are put before it, as directives inside a statement are, so the
+   * comment can join it.
+   */
+  pendingLine(move: boolean): i32 {
+    const d = this.d;
+    const tail = this.listParent < 0 ? d.topTail : d.childTail[this.listParent];
+    if (tail < 0 || d.lPP[tail] !== 1 || this.macro >= 0) {
+      return tail;
+    }
+    const li = this.listParent + 1;
+    if (li >= toI32(this.codeTail.length) || this.codeTail[li] < 0) {
+      return tail;
+    }
+    const l = this.codeTail[li];
+    // (Only directive lines and the comment lines flushed before them may
+    // follow it, read right after its last token.)
+    for (let x = d.lSibling[l]; x >= 0; x = d.lSibling[x]) {
+      if (d.lPP[x] !== 1 && !this.commentOnly(x)) {
+        return tail;
+      }
+    }
+    let q = d.lLast[l] + 1;
+    while (q < this.pos && (d.kind[q] === K_COMMENT || d.inPP[q] === 1 || (d.kind[q] === P_HASH && d.ppKind[q] !== PP_NONE))) {
+      q++;
+    }
+    if (q !== this.pos || d.kind[d.lLast[l]] !== K_COMMENT) {
+      return tail;
+    }
+    if (!move) {
+      return l;
+    }
+    const before = this.codeTailPrev[li];
+    const dHead = d.lSibling[l];
+    for (let x = dHead; x >= 0; x = d.lSibling[x]) {
+      if (d.lPP[x] !== 1) {
+        // Parked with the directives: clang-format flushed them there.
+        d.lInlineCmt[x] = 1;
+      }
+    }
+    if (before < 0) {
+      if (this.listParent < 0) {
+        d.topHead = dHead;
+      } else {
+        d.childHead[this.listParent] = dHead;
+      }
+    } else {
+      d.lSibling[before] = dHead;
+    }
+    d.lSibling[tail] = l;
+    d.lSibling[l] = -1;
+    if (this.listParent < 0) {
+      d.topTail = l;
+    } else {
+      d.childTail[this.listParent] = l;
+    }
+    this.codeTailPrev[li] = tail;
+    return l;
+  }
+
+  /** Whether line `x` holds comments only. */
+  commentOnly(x: i32): boolean {
+    const d = this.d;
+    for (let t = d.lFirst[x]; t >= 0; t = d.nxt[t]) {
+      if (d.kind[t] !== K_COMMENT) {
+        return false;
+      }
+    }
+    return true;
   }
 
   /** A preprocessor directive: every token of it is one line. */
@@ -494,6 +588,21 @@ export class Parser {
 
   parseStructuralElement(): void {
     const d = this.d;
+    // In a child block, own-line comments before a directive are read while
+    // the line before them is pending: clang-format flushes them with the
+    // directives, out of the block, indented by their level alone.
+    if (this.first < 0 && this.listParent >= 0 && this.macro < 0 && this.commentsThenDirective()) {
+      const l0 = d.nline;
+      const any = this.flushComments();
+      for (let l = l0; l < d.nline; l++) {
+        if (d.lParent[l] === this.listParent && d.kind[d.lFirst[l]] === K_COMMENT) {
+          d.lAbs[l] = 1;
+        }
+      }
+      if (any) {
+        return;
+      }
+    }
     if (this.first < 0 && this.flushComments()) {
       return;
     }
@@ -1728,7 +1837,9 @@ export class Parser {
     // Find the matching `]`, then what follows it.
     let i = lsq + 1;
     let depth = 1;
-    while (i < d.ntok - 1) {
+    // (A macro body ends at its directive's end: clang-format's token
+    // source answers eof there.)
+    while (i < d.ntok - 1 && !(this.macro >= 0 && d.ppId[i] !== this.macro)) {
       const k = d.kind[i];
       if (k === P_LSQUARE || k === P_LPAREN || k === P_LBRACE) {
         depth++;
@@ -1751,6 +1862,9 @@ export class Parser {
     let pdepth = 0;
     let seenArrow = false;
     while (j < d.ntok - 1) {
+      if (this.macro >= 0 && d.ppId[j] !== this.macro) {
+        return false;
+      }
       const k = d.kind[j];
       if (k === P_LBRACE && pdepth === 0) {
         break;
@@ -2170,6 +2284,236 @@ export class Parser {
     return d.kind[x] === K_EOF || (this.macro >= 0 && d.ppId[x] !== this.macro);
   }
 
+  /**
+   * clang-format's `@` in parseStructuralElement: pushes the `@`, then
+   * parses `@interface`, `@implementation` and `@protocol` with their bodies,
+   * `@optional`/`@required` and the access specifiers as lines of their own.
+   * Answers true when the statement is done; false to go on with it.
+   */
+  parseObjCAt(): boolean {
+    const d = this.d;
+    this.push();
+    if (this.cur() === P_LBRACE) {
+      // `@{...}`: a dictionary literal (formatted as a braced list here).
+      d.objcOther = true;
+      this.parseBracedList();
+      return false;
+    }
+    const t = this.pos;
+    if (this.cur() !== K_IDENT && this.cur() !== KW_PUBLIC && this.cur() !== KW_PROTECTED && this.cur() !== KW_PRIVATE) {
+      if (this.cur() !== K_STRING && this.cur() !== KW_CLASS) {
+        d.objcOther = true;
+      }
+      return false;
+    }
+    if (d.is(t, "interface") || d.is(t, "implementation")) {
+      if (d.is(t, "implementation")) {
+        d.objcOther = true;
+      }
+      this.parseObjCInterface();
+      return true;
+    }
+    if (d.is(t, "protocol")) {
+      if (this.peek(1) === P_LPAREN) {
+        // `@protocol(Foo)`: an expression.
+        d.objcOther = true;
+        return false;
+      }
+      this.parseObjCProtocol();
+      return true;
+    }
+    if (d.is(t, "end")) {
+      // Handled by the body's loop.
+      return this.objcDepth > 0;
+    }
+    if (d.is(t, "optional") || d.is(t, "required")) {
+      this.push();
+      this.addLine();
+      return true;
+    }
+    if (d.kind[t] === KW_PUBLIC || d.kind[t] === KW_PROTECTED || d.kind[t] === KW_PRIVATE || d.is(t, "package")) {
+      // clang-format's parseAccessSpecifier.
+      this.push();
+      if (this.cur() === P_COLON) {
+        this.push();
+      }
+      this.addLine();
+      return true;
+    }
+    if (!(d.is(t, "property") || d.is(t, "class"))) {
+      d.objcOther = true;
+    }
+    return false;
+  }
+
+  /** clang-format's parseObjCInterfaceOrImplementation, at the keyword. */
+  parseObjCInterface(): void {
+    this.push();
+    this.push(); // the name
+    if (this.cur() === P_LESS) {
+      this.parseObjCGenerics();
+    }
+    if (this.cur() === P_COLON) {
+      this.push();
+      this.push(); // the base class
+      if (this.cur() === P_LESS) {
+        this.parseObjCGenerics();
+      }
+    } else if (this.cur() === P_LPAREN) {
+      // A category.
+      this.parseParens();
+    }
+    if (this.cur() === P_LESS) {
+      this.parseObjCProtocolList();
+    }
+    const lineFirst = this.first;
+    const l0 = this.d.nline;
+    if (this.cur() === P_LBRACE) {
+      // Instance variables: the `}` gets a line of its own.
+      this.parseBlock(1, true, TT_UNKNOWN);
+    }
+    this.addLine();
+    this.markObjCDecl(l0, lineFirst);
+    this.parseObjCUntilAtEnd();
+  }
+
+  /** Marks line `l` as clang-format's LT_ObjCDecl when it starts with the `@` at `first`. */
+  markObjCDecl(l: i32, first: i32): void {
+    const d = this.d;
+    if (l >= 0 && l < d.nline && d.lFirst[l] === first && d.kind[first] === P_AT) {
+      d.lObjC[l] = 2;
+    }
+  }
+
+  /** Whether the tokens from `pos` are `@end`. */
+  atObjCEnd(): boolean {
+    return this.cur() === P_AT && this.d.kind[this.pos + 1] === K_IDENT && this.d.is(this.pos + 1, "end");
+  }
+
+  /** clang-format's parseObjCLightweightGenerics, at the `<`. */
+  parseObjCGenerics(): void {
+    let open = 1;
+    this.push();
+    while (true) {
+      const k = this.cur();
+      if (k === K_EOF || k === P_SEMI || k === P_LBRACE || this.atObjCEnd()) {
+        break;
+      }
+      if (k === P_LESS) {
+        open++;
+      } else if (k === P_GREATER) {
+        open--;
+        if (open === 0) {
+          break;
+        }
+      }
+      this.push();
+    }
+    if (this.cur() !== K_EOF) {
+      this.push();
+    }
+  }
+
+  /** clang-format's parseObjCProtocolList, at the `<`. */
+  parseObjCProtocolList(): void {
+    this.push();
+    while (true) {
+      const k = this.cur();
+      if (k === K_EOF || k === P_SEMI || k === P_LBRACE || this.atObjCEnd()) {
+        return;
+      }
+      if (k === P_GREATER) {
+        break;
+      }
+      this.push();
+    }
+    this.push();
+  }
+
+  /** clang-format's parseObjCProtocol (its declaration form), at the keyword. */
+  parseObjCProtocol(): void {
+    this.push();
+    this.push(); // the name
+    if (this.cur() === P_LESS) {
+      this.parseObjCProtocolList();
+    }
+    const lineFirst = this.first;
+    const l0 = this.d.nline;
+    if (this.cur() === P_SEMI) {
+      this.push();
+      this.addLine();
+      this.markObjCDecl(l0, lineFirst);
+      return;
+    }
+    this.addLine();
+    this.markObjCDecl(l0, lineFirst);
+    this.parseObjCUntilAtEnd();
+  }
+
+  /** clang-format's parseObjCUntilAtEnd: an @interface or @protocol body. */
+  parseObjCUntilAtEnd(): void {
+    const d = this.d;
+    this.objcDepth = this.objcDepth + 1;
+    while (true) {
+      const k = this.cur();
+      if (k === K_EOF) {
+        break;
+      }
+      if (this.first < 0 && k === K_COMMENT) {
+        this.parseStructuralElement();
+        continue;
+      }
+      if (this.atObjCEnd()) {
+        this.push();
+        this.push();
+        this.addLine();
+        break;
+      }
+      if (k === P_LBRACE) {
+        this.parseBlock(1, false, TT_UNKNOWN);
+        this.addLine();
+        continue;
+      }
+      if (k === P_RBRACE) {
+        this.push();
+        this.addLine();
+        continue;
+      }
+      if ((k === P_MINUS || k === P_PLUS) && this.first < 0) {
+        this.push();
+        this.parseObjCMethod();
+        continue;
+      }
+      this.parseStructuralElement();
+    }
+    this.objcDepth = this.objcDepth - 1;
+    d.objcSeen = true;
+  }
+
+  /** clang-format's parseObjCMethod, past the `-` or `+`: a declaration up to its `;`. */
+  parseObjCMethod(): void {
+    const d = this.d;
+    while (true) {
+      const k = this.cur();
+      if (k === P_SEMI) {
+        this.push();
+        break;
+      }
+      if (k === K_EOF || k === P_LBRACE || k === P_RBRACE || this.atObjCEnd()) {
+        // A method body (or no end): not formatted here.
+        d.objcOther = true;
+        break;
+      }
+      if (k === P_HASH && d.ppKind[this.pos] !== PP_NONE) {
+        this.parsePPInline();
+        continue;
+      }
+      this.push();
+    }
+    this.addLine();
+    d.lObjC[d.nline - 1] = 1;
+  }
+
   /** A statement or declaration, up to its `;` or its body. */
   parseStatement(): void {
     const d = this.d;
@@ -2255,6 +2599,18 @@ export class Parser {
         this.parseTemplateParams();
         continue;
       }
+      if (k === P_AT && this.macro < 0) {
+        if (this.parseObjCAt()) {
+          return;
+        }
+        continue;
+      }
+      // `typedef NS_ENUM(T, Name) {...}` and its kin: an enum.
+      if (k === KW_TYPEDEF && d.kind[this.pos + 1] === K_IDENT && isNSEnumMacro(d, this.pos + 1)) {
+        this.push();
+        this.parseEnum();
+        return;
+      }
       if (k === KW_CLASS || k === KW_STRUCT || k === KW_UNION) {
         // `enum class X` is an enum.
         if (this.last >= 0 && d.kind[this.last] === KW_ENUM) {
@@ -2336,15 +2692,19 @@ export class Parser {
         return;
       }
       if (k === P_LBRACE) {
+        // (clang-format's statement loop parses `requires {` at the
+        // `requires`: a requires expression, its body a block whatever
+        // follows it.)
+        if (this.isRequiresExpressionBrace()) {
+          d.bk[this.pos] = BK_BLOCK;
+          this.parseRequiresBody();
+          continue;
+        }
         if (d.bk[this.pos] === BK_UNKNOWN) {
           this.calculateBraceTypes();
         }
         if (d.bk[this.pos] === BK_BRACED_INIT) {
           this.parseBracedList();
-          continue;
-        }
-        if (this.isRequiresExpressionBrace()) {
-          this.parseRequiresBody();
           continue;
         }
         // A function body.
@@ -2629,4 +2989,18 @@ export const tokenCanStartNewLine = (d: Doc, t: i32): boolean => {
     default:
       return true;
   }
+};
+
+/** clang-format's typedef enum macros: NS_ENUM, NS_OPTIONS, CF_ENUM, CF_OPTIONS, CF_CLOSED_ENUM, NS_CLOSED_ENUM. */
+const isNSEnumMacro = (d: Doc, t: i32): boolean =>
+  d.is(t, "NS_ENUM") || d.is(t, "NS_OPTIONS") || d.is(t, "CF_ENUM") || d.is(t, "CF_OPTIONS") || d.is(t, "CF_CLOSED_ENUM") || d.is(t, "NS_CLOSED_ENUM");
+
+/** `xs` grown to `n` entries, the new ones -1. */
+const growFill = (xs: i32[], n: i32): i32[] => {
+  const ys = new Array<i32>(n);
+  ys.fill(-1);
+  for (let i = 0; i < toI32(xs.length); i++) {
+    ys[i] = xs[i];
+  }
+  return ys;
 };

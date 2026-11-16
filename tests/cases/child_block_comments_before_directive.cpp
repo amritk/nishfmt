@@ -1,0 +1,23 @@
+void f() {
+  if (stream) {
+    avio_context = avio_alloc_context(avio_ctx_buffer, avio_ctx_buffer_size, 0, this,
+        [](void *opaque, uint8_t *buf, int buf_size) -> int {
+            try {
+                int result = (int)is->read(reinterpret_cast<char*>(buf), buf_size);
+
+                // https://github.com/FFmpeg/FFmpeg/commit/a606f27f4c610708fa96e35eed7b7537d3d8f712
+                // second comment line
+#if (LIBAVFORMAT_VERSION_MAJOR >= 58)  // FFmpeg n4.0+
+                if (result == 0 && buf_size > 0)
+                {
+                    result = AVERROR_EOF;
+                }
+#endif
+                return result;
+            } catch (...) {
+                return 0;
+            }
+        },
+        NULL);
+  }
+}

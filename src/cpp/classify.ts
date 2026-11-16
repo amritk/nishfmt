@@ -134,6 +134,8 @@ import {
   TT_BLOCK_COMMENT,
   TT_CASE_LABEL_COLON,
   TT_CAST_RPAREN,
+  TT_ARRAY_INITIALIZER_LSQUARE,
+  PREC_UNKNOWN,
   TT_CONDITIONAL_EXPR,
   TT_CTOR_DTOR_DECL_NAME,
   TT_CTOR_INITIALIZER_COLON,
@@ -146,6 +148,9 @@ import {
   TT_INLINE_ASM_COLON,
   TT_IMPLICIT_STRING_LITERAL,
   TT_INLINE_ASM_BRACE,
+  TT_OBJC_METHOD_SPECIFIER,
+  TT_SELECTOR_NAME,
+  TT_OBJC_METHOD_EXPR,
   TT_LAMBDA_ARROW,
   TT_LAMBDA_LBRACE,
   TT_LAMBDA_LSQUARE,
@@ -412,7 +417,8 @@ export class Classifier {
     for (let q = f; q >= 0 && q !== c; q = this.next(q)) {
       const qk = this.k(q);
       if (qk === P_STAR || qk === P_AMP || qk === P_AMPAMP || qk === P_CARET) {
-        const qp = this.prev(q);
+        // (Right after them: a comment between hides the `(` or `::`.)
+        const qp = d.prv[q];
         if (qp === o || (qp >= 0 && this.k(qp) === P_COLONCOLON)) {
           ptr = true;
           break;
@@ -749,6 +755,8 @@ export class Classifier {
     let invalid = this.first >= 0 && d.kind[this.first] === P_COLON;
     let afterHeader = false; // past `__has_include(<...>`: the rest is implicit
     const implicitOk = d.anyImplicit;
+    // An Objective-C method declaration (clang-format's LT_ObjCMethodDecl).
+    const objcMethod = d.lObjC[l] === 1 && (this.k(this.first) === P_MINUS || this.k(this.first) === P_PLUS);
     for (let t = this.first; t >= 0; t = d.nxt[t]) {
       d.match[t] = -1;
       const k0 = d.kind[t];
@@ -794,6 +802,13 @@ export class Classifier {
       }
       if (k === KW_NEW) {
         this.afterNew[dep] = 1;
+      }
+      // clang-format's modifyContext: `assert` (a keyword to it) turns the
+      // context off expression; its parentheses inherit that, unless they
+      // are an expression by themselves (outside a directive, in a
+      // statement).
+      if (k === K_IDENT && d.is(t, "assert")) {
+        this.expr[dep] = 0;
       }
       // After a lambda's `->` the context holds a type (clang-format's
       // TrailingReturnArrow sets IsExpression off).
@@ -878,6 +893,20 @@ export class Classifier {
             } else if (this.lineStartsWithAsm()) {
               // clang-format's InsideInlineASM: an operand's symbolic name.
               this.set(t, TT_INLINE_ASM_SYMBOLIC_NAME_LSQUARE);
+            } else if (this.startsObjCExpr(t, p, dep) && this.listCommaBeforeColon(t)) {
+              // clang-format's parseSquare: an Objective-C message expression
+              // that holds a `,` before any `:` is a container literal.
+              this.set(t, TT_ARRAY_INITIALIZER_LSQUARE);
+            } else if (this.startsObjCExpr(t, p, dep) && this.messageColon(t)) {
+              // A message with arguments: `[obj sel:arg]`.
+              this.set(t, TT_OBJC_METHOD_EXPR);
+            } else if (this.startsObjCExpr(t, p, dep)) {
+              // An Objective-C message to clang-format (or, with `(` after
+              // the `]` or one token inside, nothing): no subscript.
+            } else if (n >= 0 && this.k(n) === P_RSQUARE && p >= 0 && (this.ty(p) === TT_BINARY_OPERATOR || this.k(p) === P_AT || this.k(p) === P_COMMA || this.k(p) === P_LPAREN || this.k(p) === P_LSQUARE || this.k(p) === P_QUESTION || this.k(p) === P_COLON || this.k(p) === KW_RETURN || this.k(p) === KW_DEFAULT)) {
+              // `f([](...) ...)` with no lambda body (in a macro): an empty
+              // container literal to clang-format's parseSquare.
+              this.set(t, TT_ARRAY_INITIALIZER_LSQUARE);
             } else if (dep === 0 && p >= 0 && this.k(p) === P_COMMA) {
               // After a top-level `,` clang-format starts an Objective-C
               // message expression: no subscript.
@@ -941,6 +970,10 @@ export class Classifier {
             d.nest[t] = dd;
             d.bind[t] = this.bindAt[dd];
             this.depth = dd - 1;
+            if (k === P_RPAREN && objcMethod && this.prev(o) === this.first) {
+              // The return type's parentheses: a cast's to clang-format.
+              d.type[t] = TT_CAST_RPAREN;
+            }
             if (k === P_RPAREN) {
               this.markFunctionType(o, t);
               const op = this.prev(o);
@@ -1031,6 +1064,10 @@ export class Classifier {
         case P_PLUS:
         case P_MINUS:
         case P_CARET:
+          if (objcMethod && t === this.first) {
+            d.type[t] = TT_OBJC_METHOD_SPECIFIER;
+            break;
+          }
           if (this.ty(t) === TT_UNKNOWN) {
             this.set(t, this.unaryByPrev(t) ? TT_UNARY_OPERATOR : TT_BINARY_OPERATOR);
           }
@@ -1064,6 +1101,16 @@ export class Classifier {
           this.expr[dep] = 1;
           break;
         case P_COLON:
+          if (objcMethod || (dep > 0 && this.k(this.open[dep]) === P_LSQUARE && this.ty(this.open[dep]) === TT_OBJC_METHOD_EXPR)) {
+            // clang-format: every `:` of a method declaration ends a
+            // selector part, and the word before it is that part.
+            d.type[t] = TT_OBJC_METHOD_EXPR;
+            const p = this.prev(t);
+            if (p >= 0 && isWordKind(this.k(p))) {
+              d.type[p] = TT_SELECTOR_NAME;
+            }
+            break;
+          }
           this.classifyColon(t, dep);
           break;
         case P_COMMA:
@@ -1122,6 +1169,13 @@ export class Classifier {
             }
           }
           break;
+      }
+      // The first selector part, right after the return type.
+      if (objcMethod && isWordKind(k)) {
+        const p = this.prev(t);
+        if (p >= 0 && this.k(p) === P_RPAREN && this.ty(p) === TT_CAST_RPAREN && d.match[p] >= 0 && this.prev(d.match[p]) === this.first) {
+          d.type[t] = TT_SELECTOR_NAME;
+        }
       }
       // Names: an identifier following a type.
       if (isIdentKind(k) && this.ty(t) === TT_UNKNOWN && this.isStartOfName(t) && !(sawFnParams && d.nest[t] === 0)) {
@@ -1507,6 +1561,86 @@ export class Classifier {
     return false;
   }
 
+  /**
+   * clang-format's StartsObjCMethodExpr for `[` at `t` after `p` (its
+   * previous non-comment token) at depth `dep`: in a context that can be an
+   * expression, not empty, after nothing, an opening bracket, `:`, `return`,
+   * `throw`, a unary operator, a cast or any binary operator's token.
+   */
+  startsObjCExpr(t: i32, p: i32, dep: i32): boolean {
+    const d = this.d;
+    if (this.afterNew[dep] === 1) {
+      return false;
+    }
+    const n = d.nxt[t];
+    if (n < 0 || this.k(n) === P_LBRACE || this.k(n) === P_RSQUARE) {
+      return false;
+    }
+    if (p < 0) {
+      return true;
+    }
+    const pk = this.k(p);
+    const pt = this.ty(p);
+    if (pk === P_COLON || pk === P_LSQUARE || pk === P_LPAREN || pk === KW_RETURN || pk === KW_THROW || pt === TT_UNARY_OPERATOR || pt === TT_CAST_RPAREN) {
+      return true;
+    }
+    // (After a template's `>`, an array type's brackets.)
+    return binPrecedence(pk) > PREC_UNKNOWN && pt !== TT_TEMPLATE_CLOSER;
+  }
+
+  /**
+   * Whether the brackets from `[` at `t` hold `word word` then a `:` at their
+   * own level, with no `,` or `?` before it: an Objective-C message's
+   * selector argument.
+   */
+  messageColon(t: i32): boolean {
+    const d = this.d;
+    const r = d.nxt[t];
+    const s = r >= 0 ? d.nxt[r] : -1;
+    if (r < 0 || s < 0 || !isWordKind(this.k(s))) {
+      return false;
+    }
+    let depth = 0;
+    for (let q = s; q >= 0; q = d.nxt[q]) {
+      const k = this.k(q);
+      if (k === P_LPAREN || k === P_LSQUARE || k === P_LBRACE) {
+        depth++;
+      } else if (k === P_RPAREN || k === P_RSQUARE || k === P_RBRACE) {
+        if (depth === 0) {
+          return false;
+        }
+        depth--;
+      } else if (depth === 0 && (k === P_COMMA || k === P_QUESTION || k === P_SEMI)) {
+        return false;
+      } else if (depth === 0 && k === P_COLON) {
+        return true;
+      }
+    }
+    return false;
+  }
+
+  /** Whether the brackets from `[` at `t` hold a `,` at their own level before any `:`. */
+  listCommaBeforeColon(t: i32): boolean {
+    const d = this.d;
+    let depth = 0;
+    for (let q = d.nxt[t]; q >= 0; q = d.nxt[q]) {
+      const k = this.k(q);
+      if (k === P_LPAREN || k === P_LSQUARE || k === P_LBRACE) {
+        depth++;
+      } else if (k === P_RPAREN || k === P_RSQUARE || k === P_RBRACE) {
+        if (depth === 0) {
+          return false;
+        }
+        depth--;
+      } else if (depth === 0 && k === P_COMMA) {
+        return true;
+      } else if (depth === 0 && k === P_COLON) {
+        return false;
+      }
+    }
+    return false;
+  }
+
   /** Whether `)` at `t` ends a C-style cast: clang-format's rParenEndsCast. */
   endsCast(t: i32): boolean {
     const d = this.d;
@@ -1575,7 +1709,8 @@ export class Classifier {
         return false;
       }
     }
-    if (isIdentKind(nk) || nk === KW_THIS) {
+    // (A reserved word clang lexes as a keyword, `__builtin_offsetof`, is none.)
+    if ((isIdentKind(nk) && !isReservedKeyword(d, n)) || nk === KW_THIS) {
       return true;
     }
     if (nk === P_LPAREN && tp >= 0 && d.prv[tp] >= 0 && isIdentKind(this.k(tp)) && this.k(d.prv[tp]) === P_LPAREN) {
@@ -1973,9 +2108,9 @@ export class Classifier {
             return false;
           }
           if (this.k(next) === KW_OPERATOR) {
-            while (next >= 0 && this.ty(next) !== TT_OVERLOADED_OPERATOR_LPAREN) {
-              next = d.nxt[next];
-            }
+            // (`X::operator op(`, a macro's parameter for the operator, has
+            // no operator name: no declaration.)
+            next = this.skipOperatorName(d.nxt[next]);
             break;
           }
           if (this.k(next) !== K_IDENT) {
@@ -2110,6 +2245,38 @@ const spaceBeforeCode = (d: Doc, l: i32, r: i32): boolean => {
   }
   // `@class`, `@"str"`: Objective-C's `@` keeps the word after it.
   if (lk === P_AT && (isWordKind(rk) || rk === K_STRING)) {
+    return false;
+  }
+  // An Objective-C method declaration: `- (T)sel:(T)arg`.
+  if (d.lObjC[l] === 1 && d.type[d.lFirst[l]] === TT_OBJC_METHOD_SPECIFIER) {
+    if (lt === TT_OBJC_METHOD_SPECIFIER) {
+      return true;
+    }
+    if (lk === P_RPAREN && lt !== TT_ATTRIBUTE_RPAREN && isWordKind(rk)) {
+      return false;
+    }
+  }
+  // `@interface X (Category) <Protocol>`: clang-format's LT_ObjCDecl.
+  if (d.lObjC[l] === 2) {
+    if (rk === P_LPAREN && lk !== P_AT) {
+      return true;
+    }
+    if (rk === P_LESS) {
+      // (Not before a lightweight generic's `<`, which a `:` follows.)
+      const m = d.match[r];
+      const n = m > r ? d.nxt[m] : -1;
+      return !(n >= 0 && d.kind[n] === P_COLON);
+    }
+  }
+  // `@property(getter=isOn)`: no spaces around `=` (clang-format's LT_ObjCProperty).
+  if ((rk === P_EQUAL || lk === P_EQUAL) && isObjCPropertyLine(d, l)) {
+    return false;
+  }
+  // A selector's `:` hugs the part before it and the argument after it.
+  if (rt === TT_OBJC_METHOD_EXPR && rk === P_COLON) {
+    return false;
+  }
+  if (lt === TT_OBJC_METHOD_EXPR && lk === P_COLON && rk !== K_COMMENT) {
     return false;
   }
   // `Args &&...a`: nothing after a pack's `...` that follows `&`, `&&` or `*`.
@@ -2302,17 +2469,18 @@ const spaceBeforeCode = (d: Doc, l: i32, r: i32): boolean => {
   if (rk === P_STAR && lk === P_LPAREN) {
     return false;
   }
+  // A container literal (`x + [a, b]`) has spaces inside its brackets.
   if (lk === P_LSQUARE) {
-    return false;
+    return lt === TT_ARRAY_INITIALIZER_LSQUARE && rk !== P_RSQUARE;
   }
   if (rk === P_RSQUARE) {
-    return false;
+    return d.match[r] >= 0 && d.type[d.match[r]] === TT_ARRAY_INITIALIZER_LSQUARE;
   }
   if (rk === P_LSQUARE && (lk === KW_AUTO || ((lk === KW_CONST || lk === KW_VOLATILE) && autoBeforeQualifiers(d, left)))) {
     // A structured binding: `auto [a, b]`, `auto const [a, b]`.
     return true;
   }
-  if (rk === P_LSQUARE && !(rt === TT_LAMBDA_LSQUARE || rt === TT_DESIGNATED_INITIALIZER_LSQUARE || rt === TT_ATTRIBUTE_SQUARE) && lk !== K_NUMBER) {
+  if (rk === P_LSQUARE && !(rt === TT_LAMBDA_LSQUARE || rt === TT_DESIGNATED_INITIALIZER_LSQUARE || rt === TT_ATTRIBUTE_SQUARE || rt === TT_OBJC_METHOD_EXPR) && lk !== K_NUMBER) {
     return false;
   }
   if (lk === P_LBRACE && rk === P_RBRACE) {
@@ -2468,6 +2636,15 @@ export const requiresIsClause = (d: Doc, rq: i32): boolean => {
   return true;
 };
 
+/** Whether `{` at `lb` opens a requires expression's body (`requires {`, `requires(T t) {`). */
+export const requiresExprBrace = (d: Doc, lb: i32): boolean => {
+  let r = prevCode(d, lb);
+  if (r >= 0 && d.kind[r] === P_RPAREN && d.match[r] >= 0) {
+    r = prevCode(d, d.match[r]);
+  }
+  return r >= 0 && d.kind[r] === KW_REQUIRES && !requiresIsClause(d, r);
+};
+
 /** Whether `auto` comes before token `t` past `const`, `volatile`, `&` and `&&` (a structured binding's specifiers). */
 const autoBeforeQualifiers = (d: Doc, t: i32): boolean => {
   let q = t;
@@ -2493,7 +2670,78 @@ const operatorNameEndsAt = (d: Doc, t: i32): boolean => {
   return false;
 };
 
+/**
+ * The words starting with `_` that clang's lexer, under clang-format's
+ * language options (C++20, C99, Microsoft extensions, Objective-C), reads as
+ * keywords (TokenKinds.def), each between spaces: no identifiers to
+ * clang-format's annotator.
+ */
+const CLANG_RESERVED_KEYWORDS: string =
+  " _Accum _Alignas _Alignof _BitInt _Complex _Decimal128 _Decimal32 _Decimal64 _ExtInt _Float16 _Fract _Generic" +
+  " _Imaginary _Nonnull _Noreturn _Null_unspecified _Nullable _Nullable_result _Sat _Static_assert _Thread_local" +
+  " __FUNCDNAME__ __FUNCSIG__ __FUNCTION__ __PRETTY_FUNCTION__ __alignof __alignof__ __array_extent __array_rank" +
+  " __asm __asm__ __attribute __attribute__ __auto_type __bf16 __bridge __bridge_retain __bridge_retained" +
+  " __bridge_transfer __builtin_COLUMN __builtin_FILE __builtin_FILE_NAME __builtin_FUNCSIG __builtin_FUNCTION" +
+  " __builtin_LINE __builtin_alignof __builtin_available __builtin_bit_cast __builtin_choose_expr" +
+  " __builtin_convertvector __builtin_offsetof __builtin_omp_required_simd_align __builtin_source_location" +
+  " __builtin_va_arg __builtin_vectorelements __can_pass_in_regs __cdecl __char16_t __char32_t __complex" +
+  " __complex__ __const __const__ __contravariant __covariant __datasizeof __declspec __decltype __extension__" +
+  " __fastcall __float128 __forceinline __fp16 __func__ __funcref __has_nothrow_assign __has_nothrow_constructor" +
+  " __has_nothrow_copy __has_nothrow_move_assign __has_trivial_assign __has_trivial_constructor" +
+  " __has_trivial_copy __has_trivial_destructor __has_trivial_move_assign __has_trivial_move_constructor" +
+  " __has_unique_object_representations __has_virtual_destructor __ibm128 __if_exists __if_not_exists __imag" +
+  " __imag__ __inline __inline__ __int128 __int16 __int32 __int64 __int8 __interface __is_abstract __is_aggregate" +
+  " __is_arithmetic __is_array __is_assignable __is_base_of __is_bounded_array __is_class __is_complete_type" +
+  " __is_compound __is_const __is_constructible __is_convertible __is_convertible_to __is_destructible __is_empty" +
+  " __is_enum __is_final __is_floating_point __is_function __is_fundamental __is_integral __is_interface_class" +
+  " __is_literal __is_literal_type __is_lvalue_expr __is_lvalue_reference __is_member_function_pointer" +
+  " __is_member_object_pointer __is_member_pointer __is_nothrow_assignable __is_nothrow_constructible" +
+  " __is_nothrow_destructible __is_nullptr __is_object __is_pod __is_pointer __is_polymorphic __is_reference" +
+  " __is_referenceable __is_rvalue_expr __is_rvalue_reference __is_same __is_same_as __is_scalar __is_scoped_enum" +
+  " __is_sealed __is_signed __is_standard_layout __is_trivial __is_trivially_assignable" +
+  " __is_trivially_constructible __is_trivially_copyable __is_trivially_destructible" +
+  " __is_trivially_equality_comparable __is_trivially_relocatable __is_unbounded_array __is_union __is_unsigned" +
+  " __is_void __is_volatile __kindof __label__ __module_private__ __multiple_inheritance __null __nullptr" +
+  " __objc_no __objc_yes __pascal __private_extern__ __ptr32 __ptr64 __real __real__" +
+  " __reference_binds_to_temporary __reference_constructs_from_temporary __regcall __restrict __restrict__" +
+  " __signed __signed__ __single_inheritance __sptr __stdcall __super __thiscall __thread __typeof __typeof__" +
+  " __unaligned __uptr __vectorcall __virtual_inheritance __volatile __volatile__ __w64 __wchar_t _alignof _asm" +
+  " _declspec _inline _int16 _int32 _int64 _int8 _thiscall _vectorcall ";
+
+/** Whether identifier token `t` is a reserved-name keyword to clang's lexer (`__builtin_offsetof`, `__int64`). */
+export const isReservedKeyword = (d: Doc, t: i32): boolean => {
+  const a = d.start[t];
+  const n = d.end[t] - a;
+  if (d.kind[t] !== K_IDENT || n < 3 || d.at(a) !== 95) {
+    return false;
+  }
+  const m = toI32(CLANG_RESERVED_KEYWORDS.length);
+  for (let i = 0; i + n + 1 < m; i++) {
+    if (CLANG_RESERVED_KEYWORDS.charCodeAt(i) !== 32 || CLANG_RESERVED_KEYWORDS.charCodeAt(i + n + 1) !== 32) {
+      continue;
+    }
+    let same = true;
+    for (let k = 0; k < n; k++) {
+      if (CLANG_RESERVED_KEYWORDS.charCodeAt(i + 1 + k) !== d.at(a + k)) {
+        same = false;
+        break;
+      }
+    }
+    if (same) {
+      return true;
+    }
+  }
+  return false;
+};
+
 /** Whether identifier `t` is a string literal prefix (`L`, `u`, `U`, `u8`, and their `R` forms). */
 const isStringPrefix = (d: Doc, t: i32): boolean => {
   return d.is(t, "L") || d.is(t, "u") || d.is(t, "U") || d.is(t, "u8") || d.is(t, "LR") || d.is(t, "uR") || d.is(t, "UR") || d.is(t, "u8R");
+};
+
+/** Whether line `l` starts with `@property` (clang-format's LT_ObjCProperty). */
+export const isObjCPropertyLine = (d: Doc, l: i32): boolean => {
+  const f = d.lFirst[l];
+  const n = d.nxt[f];
+  return d.kind[f] === P_AT && n >= 0 && d.kind[n] === K_IDENT && d.is(n, "property");
 };

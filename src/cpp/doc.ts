@@ -84,6 +84,10 @@ export class Doc {
   lInClass: i32[]; // 1 when the line sits directly in a class body
   lRetWrap: i32[]; // 1 when a kept break after attributes wraps the return type
   lDefCode: i32[]; // 1 on a #define head whose body is parsed as code
+  objcLang: boolean = false; // the file's name makes clang-format guess its language (Objective-C when it is)
+  objcSeen: boolean = false; // an Objective-C @interface or @protocol body was parsed
+  objcOther: boolean = false; // Objective-C this formatter does not lay out (literals, @implementation, ...)
+  lObjC: i32[]; // 1 on an Objective-C method declaration's line (clang-format's parseObjCMethod)
 
   n: i32 = 0;
   ntok: i32 = 0;
@@ -158,6 +162,7 @@ export class Doc {
     this.lInClass = new Array<i32>(lcap);
     this.lRetWrap = new Array<i32>(lcap);
     this.lDefCode = new Array<i32>(lcap);
+    this.lObjC = new Array<i32>(lcap);
   }
 
   /** Points the document at the next file, keeping the columns. */
@@ -169,6 +174,8 @@ export class Doc {
     this.topHead = -1;
     this.topTail = -1;
     this.failed = false;
+    this.objcSeen = false;
+    this.objcOther = false;
   }
 
   /** Makes room for token `i`. */
@@ -235,6 +242,7 @@ export class Doc {
     this.lInClass = growI32(this.lInClass, n);
     this.lRetWrap = growI32(this.lRetWrap, n);
     this.lDefCode = growI32(this.lDefCode, n);
+    this.lObjC = growI32(this.lObjC, n);
   }
 
   /** The byte at `i`, or 0 past the end. */
