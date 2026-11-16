@@ -29,20 +29,31 @@ leading whitespace ignored (`LEADWS=1` in the scratch rulecmp script).
 
 ## Status
 
-Corpus (`bench/corpus/cmp.sh <bin> swift`): 4969 / 6710 identical before the last batch of
-ports (see the final report for the current number). Every file that fastfmt formats matches
-swiftformat; the rest are skipped (left unchanged), almost all because of a guard.
+Corpus (`WORK=/work/out-swift bash bench/corpus/cmp.sh <bin> swift`): 5684 / 6710 identical.
+Every file that fastfmt formats matches swiftformat byte for byte; the other 1026 are skipped
+(left unchanged), almost all because of a guard below.
+
+Timings on the corpus (6710 files): swiftformat 131.7 s wall on 4 cores, 262.5 s with
+`taskset -c 0`; fastfmt about 10 s on 4 cores (26 s CPU), 26.2 s with `taskset -c 0 ... -j 1`.
 
 Ported rules: everything in `tools/swift/rules.txt` with a module other than `noop`/`guards`.
 No-op rules (`noop`) do nothing with the default options and an undefined Swift version.
 
-Not ported yet, guarded (the file is skipped when the rule's entry condition holds):
+Not ported yet, guarded (`src/swift/guards.ts`: the file is skipped when the rule's entry
+condition holds, so the guard never changes output, it only gives up):
 noForceUnwrapInTests (a `!` in a test case body), swiftTestingTestCaseNames (a `@Test` func
-named `test...`), redundantSwiftTestingSuite (`@Suite`), preferForLoop (`forEach`),
-redundantClosure (`}()`), simplifyGenericConstraints (generic list plus `where`),
-contentBuilder (a `...Builder` attribute), redundantMemberwiseInit (a top-level struct with
-one init), redundantEquatable (`Equatable` plus `func ==`), redundantEnumerated
-(`enumerated`), redundantEmptyView (`EmptyView`), redundantSwiftUIGroup (`Group`).
+named `test...`), preferForLoop (a multi-line `.forEach` closure), contentBuilder (a
+`...Builder` attribute), redundantMemberwiseInit (a top-level struct with one plain-labelled,
+non-failable init), redundantEquatable (`Equatable` plus `func ==`), redundantEnumerated
+(`for (a, b) in ....enumerated()`), redundantEmptyView (`EmptyView`), redundantSwiftUIGroup
+(`Group`). In a 700-file sample they skip, in order: redundantMemberwiseInit 25,
+noForceUnwrapInTests 25, redundantEquatable 17, preferForLoop 13, redundantEnumerated 9,
+contentBuilder 6, redundantSwiftUIGroup 5, redundantEmptyView 3.
+
+Performance: endOfScope(at:) and the current scope are memoised per mutation count;
+replacing a token with an equal one is not a mutation. The next hot spots are
+`lastIndexInType` (scope-aware backward scans), `isInStringLiteral` (rebuilt after every edit)
+and wrapArguments.
 
 Files with `swiftformat:` directives are skipped. A fatalError in a rule skips the file.
 
