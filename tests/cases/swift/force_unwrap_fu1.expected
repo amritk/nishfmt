@@ -1,0 +1,35 @@
+import XCTest
+
+class FooTests: XCTestCase {
+    var foo: Foo!
+
+    func testA() throws {
+        let value = try XCTUnwrap(foo.bar?.value)
+        XCTAssertEqual(foo.bar?.baz, 1)
+        XCTAssertEqual(try XCTUnwrap(foo.bar?.baz), 1.0, accuracy: 0.1)
+        XCTAssertNil(foo?.bar)
+        foo?.bar = baaz
+        foo?.doIt()
+        let x = try XCTUnwrap((foo as? Bar)?.quux)
+        let y = try a + XCTUnwrap(b?.c)
+        let z = try !XCTUnwrap(foo?.isEmpty)
+        let w = try XCTUnwrap(try foo?.bar())
+        print("\(foo!.bar)")
+        let k = \Foo.[0]!
+        if foo?.bar == 1 {}
+        let q = try XCTUnwrap(foo?.bar) ?? 2
+        let r = try XCTUnwrap(foo as? Baz)
+        let s = foo.map { $0! }
+        let t = try XCTUnwrap(try foo[XCTUnwrap(bar)])
+        let u = try XCTUnwrap(await foo?.bar)
+    }
+
+    func testB() throws {
+        let a = try XCTUnwrap(foo)
+        try call(XCTUnwrap(foo), bar: XCTUnwrap(baz?.qux))
+    }
+
+    func helper() {
+        let a = foo!
+    }
+}

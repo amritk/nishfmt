@@ -5,8 +5,9 @@
 // Ported from SwiftFormat 0.64.7 (MIT License, Copyright (c) 2016 Nick
 // Lockwood).
 
-import { SwDecl, swDeclKeywordIndex, swDeclLo, swParseDeclarations, swReleaseDecls } from "./decl";
-import { SwFormatter, swIndexAfterWhere, swIndexBeforeWhere } from "./formatter";
+import { SW_UNI_UNCERTAIN } from "./unicode";
+import { swDeclKeywordIndex, swDeclLo, swParseDeclarations, swReleaseDecls } from "./decl";
+import { SwDecl, SwFormatter, swIndexAfterWhere, swIndexBeforeWhere } from "./formatter";
 import { swCommentDirective } from "./imports";
 import { swIsModifier, swStartOfModifiers } from "./modifiers";
 import { swEndOfScope, swIsDeclarationTypeKeyword, swIsLabel, swParseType, swStartOfScope, swSwitchStatementBranches } from "./parsing";
@@ -68,7 +69,7 @@ export const swRuleBlankLinesAroundMark = (f: SwFormatter): void => {
 export const swRuleBlankLinesBetweenScopes = (f: SwFormatter): void => {
   const stack: boolean[] = [true];
   let spaceable = false;
-  for (let i0 = f.enumStart(); i0 >= 0; i0 = f.enumNext()) {
+  for (let i0 = f.enumStartAll(); i0 >= 0; i0 = f.enumNextAll()) {
     const s = f.s(i0);
     if (f.k(i0) === SW_KEYWORD && (s === "class" || s === "actor" || s === "struct" || s === "extension" || s === "enum")) {
       spaceable = !f.lastIs(SW_T_NON_SPACE_OR_COMMENT_OR_LINEBREAK, i0, SW_KEYWORD, "import");
@@ -188,7 +189,8 @@ const swHeaderCommentRangeAll = (f: SwFormatter): i32[] | null => {
       const b = f.indexAfter(SW_T_NON_SPACE, startIndex);
       if (b >= 0 && f.k(b) === SW_COMMENT) {
         const body = f.s(b);
-        if ((body.startsWith("/") && !body.startsWith("//")) || body.startsWith("swift-tools-version")) {
+        f.updateEnablement(startIndex);
+        if (!f.isEnabled() || (body.startsWith("/") && !body.startsWith("//")) || body.startsWith("swift-tools-version")) {
           return null;
         }
       }
@@ -214,7 +216,8 @@ const swHeaderCommentRangeAll = (f: SwFormatter): i32[] | null => {
       let stop = false;
       if (b >= 0 && f.k(b) === SW_COMMENT) {
         const body = f.s(b);
-        if (body.startsWith("*") && !body.startsWith("**")) {
+        f.updateEnablement(startIndex);
+        if (!f.isEnabled() || (body.startsWith("*") && !body.startsWith("**"))) {
           return null;
         } else if (swCommentDirective(body).length !== 0) {
           stop = true;
@@ -598,7 +601,16 @@ class SwTaElem {
   }
 }
 
-const swTaKey = (t: string): string => (t.startsWith("any") ? t.substring(3) : t);
+const swTaKey = (t: string): string => {
+  for (let i = 0; i < toI32(t.length); i++) {
+    if (t.charCodeAt(i) >= 0x80) {
+      // String.lexicographicallyPrecedes compares Characters.
+      SW_UNI_UNCERTAIN[0] = 1;
+      break;
+    }
+  }
+  return t.startsWith("any") ? t.substring(3) : t;
+};
 
 /** sortTypealiases. */
 export const swRuleSortTypealiases = (f: SwFormatter): void => {

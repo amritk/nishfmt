@@ -355,7 +355,7 @@ export const swRuleIndent = (f: SwFormatter): boolean => {
   const st = new SwIndentState();
   let lastNonSpaceOrLinebreakIndex = -1;
   let lineIndex = 0;
-  for (let i0 = f.enumStart(); i0 >= 0; i0 = f.enumNext()) {
+  for (let i0 = f.enumStartAll(); i0 >= 0; i0 = f.enumNextAll()) {
     if (st.bad || f.errors.length !== 0) {
       f.ei = -1;
       return !st.bad;

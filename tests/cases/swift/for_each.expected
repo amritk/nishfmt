@@ -1,0 +1,85 @@
+func foo() {
+    for string in strings {
+        print(string)
+    }
+    for item in allItems {
+        print(item)
+    }
+    for box in boxen {
+        print(box)
+    }
+    for matrix in matrices {
+        print(matrix)
+    }
+    for person in people {
+        print(person)
+    }
+    for data in data {
+        print(data)
+    }
+    for item in classes {
+        print(item)
+    }
+    for foo in foos.reversed() {
+        print(foo)
+        continue
+    }
+    for item in foo.bar {
+        print(item)
+    }
+    for (key, value) in dict {
+        print(key, value)
+    }
+    for (key, value) in dict {
+        print(key, value)
+    }
+    items.forEach {
+        print($0, $1)
+    }
+    items.forEach {
+        for _ in $0 {
+            return
+        }
+    }
+    for item in items {
+        print("$1 \(item)")
+    }
+    let x = items.forEach {
+        print($0)
+    }
+    try items.forEach {
+        print($0)
+    }
+    for item in items {
+        print(item)
+    }
+    items.map { $0 }.forEach {
+        print($0)
+    }
+    elements.forEach {
+        let item = $0
+        let element = $0
+        print(value)
+    }
+    for lazy in lazies {
+        print(lazy)
+    }
+    in .forEach {
+        print($0)
+    }
+    for _ in items {
+        print("x")
+    }
+    items.forEach { () in
+        print("x")
+    }
+    items.forEach { [weak self] in
+        print($0)
+    }
+    for unsafe item in unsafe items {
+        print(item)
+    }
+    for sheep in sheep {
+        print(sheep)
+    }
+}

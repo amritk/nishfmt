@@ -4,6 +4,7 @@
 // Ported from SwiftFormat 0.64.7 (MIT License, Copyright (c) 2016 Nick
 // Lockwood).
 
+import { swUniCheckPrefix } from "./unicode";
 import { swEndOfConditionalAttributeBlock, swEndOfDeclarationInTypeBody } from "./decl";
 import { SwFormatter, swIndexAfterWhere } from "./formatter";
 import { swCommentDirective } from "./imports";
@@ -258,6 +259,7 @@ export const swRuleDocComments = (f: SwFormatter): void => {
       if (useDoc && !isDoc && !preserve) {
         f.replaceToken(index + 1, SW_COMMENT, marker + body, 0);
       } else if ((!useDoc || isTrailing) && isDoc) {
+        swUniCheckPrefix(body, 4);
         let p = 0;
         while (p < toI32(body.length) && body.charCodeAt(p) === marker.charCodeAt(0)) {
           p++;

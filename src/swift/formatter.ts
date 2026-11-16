@@ -12,14 +12,42 @@ import {
   SW_OP,
   SW_SPACE,
   SW_START,
+  SW_STRBODY,
+  SW_T_KEYWORD,
   SW_T_START_OF_SCOPE,
   SwTok,
   SwTokList,
   swIsEndOfScopeOf,
+  swClosesByCode,
+  swTokIsAt,
+  SW_SC_COLON,
+  SW_SC_END_BRACE,
+  SW_SC_ENDIF,
+  SW_SC_IF,
+  SW_SC_LINE_COMMENT,
+  SW_SC_ATTRIBUTE,
+  SW_SC_CASE,
+  SW_SC_DEFAULT,
+  swIsMultilineStringDelimiter,
   swIsSwitchCaseOrDefault,
   swKindIsComment,
   swTokIs,
 } from "./token";
+
+/** A declaration; its range is an auto-updating reference in the formatter. */
+export class SwDecl {
+  keyword: string;
+  kind: i32;
+  h: i32;
+  body: SwDecl[];
+  parent: SwDecl | null = null;
+  constructor(keyword: string, kind: i32, h: i32) {
+    this.keyword = keyword;
+    this.kind = kind;
+    this.h = h;
+    this.body = [];
+  }
+}
 
 export class SwFormatter {
   t: SwTokList;
@@ -47,6 +75,28 @@ export class SwFormatter {
   // index(of: .startOfScope, before:) results, stamped the same way.
   csVal: i32[];
   csGen: i32[];
+  // index(of: .keyword, before:) results, stamped the same way.
+  kwVal: i32[];
+  kwGen: i32[];
+  // hasImport: the imported module names as " a b ", valid while impMut equals mutations.
+  impNames: string = "";
+  impMut: i32 = -1;
+  // parseDeclarations(), kept while declCacheMut equals mutations (no directives).
+  declCache: SwDecl[] | null = null;
+  declCacheMut: i32 = -1;
+  // `swiftformat:` directives (Formatter.directives), parallel arrays: type (0 enable,
+  // 1 disable), toggle, line, index in line, and the rule names as " a b ".
+  dirType: i32[];
+  dirToggle: boolean[];
+  dirLine: i32[];
+  dirIndex: i32[];
+  dirNames: string[];
+  // Formatter.disabled, set by updateEnablement.
+  disabled: boolean = false;
+  // The current rule's directive names (lowercased name and old names) as " a b ".
+  ruleNames: string = "";
+  // containsMultilineStringLiteral: -1 unknown, 0 no, 1 yes.
+  multilineStrings: i32 = -1;
 
   constructor(t: SwTokList) {
     this.t = t;
@@ -59,6 +109,13 @@ export class SwFormatter {
     this.eoGen = [];
     this.csVal = [];
     this.csGen = [];
+    this.kwVal = [];
+    this.kwGen = [];
+    this.dirType = [];
+    this.dirToggle = [];
+    this.dirLine = [];
+    this.dirIndex = [];
+    this.dirNames = [];
   }
 
   count(): i32 {
@@ -127,7 +184,7 @@ export class SwFormatter {
 
   /** tokens[i].isEndOfScope(tokens[j]). */
   closes(i: i32, j: i32): boolean {
-    return swIsEndOfScopeOf(this.t.k[i], this.t.s[i], this.t.k[j], this.t.s[j], this.t.a[j]);
+    return swClosesByCode(this.t, i, j);
   }
 
   // MARK: enablement
@@ -138,7 +195,139 @@ export class SwFormatter {
   }
 
   isEnabled(): boolean {
-    return !this.ruleDisabled;
+    return !this.ruleDisabled && !this.disabled;
+  }
+
+  hasDirectives(): boolean {
+    return this.dirType.length !== 0;
+  }
+
+  /** Directive.applies(to: currentRule). */
+  directiveApplies(d: i32): boolean {
+    const names = this.dirNames[d];
+    if (names.indexOf(" all ") >= 0) {
+      return true;
+    }
+    let start = 1;
+    while (start < toI32(names.length)) {
+      const e = names.indexOf(" ", start);
+      if (this.ruleNames.indexOf(names.substring(start - 1, e + 1)) >= 0) {
+        return true;
+      }
+      start = e + 1;
+    }
+    return false;
+  }
+
+  /** Whether any directive applies to the current rule. */
+  anyDirectiveApplies(): boolean {
+    for (let d = 0; d < toI32(this.dirType.length); d++) {
+      if (this.directiveApplies(d)) {
+        return true;
+      }
+    }
+    return false;
+  }
+
+  /** The line (from the last linebreak's original line number) of token i: Formatter's physical line. */
+  private lineOf(i: i32): i32 {
+    for (let j = i; j >= 0; j--) {
+      if (this.t.k[j] === SW_LINEBREAK) {
+        return this.t.a[j] + 1;
+      }
+    }
+    return 1;
+  }
+
+  /** updateEnablement(at:). */
+  updateEnablement(index: i32): void {
+    const nd = toI32(this.dirType.length);
+    if (nd === 0) {
+      return;
+    }
+    const physicalLine = this.lineOf(index);
+    let hasApplicableLineDirective = false;
+    for (let d = 0; d < nd; d++) {
+      if (!this.dirToggle[d] && this.dirLine[d] === physicalLine && this.directiveApplies(d)) {
+        hasApplicableLineDirective = true;
+        break;
+      }
+    }
+    if (this.multilineStrings < 0) {
+      this.multilineStrings = 0;
+      for (let j = 0; j < this.count(); j++) {
+        if (swIsMultilineStringDelimiter(this.t.k[j], this.t.s[j])) {
+          this.multilineStrings = 1;
+          break;
+        }
+      }
+    }
+    let enablementIndex = index;
+    if (this.t.k[index] === SW_LINEBREAK && !hasApplicableLineDirective && this.multilineStrings === 1) {
+      const startIndex = swIndexBeforeWhere(this, index, (f, j) => {
+        const k = f.t.k[j];
+        return !(k === SW_SPACE || k === SW_LINEBREAK || k === SW_STRBODY || k === SW_END);
+      });
+      if (startIndex >= 0 && swIsMultilineStringDelimiter(this.t.k[startIndex], this.t.s[startIndex])) {
+        enablementIndex = startIndex;
+      }
+    }
+    let line = 1;
+    let tokenIndex = enablementIndex;
+    if (this.t.k[enablementIndex] === SW_LINEBREAK) {
+      line = this.t.a[enablementIndex] + 1;
+      tokenIndex = 0;
+    } else {
+      for (let j = enablementIndex - 1; j >= 0; j--) {
+        if (this.t.k[j] === SW_LINEBREAK) {
+          line = this.t.a[j] + 1;
+          tokenIndex = enablementIndex - j - 1;
+          break;
+        }
+      }
+    }
+    let disabledCount = 0;
+    let disabledNext = 0;
+    for (let d = 0; d < nd; d++) {
+      if (this.dirLine[d] > line || (this.dirLine[d] === line && this.dirIndex[d] > tokenIndex)) {
+        break;
+      }
+      if (!this.directiveApplies(d)) {
+        continue;
+      }
+      const delta = this.dirType[d] === 1 ? 1 : -1;
+      if (this.dirToggle[d]) {
+        disabledCount += delta;
+      } else if (this.dirLine[d] === line) {
+        disabledNext += delta;
+      } else {
+        disabledNext = 0;
+      }
+    }
+    this.disabled = disabledCount + disabledNext > 0;
+  }
+
+  /** Whether token i starts or ends a comment or is a linebreak (forEachToken updates enablement there). */
+  private isEnablementPoint(i: i32): boolean {
+    const k = this.t.k[i];
+    if (k === SW_LINEBREAK) {
+      return true;
+    }
+    const s = this.t.s[i];
+    return (k === SW_START && (s === "//" || s === "/*")) || (k === SW_END && s === "*/");
+  }
+
+  /** The enablement forEachToken(in: lo..., onlyWhereEnabled: false) would see at index i. */
+  enabledInLoopAt(i: i32, lo: i32): boolean {
+    if (this.dirType.length === 0) {
+      return !this.ruleDisabled;
+    }
+    let j = i;
+    while (j > lo && !this.isEnablementPoint(j)) {
+      j--;
+    }
+    this.updateEnablement(j);
+    return this.isEnabled();
   }
 
   fatalError(msg: string, _at: i32): void {
@@ -242,11 +431,23 @@ export class SwFormatter {
     }
   }
 
-  /** removeTokens(in: lo ..< hi), last first. */
+  /** removeTokens(in: lo ..< hi), last first (references and the enumeration index are updated
+   *  as for one removal at a time; the tokens move once). */
   removeTokens(lo: i32, hi: i32): void {
-    for (let i = hi - 1; i >= lo; i--) {
-      this.removeToken(i);
+    if (hi - lo <= 1) {
+      if (hi - lo === 1) {
+        this.removeToken(lo);
+      }
+      return;
     }
+    for (let i = hi - 1; i >= lo; i--) {
+      this.updateRefs(i, -1);
+      if (this.ei >= i) {
+        this.ei = this.ei - 1;
+      }
+    }
+    this.t.removeRange(lo, hi);
+    this.mutations = this.mutations + 1;
   }
 
   removeLastToken(): void {
@@ -316,7 +517,11 @@ export class SwFormatter {
       this.ei = -1;
       return -1;
     }
-    return this.ei;
+    if (this.dirType.length === 0) {
+      return this.ei;
+    }
+    this.updateEnablement(0);
+    return this.enumSkip(true);
   }
 
   /** Advances forEachToken; answers the next index (or -1 at the end). */
@@ -326,7 +531,51 @@ export class SwFormatter {
       this.ei = -1;
       return -1;
     }
-    return this.ei;
+    if (this.dirType.length === 0) {
+      return this.ei;
+    }
+    return this.enumSkip(true);
+  }
+
+  /** forEachToken(onlyWhereEnabled: false): starts; enablement is updated but nothing is skipped. */
+  enumStartAll(): i32 {
+    this.ei = 0;
+    if (this.ei >= this.count()) {
+      this.ei = -1;
+      return -1;
+    }
+    if (this.dirType.length === 0) {
+      return this.ei;
+    }
+    this.updateEnablement(0);
+    return this.enumSkip(false);
+  }
+
+  enumNextAll(): i32 {
+    this.ei = this.ei + 1;
+    if (this.ei >= this.count()) {
+      this.ei = -1;
+      return -1;
+    }
+    if (this.dirType.length === 0) {
+      return this.ei;
+    }
+    return this.enumSkip(false);
+  }
+
+  /** Updates enablement at ei and moves past tokens where the rule is disabled (when `only`). */
+  private enumSkip(only: boolean): i32 {
+    while (this.ei < this.count()) {
+      if (this.isEnablementPoint(this.ei)) {
+        this.updateEnablement(this.ei);
+      }
+      if (!only || this.isEnabled()) {
+        return this.ei;
+      }
+      this.ei = this.ei + 1;
+    }
+    this.ei = -1;
+    return -1;
   }
 
   // MARK: utilities
@@ -336,24 +585,25 @@ export class SwFormatter {
     const n = this.count();
     const lo = lo0 < 0 ? 0 : lo0;
     const hi = hi0 > n ? n : hi0;
+    const t = this.t;
     const stack: i32[] = [];
     for (let i = lo; i < hi; i++) {
-      const k = this.t.k[i];
-      const s = this.t.s[i];
-      if (k === SW_END && s === "#endif") {
-        while (stack.length !== 0 && !this.tok(stack[toI32(stack.length) - 1], SW_START, "#if")) {
+      const k = t.k[i];
+      const c = t.c[i];
+      if (c === SW_SC_ENDIF) {
+        while (stack.length !== 0 && t.c[stack[toI32(stack.length) - 1]] !== SW_SC_IF) {
           stack.pop();
         }
       }
       const m = toI32(stack.length);
-      if (m !== 0 && this.closes(i, stack[m - 1])) {
+      if (m !== 0 && swClosesByCode(t, i, stack[m - 1])) {
         stack.pop();
-        if (k === SW_LINEBREAK && stack.length === 0 && swTokIs(k, s, this.t.a[i], type)) {
+        if (k === SW_LINEBREAK && stack.length === 0 && swTokIsAt(t, i, type)) {
           return i;
         }
-      } else if (swIsSwitchCaseOrDefault(k, s) && m !== 0 && this.tok(stack[m - 1], SW_START, "#if")) {
+      } else if ((c === SW_SC_CASE || c === SW_SC_DEFAULT || (c === SW_SC_ATTRIBUTE && t.s[i] === "@unknown")) && m !== 0 && t.c[stack[m - 1]] === SW_SC_IF) {
         continue;
-      } else if (m === 0 && swTokIs(k, s, this.t.a[i], type)) {
+      } else if (m === 0 && swTokIsAt(t, i, type)) {
         return i;
       } else if (k === SW_END) {
         return -1;
@@ -377,41 +627,42 @@ export class SwFormatter {
     const n = this.count();
     const lo = lo0 < 0 ? 0 : lo0;
     const hi = hi0 > n ? n : hi0;
+    const t = this.t;
     let linebreakEncountered = false;
     const stack: i32[] = [];
     for (let i = hi - 1; i >= lo; i--) {
-      const k = this.t.k[i];
-      const s = this.t.s[i];
-      const a = this.t.a[i];
+      const k = t.k[i];
+      const c = t.c[i];
       const m = toI32(stack.length);
       const top = m === 0 ? -1 : stack[m - 1];
+      const topc = m === 0 ? -1 : t.c[top];
       if (k === SW_START) {
-        if (s === ":" && top >= 0 && (this.tok(top, SW_END, "#endif") || this.tok(top, SW_END, "}"))) {
+        if (c === SW_SC_COLON && (topc === SW_SC_ENDIF || topc === SW_SC_END_BRACE)) {
           continue;
         }
-        if (top >= 0 && this.closes(top, i)) {
+        if (top >= 0 && swClosesByCode(t, top, i)) {
           stack.pop();
           continue;
         }
-        if (s === "//" && linebreakEncountered) {
+        if (c === SW_SC_LINE_COMMENT && linebreakEncountered) {
           linebreakEncountered = false;
           continue;
         }
-        if (swTokIs(k, s, a, type)) {
+        if (swTokIsAt(t, i, type)) {
           return i;
         }
-        if (s === "//" && hi < n && this.t.k[hi] === SW_LINEBREAK) {
+        if (c === SW_SC_LINE_COMMENT && hi < n && t.k[hi] === SW_LINEBREAK) {
           continue;
         }
         return -1;
       }
-      if (m === 0 && swTokIs(k, s, a, type)) {
+      if (m === 0 && swTokIsAt(t, i, type)) {
         return i;
       }
       if (k === SW_LINEBREAK) {
         linebreakEncountered = true;
       } else if (k === SW_END) {
-        if ((s === "case" || s === "default") && top >= 0 && (this.tok(top, SW_END, "#endif") || this.tok(top, SW_END, "}"))) {
+        if ((c === SW_SC_CASE || c === SW_SC_DEFAULT) && (topc === SW_SC_ENDIF || topc === SW_SC_END_BRACE)) {
           continue;
         }
         stack.push(i);
@@ -424,6 +675,21 @@ export class SwFormatter {
   indexBefore(type: i32, i: i32): i32 {
     if (i <= 0) {
       return -1;
+    }
+    if (type === SW_T_KEYWORD && i <= this.count()) {
+      // The last keyword at the current scope is asked for constantly too.
+      while (toI32(this.kwGen.length) <= i) {
+        this.kwGen.push(0);
+        this.kwVal.push(0);
+      }
+      const kstamp = this.mutations + 1;
+      if (this.kwGen[i] === kstamp) {
+        return this.kwVal[i];
+      }
+      const kr = this.lastIndexInType(type, 0, i);
+      this.kwGen[i] = kstamp;
+      this.kwVal[i] = kr;
+      return kr;
     }
     if (type !== SW_T_START_OF_SCOPE || i > this.count()) {
       return this.lastIndexInType(type, 0, i);

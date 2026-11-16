@@ -5,6 +5,7 @@
 // Ported from SwiftFormat 0.64.7 (MIT License, Copyright (c) 2016 Nick
 // Lockwood).
 
+import { SW_UNI_UNCERTAIN } from "./unicode";
 import { SwFormatter } from "./formatter";
 import { swIsAclModifierStr } from "./modifiers";
 import { swEndOfAttribute, swEndOfScope, swIsAttribute, swStartOfScope } from "./parsing";
@@ -76,6 +77,15 @@ export const swCommentDirective = (s: string): string => {
   return p0;
 };
 
+const swHasNonAscii = (s: string): boolean => {
+  for (let i = 0; i < toI32(s.length); i++) {
+    if (s.charCodeAt(i) >= 0x80) {
+      return true;
+    }
+  }
+  return false;
+};
+
 const swLower = (s: string): string => {
   const n = toI32(s.length);
   const b = new Array<u8>(n);
@@ -112,7 +122,7 @@ export const swParseImports = (f: SwFormatter): SwImportGroup[] => {
   const stack: SwImportGroup[] = [];
   let cur = new SwImportGroup();
   const fileName = f.path.length === 0 ? ".swift" : swFileName(f.path);
-  for (let i = 0; i < f.count(); i++) {
+  for (let i = f.enumStart(); i >= 0; i = f.enumNext()) {
     if (!f.kw(i, "import")) {
       continue;
     }
@@ -260,18 +270,37 @@ export const swParseImports = (f: SwFormatter): SwImportGroup[] => {
 
 /** hasImport(_:). */
 export const swHasImport = (f: SwFormatter, module: string): boolean => {
-  for (const g of swParseImports(f)) {
-    for (const r of g.items) {
-      if (r.module === module) {
-        return true;
+  if (f.hasDirectives()) {
+    // Which imports parseImports sees depends on the current rule's enablement.
+    for (const g of swParseImports(f)) {
+      for (const r of g.items) {
+        if (r.module === module) {
+          return true;
+        }
       }
     }
+    return false;
   }
-  return false;
+  if (f.impMut !== f.mutations) {
+    const parts: string[] = [""];
+    for (const g of swParseImports(f)) {
+      for (const r of g.items) {
+        parts.push(r.module);
+      }
+    }
+    parts.push("");
+    f.impNames = parts.join(" ");
+    f.impMut = f.mutations;
+  }
+  return f.impNames.indexOf(` ${module} `) >= 0;
 };
 
 /** ImportRange `<`. */
 const swImportLess = (a: SwImport, b: SwImport): boolean => {
+  if (swHasNonAscii(a.module) || swHasNonAscii(b.module)) {
+    // Unicode lowercasing and String ordering (canonical equivalence) are not ported.
+    SW_UNI_UNCERTAIN[0] = 1;
+  }
   const la = swLower(a.module);
   const lb = swLower(b.module);
   if (la === lb) {

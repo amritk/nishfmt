@@ -4,6 +4,7 @@
 // Ported from SwiftFormat 0.64.7 (MIT License, Copyright (c) 2016 Nick
 // Lockwood).
 
+import { swEndOfScope } from "./parsing";
 import { SwFormatter } from "./formatter";
 import {
   SW_COMMENT,
@@ -33,6 +34,15 @@ export const swRuleTrailingSpace = (f: SwFormatter): void => {
 
 /** consecutiveBlankLines. */
 export const swRuleConsecutiveBlankLines = (f: SwFormatter): void => {
+  // The current scope can only be a multiline string delimiter inside a multiline string
+  // literal: keep their ranges (auto-updating) and look for the scope only there.
+  const ml: i32[] = [];
+  for (let j = 0; j < f.count(); j++) {
+    if (f.k(j) === SW_START && swIsMultilineStringDelimiter(f.k(j), f.s(j))) {
+      const e = swEndOfScope(f, j);
+      ml.push(f.ref(j, e >= 0 ? e : f.count()));
+    }
+  }
   for (let i = f.enumStart(); i >= 0; i = f.enumNext()) {
     if (f.k(i) !== SW_LINEBREAK) {
       continue;
@@ -41,7 +51,13 @@ export const swRuleConsecutiveBlankLines = (f: SwFormatter): void => {
     if (prevIndex < 0 || f.k(prevIndex) !== SW_LINEBREAK) {
       continue;
     }
-    const scope = f.indexBefore(SW_T_START_OF_SCOPE, i);
+    let inString = false;
+    for (const h of ml) {
+      if (i > f.refLo[h] && i <= f.refHi[h]) {
+        inString = true;
+      }
+    }
+    const scope = inString ? f.indexBefore(SW_T_START_OF_SCOPE, i) : -1;
     if (scope >= 0 && swIsMultilineStringDelimiter(f.k(scope), f.s(scope))) {
       continue;
     }
@@ -53,6 +69,9 @@ export const swRuleConsecutiveBlankLines = (f: SwFormatter): void => {
     } else {
       f.removeTokens(i, f.count());
     }
+  }
+  for (const h of ml) {
+    f.unref(h);
   }
 };
 
@@ -95,7 +114,7 @@ export const swRuleConsecutiveSpaces = (f: SwFormatter): void => {
 /** linebreakAtEndOfFile. */
 export const swRuleLinebreakAtEndOfFile = (f: SwFormatter): void => {
   let wasLinebreak = true;
-  for (let i = 0; i < f.count(); i++) {
+  for (let i = f.enumStartAll(); i >= 0; i = f.enumNextAll()) {
     const k = f.k(i);
     if (k === SW_LINEBREAK) {
       wasLinebreak = true;

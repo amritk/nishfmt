@@ -177,7 +177,7 @@ const swRemoveSelf = (f: SwFormatter, i: i32, exclude: string[], include: string
     return false;
   }
   const nextIndex = f.indexAfter(SW_T_NON_SPACE_OR_LINEBREAK, dotIndex);
-  if (nextIndex < 0 || f.k(nextIndex) !== SW_IDENT) {
+  if (nextIndex < 0 || !f.isEnabled() || f.k(nextIndex) !== SW_IDENT) {
     return false;
   }
   const name = swUnescaped(f.s(nextIndex));
@@ -235,7 +235,7 @@ const swProcessDeclaredVariables = (f: SwFormatter, c: SwSelfCtx, index0: i32, n
     const s = f.s(index);
     const pns = f.indexBefore(SW_T_NON_SPACE, index);
     if (k === SW_IDENT && pns >= 0 && f.k(pns) !== SW_OP) {
-      if (removeSelfKeyword.length !== 0 && s === removeSelfKeyword) {
+      if (removeSelfKeyword.length !== 0 && s === removeSelfKeyword && f.isEnabled()) {
         const ni = f.indexAfter(SW_T_NON_SPACE_OR_COMMENT_OR_LINEBREAK, index);
         if (ni >= 0 && f.op(ni, ".", SW_OP_INFIX)) {
           const nn = f.indexAfter(SW_T_NON_SPACE_OR_COMMENT, ni);
@@ -275,7 +275,7 @@ const swProcessDeclaredVariables = (f: SwFormatter, c: SwSelfCtx, index0: i32, n
           index = nextIndex;
           continue;
         }
-        if (tk === SW_IDENT && rsk.length !== 0 && ts === rsk) {
+        if (tk === SW_IDENT && rsk.length !== 0 && ts === rsk && f.isEnabled()) {
           swRemoveSelf(f, nextIndex, names, include, onlyLocal);
           index = nextIndex;
           continue;
@@ -298,7 +298,7 @@ const swProcessDeclaredVariables = (f: SwFormatter, c: SwSelfCtx, index0: i32, n
                 if (b >= 0) {
                   i = b;
                 }
-              } else if (f.k(i) === SW_IDENT && f.s(i) === rsk) {
+              } else if (f.k(i) === SW_IDENT && f.s(i) === rsk && f.isEnabled()) {
                 swRemoveSelf(f, i, names, include, onlyLocal);
               }
               i--;
@@ -373,6 +373,8 @@ const swProcessDeclaredVariables = (f: SwFormatter, c: SwSelfCtx, index0: i32, n
           swNUnionInto(names, locals);
           brokeInner = true;
           break;
+        } else if (tk === SW_LINEBREAK || (tk === SW_END && ts === "*/")) {
+          f.updateEnablement(nextIndex);
         }
         index = nextIndex;
       }
@@ -412,6 +414,8 @@ const swProcessDeclaredVariables = (f: SwFormatter, c: SwSelfCtx, index0: i32, n
         return index;
       }
       index = e;
+    } else if (k === SW_LINEBREAK || (k === SW_END && s === "*/")) {
+      f.updateEnablement(index);
     }
     index++;
   }
@@ -715,6 +719,8 @@ const swProcessBody = (f: SwFormatter, c: SwSelfCtx, inputLocalNames: string[], 
         i = e >= 0 ? e : n - 1;
       } else if (k === SW_END && (s === "}" || s === "case" || s === "default")) {
         break;
+      } else if (k === SW_LINEBREAK || (k === SW_END && s === "*/")) {
+        f.updateEnablement(i);
       }
       i++;
     }
@@ -928,6 +934,7 @@ const swProcessBody = (f: SwFormatter, c: SwSelfCtx, inputLocalNames: string[], 
     } else if (k === SW_START && (s === "/*" || s === "//")) {
       const e = swEndOfScope(f, index);
       c.idx = e >= 0 ? e : n - 1;
+      f.updateEnablement(c.idx);
     } else if (k === SW_START && (swIsStringDelimiter(k, s) || s === "[" || s === "(")) {
       scopeTok.push(index);
       scopeK.push(k);
@@ -1016,7 +1023,7 @@ const swProcessBody = (f: SwFormatter, c: SwSelfCtx, inputLocalNames: string[], 
       const e = swEndOfScope(f, index);
       c.idx = e >= 0 ? e : n - 1;
     } else if (k === SW_IDENT && s === c.selfKw) {
-      if (!isTypeRoot && !dyn && (!c.staticSelf || classOrStatic)) {
+      if (f.isEnabled() && !isTypeRoot && !dyn && (!c.staticSelf || classOrStatic)) {
         const dotIndex = f.indexAfter(SW_T_NON_SPACE_OR_LINEBREAK, index);
         if (dotIndex >= 0 && f.op(dotIndex, ".", SW_OP_INFIX) && f.indexAfter(SW_T_NON_SPACE_OR_LINEBREAK, dotIndex) >= 0) {
           const cl2 = swClosureLast(c);
@@ -1031,7 +1038,7 @@ const swProcessBody = (f: SwFormatter, c: SwSelfCtx, inputLocalNames: string[], 
         const pi = f.indexAfter(SW_T_NON_SPACE_OR_COMMENT_OR_LINEBREAK, index);
         isTypeOf = pi >= 0 && f.tok(pi, SW_START, "(") && f.nextIs(SW_T_NON_SPACE_OR_COMMENT_OR_LINEBREAK, pi, SW_IDENT, "of");
       }
-      if (!isTypeOf && !isTypeRoot && s === "lazy") {
+      if (!isTypeOf && f.isEnabled() && !isTypeRoot && s === "lazy") {
         lastKeyword = "lazy";
         lastKeywordIndex = index;
       }
@@ -1059,6 +1066,8 @@ const swProcessBody = (f: SwFormatter, c: SwSelfCtx, inputLocalNames: string[], 
         c.idx = c.idx + 1;
         return;
       }
+    } else if (k === SW_LINEBREAK) {
+      f.updateEnablement(index);
     }
     c.idx = c.idx + 1;
   }

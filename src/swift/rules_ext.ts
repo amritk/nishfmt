@@ -6,7 +6,6 @@
 // Lockwood).
 
 import {
-  SwDecl,
   SW_DECL_IFDEF,
   SW_DECL_SIMPLE,
   SW_DECL_TYPE,
@@ -21,7 +20,7 @@ import {
   swStringExcludingLinebreaksAndComments,
 } from "./decl";
 import { swParsePropertyDeclaration } from "./expr";
-import { SwFormatter } from "./formatter";
+import { SwDecl, SwFormatter } from "./formatter";
 import { swHasImport } from "./imports";
 import { swHasModifier, swIndexOfModifier, swModifiersForDeclaration, swStartOfModifiers } from "./modifiers";
 import { swEndOfAttribute, swIsTypeKeywordStr, swIsUnwrap } from "./parsing";

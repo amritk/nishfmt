@@ -4,6 +4,7 @@
 // Ported from SwiftFormat 0.64.7 (MIT License, Copyright (c) 2016 Nick
 // Lockwood).
 
+import { SW_UNI_UNCERTAIN, swUniJoinsPrevious } from "./unicode";
 import { SwFormatter } from "./formatter";
 import { swCurrentScope } from "./parsing";
 import { swLowercased } from "./rules_simple";
@@ -83,8 +84,15 @@ export const swRuleTodos = (f: SwFormatter): void => {
     }
     const keys = ["todo:", "todo :", "fixme:", "fixme :", "mark:", "mark :", "mark-", "mark -"];
     const vals = ["TODO:", "TODO:", "FIXME:", "FIXME:", "MARK:", "MARK:", "MARK: -", "MARK: -"];
+    // A Kelvin sign lowercases to `k` (`mark`); Swift's hasPrefix and dropFirst work on Characters.
+    if (string.substring(0, string.length < 24 ? toI32(string.length) : 24).indexOf("\u212a") >= 0) {
+      SW_UNI_UNCERTAIN[0] = 1;
+    }
     for (let q = 0; q < toI32(keys.length); q++) {
       if (swLowercased(string).startsWith(keys[q])) {
+        if (swUniJoinsPrevious(string, toI32(keys[q].length))) {
+          SW_UNI_UNCERTAIN[0] = 1;
+        }
         string = vals[q] + string.substring(toI32(keys[q].length));
       }
     }
@@ -98,6 +106,9 @@ export const swRuleTodos = (f: SwFormatter): void => {
     } else {
       continue;
     }
+    if (swUniJoinsPrevious(string, toI32(tag.length))) {
+      SW_UNI_UNCERTAIN[0] = 1;
+    }
     let suffix = string.substring(toI32(tag.length));
     if (suffix.length > 0) {
       const c = suffix.charCodeAt(0);
@@ -106,7 +117,13 @@ export const swRuleTodos = (f: SwFormatter): void => {
       }
     }
     while (suffix.length > 0 && (suffix.charCodeAt(0) === 32 || suffix.charCodeAt(0) === 58)) {
+      if (swUniJoinsPrevious(suffix, 1)) {
+        SW_UNI_UNCERTAIN[0] = 1;
+      }
       suffix = suffix.substring(1);
+    }
+    if (tag === "MARK" && swUniJoinsPrevious(suffix, 1) && suffix.startsWith("-")) {
+      SW_UNI_UNCERTAIN[0] = 1;
     }
     if (tag === "MARK" && suffix.startsWith("-") && suffix !== "-" && !suffix.startsWith("- ")) {
       suffix = "- " + suffix.substring(1);

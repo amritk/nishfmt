@@ -3,9 +3,9 @@
 // Ported from SwiftFormat 0.64.7 (MIT License, Copyright (c) 2016 Nick
 // Lockwood).
 
-import { SwDecl, swDeclHi, swDeclIsStoredInstanceProperty, swDeclKeywordIndex, swDeclLo, swParseEnclosingType, swReleaseDecls } from "./decl";
+import { swDeclHi, swDeclIsStoredInstanceProperty, swDeclKeywordIndex, swDeclLo, swParseEnclosingType, swReleaseDecls } from "./decl";
 import { swParsePropertyDeclaration } from "./expr";
-import { SwFormatter } from "./formatter";
+import { SwDecl, SwFormatter } from "./formatter";
 import { swCurrentScope, swEndOfScope, swLastSignificantKeyword } from "./parsing";
 import { swIsInResultBuilder } from "./rules_simple";
 import {
@@ -378,7 +378,7 @@ const swUppercased = (s: string): string => {
 /** availabilityArgumentRanges(), as [lo, hi] pairs. */
 const swAvailabilityRanges = (f: SwFormatter): i32[] => {
   const out: i32[] = [];
-  for (let i = 0; i < f.count(); i++) {
+  for (let i = f.enumStart(); i >= 0; i = f.enumNext()) {
     if (!f.tok(i, SW_START, "(")) {
       continue;
     }

@@ -4,6 +4,7 @@
 // Ported from SwiftFormat 0.64.7 (MIT License, Copyright (c) 2016 Nick
 // Lockwood).
 
+import { swCharacterIsUppercase } from "./unicode";
 import { SwFormatter, swIndexBeforeWhere } from "./formatter";
 import { swCurrentScope, swIsAccessorKeyword, swIsAttribute, swIsTypeKeywordStr, swLastSignificantKeyword, SW_EX_WHERE } from "./parsing";
 import {
@@ -20,6 +21,7 @@ import {
   SW_T_IDENTIFIER,
   SW_T_NON_SPACE,
   SW_T_NON_SPACE_OR_COMMENT_OR_LINEBREAK,
+  SW_T_START_OF_SCOPE,
   SW_T_NON_SPACE_OR_LINEBREAK,
 } from "./token";
 
@@ -90,7 +92,10 @@ export const swRuleStrongOutlets = (f: SwFormatter): void => {
   }
 };
 
-/** String.lowercased() for ASCII letters (other bytes kept). */
+/** String.lowercased() for ASCII letters (other bytes kept). Exact for the prefix and suffix
+ *  tests it is used for (`sourcery:`, `delegate`, `todo:` ...): no other code point lowercases to
+ *  ASCII except U+212A KELVIN SIGN (to `k`, which todos checks for) and U+0130 (to `i` + U+0307,
+ *  which can match no ASCII key). */
 export const swLowercased = (s: string): string => {
   const n = toI32(s.length);
   const b = new Array<u8>(n);
@@ -101,11 +106,27 @@ export const swLowercased = (s: string): string => {
   return String.fromBytes(b, 0, n);
 };
 
+/** index(before: i, where: one of `{`, `:`, `#if`): the (cached) current scope when it is one of
+ *  those; the same backward scan otherwise answers -1, except past a `//` comment start. */
+const swScopeStartBraceColonIf = (f: SwFormatter, i: i32): i32 => {
+  const cs = f.indexBefore(SW_T_START_OF_SCOPE, i);
+  if (cs < 0) {
+    return -1;
+  }
+  if (f.tok(cs, SW_START, "{") || f.tok(cs, SW_START, ":") || f.tok(cs, SW_START, "#if")) {
+    return cs;
+  }
+  if (f.tok(cs, SW_START, "//")) {
+    return swIndexBeforeWhere(f, i, (g, j) => g.tok(j, SW_START, "{") || g.tok(j, SW_START, ":") || g.tok(j, SW_START, "#if"));
+  }
+  return -1;
+};
+
 /** isInResultBuilder(at:). */
 export const swIsInResultBuilder = (f: SwFormatter, i0: i32): boolean => {
   let i = i0;
   while (true) {
-    const startIndex = swIndexBeforeWhere(f, i, (g, j) => g.tok(j, SW_START, "{") || g.tok(j, SW_START, ":") || g.tok(j, SW_START, "#if"));
+    const startIndex = swScopeStartBraceColonIf(f, i);
     if (startIndex < 0) {
       return false;
     }
@@ -151,21 +172,8 @@ export const swIsInResultBuilder = (f: SwFormatter, i0: i32): boolean => {
   }
 };
 
-/** name.first?.isUppercase (ASCII, plus Latin-1/Greek/Cyrillic capitals). */
-export const swFirstIsUppercase = (s: string): boolean => {
-  if (s.length === 0) {
-    return false;
-  }
-  const c = s.charCodeAt(0);
-  if (c < 0x80) {
-    return c >= 65 && c <= 90;
-  }
-  if (c >= 0xc0 && c < 0xe0 && s.length > 1) {
-    const cp = ((c & 0x1f) << 6) | (s.charCodeAt(1) & 0x3f);
-    return (cp >= 0xc0 && cp <= 0xde && cp !== 0xd7) || (cp >= 0x391 && cp <= 0x3a9) || (cp >= 0x410 && cp <= 0x42f);
-  }
-  return false;
-};
+/** name.first?.isUppercase. */
+export const swFirstIsUppercase = (s: string): boolean => s.length !== 0 && swCharacterIsUppercase(s, 0);
 
 /** redundantLet. */
 export const swRuleRedundantLet = (f: SwFormatter): void => {

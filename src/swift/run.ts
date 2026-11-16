@@ -11,13 +11,25 @@ import { swRunRule } from "./dispatch";
 import { swRuleName, SW_RULE_COUNT, SW_RULE_INDENT, SW_RULE_TRAILING_SPACE, swRuleRunsOnce } from "./rules";
 import { SW_COMMENT, SW_ERROR, SW_OP, SwTokList } from "./token";
 import { swTokenize, swValidUtf8 } from "./tokenizer";
+import { SW_UNI_UNCERTAIN } from "./unicode";
+import {
+  SW_DIRECTIVES_OK,
+  swHasDirectiveText,
+  swHasSortDirective,
+  swProcessDirectives,
+  swRuleDirectiveNames,
+  swRuleHonoursDirectives,
+} from "./directives";
 
 /** One file's Swift state; a fresh one formats each file, in a region of its own. */
 export class SwiftEngine {
   debug: boolean = false;
   // FFSWONLY: run only this rule (as `--rules name`), for comparing one rule with the reference.
   only: string = "";
+  // FFSWDIRALL: treat every rule as honouring directives (for testing a rule's directive support).
+  dirAll: boolean = false;
   constructor() {
+    this.dirAll = getenv("FFSWDIRALL") !== null;
     const only = getenv("FFSWONLY");
     if (only !== null) {
       this.only = only;
@@ -55,22 +67,16 @@ const swHasParsingError = (t: SwTokList): boolean => {
   return false;
 };
 
-/** Whether a comment holds a `swiftformat:` directive (not handled yet). */
-const swHasDirectives = (t: SwTokList): boolean => {
-  for (let i = 0; i < t.count(); i++) {
-    if (t.k[i] === SW_COMMENT && t.s[i].indexOf("swiftformat:") >= 0) {
-      return true;
-    }
-  }
-  return false;
-};
-
 /** applyRules: answers the formatted tokens, or null when the file cannot be formatted. */
-const swApplyRules = (e: SwiftEngine, path: string, tokens0: SwTokList): SwTokList | null => {
+const swApplyRules = (e: SwiftEngine, path: string, tokens0: SwTokList, directives: boolean): SwTokList | null => {
   // The rules, in order; the first pass runs trailingSpace and indent first.
+  const names: string[] = [];
+  for (let r = 0; r < SW_RULE_COUNT; r++) {
+    names.push(swRuleName(r));
+  }
   const ordered: i32[] = [];
   for (let r = 0; r < SW_RULE_COUNT; r++) {
-    if (e.only.length !== 0 && swRuleName(r) !== e.only) {
+    if (e.only.length !== 0 && names[r] !== e.only) {
       continue;
     }
     ordered.push(r);
@@ -90,9 +96,25 @@ const swApplyRules = (e: SwiftEngine, path: string, tokens0: SwTokList): SwTokLi
     const f = new SwFormatter(tokens.copy());
     f.path = path;
     f.only = e.only;
+    if (directives && swProcessDirectives(f) !== SW_DIRECTIVES_OK) {
+      if (e.debug) {
+        console.error(`${path}: swiftformat directives that are not handled`);
+      }
+      return null;
+    }
     for (const r of rules) {
-      f.rule = swRuleName(r);
+      f.rule = names[r];
       f.ruleDisabled = false;
+      f.disabled = false;
+      if (f.hasDirectives()) {
+        f.ruleNames = swRuleDirectiveNames(f.rule);
+        if (!e.dirAll && f.anyDirectiveApplies() && !swRuleHonoursDirectives(f.rule)) {
+          if (e.debug) {
+            console.error(`${path}: a directive names ${f.rule}, which does not honour directives yet`);
+          }
+          return null;
+        }
+      }
       if (!swRunRule(f, r)) {
         if (e.debug) {
           console.error(`${path}: rule ${f.rule} is not handled here`);
@@ -141,14 +163,24 @@ export const formatSwift = (e: SwiftEngine, path: string, src: u8[], n: i32, out
     }
     return false;
   }
-  if (swHasDirectives(tokens)) {
+  const directives = swHasDirectiveText(tokens);
+  if (directives && swHasSortDirective(tokens) && (e.only.length === 0 || e.only === "sortDeclarations")) {
     if (e.debug) {
-      console.error(`${path}: swiftformat directives are not handled yet`);
+      console.error(`${path}: swiftformat:sort comments (sortDeclarations is not ported)`);
     }
     return false;
   }
-  const res = swApplyRules(e, path, tokens);
+  SW_UNI_UNCERTAIN[0] = 0;
+  const res = swApplyRules(e, path, tokens, directives);
   if (res === null) {
+    return false;
+  }
+  if (SW_UNI_UNCERTAIN[0] !== 0) {
+    // A character count or case test met a code point whose properties may differ in
+    // SwiftFormat's Unicode version.
+    if (e.debug) {
+      console.error(`${path}: Unicode data this port is unsure of`);
+    }
     return false;
   }
   out.n = 0;

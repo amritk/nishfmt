@@ -125,11 +125,6 @@ import {
   SW_RULE_YODA_CONDITIONS,
 } from "./rules";
 import {
-  swGuardNoForceUnwrapInTests,
-  swGuardPreferForLoop,
-  swGuardRedundantMemberwiseInit,
-} from "./guards";
-import {
   swRuleDuplicateImports,
   swRuleSortImports,
 } from "./imports";
@@ -186,6 +181,9 @@ import {
   swRuleRedundantNilInit,
 } from "./rules_ext";
 import {
+  swRulePreferForLoop,
+} from "./rules_forloop";
+import {
   swRuleSimplifyGenericConstraints,
 } from "./rules_generic";
 import {
@@ -197,6 +195,9 @@ import {
 import {
   swRuleHoistPatternLet,
 } from "./rules_hoistlet";
+import {
+  swRuleRedundantMemberwiseInit,
+} from "./rules_memberwise";
 import {
   swRuleBlankLinesBetweenChainedFunctions,
   swRuleSemicolons,
@@ -283,6 +284,9 @@ import {
 import {
   swRuleUnusedArguments,
 } from "./rules_unused";
+import {
+  swRuleNoForceUnwrapInTests,
+} from "./rules_unwrap";
 import {
   swRuleWrapArguments,
 } from "./rules_wraparg";
@@ -581,7 +585,8 @@ export const swRunRule = (f: SwFormatter, r: i32): boolean => {
       swRuleRedundantType(f);
       return true;
     case SW_RULE_NO_FORCE_UNWRAP_IN_TESTS:
-      return swGuardNoForceUnwrapInTests(f);
+      swRuleNoForceUnwrapInTests(f);
+      return true;
     case SW_RULE_NO_FORCE_TRY_IN_TESTS:
       swRuleNoForceTryInTests(f);
       return true;
@@ -601,7 +606,8 @@ export const swRunRule = (f: SwFormatter, r: i32): boolean => {
       swRuleNestedIf(f);
       return true;
     case SW_RULE_PREFER_FOR_LOOP:
-      return swGuardPreferForLoop(f);
+      swRulePreferForLoop(f);
+      return true;
     case SW_RULE_REDUNDANT_CLOSURE:
       swRuleRedundantClosure(f);
       return true;
@@ -624,7 +630,8 @@ export const swRunRule = (f: SwFormatter, r: i32): boolean => {
       swRuleContentBuilder(f);
       return true;
     case SW_RULE_REDUNDANT_MEMBERWISE_INIT:
-      return swGuardRedundantMemberwiseInit(f);
+      swRuleRedundantMemberwiseInit(f);
+      return true;
     case SW_RULE_REDUNDANT_EQUATABLE:
       swRuleRedundantEquatable(f);
       return true;

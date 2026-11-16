@@ -60,7 +60,7 @@ export const swIsInFunctionBody = (f: SwFormatter, fd: SwFuncDecl, index: i32): 
 };
 
 /** isInStringInterpolation(at:). */
-const swIsInStringInterpolation = (f: SwFormatter, index: i32): boolean => {
+export const swIsInStringInterpolation = (f: SwFormatter, index: i32): boolean => {
   const sos = swStartOfScope(f, index);
   if (sos < 0) {
     return false;
@@ -108,7 +108,7 @@ const swHasEffectPrefix = (effects: string[], prefix: string): boolean => {
 };
 
 /** addThrowsEffect(to:). */
-const swAddThrowsEffect = (f: SwFormatter, fd: SwFuncDecl): void => {
+export const swAddThrowsEffect = (f: SwFormatter, fd: SwFuncDecl): void => {
   if (swEffects(f, fd).indexOf("throws") >= 0) {
     return;
   }

@@ -6,7 +6,7 @@
 // Lockwood).
 
 import { swParsePropertyDeclaration, swParseExpressionEnd } from "./expr";
-import { SwFormatter, swIndexAfterWhere, swIndexBeforeWhere } from "./formatter";
+import { SwDecl, SwFormatter, swIndexAfterWhere, swIndexBeforeWhere } from "./formatter";
 import { swIsFunctionDeclarationKeyword, swParseFunctionDeclaration } from "./funcdecl";
 import { swIsModifierKeyword, swModifiersForDeclaration, swStartOfModifiers } from "./modifiers";
 import {
@@ -44,20 +44,6 @@ export const SW_DECL_SIMPLE: i32 = 0;
 export const SW_DECL_TYPE: i32 = 1;
 export const SW_DECL_IFDEF: i32 = 2;
 
-/** A declaration; its range is an auto-updating reference in the formatter. */
-export class SwDecl {
-  keyword: string;
-  kind: i32;
-  h: i32;
-  body: SwDecl[];
-  parent: SwDecl | null = null;
-  constructor(keyword: string, kind: i32, h: i32) {
-    this.keyword = keyword;
-    this.kind = kind;
-    this.h = h;
-    this.body = [];
-  }
-}
 
 export const swDeclLo = (f: SwFormatter, d: SwDecl): i32 => f.refLo[d.h];
 export const swDeclHi = (f: SwFormatter, d: SwDecl): i32 => f.refHi[d.h];
@@ -304,7 +290,7 @@ export const swPropertyRangeEnd = (bodyEnd: i32, valueEnd: i32, typeEnd: i32, id
 };
 
 /** parseDeclarations(in: lo ..< hi). */
-export const swParseDeclarationsIn = (f: SwFormatter, lo: i32, hi0: i32): SwDecl[] => {
+export const swParseDeclarationsIn = (f: SwFormatter, lo: i32, hi0: i32, useForEachToken: boolean = true): SwDecl[] => {
   const hi = hi0 > f.count() ? f.count() : hi0;
   const kws: string[] = [];
   const kwIdx: i32[] = [];
@@ -329,6 +315,11 @@ export const swParseDeclarationsIn = (f: SwFormatter, lo: i32, hi0: i32): SwDecl
     const keyword = dt.length !== 0 ? dt : f.s(index);
     const eod = swEndOfDeclarationInTypeBody(f, index);
     const end = eod < 0 ? hi - 1 : eod < hi - 1 ? eod : hi - 1;
+    // A declaration where the current rule is disabled by a directive is left out.
+    if (f.hasDirectives() && !(useForEachToken ? f.enabledInLoopAt(index, lo < 0 ? 0 : lo) : f.isEnabled())) {
+      startOfDeclaration = end + 1;
+      continue;
+    }
     kws.push(keyword);
     kwIdx.push(index);
     rlo.push(startOfDeclaration);
@@ -395,7 +386,18 @@ export const swParseDeclarationsIn = (f: SwFormatter, lo: i32, hi0: i32): SwDecl
 };
 
 /** parseDeclarations(). */
-export const swParseDeclarations = (f: SwFormatter): SwDecl[] => swParseDeclarationsIn(f, 0, f.count());
+export const swParseDeclarations = (f: SwFormatter): SwDecl[] => {
+  // As parseDeclarations() caches its result per mutation count (canCacheDeclarations: no
+  // directives): rules that change nothing share one parse.
+  const cached = f.declCache;
+  if (cached !== null && f.declCacheMut === f.mutations && !f.hasDirectives()) {
+    return cached;
+  }
+  const ds = swParseDeclarationsIn(f, 0, f.count());
+  f.declCache = ds;
+  f.declCacheMut = f.mutations;
+  return ds;
+};
 
 /** parseEnclosingType(containing:), or null. */
 export const swParseEnclosingType = (f: SwFormatter, index: i32): SwDecl | null => {
@@ -409,7 +411,7 @@ export const swParseEnclosingType = (f: SwFormatter, index: i32): SwDecl | null 
     const eos = ob >= 0 ? swEndOfScope(f, ob) : -1;
     if (ob >= 0 && eos >= 0) {
       const d = new SwDecl(f.s(tk), SW_DECL_TYPE, f.ref(swStartOfModifiers(f, tk, true), eos));
-      d.body = swParseDeclarationsIn(f, ob + 1, eos);
+      d.body = swParseDeclarationsIn(f, ob + 1, eos, false);
       for (const c of d.body) {
         c.parent = d;
       }
@@ -609,8 +611,20 @@ export const swParseConformances = (f: SwFormatter, keywordIndex: i32): SwConfor
 
 /** Releases the declarations' range references. */
 export const swReleaseDecls = (f: SwFormatter, ds: SwDecl[]): void => {
+  const cached = f.declCache;
+  if (cached !== null && cached === ds) {
+    if (f.declCacheMut === f.mutations && !f.hasDirectives()) {
+      // Still valid: keep it for the next rule.
+      return;
+    }
+    f.declCache = null;
+  }
+  swReleaseDeclTree(f, ds);
+};
+
+const swReleaseDeclTree = (f: SwFormatter, ds: SwDecl[]): void => {
   for (const d of ds) {
     f.unref(d.h);
-    swReleaseDecls(f, d.body);
+    swReleaseDeclTree(f, d.body);
   }
 };
