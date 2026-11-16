@@ -712,8 +712,18 @@ export const dtPin = (p: DtPiece, s: i32): void => {
 
 /** Whether the piece's kind ever constrains others. */
 export const dtHasConstraints = (p: DtPiece): boolean => {
-  const k = p.kind;
-  return k === PK_LIST || k === PK_CONSTRUCTOR || k === PK_CONTROL_FLOW || k === PK_TYPE;
+  switch (p.kind) {
+    case PK_LIST:
+      return p.i0 === CM_TRAILING && p.i2 !== -1;
+    case PK_CONSTRUCTOR:
+      return p.b !== null && p.e !== null;
+    case PK_CONTROL_FLOW:
+      return !p.b0;
+    case PK_TYPE:
+      return p.b !== null;
+    default:
+      return false;
+  }
 };
 
 /** Whether allowedChildShapes can leave out Shape.inline for this kind. */

@@ -177,6 +177,10 @@ export class DtSolution {
   deadEnd: boolean = false;
   overflow: i32 = 0;
   expand: DtPiece[];
+  // While binding: the cache whose stampOf/stateOf hold this solution's
+  // states under `stamp`.
+  bc: DtCache | null = null;
+  stamp: i32 = 0;
 
   constructor(own: i32, binds: DtBind | null, allowed: Map<i32, i32[]> | null) {
     this.own = own;
@@ -209,6 +213,38 @@ export class DtSolution {
     return s < 0 ? S_UNSPLIT : s;
   }
 
+  /** Writes the bound states into `c`'s stamped arrays, for binding. */
+  beginBinding(c: DtCache): void {
+    DT_GEN[1] = DT_GEN[1] + 1;
+    const stamp = DT_GEN[1];
+    this.stamp = stamp;
+    this.bc = c;
+    const so = c.stampOf;
+    const st = c.stateOf;
+    let b = this.binds;
+    while (b !== null) {
+      const id = b.piece.id;
+      if (so[id] !== stamp) {
+        so[id] = stamp;
+        st[id] = b.state;
+      }
+      b = b.parent;
+    }
+  }
+
+  /** stateIfBound, from the stamped arrays while binding. */
+  boundState(piece: DtPiece): i32 {
+    if (piece.pinned >= 0) {
+      return piece.pinned;
+    }
+    const c = this.bc;
+    if (c !== null) {
+      const id = piece.id;
+      return c.stampOf[id] === this.stamp ? c.stateOf[id] : -1;
+    }
+    return this.stateIfBound(piece);
+  }
+
   invalidate(piece: DtPiece): void {
     if (piece.pinned >= 0) {
       return;
@@ -220,10 +256,15 @@ export class DtSolution {
     if (this.deadEnd) {
       return;
     }
-    const bound = this.stateIfBound(piece);
+    const bound = this.boundState(piece);
     if (bound < 0) {
       this.own = this.own + dtStateCost(piece, state);
       this.binds = new DtBind(piece, state, this.binds);
+      const c = this.bc;
+      if (c !== null) {
+        c.stampOf[piece.id] = this.stamp;
+        c.stateOf[piece.id] = state;
+      }
       if (dtHasConstraints(piece)) {
         const ps: DtPiece[] = [];
         const ss: i32[] = [];
@@ -253,7 +294,7 @@ export class DtSolution {
       if (this.deadEnd) {
         break;
       }
-      const bs = this.stateIfBound(off);
+      const bs = this.boundState(off);
       if (bs >= 0) {
         if (dtContainsNewline(off, bs)) {
           this.deadEnd = true;
@@ -273,20 +314,22 @@ export class DtSolution {
           nRemaining++;
         }
       }
+      if (nRemaining === 0) {
+        if (!allowedUnsplit) {
+          this.deadEnd = true;
+          this.valid = false;
+        } else {
+          this.bind(off, S_UNSPLIT);
+        }
+        continue;
+      }
       const remaining: i32[] = [];
-      if (nRemaining > 0) {
-        for (const s of states) {
-          if (!dtContainsNewline(off, s)) {
-            remaining.push(s);
-          }
+      for (const s of states) {
+        if (!dtContainsNewline(off, s)) {
+          remaining.push(s);
         }
       }
-      if (!allowedUnsplit && remaining.length === 0) {
-        this.deadEnd = true;
-        this.valid = false;
-      } else if (remaining.length === 0) {
-        this.bind(off, S_UNSPLIT);
-      } else if (!allowedUnsplit && remaining.length === 1) {
+      if (!allowedUnsplit && remaining.length === 1) {
         this.bind(off, remaining[0]);
       } else if (remaining.length < states.length) {
         const m0 = this.allowed;
@@ -453,10 +496,12 @@ class DtQueue {
 /** Solver.format. */
 export const dtSolve = (cache: DtCache, root: DtPiece, rootState: i32, leading: i32, subsequent: i32): DtSolution => {
   const first = new DtSolution(0, null, null);
+  first.beginBinding(cache);
   if (rootState >= 0) {
     first.bind(root, rootState);
   }
-  dtRunWriter(cache, first, root, leading, subsequent);
+  first.bc = null;
+  dtRunWriter(cache, first, root, leading, subsequent, first.stamp);
   const queue = new DtQueue();
   queue.add(first);
   let best = first;
@@ -501,6 +546,7 @@ const dtExpand = (cache: DtCache, s: DtSolution, root: DtPiece, leading: i32, su
         copy = m;
       }
       const e = new DtSolution(s.own, s.binds, copy);
+      e.beginBinding(cache);
       let ok = true;
       for (let j = 0; j < i; j++) {
         e.bind(ex[j], S_UNSPLIT);
@@ -513,8 +559,9 @@ const dtExpand = (cache: DtCache, s: DtSolution, root: DtPiece, leading: i32, su
         continue;
       }
       e.bind(ep, state);
+      e.bc = null;
       if (!e.deadEnd) {
-        dtRunWriter(cache, e, root, leading, subsequent);
+        dtRunWriter(cache, e, root, leading, subsequent, e.stamp);
         if (!e.deadEnd) {
           queue.add(e);
         }
@@ -524,10 +571,10 @@ const dtExpand = (cache: DtCache, s: DtSolution, root: DtPiece, leading: i32, su
 };
 
 /** Solution._format: runs a CodeWriter over the tree for `s`, measuring. */
-const dtRunWriter = (cache: DtCache, s: DtSolution, root: DtPiece, leading: i32, subsequent: i32): void => {
+const dtRunWriter = (cache: DtCache, s: DtSolution, root: DtPiece, leading: i32, subsequent: i32, stamp: i32): void => {
   const w = cache.writer();
   cache.depth = cache.depth + 1;
-  w.reset(s, leading, subsequent, false);
+  w.reset(s, leading, subsequent, false, stamp);
   w.format(root, false);
   w.finishLine();
   s.expand = w.expandPieces;
@@ -538,7 +585,7 @@ const dtRunWriter = (cache: DtCache, s: DtSolution, root: DtPiece, leading: i32,
 export const dtEmit = (cache: DtCache, s: DtSolution, root: DtPiece, leading: i32, subsequent: i32): void => {
   const w = cache.writer();
   cache.depth = cache.depth + 1;
-  w.reset(s, leading, subsequent, true);
+  w.reset(s, leading, subsequent, true, 0);
   const b = cache.builder;
   if (b !== null) {
     b.indent = leading;
@@ -582,6 +629,7 @@ export class DtWriter {
   foundExpandLine: boolean = false;
   expandPieces: DtPiece[];
   unsolved: DtPiece[];
+  nMarked: i32 = 0; // how many of `unsolved` are on linePieces already
   linePieces: DtPiece[];
   nLine: i32 = 0;
   gen: i32 = 0;
@@ -600,7 +648,11 @@ export class DtWriter {
     this.linePieces = [];
   }
 
-  reset(sol: DtSolution, leading: i32, subsequent: i32, emit: boolean): void {
+  /**
+   * Starts a run over `sol`, whose states are in the cache's stamped arrays
+   * under `stamp` already unless that is 0.
+   */
+  reset(sol: DtSolution, leading: i32, subsequent: i32, emit: boolean, stamp0: i32): void {
     this.sol = sol;
     this.emit = emit;
     this.items = 0;
@@ -624,6 +676,10 @@ export class DtWriter {
       this.pushInd(IN_NONE, subsequent);
     }
     this.newGen();
+    if (stamp0 > 0) {
+      this.stamp = stamp0;
+      return;
+    }
     // Materialize the solution's states.
     DT_GEN[1] = DT_GEN[1] + 1;
     const stamp = DT_GEN[1];
@@ -674,6 +730,7 @@ export class DtWriter {
   }
 
   newGen(): void {
+    this.nMarked = 0;
     DT_GEN[0] = DT_GEN[0] + 1;
     this.gen = DT_GEN[0];
   }
@@ -694,8 +751,10 @@ export class DtWriter {
     } else {
       this.softChars = 0;
     }
-    if (!this.foundExpandLine && this.unsolved.length > 0) {
-      for (const p of this.unsolved) {
+    const nu = toI32(this.unsolved.length);
+    if (!this.foundExpandLine && nu > this.nMarked) {
+      for (let i = this.nMarked; i < nu; i++) {
+        const p = this.unsolved[i];
         if (p.mark !== this.gen) {
           p.mark = this.gen;
           if (this.nLine < toI32(this.linePieces.length)) {
@@ -706,6 +765,7 @@ export class DtWriter {
           this.nLine = this.nLine + 1;
         }
       }
+      this.nMarked = nu;
     }
   }
 
@@ -779,6 +839,19 @@ export class DtWriter {
   }
 
   formatInline(piece: DtPiece): void {
+    if (!this.emit && piece.kind === PK_CODE && piece.list.length === 0 && piece.list2.length === 0 && piece.lines.length === 1 && !dtHasStates(piece)) {
+      // The common leaf, measured: what the general path below does for
+      // it, where its shape stays inline.
+      this.write(piece.lines[0], piece.lens[0], piece.soft);
+      const n = this.nFmt;
+      if (n > 0) {
+        const parent = this.fmtPiece[n - 1];
+        if (dtMayRefuseInline(parent.kind) && (dtAllowed(parent, this.state(parent), piece) & SH_INLINE) === 0) {
+          this.sol.invalidate(parent);
+        }
+      }
+      return;
+    }
     const unsolved = !this.emit && dtHasStates(piece) && this.stateIfBound(piece) < 0;
     if (unsolved) {
       this.unsolved.push(piece);
@@ -805,6 +878,9 @@ export class DtWriter {
     const shape = this.fmtShape[n0];
     if (unsolved) {
       this.unsolved.pop();
+      if (this.nMarked > toI32(this.unsolved.length)) {
+        this.nMarked = toI32(this.unsolved.length);
+      }
     }
     if (n0 > 0 && !this.emit) {
       const parent = this.fmtPiece[n0 - 1];

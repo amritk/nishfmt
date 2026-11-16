@@ -85,6 +85,20 @@ import {
 export const C_LINE: i32 = 1; // `//` comment
 export const C_BLOCK: i32 = 2; // `/* */` comment
 
+const dtGrowI32 = (a: i32[], cap: i32): i32[] => {
+  const b = new Array<i32>(cap);
+  b.set(a);
+  return b;
+};
+
+const dtGrowBool = (a: boolean[], cap: i32): boolean[] => {
+  const b = new Array<boolean>(cap);
+  for (let i = 0; i < toI32(a.length); i++) {
+    b[i] = a[i];
+  }
+  return b;
+};
+
 /** The tokens of one file and the comments before each. */
 export class DtTokens {
   src: u8[];
@@ -122,7 +136,8 @@ export class DtTokens {
   constructor(src: u8[], n: i32) {
     this.src = src;
     this.n = n;
-    const cap = n + 3;
+    // About one token per four bytes and a comment per 64; both grow.
+    const cap = (n >> 2) + 16;
     this.kind = new Array<i32>(cap);
     this.kw = new Array<i32>(cap);
     this.start = new Array<i32>(cap);
@@ -133,13 +148,45 @@ export class DtTokens {
     this.lineE = new Array<i32>(cap);
     this.pred = new Array<boolean>(cap);
     this.gt = new Array<boolean>(cap);
-    const cc = (n >> 1) + 2;
+    const cc = (n >> 6) + 16;
     this.cStart = new Array<i32>(cc);
     this.cEnd = new Array<i32>(cc);
     this.cKind = new Array<i32>(cc);
     this.cLineS = new Array<i32>(cc);
     this.cLineE = new Array<i32>(cc);
     this.cCol1 = new Array<boolean>(cc);
+  }
+
+  /** Makes room for at least one more token. */
+  roomForToken(): void {
+    if (this.count + 1 < toI32(this.kind.length)) {
+      return;
+    }
+    const cap = toI32(this.kind.length) * 2;
+    this.kind = dtGrowI32(this.kind, cap);
+    this.kw = dtGrowI32(this.kw, cap);
+    this.start = dtGrowI32(this.start, cap);
+    this.end = dtGrowI32(this.end, cap);
+    this.cFirst = dtGrowI32(this.cFirst, cap);
+    this.cCount = dtGrowI32(this.cCount, cap);
+    this.lineS = dtGrowI32(this.lineS, cap);
+    this.lineE = dtGrowI32(this.lineE, cap);
+    this.pred = dtGrowBool(this.pred, cap);
+    this.gt = dtGrowBool(this.gt, cap);
+  }
+
+  /** Makes room for at least one more comment. */
+  roomForComment(): void {
+    if (this.nc + 1 < toI32(this.cStart.length)) {
+      return;
+    }
+    const cap = toI32(this.cStart.length) * 2;
+    this.cStart = dtGrowI32(this.cStart, cap);
+    this.cEnd = dtGrowI32(this.cEnd, cap);
+    this.cKind = dtGrowI32(this.cKind, cap);
+    this.cLineS = dtGrowI32(this.cLineS, cap);
+    this.cLineE = dtGrowI32(this.cLineE, cap);
+    this.cCol1 = dtGrowBool(this.cCol1, cap);
   }
 
   /** Whether token `t` is spelled `s`. */
@@ -179,6 +226,7 @@ export class DtTokens {
     } else if (k === T_USHR_EQ) {
       rest = T_SHR_EQ;
     }
+    this.roomForToken();
     for (let i = this.count; i > t + 1; i--) {
       this.kind[i] = this.kind[i - 1];
       this.kw[i] = this.kw[i - 1];
@@ -259,6 +307,7 @@ export class DtScanner {
 
   add(kind: i32, a: i32, b: i32): void {
     const t = this.t;
+    t.roomForToken();
     const i = t.count;
     t.kind[i] = kind;
     t.kw[i] = K_NONE;
@@ -299,6 +348,7 @@ export class DtScanner {
 
   addComment(kind: i32, a: i32, b: i32): void {
     const t = this.t;
+    t.roomForComment();
     const i = t.nc;
     t.cStart[i] = a;
     t.cEnd[i] = b;

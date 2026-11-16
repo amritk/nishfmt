@@ -170,10 +170,12 @@ export const dtEmptyComments = (): DtComments => {
 export class DtCommentWriter {
   t: DtTokens;
   taken: boolean[];
+  none: DtComments; // shared: a DtComments never changes once built
 
   constructor(t: DtTokens) {
     this.t = t;
     this.taken = new Array<boolean>(t.count + 8);
+    this.none = dtEmptyComments();
   }
 
   hasComments(tok: i32): boolean {
@@ -182,7 +184,7 @@ export class DtCommentWriter {
 
   takeCommentsBefore(tok: i32): DtComments {
     if (this.taken[tok]) {
-      return dtEmptyComments();
+      return this.none;
     }
     this.taken[tok] = true;
     return this.commentsBeforeRaw(tok);
@@ -190,10 +192,10 @@ export class DtCommentWriter {
 
   commentsBefore(tok: i32): DtComments {
     if (this.t.cCount[tok] === 0) {
-      return dtEmptyComments();
+      return this.none;
     }
     if (this.taken[tok]) {
-      return dtEmptyComments();
+      return this.none;
     }
     return this.commentsBeforeRaw(tok);
   }
