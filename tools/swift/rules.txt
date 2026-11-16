@@ -85,3 +85,5 @@ docComments rules_doc swRuleDocComments
 extensionAccessControl rules_acl swRuleExtensionAccessControl
 redundantInternal rules_acl swRuleRedundantInternal
 redundantPublic rules_acl swRuleRedundantPublic
+redundantSelf rules_self swRuleRedundantSelf
+redundantStaticSelf rules_self swRuleRedundantStaticSelf

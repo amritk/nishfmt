@@ -57,6 +57,8 @@ import {
   SW_RULE_REDUNDANT_PATTERN,
   SW_RULE_REDUNDANT_PUBLIC,
   SW_RULE_REDUNDANT_RAW_VALUES,
+  SW_RULE_REDUNDANT_SELF,
+  SW_RULE_REDUNDANT_STATIC_SELF,
   SW_RULE_REDUNDANT_TYPED_THROWS,
   SW_RULE_REDUNDANT_VOID_RETURN_TYPE,
   SW_RULE_SEMICOLONS,
@@ -146,6 +148,10 @@ import {
   swRuleRedundantRawValues,
   swRuleRedundantVoidReturnType,
 } from "./rules_redundant1";
+import {
+  swRuleRedundantSelf,
+  swRuleRedundantStaticSelf,
+} from "./rules_self";
 import {
   swRuleRedundantBreak,
   swRuleRedundantGet,
@@ -436,6 +442,12 @@ export const swRunRule = (f: SwFormatter, r: i32): boolean => {
       return true;
     case SW_RULE_REDUNDANT_PUBLIC:
       swRuleRedundantPublic(f);
+      return true;
+    case SW_RULE_REDUNDANT_SELF:
+      swRuleRedundantSelf(f);
+      return true;
+    case SW_RULE_REDUNDANT_STATIC_SELF:
+      swRuleRedundantStaticSelf(f);
       return true;
     default:
       return false;
