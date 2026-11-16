@@ -164,6 +164,7 @@ import {
   N_WILDCARD_PATTERN,
   N_YIELD_STATEMENT,
   dtNodeName,
+  dtSig,
 } from "./ast";
 import {
   dtKidsNow,
@@ -221,6 +222,8 @@ import {
   WS_NONE,
   WS_SPACE,
   dtPin,
+  dtIs37,
+  dtV313,
   dtPreventSplit,
 } from "./pieces";
 import {
@@ -707,11 +710,14 @@ export class DtVisitor {
   ecNested: i32[];
   failed: boolean = false;
   why: string = "";
+  // Each node's parent, for the pre-3.13 styles that look at it.
+  parent: i32[];
 
   constructor(t: DtTokens, a: DtAst) {
     this.t = t;
     this.a = a;
     this.src = t.src;
+    this.parent = [];
     this.pf = new DtPieces();
     this.cw = new DtCommentWriter(t);
     this.tb = new Array<u8>(256);
@@ -2181,6 +2187,11 @@ export class DtVisitor {
   }
 
   writeTypeTest(expr: i32, keyword: i32, type: i32, bang: i32): void {
+    if (!dtV313()) {
+      // Before 3.13 (blockFormatTypeTest), a type test is an infix.
+      this.writeInfix(expr, keyword, type, false, bang, dtIs37() ? IN_INFIX : IN_EXPRESSION);
+      return;
+    }
     const ep = this.nodePiece(expr, false, NC_NONE);
     this.begin();
     this.token(keyword);
@@ -2307,8 +2318,38 @@ export class DtVisitor {
   // -------------------------------------------------------------------------
   // AstNodeVisitor.run.
 
+  setParents(n: i32): void {
+    const sig = dtSig(this.kind(n));
+    for (let i = 0; i < toI32(sig.length); i++) {
+      const c = sig.charCodeAt(i);
+      const v = this.f(n, i);
+      if (v < 0) {
+        continue;
+      }
+      if (c === 78) {
+        this.parent[v] = n;
+        this.setParents(v);
+      } else if (c === 76) {
+        for (let j = 0; j < this.a.len(v); j++) {
+          const x = this.a.at(v, j);
+          this.parent[x] = n;
+          this.setParents(x);
+        }
+      }
+    }
+  }
+
+  parentOf(n: i32): i32 {
+    return n >= 0 && n < toI32(this.parent.length) ? this.parent[n] : -1;
+  }
+
   /** The piece for the whole compilation unit. */
   buildUnit(unit: i32): DtPiece {
+    if (!dtV313()) {
+      this.parent = new Array<i32>(this.a.n + 1);
+      this.parent.fill(-1);
+      this.setParents(unit);
+    }
     const seq = new DtSeqBuilder(this);
     const script = this.f(unit, 0);
     if (script >= 0) {
@@ -2327,11 +2368,13 @@ export class DtVisitor {
     for (let i = di; i < nd; i++) {
       const d = this.a.at(dirs, i);
       let needsBlank = false;
-      const section = this.directiveSection(d);
-      if (section !== 3 && preceding !== 3 && section !== preceding) {
-        needsBlank = true;
+      if (dtV313()) {
+        const section = this.directiveSection(d);
+        if (section !== 3 && preceding !== 3 && section !== preceding) {
+          needsBlank = true;
+        }
+        preceding = section;
       }
-      preceding = section;
       seq.visit(d, IN_NONE, needsBlank);
     }
     seq.addBlank();
@@ -2348,9 +2391,9 @@ export class DtVisitor {
       } else if (k === N_EXTENSION_DECLARATION) {
         addBlankLines = this.kind(this.f(d, 6)) === N_BLOCK_CLASS_BODY;
       } else if (k === N_EXTENSION_TYPE_DECLARATION) {
-        addBlankLines = this.kind(this.f(d, 5)) === N_BLOCK_CLASS_BODY;
+        addBlankLines = dtV313() && this.kind(this.f(d, 5)) === N_BLOCK_CLASS_BODY;
       } else if (k === N_MIXIN_DECLARATION) {
-        addBlankLines = this.kind(this.f(d, 7)) === N_BLOCK_CLASS_BODY;
+        addBlankLines = dtV313() && this.kind(this.f(d, 7)) === N_BLOCK_CLASS_BODY;
       }
       seq.visit(d, IN_NONE, needsBlank || addBlankLines);
       needsBlank = addBlankLines || this.hasNonEmptyBody(d);
@@ -3323,7 +3366,12 @@ export class DtVisitor {
       this.token(rp, false, false, true);
       return;
     }
-    const b = new DtListBuilder(this, dtStyleDefault());
+    // Before 3.13, an extension type's representation allows no trailing comma.
+    let listStyle = dtStyleDefault();
+    if (!dtV313() && this.kind(this.parentOf(this.parentOf(n))) === N_EXTENSION_TYPE_DECLARATION) {
+      listStyle = new DtListStyle(CM_NON_TRAILING, 1, false);
+    }
+    const b = new DtListBuilder(this, listStyle);
     this.begin();
     this.token(lp);
     if (np > 0 && firstOptional === 0) {
@@ -3337,7 +3385,7 @@ export class DtVisitor {
       b.visit(this.a.at(params, i));
     }
     b.rightBracket(rp, this.f(n, 3));
-    this.add(b.build(false, true));
+    this.add(b.build(false, dtV313()));
   }
 
   visitIfElement(n: i32): void {
@@ -3610,6 +3658,7 @@ class DtChainBuilder {
     p.i2 = indent;
     p.b0 = cascade;
     p.b1 = this.hasSingleElementTarget;
+    p.b2 = this.allowSplitInTarget;
     return p;
   }
 
@@ -3747,7 +3796,8 @@ class DtChainBuilder {
 
   postfixPrepare(e: i32): void {
     this.postfixOnTarget = this.calls.length === 0;
-    if (this.postfixOnTarget) {
+    // Before 3.13 the target's properties were not recalculated here.
+    if (this.postfixOnTarget && dtV313()) {
       this.initTargetProperties(e);
     }
   }
@@ -3778,7 +3828,7 @@ class DtChainBuilder {
 
   initTargetProperties(e: i32): void {
     this.allowSplitInTarget = this.v.canBlockSplit(e);
-    this.hasSingleElementTarget = this.v.hasSingleElement(e);
+    this.hasSingleElementTarget = dtV313() && this.v.hasSingleElement(e);
   }
 }
 

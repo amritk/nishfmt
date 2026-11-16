@@ -60,6 +60,11 @@ import {
   PK_TYPE_PARAMETER_BOUND,
   PK_TYPE_TEST,
   PK_VARIABLE,
+  PK_ASSIGN37,
+  S_1_1,
+  S_3_1,
+  dtIs37,
+  dtV313,
   PRIMARY_BEFORE_CLAUSES,
   PRIMARY_BETWEEN_CLAUSES,
   S_SPLIT,
@@ -77,6 +82,7 @@ import {
   WS_NONE,
   WS_SPACE,
   dtAllowed,
+  dtFixedState,
   dtConstraints,
   dtHasConstraints,
   dtMayRefuseInline,
@@ -620,6 +626,7 @@ export class DtWriter {
   column: i32 = 0;
   softChars: i32 = 0;
   indType: i32[];
+  indColl: i32[]; // 3.7: how much of each level can collapse
   indSpaces: i32[];
   nInd: i32 = 0;
   fmtPiece: DtPiece[];
@@ -639,6 +646,7 @@ export class DtWriter {
     this.sol = new DtSolution(0, null, null);
     this.pageWidth = cache.pageWidth;
     this.indType = new Array<i32>(16);
+    this.indColl = new Array<i32>(16);
     this.indSpaces = new Array<i32>(16);
     this.fmtPiece = [];
     this.fmtShape = new Array<i32>(16);
@@ -714,7 +722,32 @@ export class DtWriter {
     return s < 0 ? S_UNSPLIT : s;
   }
 
+  /** Solution.tryBindByPageWidth's bind, mirrored into the stamped states. */
+  bindNow(piece: DtPiece, state: i32): void {
+    const sol = this.sol;
+    const before = sol.binds;
+    sol.bind(piece, state);
+    const so = this.cache.stampOf;
+    const st = this.cache.stateOf;
+    let b = sol.binds;
+    while (b !== null) {
+      if (before !== null && b === before) {
+        break;
+      }
+      const id = b.piece.id;
+      if (so[id] !== this.stamp) {
+        so[id] = this.stamp;
+        st[id] = b.state;
+      }
+      b = b.parent;
+    }
+  }
+
   pushInd(kind: i32, spaces: i32): void {
+    this.pushIndColl(kind, spaces, 0);
+  }
+
+  pushIndColl(kind: i32, spaces: i32, coll: i32): void {
     const n = this.nInd;
     if (n >= toI32(this.indType.length)) {
       const t = new Array<i32>(n * 2);
@@ -723,10 +756,36 @@ export class DtWriter {
       const s = new Array<i32>(n * 2);
       s.set(this.indSpaces);
       this.indSpaces = s;
+      const c = new Array<i32>(n * 2);
+      c.set(this.indColl);
+      this.indColl = c;
     }
     this.indType[n] = kind;
     this.indSpaces[n] = spaces;
+    this.indColl[n] = coll;
     this.nInd = n + 1;
+  }
+
+  /** _pushIndent3Dot7. */
+  pushIndent37(spaces: i32, canCollapse: boolean): void {
+    const top = this.nInd - 1;
+    const parentIndent = this.indSpaces[top];
+    const parentCollapse = this.indColl[top];
+    if (parentCollapse === spaces) {
+      this.pushIndColl(IN_NONE, parentIndent, 0);
+    } else if (canCollapse) {
+      this.pushIndColl(IN_NONE, parentIndent + spaces, spaces);
+    } else {
+      this.pushIndColl(IN_NONE, parentIndent + spaces, 0);
+    }
+  }
+
+  pushCollapsibleIndent(): void {
+    if (dtIs37()) {
+      this.pushIndent37(dtIndentSpaces(IN_EXPRESSION), true);
+    } else {
+      this.pushIndent(IN_CONTROL_FLOW_CLAUSE);
+    }
   }
 
   newGen(): void {
@@ -770,6 +829,10 @@ export class DtWriter {
   }
 
   pushIndent(kind: i32): void {
+    if (dtIs37()) {
+      this.pushIndent37(dtIndentSpaces(kind), false);
+      return;
+    }
     const top = this.nInd - 1;
     const pt = this.indType[top];
     let offset = dtIndentSpaces(kind);
@@ -846,13 +909,21 @@ export class DtWriter {
       const n = this.nFmt;
       if (n > 0) {
         const parent = this.fmtPiece[n - 1];
-        if (dtMayRefuseInline(parent.kind) && (dtAllowed(parent, this.state(parent), piece) & SH_INLINE) === 0) {
+        if (!dtIs37() && dtMayRefuseInline(parent.kind) && (dtAllowed(parent, this.state(parent), piece) & SH_INLINE) === 0) {
           this.sol.invalidate(parent);
         }
       }
       return;
     }
-    const unsolved = !this.emit && dtHasStates(piece) && this.stateIfBound(piece) < 0;
+    let unsolved = !this.emit && dtHasStates(piece) && this.stateIfBound(piece) < 0;
+    if (unsolved && !dtV313()) {
+      // Before 3.13, pieces are bound by page width while formatting.
+      const fixed = dtFixedState(piece, this.pageWidth - this.indSpaces[0]);
+      if (fixed >= 0) {
+        this.bindNow(piece, fixed);
+        unsolved = false;
+      }
+    }
     if (unsolved) {
       this.unsolved.push(piece);
     }
@@ -884,7 +955,11 @@ export class DtWriter {
     }
     if (n0 > 0 && !this.emit) {
       const parent = this.fmtPiece[n0 - 1];
-      if (shape !== SH_INLINE || dtMayRefuseInline(parent.kind)) {
+      if (dtIs37()) {
+        if (shape !== SH_INLINE && dtAllowed(parent, this.state(parent), piece) === SH_INLINE) {
+          this.sol.invalidate(parent);
+        }
+      } else if (shape !== SH_INLINE || dtMayRefuseInline(parent.kind)) {
         const allowed = dtAllowed(parent, this.state(parent), piece);
         if ((allowed & shape) === 0) {
           this.sol.invalidate(parent);
@@ -938,7 +1013,7 @@ export class DtWriter {
   finishLine(): void {
     if (this.column > this.pageWidth) {
       let overflow = this.column - this.pageWidth;
-      if (this.softChars > 0) {
+      if (dtV313() && this.softChars > 0) {
         if (this.softChars >= overflow) {
           overflow = 1;
         } else {
@@ -1032,6 +1107,32 @@ const dtFormatPiece = (w: DtWriter, p: DtPiece, s: i32): void => {
         w.format(dtReq(p.b), false);
       }
       return;
+    case PK_ASSIGN37: {
+      const atOp = s === S_3_1;
+      if (atOp) {
+        w.pushIndent(IN_EXPRESSION);
+      }
+      const left = p.a;
+      if (left !== null) {
+        w.format(left, false);
+      }
+      w.pushIndent(IN_EXPRESSION);
+      w.format(dtReq(p.b), false);
+      w.popIndent();
+      w.splitIf(atOp);
+      const indentRight = s === S_1_1 && !p.b1;
+      if (indentRight) {
+        w.pushIndent(IN_EXPRESSION);
+      }
+      w.format(dtReq(p.c), false);
+      if (indentRight) {
+        w.popIndent();
+      }
+      if (atOp) {
+        w.popIndent();
+      }
+      return;
+    }
     case PK_CASE_EXPRESSION: {
       const indentPattern = !p.b0 && !p.b1 && s === CASE_BEFORE_WHEN_AND_BODY;
       if (indentPattern) {
@@ -1168,7 +1269,7 @@ const dtFormatPiece = (w: DtWriter, p: DtPiece, s: i32): void => {
       w.format(dtReq(p.a), false);
       w.space();
       if (p.b0) {
-        w.pushIndent(IN_CONTROL_FLOW_CLAUSE);
+        w.pushCollapsibleIndent();
       }
       w.format(dtReq(p.b), false);
       if (p.b0) {
@@ -1204,7 +1305,7 @@ const dtFormatPiece = (w: DtWriter, p: DtPiece, s: i32): void => {
       w.format(dtReq(p.a), false);
       w.splitIf(s === IFCASE_BEFORE_CASE || s === IFCASE_BEFORE_CASE_AND_WHEN);
       if (!p.b0) {
-        w.pushIndent(IN_CONTROL_FLOW_CLAUSE);
+        w.pushCollapsibleIndent();
       }
       w.format(dtReq(p.b), false);
       if (!p.b0) {
@@ -1224,6 +1325,17 @@ const dtFormatPiece = (w: DtWriter, p: DtPiece, s: i32): void => {
       const ops = p.list;
       const n = toI32(ops.length);
       w.pushIndent(p.i0);
+      if (dtIs37()) {
+        // _InfixPiece3Dot7.
+        for (let i = 0; i < n; i++) {
+          w.format(ops[i], s === S_SPLIT && i > 0 && i < n - 1);
+          if (i < n - 1) {
+            w.splitIf(s === S_SPLIT);
+          }
+        }
+        w.popIndent();
+        return;
+      }
       if (p.b0) {
         w.setShapeMode(SM_BEFORE_HEADLINE);
       }

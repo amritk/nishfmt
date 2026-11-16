@@ -6,7 +6,7 @@
 import { Out } from "../core/out";
 import { DtAst, dtNodeName, dtSig, N_NAMED_TYPE } from "./ast";
 import { DtParser } from "./parser";
-import { DtPiece, dtFixedState, dtKids, dtPin } from "./pieces";
+import { DT_STYLE, DtPiece, dtFixedState, dtKids, dtPin } from "./pieces";
 import { DtTokens, dtPredictionsHeld, dtScan, dtScanPlain } from "./scanner";
 import { DtBuilder, DtCache, dtEmit, dtSolve } from "./solver";
 import { DtVisitor } from "./visitor";
@@ -95,12 +95,9 @@ export const formatDart = (e: DartEngine, path: string, src: u8[], n: i32, out: 
     out.str(text);
     return true;
   }
-  if (toks.verMajor >= 0 && (toks.verMajor < 3 || (toks.verMajor === 3 && toks.verMinor < 13))) {
-    if (e.debug) {
-      console.error(`${path}: language version ${toks.verMajor}.${toks.verMinor} is not ported`);
-    }
-    return false;
-  }
+  // The tall style's language-versioned switches (FormattingStyle).
+  DT_STYLE[0] = toks.verMajor === 3 && toks.verMinor === 7 ? 1 : 0;
+  DT_STYLE[1] = toks.verMajor >= 0 && toks.verMajor === 3 && toks.verMinor < 13 ? 0 : 1;
   const v = new DtVisitor(toks, p.a);
   const root = v.buildUnit(unit);
   const t3 = monotonicNanos();
@@ -111,7 +108,11 @@ export const formatDart = (e: DartEngine, path: string, src: u8[], n: i32, out: 
     return false;
   }
   const pageWidth = dtPageWidth(toks);
-  dtPinByPageWidth(root, pageWidth);
+  if (DT_STYLE[1] !== 0) {
+    // pinStateByPageWidthBeforeSolving (3.13 on); before that the writer
+    // binds by page width while formatting.
+    dtPinByPageWidth(root, pageWidth);
+  }
   const cache = new DtCache(pageWidth, v.pf.n);
   const sol = dtSolve(cache, root, -1, 0, 0);
   const t4 = monotonicNanos();
