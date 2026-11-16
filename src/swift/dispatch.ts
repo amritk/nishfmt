@@ -129,7 +129,6 @@ import {
   swGuardNoForceUnwrapInTests,
   swGuardPreferForLoop,
   swGuardRedundantEmptyView,
-  swGuardRedundantEnumerated,
   swGuardRedundantEquatable,
   swGuardRedundantMemberwiseInit,
   swGuardRedundantSwiftUIGroup,
@@ -179,6 +178,9 @@ import {
 import {
   swRuleDocComments,
 } from "./rules_doc";
+import {
+  swRuleRedundantEnumerated,
+} from "./rules_enumerated";
 import {
   swRuleEnumNamespaces,
   swRuleExtensionAttributes,
@@ -620,7 +622,8 @@ export const swRunRule = (f: SwFormatter, r: i32): boolean => {
     case SW_RULE_REDUNDANT_EQUATABLE:
       return swGuardRedundantEquatable(f);
     case SW_RULE_REDUNDANT_ENUMERATED:
-      return swGuardRedundantEnumerated(f);
+      swRuleRedundantEnumerated(f);
+      return true;
     case SW_RULE_REDUNDANT_EMPTY_VIEW:
       return swGuardRedundantEmptyView(f);
     case SW_RULE_REDUNDANT_SWIFT_U_I_GROUP:

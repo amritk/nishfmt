@@ -5,7 +5,7 @@
 import { SwFormatter } from "./formatter";
 import { SwDecl, SW_DECL_TYPE, swDeclKeywordIndex, swParseDeclarations, swReleaseDecls } from "./decl";
 import { swParseFunctionDeclaration } from "./funcdecl";
-import { swEndOfScope, swStartOfForLoopPattern } from "./parsing";
+import { swEndOfScope } from "./parsing";
 import { swHasImport } from "./imports";
 import { swHasModifier } from "./modifiers";
 import { swLowercased } from "./rules_simple";
@@ -195,34 +195,6 @@ export const swGuardRedundantEquatable = (f: SwFormatter): boolean => {
     if (f.kw(i, "func")) {
       const m = f.indexAfter(SW_T_NON_SPACE_OR_COMMENT_OR_LINEBREAK, i);
       if (m >= 0 && f.k(m) === SW_OP && f.s(m) === "==") {
-        return false;
-      }
-    }
-  }
-  return true;
-};
-
-/** redundantEnumerated: no `for (a, b) in ....enumerated()`. */
-export const swGuardRedundantEnumerated = (f: SwFormatter): boolean => {
-  if (!swHasIdent(f, "enumerated")) {
-    return true;
-  }
-  const n = f.count();
-  for (let i = 0; i < n; i++) {
-    if (!f.kw(i, "for")) {
-      continue;
-    }
-    const ps = swStartOfForLoopPattern(f, i);
-    if (ps < 0 || !f.tok(ps, SW_START, "(")) {
-      continue;
-    }
-    const pe = swEndOfScope(f, ps);
-    const inIndex = pe >= 0 ? f.indexAfter(SW_T_NON_SPACE_OR_COMMENT_OR_LINEBREAK, pe) : -1;
-    if (inIndex < 0 || !f.kw(inIndex, "in")) {
-      continue;
-    }
-    for (let j = inIndex + 1; j < n && !f.tok(j, SW_START, "{"); j++) {
-      if (f.tok(j, SW_IDENT, "enumerated")) {
         return false;
       }
     }
