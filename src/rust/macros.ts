@@ -18,6 +18,7 @@ import { RsCtx } from "./context";
 import { RHS_EXPR, rsRewriteArray, rsRewriteAssignRhs, rsRewriteBlockNode, rsRewriteNode } from "./expr";
 import { RsListFormatting, ST_ALWAYS, ST_NEVER, ST_VERTICAL, rsItemizeList, rsWriteList } from "./lists";
 import {
+  KW_LET,
   KW_REF,
   KW_STATIC,
   T_COLON,
@@ -224,7 +225,7 @@ const parseOneArg = (ctx: RsCtx, p: RsParser): i32 => {
   }
   const isDoc = isDocTok(p.tk());
   // Expr.
-  if (p.canBeginExpr() || isDoc) {
+  if ((p.canBeginExpr() && p.kw() !== KW_LET) || isDoc) {
     const s = p.save();
     const e = p.parseExpr();
     if (!p.failed && e >= 0) {
@@ -233,7 +234,7 @@ const parseOneArg = (ctx: RsCtx, p: RsParser): i32 => {
     p.restore(s);
   }
   // Type.
-  if (canBeginType(p) || isDoc) {
+  if (p.canBeginType() || isDoc) {
     const s = p.save();
     const ty = p.parseTy();
     if (!p.failed && ty >= 0) {
@@ -242,7 +243,7 @@ const parseOneArg = (ctx: RsCtx, p: RsParser): i32 => {
     p.restore(s);
   }
   // Pattern.
-  if (canBeginPat(p) || isDoc) {
+  if (p.canBeginPat() || isDoc) {
     const s = p.save();
     const pat = p.parsePatNoTopAlt();
     if (!p.failed && pat >= 0) {
@@ -260,22 +261,6 @@ const parseOneArg = (ctx: RsCtx, p: RsParser): i32 => {
     p.restore(s);
   }
   return -1;
-};
-
-const canBeginType = (p: RsParser): boolean => {
-  const k = p.tk();
-  if (k === T_IDENT) {
-    return true;
-  }
-  return k === T_LPAREN || k === T_LBRACKET || k === 42 || k === 63 || k === 55 || k === 56 || k === 43 || k === 45 || k === 37 || k === 34 || k === 2 || k === 24;
-};
-
-const canBeginPat = (p: RsParser): boolean => {
-  const k = p.tk();
-  if (k === T_IDENT) {
-    return true;
-  }
-  return k === T_LPAREN || k === T_LBRACKET || k === 55 || k === 56 || k === 51 || k === 23 || k === 25 || k === 43 || k === 45 || k === 37 || (k >= 3 && k <= 12);
 };
 
 /** return_macro_parse_failure_fallback. */

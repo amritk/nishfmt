@@ -21,6 +21,7 @@ import {
   KW_DEFAULT,
   KW_DO,
   KW_DYN,
+  KW_TYPEOF,
   KW_ELSE,
   KW_ENUM,
   KW_EXTERN,
@@ -2836,6 +2837,9 @@ export class RsParser {
         trailing = true;
       }
       this.expect(T_RPAREN);
+      if (this.failed) {
+        return -1;
+      }
       if (count === 1 && !trailing && this.ast.kind[this.stk[mark]] !== N_PAT_REST) {
         const inner = this.stk[mark];
         this.sp = mark;
@@ -3361,6 +3365,61 @@ export class RsParser {
       return -1;
     }
     return this.parseExprDotOrCall(e, lo);
+  }
+
+  /** Token::can_begin_type. */
+  canBeginType(): boolean {
+    const k = this.tk();
+    if (k === T_IDENT) {
+      const kk = this.kw();
+      return (
+        !rsIsReserved(kk) ||
+        kk === KW_SELF ||
+        kk === KW_SELF_TY ||
+        kk === KW_SUPER ||
+        kk === KW_CRATE ||
+        kk === KW_UNDERSCORE ||
+        kk === KW_FOR ||
+        kk === KW_IMPL ||
+        kk === KW_FN ||
+        kk === KW_UNSAFE ||
+        kk === KW_EXTERN ||
+        kk === KW_TYPEOF ||
+        kk === KW_DYN
+      );
+    }
+    return (
+      k === T_LPAREN ||
+      k === T_LBRACKET ||
+      k === T_NOT ||
+      k === T_STAR ||
+      k === T_AND ||
+      k === T_ANDAND ||
+      k === T_QUESTION ||
+      k === T_LIFETIME ||
+      k === T_LT ||
+      k === T_SHL ||
+      k === T_COLONCOLON
+    );
+  }
+
+  /** Token::can_begin_pattern (PatParam). */
+  canBeginPat(): boolean {
+    const k = this.tk();
+    return (
+      k === T_IDENT ||
+      (k >= T_INT && k <= T_RCSTR) ||
+      k === T_LPAREN ||
+      k === T_LBRACKET ||
+      k === T_AND ||
+      k === T_MINUS ||
+      k === T_ANDAND ||
+      k === T_DOTDOT ||
+      k === T_DOTDOTDOT ||
+      k === T_COLONCOLON ||
+      k === T_LT ||
+      k === T_SHL
+    );
   }
 
   canBeginExprAt1(): boolean {
@@ -3907,7 +3966,23 @@ export class RsParser {
   }
 
   parseCond(): i32 {
-    return this.parseExprRes(R_NO_STRUCT | R_ALLOW_LET);
+    const e = this.parseExprRes(R_NO_STRUCT | R_ALLOW_LET);
+    if (!this.failed && this.ast.kind[e] === N_EX_BINARY && this.hasLetInAndChain(e)) {
+      // CondChecker: let chains are only allowed in Rust 2024 or later.
+      return this.fail();
+    }
+    return e;
+  }
+
+  hasLetInAndChain(e: i32): boolean {
+    const k = this.ast.kind[e];
+    if (k === N_EX_LET) {
+      return true;
+    }
+    if (k === N_EX_BINARY && this.ast.x[e] === T_ANDAND) {
+      return this.hasLetInAndChain(this.ast.a[e]) || this.hasLetInAndChain(this.ast.b[e]);
+    }
+    return false;
   }
 
   parseIf(lo: i32): i32 {
@@ -4011,6 +4086,9 @@ export class RsParser {
       this.ast.a[arm] = gv113;
       if (this.eatKw(KW_IF)) {
         const gv114 = this.parseExprRes(R_ALLOW_LET);
+        if (!this.failed && this.ast.kind[gv114] === N_EX_BINARY && this.hasLetInAndChain(gv114)) {
+          return this.fail();
+        }
         this.ast.b[arm] = gv114;
       }
       if (this.failed) {

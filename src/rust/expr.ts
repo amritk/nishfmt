@@ -232,7 +232,7 @@ export const rsFormatExpr = (ctx: RsCtx, e: i32, exprType: i32, shape0: RsShape)
     const label = ast.d[e];
     if (exprType === EXPR_STMT) {
       if ((ast.fl[block] & BLK_UNSAFE) !== 0) {
-        rw = rsRewriteBlock(ctx, block, true, label, sh);
+        rw = rewriteBlockInner(ctx, block, true, label, ast.atn[e] === 0, sh);
       } else {
         const eb = rewriteEmptyBlock(ctx, block, true, label, "", sh);
         if (eb !== null) {
@@ -243,7 +243,8 @@ export const rsFormatExpr = (ctx: RsCtx, e: i32, exprType: i32, shape0: RsShape)
         }
       }
     } else {
-      rw = rsRewriteBlock(ctx, block, true, label, sh);
+      // is_simple_block also needs the expression's outer attributes empty.
+      rw = rewriteBlockInner(ctx, block, true, label, ast.atn[e] === 0, sh);
     }
   } else if (k === N_EX_MATCH) {
     rw = rsRewriteMatch(ctx, e, sh);
@@ -923,6 +924,10 @@ export const rsRewriteElseKwWithComments = (forceNewlineElse: boolean, isLast: b
 // ---------------------------------------------------------------- literals, calls, parens, index
 
 /** rewrite_literal for token `tok`. */
+/** rewrite_literal. */
+export const rsRewriteLiteralTok = (ctx: RsCtx, tok: i32, shape: RsShape): string | null => rsWrapStr(ctx.tokStr(tok), ctx.cfg, shape);
+
+/** A literal expression: rewrite_literal, or a raw string kept as written. */
 export const rsRewriteLiteral = (ctx: RsCtx, tok: i32, shape: RsShape): string | null => {
   const s = ctx.tokStr(tok);
   const r = rsWrapStr(s, ctx.cfg, shape);

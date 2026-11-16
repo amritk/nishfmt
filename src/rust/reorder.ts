@@ -76,14 +76,20 @@ const cmpStrBytes = (a: string, b: string): i32 => {
   return toI32(a.length) < toI32(b.length) ? -1 : 1;
 };
 
+/** Ident::as_str: the symbol, without a raw identifier's `r#`. */
+const symStr = (ctx: RsCtx, tok: i32): string => {
+  const s = rsIdentStr(ctx, tok);
+  return s.startsWith("r#") ? s.slice(2, toI32(s.length)) : s;
+};
+
 /** compare_items for mods and extern crates. */
 const compareItems = (ctx: RsCtx, a: i32, b: i32): i32 => {
   const ast = ctx.ast;
   if (ast.kind[a] === N_MOD) {
-    return cmpStrBytes(rsIdentStr(ctx, ast.d[a]), rsIdentStr(ctx, ast.d[b]));
+    return cmpStrBytes(symStr(ctx, ast.d[a]), symStr(ctx, ast.d[b]));
   }
-  const an = ast.c[a] >= 0 ? rsIdentStr(ctx, ast.c[a]) : rsIdentStr(ctx, ast.d[a]);
-  const bn = ast.c[b] >= 0 ? rsIdentStr(ctx, ast.c[b]) : rsIdentStr(ctx, ast.d[b]);
+  const an = ast.c[a] >= 0 ? symStr(ctx, ast.c[a]) : symStr(ctx, ast.d[a]);
+  const bn = ast.c[b] >= 0 ? symStr(ctx, ast.c[b]) : symStr(ctx, ast.d[b]);
   const r = cmpStrBytes(an, bn);
   if (r !== 0) {
     return r;
@@ -99,7 +105,7 @@ const compareItems = (ctx: RsCtx, a: i32, b: i32): i32 => {
   if (!ha && !hb) {
     return 0;
   }
-  return cmpStrBytes(rsIdentStr(ctx, ast.d[a]), rsIdentStr(ctx, ast.d[b]));
+  return cmpStrBytes(symStr(ctx, ast.d[a]), symStr(ctx, ast.d[b]));
 };
 
 const wrapReorderableItems = (ctx: RsCtx, items: RsListItem[], shape: RsShape): string | null => {

@@ -18,7 +18,7 @@ import {
 } from "./ast";
 import { rsContainsComment, rsRecoverMissingCommentInSpan, rsRewriteDocComment } from "./comment";
 import { RsCtx } from "./context";
-import { rsRewriteLiteral, rsSpanEndsWithComma } from "./expr";
+import { rsRewriteLiteral, rsRewriteLiteralTok, rsSpanEndsWithComma } from "./expr";
 import {
   DLT_HORIZONTAL,
   LT_HORIZONTAL_VERTICAL,
@@ -399,7 +399,7 @@ const formatDerive = (ctx: RsCtx, derives: i32[], shape: RsShape): string | null
 export const rsRewriteMetaItem = (ctx: RsCtx, m: i32, shape: RsShape): string | null => {
   const ast = ctx.ast;
   if (ast.kind[m] === N_META_LIT) {
-    return rsRewriteLiteral(ctx, ast.d[m], shape);
+    return rsRewriteLiteralTok(ctx, ast.d[m], shape);
   }
   const k = ast.x[m];
   const path = rsRewritePath(ctx, PC_TYPE, -1, ast.a[m], shape);
