@@ -181,6 +181,8 @@ export const N_CAST_PATTERN: i32 = 185;
 export const N_NULL_CHECK_PATTERN: i32 = 186;
 export const N_NULL_ASSERT_PATTERN: i32 = 187;
 export const N_REST_PATTERN_ELEMENT: i32 = 188;
+// A `case` before patterns (language versions before 3.0).
+export const N_SWITCH_CASE: i32 = 189;
 export const N_LAST: i32 = 190;
 
 // Field layouts. Each kind's fields, in order. `T` marks a token, `N` a
@@ -610,6 +612,7 @@ export const dtNodeName = (k: i32): string => {
     case N_NULL_CHECK_PATTERN: return "NullCheckPattern";
     case N_NULL_ASSERT_PATTERN: return "NullAssertPattern";
     case N_REST_PATTERN_ELEMENT: return "RestPatternElement";
+    case N_SWITCH_CASE: return "SwitchCase";
     default: return "?";
   }
 };
@@ -792,6 +795,7 @@ export const dtSig = (k: i32): string => {
     case N_NULL_CHECK_PATTERN: return "NT";
     case N_NULL_ASSERT_PATTERN: return "NT";
     case N_REST_PATTERN_ELEMENT: return "TN";
+    case N_SWITCH_CASE: return "LTNTL";
     default: return "";
   }
 };

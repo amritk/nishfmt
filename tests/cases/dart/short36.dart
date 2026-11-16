@@ -1,0 +1,13 @@
+// @dart=3.6
+sealed class Result {}
+String describe(Object? value) {
+  final label = switch (value) { int() => "int", String s when s.isNotEmpty => s, _ => "other" };
+  if (value case [int a, int b] when a > b) { return "desc"; }
+  var (a, b) = (1, 2); final r = (1, "two", named: 3.0);
+  final list = [1, 2, 3, if (flag) 4 else 5, for (var i in items) i * 2, ...others, ...?maybe];
+  final s = """
+multi-line
+  string ${value}
+""";
+  return label;
+}

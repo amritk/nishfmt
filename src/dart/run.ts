@@ -10,6 +10,8 @@ import { DtPiece, dtFixedState, dtKids, dtPin } from "./pieces";
 import { DtTokens, dtPredictionsHeld, dtScan, dtScanPlain } from "./scanner";
 import { DtBuilder, DtCache, dtEmit, dtSolve } from "./solver";
 import { DtVisitor } from "./visitor";
+import { DTS_STATE } from "./short";
+import { DtsVisitor } from "./shortvisit";
 
 /** One file's Dart state; a fresh one formats each file, in a region of its own. */
 export class DartEngine {
@@ -42,7 +44,12 @@ export const formatDart = (e: DartEngine, path: string, src: u8[], n: i32, out: 
     return true;
   }
   const t1 = monotonicNanos();
+  // Patterns (and so pattern `case`s) arrived in language 3.0.
+  const patterns = !(toks.verMajor >= 0 && toks.verMajor < 3);
+  const primaryCtors = !(toks.verMajor >= 0 && (toks.verMajor < 3 || (toks.verMajor === 3 && toks.verMinor < 13)));
   let p = new DtParser(toks);
+  p.patterns = patterns;
+  p.primaryCtors = primaryCtors;
   let unit = p.parseUnit();
   if (toks.npred > 0 && (p.failed || !dtPredictionsHeld(toks))) {
     // The scanner split a `>>` the parser would not have: parse as it reads.
@@ -51,6 +58,8 @@ export const formatDart = (e: DartEngine, path: string, src: u8[], n: i32, out: 
     }
     toks = dtScanPlain(src, n);
     p = new DtParser(toks);
+    p.patterns = patterns;
+    p.primaryCtors = primaryCtors;
     unit = p.parseUnit();
   }
   const t2 = monotonicNanos();
@@ -70,7 +79,22 @@ export const formatDart = (e: DartEngine, path: string, src: u8[], n: i32, out: 
     dtDumpNode(p.a, toks, u16, unit, 0, out);
     return true;
   }
-  // The language version picks the style: only 3.13 and later are ported.
+  // The language version picks the style: the short style up to 3.6.
+  if (toks.verMajor >= 0 && (toks.verMajor < 3 || (toks.verMajor === 3 && toks.verMinor <= 6))) {
+    DTS_STATE[0] = 0;
+    DTS_STATE[1] = 0;
+    DTS_STATE[2] = 0;
+    const sv = new DtsVisitor(toks, p.a, 80);
+    const text = sv.run(unit, dtLineEnding(src, n));
+    if (sv.failed || DTS_STATE[2] !== 0) {
+      if (e.debug) {
+        console.error(`${path}: short style: ${sv.failed ? sv.why : "dart_style would throw"}`);
+      }
+      return false;
+    }
+    out.str(text);
+    return true;
+  }
   if (toks.verMajor >= 0 && (toks.verMajor < 3 || (toks.verMajor === 3 && toks.verMinor < 13))) {
     if (e.debug) {
       console.error(`${path}: language version ${toks.verMajor}.${toks.verMinor} is not ported`);
