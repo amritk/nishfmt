@@ -165,6 +165,7 @@ import {
   N_YIELD_STATEMENT,
   dtNodeName,
   dtSig,
+  N_VARIABLE_DECLARATION,
 } from "./ast";
 import {
   dtKidsNow,
@@ -223,6 +224,7 @@ import {
   WS_SPACE,
   dtPin,
   dtIs37,
+  PK_ASSIGN37,
   dtV313,
   dtPreventSplit,
 } from "./pieces";
@@ -874,10 +876,12 @@ export class DtVisitor {
     return String.fromBytes(this.src, this.t.start[tok], this.t.end[tok]);
   }
 
-  token(tok: i32, spaceBefore: boolean = false, spaceAfter: boolean = false, soft: boolean = false): void {
+  token(tok: i32, spaceBefore: boolean = false, spaceAfter: boolean = false, soft0: boolean = false): void {
     if (tok < 0) {
       return;
     }
+    // Soft text only with soft overflow (3.13 on).
+    const soft = soft0 && dtV313();
     if (spaceBefore) {
       this.space();
     }
@@ -904,7 +908,7 @@ export class DtVisitor {
   multilineToken(tok: i32, soft: boolean): void {
     const comments = this.cw.commentsBefore(tok);
     const p = this.pf.make(PK_CODE);
-    p.soft = soft;
+    p.soft = soft && dtV313();
     p.list = this.splitComments(comments, tok);
     this.append(p, this.lexeme(tok), true);
     this.previousCode = p;
@@ -1032,7 +1036,7 @@ export class DtVisitor {
       p.i1 = c.offset + toI32(c.text.length);
     }
     p.i0 = trailing;
-    p.soft = true;
+    p.soft = dtV313();
     this.append(p, c.text, c.type !== CT_LINE);
     return p;
   }
@@ -1075,7 +1079,7 @@ export class DtVisitor {
       comments = this.cw.commentsBefore(discarded).concatenate(comments);
     }
     const p = this.pf.make(PK_CODE);
-    p.soft = soft;
+    p.soft = soft && dtV313();
     p.list = this.splitComments(comments, tok);
     this.append(p, this.lexeme(tok), false);
     this.previousCode = p;
@@ -1186,6 +1190,82 @@ export class DtVisitor {
     p.b = right;
     p.b0 = avoidSplit;
     return p;
+  }
+
+  /** AssignPiece3Dot7. */
+  assign37(left: DtPiece | null, op: DtPiece, right: DtPiece, canBlockSplitLeft: boolean, canBlockSplitRight: boolean, avoidBlockSplitRight: boolean): DtPiece {
+    const p = this.pf.make(PK_ASSIGN37);
+    p.a = left;
+    p.b = op;
+    p.c = right;
+    p.b0 = canBlockSplitLeft;
+    p.b1 = canBlockSplitRight;
+    p.b2 = avoidBlockSplitRight;
+    return p;
+  }
+
+  isPatternKind(k: i32): boolean {
+    return (
+      k === N_CONSTANT_PATTERN ||
+      k === N_DECLARED_VARIABLE_PATTERN ||
+      k === N_ASSIGNED_VARIABLE_PATTERN ||
+      k === N_WILDCARD_PATTERN ||
+      k === N_LIST_PATTERN ||
+      k === N_MAP_PATTERN ||
+      k === N_RECORD_PATTERN ||
+      k === N_OBJECT_PATTERN ||
+      k === N_PARENTHESIZED_PATTERN ||
+      k === N_LOGICAL_OR_PATTERN ||
+      k === N_LOGICAL_AND_PATTERN ||
+      k === N_RELATIONAL_PATTERN ||
+      k === N_CAST_PATTERN ||
+      k === N_NULL_CHECK_PATTERN ||
+      k === N_NULL_ASSERT_PATTERN
+    );
+  }
+
+  /** canBlockSplit of an expression or pattern (false for anything else). */
+  canBlockSplitAny(n: i32): boolean {
+    if (this.isPatternKind(this.kind(n))) {
+      return this.patternCanBlockSplit(n);
+    }
+    return this.canBlockSplit(n);
+  }
+
+  /** AdjacentStrings.indentStrings3Dot7. */
+  indentStrings37(n: i32): boolean {
+    const p = this.parentOf(n);
+    const pk = this.kind(p);
+    if (pk === N_ARGUMENT_LIST) {
+      const args = this.f(p, 1);
+      for (let i = 0; i < this.a.len(args); i++) {
+        const x = this.a.at(args, i);
+        if (x !== n && this.isStringLiteralNode(x)) {
+          return true;
+        }
+      }
+      return false;
+    }
+    if (pk === N_ASSERT_INITIALIZER || pk === N_ASSERT_STATEMENT) {
+      const c = this.f(p, 2);
+      const m = this.f(p, 4);
+      return (c !== n && this.isStringLiteralNode(c)) || (m >= 0 && m !== n && this.isStringLiteralNode(m));
+    }
+    if (pk === N_VARIABLE_DECLARATION || pk === N_NAMED_ARGUMENT || pk === N_RECORD_LITERAL_NAMED_FIELD || pk === N_EXPRESSION_FUNCTION_BODY) {
+      return false;
+    }
+    if (pk === N_ASSIGNMENT_EXPRESSION && this.f(p, 2) === n) {
+      return false;
+    }
+    if (pk === N_MAP_LITERAL_ENTRY && this.f(p, 4) === n) {
+      return false;
+    }
+    return true;
+  }
+
+  isStringLiteralNode(n: i32): boolean {
+    const k = this.kind(n);
+    return k === N_SIMPLE_STRING_LITERAL || k === N_STRING_INTERPOLATION || k === N_ADJACENT_STRINGS;
   }
 
   variablePiece(header: DtPiece, vars: DtPiece[], hasType: boolean): DtPiece {
@@ -1555,6 +1635,15 @@ export class DtVisitor {
       this.token(right);
       return;
     }
+    if (dtIs37()) {
+      // 3.7: no eager splitting of complex calls.
+      const lb = new DtListBuilder(this, dtStyleDefault());
+      lb.leftBracket(left);
+      lb.visitAll(args, true);
+      lb.rightBracket(right);
+      this.add(lb.build(false, true));
+      return;
+    }
     this.beginCall(args);
     const b = new DtListBuilder(this, dtStyleDefault());
     b.leftBracket(left);
@@ -1905,7 +1994,9 @@ export class DtVisitor {
       return;
     }
     this.begin();
-    this.add(parameter);
+    if (!dtIs37()) {
+      this.add(parameter);
+    }
     const isEq = this.t.kind[separator] === T_EQ;
     if (isEq) {
       this.space();
@@ -1916,6 +2007,10 @@ export class DtVisitor {
     }
     const op = this.end();
     const vp = this.nodePiece(value, false, NC_ASSIGNMENT);
+    if (dtIs37()) {
+      this.add(this.assign37(parameter, op, vp, false, this.canBlockSplit(value), false));
+      return;
+    }
     this.add(this.assignPiece(op, vp, true));
   }
 
@@ -2040,6 +2135,12 @@ export class DtVisitor {
   writeIndexExpression(n: i32): void {
     this.token(this.f(n, 2));
     this.token(this.f(n, 1));
+    if (dtIs37()) {
+      this.token(this.f(n, 3));
+      this.visit(this.f(n, 4));
+      this.token(this.f(n, 5));
+      return;
+    }
     this.begin();
     this.token(this.f(n, 3));
     this.visit(this.f(n, 4));
@@ -2159,6 +2260,11 @@ export class DtVisitor {
   }
 
   writePrefix(op: i32, operand: i32, space: boolean): void {
+    if (dtIs37()) {
+      this.token(op, false, space);
+      this.visit(operand);
+      return;
+    }
     this.begin();
     this.token(op, false, space);
     this.visit(operand);
@@ -2214,6 +2320,10 @@ export class DtVisitor {
   }
 
   writeAssignment(lhs: i32, op: i32, rhs: i32, includeComma: boolean, lhsContext: i32, rhsContext: i32): void {
+    if (dtIs37()) {
+      this.writeAssignment37(lhs, op, rhs, includeComma, lhsContext);
+      return;
+    }
     this.begin();
     this.visit(lhs, false, false, lhsContext);
     if (this.t.kind[op] !== T_COLON) {
@@ -2225,7 +2335,39 @@ export class DtVisitor {
     this.add(this.assignPiece(lp, rp, true));
   }
 
+  writeAssignment37(lhs: i32, op: i32, rhs: i32, includeComma: boolean, lhsContext: i32): void {
+    const lk = this.kind(lhs);
+    let canBlockSplitLeft = false;
+    if (lk === N_METHOD_INVOCATION || lk === N_PROPERTY_ACCESS || lk === N_PREFIXED_IDENTIFIER) {
+      canBlockSplitLeft = true;
+    } else {
+      canBlockSplitLeft = this.canBlockSplitAny(lhs);
+    }
+    const canBlockSplitRight = this.canBlockSplitAny(rhs);
+    const lp = this.nodePiece(lhs, false, lhsContext);
+    this.begin();
+    if (this.t.kind[op] !== T_COLON) {
+      this.space();
+    }
+    this.token(op);
+    const opp = this.end();
+    const rp = this.nodePiece(rhs, includeComma, NC_ASSIGNMENT);
+    this.add(this.assign37(lp, opp, rp, canBlockSplitLeft, canBlockSplitRight, false));
+  }
+
   writeTokenAssignment(lhs: i32, op: i32, rhs: i32, includeComma: boolean, rhsContext: i32): void {
+    if (dtIs37()) {
+      const cbsr = this.canBlockSplitAny(rhs);
+      this.begin();
+      if (this.t.kind[op] !== T_COLON) {
+        this.space();
+      }
+      this.token(op);
+      const opp = this.end();
+      const rp = this.nodePiece(rhs, includeComma, NC_ASSIGNMENT);
+      this.add(this.assign37(this.tokenPiece(lhs), opp, rp, false, cbsr, false));
+      return;
+    }
     this.begin();
     this.token(lhs);
     if (this.t.kind[op] !== T_COLON) {
@@ -2244,6 +2386,7 @@ export class DtVisitor {
     const p = this.pf.make(PK_FOR_IN);
     p.a = lp;
     p.b = sp;
+    p.b0 = this.canBlockSplit(seq);
     this.addHoisted(leading, p);
   }
 
@@ -2259,6 +2402,7 @@ export class DtVisitor {
     const p = this.pf.make(PK_FOR_IN);
     p.a = lp;
     p.b = sp;
+    p.b0 = this.canBlockSplit(seq);
     this.add(p);
     this.addHoisted(leading, this.endMeta(true));
   }
@@ -2460,7 +2604,8 @@ export class DtVisitor {
         for (let i = 0; i < this.a.len(strs); i++) {
           ops.push(this.nodePiece(this.a.at(strs, i), false, NC_NONE));
         }
-        const p = this.infix(ops, this.f(n, 1) === 1 ? IN_INFIX : IN_NONE, false);
+        const indentStrings = dtIs37() ? this.indentStrings37(n) : this.f(n, 1) === 1;
+        const p = this.infix(ops, indentStrings ? IN_INFIX : IN_NONE, false);
         dtPin(p, S_SPLIT);
         this.add(p);
         return;
@@ -2501,7 +2646,8 @@ export class DtVisitor {
         return;
       case N_BINARY_EXPRESSION: {
         const op = this.f(n, 1);
-        this.writeInfixChain(n, N_BINARY_EXPRESSION, dtPrecedence(this.t.kind[op], this.t.kw[op]), true);
+        // 3.7 flattens binary operands in assignment contexts.
+        this.writeInfixChain(n, N_BINARY_EXPRESSION, dtPrecedence(this.t.kind[op], this.t.kw[op]), !dtIs37() || this.parentContext !== NC_ASSIGNMENT);
         return;
       }
       case N_BLOCK:
@@ -2705,6 +2851,11 @@ export class DtVisitor {
         const e = this.f(n, 3);
         const ep = this.nodePiece(e, false, NC_ASSIGNMENT);
         const ek = this.kind(e);
+        if (dtIs37()) {
+          this.add(this.assign37(null, op, ep, false, this.canBlockSplit(e), this.blockFormat(e) === BF_INVOCATION));
+          this.token(this.f(n, 4));
+          return;
+        }
         const ap = this.assignPiece(op, ep, ek === N_LIST_LITERAL || ek === N_SET_OR_MAP_LITERAL);
         if (ek === N_FUNCTION_EXPRESSION && this.kind(this.f(e, 2)) === N_EXPRESSION_FUNCTION_BODY) {
           dtPin(ap, S_SPLIT);
@@ -2820,7 +2971,7 @@ export class DtVisitor {
         this.space();
         const ep = this.tokenPiece(this.f(n, 4));
         const tp = this.nodePiece(this.f(n, 5), false, NC_NONE);
-        this.add(this.assignPiece(ep, tp, true));
+        this.add(dtIs37() ? this.assign37(null, ep, tp, false, false, false) : this.assignPiece(ep, tp, true));
         this.token(this.f(n, 6));
         this.withMetaEnd(began, false);
         return;
@@ -2860,6 +3011,10 @@ export class DtVisitor {
         this.token(this.f(n, 2));
         const p = this.end();
         dtPreventAll(p);
+        if (dtIs37()) {
+          this.add(p);
+          return;
+        }
         const g = this.pf.make(PK_GROUPING);
         g.a = p;
         this.add(g);
@@ -2907,15 +3062,23 @@ export class DtVisitor {
         return;
       case N_LOGICAL_AND_PATTERN: {
         const op = this.f(n, 1);
-        this.writeInfixChain(n, N_LOGICAL_AND_PATTERN, dtPrecedence(this.t.kind[op], K_NONE), true);
+        this.writeInfixChain(n, N_LOGICAL_AND_PATTERN, dtPrecedence(this.t.kind[op], K_NONE), !dtIs37() || this.parentContext !== NC_ASSIGNMENT);
         return;
       }
       case N_LOGICAL_OR_PATTERN: {
         const op = this.f(n, 1);
-        this.writeInfixChain(n, N_LOGICAL_OR_PATTERN, dtPrecedence(this.t.kind[op], K_NONE), this.parentContext !== NC_SWITCH_EXPRESSION_CASE);
+        let indent = this.parentContext !== NC_SWITCH_EXPRESSION_CASE;
+        if (dtIs37() && this.parentContext === NC_ASSIGNMENT) {
+          indent = false;
+        }
+        this.writeInfixChain(n, N_LOGICAL_OR_PATTERN, dtPrecedence(this.t.kind[op], K_NONE), indent);
         return;
       }
       case N_MAP_LITERAL_ENTRY: {
+        if (dtIs37()) {
+          this.writeAssignment(this.f(n, 1), this.f(n, 2), this.f(n, 4), false, NC_NONE, NC_NONE);
+          return;
+        }
         this.begin();
         this.token(this.f(n, 0));
         this.visit(this.f(n, 1));
@@ -3176,7 +3339,7 @@ export class DtVisitor {
         p.d = body;
         p.b0 = this.patternCanBlockSplit(pattern);
         p.b1 = this.kind(pattern) === N_LOGICAL_OR_PATTERN;
-        p.b2 = true;
+        p.b2 = !dtIs37() || this.canBlockSplit(this.f(n, 2));
         this.add(p);
         return;
       }
@@ -3281,7 +3444,7 @@ export class DtVisitor {
         break;
       }
     }
-    const p = this.infix(operands, IN_INFIX, true);
+    const p = this.infix(operands, dtIs37() ? IN_EXPRESSION : IN_INFIX, true);
     if (
       this.parentContext === NC_CONDITIONAL_BRANCH ||
       this.kind(this.f(n, 2)) === N_CONDITIONAL_EXPRESSION ||
@@ -3293,8 +3456,10 @@ export class DtVisitor {
   }
 
   condOperand(operands: DtPiece[], op: i32, operand: i32): void {
-    for (const c of this.takeCommentsBefore(op)) {
-      operands.push(c);
+    if (!dtIs37()) {
+      for (const c of this.takeCommentsBefore(op)) {
+        operands.push(c);
+      }
     }
     this.begin();
     this.token(op);
@@ -3330,7 +3495,11 @@ export class DtVisitor {
       this.token(this.f(n, 9));
       this.space();
       const sp = this.end();
-      redirect = this.assignPiece(sp, this.nodePiece(ctor, false, NC_NONE), true);
+      if (dtIs37()) {
+        redirect = this.assign37(null, sp, this.nodePiece(ctor, false, NC_ASSIGNMENT), false, false, false);
+      } else {
+        redirect = this.assignPiece(sp, this.nodePiece(ctor, false, NC_NONE), true);
+      }
     } else if (this.a.len(this.f(n, 10)) > 0) {
       sep = this.tokenPiece(this.f(n, 9));
       inits = this.createCommaSeparated(this.f(n, 10));
@@ -3585,7 +3754,15 @@ export class DtVisitor {
       const v = this.a.at(vs, i);
       const eq = this.f(v, 1);
       const init = this.f(v, 2);
-      if (eq >= 0 && init >= 0) {
+      if (eq >= 0 && init >= 0 && dtIs37()) {
+        const vp = this.tokenPiece(this.f(v, 0));
+        this.begin();
+        this.space();
+        this.token(eq);
+        const ep = this.end();
+        const ip = this.nodePiece(init, true, NC_ASSIGNMENT);
+        vars.push(this.assign37(vp, ep, ip, false, this.canBlockSplit(init), false));
+      } else if (eq >= 0 && init >= 0) {
         this.begin();
         this.token(this.f(v, 0));
         this.space();
