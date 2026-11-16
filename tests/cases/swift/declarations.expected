@@ -1,0 +1,29 @@
+public enum Constants {
+    static let maximum = 10
+    static let minimum = 1
+}
+
+@MainActor
+extension Foo {
+    func first() {}
+    func second() {}
+}
+
+private let shared = Constants()
+
+public final class Model: NSObject {
+    var title: String?
+    override public init() {
+        super.init()
+    }
+
+    public func load(completion: @escaping (Bool) -> Void) {
+        if isReady {
+            if isValid {
+                completion(true)
+            }
+        } else if isLoading {
+            completion(false)
+        }
+    }
+}

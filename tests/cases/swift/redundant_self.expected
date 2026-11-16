@@ -1,0 +1,23 @@
+import Foundation
+import UIKit
+
+class Counter {
+    private(set) var count: Int = 0
+    var name: String?
+
+    func increment(by step: Int, label _: String) {
+        count += step
+        let total = count
+        print(total)
+    }
+
+    func reset() {
+        DispatchQueue.main.async {
+            self.count = 0
+        }
+    }
+
+    func describe() -> String {
+        return "Counter \(count)"
+    }
+}
