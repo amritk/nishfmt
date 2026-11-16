@@ -29,8 +29,8 @@ leading whitespace ignored (`LEADWS=1` in the scratch rulecmp script).
 
 ## Status
 
-Corpus (`WORK=/work/out-swift bash bench/corpus/cmp.sh <bin> swift`): 5684 / 6710 identical.
-Every file that fastfmt formats matches swiftformat byte for byte; the other 1026 are skipped
+Corpus (`WORK=/work/out-swift bash bench/corpus/cmp.sh <bin> swift`): 5959 / 6710 identical.
+Every file that fastfmt formats matches swiftformat byte for byte; the other 751 are skipped
 (left unchanged), almost all because of a guard below.
 
 Timings on the corpus (6710 files): swiftformat 131.7 s wall on 4 cores, 262.5 s with
@@ -41,14 +41,13 @@ No-op rules (`noop`) do nothing with the default options and an undefined Swift 
 
 Not ported yet, guarded (`src/swift/guards.ts`: the file is skipped when the rule's entry
 condition holds, so the guard never changes output, it only gives up):
-noForceUnwrapInTests (a `!` in a test case body), swiftTestingTestCaseNames (a `@Test` func
-named `test...`), preferForLoop (a multi-line `.forEach` closure), contentBuilder (a
-`...Builder` attribute), redundantMemberwiseInit (a top-level struct with one plain-labelled,
-non-failable init), redundantEquatable (`Equatable` plus `func ==`), redundantEnumerated
-(`for (a, b) in ....enumerated()`), redundantEmptyView (`EmptyView`), redundantSwiftUIGroup
-(`Group`). In a 700-file sample they skip, in order: redundantMemberwiseInit 25,
-noForceUnwrapInTests 25, redundantEquatable 17, preferForLoop 13, redundantEnumerated 9,
-contentBuilder 6, redundantSwiftUIGroup 5, redundantEmptyView 3.
+noForceUnwrapInTests (a `!` in a test case body), preferForLoop (a multi-line `.forEach`
+closure), redundantMemberwiseInit (a top-level struct with one plain-labelled, non-failable
+init). In a 700-file sample they skip: redundantMemberwiseInit 29, noForceUnwrapInTests 28,
+preferForLoop 13; one file more has `swiftformat:` directives.
+
+swiftTestingTestCaseNames lowercases the first letter of a renamed test ASCII-only; a
+non-ASCII first letter makes the file skip (fatalError) instead.
 
 Performance: endOfScope(at:) and the current scope are memoised per mutation count;
 replacing a token with an equal one is not a mutation. The next hot spots are
