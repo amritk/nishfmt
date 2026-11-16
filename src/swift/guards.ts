@@ -13,6 +13,7 @@ import { swDetectTestingFramework, swIsTestCase, SW_TEST_NONE } from "./rules_te
 import {
   SW_OP_POSTFIX,
   SW_END,
+  SW_LINEBREAK,
   SW_IDENT,
   SW_NUMBER,
   SW_KEYWORD,
@@ -117,7 +118,36 @@ export const swGuardNestedIf = (f: SwFormatter): boolean => {
 };
 
 /** preferForLoop: no `.forEach`. */
-export const swGuardPreferForLoop = (f: SwFormatter): boolean => !swHasIdent(f, "forEach");
+export const swGuardPreferForLoop = (f: SwFormatter): boolean => {
+  const n = f.count();
+  for (let i = 0; i < n; i++) {
+    if (!f.tok(i, SW_IDENT, "forEach")) {
+      continue;
+    }
+    const dot = f.indexBefore(SW_T_NON_SPACE_OR_COMMENT_OR_LINEBREAK, i);
+    if (dot < 0 || !f.op(dot, ".", SW_OP_INFIX)) {
+      continue;
+    }
+    let ob = f.indexAfter(SW_T_NON_SPACE_OR_COMMENT_OR_LINEBREAK, i);
+    if (ob >= 0 && f.tok(ob, SW_START, "(")) {
+      ob = f.indexAfter(SW_T_NON_SPACE_OR_COMMENT_OR_LINEBREAK, ob);
+    }
+    if (ob < 0 || !f.tok(ob, SW_START, "{")) {
+      continue;
+    }
+    // preserveSingleLineForEach: a closure on one line is kept
+    const cb = swEndOfScope(f, ob);
+    if (cb < 0) {
+      return false;
+    }
+    for (let j = ob; j < cb; j++) {
+      if (f.k(j) === SW_LINEBREAK) {
+        return false;
+      }
+    }
+  }
+  return true;
+};
 
 /** redundantClosure: no `}` followed by `()`. */
 export const swGuardRedundantClosure = (f: SwFormatter): boolean => {
