@@ -78,6 +78,8 @@ import {
   WS_SPACE,
   dtAllowed,
   dtConstraints,
+  dtHasConstraints,
+  dtMayRefuseInline,
   dtContainsNewline,
   dtHasStates,
   dtIndentSpaces,
@@ -91,60 +93,14 @@ import {
 
 // ---------------------------------------------------------------------------
 // Code.
+//
+// dart_style builds a GroupCode tree for every solution it tries and writes
+// the winner's. Here the search only measures; the winner is formatted once
+// more with its states, straight into this builder, which writes what
+// GroupCode and _StringBuilder would have: a group drops a newline that
+// would be its first child and starts at its own indentation.
 
-const CD_TEXT: i32 = 0;
-const CD_NEWLINE: i32 = 1;
-const CD_GROUP: i32 = 2;
-const CD_ENABLE: i32 = 3;
-
-/** GroupCode: formatted code, possibly holding other groups. */
-export class DtGroup {
-  indent: i32;
-  kind: i32[];
-  ia: i32[];
-  ib: i32[];
-  texts: string[];
-  subs: DtGroup[];
-
-  constructor(indent: i32) {
-    this.indent = indent;
-    this.kind = [];
-    this.ia = [];
-    this.ib = [];
-    this.texts = [];
-    this.subs = [];
-  }
-
-  write(text: string): void {
-    this.kind.push(CD_TEXT);
-    this.ia.push(toI32(this.texts.length));
-    this.ib.push(0);
-    this.texts.push(text);
-  }
-
-  newline(blank: boolean, indent: i32): void {
-    if (this.kind.length > 0) {
-      this.kind.push(CD_NEWLINE);
-      this.ia.push(blank ? 1 : 0);
-      this.ib.push(indent);
-    }
-  }
-
-  group(g: DtGroup): void {
-    this.kind.push(CD_GROUP);
-    this.ia.push(toI32(this.subs.length));
-    this.ib.push(0);
-    this.subs.push(g);
-  }
-
-  enable(enabled: boolean, offset: i32): void {
-    this.kind.push(CD_ENABLE);
-    this.ia.push(enabled ? 1 : 0);
-    this.ib.push(offset);
-  }
-}
-
-/** _StringBuilder: writes the code tree to `out`. */
+/** _StringBuilder over the code a writer emits. */
 export class DtBuilder {
   out: Out;
   src: u8[];
@@ -160,34 +116,32 @@ export class DtBuilder {
     this.eol = eol;
   }
 
-  traverse(g: DtGroup): void {
-    this.indent = g.indent;
-    for (let i = 0; i < g.kind.length; i++) {
-      const k = g.kind[i];
-      if (k === CD_TEXT) {
-        if (this.disabledStart < 0) {
-          this.out.spaces(this.indent);
-          this.indent = 0;
-          this.out.str(g.texts[g.ia[i]]);
-        }
-      } else if (k === CD_NEWLINE) {
-        if (this.disabledStart < 0) {
-          this.out.str(this.eol);
-          if (g.ia[i] === 1) {
-            this.out.str(this.eol);
-          }
-          this.indent = g.ib[i];
-        }
-      } else if (k === CD_GROUP) {
-        this.traverse(g.subs[g.ia[i]]);
-      } else if (g.ia[i] === 0) {
-        if (this.disabledStart < 0) {
-          this.disabledStart = g.ib[i];
-        }
-      } else if (this.disabledStart >= 0) {
-        this.out.range(this.src, this.disabledStart, g.ib[i]);
-        this.disabledStart = -1;
+  text(s: string): void {
+    if (this.disabledStart < 0) {
+      this.out.spaces(this.indent);
+      this.indent = 0;
+      this.out.str(s);
+    }
+  }
+
+  newline(blank: boolean, indent: i32): void {
+    if (this.disabledStart < 0) {
+      this.out.str(this.eol);
+      if (blank) {
+        this.out.str(this.eol);
       }
+      this.indent = indent;
+    }
+  }
+
+  enable(enabled: boolean, offset: i32): void {
+    if (!enabled) {
+      if (this.disabledStart < 0) {
+        this.disabledStart = offset;
+      }
+    } else if (this.disabledStart >= 0) {
+      this.out.range(this.src, this.disabledStart, offset);
+      this.disabledStart = -1;
     }
   }
 
@@ -219,7 +173,6 @@ export class DtSolution {
   allowed: Map<i32, i32[]> | null;
   own: i32;
   subtree: i32 = 0;
-  code: DtGroup;
   valid: boolean = true;
   deadEnd: boolean = false;
   overflow: i32 = 0;
@@ -229,7 +182,6 @@ export class DtSolution {
     this.own = own;
     this.binds = binds;
     this.allowed = allowed;
-    this.code = new DtGroup(0);
     this.expand = [];
   }
 
@@ -272,11 +224,13 @@ export class DtSolution {
     if (bound < 0) {
       this.own = this.own + dtStateCost(piece, state);
       this.binds = new DtBind(piece, state, this.binds);
-      const ps: DtPiece[] = [];
-      const ss: i32[] = [];
-      dtConstraints(piece, state, ps, ss);
-      for (let i = 0; i < ps.length; i++) {
-        this.bind(ps[i], ss[i]);
+      if (dtHasConstraints(piece)) {
+        const ps: DtPiece[] = [];
+        const ss: i32[] = [];
+        dtConstraints(piece, state, ps, ss);
+        for (let i = 0; i < ps.length; i++) {
+          this.bind(ps[i], ss[i]);
+        }
       }
       if (!this.deadEnd) {
         for (const child of dtKids(piece)) {
@@ -313,10 +267,18 @@ export class DtSolution {
       }
       const allowedUnsplit = !dtContainsNewline(off, S_UNSPLIT);
       const states = dtStates(off);
-      const remaining: i32[] = [];
+      let nRemaining = 0;
       for (const s of states) {
         if (!dtContainsNewline(off, s)) {
-          remaining.push(s);
+          nRemaining++;
+        }
+      }
+      const remaining: i32[] = [];
+      if (nRemaining > 0) {
+        for (const s of states) {
+          if (!dtContainsNewline(off, s)) {
+            remaining.push(s);
+          }
         }
       }
       if (!allowedUnsplit && remaining.length === 0) {
@@ -376,13 +338,28 @@ export class DtSolution {
 export class DtCache {
   map: Map<i64, DtSolution>;
   pageWidth: i32;
-  constructor(pageWidth: i32) {
+  // The states a writer's solution binds, by piece id, valid where the stamp
+  // is the writer's.
+  stampOf: i32[];
+  stateOf: i32[];
+  writers: DtWriter[];
+  depth: i32 = 0;
+  builder: DtBuilder | null = null;
+
+  constructor(pageWidth: i32, pieces: i32) {
     this.map = new Map<i64, DtSolution>();
     this.pageWidth = pageWidth;
+    this.stampOf = new Array<i32>(pieces + 1);
+    this.stateOf = new Array<i32>(pieces + 1);
+    this.writers = [];
+  }
+
+  key(root: DtPiece, indent: i32, subsequent: i32): i64 {
+    return (toI64(root.id) << toI64(32)) | (toI64(indent) << toI64(16)) | toI64(subsequent);
   }
 
   find(root: DtPiece, stateIfBound: i32, indent: i32, subsequent: i32): DtSolution {
-    const key = (toI64(root.id) << toI64(32)) | (toI64(indent) << toI64(16)) | toI64(subsequent);
+    const key = this.key(root, indent, subsequent);
     const hit = this.map.get(key);
     if (hit !== undefined) {
       return hit;
@@ -390,6 +367,15 @@ export class DtCache {
     const s = dtSolve(this, root, stateIfBound, indent, subsequent);
     this.map.set(key, s);
     return s;
+  }
+
+  /** The writer for the current nesting depth. */
+  writer(): DtWriter {
+    const d = this.depth;
+    if (d >= toI32(this.writers.length)) {
+      this.writers.push(new DtWriter(this));
+    }
+    return this.writers[d];
   }
 }
 
@@ -537,13 +523,28 @@ const dtExpand = (cache: DtCache, s: DtSolution, root: DtPiece, leading: i32, su
   }
 };
 
-/** Solution._format: runs a CodeWriter over the tree for `s`. */
+/** Solution._format: runs a CodeWriter over the tree for `s`, measuring. */
 const dtRunWriter = (cache: DtCache, s: DtSolution, root: DtPiece, leading: i32, subsequent: i32): void => {
-  const w = new DtWriter(cache, s, leading, subsequent);
+  const w = cache.writer();
+  cache.depth = cache.depth + 1;
+  w.reset(s, leading, subsequent, false);
   w.format(root, false);
   w.finishLine();
-  s.code = w.code;
   s.expand = w.expandPieces;
+  cache.depth = cache.depth - 1;
+};
+
+/** Writes the code for solution `s` of `root` to the cache's builder. */
+export const dtEmit = (cache: DtCache, s: DtSolution, root: DtPiece, leading: i32, subsequent: i32): void => {
+  const w = cache.writer();
+  cache.depth = cache.depth + 1;
+  w.reset(s, leading, subsequent, true);
+  const b = cache.builder;
+  if (b !== null) {
+    b.indent = leading;
+  }
+  w.format(root, false);
+  cache.depth = cache.depth - 1;
 };
 
 // ---------------------------------------------------------------------------
@@ -556,51 +557,120 @@ const SM_BEFORE_HEADLINE: i32 = 2;
 const SM_AFTER_HEADLINE: i32 = 3;
 const SM_OTHER: i32 = 4;
 
-// Unique marks for the set of pieces on the current line.
-const DT_GEN = new Int32Array(1);
+// Unique marks for the set of pieces on the current line, and stamps for a
+// writer's materialized states.
+const DT_GEN = new Int32Array(2);
 
 export class DtWriter {
   cache: DtCache;
   sol: DtSolution;
-  code: DtGroup;
+  emit: boolean = false;
+  items: i32 = 0; // children of this writer's group, when emitting
   pageWidth: i32;
+  stamp: i32 = 0;
   pendingWs: i32 = 0;
   pendingIndent: i32 = 0;
   column: i32 = 0;
   softChars: i32 = 0;
   indType: i32[];
   indSpaces: i32[];
+  nInd: i32 = 0;
   fmtPiece: DtPiece[];
   fmtShape: i32[];
   fmtMode: i32[];
+  nFmt: i32 = 0;
   foundExpandLine: boolean = false;
   expandPieces: DtPiece[];
   unsolved: DtPiece[];
   linePieces: DtPiece[];
+  nLine: i32 = 0;
   gen: i32 = 0;
 
-  constructor(cache: DtCache, sol: DtSolution, leading: i32, subsequent: i32) {
+  constructor(cache: DtCache) {
     this.cache = cache;
-    this.sol = sol;
+    this.sol = new DtSolution(0, null, null);
     this.pageWidth = cache.pageWidth;
-    this.code = new DtGroup(leading);
-    this.indType = [];
-    this.indSpaces = [];
+    this.indType = new Array<i32>(16);
+    this.indSpaces = new Array<i32>(16);
     this.fmtPiece = [];
-    this.fmtShape = [];
-    this.fmtMode = [];
+    this.fmtShape = new Array<i32>(16);
+    this.fmtMode = new Array<i32>(16);
     this.expandPieces = [];
     this.unsolved = [];
     this.linePieces = [];
-    this.indType.push(IN_NONE);
-    this.indSpaces.push(leading);
+  }
+
+  reset(sol: DtSolution, leading: i32, subsequent: i32, emit: boolean): void {
+    this.sol = sol;
+    this.emit = emit;
+    this.items = 0;
+    this.pendingWs = WS_NONE;
+    this.softChars = 0;
+    this.nInd = 0;
+    while (this.fmtPiece.length > 0) {
+      this.fmtPiece.pop();
+    }
+    this.nFmt = 0;
+    while (this.unsolved.length > 0) {
+      this.unsolved.pop();
+    }
+    this.foundExpandLine = false;
+    this.expandPieces = [];
+    this.nLine = 0;
+    this.pushInd(IN_NONE, leading);
     this.pendingIndent = leading;
     this.column = leading;
     if (subsequent > leading) {
-      this.indType.push(IN_NONE);
-      this.indSpaces.push(subsequent);
+      this.pushInd(IN_NONE, subsequent);
     }
     this.newGen();
+    // Materialize the solution's states.
+    DT_GEN[1] = DT_GEN[1] + 1;
+    const stamp = DT_GEN[1];
+    this.stamp = stamp;
+    const so = this.cache.stampOf;
+    const st = this.cache.stateOf;
+    let b = sol.binds;
+    while (b !== null) {
+      const id = b.piece.id;
+      if (so[id] !== stamp) {
+        so[id] = stamp;
+        st[id] = b.state;
+      }
+      b = b.parent;
+    }
+  }
+
+  /** The state `piece` is pinned or bound to in this writer's solution, or -1. */
+  stateIfBound(piece: DtPiece): i32 {
+    if (piece.pinned >= 0) {
+      return piece.pinned;
+    }
+    const id = piece.id;
+    if (this.cache.stampOf[id] === this.stamp) {
+      return this.cache.stateOf[id];
+    }
+    return -1;
+  }
+
+  state(piece: DtPiece): i32 {
+    const s = this.stateIfBound(piece);
+    return s < 0 ? S_UNSPLIT : s;
+  }
+
+  pushInd(kind: i32, spaces: i32): void {
+    const n = this.nInd;
+    if (n >= toI32(this.indType.length)) {
+      const t = new Array<i32>(n * 2);
+      t.set(this.indType);
+      this.indType = t;
+      const s = new Array<i32>(n * 2);
+      s.set(this.indSpaces);
+      this.indSpaces = s;
+    }
+    this.indType[n] = kind;
+    this.indSpaces[n] = spaces;
+    this.nInd = n + 1;
   }
 
   newGen(): void {
@@ -610,7 +680,14 @@ export class DtWriter {
 
   write(text: string, len: i32, soft: boolean): void {
     this.flushWhitespace();
-    this.code.write(text);
+    if (this.emit) {
+      const b = this.cache.builder;
+      if (b !== null) {
+        b.text(text);
+      }
+      this.items = this.items + 1;
+      return;
+    }
     this.column = this.column + len;
     if (soft) {
       this.softChars = this.softChars + len;
@@ -621,14 +698,19 @@ export class DtWriter {
       for (const p of this.unsolved) {
         if (p.mark !== this.gen) {
           p.mark = this.gen;
-          this.linePieces.push(p);
+          if (this.nLine < toI32(this.linePieces.length)) {
+            this.linePieces[this.nLine] = p;
+          } else {
+            this.linePieces.push(p);
+          }
+          this.nLine = this.nLine + 1;
         }
       }
     }
   }
 
   pushIndent(kind: i32): void {
-    const top = toI32(this.indType.length) - 1;
+    const top = this.nInd - 1;
     const pt = this.indType[top];
     let offset = dtIndentSpaces(kind);
     if (pt === IN_ASSIGNMENT && kind === IN_INFIX) {
@@ -636,13 +718,11 @@ export class DtWriter {
     } else if (pt === IN_CONTROL_FLOW_CLAUSE && (kind === IN_EXPRESSION || kind === IN_INFIX)) {
       offset = 0;
     }
-    this.indType.push(kind);
-    this.indSpaces.push(this.indSpaces[top] + offset);
+    this.pushInd(kind, this.indSpaces[top] + offset);
   }
 
   popIndent(): void {
-    this.indType.pop();
-    this.indSpaces.pop();
+    this.nInd = this.nInd - 1;
   }
 
   splitIf(cond: boolean, space: boolean = true, blank: boolean = false): void {
@@ -663,8 +743,8 @@ export class DtWriter {
 
   whitespace(ws: i32, flushLeft: boolean): void {
     if (ws === WS_NEWLINE || ws === WS_BLANK) {
-      this.applyNewline(toI32(this.fmtPiece.length) - 1, SH_OTHER);
-      this.pendingIndent = flushLeft ? 0 : this.indSpaces[toI32(this.indSpaces.length) - 1];
+      this.applyNewline(this.nFmt - 1, SH_OTHER);
+      this.pendingIndent = flushLeft ? 0 : this.indSpaces[this.nInd - 1];
     }
     if (ws > this.pendingWs) {
       this.pendingWs = ws;
@@ -672,7 +752,7 @@ export class DtWriter {
   }
 
   setShapeMode(mode: i32): void {
-    this.fmtMode[toI32(this.fmtMode.length) - 1] = mode;
+    this.fmtMode[this.nFmt - 1] = mode;
   }
 
   format(piece: DtPiece, separate: boolean): void {
@@ -684,55 +764,95 @@ export class DtWriter {
   }
 
   formatSeparate(piece: DtPiece): void {
-    const s = this.cache.find(piece, this.sol.stateIfBound(piece), this.pendingIndent, this.indSpaces[toI32(this.indSpaces.length) - 1]);
+    const indent = this.pendingIndent;
+    const subsequent = this.indSpaces[this.nInd - 1];
+    const s = this.cache.find(piece, this.stateIfBound(piece), indent, subsequent);
     this.pendingIndent = 0;
     this.flushWhitespace();
+    if (this.emit) {
+      dtEmit(this.cache, s, piece, indent, subsequent);
+      this.items = this.items + 1;
+      return;
+    }
     this.sol.overflow = this.sol.overflow + s.overflow;
     this.sol.subtree = this.sol.subtree + s.cost();
-    this.code.group(s.code);
   }
 
   formatInline(piece: DtPiece): void {
-    const unsolved = dtHasStates(piece) && this.sol.stateIfBound(piece) < 0;
+    const unsolved = !this.emit && dtHasStates(piece) && this.stateIfBound(piece) < 0;
     if (unsolved) {
       this.unsolved.push(piece);
     }
-    this.fmtPiece.push(piece);
-    this.fmtShape.push(SH_INLINE);
-    this.fmtMode.push(SM_MERGE);
-    dtFormatPiece(this, piece, this.sol.state(piece));
-    this.fmtPiece.pop();
-    const shape = this.fmtShape.pop();
-    this.fmtMode.pop();
+    const n0 = this.nFmt;
+    if (n0 >= toI32(this.fmtShape.length)) {
+      const a = new Array<i32>(n0 * 2);
+      a.set(this.fmtShape);
+      this.fmtShape = a;
+      const b = new Array<i32>(n0 * 2);
+      b.set(this.fmtMode);
+      this.fmtMode = b;
+    }
+    if (n0 < toI32(this.fmtPiece.length)) {
+      this.fmtPiece[n0] = piece;
+    } else {
+      this.fmtPiece.push(piece);
+    }
+    this.fmtShape[n0] = SH_INLINE;
+    this.fmtMode[n0] = SM_MERGE;
+    this.nFmt = n0 + 1;
+    dtFormatPiece(this, piece, this.state(piece));
+    this.nFmt = n0;
+    const shape = this.fmtShape[n0];
     if (unsolved) {
       this.unsolved.pop();
     }
-    const n = toI32(this.fmtPiece.length);
-    if (n > 0) {
-      const parent = this.fmtPiece[n - 1];
-      const allowed = dtAllowed(parent, this.sol.state(parent), piece);
-      if ((allowed & shape) === 0) {
-        this.sol.invalidate(parent);
+    if (n0 > 0 && !this.emit) {
+      const parent = this.fmtPiece[n0 - 1];
+      if (shape !== SH_INLINE || dtMayRefuseInline(parent.kind)) {
+        const allowed = dtAllowed(parent, this.state(parent), piece);
+        if ((allowed & shape) === 0) {
+          this.sol.invalidate(parent);
+        }
       }
       if (shape !== SH_INLINE) {
-        this.applyNewline(n - 1, shape);
+        this.applyNewline(n0 - 1, shape);
       }
     }
   }
 
   enableFormatting(enabled: boolean, offset: i32): void {
-    this.code.enable(enabled, offset);
+    if (this.emit) {
+      const b = this.cache.builder;
+      if (b !== null) {
+        b.enable(enabled, offset);
+      }
+      this.items = this.items + 1;
+    }
   }
 
   flushWhitespace(): void {
     const ws = this.pendingWs;
     if (ws === WS_NEWLINE || ws === WS_BLANK) {
-      this.finishLine();
+      if (!this.emit) {
+        this.finishLine();
+      }
       this.column = this.pendingIndent;
       this.softChars = 0;
-      this.code.newline(ws === WS_BLANK, this.column);
+      if (this.emit && this.items > 0) {
+        const b = this.cache.builder;
+        if (b !== null) {
+          b.newline(ws === WS_BLANK, this.column);
+        }
+        this.items = this.items + 1;
+      }
     } else if (ws === WS_SPACE) {
-      this.code.write(" ");
+      if (this.emit) {
+        const b = this.cache.builder;
+        if (b !== null) {
+          b.text(" ");
+        }
+        this.items = this.items + 1;
+      }
       this.column = this.column + 1;
       this.softChars = this.softChars + 1;
     }
@@ -754,19 +874,22 @@ export class DtWriter {
     if (this.foundExpandLine) {
       return;
     }
-    if (this.linePieces.length > 0 && (this.column > this.pageWidth || !this.sol.valid)) {
-      for (const p of this.linePieces) {
-        this.expandPieces.push(p);
+    if (this.nLine > 0 && (this.column > this.pageWidth || !this.sol.valid)) {
+      for (let i = 0; i < this.nLine; i++) {
+        this.expandPieces.push(this.linePieces[i]);
       }
       this.foundExpandLine = true;
     } else {
-      this.linePieces = [];
+      this.nLine = 0;
       this.newGen();
     }
   }
 
   /** _applyNewlineToShape for the format state at `i`. */
   applyNewline(i: i32, shape: i32): void {
+    if (i < 0) {
+      return;
+    }
     const mode = this.fmtMode[i];
     const cur = this.fmtShape[i];
     let r = cur;

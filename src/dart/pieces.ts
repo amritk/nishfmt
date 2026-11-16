@@ -239,6 +239,8 @@ export class DtPiece {
   offspringC: DtPiece[] | null = null;
   // The CodeWriter's set membership mark.
   mark: i32 = 0;
+  // The number of states (-1 until known).
+  ns: i32 = -1;
 
   constructor(id: i32, kind: i32) {
     this.id = id;
@@ -506,7 +508,12 @@ export const dtStates = (p: DtPiece): i32[] => {
   return out;
 };
 
-export const dtHasStates = (p: DtPiece): boolean => dtStates(p).length > 0;
+export const dtHasStates = (p: DtPiece): boolean => {
+  if (p.ns < 0) {
+    p.ns = toI32(dtStates(p).length);
+  }
+  return p.ns > 0;
+};
 
 /** Piece.stateCost. */
 export const dtStateCost = (p: DtPiece, s: i32): i32 => {
@@ -693,13 +700,25 @@ export const dtPin = (p: DtPiece, s: i32): void => {
     return;
   }
   p.pinned = s;
-  const ps: DtPiece[] = [];
-  const ss: i32[] = [];
-  dtConstraints(p, s, ps, ss);
-  for (let i = 0; i < ps.length; i++) {
-    dtPin(ps[i], ss[i]);
+  if (dtHasConstraints(p)) {
+    const ps: DtPiece[] = [];
+    const ss: i32[] = [];
+    dtConstraints(p, s, ps, ss);
+    for (let i = 0; i < ps.length; i++) {
+      dtPin(ps[i], ss[i]);
+    }
   }
 };
+
+/** Whether the piece's kind ever constrains others. */
+export const dtHasConstraints = (p: DtPiece): boolean => {
+  const k = p.kind;
+  return k === PK_LIST || k === PK_CONSTRUCTOR || k === PK_CONTROL_FLOW || k === PK_TYPE;
+};
+
+/** Whether allowedChildShapes can leave out Shape.inline for this kind. */
+export const dtMayRefuseInline = (k: i32): boolean =>
+  k === PK_ASSIGN || k === PK_CASE_EXPRESSION || k === PK_TYPE_TEST || k === PK_PRIMARY_TYPE;
 
 /** Piece.preventSplit. */
 export const dtPreventSplit = (p: DtPiece): void => {

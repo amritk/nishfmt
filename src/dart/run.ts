@@ -8,7 +8,7 @@ import { DtAst, dtNodeName, dtSig, N_NAMED_TYPE } from "./ast";
 import { DtParser } from "./parser";
 import { DtPiece, dtFixedState, dtKids, dtPin } from "./pieces";
 import { DtTokens, dtScan } from "./scanner";
-import { DtBuilder, DtCache, dtSolve } from "./solver";
+import { DtBuilder, DtCache, dtEmit, dtSolve } from "./solver";
 import { DtVisitor } from "./visitor";
 
 /** One file's Dart state; a fresh one formats each file, in a region of its own. */
@@ -21,6 +21,7 @@ export class DartEngine {
 /** Formats `src[0, n)` into `out` as dart_format does; answers false when the file cannot be formatted. */
 export const formatDart = (e: DartEngine, path: string, src: u8[], n: i32, out: Out): boolean => {
   out.n = 0;
+  const t0 = monotonicNanos();
   const toks = dtScan(src, n);
   if (toks.failed) {
     if (e.debug) {
@@ -40,8 +41,10 @@ export const formatDart = (e: DartEngine, path: string, src: u8[], n: i32, out: 
     }
     return true;
   }
+  const t1 = monotonicNanos();
   const p = new DtParser(toks);
   const unit = p.parseUnit();
+  const t2 = monotonicNanos();
   if (p.failed) {
     if (e.debug) {
       console.error(`${path}: parse: ${p.why}`);
@@ -67,6 +70,7 @@ export const formatDart = (e: DartEngine, path: string, src: u8[], n: i32, out: 
   }
   const v = new DtVisitor(toks, p.a);
   const root = v.buildUnit(unit);
+  const t3 = monotonicNanos();
   if (v.failed) {
     if (e.debug) {
       console.error(`${path}: ${v.why}`);
@@ -75,13 +79,27 @@ export const formatDart = (e: DartEngine, path: string, src: u8[], n: i32, out: 
   }
   const pageWidth = dtPageWidth(toks);
   dtPinByPageWidth(root, pageWidth);
-  const cache = new DtCache(pageWidth);
+  const cache = new DtCache(pageWidth, v.pf.n);
   const sol = dtSolve(cache, root, -1, 0, 0);
+  const t4 = monotonicNanos();
   const b = new DtBuilder(out, src, n, dtLineEnding(src, n));
-  b.traverse(sol.code);
+  cache.builder = b;
+  dtEmit(cache, sol, root, 0, 0);
   b.finish();
+  const t5 = monotonicNanos();
+  DT_PROF[0] = DT_PROF[0] + toF64(t1 - t0);
+  DT_PROF[1] = DT_PROF[1] + toF64(t2 - t1);
+  DT_PROF[2] = DT_PROF[2] + toF64(t3 - t2);
+  DT_PROF[3] = DT_PROF[3] + toF64(t4 - t3);
+  DT_PROF[4] = DT_PROF[4] + toF64(t5 - t4);
   return true;
 };
+
+/** Nanoseconds spent per phase: scan, parse, pieces, solve, output. */
+export const DT_PROF = new Float64Array(8);
+
+export const dtProfReport = (): string =>
+  `scan ${DT_PROF[0] / 1e6} ms, parse ${DT_PROF[1] / 1e6} ms, pieces ${DT_PROF[2] / 1e6} ms, solve ${DT_PROF[3] / 1e6} ms, output ${DT_PROF[4] / 1e6} ms`;
 
 /** A `// dart format width=N` comment before the first token, or 80. */
 const dtPageWidth = (t: DtTokens): i32 => {
