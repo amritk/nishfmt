@@ -1,0 +1,10 @@
+// @dart=2.19
+library short;
+import "a.dart";
+class Shape<T extends num> extends Base with Mixin implements Comparable<Shape>, Other {
+  final String name; Shape(this.name, {required this.area, final int? weight}) : assert(area >= 0), super(name.length);
+  int describe(Object value) { switch (value) { case 1: case const Foo(): return 1; case Bar.baz: break; default: return 0; } return 2; }
+  void chains() { final result = items.where((item) => item.isValid).map((item) => item.value).toList(); builder..add(1)..add(2)..build(); object.method().another.property.yetAnotherMethodCall(argumentNumberOne, argumentNumberTwo); }
+  Widget build(BuildContext context) { return Scaffold(appBar: AppBar(title: Text(title, style: Theme.of(context).textTheme.headlineMedium)), body: ListView.builder(itemCount: items.length, itemBuilder: (context, index) => ListTile(title: Text(items[index].name))),); }
+}
+var x = cond ? aVeryLongValueNameForTheTrueBranchOfThis : anotherVeryLongValueNameForFalse; // trailing

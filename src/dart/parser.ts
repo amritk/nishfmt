@@ -162,6 +162,7 @@ import {
   N_SWITCH_DEFAULT,
   N_SWITCH_EXPRESSION,
   N_SWITCH_EXPRESSION_CASE,
+  N_SWITCH_CASE,
   N_SWITCH_PATTERN_CASE,
   N_SWITCH_STATEMENT,
   N_SYMBOL_LITERAL,
@@ -443,6 +444,8 @@ export class DtParser {
   mayFn: boolean = true; // mayParseFunctionExpressions
   className: i32 = -1; // the name token of the enclosing type, for constructors
   asyncState: i32 = 0; // 0 sync, 1 async, 2 async*, 3 sync*
+  patterns: boolean = true; // whether `case` takes a pattern (language 3.0 on)
+  primaryCtors: boolean = true; // language 3.13 on
 
   constructor(t: DtTokens) {
     this.t = t;
@@ -2410,7 +2413,9 @@ export class DtParser {
     if ((mk === K_VAR || mk === K_FINAL || mk === K_CONST) && this.modifierFollows(this.p)) {
       mutable = this.p;
       this.p = mutable + 1;
-      if (!this.inPrimary || mk === K_CONST) {
+      // Before primary constructors (3.13), `var` and `final` were fine on
+      // any parameter.
+      if ((this.primaryCtors && !this.inPrimary) || mk === K_CONST) {
         this.fail("var, final or const on a parameter");
         return -1;
       }
@@ -3179,6 +3184,14 @@ export class DtParser {
       if (kw === K_CASE) {
         const ct = this.p;
         this.p = ct + 1;
+        if (!this.patterns) {
+          // Before 3.0, a case holds an expression.
+          const e = this.parseExpression();
+          const colon = this.expect(T_COLON);
+          const stmts = this.parseSwitchStatements();
+          members.push(this.mk(N_SWITCH_CASE, mb, this.a.list(labels), ct, e, colon, stmts));
+          continue;
+        }
         const gp = this.parseGuardedPattern();
         const colon = this.expect(T_COLON);
         const stmts = this.parseSwitchStatements();
@@ -3909,7 +3922,8 @@ export class DtParser {
     const l = this.a.list(xs);
     for (let i = 0; i < xs.length; i++) {
       const x = xs[i];
-      if (this.a.kind[x] === N_ADJACENT_STRINGS) {
+      // An argument that failed to parse is -1.
+      if (x >= 0 && this.a.kind[x] === N_ADJACENT_STRINGS) {
         let other = false;
         for (let j = 0; j < xs.length; j++) {
           if (j !== i && this.isStringLiteral(xs[j])) {

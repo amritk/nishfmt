@@ -36,6 +36,9 @@ export const PK_PRIMARY_TYPE: i32 = 26;
 export const PK_TYPE_PARAMETER_BOUND: i32 = 27;
 export const PK_TYPE_TEST: i32 = 28;
 export const PK_VARIABLE: i32 = 29;
+// AssignPiece3Dot7: a left?, b operator, c right, b0 canBlockSplitLeft,
+// b1 canBlockSplitRight, b2 avoidBlockSplitRight.
+export const PK_ASSIGN37: i32 = 30;
 
 // States, interned by (value, cost) as Dart's const State instances are.
 export const S_UNSPLIT: i32 = 0; // State(0, cost: 0)
@@ -45,6 +48,7 @@ export const S_1_1: i32 = 3; // State(1)
 export const S_2_1: i32 = 4; // State(2)
 export const S_2_2: i32 = 5; // State(2, cost: 2)
 export const S_3_1: i32 = 6; // State(3)
+export const S_2_0: i32 = 7; // State(2, cost: 0)
 
 export const dtStateValue = (s: i32): i32 => {
   switch (s) {
@@ -57,6 +61,7 @@ export const dtStateValue = (s: i32): i32 => {
       return 1;
     case S_2_1:
     case S_2_2:
+    case S_2_0:
       return 2;
     default:
       return 3;
@@ -67,6 +72,7 @@ export const dtStateBaseCost = (s: i32): i32 => {
   switch (s) {
     case S_UNSPLIT:
     case S_1_0:
+    case S_2_0:
       return 0;
     case S_2_2:
       return 2;
@@ -171,6 +177,13 @@ export const CT_PROPERTY: i32 = 0;
 export const CT_UNSPLITTABLE: i32 = 1;
 export const CT_SPLITTABLE: i32 = 2;
 export const CT_BLOCK_FORMAT: i32 = 3;
+
+// The language version's style switches (FormattingStyle): [0] whether the
+// version is exactly 3.7, [1] whether it is 3.13 or later.
+export const DT_STYLE = new Int32Array(4);
+
+export const dtIs37 = (): boolean => DT_STYLE[0] !== 0;
+export const dtV313 = (): boolean => DT_STYLE[1] !== 0;
 
 /**
  * A piece. Fields by kind:
@@ -287,6 +300,11 @@ export const dtKidsNow = (p: DtPiece): DtPiece[] => {
       for (const x of p.list) {
         out.push(x);
       }
+      break;
+    case PK_ASSIGN37:
+      dtPush(out, p.a);
+      dtPush(out, p.b);
+      dtPush(out, p.c);
       break;
     case PK_ASSIGN:
     case PK_FOR:
@@ -423,6 +441,15 @@ export const dtStates = (p: DtPiece): i32[] => {
       out.push(ASSIGN_BLOCK_LEFT);
       out.push(S_SPLIT);
       break;
+    case PK_ASSIGN37:
+      if (p.b0) {
+        out.push(S_1_1);
+      }
+      if (p.b1) {
+        out.push(S_2_0);
+      }
+      out.push(S_3_1);
+      break;
     case PK_CASE_EXPRESSION:
       if (p.b2) {
         out.push(CASE_BLOCK_BODY);
@@ -528,11 +555,17 @@ export const dtStateCost = (p: DtPiece, s: i32): i32 => {
         return p.b0 ? 1 : 0;
       }
       break;
+    case PK_ASSIGN37:
+      if (s === S_2_0 && p.b2) {
+        return 1;
+      }
+      break;
     case PK_CHAIN:
-      if (p.b1 && (s === CHAIN_SPLIT_AFTER_PROPERTIES || s === S_SPLIT)) {
+      // _ChainPiece (3.8 on); _ChainPiece3Dot7 keeps ChainPiece's.
+      if (!dtIs37() && p.b1 && (s === CHAIN_SPLIT_AFTER_PROPERTIES || s === S_SPLIT)) {
         return 0;
       }
-      if (!p.b0 && p.i0 === p.list.length && s === S_SPLIT) {
+      if (!dtIs37() && !p.b0 && p.i0 === p.list.length && s === S_SPLIT) {
         return 2;
       }
       if (s === S_SPLIT && p.b0) {
@@ -641,6 +674,12 @@ export const dtContainsNewline = (p: DtPiece, s: i32): boolean => {
 /** Piece.applyConstraints: the pieces `p` in state `s` constrains, and to what. */
 export const dtConstraints = (p: DtPiece, s: i32, outP: DtPiece[], outS: i32[]): void => {
   switch (p.kind) {
+    case PK_ASSIGN37:
+      if (s === S_1_1) {
+        outP.push(dtReqP(p.a));
+        outS.push(S_SPLIT);
+      }
+      break;
     case PK_LIST:
       if (p.i0 === CM_TRAILING && p.i2 !== -1) {
         outP.push(p.list[p.i2]);
@@ -713,6 +752,8 @@ export const dtPin = (p: DtPiece, s: i32): void => {
 /** Whether the piece's kind ever constrains others. */
 export const dtHasConstraints = (p: DtPiece): boolean => {
   switch (p.kind) {
+    case PK_ASSIGN37:
+      return p.b0;
     case PK_LIST:
       return p.i0 === CM_TRAILING && p.i2 !== -1;
     case PK_CONSTRUCTOR:
@@ -741,9 +782,18 @@ export const dtPreventSplit = (p: DtPiece): void => {
 /** Whether `x` is the (possibly null) `y`. */
 const dtIsP = (x: DtPiece, y: DtPiece | null): boolean => y !== null && x === y;
 
+const dtReqP = (p: DtPiece | null): DtPiece => {
+  if (p === null) {
+    panic("dart: missing piece");
+  }
+  return p;
+};
+
 /** Piece.allowedChildShapes. */
 export const dtAllowed = (p: DtPiece, s: i32, child: DtPiece): i32 => {
   switch (p.kind) {
+    case PK_ASSIGN37:
+      return dtAnyIf(s !== S_UNSPLIT);
     case PK_ASSIGN:
       if (s === S_UNSPLIT) {
         return SH_INLINE;
@@ -779,6 +829,10 @@ export const dtAllowed = (p: DtPiece, s: i32, child: DtPiece): i32 => {
       }
       return SH_INLINE;
     case PK_CHAIN:
+      if (dtIs37() && dtIsP(child, p.a)) {
+        // _ChainPiece3Dot7: b2 allowSplitInTarget.
+        return dtAnyIf(p.b2 || s === S_SPLIT);
+      }
       if (dtIsP(child, p.a)) {
         if (s === S_UNSPLIT || s === CHAIN_BLOCK_TRAILING_CALL || s === CHAIN_SPLIT_AFTER_PROPERTIES) {
           return SH_INLINE | SH_BLOCK;
@@ -815,6 +869,13 @@ export const dtAllowed = (p: DtPiece, s: i32, child: DtPiece): i32 => {
     case PK_INFIX:
       return dtAnyIf(s === S_SPLIT);
     case PK_FOR_IN:
+      if (dtIs37()) {
+        // _ForInPiece3Dot7: b0 canBlockSplitSequence.
+        if (s === S_SPLIT) {
+          return SH_ALL;
+        }
+        return dtAnyIf(dtIsP(child, p.b) && p.b0);
+      }
       if (s === S_UNSPLIT) {
         if (dtIsP(child, p.b)) {
           return SH_INLINE | SH_BLOCK;
@@ -823,6 +884,22 @@ export const dtAllowed = (p: DtPiece, s: i32, child: DtPiece): i32 => {
       }
       return SH_ALL;
     case PK_IF_CASE:
+      if (!dtV313()) {
+        // _IfCasePieceBlockFormatWithGuard (before 3.13).
+        if (s === S_UNSPLIT && dtIsP(child, p.b)) {
+          return dtAnyIf(p.b0);
+        }
+        if (s === IFCASE_BEFORE_WHEN && dtIsP(child, p.c)) {
+          return SH_ALL;
+        }
+        if (s === IFCASE_BEFORE_CASE && !dtIsP(child, p.c)) {
+          return SH_ALL;
+        }
+        if (s === IFCASE_BEFORE_CASE_AND_WHEN) {
+          return SH_ALL;
+        }
+        return SH_INLINE;
+      }
       if (s === S_UNSPLIT && dtIsP(child, p.b) && p.b0 && p.c === null) {
         return SH_INLINE | SH_BLOCK;
       }
@@ -900,7 +977,7 @@ export const dtAllowed = (p: DtPiece, s: i32, child: DtPiece): i32 => {
       }
       return SH_ALL;
     case PK_VARIABLE:
-      if (p.list.length === 1 && !p.b0) {
+      if (!dtIs37() && p.list.length === 1 && !p.b0) {
         return SH_ALL;
       }
       if (dtIsP(child, p.a)) {
@@ -914,6 +991,33 @@ export const dtAllowed = (p: DtPiece, s: i32, child: DtPiece): i32 => {
 
 /** Piece.fixedStateForPageWidth, or -1. */
 export const dtFixedState = (p: DtPiece, pageWidth: i32): i32 => {
+  if (p.kind === PK_ASSIGN37) {
+    if (p.b0 || p.b1) {
+      return -1;
+    }
+    const left = p.a;
+    if (left !== null && dtTotalChars(left) === 1) {
+      return -1;
+    }
+    let total = 0;
+    if (left !== null && !p.b0) {
+      if (dtHardNewline(left)) {
+        return S_3_1;
+      }
+      total += dtTotalChars(left);
+    }
+    total += dtTotalChars(dtReqP(p.b));
+    if (!p.b1) {
+      if (dtHardNewline(dtReqP(p.c))) {
+        return S_3_1;
+      }
+      total += dtTotalChars(dtReqP(p.c));
+    }
+    if (total > pageWidth) {
+      return S_3_1;
+    }
+    return -1;
+  }
   if (p.kind === PK_INFIX) {
     let total = 0;
     for (const op of p.list) {
