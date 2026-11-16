@@ -198,10 +198,19 @@ the whole tree with 4 workers. Peak memory is the largest single process.
 | fmt | 73 | 97.3% | 15.0 s | 1.1 s | 3555 MB | 651 MB |
 | **all** | **19201** | **99.7%** | | | | |
 
-Objective-C headers are left out of the counts (127 `.h` files, in godot,
+Objective-C headers are left out of these counts (127 `.h` files, in godot,
 opencv and protobuf, with `@interface`, `@implementation`, `@protocol`,
-`@class` or `@end` lines): clang-format formats them as Objective-C, which
-fastfmt does not target. Times and memory are for the whole tree.
+`@class` or `@end` lines). clang-format formats them as Objective-C; fastfmt
+now does the same for declarations (`@interface`, `@protocol`, method
+declarations and their selector wrapping) and leaves a header with other
+Objective-C (literals, `@implementation`, method bodies) untouched. Times
+and memory are for the whole tree.
+
+The regression corpus (`bench/corpus`, 10344 files from the same kind of
+repositories, each capped at 250 KB, the reference one `clang-format -i`
+run) matches on 10306. Of the 38 left, 26 are files on which a second
+clang-format run changes its own output; fastfmt gives the settled output
+there, as above.
 
 On a generated corpus of 30,194 files (108.8 MB) of SDK code, every file
 matches clang-format's output (2 of its files are still unstable under
