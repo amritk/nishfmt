@@ -1336,41 +1336,45 @@ const formatTupleStruct = (ctx: RsCtx, p: StructParts, bi: i32, al: i32): string
 const rsLoWithAttrsField = (ast: RsAst, f: i32): i32 => ast.lo[f];
 
 /** visit_enum / format_enum. */
+/**
+ * visit_enum as rustfmt 1.9 has it: the header and generics are pushed, then the
+ * variant list as a rewrite of the body's span. A list that fails leaves the
+ * block indent raised, so the body's snippet starts on a new line at that indent.
+ * Generics that fail panic there (an unwrap): the file is skipped.
+ */
 export const rsVisitEnum = (v: RsVisitor, item: i32): void => {
   const ast = v.ast;
   const lo = ast.lo[item];
   const hi = ast.hi[item];
-  const rw = formatEnum(v, item, lo, hi);
-  v.pushRewrite(lo, hi, rw);
-};
-
-const formatEnum = (v: RsVisitor, item: i32, lo: i32, hi: i32): string | null => {
-  const ast = v.ast;
   const ctx = v.ctx();
   const vis = ast.e[item];
   const header = formatHeader(ctx, "enum ", ast.d[item], vis, visLoOf(ast, vis, lo), visHiOf(ast, vis, lo), v.bi, v.al);
-  const snippet = ctx.snippet(lo, hi);
-  const bracePos = rsFindUncommented(snippet, "{");
+  const bracePos = rsFindUncommented(ctx.snippet(lo, hi), "{");
   if (bracePos < 0) {
-    return null;
+    v.f.broken = true;
+    return;
   }
   const bodyStart = lo + bracePos + 1;
   const nv = ast.ln[item];
   const gs = formatGenerics(ctx, ast.a[item], nv === 0 ? BP_FORCE_SAME_LINE : BP_AUTO, v.bi, v.al, ctx.f.t.hi[ast.d[item]], bodyStart, rsLastLineWidth(header, ctx.cfg.tabSpaces));
   if (gs === null) {
-    return null;
+    v.f.broken = true;
+    return;
   }
   const s = formatVariantList(v, item, bodyStart, hi);
   if (s !== null && nv === 0) {
-    return header + gs + s;
+    v.pushRewrite(lo, hi, header + gs + s);
+    return;
   }
   if (s !== null) {
     const indent = v.indentStr();
     v.blockUnindent();
-    return `${header}${gs}\n${indent}${s}`;
+    v.pushRewrite(lo, hi, `${header}${gs}\n${indent}${s}`);
+    return;
   }
+  v.pushRewrite(lo, bodyStart, header + gs);
+  v.pushRewrite(bodyStart, hi, null);
   v.blockUnindent();
-  return null;
 };
 
 const formatVariantList = (v: RsVisitor, item: i32, bodyLo: i32, bodyHi: i32): string | null => {
