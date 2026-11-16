@@ -96,3 +96,26 @@ redundantNilInit rules_ext swRuleRedundantNilInit
 enumNamespaces rules_ext swRuleEnumNamespaces
 extensionAttributes rules_ext swRuleExtensionAttributes
 redundantType rules_redtype swRuleRedundantType
+# Not ported yet: conservative guards (true when the rule cannot apply, else the file is skipped).
+noForceUnwrapInTests guards swGuardTests bool
+noForceTryInTests guards swGuardTests bool
+redundantThrows guards swGuardTests bool
+redundantAsync guards swGuardTests bool
+swiftTestingTestCaseNames guards swGuardSwiftTesting bool
+redundantSwiftTestingSuite guards swGuardSwiftTesting bool
+nestedIf guards swGuardNestedIf bool
+preferForLoop guards swGuardPreferForLoop bool
+redundantClosure guards swGuardRedundantClosure bool
+trailingClosures guards swGuardTrailingClosures bool
+redundantVariable guards swGuardRedundantVariable bool
+simplifyGenericConstraints guards swGuardSimplifyGenericConstraints bool
+repeatedGuard guards swGuardRepeatedGuard bool
+redundantInit guards swGuardRedundantInit bool
+contentBuilder guards swGuardContentBuilder bool
+redundantMemberwiseInit guards swGuardRedundantMemberwiseInit bool
+redundantEquatable guards swGuardRedundantEquatable bool
+redundantEnumerated guards swGuardRedundantEnumerated bool
+redundantEmptyView guards swGuardRedundantEmptyView bool
+redundantSwiftUIGroup guards swGuardRedundantSwiftUIGroup bool
+yodaConditions guards swGuardYodaConditions bool
+redundantParens rules_parens swRuleRedundantParens

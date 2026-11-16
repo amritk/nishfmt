@@ -22,6 +22,7 @@ import {
   SW_RULE_CONSECUTIVE_BLANK_LINES,
   SW_RULE_CONSECUTIVE_SPACES,
   SW_RULE_CONSISTENT_SWITCH_CASE_SPACING,
+  SW_RULE_CONTENT_BUILDER,
   SW_RULE_DOC_COMMENTS,
   SW_RULE_DOC_COMMENTS_BEFORE_MODIFIERS,
   SW_RULE_DUPLICATE_IMPORTS,
@@ -45,29 +46,47 @@ import {
   SW_RULE_LINEBREAK_AT_END_OF_FILE,
   SW_RULE_MODIFIERS_ON_SAME_LINE,
   SW_RULE_MODIFIER_ORDER,
+  SW_RULE_NESTED_IF,
+  SW_RULE_NO_FORCE_TRY_IN_TESTS,
+  SW_RULE_NO_FORCE_UNWRAP_IN_TESTS,
   SW_RULE_NUMBER_FORMATTING,
   SW_RULE_OPAQUE_GENERIC_PARAMETERS,
+  SW_RULE_PREFER_FOR_LOOP,
   SW_RULE_PREFER_KEY_PATH,
+  SW_RULE_REDUNDANT_ASYNC,
   SW_RULE_REDUNDANT_BACKTICKS,
   SW_RULE_REDUNDANT_BREAK,
+  SW_RULE_REDUNDANT_CLOSURE,
+  SW_RULE_REDUNDANT_EMPTY_VIEW,
+  SW_RULE_REDUNDANT_ENUMERATED,
+  SW_RULE_REDUNDANT_EQUATABLE,
   SW_RULE_REDUNDANT_EXTENSION_A_C_L,
   SW_RULE_REDUNDANT_FILEPRIVATE,
   SW_RULE_REDUNDANT_GET,
+  SW_RULE_REDUNDANT_INIT,
   SW_RULE_REDUNDANT_INTERNAL,
   SW_RULE_REDUNDANT_LET,
   SW_RULE_REDUNDANT_LET_ERROR,
+  SW_RULE_REDUNDANT_MEMBERWISE_INIT,
   SW_RULE_REDUNDANT_NIL_INIT,
   SW_RULE_REDUNDANT_OBJC,
   SW_RULE_REDUNDANT_OPTIONAL_BINDING,
+  SW_RULE_REDUNDANT_PARENS,
   SW_RULE_REDUNDANT_PATTERN,
   SW_RULE_REDUNDANT_PUBLIC,
   SW_RULE_REDUNDANT_RAW_VALUES,
   SW_RULE_REDUNDANT_SELF,
   SW_RULE_REDUNDANT_STATIC_SELF,
+  SW_RULE_REDUNDANT_SWIFT_TESTING_SUITE,
+  SW_RULE_REDUNDANT_SWIFT_U_I_GROUP,
+  SW_RULE_REDUNDANT_THROWS,
   SW_RULE_REDUNDANT_TYPE,
   SW_RULE_REDUNDANT_TYPED_THROWS,
+  SW_RULE_REDUNDANT_VARIABLE,
   SW_RULE_REDUNDANT_VOID_RETURN_TYPE,
+  SW_RULE_REPEATED_GUARD,
   SW_RULE_SEMICOLONS,
+  SW_RULE_SIMPLIFY_GENERIC_CONSTRAINTS,
   SW_RULE_SORT_DECLARATIONS,
   SW_RULE_SORT_IMPORTS,
   SW_RULE_SORT_TYPEALIASES,
@@ -84,7 +103,9 @@ import {
   SW_RULE_SPACE_INSIDE_PARENS,
   SW_RULE_STRONGIFIED_SELF,
   SW_RULE_STRONG_OUTLETS,
+  SW_RULE_SWIFT_TESTING_TEST_CASE_NAMES,
   SW_RULE_TODOS,
+  SW_RULE_TRAILING_CLOSURES,
   SW_RULE_TRAILING_COMMAS,
   SW_RULE_TRAILING_SPACE,
   SW_RULE_TYPE_SUGAR,
@@ -100,7 +121,27 @@ import {
   SW_RULE_WRAP_MULTILINE_STATEMENT_BRACES,
   SW_RULE_WRAP_PROPERTY_BODIES,
   SW_RULE_WRAP_SINGLE_LINE_COMMENTS,
+  SW_RULE_YODA_CONDITIONS,
 } from "./rules";
+import {
+  swGuardContentBuilder,
+  swGuardNestedIf,
+  swGuardPreferForLoop,
+  swGuardRedundantClosure,
+  swGuardRedundantEmptyView,
+  swGuardRedundantEnumerated,
+  swGuardRedundantEquatable,
+  swGuardRedundantInit,
+  swGuardRedundantMemberwiseInit,
+  swGuardRedundantSwiftUIGroup,
+  swGuardRedundantVariable,
+  swGuardRepeatedGuard,
+  swGuardSimplifyGenericConstraints,
+  swGuardSwiftTesting,
+  swGuardTests,
+  swGuardTrailingClosures,
+  swGuardYodaConditions,
+} from "./guards";
 import {
   swRuleDuplicateImports,
   swRuleSortImports,
@@ -159,6 +200,9 @@ import {
   swRuleSemicolons,
   swRuleTodos,
 } from "./rules_misc";
+import {
+  swRuleRedundantParens,
+} from "./rules_parens";
 import {
   swRuleRedundantType,
 } from "./rules_redtype";
@@ -505,6 +549,51 @@ export const swRunRule = (f: SwFormatter, r: i32): boolean => {
       return true;
     case SW_RULE_REDUNDANT_TYPE:
       swRuleRedundantType(f);
+      return true;
+    case SW_RULE_NO_FORCE_UNWRAP_IN_TESTS:
+      return swGuardTests(f);
+    case SW_RULE_NO_FORCE_TRY_IN_TESTS:
+      return swGuardTests(f);
+    case SW_RULE_REDUNDANT_THROWS:
+      return swGuardTests(f);
+    case SW_RULE_REDUNDANT_ASYNC:
+      return swGuardTests(f);
+    case SW_RULE_SWIFT_TESTING_TEST_CASE_NAMES:
+      return swGuardSwiftTesting(f);
+    case SW_RULE_REDUNDANT_SWIFT_TESTING_SUITE:
+      return swGuardSwiftTesting(f);
+    case SW_RULE_NESTED_IF:
+      return swGuardNestedIf(f);
+    case SW_RULE_PREFER_FOR_LOOP:
+      return swGuardPreferForLoop(f);
+    case SW_RULE_REDUNDANT_CLOSURE:
+      return swGuardRedundantClosure(f);
+    case SW_RULE_TRAILING_CLOSURES:
+      return swGuardTrailingClosures(f);
+    case SW_RULE_REDUNDANT_VARIABLE:
+      return swGuardRedundantVariable(f);
+    case SW_RULE_SIMPLIFY_GENERIC_CONSTRAINTS:
+      return swGuardSimplifyGenericConstraints(f);
+    case SW_RULE_REPEATED_GUARD:
+      return swGuardRepeatedGuard(f);
+    case SW_RULE_REDUNDANT_INIT:
+      return swGuardRedundantInit(f);
+    case SW_RULE_CONTENT_BUILDER:
+      return swGuardContentBuilder(f);
+    case SW_RULE_REDUNDANT_MEMBERWISE_INIT:
+      return swGuardRedundantMemberwiseInit(f);
+    case SW_RULE_REDUNDANT_EQUATABLE:
+      return swGuardRedundantEquatable(f);
+    case SW_RULE_REDUNDANT_ENUMERATED:
+      return swGuardRedundantEnumerated(f);
+    case SW_RULE_REDUNDANT_EMPTY_VIEW:
+      return swGuardRedundantEmptyView(f);
+    case SW_RULE_REDUNDANT_SWIFT_U_I_GROUP:
+      return swGuardRedundantSwiftUIGroup(f);
+    case SW_RULE_YODA_CONDITIONS:
+      return swGuardYodaConditions(f);
+    case SW_RULE_REDUNDANT_PARENS:
+      swRuleRedundantParens(f);
       return true;
     default:
       return false;
