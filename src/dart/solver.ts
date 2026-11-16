@@ -531,39 +531,42 @@ export const dtSolve = (cache: DtCache, root: DtPiece, rootState: i32, leading: 
 
 /** Solution.expand, adding each new solution to `queue`. */
 const dtExpand = (cache: DtCache, s: DtSolution, root: DtPiece, leading: i32, subsequent: i32, queue: DtQueue): void => {
+  // dart_style binds the expand pieces before the i-th to unsplit afresh for
+  // every new solution. Binding depends only on the solution's states, so
+  // the same bindings are made once here, on `base`, and each new solution
+  // starts from a copy of it: the same solutions, with the same bindings in
+  // the same order.
   const ex = s.expand;
+  const al = s.allowed;
+  const base = new DtSolution(s.own, s.binds, ex.length > 1 ? dtCopyAllowed(al) : null);
   for (let i = 0; i < ex.length; i++) {
     const ep = ex[i];
     let states = dtStates(ep);
-    const al = s.allowed;
     if (al !== null) {
       const st = al.get(ep.id);
       if (st !== undefined) {
         states = st;
       }
     }
+    let own = s.own;
+    let binds = s.binds;
+    let allowed = al;
+    if (i > 0) {
+      const b = base;
+      b.beginBinding(cache);
+      b.bind(ex[i - 1], S_UNSPLIT);
+      b.bc = null;
+      if (b.deadEnd) {
+        // Every later piece would bind this prefix too.
+        return;
+      }
+      own = b.own;
+      binds = b.binds;
+      allowed = b.allowed;
+    }
     for (const state of states) {
-      let copy: Map<i32, i32[]> | null = null;
-      if (al !== null) {
-        const m = new Map<i32, i32[]>();
-        for (const k of al.keys()) {
-          m.set(k, al.get(k) ?? []);
-        }
-        copy = m;
-      }
-      const e = new DtSolution(s.own, s.binds, copy);
+      const e = new DtSolution(own, binds, dtCopyAllowed(allowed));
       e.beginBinding(cache);
-      let ok = true;
-      for (let j = 0; j < i; j++) {
-        e.bind(ex[j], S_UNSPLIT);
-        if (e.deadEnd) {
-          ok = false;
-          break;
-        }
-      }
-      if (!ok) {
-        continue;
-      }
       e.bind(ep, state);
       e.bc = null;
       if (!e.deadEnd) {
@@ -574,6 +577,17 @@ const dtExpand = (cache: DtCache, s: DtSolution, root: DtPiece, leading: i32, su
       }
     }
   }
+};
+
+const dtCopyAllowed = (al: Map<i32, i32[]> | null): Map<i32, i32[]> | null => {
+  if (al === null) {
+    return null;
+  }
+  const m = new Map<i32, i32[]>();
+  for (const k of al.keys()) {
+    m.set(k, al.get(k) ?? []);
+  }
+  return m;
 };
 
 /** Solution._format: runs a CodeWriter over the tree for `s`, measuring. */
