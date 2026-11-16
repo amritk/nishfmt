@@ -1,0 +1,33 @@
+// Copyright header.
+
+/// Doc comment for the function.
+int f(int a, /* inline */ int b) {
+  // Leading comment.
+  var x =
+      a + // trailing on the operator
+      b;
+  /* block
+     comment */
+  return x; // after return
+}
+
+class C {
+  // Comment in an empty-ish class.
+
+  /// Field doc.
+  final int value; // hanging
+
+  // Two blank lines above were collapsed.
+  C(this.value);
+}
+
+var list = [
+  // A comment at the start of a list.
+  1, 2, 3, //
+  4, 5, 6,
+];
+
+// dart format off
+var   untouched   =   [1,2,3];
+// dart format on
+var touched = [1, 2, 3];

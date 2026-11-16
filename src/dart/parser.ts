@@ -1444,7 +1444,7 @@ export class DtParser {
       }
       return this.parseExtension(meta, start);
     }
-    if (kw === K_TYPEDEF && (this.isId(this.p + 1) || this.k(this.p + 1) === T_LPAREN)) {
+    if (kw === K_TYPEDEF && (this.isId(this.p + 1) || this.k(this.p + 1) === T_LPAREN || this.kw(this.p + 1) === K_VOID)) {
       return this.parseTypedef(meta, start);
     }
     return this.parseTopLevelMember(meta, start);

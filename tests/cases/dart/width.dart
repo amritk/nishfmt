@@ -1,0 +1,5 @@
+// dart format width=40
+void main() {
+  final values = [firstValue, secondValue, thirdValue];
+  print(computeSomething(alpha, beta, gamma));
+}
