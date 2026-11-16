@@ -125,7 +125,6 @@ import {
   SW_RULE_YODA_CONDITIONS,
 } from "./rules";
 import {
-  swGuardContentBuilder,
   swGuardNoForceUnwrapInTests,
   swGuardPreferForLoop,
   swGuardRedundantEquatable,
@@ -260,6 +259,7 @@ import {
   swRuleSpaceInsideParens,
 } from "./rules_spacing";
 import {
+  swRuleContentBuilder,
   swRuleRedundantEmptyView,
   swRuleRedundantSwiftUIGroup,
 } from "./rules_swiftui";
@@ -618,7 +618,8 @@ export const swRunRule = (f: SwFormatter, r: i32): boolean => {
       swRuleRedundantInit(f);
       return true;
     case SW_RULE_CONTENT_BUILDER:
-      return swGuardContentBuilder(f);
+      swRuleContentBuilder(f);
+      return true;
     case SW_RULE_REDUNDANT_MEMBERWISE_INIT:
       return swGuardRedundantMemberwiseInit(f);
     case SW_RULE_REDUNDANT_EQUATABLE:

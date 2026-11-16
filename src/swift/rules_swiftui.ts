@@ -4,7 +4,7 @@
 // Lockwood).
 
 import { SwDecl, swDeclKeywordIndex, swParseConformances, swParseDeclarations, swReleaseDecls, swStringExcludingLinebreaksAndComments } from "./decl";
-import { swParseExpressionEnd, swParsePropertyDeclaration } from "./expr";
+import { swIsInsideProtocol, swParseExpressionEnd, swParsePropertyDeclaration } from "./expr";
 import { SwFormatter } from "./formatter";
 import { swParseFunctionDeclaration } from "./funcdecl";
 import { swStartOfModifiers } from "./modifiers";
@@ -12,7 +12,7 @@ import { swEndOfScope } from "./parsing";
 import { swCollectRecursive, swParentType } from "./rules_acl";
 import { swIsSingleExpression, swStartOfBody } from "./rules_return";
 import { swIsInResultBuilder } from "./rules_simple";
-import { SW_DELIM, SW_END, SW_IDENT, SW_KEYWORD, SW_LINEBREAK, SW_OP_INFIX, SW_SPACE, SW_START, SW_T_NON_SPACE_OR_COMMENT_OR_LINEBREAK, SwTok } from "./token";
+import { SW_DELIM, SW_END, SW_IDENT, SW_KEYWORD, SW_LINEBREAK, SW_OP_INFIX, SW_SPACE, SW_START, SW_T_NON_SPACE, SW_T_NON_SPACE_OR_COMMENT_OR_LINEBREAK, SwTok } from "./token";
 
 export const swAllSpaceOrLinebreak = (f: SwFormatter, lo: i32, hi: i32): boolean => {
   for (let j = lo; j < hi; j++) {
@@ -225,4 +225,81 @@ export const swRuleRedundantSwiftUIGroup = (f: SwFormatter): void => {
     }
   }
   swReleaseDecls(f, decls);
+};
+
+/** removeViewBuilderAttribute(at:). */
+const swRemoveViewBuilderAttribute = (f: SwFormatter, a: i32): void => {
+  let startIndex = a;
+  let endIndex = a;
+  const hasLeadingSpace = a > 0 && f.k(a - 1) === SW_SPACE;
+  const leadingSpaceIsAfterAttribute = hasLeadingSpace && a > 1 && f.k(a - 2) !== SW_LINEBREAK;
+  const nn = f.indexAfter(SW_T_NON_SPACE, a);
+  const hasTrailingLinebreak = nn >= 0 && f.k(nn) === SW_LINEBREAK;
+  const hasTrailingSpace = a + 1 < f.count() && f.k(a + 1) === SW_SPACE;
+  if (leadingSpaceIsAfterAttribute) {
+    startIndex = a - 1;
+  } else if (hasTrailingLinebreak) {
+    endIndex = nn;
+    if (hasLeadingSpace && a > 1 && f.k(a - 2) === SW_LINEBREAK) {
+      startIndex = a - 1;
+    }
+  } else if (hasTrailingSpace) {
+    endIndex = a + 1;
+  }
+  f.removeTokens(startIndex, endIndex + 1);
+};
+
+/** contentBuilder (contentBuilder implicit, preferContentBuilder off). */
+export const swRuleContentBuilder = (f: SwFormatter): void => {
+  const decls = swParseDeclarations(f);
+  const all: SwDecl[] = [];
+  swCollectRecursive(decls, all);
+  const toRemove: i32[] = [];
+  for (const d of all) {
+    const kw = swDeclKeywordIndex(f, d);
+    let vb = -1;
+    for (let j = swStartOfModifiers(f, kw, true); j < kw; j++) {
+      if (f.s(j) === "@ViewBuilder" || f.s(j) === "@ContentBuilder") {
+        vb = j;
+        break;
+      }
+    }
+    if (vb < 0 || swIsInsideProtocol(f, kw)) {
+      continue;
+    }
+    let bodyLo = -1;
+    let isBodyMember = false;
+    if (d.keyword === "var" || d.keyword === "let") {
+      const p = swParsePropertyDeclaration(f, kw);
+      if (p === null) {
+        continue;
+      }
+      bodyLo = p.bodyStart;
+      isBodyMember = p.identifier === "body" && swTypeConformsTo(f, swParentType(d), "View");
+    } else if (d.keyword === "func") {
+      const fd = swParseFunctionDeclaration(f, kw);
+      if (fd === null) {
+        continue;
+      }
+      bodyLo = fd.bodyStart;
+      isBodyMember = fd.hasName && fd.name === "body" && swTypeConformsTo(f, swParentType(d), "ViewModifier");
+    } else {
+      continue;
+    }
+    if (bodyLo < 0) {
+      continue;
+    }
+    let redundant = isBodyMember;
+    if (!redundant) {
+      const e = swEndOfScope(f, bodyLo);
+      redundant = e >= 0 && swIsSingleExpression(f, swStartOfBody(f, bodyLo) + 1, e, true);
+    }
+    if (redundant) {
+      toRemove.push(vb);
+    }
+  }
+  swReleaseDecls(f, decls);
+  for (let q = toI32(toRemove.length) - 1; q >= 0; q--) {
+    swRemoveViewBuilderAttribute(f, toRemove[q]);
+  }
 };

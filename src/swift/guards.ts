@@ -124,20 +124,6 @@ export const swGuardPreferForLoop = (f: SwFormatter): boolean => {
   return true;
 };
 
-/** contentBuilder: no result-builder attributes. */
-export const swGuardContentBuilder = (f: SwFormatter): boolean => {
-  const n = f.count();
-  for (let i = 0; i < n; i++) {
-    if (f.k(i) === SW_KEYWORD) {
-      const s = f.s(i);
-      if (s.startsWith("@") && (s.indexOf("Builder") >= 0 || s === "@SwiftUI" || s === "@SwiftUICore")) {
-        return false;
-      }
-    }
-  }
-  return true;
-};
-
 /** redundantMemberwiseInit: no struct with an init. */
 /** redundantMemberwiseInit: no top-level struct with exactly one init. */
 export const swGuardRedundantMemberwiseInit = (f: SwFormatter): boolean => {
