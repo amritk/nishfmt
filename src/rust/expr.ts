@@ -664,22 +664,9 @@ class ControlFlow {
     const lo = this.label >= 0 ? ctx.f.t.hi[this.label] : this.lo;
     let keyword = this.keyword;
     let afterKwd = 0;
-    if (this.keyword === "for await") {
-      const afterFor = ctx.spanAfter(lo, this.hi, "for");
-      const beforeAwait = ctx.optSpanBefore(afterFor, this.hi, "await");
-      const afterAwait = ctx.optSpanAfter(afterFor, this.hi, "await");
-      if (beforeAwait < 0 || afterAwait < 0) {
-        return null;
-      }
-      const kwd = rsCombineStrsWithMissingComments(ctx, "for", "await", afterFor, beforeAwait, shape, true);
-      if (kwd === null) {
-        return null;
-      }
-      keyword = kwd;
-      afterKwd = afterAwait;
-    } else {
-      afterKwd = ctx.spanAfter(lo, this.hi, rsTrim(this.keyword));
-    }
+    // rustfmt 1.9 finds the whole keyword, `for await` included (a panic when
+    // spaced otherwise: the span lookup fails and the file is skipped).
+    afterKwd = ctx.spanAfter(lo, this.hi, rsTrim(this.keyword));
     const offset = rsLastLineWidth(keyword, cfg.tabSpaces) + toI32(labelString.length) + 1;
     let patExprString = "";
     if (this.cond >= 0) {

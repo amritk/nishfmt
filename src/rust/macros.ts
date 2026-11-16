@@ -687,34 +687,6 @@ const rewriteBranch = (ctx: RsCtx, br: Branch, shape: RsShape, multi: boolean): 
   return result + "}";
 };
 
-/** format_header over [snippet, lo, hi] parts. */
-const formatHeaderParts = (ctx: RsCtx, shape: RsShape, snippets: string[], los: i32[], his: i32[]): string => {
-  const sh = shape.infiniteWidth();
-  let result = "";
-  let prevHi = -1;
-  let first = true;
-  for (let i = 0; i < snippets.length; i++) {
-    if (snippets[i].length === 0) {
-      continue;
-    }
-    if (first) {
-      result = snippets[i];
-      prevHi = his[i];
-      first = false;
-      continue;
-    }
-    const cs = ctx.snippet(prevHi, los[i]);
-    if (rsContainsComment(cs)) {
-      result = result + cs + snippets[i];
-    } else {
-      const r = rsCombineStrsWithMissingComments(ctx, result, snippets[i], prevHi, los[i], sh, true);
-      result = r !== null ? r : result + " " + snippets[i];
-    }
-    prevHi = his[i];
-  }
-  return result;
-};
-
 /** The token after the token tree at `i`. */
 const ttEnd = (t: RsTokens, i: i32): i32 => {
   const k = t.kind[i];
@@ -775,11 +747,9 @@ export const rsRewriteMacroDef = (ctx: RsCtx, shape: RsShape, bi: i32, al: i32, 
     }
     branches.push(new Branch(blo, bhi, argsOpen, argsKind, bo, bc));
   }
-  // The header: `macro_rules!` and the name.
-  const bang = ctx.spanAfter(lo, hi, "!");
+  // The header: rustfmt 1.9 writes `macro_rules! name`, dropping comments between.
   const identTok = ast.d[item];
-  const header = formatHeaderParts(ctx, shape, ["macro_rules!", rsIdentStr(ctx, identTok)], [lo, t.lo[identTok]], [bang, t.hi[identTok]]);
-  let result = header;
+  let result = "macro_rules! " + rsIdentStr(ctx, identTok);
   const armShape = shape.blockIndent(cfg.tabSpaces).withMaxWidth(cfg);
   if (branches.length === 0) {
     const blo = ctx.spanBefore(lo, hi, "{");

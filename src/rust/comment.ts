@@ -135,6 +135,8 @@ export class RsCharScan {
       kind = K_IN_STRING;
       if (chr === 34) {
         if (arg === 0) {
+          // rustfmt 1.9: the closing quote of a raw string without `#`s is normal code.
+          kind = K_NORMAL;
           st = S_NORMAL;
         } else {
           // is_raw_string_suffix: the next `arg` chars are all '#'.
@@ -197,18 +199,8 @@ export class RsCharScan {
           st = S_RAW_STRING_PREFIX;
           arg = 0;
         } else if (c1 === 35) {
-          // is_raw_string_prefix: '#'s then '"'.
-          let q = next8(src, p1, n);
-          let isRaw = false;
-          while (q < n) {
-            const cq = at8(src, q);
-            if (cq === 35) {
-              q = next8(src, q, n);
-              continue;
-            }
-            isRaw = cq === 34;
-            break;
-          }
+          // rustfmt 1.9 takes any `r#` for a raw string prefix (raw identifiers too).
+          const isRaw = true;
           if (isRaw) {
             kind = K_IN_STRING;
             st = S_RAW_STRING_PREFIX;

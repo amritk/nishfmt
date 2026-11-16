@@ -44,7 +44,7 @@ import { DLT_HORIZONTAL, LT_HORIZONTAL_VERTICAL, RsListFormatting, SEP_COMMA, rs
 import { RsShape, rsIndentStr, rsShapeLegacy } from "./shape";
 import { rsHasByte, rsLines } from "./str";
 import { rsRewriteBoundParams, rsRewriteTy } from "./types";
-import { rsLeftMostSubExpr } from "./utils";
+import { rsExprHasAttrs, rsLeftMostSubExpr } from "./utils";
 
 /** rewrite_closure for closure expr `e`. */
 export const rsRewriteClosure = (ctx: RsCtx, e: i32, shape: RsShape): string | null => {
@@ -114,7 +114,8 @@ const needsBlock = (ctx: RsCtx, block: i32, label: i32, prefix: string): boolean
     const s = ast.kid(block, 0);
     const k = ast.kind[s];
     const holder = k === N_STMT_EXPR || k === 154 ? ast.a[s] : k === 152 ? ast.a[s] : s;
-    hasAttributes = ast.atn[holder] > 0;
+    // get_attrs_from_stmt: an expression's attributes include its block's inner ones.
+    hasAttributes = k === N_STMT_EXPR || k === 154 ? rsExprHasAttrs(ast, holder) : ast.atn[holder] > 0;
   }
   return (
     (ast.fl[block] & BLK_UNSAFE) !== 0 ||
