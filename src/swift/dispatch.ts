@@ -22,11 +22,13 @@ import {
   SW_RULE_CONSECUTIVE_BLANK_LINES,
   SW_RULE_CONSECUTIVE_SPACES,
   SW_RULE_CONSISTENT_SWITCH_CASE_SPACING,
+  SW_RULE_DOC_COMMENTS,
   SW_RULE_DOC_COMMENTS_BEFORE_MODIFIERS,
   SW_RULE_DUPLICATE_IMPORTS,
   SW_RULE_ELSE_ON_SAME_LINE,
   SW_RULE_EMPTY_BRACES,
   SW_RULE_ENVIRONMENT_ENTRY,
+  SW_RULE_EXTENSION_ACCESS_CONTROL,
   SW_RULE_FILE_HEADER,
   SW_RULE_FILE_MACRO,
   SW_RULE_GENERIC_EXTENSIONS,
@@ -47,11 +49,13 @@ import {
   SW_RULE_REDUNDANT_BREAK,
   SW_RULE_REDUNDANT_EXTENSION_A_C_L,
   SW_RULE_REDUNDANT_GET,
+  SW_RULE_REDUNDANT_INTERNAL,
   SW_RULE_REDUNDANT_LET,
   SW_RULE_REDUNDANT_LET_ERROR,
   SW_RULE_REDUNDANT_OBJC,
   SW_RULE_REDUNDANT_OPTIONAL_BINDING,
   SW_RULE_REDUNDANT_PATTERN,
+  SW_RULE_REDUNDANT_PUBLIC,
   SW_RULE_REDUNDANT_RAW_VALUES,
   SW_RULE_REDUNDANT_TYPED_THROWS,
   SW_RULE_REDUNDANT_VOID_RETURN_TYPE,
@@ -94,6 +98,11 @@ import {
   swRuleIndent,
 } from "./rule_indent";
 import {
+  swRuleExtensionAccessControl,
+  swRuleRedundantInternal,
+  swRuleRedundantPublic,
+} from "./rules_acl";
+import {
   swRuleBlankLineAfterImports,
   swRuleBlankLinesAtEndOfScope,
   swRuleBlankLinesAtStartOfScope,
@@ -116,6 +125,9 @@ import {
   swRuleElseOnSameLine,
   swRuleWrapMultilineStatementBraces,
 } from "./rules_braces";
+import {
+  swRuleDocComments,
+} from "./rules_doc";
 import {
   swRuleHoistTry,
 } from "./rules_hoist";
@@ -412,6 +424,18 @@ export const swRunRule = (f: SwFormatter, r: i32): boolean => {
       return true;
     case SW_RULE_SORT_TYPEALIASES:
       swRuleSortTypealiases(f);
+      return true;
+    case SW_RULE_DOC_COMMENTS:
+      swRuleDocComments(f);
+      return true;
+    case SW_RULE_EXTENSION_ACCESS_CONTROL:
+      swRuleExtensionAccessControl(f);
+      return true;
+    case SW_RULE_REDUNDANT_INTERNAL:
+      swRuleRedundantInternal(f);
+      return true;
+    case SW_RULE_REDUNDANT_PUBLIC:
+      swRuleRedundantPublic(f);
       return true;
     default:
       return false;
