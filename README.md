@@ -17,18 +17,24 @@ output byte for byte:
 
 | Language | Files | Matches | Corpus result |
 | --- | --- | --- | ---: |
-| Java | `.java` | google-java-format 1.28 | 6645 / 6645 |
-| Kotlin | `.kt .kts` | ktfmt 0.64 (default style) | 6270 / 6270 |
+| Java | `.java` | google-java-format 1.28 | 7626 / 7627 |
+| Kotlin | `.kt .kts` | ktfmt 0.64 (default style) | 9602 / 9602 |
 | Ruby | RuboCop's default `Include` (`.rb`, `Gemfile`, `.gemspec`, ...) | `rubocop -a` 1.92.2, default config, `TargetRubyVersion: 3.3` | 4239 / 4239 |
 
 Against the reference tools and the Rust reimplementations, on a 4-core
 container (identical = byte for byte with the reference tool's output):
 
-| Kotlin, 6270 files | Identical | 4 cores | 1 core |
+| Kotlin, 9602 files | Identical | 4 cores | 1 core |
 | --- | ---: | ---: | ---: |
-| ktfmt 0.64 (JVM) | reference | 26.6 s | |
-| ktrs | 6270 | 1.68 s | 6.45 s |
-| fastfmt | 6270 | 1.64 s | 6.02 s |
+| ktfmt 0.64 (JVM) | reference | 92.9 s | |
+| ktrs 0.5.1 | 9602 | 2.43 s | 8.96 s |
+| fastfmt | 9602 | 2.03 s | 7.02 s |
+
+The Java and Kotlin corpora are the sources of public repositories as found
+(`bench/corpus/repos.txt` lists them; `bench/corpus/mk.sh` rebuilds a corpus
+and `cmp.sh` compares against it). Times are the best of three on a busy
+4-core container, so they compare tools with each other rather than measure
+the machine.
 
 | Ruby, `rubocop -a` | 739 files | 1500 files | 2000 files | 739 files, 4 cores | 1 core |
 | --- | ---: | ---: | ---: | ---: | ---: |
