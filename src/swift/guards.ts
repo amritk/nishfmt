@@ -202,7 +202,5 @@ export const swGuardRedundantEquatable = (f: SwFormatter): boolean => {
   return true;
 };
 
-export const swGuardRedundantEmptyView = (f: SwFormatter): boolean => !swHasIdent(f, "EmptyView");
-
 export const swGuardRedundantSwiftUIGroup = (f: SwFormatter): boolean => !swHasIdent(f, "Group");
 
