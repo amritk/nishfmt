@@ -127,7 +127,6 @@ import {
 import {
   swGuardNoForceUnwrapInTests,
   swGuardPreferForLoop,
-  swGuardRedundantMemberwiseInit,
 } from "./guards";
 import {
   swRuleDuplicateImports,
@@ -197,6 +196,9 @@ import {
 import {
   swRuleHoistPatternLet,
 } from "./rules_hoistlet";
+import {
+  swRuleRedundantMemberwiseInit,
+} from "./rules_memberwise";
 import {
   swRuleBlankLinesBetweenChainedFunctions,
   swRuleSemicolons,
@@ -624,7 +626,8 @@ export const swRunRule = (f: SwFormatter, r: i32): boolean => {
       swRuleContentBuilder(f);
       return true;
     case SW_RULE_REDUNDANT_MEMBERWISE_INIT:
-      return swGuardRedundantMemberwiseInit(f);
+      swRuleRedundantMemberwiseInit(f);
+      return true;
     case SW_RULE_REDUNDANT_EQUATABLE:
       swRuleRedundantEquatable(f);
       return true;
