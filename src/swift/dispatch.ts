@@ -9,6 +9,7 @@ import {
   SW_RULE_AND_OPERATOR,
   SW_RULE_ANY_OBJECT_PROTOCOL,
   SW_RULE_APPLICATION_MAIN,
+  SW_RULE_ASSERTION_FAILURES,
   SW_RULE_BLANK_LINES_AT_END_OF_SCOPE,
   SW_RULE_BLANK_LINES_AT_START_OF_SCOPE,
   SW_RULE_BLANK_LINES_BETWEEN_CHAINED_FUNCTIONS,
@@ -19,6 +20,7 @@ import {
   SW_RULE_CONSECUTIVE_BLANK_LINES,
   SW_RULE_CONSECUTIVE_SPACES,
   SW_RULE_DOC_COMMENTS_BEFORE_MODIFIERS,
+  SW_RULE_DUPLICATE_IMPORTS,
   SW_RULE_ELSE_ON_SAME_LINE,
   SW_RULE_EMPTY_BRACES,
   SW_RULE_ENVIRONMENT_ENTRY,
@@ -28,20 +30,28 @@ import {
   SW_RULE_HOIST_AWAIT,
   SW_RULE_HOIST_TRY,
   SW_RULE_INDENT,
+  SW_RULE_INIT_CODER_UNAVAILABLE,
   SW_RULE_LEADING_DELIMITERS,
   SW_RULE_LINEBREAKS,
   SW_RULE_LINEBREAK_AT_END_OF_FILE,
   SW_RULE_NUMBER_FORMATTING,
   SW_RULE_OPAQUE_GENERIC_PARAMETERS,
   SW_RULE_PREFER_KEY_PATH,
+  SW_RULE_REDUNDANT_BACKTICKS,
   SW_RULE_REDUNDANT_BREAK,
+  SW_RULE_REDUNDANT_EXTENSION_A_C_L,
   SW_RULE_REDUNDANT_GET,
   SW_RULE_REDUNDANT_LET,
   SW_RULE_REDUNDANT_LET_ERROR,
+  SW_RULE_REDUNDANT_OBJC,
   SW_RULE_REDUNDANT_OPTIONAL_BINDING,
+  SW_RULE_REDUNDANT_PATTERN,
+  SW_RULE_REDUNDANT_RAW_VALUES,
   SW_RULE_REDUNDANT_TYPED_THROWS,
+  SW_RULE_REDUNDANT_VOID_RETURN_TYPE,
   SW_RULE_SEMICOLONS,
   SW_RULE_SORT_DECLARATIONS,
+  SW_RULE_SORT_IMPORTS,
   SW_RULE_SPACE_AROUND_BRACES,
   SW_RULE_SPACE_AROUND_BRACKETS,
   SW_RULE_SPACE_AROUND_COMMENTS,
@@ -70,6 +80,10 @@ import {
   SW_RULE_WRAP_SINGLE_LINE_COMMENTS,
 } from "./rules";
 import {
+  swRuleDuplicateImports,
+  swRuleSortImports,
+} from "./imports";
+import {
   swRuleIndent,
 } from "./rule_indent";
 import {
@@ -94,6 +108,16 @@ import {
   swRuleSemicolons,
   swRuleTodos,
 } from "./rules_misc";
+import {
+  swRuleAssertionFailures,
+  swRuleInitCoderUnavailable,
+  swRuleRedundantBackticks,
+  swRuleRedundantExtensionACL,
+  swRuleRedundantObjc,
+  swRuleRedundantPattern,
+  swRuleRedundantRawValues,
+  swRuleRedundantVoidReturnType,
+} from "./rules_redundant1";
 import {
   swRuleRedundantBreak,
   swRuleRedundantGet,
@@ -321,6 +345,36 @@ export const swRunRule = (f: SwFormatter, r: i32): boolean => {
       return true;
     case SW_RULE_AND_OPERATOR:
       swRuleAndOperator(f);
+      return true;
+    case SW_RULE_SORT_IMPORTS:
+      swRuleSortImports(f);
+      return true;
+    case SW_RULE_DUPLICATE_IMPORTS:
+      swRuleDuplicateImports(f);
+      return true;
+    case SW_RULE_ASSERTION_FAILURES:
+      swRuleAssertionFailures(f);
+      return true;
+    case SW_RULE_INIT_CODER_UNAVAILABLE:
+      swRuleInitCoderUnavailable(f);
+      return true;
+    case SW_RULE_REDUNDANT_RAW_VALUES:
+      swRuleRedundantRawValues(f);
+      return true;
+    case SW_RULE_REDUNDANT_OBJC:
+      swRuleRedundantObjc(f);
+      return true;
+    case SW_RULE_REDUNDANT_BACKTICKS:
+      swRuleRedundantBackticks(f);
+      return true;
+    case SW_RULE_REDUNDANT_PATTERN:
+      swRuleRedundantPattern(f);
+      return true;
+    case SW_RULE_REDUNDANT_VOID_RETURN_TYPE:
+      swRuleRedundantVoidReturnType(f);
+      return true;
+    case SW_RULE_REDUNDANT_EXTENSION_A_C_L:
+      swRuleRedundantExtensionACL(f);
       return true;
     default:
       return false;

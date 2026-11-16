@@ -1732,3 +1732,20 @@ export const swTokenize = (src: u8[], n: i32): SwTokList => {
   }
   return lx.t;
 };
+
+/** UnicodeScalarView.parseIdentifier() on `s`: the identifier or keyword token it reads, or "". */
+export const swParseIdentifierString = (s: string): string => {
+  const n = toI32(s.length);
+  const b = new Array<u8>(n);
+  for (let i = 0; i < n; i++) {
+    b[i] = toU8(s.charCodeAt(i));
+  }
+  const lx = new SwLexer(b, n);
+  if (!swParseIdentifier(lx)) {
+    return "";
+  }
+  if (lx.tk !== SW_IDENT && lx.tk !== SW_KEYWORD) {
+    return "";
+  }
+  return lx.ts;
+};
