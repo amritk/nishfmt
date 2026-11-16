@@ -23,7 +23,7 @@ output byte for byte:
 | Dart | `.dart` | `dart format` (Dart 3.14; tall style, short style below 3.7) | 10313 / 10313 |
 | Swift | `.swift` | SwiftFormat 0.64.7, default rules | 6710 / 6710 |
 | Rust | `.rs` | rustfmt 1.9.0, default config, edition 2021 | 7899 / 7899 |
-| Ruby | RuboCop's default `Include` (`.rb`, `Gemfile`, `.gemspec`, ...) | `rubocop -a` 1.92.2, default config, `TargetRubyVersion: 3.3` | 4239 / 4239 |
+| Ruby | RuboCop's default `Include` (`.rb`, `Gemfile`, `.gemspec`, ...) | `rubocop -a` 1.92.2, default config, `TargetRubyVersion: 3.3` | 1998 / 1998 |
 
 Against the reference tools and the Rust reimplementations, on a 4-core
 container (identical = byte for byte with the reference tool's output):
@@ -33,6 +33,13 @@ container (identical = byte for byte with the reference tool's output):
 | ktfmt 0.64 (JVM) | reference | 92.9 s | |
 | ktrs 0.5.1 | 9602 | 2.43 s | 8.96 s |
 | fastfmt | 9602 | 2.03 s | 7.02 s |
+
+| Java, 7627 files (78 MB) | Identical | 4 cores | 1 core |
+| --- | ---: | ---: | ---: |
+| google-java-format 1.28 (JVM, one run over all files) | reference | 75.2 s | 252.9 s |
+| fastfmt | 7627 | 2.17 s | 8.64 s |
+
+There is no native reimplementation of google-java-format to compare with.
 
 | C#, 13992 files (164 MB) | Identical | 4 cores | 1 core |
 | --- | ---: | ---: | ---: |
@@ -114,12 +121,17 @@ and `cmp.sh` compares against it). Times are the best of three on a busy
 4-core container, so they compare tools with each other rather than measure
 the machine.
 
-| Ruby, `rubocop -a` | 739 files | 1500 files | 2000 files | 739 files, 4 cores | 1 core |
-| --- | ---: | ---: | ---: | ---: | ---: |
-| RuboCop 1.92.2 | reference | reference | reference | 102 s (`--parallel`) | 115 s |
-| rbcop 0.1.4 | 739 | 1500 | 2000 | 2.59 s | 8.53 s |
-| nitrocop 0.0.1-pre12 | 124 | 354 | 499 | 73.5 s | |
-| fastfmt | 739 | 1500 | 2000 | 1.17 s | 4.34 s |
+| Ruby, `rubocop -a`, 1998 files | Identical | 4 cores | 1 core |
+| --- | ---: | ---: | ---: |
+| RuboCop 1.92.2 (`--parallel` on 4 cores) | reference | 303.9 s | 289.6 s |
+| rbcop 0.1.4 (Rust) | 1998 | 6.55 s | 20.4 s |
+| fastfmt | 1998 | 4.00 s | 12.7 s |
+
+The Java, Ruby and C++ times were measured together on an otherwise idle
+4-core container: fastfmt the best of three, the other tools one run each,
+every run on a fresh copy of the corpus. nitrocop, another Rust
+reimplementation of RuboCop, matched on fewer than a quarter of the files of
+an earlier sample and is left out.
 
 The Ruby side ports RuboCop's whole pipeline: the parser gem's lexer, racc
 grammar and AST builder (following Prism, which RuboCop parses Ruby 3.3 with,
@@ -127,9 +139,10 @@ where the two differ), the TreeRewriter and corrector merging, rubocop
 directive comments, the inspect-correct loop and every cop RuboCop enables by
 default (393; the ones that never correct under `-a` run once, so that
 Lint/RedundantCopDisableDirective can judge directives). The Ruby corpus is
-three samples of Rails, Discourse, Homebrew, RuboCop, the parser gem, Jekyll,
-Sinatra, Devise and rspec-core (739, 1500 and 2000 files). `tools/ruby/README.md`
-lists the generators.
+a 2000-file sample of Rails, Discourse, Homebrew, RuboCop, the parser gem,
+Jekyll, Sinatra, Devise and rspec-core, less the one file RuboCop rejects;
+earlier samples of 739 and 1500 files matched on every file as well.
+`tools/ruby/README.md` lists the generators.
 
 ## Build and use
 
@@ -232,6 +245,15 @@ repositories, each capped at 250 KB, the reference one `clang-format -i`
 run) matches on 10306. Of the 38 left, 26 are files on which a second
 clang-format run changes its own output; fastfmt gives the settled output
 there, as above.
+
+| C++, 10344 files (160 MB) | Identical | 4 cores | 1 core |
+| --- | ---: | ---: | ---: |
+| clang-format 18 (50 files a process) | reference | 87.0 s | 212.9 s |
+| fastfmt | 10306 | 7.07 s | 28.9 s |
+
+Measured with the Java and Ruby times (see Other languages), on an otherwise idle 4-core
+container. There is no native reimplementation of clang-format to compare
+with.
 
 On a generated corpus of 30,194 files (108.8 MB) of SDK code, every file
 matches clang-format's output (2 of its files are still unstable under
