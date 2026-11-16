@@ -470,11 +470,11 @@ export class GEngine {
     if (st < 0) {
       return pos;
     }
-    let start = inp.tPos[inp.kTok[st]];
-    const line0 = this.lineOf(start);
+    const tokPos = inp.tPos[inp.kTok[st]];
+    let start = tokPos;
     for (let j = 0; j < inp.kBeforeN[st]; j++) {
       const t = inp.refs[inp.kBefore[st] + j];
-      if (line0 !== this.lineOf(inp.tPos[t])) {
+      if (this.breakBetween(inp.tPos[t], tokPos)) {
         return start;
       }
       if ((inp.tFlags[t] & TF_COMMENT) !== 0 && inp.tPos[t] < start) {
@@ -484,19 +484,20 @@ export class GEngine {
     return start;
   }
 
-  /** The 1-based line of a position. */
-  lineOf(pos: i32): i32 {
-    let line = 1;
+  /**
+   * Whether positions `a` <= `b` are on different lines (javac's LineMap):
+   * a "\n", or a "\r" not before "\n", in [a, b). Scanning only between
+   * the two keeps this linear in the distance, not in the position.
+   */
+  private breakBetween(a: i32, b: i32): boolean {
     const src = this.inp.src;
-    for (let i = 0; i < pos; i++) {
+    for (let i = a; i < b; i++) {
       const c = toI32(src[i]);
-      if (c === 10) {
-        line++;
-      } else if (c === 13 && !(i + 1 < this.inp.n && toI32(src[i + 1]) === 10)) {
-        line++;
+      if (c === 10 || (c === 13 && !(i + 1 < this.inp.n && toI32(src[i + 1]) === 10))) {
+        return true;
       }
     }
-    return line;
+    return false;
   }
 
   guessToken(s: string): void {
