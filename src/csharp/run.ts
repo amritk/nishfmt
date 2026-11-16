@@ -176,9 +176,6 @@ const csPrintTree = (lx: CsLexer, root: i32, tree: CsTree, eolCr: boolean, out: 
   if (P.failed) {
     return P.failMsg;
   }
-  if (getenv("CSSTAT") !== null) {
-    console.error(`stat bytes=${lx.lim} nt=${lx.nt} ntr=${lx.ntr} nn=${tree.nn} np=${tree.np} nl=${tree.nl} docs=${D.n} pool=${D.np} sb=${D.ns}`);
-  }
   out.n = 0;
   const pr = new CsPrinter(D, out, 100, 4, false, eolCr);
   pr.print(doc);

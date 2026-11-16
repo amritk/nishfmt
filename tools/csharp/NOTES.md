@@ -67,22 +67,20 @@ Details that matter for byte equality:
 
 - Options other than the defaults (useTabs, indentSize, printWidth, end of
   line); `.csharpierrc` / `.editorconfig` are not read.
-- Top-level members with access modifiers (`public int x;` in a file with
-  top-level statements, which Roslyn parses as members of the compilation
-  unit) are refused.
 - UTF-16 files are refused (CSharpier decodes them).
 - A file CSharpier would crash on (a preprocessor condition its
   BooleanExpressionParser rejects, a too-deep tree) is refused.
 
-CSharpier's own tests: 196 / 208 pass; the rest are the tab tests, the
-auto-generated tests (which assume `--include-generated`), a UTF-16 file,
-a BOM the test harness adds, and TrailingComma.test (top-level members).
+CSharpier's own tests: 197 / 208 pass; the rest are the tab tests, the
+auto-generated tests (which assume `--include-generated`), a UTF-16 file
+and a BOM the test harness adds.
 
 ## Corpus
 
 | | cs | cs2 |
 | --- | --- | --- |
-| first full print | 13988 / 13988 | 13988 / 13988 |
+| first full print (f515fd0) | 13940 / 13988 (46 panics, 2 diffs) | 13988 / 13988 |
+| 90e6de0 and later | 13988 / 13988 | 13988 / 13988 |
 
 ## Timings
 
@@ -91,6 +89,12 @@ a BOM the test harness adds, and TrailingComma.test (top-level members).
 | | 4 cores | 1 core (`taskset -c 0`, `-j 1`) |
 | --- | --- | --- |
 | csharpier 1.4.0 (`--no-cache`) | 40.7 s | 122.1 s |
-| fastfmt | 2.6 s | 7.1 s |
+| fastfmt (cmp.sh wall time) | 2.0 s | 6.6-7.0 s |
+
+The machine is shared, so wall times vary by about 30%; callgrind on 200
+corpus files went from 1.59G to 1.34G instructions with the buffer sizing,
+the packed printer stack and the unchecked Doc and lexer accesses. The Doc
+printer (PropagateBreaks, fits, print) is about a third of the work, parsing
+another third, building the Docs the rest; nothing stands out any more.
 
 csharpier's .NET start-up is about 0.43 s for one small file.

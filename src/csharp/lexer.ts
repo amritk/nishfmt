@@ -10,6 +10,7 @@
 // (c) 2021 Bela VanderVoort).
 
 import { growI32 } from "../core/arr";
+import { uncheckedGet, uncheckedSet } from "nish:unsafe";
 import {
   K_AmpersandAmpersandToken,
   K_AmpersandEqualsToken,
@@ -233,7 +234,7 @@ export class CsLexer {
 
   peek(i: i32): i32 {
     const p = this.pos + i;
-    return p < this.lim ? toI32(this.src[p]) : -1;
+    return p < this.lim && p >= 0 ? toI32(uncheckedGet(this.src, p)) : -1;
   }
 
   cp(): i32 {
@@ -252,11 +253,11 @@ export class CsLexer {
       this.trTextEnd = growI32(this.trTextEnd, c);
       this.trAux = growI32(this.trAux, c);
     }
-    this.trKind[i] = k;
-    this.trStart[i] = a;
-    this.trEnd[i] = b;
-    this.trTextEnd[i] = b;
-    this.trAux[i] = -1;
+    uncheckedSet(this.trKind, i, k);
+    uncheckedSet(this.trStart, i, a);
+    uncheckedSet(this.trEnd, i, b);
+    uncheckedSet(this.trTextEnd, i, b);
+    uncheckedSet(this.trAux, i, -1);
     this.ntr = i + 1;
     return i;
   }
@@ -276,16 +277,16 @@ export class CsLexer {
       this.t1 = growI32(this.t1, c);
       this.parent = growI32(this.parent, c);
     }
-    this.kind[i] = k;
-    this.ck[i] = 0;
-    this.flags[i] = 0;
-    this.start[i] = a;
-    this.end[i] = b;
-    this.l0[i] = l0;
-    this.l1[i] = l1;
-    this.t0[i] = this.ntr;
-    this.t1[i] = this.ntr;
-    this.parent[i] = -1;
+    uncheckedSet(this.kind, i, k);
+    uncheckedSet(this.ck, i, 0);
+    uncheckedSet(this.flags, i, 0);
+    uncheckedSet(this.start, i, a);
+    uncheckedSet(this.end, i, b);
+    uncheckedSet(this.l0, i, l0);
+    uncheckedSet(this.l1, i, l1);
+    uncheckedSet(this.t0, i, this.ntr);
+    uncheckedSet(this.t1, i, this.ntr);
+    uncheckedSet(this.parent, i, -1);
     this.nt = i + 1;
     return i;
   }
