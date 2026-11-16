@@ -9,8 +9,9 @@ import { SwFormatter } from "./formatter";
 import { SwFuncDecl, swParseFunctionDeclaration } from "./funcdecl";
 import { swHasImport } from "./imports";
 import { swHasModifier } from "./modifiers";
+import { swBackticksRequired } from "./rules_redundant1";
 import { swEndOfScope, swIsStartOfClosure, swIsUnwrap, swLastSignificantKeyword, swStartOfScope, SW_EX_WHERE } from "./parsing";
-import { SW_IDENT, SW_KEYWORD, SW_LINEBREAK, SW_OP, SW_OP_POSTFIX, SW_SPACE, SW_START, SW_T_NON_SPACE, SW_T_NON_SPACE_OR_COMMENT_OR_LINEBREAK, SwTok } from "./token";
+import { SW_IDENT, SW_KEYWORD, SW_LINEBREAK, SW_OP, SW_OP_POSTFIX, SW_SPACE, SW_START, SW_T_NON_SPACE, SW_T_NON_SPACE_OR_COMMENT_OR_LINEBREAK, SwTok, swIsSwiftKeyword } from "./token";
 
 export const SW_TEST_NONE: i32 = 0;
 export const SW_TEST_XCTEST: i32 = 1;
@@ -290,5 +291,117 @@ export const swRuleRedundantSwiftTestingSuite = (f: SwFormatter): void => {
       endIndex = attributeEndIndex + 1;
     }
     f.removeTokens(startIndex, endIndex + 1);
+  }
+};
+
+const swIsAsciiLetter = (c: i32): boolean => (c >= 65 && c <= 90) || (c >= 97 && c <= 122);
+
+/** Character.lowercased() of the first character; "" when it isn't ASCII (Unicode case mapping isn't ported). */
+const swLowerFirst = (s: string): string => {
+  if (s.length === 0) {
+    return s;
+  }
+  const c = s.charCodeAt(0);
+  if (c >= 128) {
+    return "";
+  }
+  const l = c >= 65 && c <= 90 ? String.fromCharCode(c + 32) : s.substring(0, 1);
+  return l + s.substring(1);
+};
+
+const swAsciiLower = (s: string): string => {
+  const parts: string[] = [];
+  for (let j = 0; j < toI32(s.length); j++) {
+    const c = s.charCodeAt(j);
+    parts.push(c >= 65 && c <= 90 ? String.fromCharCode(c + 32) : s.substring(j, j + 1));
+  }
+  return parts.join("");
+};
+
+const swIsReservedName = (s: string): boolean =>
+  swIsSwiftKeyword(s) || s === "Any" || s === "Self" || s === "self" || s === "super" || s === "nil" || s === "true" || s === "false";
+
+/** updateDeclarationName(forDeclarationAt:to:) for a `func`. */
+const swUpdateDeclarationName = (f: SwFormatter, keywordIndex: i32, newName0: string): void => {
+  const nameIndex = f.indexAfter(SW_T_NON_SPACE_OR_COMMENT_OR_LINEBREAK, keywordIndex);
+  if (nameIndex < 0 || f.k(nameIndex) !== SW_IDENT) {
+    return;
+  }
+  let newName = newName0;
+  const quoted = newName.startsWith("`") && newName.endsWith("`") && newName.length >= 2;
+  const unescaped = quoted ? newName.substring(1, toI32(newName.length) - 1) : newName;
+  if (newName.length === 0) {
+    return;
+  }
+  const c0 = newName.charCodeAt(0);
+  if (c0 >= 128) {
+    f.fatalError("non-ASCII test name", nameIndex);
+    return;
+  }
+  if (!(swIsAsciiLetter(c0) || c0 === 96)) {
+    return;
+  }
+  for (let j = 0; j < f.count(); j++) {
+    if (f.k(j) === SW_IDENT && (f.s(j) === newName || f.s(j) === unescaped)) {
+      return;
+    }
+  }
+  if (swIsReservedName(unescaped)) {
+    return;
+  }
+  if (!newName.startsWith("`") && swBackticksRequired(f, newName, nameIndex)) {
+    newName = "`" + newName + "`";
+  }
+  f.replaceToken(nameIndex, SW_IDENT, newName, 0);
+};
+
+/** removeTestPrefix(fromFunctionAt:). */
+const swRemoveTestPrefix = (f: SwFormatter, funcKeywordIndex: i32): void => {
+  const mi = f.indexAfter(SW_T_NON_SPACE_OR_COMMENT_OR_LINEBREAK, funcKeywordIndex);
+  if (mi < 0 || f.k(mi) !== SW_IDENT) {
+    return;
+  }
+  const name = f.s(mi);
+  const lower = swAsciiLower(name);
+  if (name.startsWith("test") && name !== "test") {
+    let nn = swLowerFirst(name.substring(4));
+    if (nn.length === 0) {
+      f.fatalError("non-ASCII test name", mi);
+      return;
+    }
+    while (nn.startsWith("_")) {
+      nn = nn.substring(1);
+    }
+    swUpdateDeclarationName(f, funcKeywordIndex, nn);
+  }
+  if (name.startsWith("`test") && name.endsWith("`") && name !== "`test`" && !lower.startsWith("`test ")) {
+    let nn = name.substring(5, toI32(name.length) - 1);
+    while (nn.startsWith("_")) {
+      nn = nn.substring(1);
+    }
+    if (nn.length === 0) {
+      return;
+    }
+    const lf = swLowerFirst(nn);
+    if (lf.length === 0) {
+      f.fatalError("non-ASCII test name", mi);
+      return;
+    }
+    swUpdateDeclarationName(f, funcKeywordIndex, lf);
+  }
+  if (lower.startsWith("`test ") && lower !== "`test `") {
+    swUpdateDeclarationName(f, funcKeywordIndex, "`" + name.substring(6));
+  }
+};
+
+/** swiftTestingTestCaseNames (raw identifiers need Swift 6.2; suite names are preserved). */
+export const swRuleSwiftTestingTestCaseNames = (f: SwFormatter): void => {
+  if (!swHasImport(f, "Testing")) {
+    return;
+  }
+  for (let i = f.enumStart(); i >= 0; i = f.enumNext()) {
+    if (f.kw(i, "func") && swHasModifier(f, i, "@Test")) {
+      swRemoveTestPrefix(f, i);
+    }
   }
 };

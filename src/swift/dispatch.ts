@@ -129,7 +129,6 @@ import {
   swGuardPreferForLoop,
   swGuardRedundantEquatable,
   swGuardRedundantMemberwiseInit,
-  swGuardSwiftTestingTestCaseNames,
 } from "./guards";
 import {
   swRuleDuplicateImports,
@@ -268,6 +267,7 @@ import {
   swRuleRedundantAsync,
   swRuleRedundantSwiftTestingSuite,
   swRuleRedundantThrows,
+  swRuleSwiftTestingTestCaseNames,
 } from "./rules_tests";
 import {
   swRuleTrailingClosures,
@@ -590,7 +590,8 @@ export const swRunRule = (f: SwFormatter, r: i32): boolean => {
       swRuleRedundantAsync(f);
       return true;
     case SW_RULE_SWIFT_TESTING_TEST_CASE_NAMES:
-      return swGuardSwiftTestingTestCaseNames(f);
+      swRuleSwiftTestingTestCaseNames(f);
+      return true;
     case SW_RULE_REDUNDANT_SWIFT_TESTING_SUITE:
       swRuleRedundantSwiftTestingSuite(f);
       return true;

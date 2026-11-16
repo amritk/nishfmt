@@ -71,27 +71,6 @@ export const swGuardNoForceUnwrapInTests = (f: SwFormatter): boolean => {
   return true;
 };
 
-/** swiftTestingTestCaseNames (raw identifiers need Swift 6.2, suite names are preserved): no `@Test` func named `test...`. */
-export const swGuardSwiftTestingTestCaseNames = (f: SwFormatter): boolean => {
-  if (!swHasImport(f, "Testing")) {
-    return true;
-  }
-  const n = f.count();
-  for (let i = 0; i < n; i++) {
-    if (!f.kw(i, "func") || !swHasModifier(f, i, "@Test")) {
-      continue;
-    }
-    const m = f.indexAfter(SW_T_NON_SPACE_OR_COMMENT_OR_LINEBREAK, i);
-    if (m >= 0 && f.k(m) === SW_IDENT) {
-      const s = f.s(m);
-      if (s.startsWith("test") || swLowercased(s).startsWith("`test")) {
-        return false;
-      }
-    }
-  }
-  return true;
-};
-
 /** preferForLoop: no `.forEach`. */
 export const swGuardPreferForLoop = (f: SwFormatter): boolean => {
   const n = f.count();
