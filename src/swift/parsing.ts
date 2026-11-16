@@ -777,7 +777,7 @@ export const swEffectsClauseEnd = (f: SwFormatter, startIndex: i32): i32 => {
 };
 
 /** parseGenericValue(at:)'s range end, or -1. */
-const swParseGenericValue = (f: SwFormatter, index: i32): i32 => {
+export const swParseGenericValueEnd = (f: SwFormatter, index: i32): i32 => {
   let v = index;
   if (f.ks(v, SW_OP, "-")) {
     const n = f.indexAfter(SW_T_NON_SPACE_OR_COMMENT_OR_LINEBREAK, v);
@@ -842,7 +842,7 @@ const swParseNonOptionalType = (f: SwFormatter, start: i32, exclLower: boolean, 
         return -1;
       }
       const innerEnd = swParseType(f, inner, exclLower, exclComp);
-      const firstEnd = innerEnd >= 0 ? innerEnd : swParseGenericValue(f, inner);
+      const firstEnd = innerEnd >= 0 ? innerEnd : swParseGenericValueEnd(f, inner);
       if (firstEnd < 0) {
         return -1;
       }

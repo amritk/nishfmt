@@ -89,6 +89,7 @@ const swApplyRules = (e: SwiftEngine, path: string, tokens0: SwTokList): SwTokLi
   for (let iteration = 0; iteration < 10; iteration++) {
     const f = new SwFormatter(tokens.copy());
     f.path = path;
+    f.only = e.only;
     for (const r of rules) {
       f.rule = swRuleName(r);
       f.ruleDisabled = false;

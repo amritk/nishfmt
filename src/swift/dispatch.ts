@@ -10,6 +10,7 @@ import {
   SW_RULE_APPLICATION_MAIN,
   SW_RULE_BLANK_LINES_AT_END_OF_SCOPE,
   SW_RULE_BLANK_LINES_AT_START_OF_SCOPE,
+  SW_RULE_BLANK_LINES_BETWEEN_CHAINED_FUNCTIONS,
   SW_RULE_BLANK_LINES_BETWEEN_IMPORTS,
   SW_RULE_BLANK_LINE_AFTER_IMPORTS,
   SW_RULE_CONDITIONAL_ASSIGNMENT,
@@ -22,6 +23,7 @@ import {
   SW_RULE_FILE_MACRO,
   SW_RULE_GENERIC_EXTENSIONS,
   SW_RULE_HOIST_AWAIT,
+  SW_RULE_HOIST_TRY,
   SW_RULE_INDENT,
   SW_RULE_LEADING_DELIMITERS,
   SW_RULE_LINEBREAKS,
@@ -34,6 +36,7 @@ import {
   SW_RULE_REDUNDANT_LET_ERROR,
   SW_RULE_REDUNDANT_OPTIONAL_BINDING,
   SW_RULE_REDUNDANT_TYPED_THROWS,
+  SW_RULE_SEMICOLONS,
   SW_RULE_SORT_DECLARATIONS,
   SW_RULE_SPACE_AROUND_BRACES,
   SW_RULE_SPACE_AROUND_BRACKETS,
@@ -48,10 +51,15 @@ import {
   SW_RULE_SPACE_INSIDE_PARENS,
   SW_RULE_STRONGIFIED_SELF,
   SW_RULE_STRONG_OUTLETS,
+  SW_RULE_TODOS,
   SW_RULE_TRAILING_SPACE,
   SW_RULE_WRAP,
   SW_RULE_WRAP_ATTRIBUTES,
+  SW_RULE_WRAP_FUNCTION_BODIES,
   SW_RULE_WRAP_IF_EXPRESSION_BODIES,
+  SW_RULE_WRAP_IF_STATEMENT_BODIES,
+  SW_RULE_WRAP_LOOP_BODIES,
+  SW_RULE_WRAP_PROPERTY_BODIES,
   SW_RULE_WRAP_SINGLE_LINE_COMMENTS,
 } from "./rules";
 import {
@@ -66,6 +74,14 @@ import {
   swRuleEmptyBraces,
   swRuleLeadingDelimiters,
 } from "./rules_blank";
+import {
+  swRuleHoistTry,
+} from "./rules_hoist";
+import {
+  swRuleBlankLinesBetweenChainedFunctions,
+  swRuleSemicolons,
+  swRuleTodos,
+} from "./rules_misc";
 import {
   swRuleRedundantBreak,
   swRuleRedundantGet,
@@ -93,6 +109,12 @@ import {
   swRuleSpaceInsideGenerics,
   swRuleSpaceInsideParens,
 } from "./rules_spacing";
+import {
+  swRuleWrapFunctionBodies,
+  swRuleWrapIfStatementBodies,
+  swRuleWrapLoopBodies,
+  swRuleWrapPropertyBodies,
+} from "./rules_wrapbody";
 
 /** Applies rule `r`; answers false when the rule is not ported or cannot handle the file. */
 export const swRunRule = (f: SwFormatter, r: i32): boolean => {
@@ -236,6 +258,30 @@ export const swRunRule = (f: SwFormatter, r: i32): boolean => {
       return true;
     case SW_RULE_TRAILING_SPACE:
       swRuleTrailingSpace(f);
+      return true;
+    case SW_RULE_HOIST_TRY:
+      swRuleHoistTry(f);
+      return true;
+    case SW_RULE_TODOS:
+      swRuleTodos(f);
+      return true;
+    case SW_RULE_SEMICOLONS:
+      swRuleSemicolons(f);
+      return true;
+    case SW_RULE_BLANK_LINES_BETWEEN_CHAINED_FUNCTIONS:
+      swRuleBlankLinesBetweenChainedFunctions(f);
+      return true;
+    case SW_RULE_WRAP_FUNCTION_BODIES:
+      swRuleWrapFunctionBodies(f);
+      return true;
+    case SW_RULE_WRAP_PROPERTY_BODIES:
+      swRuleWrapPropertyBodies(f);
+      return true;
+    case SW_RULE_WRAP_LOOP_BODIES:
+      swRuleWrapLoopBodies(f);
+      return true;
+    case SW_RULE_WRAP_IF_STATEMENT_BODIES:
+      swRuleWrapIfStatementBodies(f);
       return true;
     default:
       return false;

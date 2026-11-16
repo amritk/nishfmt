@@ -35,6 +35,11 @@ export class SwFormatter {
   // Incremented on every change (Formatter.mutationCount).
   mutations: i32 = 0;
   path: string = "";
+  // When set, the only enabled rule (options.enabledRules for `--rules name`).
+  only: string = "";
+  // enclosingStringDelimiters, cached for one mutation count.
+  enc: i32[];
+  encMut: i32 = -1;
 
   constructor(t: SwTokList) {
     this.t = t;
@@ -42,6 +47,7 @@ export class SwFormatter {
     this.refLo = [];
     this.refHi = [];
     this.refLive = [];
+    this.enc = [];
   }
 
   count(): i32 {
@@ -114,6 +120,11 @@ export class SwFormatter {
   }
 
   // MARK: enablement
+
+  /** options.enabledRules.contains(name). */
+  ruleEnabled(name: string): boolean {
+    return this.only.length === 0 || this.only === name;
+  }
 
   isEnabled(): boolean {
     return !this.ruleDisabled;
