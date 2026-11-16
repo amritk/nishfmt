@@ -1,0 +1,67 @@
+#!/usr/bin/env bash
+# Builds one language's corpus from the clones in $REPOS: $CORPUS/<lang>/raw
+# holds the sources as found, $CORPUS/<lang>/ref the reference tool's output at
+# its default settings, and $CORPUS/<lang>/failed.txt the files it rejected
+# (left out of comparisons).
+#
+#   mk.sh cpp|java|kt|rb|swift|rust|dart|cs
+#
+# Tools: clang-format 18; $GJF, $KTFMT jars; rubocop 1.92.2; $SWIFTFORMAT;
+# rustfmt; $DART; csharpier.
+set -uo pipefail
+here=$(cd "$(dirname "$0")" && pwd)
+lang=$1
+REPOS=${REPOS:-/work/repos} CORPUS=${CORPUS:-/work/c}
+GJF=${GJF:-/opt/ref/google-java-format-1.28.0-all-deps.jar}
+KTFMT=${KTFMT:-/opt/ref/ktfmt-0.64-with-dependencies.jar}
+SWIFTFORMAT=${SWIFTFORMAT:-/opt/ref/swiftformat}
+DART=${DART:-dart}
+CSHARPIER=${CSHARPIER:-csharpier}
+case $lang in
+  cpp) pat=(-name '*.cpp' -o -name '*.cc' -o -name '*.cxx' -o -name '*.hpp' -o -name '*.hh' -o -name '*.hxx' -o -name '*.h') ;;
+  java) pat=(-name '*.java') ;;
+  kt) pat=(-name '*.kt' -o -name '*.kts') ;;
+  rb) pat=(-name '*.rb') ;;
+  swift) pat=(-name '*.swift') ;;
+  rust) pat=(-name '*.rs') ;;
+  dart) pat=(-name '*.dart') ;;
+  cs) pat=(-name '*.cs') ;;
+  *) echo "unknown language $lang" >&2; exit 2 ;;
+esac
+d=$CORPUS/$lang
+rm -rf "$d" && mkdir -p "$d/raw"
+for r in $(awk -v l="$lang" '$1==l{print $2}' "$here/repos.txt" | tr / _); do
+  (cd "$REPOS" && find "$r" -type f \( "${pat[@]}" \) -not -path '*/.git/*' -size -2M -print0 | tar --null -cf - -T -) \
+    | (cd "$d/raw" && tar xf -)
+done
+# Ruby: a fixed sample of 2000 files (RuboCop is slow).
+if [ "$lang" = rb ]; then
+  (cd "$d/raw" && find . -type f | sort > ../all.txt)
+  n=$(wc -l < "$d/all.txt"); step=$(( n / 2000 ))
+  awk -v s="$step" 'NR % s == 0' "$d/all.txt" | head -2000 > "$d/keep.txt"
+  (cd "$d/raw" && grep -vxF -f ../keep.txt ../all.txt | xargs -d '\n' rm -f && find . -type d -empty -delete)
+fi
+cp -r "$d/raw" "$d/ref"
+: > "$d/failed.txt"
+cd "$d/ref"
+case $lang in
+  cpp) find . -type f -print0 | xargs -0 -P"$(nproc)" -I{} sh -c \
+         'clang-format -i --style="{BasedOnStyle: LLVM, ColumnLimit: 120}" "$1" 2>/dev/null || echo "$1" >> ../failed.txt' _ {} ;;
+  java) find . -type f -print0 | xargs -0 -P"$(nproc)" -n 200 sh -c \
+          'for f; do :; done; java -jar '"$GJF"' --replace "$@" 2>/dev/null || for f; do java -jar '"$GJF"' --replace "$f" 2>/dev/null || echo "$f" >> ../failed.txt; done' _ ;;
+  kt) find . -type f -print0 | xargs -0 -P"$(nproc)" -n 300 sh -c \
+        'java -jar '"$KTFMT"' "$@" >/dev/null 2>&1 || for f; do java -jar '"$KTFMT"' "$f" >/dev/null 2>&1 || echo "$f" >> ../failed.txt; done' _ ;;
+  rb) printf 'AllCops:\n  TargetRubyVersion: 3.3\n' > ../rubocop.yml
+      find . -type f -print0 | xargs -0 -P"$(nproc)" -n 100 sh -c \
+        'rubocop -a -c ../rubocop.yml --cache false --format quiet "$@" >/dev/null 2>&1; true' _
+      # RuboCop exits 1 when offenses remain; a file it cannot parse is a failure.
+      find . -type f -print0 | xargs -0 ruby -e 'ARGV.each { |f| system("ruby", "-c", f, out: File::NULL, err: File::NULL) or puts f }' >> ../failed.txt ;;
+  swift) "$SWIFTFORMAT" . --quiet 2> ../swiftformat.log; grep -o '[^ ]*\.swift' ../swiftformat.log | sed "s|^$PWD|.|" | sort -u >> ../failed.txt ;;
+  # Through stdin, so rustfmt formats only that file, not its out-of-line modules.
+  rust) find . -type f -print0 | xargs -0 -P"$(nproc)" -I{} sh -c \
+          'rustfmt --edition 2021 < "$1" > "$1.o" 2>/dev/null && mv "$1.o" "$1" || { rm -f "$1.o"; echo "$1" >> ../failed.txt; }' _ {} ;;
+  dart) "$DART" format . > /dev/null 2> ../dartformat.log; grep -o '[^ ]*\.dart' ../dartformat.log | sort -u >> ../failed.txt ;;
+  cs) "$CSHARPIER" format . > ../csharpier.log 2>&1; grep -o '[^ ]*\.cs\b' ../csharpier.log | sort -u >> ../failed.txt ;;
+esac
+sort -u -o ../failed.txt ../failed.txt
+echo "$lang: $(find . -type f | wc -l) files, reference failed on $(wc -l < ../failed.txt)"

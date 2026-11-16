@@ -8,6 +8,10 @@ import { CppEngine, formatCpp, isCppName } from "./cpp/run";
 import { JavaEngine, formatJava, isJavaName } from "./java/run";
 import { KotlinEngine, formatKotlin, isKotlinName } from "./kotlin/run";
 import { RubyEngine, formatRuby, isRubyName } from "./ruby/run";
+import { SwiftEngine, formatSwift, isSwiftName } from "./swift/run";
+import { RustEngine, formatRust, isRustName } from "./rust/run";
+import { DartEngine, formatDart, isDartName } from "./dart/run";
+import { CSharpEngine, formatCSharp, isCSharpName } from "./csharp/run";
 import { free, regionWith } from "nish:region";
 
 /** Languages, by the extension or name of a file; 0 is not ours. */
@@ -15,6 +19,10 @@ const LANG_CPP: i32 = 1;
 const LANG_JAVA: i32 = 2;
 const LANG_KOTLIN: i32 = 3;
 const LANG_RUBY: i32 = 4;
+const LANG_SWIFT: i32 = 5;
+const LANG_RUST: i32 = 6;
+const LANG_DART: i32 = 7;
+const LANG_CSHARP: i32 = 8;
 
 const langOf = (name: string): i32 => {
   if (isCppName(name)) {
@@ -28,6 +36,18 @@ const langOf = (name: string): i32 => {
   }
   if (isRubyName(name)) {
     return LANG_RUBY;
+  }
+  if (isSwiftName(name)) {
+    return LANG_SWIFT;
+  }
+  if (isRustName(name)) {
+    return LANG_RUST;
+  }
+  if (isDartName(name)) {
+    return LANG_DART;
+  }
+  if (isCSharpName(name)) {
+    return LANG_CSHARP;
   }
   return 0;
 };
@@ -107,7 +127,7 @@ const usage = (): string =>
     "untouched and counted as skipped.",
   ].join("\n");
 
-/** A Java or Kotlin file to format in a region of its own: what goes in, and the numbers that come out. */
+/** A file in any language but C++ to format in a region of its own: what goes in, and the numbers that come out. */
 class Job {
   path: string = "";
   lang: i32 = 0;
@@ -125,7 +145,7 @@ class JobRoot {
 }
 
 /**
- * Formats a Java or Kotlin file with a fresh engine, leaving the result code
+ * Formats a file in any language but C++ with a fresh engine, leaving the result code
  * in `job.res`; the caller runs it in a region of its own and frees it, so all it
  * allocates is given back when the file is done and a worker's memory does
  * not grow with the files it has formatted.
@@ -158,6 +178,22 @@ const runJob = (job: Job): JobRoot => {
     const r = new RubyEngine();
     r.debug = getenv("FFDEBUG") !== null;
     ok = formatRuby(r, path, src, n, out);
+  } else if (job.lang === LANG_SWIFT) {
+    const sw = new SwiftEngine();
+    sw.debug = getenv("FFDEBUG") !== null;
+    ok = formatSwift(sw, path, src, n, out);
+  } else if (job.lang === LANG_RUST) {
+    const rs = new RustEngine();
+    rs.debug = getenv("FFDEBUG") !== null;
+    ok = formatRust(rs, path, src, n, out);
+  } else if (job.lang === LANG_DART) {
+    const d = new DartEngine();
+    d.debug = getenv("FFDEBUG") !== null;
+    ok = formatDart(d, path, src, n, out);
+  } else if (job.lang === LANG_CSHARP) {
+    const cs = new CSharpEngine();
+    cs.debug = getenv("FFDEBUG") !== null;
+    ok = formatCSharp(cs, path, src, n, out);
   } else {
     const j = new JavaEngine();
     j.debug = getenv("FFDEBUG") !== null;
@@ -197,7 +233,7 @@ const runJob = (job: Job): JobRoot => {
 /** Formats one file; answers 0 unchanged, 1 changed, 2 skipped. */
 const formatFile = (path: string, cli: Cli, stats: Stats, eng: Engine): i32 => {
   const lang0 = langOf(path);
-  if (lang0 === LANG_JAVA || lang0 === LANG_KOTLIN || lang0 === LANG_RUBY) {
+  if (lang0 >= LANG_JAVA) {
     if (cli.trace) {
       console.error(`file ${path}`);
     }
