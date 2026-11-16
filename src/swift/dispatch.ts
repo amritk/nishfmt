@@ -10,15 +10,18 @@ import {
   SW_RULE_ANY_OBJECT_PROTOCOL,
   SW_RULE_APPLICATION_MAIN,
   SW_RULE_ASSERTION_FAILURES,
+  SW_RULE_BLANK_LINES_AROUND_MARK,
   SW_RULE_BLANK_LINES_AT_END_OF_SCOPE,
   SW_RULE_BLANK_LINES_AT_START_OF_SCOPE,
   SW_RULE_BLANK_LINES_BETWEEN_CHAINED_FUNCTIONS,
   SW_RULE_BLANK_LINES_BETWEEN_IMPORTS,
+  SW_RULE_BLANK_LINES_BETWEEN_SCOPES,
   SW_RULE_BLANK_LINE_AFTER_IMPORTS,
   SW_RULE_BRACES,
   SW_RULE_CONDITIONAL_ASSIGNMENT,
   SW_RULE_CONSECUTIVE_BLANK_LINES,
   SW_RULE_CONSECUTIVE_SPACES,
+  SW_RULE_CONSISTENT_SWITCH_CASE_SPACING,
   SW_RULE_DOC_COMMENTS_BEFORE_MODIFIERS,
   SW_RULE_DUPLICATE_IMPORTS,
   SW_RULE_ELSE_ON_SAME_LINE,
@@ -27,6 +30,7 @@ import {
   SW_RULE_FILE_HEADER,
   SW_RULE_FILE_MACRO,
   SW_RULE_GENERIC_EXTENSIONS,
+  SW_RULE_HEADER_FILE_NAME,
   SW_RULE_HOIST_AWAIT,
   SW_RULE_HOIST_TRY,
   SW_RULE_INDENT,
@@ -34,6 +38,8 @@ import {
   SW_RULE_LEADING_DELIMITERS,
   SW_RULE_LINEBREAKS,
   SW_RULE_LINEBREAK_AT_END_OF_FILE,
+  SW_RULE_MODIFIERS_ON_SAME_LINE,
+  SW_RULE_MODIFIER_ORDER,
   SW_RULE_NUMBER_FORMATTING,
   SW_RULE_OPAQUE_GENERIC_PARAMETERS,
   SW_RULE_PREFER_KEY_PATH,
@@ -52,6 +58,7 @@ import {
   SW_RULE_SEMICOLONS,
   SW_RULE_SORT_DECLARATIONS,
   SW_RULE_SORT_IMPORTS,
+  SW_RULE_SORT_TYPEALIASES,
   SW_RULE_SPACE_AROUND_BRACES,
   SW_RULE_SPACE_AROUND_BRACKETS,
   SW_RULE_SPACE_AROUND_COMMENTS,
@@ -95,6 +102,15 @@ import {
   swRuleEmptyBraces,
   swRuleLeadingDelimiters,
 } from "./rules_blank";
+import {
+  swRuleBlankLinesAroundMark,
+  swRuleBlankLinesBetweenScopes,
+  swRuleConsistentSwitchCaseSpacing,
+  swRuleHeaderFileName,
+  swRuleModifierOrder,
+  swRuleModifiersOnSameLine,
+  swRuleSortTypealiases,
+} from "./rules_blank2";
 import {
   swRuleBraces,
   swRuleElseOnSameLine,
@@ -375,6 +391,27 @@ export const swRunRule = (f: SwFormatter, r: i32): boolean => {
       return true;
     case SW_RULE_REDUNDANT_EXTENSION_A_C_L:
       swRuleRedundantExtensionACL(f);
+      return true;
+    case SW_RULE_BLANK_LINES_AROUND_MARK:
+      swRuleBlankLinesAroundMark(f);
+      return true;
+    case SW_RULE_BLANK_LINES_BETWEEN_SCOPES:
+      swRuleBlankLinesBetweenScopes(f);
+      return true;
+    case SW_RULE_HEADER_FILE_NAME:
+      swRuleHeaderFileName(f);
+      return true;
+    case SW_RULE_MODIFIER_ORDER:
+      swRuleModifierOrder(f);
+      return true;
+    case SW_RULE_MODIFIERS_ON_SAME_LINE:
+      swRuleModifiersOnSameLine(f);
+      return true;
+    case SW_RULE_CONSISTENT_SWITCH_CASE_SPACING:
+      swRuleConsistentSwitchCaseSpacing(f);
+      return true;
+    case SW_RULE_SORT_TYPEALIASES:
+      swRuleSortTypealiases(f);
       return true;
     default:
       return false;

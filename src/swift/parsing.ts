@@ -1447,7 +1447,7 @@ const swFirstIfdefBoundary = (f: SwFormatter, start: i32, end: i32): i32 => {
 
 const swIsCaseOrDefault = (f: SwFormatter, i: i32): boolean => (f.k(i) === SW_END && (f.s(i) === "case" || f.s(i) === "default")) || f.kw(i, "@unknown");
 
-const swSwitchStatementBranches = (f: SwFormatter, switchIndex: i32): SwBranches | null => {
+export const swSwitchStatementBranches = (f: SwFormatter, switchIndex: i32): SwBranches | null => {
   const sss = f.indexOfAfter(SW_START, "{", 0, switchIndex);
   if (sss < 0) {
     return null;
