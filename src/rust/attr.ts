@@ -36,6 +36,7 @@ import { T_COLONCOLON, T_COMMA, T_EQ, T_IDENT, T_INT, T_LPAREN, T_RCSTR, KW_FALS
 import { RsShape, rsIndentStr, rsIndentStrNl } from "./shape";
 import { rsCountNewlines, rsHasByte, rsIndexOfByte, rsWsLenAt } from "./str";
 import { PC_TYPE, rsRewritePath } from "./types";
+import { rsExprInnerBlock } from "./utils";
 
 // Meta item kinds: in N_META's `x`.
 const MK_WORD: i32 = 0;
@@ -239,9 +240,14 @@ const isSkipMeta = (ctx: RsCtx, m: i32): boolean => {
     return false;
   }
   const k = ast.x[m];
+  const ps = pathStr(ctx, ast.a[m]);
+  if (ps.startsWith("rustfmt::skip::")) {
+    // #[rustfmt::skip::macros(..)] / ::attributes(..): the skip context is not ported.
+    ctx.unsupported("rustfmt::skip:: attribute");
+    return false;
+  }
   if (k === MK_WORD) {
-    const s = pathStr(ctx, ast.a[m]);
-    return s === "rustfmt::skip" || s === "rustfmt_skip";
+    return ps === "rustfmt::skip" || ps === "rustfmt_skip";
   }
   if (k === MK_LIST) {
     return pathStr(ctx, ast.a[m]) === "cfg_attr" && ast.ln[m] === 2 && isSkipMeta(ctx, ast.kid(m, 1));
@@ -259,6 +265,15 @@ export const rsAttrsContainSkip = (ctx: RsCtx, n: i32): boolean => {
     }
   }
   return false;
+};
+
+/** contains_skip(&expr.attrs): with the inner attributes of a block-like expression. */
+export const rsExprAttrsContainSkip = (ctx: RsCtx, e: i32): boolean => {
+  if (rsAttrsContainSkip(ctx, e)) {
+    return true;
+  }
+  const b = rsExprInnerBlock(ctx.ast, e);
+  return b >= 0 && rsAttrsContainSkip(ctx, b);
 };
 
 export const rsAttrListContainsSkip = (ctx: RsCtx, attrs: i32[]): boolean => {

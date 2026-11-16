@@ -828,7 +828,8 @@ const rewriteFnPtr = (ctx: RsCtx, ty: i32, shape: RsShape): string | null => {
   const decl = ast.b[ty];
   const n = ast.ln[decl];
   const variadic = n > 0 && ast.kind[ast.b[ast.kid(decl, n - 1)]] === N_TY_CVARARGS;
-  const rw = formatFunctionType(ctx, decl, ast.a[decl], variadic, ast.lo[decl], ast.hi[decl], fs);
+  // rustfmt 1.9 looks for the parameter list from the start of the whole type.
+  const rw = formatFunctionType(ctx, decl, ast.a[decl], variadic, ast.lo[ty], ast.hi[ty], fs);
   if (rw === null) {
     return null;
   }

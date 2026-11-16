@@ -204,6 +204,33 @@ export const rsFirstLineEndsWith = (s: string, c: i32): boolean => {
   return ls.length > 0 && ls[0].length > 0 && ls[0].charCodeAt(toI32(ls[0].length) - 1) === c;
 };
 
+/**
+ * `!expr.attrs.is_empty()`: rustc keeps a block-like expression's inner
+ * attributes (those of its block) in the expression's attributes too.
+ */
+export const rsExprHasAttrs = (ast: RsAst, e: i32): boolean => {
+  if (ast.atn[e] > 0) {
+    return true;
+  }
+  const b = rsExprInnerBlock(ast, e);
+  return b >= 0 && ast.atn[b] > 0;
+};
+
+/** The block whose inner attributes rustc files under block-like expression `e`, or -1. */
+export const rsExprInnerBlock = (ast: RsAst, e: i32): i32 => {
+  const k = ast.kind[e];
+  if (k === N_EX_BLOCK || k === N_EX_ASYNC || k === N_EX_TRY_BLOCK || k === N_EX_CONST_BLOCK) {
+    return ast.a[e];
+  }
+  if (k === N_EX_WHILE || k === N_EX_LOOP) {
+    return ast.b[e];
+  }
+  if (k === N_EX_FOR) {
+    return ast.c[e];
+  }
+  return -1;
+};
+
 /** Whether node `n` has outer attributes. */
 export const rsHasOuterAttrs = (ast: RsAst, n: i32): boolean => {
   for (let i = 0; i < ast.atn[n]; i++) {

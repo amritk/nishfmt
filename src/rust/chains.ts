@@ -321,7 +321,8 @@ const chainFromAst = (ctx: RsCtx, e0: i32): Chain => {
     if (k === N_EX_METHOD || k === N_EX_FIELD || k === N_EX_AWAIT) {
       e = ast.a[e];
       exprs.push(e);
-      postfix.push(true);
+      // rustfmt 1.9 adds parentheses (should_add_parens) only before a method call.
+      postfix.push(k === N_EX_METHOD);
     } else if (k === N_EX_TRY) {
       e = ast.a[e];
       exprs.push(e);

@@ -775,11 +775,8 @@ export const rsRewriteParam = (ctx: RsCtx, p: i32, shape: RsShape): string | nul
     }
     return result;
   }
-  const ts = rsRewriteTy(ctx, ty, shape);
-  if (ts === null) {
-    return null;
-  }
-  return rsCombineStrsWithMissingComments(ctx, paramAttrs, ts, spLo, spHi, shape, !multiAttrLines && !hasDocs);
+  // An unnamed param is its type alone: rustfmt 1.9 drops its attributes.
+  return rsRewriteTy(ctx, ty, shape);
 };
 
 /** The Spanned span of a param: [lo, hi). */
@@ -1557,9 +1554,9 @@ const IVK_TRAIT: i32 = 1;
 const IVK_IMPL: i32 = 2;
 const IVK_FOREIGN: i32 = 3;
 
-export const rsVisitTypeAlias = (v: RsVisitor, item: i32): void => {
+export const rsVisitTypeAlias = (v: RsVisitor, item: i32, kind: i32): void => {
   const ast = v.ast;
-  const rw = rsRewriteTypeAlias(v.ctx(), item, v.bi, v.al, IVK_ITEM);
+  const rw = rsRewriteTypeAlias(v.ctx(), item, v.bi, v.al, kind);
   v.pushRewrite(ast.lo[item], ast.hi[item], rw);
 };
 
@@ -1575,7 +1572,10 @@ export const rsRewriteTypeAlias = (ctx: RsCtx, item: i32, bi: i32, al: i32, kind
   const lo = ast.lo[item];
   const hi = ast.hi[item];
   const rhsHi = ty >= 0 ? ast.hi[ty] : ast.hi[w];
-  let result = `${rsFormatVisibility(ctx, ast.e[item])}${(ast.fl[item] & IT_DEFAULT) !== 0 ? "default " : ""}type `;
+  // rustfmt 1.9 prints `default` before the visibility here; an opaque type in an
+  // impl loses its visibility (DEFAULT_VISIBILITY).
+  const dropVis = kind === IVK_IMPL && ty >= 0 && ast.kind[ty] === N_TY_IMPL;
+  let result = `${(ast.fl[item] & IT_DEFAULT) !== 0 ? "default " : ""}${dropVis ? "" : rsFormatVisibility(ctx, ast.e[item])}type `;
   const identStr = rsIdentStr(ctx, ast.d[item]);
   if (ast.ln[g] === 0) {
     result = result + identStr;
@@ -1749,6 +1749,7 @@ export const rsFormatImpl = (ctx: RsCtx, item: i32, bi: i32, al: i32): string | 
     sub.lastPos = blo + openPos2;
     sub.visitAttrs(item, true);
     for (let i = 0; i < ni; i++) {
+      sub.assocKind = IVK_IMPL;
       sub.visitAssocItem(ast.kid(item, i));
     }
     sub.formatMissing(hi - 1);
@@ -1771,11 +1772,9 @@ const formatImplRefAndType = (ctx: RsCtx, item: i32, bi: i32, al: i32): string |
   const f = ast.fl[item];
   let result = rsFormatVisibility(ctx, ast.e[item]);
   if (ofTrait >= 0) {
+    // rustfmt 1.9 prints a trait impl's `const` before the trait (`impl const Tr for T`).
     if ((f & IT_DEFAULT) !== 0) {
       result = result + "default ";
-    }
-    if ((f & IT_CONST) !== 0) {
-      result = result + "const ";
     }
     if ((f & IT_UNSAFE) !== 0) {
       result = result + "unsafe ";
@@ -1797,7 +1796,7 @@ const formatImplRefAndType = (ctx: RsCtx, item: i32, bi: i32, al: i32): string |
   result = result + gs;
   let traitRefOverhead = 0;
   if (ofTrait >= 0) {
-    const polarity = (f & IT_NEGATIVE) !== 0 ? "!" : "";
+    const polarity = ((f & IT_CONST) !== 0 ? "const " : "") + ((f & IT_NEGATIVE) !== 0 ? "!" : "");
     const rl = rsLastLineWidth(result, cfg.tabSpaces);
     const tr = rewriteTraitRef(ctx, ofTrait, bi, al, polarity, rl);
     if (tr === null) {

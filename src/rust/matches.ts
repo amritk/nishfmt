@@ -31,7 +31,7 @@ import { EXPR_STMT, RT_DEFAULT, rsFormatExpr, rsIsEmptyBlock, rsIsSimpleBlock, r
 import { RsListFormatting, rsItemizeList, rsWriteList } from "./lists";
 import { RsShape, rsIndentStr, rsIndentStrNl, rsShapeIndented } from "./shape";
 import { rsHasByte, rsLastIndexOf, rsTrim, rsWidth, rsWsLenAt } from "./str";
-import { rsExtraOffset, rsLastLineExtendable, rsLoWithAttrs } from "./utils";
+import { rsExprHasAttrs, rsExtraOffset, rsLastLineExtendable, rsLoWithAttrs } from "./utils";
 import { rsRewritePat } from "./patterns";
 
 /** The Spanned span of arm `a`: [lo, hi). */
@@ -268,7 +268,7 @@ const flattenArmBody = (ctx: RsCtx, body: i32, optShape: RsShape | null): Flatte
     if (ast.kind[s] === N_STMT_EXPR) {
       const expr = ast.a[s];
       if (ast.kind[expr] === N_EX_BLOCK) {
-        if (ast.atn[expr] === 0) {
+        if (!rsExprHasAttrs(ast, expr)) {
           return flattenArmBody(ctx, expr, null);
         }
         return new Flattened(true, body);
@@ -323,7 +323,7 @@ const rewriteMatchBody = (ctx: RsCtx, body0: i32, patsStr: string, shape: RsShap
   if (!isBlock || isEmptyBlock) {
     nbi = shape.bi + cfg.tabSpaces;
   }
-  const forbidSameLine = (hasGuard && rsHasByte(patsStr, 10) && !isEmptyBlock) || ast.atn[body] > 0;
+  const forbidSameLine = (hasGuard && rsHasByte(patsStr, 10) && !isEmptyBlock) || rsExprHasAttrs(ast, body);
   // The comment after `=>`.
   const arrowSnippet = rsTrim(ctx.snippet(arrowLo, arrowHi));
   const ai = rsLastIndexOf(arrowSnippet, "=>");

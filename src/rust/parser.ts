@@ -370,6 +370,8 @@ export class RsParser {
   innerN: i32[];
   innerNode: i32[];
   nInner: i32 = 0;
+  // The inner attributes of the block parsed last.
+  lastBlockInner: i32 = 0;
 
   constructor(t: RsTokens, ast: RsAst) {
     this.t = t;
@@ -3114,6 +3116,10 @@ export class RsParser {
     if (k === T_AND) return P_BITAND;
     if (k === T_CARET) return P_BITXOR;
     if (k === T_OR) return P_BITOR;
+    if (k === T_LT && this.off < 0 && this.p + 1 < this.end && this.t.kind[this.p + 1] === T_MINUS && this.t.hi[this.p] === this.t.lo[this.p + 1]) {
+      // `<-` lexes as one token (the obsolete in-place arrow), not an operator.
+      return -1;
+    }
     if (k === T_EQEQ || k === T_NE || k === T_LT || k === T_GT || k === T_LE || k === T_GE) return P_COMPARE;
     if (k === T_ANDAND) return P_LAND;
     if (k === T_OROR) return P_LOR;
@@ -3954,6 +3960,9 @@ export class RsParser {
       const gv100 = this.parseBlockExpr(this.lo(), -1, 0);
       this.ast.a[c] = gv100;
       this.res = old;
+      if (!this.failed && this.lastBlockInner > 0) {
+        return this.fail(); // parse_simple_block: no inner attributes
+      }
     } else {
       this.fin(decl);
       this.res = old & ~(R_STMT_EXPR | R_ALLOW_LET);
@@ -3995,6 +4004,10 @@ export class RsParser {
     }
     const gv103 = this.parseBlock(this.lo(), 0);
     this.ast.b[n] = gv103;
+    // parse_block: an inner attribute is not permitted in an `if` or `else` block.
+    if (!this.failed && this.lastBlockInner > 0) {
+      return this.fail();
+    }
     if (this.isKw(KW_ELSE)) {
       this.bump();
       const elo = this.lo();
@@ -4004,6 +4017,9 @@ export class RsParser {
       } else if (this.is(T_LBRACE)) {
         const gv105 = this.parseBlockExpr(elo, -1, 0);
         this.ast.c[n] = gv105;
+        if (!this.failed && this.lastBlockInner > 0) {
+          return this.fail();
+        }
       } else {
         return this.fail();
       }
@@ -4162,6 +4178,7 @@ export class RsParser {
     this.expect(T_RBRACE);
     this.endList(b, mark);
     this.innerOf(b, innerKids, na);
+    this.lastBlockInner = na;
     return this.fin(b);
   }
 
@@ -4259,6 +4276,9 @@ export class RsParser {
           }
           const gv119 = this.parseBlock(this.lo(), 0);
           this.ast.x[s] = gv119;
+          if (!this.failed && this.lastBlockInner > 0) {
+            return this.fail(); // parse_block: no inner attributes in a let-else block
+          }
         }
       }
       if (!this.expect(T_SEMI)) {

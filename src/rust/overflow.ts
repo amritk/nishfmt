@@ -55,7 +55,7 @@ import { rsCanBeOverflowedPat, rsTuplePatFieldLo, rsTuplePatFieldHi } from "./pa
 import { RsShape, rsIndentStrNl } from "./shape";
 import { rsCountNewlines, rsHasByte, rsLines, rsWsLenAt } from "./str";
 import { rsCanBeOverflowedType, rsGenericParamHi, rsGenericParamLo } from "./types";
-import { rsExtraOffset, rsLoWithAttrs } from "./utils";
+import { rsExprHasAttrs, rsExtraOffset, rsLoWithAttrs } from "./utils";
 
 // OverflowableItem categories.
 export const OC_EXPR: i32 = 0;
@@ -132,10 +132,16 @@ const itemRewrite = (ctx: RsCtx, oc: i32, n: i32, shape: RsShape): string | null
 
 const hasAttrs = (ast: RsAst, oc: i32, n: i32): boolean => {
   const k = ast.kind[n];
-  if (oc === OC_EXPR || oc === OC_GENERIC_PARAM || oc === OC_FIELD_DEF) {
+  if (oc === OC_EXPR) {
+    return rsExprHasAttrs(ast, n);
+  }
+  if (oc === OC_GENERIC_PARAM || oc === OC_FIELD_DEF) {
     return ast.atn[n] > 0;
   }
-  if (oc === OC_MACRO_ARG && (rsIsExprKind(k) || rsIsItemKind(k))) {
+  if (oc === OC_MACRO_ARG && rsIsExprKind(k)) {
+    return rsExprHasAttrs(ast, n);
+  }
+  if (oc === OC_MACRO_ARG && rsIsItemKind(k)) {
     return ast.atn[n] > 0;
   }
   return false;

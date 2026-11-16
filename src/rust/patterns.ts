@@ -383,7 +383,8 @@ const rewritePatField = (ctx: RsCtx, f: i32, shape: RsShape): string | null => {
     }
     s = `${idStr}:\n${rsIndentStr(ctx.cfg, nested.bi, nested.al)}${r}`;
   }
-  return rsCombineStrsWithMissingComments(ctx, attrsStr, s, hiPos, ctx.f.t.lo[ast.d[f]], nested, false);
+  // rustfmt 1.9 takes the missing span up to the pattern, so it covers `ident:` too.
+  return rsCombineStrsWithMissingComments(ctx, attrsStr, s, hiPos, ast.lo[pat], nested, false);
 };
 
 /** The span of a tuple pattern field. */

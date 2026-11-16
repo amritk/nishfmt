@@ -76,7 +76,7 @@ import {
   rsIsPatKind,
   rsIsTyKind,
 } from "./ast";
-import { rsAttrsContainSkip, rsRewriteAttrs, rsRewriteMetaItem, rsRewriteNodeAttrs } from "./attr";
+import { rsAttrsContainSkip, rsExprAttrsContainSkip, rsRewriteAttrs, rsRewriteMetaItem, rsRewriteNodeAttrs } from "./attr";
 import { rsRewriteChain } from "./chains";
 import { rsRewriteClosure } from "./closures";
 import {
@@ -115,7 +115,7 @@ import { rsRewritePat } from "./patterns";
 import { RsShape, rsIndentStr, rsIndentStrNl, rsShapeIndented, rsShapeLegacy } from "./shape";
 import { rsCountNewlines, rsHasByte, rsLines, rsTrim, rsTrimEnd, rsTrimStart, rsWidth, rsWsLenAt, rsWsLenAtBytes } from "./str";
 import { PC_EXPR, rsRewriteGenericParam, rsRewritePath, rsRewritePreciseArg, rsRewriteSegmentParam, rsRewriteTy } from "./types";
-import { rsFirstLineEndsWith, rsIdentStr, rsLastLineExtendable, rsLoWithAttrs } from "./utils";
+import { rsExprHasAttrs, rsFirstLineEndsWith, rsIdentStr, rsLastLineExtendable, rsLoWithAttrs } from "./utils";
 import { RsVisitor } from "./visitor";
 
 export const EXPR_STMT: i32 = 0;
@@ -180,7 +180,7 @@ const unaryOpStr = (op: i32): string => (op === UN_DEREF ? "*" : op === UN_NOT ?
 /** format_expr. */
 export const rsFormatExpr = (ctx: RsCtx, e: i32, exprType: i32, shape0: RsShape): string | null => {
   const ast = ctx.ast;
-  if (rsAttrsContainSkip(ctx, e)) {
+  if (rsExprAttrsContainSkip(ctx, e)) {
     return ctx.snippet(rsLoWithAttrs(ast, e), ast.hi[e]);
   }
   const k = ast.kind[e];
@@ -831,7 +831,9 @@ const toControlFlow = (ctx: RsCtx, e: i32, exprType: i32): ControlFlow | null =>
   const cf = new ControlFlow();
   cf.lo = ast.lo[e];
   cf.hi = ast.hi[e];
-  cf.withInner = true;
+  // rustfmt 1.9 rewrites a loop body without its inner attributes, which
+  // trim_spaces_after_opening_brace then skips over: they are dropped.
+  cf.withInner = false;
   cf.isLoop = true;
   if (k === N_EX_FOR) {
     cf.cond = ast.b[e];
@@ -977,7 +979,7 @@ export const rsIsSimpleExpr = (ast: RsAst, e: i32): boolean => {
 /** can_be_overflowed_expr. */
 export const rsCanBeOverflowedExpr = (ctx: RsCtx, e: i32, len: i32): boolean => {
   const ast = ctx.ast;
-  if (ast.atn[e] > 0) {
+  if (rsExprHasAttrs(ast, e)) {
     return false;
   }
   const k = ast.kind[e];

@@ -47,7 +47,7 @@ import {
   N_USE,
   RsAst,
 } from "./ast";
-import { rsAttrsContainSkip, rsIsSkipAttrPath, rsRewriteAttrs } from "./attr";
+import { rsAttrsContainSkip, rsExprAttrsContainSkip, rsIsSkipAttrPath, rsRewriteAttrs } from "./attr";
 import {
   CK_COMMENT,
   CK_NORMAL,
@@ -88,6 +88,8 @@ export class RsVisitor {
   isIfElseBlock: boolean = false;
   isLoopBlock: boolean = false;
   isMacroDef: boolean = false;
+  // ItemVisitorKind for associated items: 1 trait, 2 impl.
+  assocKind: i32 = 1;
   macroRewriteFailure: boolean = false;
   skipped: RsRanges;
   // The source span this visitor works over (the snippet provider's).
@@ -424,6 +426,11 @@ export class RsVisitor {
     return false;
   }
 
+  fnBodySkip(item: i32): boolean {
+    const ast = this.ast;
+    return ast.kind[item] === N_FN && ast.c[item] >= 0 && rsAttrsContainSkip(this.ctx(), ast.c[item]);
+  }
+
   /** Spanned::span lo of item `n`: its first outer attribute, else its own lo. */
   spanLoWithAttrs(n: i32): i32 {
     const ast = this.ast;
@@ -448,7 +455,8 @@ export class RsVisitor {
       // `mod foo;` with a skip attribute: nothing is pushed; the next missed span copies it.
       return;
     } else {
-      if (this.visitAttrs(item, false)) {
+      // A fn body's inner attributes are the item's in rustc: `#![rustfmt::skip]` there skips the fn.
+      if (this.fnBodySkip(item) || this.visitAttrs(item, false)) {
         this.pushSkippedWithSpan(item, this.spanLoWithAttrs(item), ast.hi[item], ast.lo[item]);
         return;
       }
@@ -489,7 +497,7 @@ export class RsVisitor {
     } else if (k === N_FN) {
       rsVisitFnItem(this, item);
     } else if (k === N_TYPE_ALIAS) {
-      rsVisitTypeAlias(this, item);
+      rsVisitTypeAlias(this, item, 0); // IVK_ITEM
     } else if (k === N_MACRO_DEF) {
       const rw = rsRewriteMacroDef(this.ctx(), this.shape(), this.bi, this.al, item);
       this.pushRewrite(lo, hi, rw);
@@ -518,7 +526,7 @@ export class RsVisitor {
   /** visit_assoc_item: trait or impl items. */
   visitAssocItem(item: i32): void {
     const ast = this.ast;
-    if (this.visitAttrs(item, false)) {
+    if (this.fnBodySkip(item) || this.visitAttrs(item, false)) {
       this.pushSkippedWithSpan(item, ast.lo[item], ast.hi[item], ast.lo[item]);
       return;
     }
@@ -528,7 +536,7 @@ export class RsVisitor {
     } else if (k === N_FN) {
       rsVisitFnItem(this, item);
     } else if (k === N_TYPE_ALIAS) {
-      rsVisitTypeAlias(this, item);
+      rsVisitTypeAlias(this, item, this.assocKind);
     } else if (k === N_MAC_ITEM) {
       this.visitMac(ast.a[item], true, item);
     } else {
@@ -609,7 +617,8 @@ export class RsVisitor {
     }
     if (k === N_LOCAL || k === N_STMT_EXPR || k === N_STMT_SEMI) {
       const attrsOf = k === N_LOCAL ? s : ast.a[s];
-      if (rsAttrsContainSkip(this.ctx(), attrsOf)) {
+      const skip = k === N_LOCAL ? rsAttrsContainSkip(this.ctx(), attrsOf) : rsExprAttrsContainSkip(this.ctx(), attrsOf);
+      if (skip) {
         this.pushSkippedWithSpan(attrsOf, slo, shi, ast.lo[attrsOf]);
       } else {
         const c = this.ctx();
@@ -631,14 +640,14 @@ export class RsVisitor {
     this.f.unsupported = true;
   }
 
-  trimSpacesAfterOpeningBrace(b: i32): void {
+  trimSpacesAfterOpeningBrace(b: i32, withAttrs: boolean): void {
     const ast = this.ast;
     if (ast.ln[b] === 0) {
       return;
     }
     let hi = this.stmtLo(ast.kid(b, 0));
-    // The first inner attribute, if any.
-    for (let i = 0; i < ast.atn[b]; i++) {
+    // The first inner attribute, if any (when they are visited).
+    for (let i = 0; withAttrs && i < ast.atn[b]; i++) {
       const a = ast.attr(b, i);
       if ((ast.fl[a] & AT_INNER) !== 0) {
         hi = ast.lo[a];
@@ -671,7 +680,7 @@ export class RsVisitor {
     this.lastPos = this.lastPos + comp;
     this.blockIndent();
     this.pushStr("{");
-    this.trimSpacesAfterOpeningBrace(b);
+    this.trimSpacesAfterOpeningBrace(b, withAttrs);
     if (withAttrs && ast.atn[b] > 0) {
       this.visitAttrs(b, true);
     }
