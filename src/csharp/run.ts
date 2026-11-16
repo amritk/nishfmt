@@ -238,7 +238,8 @@ export const formatCSharp = (e: CSharpEngine, path: string, src: u8[], n: i32, o
     return false;
   }
   let cur = body;
-  for (let si = 0; si < toI32(sets.sets.length); si++) {
+  const passes = e.debug && getenv("FFCS_NOSYMS") !== null ? 0 : toI32(sets.sets.length);
+  for (let si = 0; si < passes; si++) {
     const code = new Array<u8>(cur.n);
     for (let i = 0; i < cur.n; i++) {
       code[i] = cur.buf[i];

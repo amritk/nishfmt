@@ -272,7 +272,7 @@ export class CsPrint {
   // ---- tree access ----
 
   k(n: i32): i32 {
-    return this.t.kind[n];
+    return n < 0 ? 0 : this.t.kind[n];
   }
 
   s(n: i32, i: i32): i32 {
@@ -1100,10 +1100,17 @@ export const cswTrimmedSrc = (P: CsPrint, a: i32, b: i32): i32 => {
 
 export const cswTrailingComma = (P: CsPrint, closing: i32, skipIfBreak: boolean): i32 => {
   const lx = P.lx;
+  // Token.Print(SyntaxFactory.Token(CommaToken)): the token's elastic whitespace
+  // is leading trivia, so it takes a pending NextTriviaNeedsLine
+  let printed = P.comma;
+  if (P.nextTriviaNeedsLine) {
+    printed = P.D.concat([DOC_HARDLINE_FOR_TRIVIA, P.comma]);
+    P.nextTriviaNeedsLine = false;
+  }
   if (cswAnyDirective(lx, lx.l0[closing], lx.l1[closing])) {
     return DOC_NULL;
   }
-  return skipIfBreak ? P.comma : P.D.ifBreak(P.comma, DOC_NULL, -1);
+  return skipIfBreak ? printed : P.D.ifBreak(printed, DOC_NULL, -1);
 };
 
 // ---- SeparatedSyntaxList ----

@@ -155,11 +155,11 @@ export const csIsWhitespaceCp = (c: i32): boolean => {
 /** SyntaxFacts.IsNewLine for a code point. */
 export const csIsNewLineCp = (c: i32): boolean => c === 13 || c === 10 || c === 0x85 || c === 0x2028 || c === 0x2029;
 
-const isIdentStartByte = (c: i32): boolean => (c >= 97 && c <= 122) || (c >= 65 && c <= 90) || c === 95 || c >= 0x80;
-const isIdentPartByte = (c: i32): boolean =>
+const csIsIdentStartByte = (c: i32): boolean => (c >= 97 && c <= 122) || (c >= 65 && c <= 90) || c === 95 || c >= 0x80;
+const csIsIdentPartByte = (c: i32): boolean =>
   (c >= 97 && c <= 122) || (c >= 65 && c <= 90) || c === 95 || (c >= 48 && c <= 57) || c >= 0x80;
-const isDigit = (c: i32): boolean => c >= 48 && c <= 57;
-const isHexDigit = (c: i32): boolean => (c >= 48 && c <= 57) || (c >= 97 && c <= 102) || (c >= 65 && c <= 70);
+const csIsDigit = (c: i32): boolean => c >= 48 && c <= 57;
+const csIsHexDigit = (c: i32): boolean => (c >= 48 && c <= 57) || (c >= 97 && c <= 102) || (c >= 65 && c <= 70);
 
 /** The tokens and trivia of one file. */
 export class CsLexer {
@@ -324,7 +324,7 @@ export class CsLexer {
         k = this.tryAdvance(61) ? K_SlashEqualsToken : K_SlashToken;
         break;
       case 46: // .
-        if (isDigit(this.peek(1)) && !(a > 0 && toI32(this.src[a - 1]) === 46 && this.prevIsDotToken(a))) {
+        if (csIsDigit(this.peek(1)) && !(a > 0 && toI32(this.src[a - 1]) === 46 && this.prevIsDotToken(a))) {
           k = this.scanNumericLiteral();
         } else {
           this.pos += 1;
@@ -477,9 +477,9 @@ export class CsLexer {
         return;
       }
       default:
-        if (isDigit(c)) {
+        if (csIsDigit(c)) {
           k = this.scanNumericLiteral();
-        } else if (isIdentStartByte(c) || (c === 92 && this.peek(1) === 117)) {
+        } else if (csIsIdentStartByte(c) || (c === 92 && this.peek(1) === 117)) {
           if (c >= 0x80) {
             const p = this.cp();
             if (csIsWhitespaceCp(p) || csIsNewLineCp(p)) {
@@ -535,7 +535,7 @@ export class CsLexer {
     if (c === 92 && this.peek(i + 1) === 117) {
       return true;
     }
-    if (!isIdentStartByte(c)) {
+    if (!csIsIdentStartByte(c)) {
       return false;
     }
     if (c >= 0x80) {
@@ -549,11 +549,11 @@ export class CsLexer {
     while (this.pos < this.lim) {
       const c = toI32(this.src[this.pos]);
       if (c < 0x80) {
-        if (isIdentPartByte(c)) {
+        if (csIsIdentPartByte(c)) {
           this.pos += 1;
         } else if (c === 92 && this.peek(1) === 117) {
           this.pos += 2;
-          for (let i = 0; i < 4 && isHexDigit(this.peek(0)); i++) {
+          for (let i = 0; i < 4 && csIsHexDigit(this.peek(0)); i++) {
             this.pos += 1;
           }
         } else {
@@ -578,7 +578,7 @@ export class CsLexer {
     if (this.peek(0) === 48 && (this.peek(1) === 120 || this.peek(1) === 88)) {
       this.pos += 2;
       isHex = true;
-      while (isHexDigit(this.peek(0)) || this.peek(0) === 95) {
+      while (csIsHexDigit(this.peek(0)) || this.peek(0) === 95) {
         this.pos += 1;
       }
     } else if (this.peek(0) === 48 && (this.peek(1) === 98 || this.peek(1) === 66)) {
@@ -588,23 +588,23 @@ export class CsLexer {
         this.pos += 1;
       }
     } else {
-      while (isDigit(this.peek(0)) || this.peek(0) === 95) {
+      while (csIsDigit(this.peek(0)) || this.peek(0) === 95) {
         this.pos += 1;
       }
-      if (this.peek(0) === 46 && isDigit(this.peek(1))) {
+      if (this.peek(0) === 46 && csIsDigit(this.peek(1))) {
         isReal = true;
         this.pos += 1;
-        while (isDigit(this.peek(0)) || this.peek(0) === 95) {
+        while (csIsDigit(this.peek(0)) || this.peek(0) === 95) {
           this.pos += 1;
         }
       }
       const e = this.peek(0);
       if (e === 101 || e === 69) {
         const s = this.peek(1);
-        if (isDigit(s) || ((s === 43 || s === 45) && isDigit(this.peek(2)))) {
+        if (csIsDigit(s) || ((s === 43 || s === 45) && csIsDigit(this.peek(2)))) {
           isReal = true;
           this.pos += s === 43 || s === 45 ? 2 : 1;
-          while (isDigit(this.peek(0)) || this.peek(0) === 95) {
+          while (csIsDigit(this.peek(0)) || this.peek(0) === 95) {
             this.pos += 1;
           }
         }
@@ -620,7 +620,7 @@ export class CsLexer {
         this.pos += 1;
       }
     }
-    if (isIdentPartByte(this.peek(0)) && this.peek(0) < 0x80) {
+    if (csIsIdentPartByte(this.peek(0)) && this.peek(0) < 0x80) {
       this.fail("bad numeric literal");
     }
     return K_NumericLiteralToken;
@@ -1515,7 +1515,7 @@ export class CsLexer {
 
   dirWordEnd(): i32 {
     let p = this.pos;
-    while (p < this.lim && isIdentPartByte(toI32(this.src[p]))) {
+    while (p < this.lim && csIsIdentPartByte(toI32(this.src[p]))) {
       p++;
     }
     return p;
@@ -1747,7 +1747,7 @@ export class CsLexer {
       this.pos += 1;
       return v;
     }
-    if (isIdentStartByte(c)) {
+    if (csIsIdentStartByte(c)) {
       const a = this.pos;
       const b = this.dirWordEnd();
       this.pos = b;

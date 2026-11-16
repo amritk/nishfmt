@@ -178,7 +178,7 @@ export class CsTree {
 
   /** The syntax type of node n. */
   ty(n: i32): i32 {
-    return csKindType(this.kind[n]);
+    return n < 0 ? 0 : csKindType(this.kind[n]);
   }
 
   /** Whether node n is of syntax type y or a subtype of it. */

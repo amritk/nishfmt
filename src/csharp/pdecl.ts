@@ -1375,7 +1375,10 @@ const cspPropertyDeclaration = (p: CsParser, attrs: i32, mods: i32, type: i32, e
   let expr = -1;
   let init = -1;
   if (p.k() === K_EqualsGreaterThanToken) {
+    const saveField = p.inField;
+    p.inField = true;
     expr = cspArrowExpressionClause(p);
+    p.inField = saveField;
   } else if (p.k() === K_EqualsToken) {
     const em = p.sp();
     p.push(p.eat());
@@ -1487,7 +1490,10 @@ const cspAccessorDeclaration = (p: CsParser, declaringKind: i32): i32 => {
   p.push(name);
   const k = p.k();
   if (k === K_OpenBraceToken || k === K_EqualsGreaterThanToken) {
+    const saveField = p.inField;
+    p.inField = declaringKind === ACC_PROPERTY;
     cspBodies(p);
+    p.inField = saveField;
   } else if (k === K_SemicolonToken) {
     p.push(-1);
     p.push(-1);
