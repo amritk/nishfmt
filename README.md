@@ -15,11 +15,27 @@ reference.
 The same binary formats Java, Kotlin and Ruby, each to match one tool's
 output byte for byte:
 
-| Language | Files | Matches | Corpus result | fastfmt | Reference tool |
-| --- | --- | --- | ---: | ---: | ---: |
-| Java | `.java` | google-java-format 1.28 | 6645 / 6645 | 7.5 s | |
-| Kotlin | `.kt .kts` | ktfmt 0.64 (default style) | 6270 / 6270 | 1.6 s | ktrs 1.7 s |
-| Ruby | RuboCop's default `Include` (`.rb`, `Gemfile`, `.gemspec`, ...) | `rubocop -a` 1.92.2, default config, `TargetRubyVersion: 3.3` | 4239 / 4239 | 1.2 s (739 files) | `rubocop -a`: 115 s |
+| Language | Files | Matches | Corpus result |
+| --- | --- | --- | ---: |
+| Java | `.java` | google-java-format 1.28 | 6645 / 6645 |
+| Kotlin | `.kt .kts` | ktfmt 0.64 (default style) | 6270 / 6270 |
+| Ruby | RuboCop's default `Include` (`.rb`, `Gemfile`, `.gemspec`, ...) | `rubocop -a` 1.92.2, default config, `TargetRubyVersion: 3.3` | 4239 / 4239 |
+
+Against the reference tools and the Rust reimplementations, on a 4-core
+container (identical = byte for byte with the reference tool's output):
+
+| Kotlin, 6270 files | Identical | 4 cores | 1 core |
+| --- | ---: | ---: | ---: |
+| ktfmt 0.64 (JVM) | reference | 26.6 s | |
+| ktrs | 6270 | 1.68 s | 6.45 s |
+| fastfmt | 6270 | 1.64 s | 6.02 s |
+
+| Ruby, `rubocop -a` | 739 files | 1500 files | 2000 files | 739 files, 4 cores | 1 core |
+| --- | ---: | ---: | ---: | ---: | ---: |
+| RuboCop 1.92.2 | reference | reference | reference | 102 s (`--parallel`) | 115 s |
+| rbcop 0.1.4 | 739 | 1500 | 2000 | 2.59 s | 8.53 s |
+| nitrocop 0.0.1-pre12 | 124 | 354 | 499 | 73.5 s | |
+| fastfmt | 739 | 1500 | 2000 | 1.17 s | 4.34 s |
 
 The Ruby side ports RuboCop's whole pipeline: the parser gem's lexer, racc
 grammar and AST builder (following Prism, which RuboCop parses Ruby 3.3 with,
@@ -28,8 +44,7 @@ directive comments, the inspect-correct loop and every cop RuboCop enables by
 default (393; the ones that never correct under `-a` run once, so that
 Lint/RedundantCopDisableDirective can judge directives). The Ruby corpus is
 three samples of Rails, Discourse, Homebrew, RuboCop, the parser gem, Jekyll,
-Sinatra, Devise and rspec-core (739, 1500 and 2000 files); times are on 4
-workers (one worker: 6.4 s, against RuboCop's 115 s). `tools/ruby/README.md`
+Sinatra, Devise and rspec-core (739, 1500 and 2000 files). `tools/ruby/README.md`
 lists the generators.
 
 ## Build and use

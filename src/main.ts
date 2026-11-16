@@ -460,7 +460,11 @@ export const main = (): i32 => {
   if (cli.mode === MODE_STDOUT || files.length < 64) {
     jobs = 1;
   }
-  if (jobs === 1) {
+  // One worker still runs as a child when there are many files, so that it
+  // gets glibc's trimming off (withMallocTunables); a run in this process
+  // would fault its freed per-file regions back in for every file.
+  const inProcess = cli.mode === MODE_STDOUT || files.length < 64 || getenv("GLIBC_TUNABLES") !== null;
+  if (jobs === 1 && inProcess) {
     const eng = engineFor(cli);
     for (const p of files) {
       formatFile(p, cli, stats, eng);
