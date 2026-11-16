@@ -1,7 +1,7 @@
 # fastfmt
 
 A fast C++ formatter written in [Nish](https://github.com/amritk/nish), which also
-formats Java, Kotlin, Ruby and C# (see [Other languages](#other-languages)). Its
+formats Java, Kotlin, Ruby, C#, Dart and Swift (see [Other languages](#other-languages)). Its
 output aims to match `clang-format`'s LLVM style (the target is
 `{BasedOnStyle: LLVM, ColumnLimit: 120}`) byte for byte, many times faster.
 
@@ -12,7 +12,7 @@ reference.
 
 ## Other languages
 
-The same binary formats Java, Kotlin, Ruby and C#, each to match one tool's
+The same binary formats Java, Kotlin, Ruby, C#, Dart and Swift, each to match one tool's
 output byte for byte:
 
 | Language | Files | Matches | Corpus result |
@@ -20,6 +20,8 @@ output byte for byte:
 | Java | `.java` | google-java-format 1.28 | 7626 / 7627 |
 | Kotlin | `.kt .kts` | ktfmt 0.64 (default style) | 9602 / 9602 |
 | C# | `.cs` | CSharpier 1.4.0, default options | 13988 / 13988 |
+| Dart | `.dart` | `dart format` (Dart 3.14, tall style) | 10310 / 10313 |
+| Swift | `.swift` | SwiftFormat 0.64.7, default rules | 5684 / 6710 (the rest skipped) |
 | Ruby | RuboCop's default `Include` (`.rb`, `Gemfile`, `.gemspec`, ...) | `rubocop -a` 1.92.2, default config, `TargetRubyVersion: 3.3` | 4239 / 4239 |
 
 Against the reference tools and the Rust reimplementations, on a 4-core
@@ -46,6 +48,34 @@ CleanArchitecture, EF Core, NLog, RestSharp and FluentValidation; a second
 corpus of the same files first formatted with other widths and indents
 (`cs2`) also matches on all 13988. The 4 files CSharpier refuses are left
 out. There is no native reimplementation of CSharpier to compare with.
+
+| Dart, 10313 files | Identical | 4 cores | 1 core |
+| --- | ---: | ---: | ---: |
+| `dart format` 3.14 | reference | 55.2 s | 59.9 s |
+| fastfmt | 10310 | 3.08 s | 9.39 s |
+
+The Dart side ports dart_style's tall style: a scanner and parser to the
+analyzer's AST shapes, the piece builder, the solver and its cost model,
+and the comment handling. The three files left declare a language version
+below 3.7 (`// @dart=2.19` and the like), which dart format lays out in the
+older short style, not ported yet; fastfmt leaves those files unchanged.
+The corpus is flutter/packages, flutter/samples, riverpod, bloc, http,
+getx, flame, dart_style, shelf, dio and test, plus `dart2`, the same files
+first formatted at other widths and in the short style (10310 / 10313).
+
+| Swift, 6710 files | Identical | 4 cores | 1 core |
+| --- | ---: | ---: | ---: |
+| SwiftFormat 0.64.7 | reference | 131.7 s | 262.5 s |
+| fastfmt | 5684 | 8.17 s | 25.7 s |
+
+The Swift side ports SwiftFormat's tokenizer, its Formatter and helpers,
+the rule loop and all but nine of its default rules. A file one of those
+nine would change, or one with `swiftformat:` directives, is skipped and
+left as it is (1026 files); every file fastfmt formats matches. The corpus
+is swift-nio, Alamofire, Vapor, the Composable Architecture, RxSwift,
+Kingfisher, SnapKit, SwiftLint, swift-argument-parser, swift-collections,
+Moya, swift-format, SourceKitten and the Kickstarter iOS app. The
+reference tools' times are from the porting runs, on the same busy machine.
 
 The Java and Kotlin corpora are the sources of public repositories as found
 (`bench/corpus/repos.txt` lists them; `bench/corpus/mk.sh` rebuilds a corpus
