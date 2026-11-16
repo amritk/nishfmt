@@ -6,6 +6,7 @@
 
 import { SwFormatter } from "./formatter";
 import {
+  SW_RULE_AND_OPERATOR,
   SW_RULE_ANY_OBJECT_PROTOCOL,
   SW_RULE_APPLICATION_MAIN,
   SW_RULE_BLANK_LINES_AT_END_OF_SCOPE,
@@ -13,10 +14,12 @@ import {
   SW_RULE_BLANK_LINES_BETWEEN_CHAINED_FUNCTIONS,
   SW_RULE_BLANK_LINES_BETWEEN_IMPORTS,
   SW_RULE_BLANK_LINE_AFTER_IMPORTS,
+  SW_RULE_BRACES,
   SW_RULE_CONDITIONAL_ASSIGNMENT,
   SW_RULE_CONSECUTIVE_BLANK_LINES,
   SW_RULE_CONSECUTIVE_SPACES,
   SW_RULE_DOC_COMMENTS_BEFORE_MODIFIERS,
+  SW_RULE_ELSE_ON_SAME_LINE,
   SW_RULE_EMPTY_BRACES,
   SW_RULE_ENVIRONMENT_ENTRY,
   SW_RULE_FILE_HEADER,
@@ -28,6 +31,7 @@ import {
   SW_RULE_LEADING_DELIMITERS,
   SW_RULE_LINEBREAKS,
   SW_RULE_LINEBREAK_AT_END_OF_FILE,
+  SW_RULE_NUMBER_FORMATTING,
   SW_RULE_OPAQUE_GENERIC_PARAMETERS,
   SW_RULE_PREFER_KEY_PATH,
   SW_RULE_REDUNDANT_BREAK,
@@ -53,12 +57,15 @@ import {
   SW_RULE_STRONG_OUTLETS,
   SW_RULE_TODOS,
   SW_RULE_TRAILING_SPACE,
+  SW_RULE_TYPE_SUGAR,
+  SW_RULE_VOID,
   SW_RULE_WRAP,
   SW_RULE_WRAP_ATTRIBUTES,
   SW_RULE_WRAP_FUNCTION_BODIES,
   SW_RULE_WRAP_IF_EXPRESSION_BODIES,
   SW_RULE_WRAP_IF_STATEMENT_BODIES,
   SW_RULE_WRAP_LOOP_BODIES,
+  SW_RULE_WRAP_MULTILINE_STATEMENT_BRACES,
   SW_RULE_WRAP_PROPERTY_BODIES,
   SW_RULE_WRAP_SINGLE_LINE_COMMENTS,
 } from "./rules";
@@ -74,6 +81,11 @@ import {
   swRuleEmptyBraces,
   swRuleLeadingDelimiters,
 } from "./rules_blank";
+import {
+  swRuleBraces,
+  swRuleElseOnSameLine,
+  swRuleWrapMultilineStatementBraces,
+} from "./rules_braces";
 import {
   swRuleHoistTry,
 } from "./rules_hoist";
@@ -109,6 +121,12 @@ import {
   swRuleSpaceInsideGenerics,
   swRuleSpaceInsideParens,
 } from "./rules_spacing";
+import {
+  swRuleAndOperator,
+  swRuleNumberFormatting,
+  swRuleTypeSugar,
+  swRuleVoid,
+} from "./rules_types";
 import {
   swRuleWrapFunctionBodies,
   swRuleWrapIfStatementBodies,
@@ -282,6 +300,27 @@ export const swRunRule = (f: SwFormatter, r: i32): boolean => {
       return true;
     case SW_RULE_WRAP_IF_STATEMENT_BODIES:
       swRuleWrapIfStatementBodies(f);
+      return true;
+    case SW_RULE_BRACES:
+      swRuleBraces(f);
+      return true;
+    case SW_RULE_WRAP_MULTILINE_STATEMENT_BRACES:
+      swRuleWrapMultilineStatementBraces(f);
+      return true;
+    case SW_RULE_ELSE_ON_SAME_LINE:
+      swRuleElseOnSameLine(f);
+      return true;
+    case SW_RULE_TYPE_SUGAR:
+      swRuleTypeSugar(f);
+      return true;
+    case SW_RULE_VOID:
+      swRuleVoid(f);
+      return true;
+    case SW_RULE_NUMBER_FORMATTING:
+      swRuleNumberFormatting(f);
+      return true;
+    case SW_RULE_AND_OPERATOR:
+      swRuleAndOperator(f);
       return true;
     default:
       return false;
