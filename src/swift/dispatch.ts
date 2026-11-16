@@ -133,7 +133,6 @@ import {
   swGuardRedundantEquatable,
   swGuardRedundantMemberwiseInit,
   swGuardRedundantSwiftUIGroup,
-  swGuardSimplifyGenericConstraints,
   swGuardSwiftTestingTestCaseNames,
 } from "./guards";
 import {
@@ -186,6 +185,9 @@ import {
   swRuleRedundantFileprivate,
   swRuleRedundantNilInit,
 } from "./rules_ext";
+import {
+  swRuleSimplifyGenericConstraints,
+} from "./rules_generic";
 import {
   swRuleRepeatedGuard,
 } from "./rules_guard";
@@ -603,7 +605,8 @@ export const swRunRule = (f: SwFormatter, r: i32): boolean => {
       swRuleRedundantVariable(f);
       return true;
     case SW_RULE_SIMPLIFY_GENERIC_CONSTRAINTS:
-      return swGuardSimplifyGenericConstraints(f);
+      swRuleSimplifyGenericConstraints(f);
+      return true;
     case SW_RULE_REPEATED_GUARD:
       swRuleRepeatedGuard(f);
       return true;
