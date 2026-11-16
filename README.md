@@ -1,7 +1,7 @@
 # fastfmt
 
 A fast C++ formatter written in [Nish](https://github.com/amritk/nish), which also
-formats Java, Kotlin and Ruby (see [Other languages](#other-languages)). Its
+formats Java, Kotlin, Ruby and C# (see [Other languages](#other-languages)). Its
 output aims to match `clang-format`'s LLVM style (the target is
 `{BasedOnStyle: LLVM, ColumnLimit: 120}`) byte for byte, many times faster.
 
@@ -12,13 +12,14 @@ reference.
 
 ## Other languages
 
-The same binary formats Java, Kotlin and Ruby, each to match one tool's
+The same binary formats Java, Kotlin, Ruby and C#, each to match one tool's
 output byte for byte:
 
 | Language | Files | Matches | Corpus result |
 | --- | --- | --- | ---: |
 | Java | `.java` | google-java-format 1.28 | 7626 / 7627 |
 | Kotlin | `.kt .kts` | ktfmt 0.64 (default style) | 9602 / 9602 |
+| C# | `.cs` | CSharpier 1.4.0, default options | 13988 / 13988 |
 | Ruby | RuboCop's default `Include` (`.rb`, `Gemfile`, `.gemspec`, ...) | `rubocop -a` 1.92.2, default config, `TargetRubyVersion: 3.3` | 4239 / 4239 |
 
 Against the reference tools and the Rust reimplementations, on a 4-core
@@ -29,6 +30,22 @@ container (identical = byte for byte with the reference tool's output):
 | ktfmt 0.64 (JVM) | reference | 92.9 s | |
 | ktrs 0.5.1 | 9602 | 2.43 s | 8.96 s |
 | fastfmt | 9602 | 2.03 s | 7.02 s |
+
+| C#, 13992 files (164 MB) | Identical | 4 cores | 1 core |
+| --- | ---: | ---: | ---: |
+| CSharpier 1.4.0 (.NET 10, `--no-cache`) | reference | 63.0 s | 122.7 s |
+| fastfmt | 13988 | 3.10 s | 6.63 s |
+
+The C# side ports CSharpier's whole pipeline onto a Roslyn-shaped syntax tree
+of its own: the lexer with Roslyn's trivia, the parser (C# 14), every node
+printer, Prettier's Doc printer, member chains, using and modifier sorting,
+`csharpier-ignore`, generated-code detection and the reprint for each set of
+preprocessor symbols. The corpus is Newtonsoft.Json, AutoMapper, MediatR,
+Polly, Serilog, Dapper, NUnit, xUnit, CSharpier, Humanizer,
+CleanArchitecture, EF Core, NLog, RestSharp and FluentValidation; a second
+corpus of the same files first formatted with other widths and indents
+(`cs2`) also matches on all 13988. The 4 files CSharpier refuses are left
+out. There is no native reimplementation of CSharpier to compare with.
 
 The Java and Kotlin corpora are the sources of public repositories as found
 (`bench/corpus/repos.txt` lists them; `bench/corpus/mk.sh` rebuilds a corpus
