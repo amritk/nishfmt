@@ -279,6 +279,11 @@ export class DtScanner {
   // to split `>>` by them (see DtTokens.pred).
   lt: i32 = 0;
   predict: boolean = true;
+  // The 1-based line at the scanning position, and where it starts.
+  line: i32 = 1;
+  lineStart: i32 = 0;
+  // The line a string segment being added starts on, or -1.
+  segLine: i32 = -1;
   // Whether we are still before the first token (for `// @dart=`).
   header: boolean = true;
 
@@ -305,6 +310,14 @@ export class DtScanner {
     return -1;
   }
 
+  /** Notes the byte `c` at `i` when it is `\n` or `\r` (`\r\n` counts at the `\n`). */
+  newlineAt(c: i32, i: i32): void {
+    if (c === 10 || (c === 13 && this.at(i + 1) !== 10)) {
+      this.line = this.line + 1;
+      this.lineStart = i + 1;
+    }
+  }
+
   add(kind: i32, a: i32, b: i32): void {
     const t = this.t;
     t.roomForToken();
@@ -313,6 +326,8 @@ export class DtScanner {
     t.kw[i] = K_NONE;
     t.start[i] = a;
     t.end[i] = b;
+    t.lineS[i] = this.segLine >= 0 ? this.segLine : this.line;
+    t.lineE[i] = this.line;
     if (this.pendFirst >= 0) {
       t.cFirst[i] = this.pendFirst;
       t.cCount[i] = t.nc - this.pendFirst;
@@ -346,6 +361,21 @@ export class DtScanner {
     }
   }
 
+  /** Records the line and column-1-ness of the comment about to be added at `a`. */
+  commentStart(a: i32): void {
+    const t = this.t;
+    t.roomForComment();
+    t.cLineS[t.nc] = this.line;
+    t.cCol1[t.nc] = a === this.lineStart;
+  }
+
+  /** add, for a string segment that starts on line `segLine`. */
+  addSeg(kind: i32, a: i32, b: i32, segLine: i32): void {
+    this.segLine = segLine;
+    this.add(kind, a, b);
+    this.segLine = -1;
+  }
+
   addComment(kind: i32, a: i32, b: i32): void {
     const t = this.t;
     t.roomForComment();
@@ -353,6 +383,7 @@ export class DtScanner {
     t.cStart[i] = a;
     t.cEnd[i] = b;
     t.cKind[i] = kind;
+    t.cLineE[i] = this.line;
     if (this.pendFirst < 0) {
       this.pendFirst = i;
     }
@@ -368,6 +399,8 @@ export class DtScanner {
     t.end[0] = 0;
     t.cFirst[0] = -1;
     t.cCount[0] = 0;
+    t.lineS[0] = 1;
+    t.lineE[0] = 1;
     t.count = 1;
     // Skip a UTF-8 byte order mark.
     if (this.n >= 3 && this.at(0) === 0xef && this.at(1) === 0xbb && this.at(2) === 0xbf) {
@@ -394,7 +427,6 @@ export class DtScanner {
       this.fail("unterminated interpolation");
     }
     this.add(T_EOF, this.n, this.n);
-    this.lines();
   }
 
   /** Skips whitespace and comments; answers the next byte or -1 at the end. */
@@ -402,7 +434,12 @@ export class DtScanner {
     const n = this.n;
     while (this.p < n) {
       const c = toI32(this.src[this.p]);
-      if (c === 32 || c === 9 || c === 10 || c === 13 || c === 12 || c === 11) {
+      if (c === 32 || c === 9 || c === 12 || c === 11) {
+        this.p = this.p + 1;
+        continue;
+      }
+      if (c === 10 || c === 13) {
+        this.newlineAt(c, this.p);
         this.p = this.p + 1;
         continue;
       }
@@ -422,11 +459,13 @@ export class DtScanner {
           if (this.header && this.t.verMajor < 0) {
             this.languageVersion(a, i);
           }
+          this.commentStart(a);
           this.addComment(C_LINE, a, i);
           continue;
         }
         if (d === 42) {
           const a = this.p;
+          this.commentStart(a);
           let i = a + 2;
           let depth = 1;
           while (i < n && depth > 0) {
@@ -438,6 +477,9 @@ export class DtScanner {
               depth++;
               i += 2;
             } else {
+              if (e === 10 || e === 13) {
+                this.newlineAt(e, i);
+              }
               i++;
             }
           }
@@ -846,6 +888,7 @@ export class DtScanner {
     let a = a0;
     let i = from < 0 ? a0 : from;
     const n = this.n;
+    let segLine = this.line;
     while (true) {
       if (i >= n) {
         this.fail("unterminated string");
@@ -854,30 +897,37 @@ export class DtScanner {
       const c = toI32(this.src[i]);
       if (c === quote) {
         if (!triple) {
-          this.add(T_STRING, a, i + 1);
+          this.addSeg(T_STRING, a, i + 1, segLine);
           this.p = i + 1;
           return;
         }
         if (this.at(i + 1) === quote && this.at(i + 2) === quote) {
-          this.add(T_STRING, a, i + 3);
+          this.addSeg(T_STRING, a, i + 3, segLine);
           this.p = i + 3;
           return;
         }
         i++;
         continue;
       }
-      if (!triple && (c === 10 || c === 13)) {
-        this.fail("newline in string");
-        return;
+      if (c === 10 || c === 13) {
+        if (!triple) {
+          this.fail("newline in string");
+          return;
+        }
+        this.newlineAt(c, i);
       }
       if (c === 92 && !raw) {
+        const d = this.at(i + 1);
+        if (d === 10 || d === 13) {
+          this.newlineAt(d, i + 1);
+        }
         i += 2;
         continue;
       }
       if (c === 36 && !raw) {
         const d = this.at(i + 1);
         if (d === 123) {
-          this.add(T_STRING, a, i);
+          this.addSeg(T_STRING, a, i, segLine);
           this.add(T_INTERP_EXPR, i, i + 2);
           this.p = i + 2;
           if (this.ns >= toI32(this.sQuote.length)) {
@@ -891,7 +941,7 @@ export class DtScanner {
           return;
         }
         if ((d >= 97 && d <= 122) || (d >= 65 && d <= 90) || d === 95) {
-          this.add(T_STRING, a, i);
+          this.addSeg(T_STRING, a, i, segLine);
           this.add(T_INTERP_IDENT, i, i + 1);
           let j = i + 2;
           while (j < n) {
@@ -907,67 +957,13 @@ export class DtScanner {
           // The rest of the string is the next segment.
           a = j;
           i = j;
+          segLine = this.line;
           continue;
         }
         this.fail("bad interpolation");
         return;
       }
       i++;
-    }
-  }
-
-  /** Fills in the line numbers of tokens and comments. */
-  lines(): void {
-    const t = this.t;
-    const src = this.src;
-    const n = this.n;
-    // Line starts.
-    const ls: i32[] = [0];
-    for (let i = 0; i < n; i++) {
-      const c = toI32(src[i]);
-      if (c === 10) {
-        ls.push(i + 1);
-      } else if (c === 13) {
-        if (i + 1 < n && toI32(src[i + 1]) === 10) {
-          i++;
-        }
-        ls.push(i + 1);
-      }
-    }
-    const nl = toI32(ls.length);
-    // Token starts and ends are each monotonic.
-    let li = 0;
-    for (let k = 0; k < t.count; k++) {
-      const s = t.start[k];
-      while (li + 1 < nl && ls[li + 1] <= s) {
-        li++;
-      }
-      t.lineS[k] = li + 1;
-    }
-    li = 0;
-    for (let k = 0; k < t.count; k++) {
-      const e = t.end[k];
-      while (li + 1 < nl && ls[li + 1] <= e) {
-        li++;
-      }
-      t.lineE[k] = li + 1;
-    }
-    li = 0;
-    for (let k = 0; k < t.nc; k++) {
-      const s = t.cStart[k];
-      while (li + 1 < nl && ls[li + 1] <= s) {
-        li++;
-      }
-      t.cLineS[k] = li + 1;
-      t.cCol1[k] = ls[li] === s;
-    }
-    li = 0;
-    for (let k = 0; k < t.nc; k++) {
-      const e = t.cEnd[k];
-      while (li + 1 < nl && ls[li + 1] <= e) {
-        li++;
-      }
-      t.cLineE[k] = li + 1;
     }
   }
 }

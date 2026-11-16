@@ -690,6 +690,12 @@ export class DtVisitor {
   stack: DtPiece[][];
   current: DtPiece | null = null;
   pendingSpace: boolean = false;
+  // Text appended to the current code piece's last line, kept as bytes
+  // until the piece stops being current (see flushText).
+  tb: u8[];
+  tbN: i32 = 0;
+  tbLen: i32 = 0; // in UTF-16 units
+  tbPiece: DtPiece | null = null;
   previousCode: DtPiece | null = null;
   metaStack: DtPiece[][];
   // AstNodeVisitor.
@@ -708,6 +714,7 @@ export class DtVisitor {
     this.src = t.src;
     this.pf = new DtPieces();
     this.cw = new DtCommentWriter(t);
+    this.tb = new Array<u8>(256);
     this.stack = [];
     this.metaStack = [];
     this.ecType = [];
@@ -739,7 +746,72 @@ export class DtVisitor {
   // PieceWriter.
 
   /** TextPiece.append. */
+  /** Appends the source bytes `[a, b)` to the current piece `p`'s last line, deferred. */
+  appendSrc(p: DtPiece, a: i32, b: i32): void {
+    const cur = this.tbPiece;
+    if (cur === null || cur !== p) {
+      this.flushText();
+      this.tbPiece = p;
+    }
+    let n = this.tbN;
+    // One byte to spare, for a space after.
+    if (n + b - a + 1 > toI32(this.tb.length)) {
+      let cap = toI32(this.tb.length) * 2;
+      while (cap < n + b - a + 1) {
+        cap = cap * 2;
+      }
+      const g = new Array<u8>(cap);
+      for (let i = 0; i < n; i++) {
+        g[i] = this.tb[i];
+      }
+      this.tb = g;
+    }
+    let len = this.tbLen;
+    for (let i = a; i < b; i++) {
+      const c = this.src[i];
+      this.tb[n] = c;
+      n++;
+      if (c < 0x80 || c >= 0xc0) {
+        len += c >= 0xf0 ? 2 : 1;
+      }
+    }
+    this.tbN = n;
+    this.tbLen = len;
+  }
+
+  /** Moves the deferred text into its piece. */
+  flushText(): void {
+    const p = this.tbPiece;
+    if (p === null) {
+      return;
+    }
+    this.tbPiece = null;
+    if (this.tbN === 0) {
+      return;
+    }
+    const text = String.fromBytes(this.tb, 0, this.tbN);
+    if (p.lines.length === 0) {
+      p.lines.push(text);
+      p.lens.push(this.tbLen);
+    } else {
+      const last = toI32(p.lines.length) - 1;
+      p.lines[last] = p.lines[last] + text;
+      p.lens[last] = p.lens[last] + this.tbLen;
+    }
+    this.tbN = 0;
+    this.tbLen = 0;
+  }
+
   append(p: DtPiece, text: string, multiline: boolean): void {
+    const pend = this.tbPiece;
+    if (pend !== null && pend === p) {
+      this.flushText();
+    }
+    if (p.lines.length === 0 && !multiline) {
+      p.lines.push(text);
+      p.lens.push(dtStrUtf16(text));
+      return;
+    }
     if (p.lines.length === 0) {
       p.lines.push("");
       p.lens.push(0);
@@ -808,10 +880,13 @@ export class DtVisitor {
       this.beginCodeToken(tok, soft);
     } else if (cur !== null && cur.soft === soft) {
       if (this.pendingSpace) {
-        this.append(cur, " ", false);
+        this.appendSrc(cur, -1, -1);
+        this.tb[this.tbN] = 32;
+        this.tbN = this.tbN + 1;
+        this.tbLen = this.tbLen + 1;
         this.pendingSpace = false;
       }
-      this.append(cur, this.lexeme(tok), false);
+      this.appendSrc(cur, this.t.start[tok], this.t.end[tok]);
     } else {
       this.beginCodeToken(tok, soft);
     }
@@ -841,11 +916,13 @@ export class DtVisitor {
   add(p: DtPiece): void {
     this.flushSpace();
     this.stack[this.stack.length - 1].push(p);
+    this.flushText();
     this.current = null;
   }
 
   begin(): void {
     this.flushSpace();
+    this.flushText();
     this.current = null;
     const fresh: DtPiece[] = [];
     this.stack.push(fresh);
@@ -853,6 +930,7 @@ export class DtVisitor {
 
   end(): DtPiece {
     this.flushSpace();
+    this.flushText();
     this.current = null;
     const built = this.stack.pop();
     if (built.length === 1) {
@@ -870,6 +948,7 @@ export class DtVisitor {
   /** build() with metadata: the leading pieces are made before the content. */
   beginMeta(meta: i32): void {
     this.flushSpace();
+    this.flushText();
     this.current = null;
     const leading: DtPiece[] = [];
     const n = this.a.len(meta);
@@ -972,6 +1051,7 @@ export class DtVisitor {
     this.flushSpace();
     const code = this.makeCodePiece(tok, -1, soft);
     this.stack[this.stack.length - 1].push(code);
+    this.flushText();
     this.current = code;
   }
 
@@ -2276,6 +2356,7 @@ export class DtVisitor {
       needsBlank = addBlankLines || this.hasNonEmptyBody(d);
     }
     seq.addCommentsBefore(this.a.end[unit], IN_NONE, false);
+    this.flushText();
     return seq.build(false);
   }
 
