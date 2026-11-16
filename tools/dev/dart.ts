@@ -17,6 +17,7 @@ export const main = (): i32 => {
   const out = new Out(n + 1024);
   const e = new DartEngine();
   e.debug = getenv("FFDEBUG") !== null;
+  e.dump = getenv("FFDTDUMP") ?? "";
   if (!formatDart(e, path, src, n, out)) {
     return 1;
   }
