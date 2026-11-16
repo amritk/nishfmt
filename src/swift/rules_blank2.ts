@@ -68,7 +68,7 @@ export const swRuleBlankLinesAroundMark = (f: SwFormatter): void => {
 export const swRuleBlankLinesBetweenScopes = (f: SwFormatter): void => {
   const stack: boolean[] = [true];
   let spaceable = false;
-  for (let i0 = f.enumStart(); i0 >= 0; i0 = f.enumNext()) {
+  for (let i0 = f.enumStartAll(); i0 >= 0; i0 = f.enumNextAll()) {
     const s = f.s(i0);
     if (f.k(i0) === SW_KEYWORD && (s === "class" || s === "actor" || s === "struct" || s === "extension" || s === "enum")) {
       spaceable = !f.lastIs(SW_T_NON_SPACE_OR_COMMENT_OR_LINEBREAK, i0, SW_KEYWORD, "import");
@@ -188,7 +188,8 @@ const swHeaderCommentRangeAll = (f: SwFormatter): i32[] | null => {
       const b = f.indexAfter(SW_T_NON_SPACE, startIndex);
       if (b >= 0 && f.k(b) === SW_COMMENT) {
         const body = f.s(b);
-        if ((body.startsWith("/") && !body.startsWith("//")) || body.startsWith("swift-tools-version")) {
+        f.updateEnablement(startIndex);
+        if (!f.isEnabled() || (body.startsWith("/") && !body.startsWith("//")) || body.startsWith("swift-tools-version")) {
           return null;
         }
       }
@@ -214,7 +215,8 @@ const swHeaderCommentRangeAll = (f: SwFormatter): i32[] | null => {
       let stop = false;
       if (b >= 0 && f.k(b) === SW_COMMENT) {
         const body = f.s(b);
-        if (body.startsWith("*") && !body.startsWith("**")) {
+        f.updateEnablement(startIndex);
+        if (!f.isEnabled() || (body.startsWith("*") && !body.startsWith("**"))) {
           return null;
         } else if (swCommentDirective(body).length !== 0) {
           stop = true;

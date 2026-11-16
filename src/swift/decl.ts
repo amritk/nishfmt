@@ -304,7 +304,7 @@ export const swPropertyRangeEnd = (bodyEnd: i32, valueEnd: i32, typeEnd: i32, id
 };
 
 /** parseDeclarations(in: lo ..< hi). */
-export const swParseDeclarationsIn = (f: SwFormatter, lo: i32, hi0: i32): SwDecl[] => {
+export const swParseDeclarationsIn = (f: SwFormatter, lo: i32, hi0: i32, useForEachToken: boolean = true): SwDecl[] => {
   const hi = hi0 > f.count() ? f.count() : hi0;
   const kws: string[] = [];
   const kwIdx: i32[] = [];
@@ -329,6 +329,11 @@ export const swParseDeclarationsIn = (f: SwFormatter, lo: i32, hi0: i32): SwDecl
     const keyword = dt.length !== 0 ? dt : f.s(index);
     const eod = swEndOfDeclarationInTypeBody(f, index);
     const end = eod < 0 ? hi - 1 : eod < hi - 1 ? eod : hi - 1;
+    // A declaration where the current rule is disabled by a directive is left out.
+    if (f.hasDirectives() && !(useForEachToken ? f.enabledInLoopAt(index, lo < 0 ? 0 : lo) : f.isEnabled())) {
+      startOfDeclaration = end + 1;
+      continue;
+    }
     kws.push(keyword);
     kwIdx.push(index);
     rlo.push(startOfDeclaration);
@@ -409,7 +414,7 @@ export const swParseEnclosingType = (f: SwFormatter, index: i32): SwDecl | null 
     const eos = ob >= 0 ? swEndOfScope(f, ob) : -1;
     if (ob >= 0 && eos >= 0) {
       const d = new SwDecl(f.s(tk), SW_DECL_TYPE, f.ref(swStartOfModifiers(f, tk, true), eos));
-      d.body = swParseDeclarationsIn(f, ob + 1, eos);
+      d.body = swParseDeclarationsIn(f, ob + 1, eos, false);
       for (const c of d.body) {
         c.parent = d;
       }

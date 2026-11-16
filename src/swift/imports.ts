@@ -112,7 +112,7 @@ export const swParseImports = (f: SwFormatter): SwImportGroup[] => {
   const stack: SwImportGroup[] = [];
   let cur = new SwImportGroup();
   const fileName = f.path.length === 0 ? ".swift" : swFileName(f.path);
-  for (let i = 0; i < f.count(); i++) {
+  for (let i = f.enumStart(); i >= 0; i = f.enumNext()) {
     if (!f.kw(i, "import")) {
       continue;
     }

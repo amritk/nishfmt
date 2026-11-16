@@ -12,10 +12,12 @@ import {
   SW_OP,
   SW_SPACE,
   SW_START,
+  SW_STRBODY,
   SW_T_START_OF_SCOPE,
   SwTok,
   SwTokList,
   swIsEndOfScopeOf,
+  swIsMultilineStringDelimiter,
   swIsSwitchCaseOrDefault,
   swKindIsComment,
   swTokIs,
@@ -47,6 +49,19 @@ export class SwFormatter {
   // index(of: .startOfScope, before:) results, stamped the same way.
   csVal: i32[];
   csGen: i32[];
+  // `swiftformat:` directives (Formatter.directives), parallel arrays: type (0 enable,
+  // 1 disable), toggle, line, index in line, and the rule names as " a b ".
+  dirType: i32[];
+  dirToggle: boolean[];
+  dirLine: i32[];
+  dirIndex: i32[];
+  dirNames: string[];
+  // Formatter.disabled, set by updateEnablement.
+  disabled: boolean = false;
+  // The current rule's directive names (lowercased name and old names) as " a b ".
+  ruleNames: string = "";
+  // containsMultilineStringLiteral: -1 unknown, 0 no, 1 yes.
+  multilineStrings: i32 = -1;
 
   constructor(t: SwTokList) {
     this.t = t;
@@ -59,6 +74,11 @@ export class SwFormatter {
     this.eoGen = [];
     this.csVal = [];
     this.csGen = [];
+    this.dirType = [];
+    this.dirToggle = [];
+    this.dirLine = [];
+    this.dirIndex = [];
+    this.dirNames = [];
   }
 
   count(): i32 {
@@ -138,7 +158,139 @@ export class SwFormatter {
   }
 
   isEnabled(): boolean {
-    return !this.ruleDisabled;
+    return !this.ruleDisabled && !this.disabled;
+  }
+
+  hasDirectives(): boolean {
+    return this.dirType.length !== 0;
+  }
+
+  /** Directive.applies(to: currentRule). */
+  directiveApplies(d: i32): boolean {
+    const names = this.dirNames[d];
+    if (names.indexOf(" all ") >= 0) {
+      return true;
+    }
+    let start = 1;
+    while (start < toI32(names.length)) {
+      const e = names.indexOf(" ", start);
+      if (this.ruleNames.indexOf(names.substring(start - 1, e + 1)) >= 0) {
+        return true;
+      }
+      start = e + 1;
+    }
+    return false;
+  }
+
+  /** Whether any directive applies to the current rule. */
+  anyDirectiveApplies(): boolean {
+    for (let d = 0; d < toI32(this.dirType.length); d++) {
+      if (this.directiveApplies(d)) {
+        return true;
+      }
+    }
+    return false;
+  }
+
+  /** The line (from the last linebreak's original line number) of token i: Formatter's physical line. */
+  private lineOf(i: i32): i32 {
+    for (let j = i; j >= 0; j--) {
+      if (this.t.k[j] === SW_LINEBREAK) {
+        return this.t.a[j] + 1;
+      }
+    }
+    return 1;
+  }
+
+  /** updateEnablement(at:). */
+  updateEnablement(index: i32): void {
+    const nd = toI32(this.dirType.length);
+    if (nd === 0) {
+      return;
+    }
+    const physicalLine = this.lineOf(index);
+    let hasApplicableLineDirective = false;
+    for (let d = 0; d < nd; d++) {
+      if (!this.dirToggle[d] && this.dirLine[d] === physicalLine && this.directiveApplies(d)) {
+        hasApplicableLineDirective = true;
+        break;
+      }
+    }
+    if (this.multilineStrings < 0) {
+      this.multilineStrings = 0;
+      for (let j = 0; j < this.count(); j++) {
+        if (swIsMultilineStringDelimiter(this.t.k[j], this.t.s[j])) {
+          this.multilineStrings = 1;
+          break;
+        }
+      }
+    }
+    let enablementIndex = index;
+    if (this.t.k[index] === SW_LINEBREAK && !hasApplicableLineDirective && this.multilineStrings === 1) {
+      const startIndex = swIndexBeforeWhere(this, index, (f, j) => {
+        const k = f.t.k[j];
+        return !(k === SW_SPACE || k === SW_LINEBREAK || k === SW_STRBODY || k === SW_END);
+      });
+      if (startIndex >= 0 && swIsMultilineStringDelimiter(this.t.k[startIndex], this.t.s[startIndex])) {
+        enablementIndex = startIndex;
+      }
+    }
+    let line = 1;
+    let tokenIndex = enablementIndex;
+    if (this.t.k[enablementIndex] === SW_LINEBREAK) {
+      line = this.t.a[enablementIndex] + 1;
+      tokenIndex = 0;
+    } else {
+      for (let j = enablementIndex - 1; j >= 0; j--) {
+        if (this.t.k[j] === SW_LINEBREAK) {
+          line = this.t.a[j] + 1;
+          tokenIndex = enablementIndex - j - 1;
+          break;
+        }
+      }
+    }
+    let disabledCount = 0;
+    let disabledNext = 0;
+    for (let d = 0; d < nd; d++) {
+      if (this.dirLine[d] > line || (this.dirLine[d] === line && this.dirIndex[d] > tokenIndex)) {
+        break;
+      }
+      if (!this.directiveApplies(d)) {
+        continue;
+      }
+      const delta = this.dirType[d] === 1 ? 1 : -1;
+      if (this.dirToggle[d]) {
+        disabledCount += delta;
+      } else if (this.dirLine[d] === line) {
+        disabledNext += delta;
+      } else {
+        disabledNext = 0;
+      }
+    }
+    this.disabled = disabledCount + disabledNext > 0;
+  }
+
+  /** Whether token i starts or ends a comment or is a linebreak (forEachToken updates enablement there). */
+  private isEnablementPoint(i: i32): boolean {
+    const k = this.t.k[i];
+    if (k === SW_LINEBREAK) {
+      return true;
+    }
+    const s = this.t.s[i];
+    return (k === SW_START && (s === "//" || s === "/*")) || (k === SW_END && s === "*/");
+  }
+
+  /** The enablement forEachToken(in: lo..., onlyWhereEnabled: false) would see at index i. */
+  enabledInLoopAt(i: i32, lo: i32): boolean {
+    if (this.dirType.length === 0) {
+      return !this.ruleDisabled;
+    }
+    let j = i;
+    while (j > lo && !this.isEnablementPoint(j)) {
+      j--;
+    }
+    this.updateEnablement(j);
+    return this.isEnabled();
   }
 
   fatalError(msg: string, _at: i32): void {
@@ -316,7 +468,11 @@ export class SwFormatter {
       this.ei = -1;
       return -1;
     }
-    return this.ei;
+    if (this.dirType.length === 0) {
+      return this.ei;
+    }
+    this.updateEnablement(0);
+    return this.enumSkip(true);
   }
 
   /** Advances forEachToken; answers the next index (or -1 at the end). */
@@ -326,7 +482,51 @@ export class SwFormatter {
       this.ei = -1;
       return -1;
     }
-    return this.ei;
+    if (this.dirType.length === 0) {
+      return this.ei;
+    }
+    return this.enumSkip(true);
+  }
+
+  /** forEachToken(onlyWhereEnabled: false): starts; enablement is updated but nothing is skipped. */
+  enumStartAll(): i32 {
+    this.ei = 0;
+    if (this.ei >= this.count()) {
+      this.ei = -1;
+      return -1;
+    }
+    if (this.dirType.length === 0) {
+      return this.ei;
+    }
+    this.updateEnablement(0);
+    return this.enumSkip(false);
+  }
+
+  enumNextAll(): i32 {
+    this.ei = this.ei + 1;
+    if (this.ei >= this.count()) {
+      this.ei = -1;
+      return -1;
+    }
+    if (this.dirType.length === 0) {
+      return this.ei;
+    }
+    return this.enumSkip(false);
+  }
+
+  /** Updates enablement at ei and moves past tokens where the rule is disabled (when `only`). */
+  private enumSkip(only: boolean): i32 {
+    while (this.ei < this.count()) {
+      if (this.isEnablementPoint(this.ei)) {
+        this.updateEnablement(this.ei);
+      }
+      if (!only || this.isEnabled()) {
+        return this.ei;
+      }
+      this.ei = this.ei + 1;
+    }
+    this.ei = -1;
+    return -1;
   }
 
   // MARK: utilities

@@ -378,7 +378,7 @@ const swUppercased = (s: string): string => {
 /** availabilityArgumentRanges(), as [lo, hi] pairs. */
 const swAvailabilityRanges = (f: SwFormatter): i32[] => {
   const out: i32[] = [];
-  for (let i = 0; i < f.count(); i++) {
+  for (let i = f.enumStart(); i >= 0; i = f.enumNext()) {
     if (!f.tok(i, SW_START, "(")) {
       continue;
     }

@@ -95,7 +95,7 @@ export const swRuleConsecutiveSpaces = (f: SwFormatter): void => {
 /** linebreakAtEndOfFile. */
 export const swRuleLinebreakAtEndOfFile = (f: SwFormatter): void => {
   let wasLinebreak = true;
-  for (let i = 0; i < f.count(); i++) {
+  for (let i = f.enumStartAll(); i >= 0; i = f.enumNextAll()) {
     const k = f.k(i);
     if (k === SW_LINEBREAK) {
       wasLinebreak = true;

@@ -534,7 +534,7 @@ export const swRuleNoForceUnwrapInTests = (f: SwFormatter): void => {
     return;
   }
   const testCases: i32[] = [];
-  for (let i = 0; i < f.count(); i++) {
+  for (let i = f.enumStart(); i >= 0; i = f.enumNext()) {
     if (!f.kw(i, "func")) {
       continue;
     }
@@ -547,7 +547,7 @@ export const swRuleNoForceUnwrapInTests = (f: SwFormatter): void => {
     return;
   }
   const ops: i32[] = [];
-  for (let i = 0; i < f.count(); i++) {
+  for (let i = f.enumStart(); i >= 0; i = f.enumNext()) {
     if (f.op(i, "!", SW_OP_POSTFIX)) {
       ops.push(f.ref(i, i));
     }

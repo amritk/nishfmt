@@ -1,0 +1,88 @@
+import SwiftUI
+
+struct MyView: View {
+    var body: some View {
+        if condition {
+            Text("Hello")
+        }
+        if other {
+            Text("Bye")
+        }
+    }
+}
+
+struct OtherView: View {
+    var body: some View {
+        Text("foo")
+        Text("bar")
+    }
+}
+
+struct ThirdView: View {
+    @ViewBuilder
+    var content: some View {
+        Text("foo")
+        Text("bar")
+    }
+}
+
+public extension URL {
+    func queryParameter(_: String) -> String {
+        ""
+    }
+
+    func other(_: String) -> String {
+        ""
+    }
+
+    var x: Int {
+        1
+    }
+}
+
+class Foo {
+    @IBOutlet var label: UILabel!
+    @IBAction func goBack() {}
+    @objc @NSManaged private var foo: String?
+    @IBOutlet var label2: UILabel!
+}
+
+func brackets() {
+    let a = foo as [String]
+    let b = bar[5]
+    let c = Foo<Bar>()
+    let d = Foo<Bar, Baz>()
+    let e = baz[6]
+    let f = Foo<Baz>()
+    let g = Foo<Bar>()
+}
+
+typealias Placeholders = Baaz & Bar & Foo
+typealias Other = Alpha & Mid & Zed
+
+struct Mods {
+    @MainActor
+    private(set) var foo: Foo
+    nonisolated func bar() {}
+    static func baz() {}
+}
+
+func enumerated() {
+    for item in items {
+        print(item)
+    }
+    for item in others {
+        print(item)
+    }
+    foo(bar)
+    if x {}
+    let y = baz(1)
+}
+
+/// Doc comment
+/// Another
+public func docs() {}
+
+/// Doc
+@MainActor
+public func docs2() {}
