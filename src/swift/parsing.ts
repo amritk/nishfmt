@@ -5,6 +5,7 @@
 // Ported from SwiftFormat 0.64.7 (MIT License, Copyright (c) 2016 Nick
 // Lockwood).
 
+import { swCharacterUppercaseInvariant, swGraphemeCount } from "./unicode";
 import { SwFormatter, swIndexAfterWhere, swIndexBeforeWhere, swLastIndexInWhere } from "./formatter";
 import {
   SW_COMMENT,
@@ -981,13 +982,8 @@ const swIsLowercaseIdentifier = (name: string): boolean => {
   if (i >= n) {
     return false;
   }
-  const c = name.charCodeAt(i);
-  if (c < 0x80) {
-    return c >= 97 && c <= 122;
-  }
-  // Non-ASCII letters: treat Latin-1/Greek/Cyrillic lowercase ranges as lowercase.
-  const cp = swCpAtStr(name, i);
-  return (cp >= 0xdf && cp <= 0xff && cp !== 0xf7) || (cp >= 0x3b1 && cp <= 0x3c9) || (cp >= 0x430 && cp <= 0x44f);
+  // firstCharacter.uppercased() != firstCharacter
+  return !swCharacterUppercaseInvariant(name, i);
 };
 
 const swCpAtStr = (s: string, i: i32): i32 => {
@@ -1561,53 +1557,8 @@ export const swConditionalBranches = (f: SwFormatter, index: i32): SwBranches | 
 
 // MARK: widths
 
-/** Character count (Swift's String.count, approximately grapheme clusters) of `s`. */
-export const swCharCount = (s: string): i32 => {
-  let n = 0;
-  const len = toI32(s.length);
-  let i = 0;
-  let prevZwj = false;
-  let prevRegional = false;
-  while (i < len) {
-    const c = s.charCodeAt(i);
-    let cp = c;
-    let l = 1;
-    if (c >= 0x80) {
-      cp = swCpAtStr(s, i);
-      l = c < 0xe0 ? 2 : c < 0xf0 ? 3 : 4;
-    }
-    i += l;
-    const extend =
-      (cp >= 0x300 && cp <= 0x36f) ||
-      (cp >= 0x1ab0 && cp <= 0x1aff) ||
-      (cp >= 0x1dc0 && cp <= 0x1dff) ||
-      (cp >= 0x20d0 && cp <= 0x20ff) ||
-      (cp >= 0xfe00 && cp <= 0xfe0f) ||
-      (cp >= 0xfe20 && cp <= 0xfe2f) ||
-      (cp >= 0x1f3fb && cp <= 0x1f3ff) ||
-      (cp >= 0xe0020 && cp <= 0xe007f) ||
-      (cp >= 0xe0100 && cp <= 0xe01ef) ||
-      cp === 0x200d;
-    const regional = cp >= 0x1f1e6 && cp <= 0x1f1ff;
-    if (extend || prevZwj) {
-      prevZwj = cp === 0x200d;
-      if (!extend) {
-        prevRegional = false;
-      }
-      continue;
-    }
-    if (regional && prevRegional) {
-      prevRegional = false;
-      continue;
-    }
-    if (c === 10 && i - 2 >= 0 && s.charCodeAt(i - 2) === 13) {
-      continue;
-    }
-    prevRegional = regional;
-    n++;
-  }
-  return n;
-};
+/** Character count (Swift's String.count: extended grapheme clusters) of `s`. */
+export const swCharCount = (s: string): i32 => swGraphemeCount(s);
 
 /** tokenLength (tabWidth is the indent width, 4): tabs in spaces, strings and comments count 4. */
 export const swTokenLength = (f: SwFormatter, i: i32): i32 => {

@@ -3,6 +3,7 @@
 // Ported from SwiftFormat 0.64.7 (MIT License, Copyright (c) 2016 Nick
 // Lockwood).
 
+import { swCharacterEnd, swCharacterUppercaseInvariant } from "./unicode";
 import { swStringExcludingLinebreaksAndComments } from "./decl";
 import { swParseExpressionEnd, swParsePropertyDeclaration } from "./expr";
 import { SwFormatter } from "./formatter";
@@ -158,13 +159,21 @@ const swIsFunctionParameter = (f: SwFormatter, name: string, index: i32): boolea
 };
 
 /** The first character code of the last dot-separated part of the type's string, or -1. */
+/** type.string.components(separatedBy: ".").last?.first: -1 for nil, 36 for `$`, 1 for a Character
+ *  that uppercasing leaves unchanged, 0 otherwise. */
 const swTypeLastPartFirstChar = (f: SwFormatter, lo: i32, hi: i32): i32 => {
   const s = swStringExcludingLinebreaksAndComments(f, lo, hi + 1);
   let d = toI32(s.length) - 1;
   while (d >= 0 && s.charCodeAt(d) !== 46) {
     d--;
   }
-  return d + 1 < toI32(s.length) ? s.charCodeAt(d + 1) : -1;
+  if (d + 1 >= toI32(s.length)) {
+    return -1;
+  }
+  if (s.charCodeAt(d + 1) === 36 && swCharacterEnd(s, d + 1) === d + 2) {
+    return 36;
+  }
+  return swCharacterUppercaseInvariant(s, d + 1) ? 1 : 0;
 };
 
 /** redundantInit. */
@@ -216,7 +225,7 @@ export const swRuleRedundantInit = (f: SwFormatter): void => {
       continue;
     }
     const firstChar = swTypeLastPartFirstChar(f, startOfTypeIndex, typeEnd);
-    if (firstChar < 0 || firstChar === 36 || (firstChar >= 97 && firstChar <= 122)) {
+    if (firstChar < 0 || firstChar === 36 || firstChar === 0) {
       continue;
     }
     const lineStart = f.startOfLine(prevIndex, true);

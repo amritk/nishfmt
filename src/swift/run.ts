@@ -11,6 +11,7 @@ import { swRunRule } from "./dispatch";
 import { swRuleName, SW_RULE_COUNT, SW_RULE_INDENT, SW_RULE_TRAILING_SPACE, swRuleRunsOnce } from "./rules";
 import { SW_COMMENT, SW_ERROR, SW_OP, SwTokList } from "./token";
 import { swTokenize, swValidUtf8 } from "./tokenizer";
+import { SW_UNI_UNCERTAIN } from "./unicode";
 import {
   SW_DIRECTIVES_OK,
   swHasDirectiveText,
@@ -165,8 +166,17 @@ export const formatSwift = (e: SwiftEngine, path: string, src: u8[], n: i32, out
     }
     return false;
   }
+  SW_UNI_UNCERTAIN[0] = 0;
   const res = swApplyRules(e, path, tokens, directives);
   if (res === null) {
+    return false;
+  }
+  if (SW_UNI_UNCERTAIN[0] !== 0) {
+    // A character count or case test met a code point whose properties may differ in
+    // SwiftFormat's Unicode version.
+    if (e.debug) {
+      console.error(`${path}: Unicode data this port is unsure of`);
+    }
     return false;
   }
   out.n = 0;

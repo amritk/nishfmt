@@ -3,6 +3,7 @@
 // Ported from SwiftFormat 0.64.7 (MIT License, Copyright (c) 2016 Nick
 // Lockwood).
 
+import { swUniCheckPrefix } from "./unicode";
 import { SwFormatter } from "./formatter";
 import { swIsInClosureArguments, swIsUnwrap } from "./parsing";
 import { SW_SPACE_NO, SW_SPACE_YES, swShouldInsertSpaceAfterToken } from "./parsing2";
@@ -251,6 +252,7 @@ export const swRuleSpaceInsideComments = (f: SwFormatter): void => {
     if (s.length === 0) {
       continue;
     }
+    swUniCheckPrefix(s, 5);
     const c = s.charCodeAt(0);
     if (c === 47 || c === 33 || c === 58) {
       if (s.length > 1) {
@@ -268,6 +270,11 @@ export const swRuleSpaceInsideComments = (f: SwFormatter): void => {
       continue;
     }
     const s = f.s(i0 + 1);
+    swUniCheckPrefix(s, 5);
+    if (s.length > 3) {
+      // hasSuffix("---") / hasSuffix("@") work on Characters too.
+      swUniCheckPrefix(s.substring(toI32(s.length) - 4), 4);
+    }
     if (s.startsWith("---") || s.startsWith("@") || s.endsWith("---") || s.endsWith("@")) {
       continue;
     }

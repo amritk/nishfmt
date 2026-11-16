@@ -5,6 +5,7 @@
 // Ported from SwiftFormat 0.64.7 (MIT License, Copyright (c) 2016 Nick
 // Lockwood).
 
+import { SW_UNI_UNCERTAIN } from "./unicode";
 import { SwFormatter } from "./formatter";
 import { swIsAclModifierStr } from "./modifiers";
 import { swEndOfAttribute, swEndOfScope, swIsAttribute, swStartOfScope } from "./parsing";
@@ -74,6 +75,15 @@ export const swCommentDirective = (s: string): string => {
     return "";
   }
   return p0;
+};
+
+const swHasNonAscii = (s: string): boolean => {
+  for (let i = 0; i < toI32(s.length); i++) {
+    if (s.charCodeAt(i) >= 0x80) {
+      return true;
+    }
+  }
+  return false;
 };
 
 const swLower = (s: string): string => {
@@ -272,6 +282,10 @@ export const swHasImport = (f: SwFormatter, module: string): boolean => {
 
 /** ImportRange `<`. */
 const swImportLess = (a: SwImport, b: SwImport): boolean => {
+  if (swHasNonAscii(a.module) || swHasNonAscii(b.module)) {
+    // Unicode lowercasing and String ordering (canonical equivalence) are not ported.
+    SW_UNI_UNCERTAIN[0] = 1;
+  }
   const la = swLower(a.module);
   const lb = swLower(b.module);
   if (la === lb) {

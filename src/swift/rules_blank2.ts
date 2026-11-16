@@ -5,6 +5,7 @@
 // Ported from SwiftFormat 0.64.7 (MIT License, Copyright (c) 2016 Nick
 // Lockwood).
 
+import { SW_UNI_UNCERTAIN } from "./unicode";
 import { SwDecl, swDeclKeywordIndex, swDeclLo, swParseDeclarations, swReleaseDecls } from "./decl";
 import { SwFormatter, swIndexAfterWhere, swIndexBeforeWhere } from "./formatter";
 import { swCommentDirective } from "./imports";
@@ -600,7 +601,16 @@ class SwTaElem {
   }
 }
 
-const swTaKey = (t: string): string => (t.startsWith("any") ? t.substring(3) : t);
+const swTaKey = (t: string): string => {
+  for (let i = 0; i < toI32(t.length); i++) {
+    if (t.charCodeAt(i) >= 0x80) {
+      // String.lexicographicallyPrecedes compares Characters.
+      SW_UNI_UNCERTAIN[0] = 1;
+      break;
+    }
+  }
+  return t.startsWith("any") ? t.substring(3) : t;
+};
 
 /** sortTypealiases. */
 export const swRuleSortTypealiases = (f: SwFormatter): void => {
