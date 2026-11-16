@@ -900,6 +900,13 @@ export class Classifier {
             } else if (this.startsObjCExpr(t, p, dep) && this.messageColon(t)) {
               // A message with arguments: `[obj sel:arg]`.
               this.set(t, TT_OBJC_METHOD_EXPR);
+            } else if (this.startsObjCExpr(t, p, dep)) {
+              // An Objective-C message to clang-format (or, with `(` after
+              // the `]` or one token inside, nothing): no subscript.
+            } else if (n >= 0 && this.k(n) === P_RSQUARE && p >= 0 && (this.ty(p) === TT_BINARY_OPERATOR || this.k(p) === P_AT || this.k(p) === P_COMMA || this.k(p) === P_LPAREN || this.k(p) === P_LSQUARE || this.k(p) === P_QUESTION || this.k(p) === P_COLON || this.k(p) === KW_RETURN || this.k(p) === KW_DEFAULT)) {
+              // `f([](...) ...)` with no lambda body (in a macro): an empty
+              // container literal to clang-format's parseSquare.
+              this.set(t, TT_ARRAY_INITIALIZER_LSQUARE);
             } else if (dep === 0 && p >= 0 && this.k(p) === P_COMMA) {
               // After a top-level `,` clang-format starts an Objective-C
               // message expression: no subscript.

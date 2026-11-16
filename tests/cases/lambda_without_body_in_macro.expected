@@ -1,0 +1,4 @@
+#define FOLLY_INVOKE_MEMBER(membername)                                                                                \
+  ::folly::invoke_member_wrapper_fn(                                                                                   \
+      [](auto &&__folly_param_o, auto &&...__folly_param_a) constexpr FOLLY_DETAIL_FORWARD_BODY(                       \
+          FOLLY_DETAIL_FORWARD_REF(__folly_param_o).membername(FOLLY_DETAIL_FORWARD_REF(__folly_param_a)...)))

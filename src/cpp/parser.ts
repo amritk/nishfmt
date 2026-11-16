@@ -147,6 +147,10 @@ export class Parser {
   inUnbraced: boolean = false; // parsing an unbraced control body's statement
   inRequiresExpr: boolean = false; // parsing a requires expression's body
   objcDepth: i32 = 0; // inside an Objective-C @interface/@protocol body (parseObjCUntilAtEnd)
+  // Per line list (index: its parent `{` + 1, 0 for the top): the last line
+  // that is no directive, and the line before it in the list (-1: none).
+  codeTail: i32[];
+  codeTailPrev: i32[];
   d: Doc;
   pos: i32 = 0;
   first: i32 = -1;
@@ -161,6 +165,8 @@ export class Parser {
 
   constructor(d: Doc) {
     this.d = d;
+    this.codeTail = new Array<i32>(0);
+    this.codeTailPrev = new Array<i32>(0);
   }
 
   cur(): i32 {
@@ -260,6 +266,16 @@ export class Parser {
     if (d.kind[this.first] === P_RBRACE) {
       d.lOpen[l] = this.rbraceOpen;
     }
+    if (this.linePP === 0 && d.kind[this.first] !== K_COMMENT) {
+      const li = this.listParent + 1;
+      if (toI32(this.codeTail.length) <= li) {
+        const n = (li > d.ntok ? li : d.ntok) + 2;
+        this.codeTail = growFill(this.codeTail, n);
+        this.codeTailPrev = growFill(this.codeTailPrev, n);
+      }
+      this.codeTail[li] = l;
+      this.codeTailPrev[li] = this.listParent < 0 ? d.topTail : d.childTail[this.listParent];
+    }
     if (this.listParent < 0) {
       if (d.topTail < 0) {
         d.topHead = l;
@@ -325,7 +341,7 @@ export class Parser {
     let any = false;
     while (this.cur() === K_COMMENT && this.first < 0 && this.continuesTrailingComment()) {
       // An own-line comment under a trailing comment continues it: same line.
-      const prevLine = this.listParent < 0 ? d.topTail : d.childTail[this.listParent];
+      const prevLine = this.pendingLine(true);
       const t = this.pos;
       const last = d.lLast[prevLine];
       d.nxt[last] = t;
@@ -396,7 +412,7 @@ export class Parser {
     if (this.alignedWithNext(t)) {
       return false;
     }
-    const prevLine = this.listParent < 0 ? d.topTail : d.childTail[this.listParent];
+    const prevLine = this.pendingLine(false);
     if (prevLine < 0 || d.lPP[prevLine] === 1) {
       return false;
     }
@@ -419,6 +435,81 @@ export class Parser {
     }
     const isLine = d.kind[minTok] === K_COMMENT && d.at(d.start[minTok] + 1) === 47;
     return d.origCol(t) >= d.origCol(minTok) + (isLine ? 0 : 1);
+  }
+
+  /**
+   * The line a comment read now is distributed against (clang-format's
+   * pending Line): the list's last line, or, when directive lines end the
+   * list, the line they were read after (clang-format adds directives read
+   * while a line is pending after that line). With `move`, those directive
+   * lines are put before it, as directives inside a statement are, so the
+   * comment can join it.
+   */
+  pendingLine(move: boolean): i32 {
+    const d = this.d;
+    const tail = this.listParent < 0 ? d.topTail : d.childTail[this.listParent];
+    if (tail < 0 || d.lPP[tail] !== 1 || this.macro >= 0) {
+      return tail;
+    }
+    const li = this.listParent + 1;
+    if (li >= toI32(this.codeTail.length) || this.codeTail[li] < 0) {
+      return tail;
+    }
+    const l = this.codeTail[li];
+    // (Only directive lines and the comment lines flushed before them may
+    // follow it, read right after its last token.)
+    for (let x = d.lSibling[l]; x >= 0; x = d.lSibling[x]) {
+      if (d.lPP[x] !== 1 && !this.commentOnly(x)) {
+        return tail;
+      }
+    }
+    let q = d.lLast[l] + 1;
+    while (q < this.pos && (d.kind[q] === K_COMMENT || d.inPP[q] === 1 || (d.kind[q] === P_HASH && d.ppKind[q] !== PP_NONE))) {
+      q++;
+    }
+    if (q !== this.pos || d.kind[d.lLast[l]] !== K_COMMENT) {
+      return tail;
+    }
+    if (!move) {
+      return l;
+    }
+    const before = this.codeTailPrev[li];
+    const dHead = d.lSibling[l];
+    for (let x = dHead; x >= 0; x = d.lSibling[x]) {
+      if (d.lPP[x] !== 1) {
+        // Parked with the directives: clang-format flushed them there.
+        d.lInlineCmt[x] = 1;
+      }
+    }
+    if (before < 0) {
+      if (this.listParent < 0) {
+        d.topHead = dHead;
+      } else {
+        d.childHead[this.listParent] = dHead;
+      }
+    } else {
+      d.lSibling[before] = dHead;
+    }
+    d.lSibling[tail] = l;
+    d.lSibling[l] = -1;
+    if (this.listParent < 0) {
+      d.topTail = l;
+    } else {
+      d.childTail[this.listParent] = l;
+    }
+    this.codeTailPrev[li] = tail;
+    return l;
+  }
+
+  /** Whether line `x` holds comments only. */
+  commentOnly(x: i32): boolean {
+    const d = this.d;
+    for (let t = d.lFirst[x]; t >= 0; t = d.nxt[t]) {
+      if (d.kind[t] !== K_COMMENT) {
+        return false;
+      }
+    }
+    return true;
   }
 
   /** A preprocessor directive: every token of it is one line. */
@@ -497,6 +588,21 @@ export class Parser {
 
   parseStructuralElement(): void {
     const d = this.d;
+    // In a child block, own-line comments before a directive are read while
+    // the line before them is pending: clang-format flushes them with the
+    // directives, out of the block, indented by their level alone.
+    if (this.first < 0 && this.listParent >= 0 && this.macro < 0 && this.commentsThenDirective()) {
+      const l0 = d.nline;
+      const any = this.flushComments();
+      for (let l = l0; l < d.nline; l++) {
+        if (d.lParent[l] === this.listParent && d.kind[d.lFirst[l]] === K_COMMENT) {
+          d.lAbs[l] = 1;
+        }
+      }
+      if (any) {
+        return;
+      }
+    }
     if (this.first < 0 && this.flushComments()) {
       return;
     }
@@ -2888,3 +2994,13 @@ export const tokenCanStartNewLine = (d: Doc, t: i32): boolean => {
 /** clang-format's typedef enum macros: NS_ENUM, NS_OPTIONS, CF_ENUM, CF_OPTIONS, CF_CLOSED_ENUM, NS_CLOSED_ENUM. */
 const isNSEnumMacro = (d: Doc, t: i32): boolean =>
   d.is(t, "NS_ENUM") || d.is(t, "NS_OPTIONS") || d.is(t, "CF_ENUM") || d.is(t, "CF_OPTIONS") || d.is(t, "CF_CLOSED_ENUM") || d.is(t, "NS_CLOSED_ENUM");
+
+/** `xs` grown to `n` entries, the new ones -1. */
+const growFill = (xs: i32[], n: i32): i32[] => {
+  const ys = new Array<i32>(n);
+  ys.fill(-1);
+  for (let i = 0; i < toI32(xs.length); i++) {
+    ys[i] = xs[i];
+  }
+  return ys;
+};
