@@ -1,0 +1,24 @@
+import Testing
+
+struct FooTests {
+    @Test func a() throws {
+        let value = try #require(foo.bar?.value)
+        #expect(foo?.bar == 1)
+        let x = try #require(foo!.bar)
+        let y = try a + #require(b?.c) * #require(d)
+        let z = try !#require(foo?.isEmpty)
+        let q = try #require((foo as? Bar)?.quux?.x)
+        let r = try #require(foo?.bar) is Baz
+        let s = try #require(foo?.bar) as Baz
+        let longer = try #require(foo
+            .bar?
+            .baz)
+        let c = try #require(c)
+        try (#require(d)).e
+    }
+
+    @Test("name") func b() async throws {
+        let a = try #require(foo?.bar)
+        let b = try #require(await foo?.bar)
+    }
+}

@@ -125,7 +125,6 @@ import {
   SW_RULE_YODA_CONDITIONS,
 } from "./rules";
 import {
-  swGuardNoForceUnwrapInTests,
   swGuardPreferForLoop,
 } from "./guards";
 import {
@@ -285,6 +284,9 @@ import {
 import {
   swRuleUnusedArguments,
 } from "./rules_unused";
+import {
+  swRuleNoForceUnwrapInTests,
+} from "./rules_unwrap";
 import {
   swRuleWrapArguments,
 } from "./rules_wraparg";
@@ -583,7 +585,8 @@ export const swRunRule = (f: SwFormatter, r: i32): boolean => {
       swRuleRedundantType(f);
       return true;
     case SW_RULE_NO_FORCE_UNWRAP_IN_TESTS:
-      return swGuardNoForceUnwrapInTests(f);
+      swRuleNoForceUnwrapInTests(f);
+      return true;
     case SW_RULE_NO_FORCE_TRY_IN_TESTS:
       swRuleNoForceTryInTests(f);
       return true;

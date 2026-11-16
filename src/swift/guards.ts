@@ -47,30 +47,6 @@ const swHasKeyword = (f: SwFormatter, name: string): boolean => {
   return false;
 };
 
-/** noForceUnwrapInTests: no `!` in the body of a test case. */
-export const swGuardNoForceUnwrapInTests = (f: SwFormatter): boolean => {
-  const framework = swDetectTestingFramework(f);
-  if (framework === SW_TEST_NONE) {
-    return true;
-  }
-  const n = f.count();
-  for (let i = 0; i < n; i++) {
-    if (!f.kw(i, "func")) {
-      continue;
-    }
-    const fd = swParseFunctionDeclaration(f, i);
-    if (fd === null || fd.bodyStart < 0 || !swIsTestCase(f, i, fd, framework)) {
-      continue;
-    }
-    for (let j = fd.bodyStart; j <= fd.bodyEnd; j++) {
-      if (f.op(j, "!", SW_OP_POSTFIX)) {
-        return false;
-      }
-    }
-  }
-  return true;
-};
-
 /** preferForLoop: no `.forEach`. */
 export const swGuardPreferForLoop = (f: SwFormatter): boolean => {
   const n = f.count();

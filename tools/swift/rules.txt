@@ -97,7 +97,7 @@ enumNamespaces rules_ext swRuleEnumNamespaces
 extensionAttributes rules_ext swRuleExtensionAttributes
 redundantType rules_redtype swRuleRedundantType
 # Not ported yet: conservative guards (true when the rule cannot apply, else the file is skipped).
-noForceUnwrapInTests guards swGuardNoForceUnwrapInTests bool
+noForceUnwrapInTests rules_unwrap swRuleNoForceUnwrapInTests
 noForceTryInTests rules_tests swRuleNoForceTryInTests
 redundantThrows rules_tests swRuleRedundantThrows
 redundantAsync rules_tests swRuleRedundantAsync
