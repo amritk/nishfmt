@@ -50,16 +50,7 @@ const reorderableKind = (ctx: RsCtx, item: i32): i32 => {
 };
 
 /** The line (1-based) of byte offset `pos`. */
-const lineOf = (ctx: RsCtx, pos: i32): i32 => {
-  let line = 1;
-  const src = ctx.f.src;
-  for (let i = 0; i < pos; i++) {
-    if (toI32(src[i]) === 10) {
-      line++;
-    }
-  }
-  return line;
-};
+const lineOf = (ctx: RsCtx, pos: i32): i32 => ctx.f.lineOf(pos);
 
 const cmpStrBytes = (a: string, b: string): i32 => {
   const n = toI32(a.length) < toI32(b.length) ? toI32(a.length) : toI32(b.length);

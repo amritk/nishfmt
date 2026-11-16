@@ -175,59 +175,119 @@ export const rsKeywordOf = (src: u8[], a: i32, b: i32): i32 => {
     if (c0 === 105 && c1 === 110) return KW_IN;
     return 0;
   }
-  if (rsEq(src, a, b, "async")) return KW_ASYNC;
-  if (rsEq(src, a, b, "await")) return KW_AWAIT;
-  if (rsEq(src, a, b, "break")) return KW_BREAK;
-  if (rsEq(src, a, b, "const")) return KW_CONST;
-  if (rsEq(src, a, b, "continue")) return KW_CONTINUE;
-  if (rsEq(src, a, b, "crate")) return KW_CRATE;
-  if (rsEq(src, a, b, "dyn")) return KW_DYN;
-  if (rsEq(src, a, b, "else")) return KW_ELSE;
-  if (rsEq(src, a, b, "enum")) return KW_ENUM;
-  if (rsEq(src, a, b, "extern")) return KW_EXTERN;
-  if (rsEq(src, a, b, "false")) return KW_FALSE;
-  if (rsEq(src, a, b, "for")) return KW_FOR;
-  if (rsEq(src, a, b, "impl")) return KW_IMPL;
-  if (rsEq(src, a, b, "let")) return KW_LET;
-  if (rsEq(src, a, b, "loop")) return KW_LOOP;
-  if (rsEq(src, a, b, "match")) return KW_MATCH;
-  if (rsEq(src, a, b, "mod")) return KW_MOD;
-  if (rsEq(src, a, b, "move")) return KW_MOVE;
-  if (rsEq(src, a, b, "mut")) return KW_MUT;
-  if (rsEq(src, a, b, "pub")) return KW_PUB;
-  if (rsEq(src, a, b, "ref")) return KW_REF;
-  if (rsEq(src, a, b, "return")) return KW_RETURN;
-  if (rsEq(src, a, b, "self")) return KW_SELF;
-  if (rsEq(src, a, b, "Self")) return KW_SELF_TY;
-  if (rsEq(src, a, b, "static")) return KW_STATIC;
-  if (rsEq(src, a, b, "struct")) return KW_STRUCT;
-  if (rsEq(src, a, b, "super")) return KW_SUPER;
-  if (rsEq(src, a, b, "trait")) return KW_TRAIT;
-  if (rsEq(src, a, b, "true")) return KW_TRUE;
-  if (rsEq(src, a, b, "type")) return KW_TYPE;
-  if (rsEq(src, a, b, "unsafe")) return KW_UNSAFE;
-  if (rsEq(src, a, b, "use")) return KW_USE;
-  if (rsEq(src, a, b, "where")) return KW_WHERE;
-  if (rsEq(src, a, b, "while")) return KW_WHILE;
-  if (rsEq(src, a, b, "yield")) return KW_YIELD;
-  if (rsEq(src, a, b, "abstract")) return KW_ABSTRACT;
-  if (rsEq(src, a, b, "become")) return KW_BECOME;
-  if (rsEq(src, a, b, "box")) return KW_BOX;
-  if (rsEq(src, a, b, "final")) return KW_FINAL;
-  if (rsEq(src, a, b, "macro")) return KW_MACRO;
-  if (rsEq(src, a, b, "override")) return KW_OVERRIDE;
-  if (rsEq(src, a, b, "priv")) return KW_PRIV;
-  if (rsEq(src, a, b, "typeof")) return KW_TYPEOF;
-  if (rsEq(src, a, b, "unsized")) return KW_UNSIZED;
-  if (rsEq(src, a, b, "virtual")) return KW_VIRTUAL;
-  if (rsEq(src, a, b, "try")) return KW_TRY;
-  if (rsEq(src, a, b, "union")) return KW_UNION;
-  if (rsEq(src, a, b, "default")) return KW_DEFAULT;
-  if (rsEq(src, a, b, "macro_rules")) return KW_MACRO_RULES;
-  if (rsEq(src, a, b, "auto")) return KW_AUTO;
-  if (rsEq(src, a, b, "raw")) return KW_RAW;
-  if (rsEq(src, a, b, "safe")) return KW_SAFE;
-  if (rsEq(src, a, b, "gen")) return KW_GEN;
+  if (c0 === 97) {
+    if (rsEq(src, a, b, "async")) return KW_ASYNC;
+    if (rsEq(src, a, b, "await")) return KW_AWAIT;
+    if (rsEq(src, a, b, "abstract")) return KW_ABSTRACT;
+    if (rsEq(src, a, b, "auto")) return KW_AUTO;
+    return 0;
+  }
+  if (c0 === 98) {
+    if (rsEq(src, a, b, "break")) return KW_BREAK;
+    if (rsEq(src, a, b, "become")) return KW_BECOME;
+    if (rsEq(src, a, b, "box")) return KW_BOX;
+    return 0;
+  }
+  if (c0 === 99) {
+    if (rsEq(src, a, b, "const")) return KW_CONST;
+    if (rsEq(src, a, b, "continue")) return KW_CONTINUE;
+    if (rsEq(src, a, b, "crate")) return KW_CRATE;
+    return 0;
+  }
+  if (c0 === 100) {
+    if (rsEq(src, a, b, "dyn")) return KW_DYN;
+    if (rsEq(src, a, b, "default")) return KW_DEFAULT;
+    return 0;
+  }
+  if (c0 === 101) {
+    if (rsEq(src, a, b, "else")) return KW_ELSE;
+    if (rsEq(src, a, b, "enum")) return KW_ENUM;
+    if (rsEq(src, a, b, "extern")) return KW_EXTERN;
+    return 0;
+  }
+  if (c0 === 102) {
+    if (rsEq(src, a, b, "false")) return KW_FALSE;
+    if (rsEq(src, a, b, "for")) return KW_FOR;
+    if (rsEq(src, a, b, "final")) return KW_FINAL;
+    return 0;
+  }
+  if (c0 === 105) {
+    if (rsEq(src, a, b, "impl")) return KW_IMPL;
+    return 0;
+  }
+  if (c0 === 108) {
+    if (rsEq(src, a, b, "let")) return KW_LET;
+    if (rsEq(src, a, b, "loop")) return KW_LOOP;
+    return 0;
+  }
+  if (c0 === 109) {
+    if (rsEq(src, a, b, "match")) return KW_MATCH;
+    if (rsEq(src, a, b, "mod")) return KW_MOD;
+    if (rsEq(src, a, b, "move")) return KW_MOVE;
+    if (rsEq(src, a, b, "mut")) return KW_MUT;
+    if (rsEq(src, a, b, "macro")) return KW_MACRO;
+    if (rsEq(src, a, b, "macro_rules")) return KW_MACRO_RULES;
+    return 0;
+  }
+  if (c0 === 112) {
+    if (rsEq(src, a, b, "pub")) return KW_PUB;
+    if (rsEq(src, a, b, "priv")) return KW_PRIV;
+    return 0;
+  }
+  if (c0 === 114) {
+    if (rsEq(src, a, b, "ref")) return KW_REF;
+    if (rsEq(src, a, b, "return")) return KW_RETURN;
+    if (rsEq(src, a, b, "raw")) return KW_RAW;
+    return 0;
+  }
+  if (c0 === 115) {
+    if (rsEq(src, a, b, "self")) return KW_SELF;
+    if (rsEq(src, a, b, "static")) return KW_STATIC;
+    if (rsEq(src, a, b, "struct")) return KW_STRUCT;
+    if (rsEq(src, a, b, "super")) return KW_SUPER;
+    if (rsEq(src, a, b, "safe")) return KW_SAFE;
+    return 0;
+  }
+  if (c0 === 83) {
+    if (rsEq(src, a, b, "Self")) return KW_SELF_TY;
+    return 0;
+  }
+  if (c0 === 116) {
+    if (rsEq(src, a, b, "trait")) return KW_TRAIT;
+    if (rsEq(src, a, b, "true")) return KW_TRUE;
+    if (rsEq(src, a, b, "type")) return KW_TYPE;
+    if (rsEq(src, a, b, "typeof")) return KW_TYPEOF;
+    if (rsEq(src, a, b, "try")) return KW_TRY;
+    return 0;
+  }
+  if (c0 === 117) {
+    if (rsEq(src, a, b, "unsafe")) return KW_UNSAFE;
+    if (rsEq(src, a, b, "use")) return KW_USE;
+    if (rsEq(src, a, b, "unsized")) return KW_UNSIZED;
+    if (rsEq(src, a, b, "union")) return KW_UNION;
+    return 0;
+  }
+  if (c0 === 119) {
+    if (rsEq(src, a, b, "where")) return KW_WHERE;
+    if (rsEq(src, a, b, "while")) return KW_WHILE;
+    return 0;
+  }
+  if (c0 === 121) {
+    if (rsEq(src, a, b, "yield")) return KW_YIELD;
+    return 0;
+  }
+  if (c0 === 111) {
+    if (rsEq(src, a, b, "override")) return KW_OVERRIDE;
+    return 0;
+  }
+  if (c0 === 118) {
+    if (rsEq(src, a, b, "virtual")) return KW_VIRTUAL;
+    return 0;
+  }
+  if (c0 === 103) {
+    if (rsEq(src, a, b, "gen")) return KW_GEN;
+    return 0;
+  }
   return 0;
 };
 

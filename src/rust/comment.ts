@@ -351,13 +351,16 @@ export const rsContainsComment = (text: string): boolean => {
   if (rsIndexOfByte(text, 47, 0) < 0) {
     return false;
   }
-  const r = rsCharClasses(text);
-  for (let i = 0; i < n; i++) {
-    if (rsKindIsComment(r.kinds[i])) {
+  const sc = new RsCharScan(strToBytes(text), 0, n);
+  for (;;) {
+    const k = sc.next();
+    if (k < 0) {
+      return false;
+    }
+    if (rsKindIsComment(k)) {
       return true;
     }
   }
-  return false;
 };
 
 /** FindUncommented::find_uncommented. */
@@ -483,29 +486,38 @@ export class RsSlices {
 export const rsCommentCodeSlices = (s: string): RsSlices => {
   const out = new RsSlices();
   const n = toI32(s.length);
+  if (n > 0 && rsIndexOfByte(s, 47, 0) < 0) {
+    // No comment: one code slice.
+    out.add(CK_NORMAL, 0, n);
+    return out;
+  }
+  const bytes = strToBytes(s);
   let lastKind = CK_COMMENT;
   let lastEnd = 0;
   while (lastEnd !== n) {
     let subEnd = lastEnd;
-    let firstWs = -1;
-    const sub = s.slice(lastEnd, n);
-    const r = rsCharClasses(sub);
-    const startsSlashSlash = toI32(sub.length) >= 2 && sub.charCodeAt(0) === 47 && sub.charCodeAt(1) === 47;
+    let firstWs = -1; // relative to lastEnd
+    const startsSlashSlash = n - lastEnd >= 2 && s.charCodeAt(lastEnd) === 47 && s.charCodeAt(lastEnd + 1) === 47;
     let broke = false;
     let brokeAtLast = false;
-    for (let ci = 0; ci < r.nc; ci++) {
-      const i = r.starts[ci];
-      const c = sub.charCodeAt(i);
+    const sc = new RsCharScan(bytes, lastEnd, n);
+    for (;;) {
+      const kind0 = sc.next();
+      if (kind0 < 0) {
+        break;
+      }
+      const i = sc.cs - lastEnd;
+      const c = s.charCodeAt(sc.cs);
       const isConnector = lastKind === CK_NORMAL && startsSlashSlash && (c === 32 || c === 9);
       if (isConnector && firstWs < 0) {
         firstWs = i;
       }
-      const ck = rsKindIsComment(r.kinds[i]) ? CK_COMMENT : CK_NORMAL;
+      const ck = rsKindIsComment(kind0) ? CK_COMMENT : CK_NORMAL;
       if (ck === lastKind && !isConnector) {
         const li = firstWs >= 0 ? firstWs : i;
         subEnd = lastEnd + li;
         broke = true;
-        brokeAtLast = ci === r.nc - 1;
+        brokeAtLast = sc.i >= n;
         break;
       }
       if (!isConnector) {
@@ -633,10 +645,20 @@ const commentContent = (code: string): string => {
 };
 
 /** changed_comment_content. */
-export const rsChangedCommentContent = (orig: string, nw: string): boolean => commentContent(orig) !== commentContent(nw);
+export const rsChangedCommentContent = (orig: string, nw: string): boolean => {
+  // Without a '/' neither has a comment.
+  if (rsIndexOfByte(orig, 47, 0) < 0 && rsIndexOfByte(nw, 47, 0) < 0) {
+    return false;
+  }
+  return commentContent(orig) !== commentContent(nw);
+};
 
 /** filter_normal_code. */
 export const rsFilterNormalCode = (code: string): string => {
+  // Without a '/' (no comments) or a '\r' every line is kept as it is.
+  if (rsIndexOfByte(code, 47, 0) < 0 && rsIndexOfByte(code, 13, 0) < 0) {
+    return code;
+  }
   const lc = rsLineClasses(code);
   const bb = new RsStrBuf();
   for (let i = 0; i < lc.n; i++) {

@@ -1,12 +1,12 @@
 // A Rust-only driver for quick builds while porting:
 //   nish tools/dev/rust.ts --link /tmp/rustdev && /tmp/rustdev <file>
-// prints the formatted file, or exits 1 when it cannot be formatted.
+// prints the formatted file, or exits 1 when it cannot be formatted. With
+// more than one file it formats each and prints nothing (for profiling).
 
 import { Out } from "../../src/core/out";
 import { RustEngine, formatRust } from "../../src/rust/run";
 
-export const main = (): i32 => {
-  const path = process.argv[1];
+const rsDevOne = (path: string, print: boolean): i32 => {
   const read = readFileBytesSync(path);
   if (read === null) {
     return 2;
@@ -22,6 +22,22 @@ export const main = (): i32 => {
   if (!formatRust(e, path, src, n, out)) {
     return 1;
   }
-  writeBytes(out.buf, 0, out.n);
+  if (print) {
+    writeBytes(out.buf, 0, out.n);
+  }
   return 0;
+};
+
+export const main = (): i32 => {
+  const argc = toI32(process.argv.length);
+  if (argc <= 2) {
+    return rsDevOne(process.argv[1], true);
+  }
+  let failed = 0;
+  for (let i = 1; i < argc; i++) {
+    if (rsDevOne(process.argv[i], false) !== 0) {
+      failed++;
+    }
+  }
+  return failed > 0 ? 1 : 0;
 };
