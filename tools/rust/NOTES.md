@@ -67,13 +67,14 @@ where the binary disagrees with the source the port follows the binary:
 
 ## Speed
 
-All on the shared 4-core machine, the 8349 files of `/work/c/rust/raw`
-(108 MB).
+All on the shared 4-core machine at low load (other jobs make it noisy;
+under load fastfmt took 2.6–3.9 s on 4 cores), the 8349 files of
+`/work/c/rust/raw` (108 MB). The stdin row is from an earlier, busier run.
 
 | | 4 cores | 1 core (`taskset -c 0`, fastfmt `-j 1`) |
 | --- | --- | --- |
-| fastfmt (`cmp.sh`, `-i -q`) | 1.50 s (2.9 s with the machine loaded) | 5.2–5.4 s |
-| rustfmt, 100 files per process (`xargs -n 100`) | 11.9 s | 31.0 s |
+| fastfmt (`-i -q` on a copy of raw) | 1.35 s | 5.0–5.2 s |
+| rustfmt, 100 files per process (`xargs -n 100`) | 7.6 s | 29.1 s |
 | rustfmt, one file per process through stdin | 148 s | 442 s |
 
 rustfmt given file arguments also formats each file's out-of-line modules,
