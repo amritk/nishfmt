@@ -5,7 +5,7 @@
 import { SwFormatter } from "./formatter";
 import { SwDecl, SW_DECL_TYPE, swDeclKeywordIndex, swParseDeclarations, swReleaseDecls } from "./decl";
 import { swParseFunctionDeclaration } from "./funcdecl";
-import { swEndOfScope, swStartOfForLoopPattern } from "./parsing";
+import { swEndOfScope } from "./parsing";
 import { swHasImport } from "./imports";
 import { swHasModifier } from "./modifiers";
 import { swLowercased } from "./rules_simple";
@@ -71,27 +71,6 @@ export const swGuardNoForceUnwrapInTests = (f: SwFormatter): boolean => {
   return true;
 };
 
-/** swiftTestingTestCaseNames (raw identifiers need Swift 6.2, suite names are preserved): no `@Test` func named `test...`. */
-export const swGuardSwiftTestingTestCaseNames = (f: SwFormatter): boolean => {
-  if (!swHasImport(f, "Testing")) {
-    return true;
-  }
-  const n = f.count();
-  for (let i = 0; i < n; i++) {
-    if (!f.kw(i, "func") || !swHasModifier(f, i, "@Test")) {
-      continue;
-    }
-    const m = f.indexAfter(SW_T_NON_SPACE_OR_COMMENT_OR_LINEBREAK, i);
-    if (m >= 0 && f.k(m) === SW_IDENT) {
-      const s = f.s(m);
-      if (s.startsWith("test") || swLowercased(s).startsWith("`test")) {
-        return false;
-      }
-    }
-  }
-  return true;
-};
-
 /** preferForLoop: no `.forEach`. */
 export const swGuardPreferForLoop = (f: SwFormatter): boolean => {
   const n = f.count();
@@ -117,20 +96,6 @@ export const swGuardPreferForLoop = (f: SwFormatter): boolean => {
     }
     for (let j = ob; j < cb; j++) {
       if (f.k(j) === SW_LINEBREAK) {
-        return false;
-      }
-    }
-  }
-  return true;
-};
-
-/** contentBuilder: no result-builder attributes. */
-export const swGuardContentBuilder = (f: SwFormatter): boolean => {
-  const n = f.count();
-  for (let i = 0; i < n; i++) {
-    if (f.k(i) === SW_KEYWORD) {
-      const s = f.s(i);
-      if (s.startsWith("@") && (s.indexOf("Builder") >= 0 || s === "@SwiftUI" || s === "@SwiftUICore")) {
         return false;
       }
     }
@@ -184,53 +149,4 @@ export const swGuardRedundantMemberwiseInit = (f: SwFormatter): boolean => {
   swReleaseDecls(f, decls);
   return ok;
 };
-
-/** redundantEquatable: no `Equatable` alongside a `func ==`. */
-export const swGuardRedundantEquatable = (f: SwFormatter): boolean => {
-  if (!swHasIdent(f, "Equatable")) {
-    return true;
-  }
-  const n = f.count();
-  for (let i = 0; i < n; i++) {
-    if (f.kw(i, "func")) {
-      const m = f.indexAfter(SW_T_NON_SPACE_OR_COMMENT_OR_LINEBREAK, i);
-      if (m >= 0 && f.k(m) === SW_OP && f.s(m) === "==") {
-        return false;
-      }
-    }
-  }
-  return true;
-};
-
-/** redundantEnumerated: no `for (a, b) in ....enumerated()`. */
-export const swGuardRedundantEnumerated = (f: SwFormatter): boolean => {
-  if (!swHasIdent(f, "enumerated")) {
-    return true;
-  }
-  const n = f.count();
-  for (let i = 0; i < n; i++) {
-    if (!f.kw(i, "for")) {
-      continue;
-    }
-    const ps = swStartOfForLoopPattern(f, i);
-    if (ps < 0 || !f.tok(ps, SW_START, "(")) {
-      continue;
-    }
-    const pe = swEndOfScope(f, ps);
-    const inIndex = pe >= 0 ? f.indexAfter(SW_T_NON_SPACE_OR_COMMENT_OR_LINEBREAK, pe) : -1;
-    if (inIndex < 0 || !f.kw(inIndex, "in")) {
-      continue;
-    }
-    for (let j = inIndex + 1; j < n && !f.tok(j, SW_START, "{"); j++) {
-      if (f.tok(j, SW_IDENT, "enumerated")) {
-        return false;
-      }
-    }
-  }
-  return true;
-};
-
-export const swGuardRedundantEmptyView = (f: SwFormatter): boolean => !swHasIdent(f, "EmptyView");
-
-export const swGuardRedundantSwiftUIGroup = (f: SwFormatter): boolean => !swHasIdent(f, "Group");
 

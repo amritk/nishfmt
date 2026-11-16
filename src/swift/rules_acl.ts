@@ -96,7 +96,7 @@ export const swRemoveDeclarationVisibility = (f: SwFormatter, vis: string, kwInd
 const swDeclName = (f: SwFormatter, d: SwDecl): string => swDeclarationName(f, swDeclKeywordIndex(f, d));
 
 /** Declaration.fullyQualifiedName ("" for nil). */
-const swFullyQualifiedName = (f: SwFormatter, d: SwDecl): string => {
+export const swFullyQualifiedName = (f: SwFormatter, d: SwDecl): string => {
   const name = swDeclName(f, d);
   if (name.length === 0) {
     return "";

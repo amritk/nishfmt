@@ -125,15 +125,9 @@ import {
   SW_RULE_YODA_CONDITIONS,
 } from "./rules";
 import {
-  swGuardContentBuilder,
   swGuardNoForceUnwrapInTests,
   swGuardPreferForLoop,
-  swGuardRedundantEmptyView,
-  swGuardRedundantEnumerated,
-  swGuardRedundantEquatable,
   swGuardRedundantMemberwiseInit,
-  swGuardRedundantSwiftUIGroup,
-  swGuardSwiftTestingTestCaseNames,
 } from "./guards";
 import {
   swRuleDuplicateImports,
@@ -179,6 +173,12 @@ import {
 import {
   swRuleDocComments,
 } from "./rules_doc";
+import {
+  swRuleRedundantEnumerated,
+} from "./rules_enumerated";
+import {
+  swRuleRedundantEquatable,
+} from "./rules_equatable";
 import {
   swRuleEnumNamespaces,
   swRuleExtensionAttributes,
@@ -260,10 +260,16 @@ import {
   swRuleSpaceInsideParens,
 } from "./rules_spacing";
 import {
+  swRuleContentBuilder,
+  swRuleRedundantEmptyView,
+  swRuleRedundantSwiftUIGroup,
+} from "./rules_swiftui";
+import {
   swRuleNoForceTryInTests,
   swRuleRedundantAsync,
   swRuleRedundantSwiftTestingSuite,
   swRuleRedundantThrows,
+  swRuleSwiftTestingTestCaseNames,
 } from "./rules_tests";
 import {
   swRuleTrailingClosures,
@@ -586,7 +592,8 @@ export const swRunRule = (f: SwFormatter, r: i32): boolean => {
       swRuleRedundantAsync(f);
       return true;
     case SW_RULE_SWIFT_TESTING_TEST_CASE_NAMES:
-      return swGuardSwiftTestingTestCaseNames(f);
+      swRuleSwiftTestingTestCaseNames(f);
+      return true;
     case SW_RULE_REDUNDANT_SWIFT_TESTING_SUITE:
       swRuleRedundantSwiftTestingSuite(f);
       return true;
@@ -614,17 +621,22 @@ export const swRunRule = (f: SwFormatter, r: i32): boolean => {
       swRuleRedundantInit(f);
       return true;
     case SW_RULE_CONTENT_BUILDER:
-      return swGuardContentBuilder(f);
+      swRuleContentBuilder(f);
+      return true;
     case SW_RULE_REDUNDANT_MEMBERWISE_INIT:
       return swGuardRedundantMemberwiseInit(f);
     case SW_RULE_REDUNDANT_EQUATABLE:
-      return swGuardRedundantEquatable(f);
+      swRuleRedundantEquatable(f);
+      return true;
     case SW_RULE_REDUNDANT_ENUMERATED:
-      return swGuardRedundantEnumerated(f);
+      swRuleRedundantEnumerated(f);
+      return true;
     case SW_RULE_REDUNDANT_EMPTY_VIEW:
-      return swGuardRedundantEmptyView(f);
+      swRuleRedundantEmptyView(f);
+      return true;
     case SW_RULE_REDUNDANT_SWIFT_U_I_GROUP:
-      return swGuardRedundantSwiftUIGroup(f);
+      swRuleRedundantSwiftUIGroup(f);
+      return true;
     case SW_RULE_YODA_CONDITIONS:
       swRuleYodaConditions(f);
       return true;
