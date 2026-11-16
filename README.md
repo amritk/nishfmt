@@ -1,7 +1,7 @@
 # fastfmt
 
 A fast C++ formatter written in [Nish](https://github.com/amritk/nish), which also
-formats Java, Kotlin, Ruby, C#, Dart and Swift (see [Other languages](#other-languages)). Its
+formats Java, Kotlin, Ruby, C#, Dart, Swift and Rust (see [Other languages](#other-languages)). Its
 output aims to match `clang-format`'s LLVM style (the target is
 `{BasedOnStyle: LLVM, ColumnLimit: 120}`) byte for byte, many times faster.
 
@@ -12,7 +12,7 @@ reference.
 
 ## Other languages
 
-The same binary formats Java, Kotlin, Ruby, C#, Dart and Swift, each to match one tool's
+The same binary formats Java, Kotlin, Ruby, C#, Dart, Swift and Rust, each to match one tool's
 output byte for byte:
 
 | Language | Files | Matches | Corpus result |
@@ -22,6 +22,7 @@ output byte for byte:
 | C# | `.cs` | CSharpier 1.4.0, default options | 13988 / 13988 |
 | Dart | `.dart` | `dart format` (Dart 3.14; tall style, short style below 3.7) | 10313 / 10313 |
 | Swift | `.swift` | SwiftFormat 0.64.7, default rules | 5959 / 6710 (the rest skipped) |
+| Rust | `.rs` | rustfmt 1.9.0, default config, edition 2021 | 7899 / 7899 |
 | Ruby | RuboCop's default `Include` (`.rb`, `Gemfile`, `.gemspec`, ...) | `rubocop -a` 1.92.2, default config, `TargetRubyVersion: 3.3` | 4239 / 4239 |
 
 Against the reference tools and the Rust reimplementations, on a 4-core
@@ -71,6 +72,24 @@ riverpod, bloc, http, getx, flame, dart_style, shelf, dio and test, plus
 `dart3`, the same files marked `// @dart=2.19` or `3.6` for the short style
 (8218 / 8218), and `dart4`, marked `3.7`, `3.8` or `3.12` (8663 / 8663).
 Files the reference rejects at their version are left out.
+
+| Rust, 8349 files (108 MB) | Identical | 4 cores | 1 core |
+| --- | ---: | ---: | ---: |
+| rustfmt 1.9.0, 100 files a process | reference | 7.6 s | 29.1 s |
+| fastfmt | 7899 | 1.35 s | 5.0 s |
+
+The Rust side ports rustfmt 1.9.0 onto a lexer and parser modelled on
+rustc_parse (a struct-of-arrays AST with rustc's spans): its items,
+expressions, chains, patterns, types, comments, imports and macros, with
+`macro_rules!` bodies formatted as rustfmt does by default. rustfmt is
+itself native, so it is the only comparison. The corpus is cargo, tokio,
+serde, ripgrep, clap, hyper, alacritty, diesel, bevy, regex, fd, bat and
+nushell; the 450 files rustfmt
+rejects under edition 2021 (mostly let chains) are left out. `rust2`, the
+same files first formatted with five other rustfmt configs, also matches on
+all 7899, as do the 3306 crates of a cargo registry and rustfmt's own test
+inputs. Macros 2.0 bodies and `rustfmt::skip::macros` are not ported; such
+files are left unchanged.
 
 | Swift, 6710 files | Identical | 4 cores | 1 core |
 | --- | ---: | ---: | ---: |
