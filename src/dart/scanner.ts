@@ -98,6 +98,13 @@ export class DtTokens {
   cCount: i32[];
   lineS: i32[]; // 1-based line of the start
   lineE: i32[]; // 1-based line of the end
+  // The scanner splits a `>>` or `>>>` that closes enough open `<` on its
+  // statement, as the parser would; `pred` marks each `>` it split off but
+  // the last, and the parser sets `gt` on each `>` it takes as a closing
+  // angle bracket. dtParse checks the one covers the other.
+  pred: boolean[];
+  gt: boolean[];
+  npred: i32 = 0;
   // Comments.
   nc: i32 = 0;
   cStart: i32[];
@@ -124,6 +131,8 @@ export class DtTokens {
     this.cCount = new Array<i32>(cap);
     this.lineS = new Array<i32>(cap);
     this.lineE = new Array<i32>(cap);
+    this.pred = new Array<boolean>(cap);
+    this.gt = new Array<boolean>(cap);
     const cc = (n >> 1) + 2;
     this.cStart = new Array<i32>(cc);
     this.cEnd = new Array<i32>(cc);
@@ -179,6 +188,8 @@ export class DtTokens {
       this.cCount[i] = this.cCount[i - 1];
       this.lineS[i] = this.lineS[i - 1];
       this.lineE[i] = this.lineE[i - 1];
+      this.pred[i] = this.pred[i - 1];
+      this.gt[i] = this.gt[i - 1];
     }
     this.count = this.count + 1;
     const s = this.start[t];
@@ -190,6 +201,8 @@ export class DtTokens {
     this.cCount[t + 1] = 0;
     this.lineS[t + 1] = this.lineS[t];
     this.lineE[t + 1] = this.lineE[t];
+    this.pred[t + 1] = false;
+    this.gt[t + 1] = false;
     this.kind[t] = T_GT;
     this.end[t] = s + 1;
   }
@@ -214,6 +227,10 @@ export class DtScanner {
   sTriple: boolean[];
   sDepth: i32[];
   ns: i32 = 0;
+  // Open `<` since the last `;`, `{`, `}`, `=>`, `&&` or `||`, and whether
+  // to split `>>` by them (see DtTokens.pred).
+  lt: i32 = 0;
+  predict: boolean = true;
   // Whether we are still before the first token (for `// @dart=`).
   header: boolean = true;
 
@@ -257,6 +274,27 @@ export class DtScanner {
     this.pendFirst = -1;
     t.count = i + 1;
     this.header = false;
+    if (kind === T_LT) {
+      this.lt = this.lt + 1;
+    } else if (kind === T_GT) {
+      if (this.lt > 0) {
+        this.lt = this.lt - 1;
+      }
+    } else if (kind === T_SHR || kind === T_USHR) {
+      const m = kind === T_SHR ? 2 : 3;
+      if (this.predict && this.lt >= m) {
+        for (let j = 1; j < m; j++) {
+          t.pred[t.count - 1] = true;
+          t.splitGt(t.count - 1);
+        }
+        t.npred = t.npred + m - 1;
+        this.lt = this.lt - m;
+      } else {
+        this.lt = 0;
+      }
+    } else if (kind === T_SEMI || kind === T_LBRACE || kind === T_RBRACE || kind === T_ARROW || kind === T_AMPAMP || kind === T_BARBAR) {
+      this.lt = 0;
+    }
   }
 
   addComment(kind: i32, a: i32, b: i32): void {
@@ -890,4 +928,26 @@ export const dtScan = (src: u8[], n: i32): DtTokens => {
   const s = new DtScanner(t);
   s.scan();
   return t;
+};
+
+/** Scans without splitting any `>>` up front (see DtTokens.pred). */
+export const dtScanPlain = (src: u8[], n: i32): DtTokens => {
+  const t = new DtTokens(src, n);
+  const s = new DtScanner(t);
+  s.predict = false;
+  s.scan();
+  return t;
+};
+
+/** Whether the parser took every `>` the scanner split off as a closing angle bracket. */
+export const dtPredictionsHeld = (t: DtTokens): boolean => {
+  if (t.npred === 0) {
+    return true;
+  }
+  for (let i = 0; i < t.count; i++) {
+    if (t.pred[i] && !t.gt[i]) {
+      return false;
+    }
+  }
+  return true;
 };

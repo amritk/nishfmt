@@ -548,11 +548,13 @@ export class DtParser {
     const i = this.p;
     const k = this.t.kind[i];
     if (k === T_GT) {
+      this.t.gt[i] = true;
       this.p = i + 1;
       return i;
     }
     if (k === T_SHR || k === T_USHR || k === T_GE || k === T_SHR_EQ || k === T_USHR_EQ) {
       this.splitGt(i);
+      this.t.gt[i] = true;
       this.p = i + 1;
       return i;
     }

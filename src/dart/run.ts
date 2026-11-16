@@ -7,7 +7,7 @@ import { Out } from "../core/out";
 import { DtAst, dtNodeName, dtSig, N_NAMED_TYPE } from "./ast";
 import { DtParser } from "./parser";
 import { DtPiece, dtFixedState, dtKids, dtPin } from "./pieces";
-import { DtTokens, dtScan } from "./scanner";
+import { DtTokens, dtPredictionsHeld, dtScan, dtScanPlain } from "./scanner";
 import { DtBuilder, DtCache, dtEmit, dtSolve } from "./solver";
 import { DtVisitor } from "./visitor";
 
@@ -22,7 +22,7 @@ export class DartEngine {
 export const formatDart = (e: DartEngine, path: string, src: u8[], n: i32, out: Out): boolean => {
   out.n = 0;
   const t0 = monotonicNanos();
-  const toks = dtScan(src, n);
+  let toks = dtScan(src, n);
   if (toks.failed) {
     if (e.debug) {
       console.error(`${path}: scan: ${toks.why}`);
@@ -42,8 +42,17 @@ export const formatDart = (e: DartEngine, path: string, src: u8[], n: i32, out: 
     return true;
   }
   const t1 = monotonicNanos();
-  const p = new DtParser(toks);
-  const unit = p.parseUnit();
+  let p = new DtParser(toks);
+  let unit = p.parseUnit();
+  if (toks.npred > 0 && (p.failed || !dtPredictionsHeld(toks))) {
+    // The scanner split a `>>` the parser would not have: parse as it reads.
+    if (e.debug) {
+      console.error(`${path}: ${toks.npred} predicted >> splits did not hold`);
+    }
+    toks = dtScanPlain(src, n);
+    p = new DtParser(toks);
+    unit = p.parseUnit();
+  }
   const t2 = monotonicNanos();
   if (p.failed) {
     if (e.debug) {
