@@ -21,7 +21,7 @@ output byte for byte:
 | Kotlin | `.kt .kts` | ktfmt 0.64 (default style) | 9602 / 9602 |
 | C# | `.cs` | CSharpier 1.4.0, default options | 13988 / 13988 |
 | Dart | `.dart` | `dart format` (Dart 3.14, tall style) | 10310 / 10313 |
-| Swift | `.swift` | SwiftFormat 0.64.7, default rules | 5684 / 6710 (the rest skipped) |
+| Swift | `.swift` | SwiftFormat 0.64.7, default rules | 5959 / 6710 (the rest skipped) |
 | Ruby | RuboCop's default `Include` (`.rb`, `Gemfile`, `.gemspec`, ...) | `rubocop -a` 1.92.2, default config, `TargetRubyVersion: 3.3` | 4239 / 4239 |
 
 Against the reference tools and the Rust reimplementations, on a 4-core
@@ -66,12 +66,13 @@ first formatted at other widths and in the short style (10310 / 10313).
 | Swift, 6710 files | Identical | 4 cores | 1 core |
 | --- | ---: | ---: | ---: |
 | SwiftFormat 0.64.7 | reference | 131.7 s | 262.5 s |
-| fastfmt | 5684 | 8.17 s | 25.7 s |
+| fastfmt | 5959 | 8.17 s | 25.7 s |
 
 The Swift side ports SwiftFormat's tokenizer, its Formatter and helpers,
-the rule loop and all but nine of its default rules. A file one of those
-nine would change, or one with `swiftformat:` directives, is skipped and
-left as it is (1026 files); every file fastfmt formats matches. The corpus
+the rule loop and all but three of its default rules (redundantMemberwiseInit,
+noForceUnwrapInTests, preferForLoop). A file one of those would change, or
+one with `swiftformat:` directives, is skipped and left as it is (751
+files); every file fastfmt formats matches. The corpus
 is swift-nio, Alamofire, Vapor, the Composable Architecture, RxSwift,
 Kingfisher, SnapKit, SwiftLint, swift-argument-parser, swift-collections,
 Moya, swift-format, SourceKitten and the Kickstarter iOS app. The
