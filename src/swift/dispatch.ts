@@ -133,7 +133,6 @@ import {
   swGuardRedundantEnumerated,
   swGuardRedundantEquatable,
   swGuardRedundantMemberwiseInit,
-  swGuardRedundantSwiftTestingSuite,
   swGuardRedundantSwiftUIGroup,
   swGuardSimplifyGenericConstraints,
   swGuardSwiftTestingTestCaseNames,
@@ -259,6 +258,7 @@ import {
 import {
   swRuleNoForceTryInTests,
   swRuleRedundantAsync,
+  swRuleRedundantSwiftTestingSuite,
   swRuleRedundantThrows,
 } from "./rules_tests";
 import {
@@ -584,7 +584,8 @@ export const swRunRule = (f: SwFormatter, r: i32): boolean => {
     case SW_RULE_SWIFT_TESTING_TEST_CASE_NAMES:
       return swGuardSwiftTestingTestCaseNames(f);
     case SW_RULE_REDUNDANT_SWIFT_TESTING_SUITE:
-      return swGuardRedundantSwiftTestingSuite(f);
+      swRuleRedundantSwiftTestingSuite(f);
+      return true;
     case SW_RULE_NESTED_IF:
       swRuleNestedIf(f);
       return true;

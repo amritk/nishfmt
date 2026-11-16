@@ -10,7 +10,7 @@ import { SwFuncDecl, swParseFunctionDeclaration } from "./funcdecl";
 import { swHasImport } from "./imports";
 import { swHasModifier } from "./modifiers";
 import { swEndOfScope, swIsStartOfClosure, swIsUnwrap, swLastSignificantKeyword, swStartOfScope, SW_EX_WHERE } from "./parsing";
-import { SW_IDENT, SW_KEYWORD, SW_OP, SW_OP_POSTFIX, SW_SPACE, SW_START, SW_T_NON_SPACE_OR_COMMENT_OR_LINEBREAK, SwTok } from "./token";
+import { SW_IDENT, SW_KEYWORD, SW_LINEBREAK, SW_OP, SW_OP_POSTFIX, SW_SPACE, SW_START, SW_T_NON_SPACE, SW_T_NON_SPACE_OR_COMMENT_OR_LINEBREAK, SwTok } from "./token";
 
 export const SW_TEST_NONE: i32 = 0;
 export const SW_TEST_XCTEST: i32 = 1;
@@ -245,4 +245,50 @@ export const swRuleRedundantThrows = (f: SwFormatter): void => {
 
 export const swRuleRedundantAsync = (f: SwFormatter): void => {
   swRedundantEffect(f, "async");
+};
+
+/** redundantSwiftTestingSuite. */
+export const swRuleRedundantSwiftTestingSuite = (f: SwFormatter): void => {
+  if (!swHasImport(f, "Testing")) {
+    return;
+  }
+  for (let attrIndex = f.enumStart(); attrIndex >= 0; attrIndex = f.enumNext()) {
+    if (!f.kw(attrIndex, "@Suite")) {
+      continue;
+    }
+    const nextTokenIndex = f.indexAfter(SW_T_NON_SPACE_OR_COMMENT_OR_LINEBREAK, attrIndex);
+    if (nextTokenIndex < 0) {
+      continue;
+    }
+    let attributeEndIndex = attrIndex;
+    if (f.tok(nextTokenIndex, SW_START, "(")) {
+      const e = swEndOfScope(f, nextTokenIndex);
+      if (e < 0) {
+        continue;
+      }
+      const first = f.indexAfter(SW_T_NON_SPACE_OR_COMMENT_OR_LINEBREAK, nextTokenIndex);
+      if (first >= 0 && first < e) {
+        continue;
+      }
+      attributeEndIndex = e;
+    }
+    let startIndex = attrIndex;
+    let endIndex = attributeEndIndex;
+    const hasLeadingSpace = attrIndex > 0 && f.k(attrIndex - 1) === SW_SPACE;
+    const leadingSpaceIsAfterAttribute = hasLeadingSpace && attrIndex > 1 && f.k(attrIndex - 2) !== SW_LINEBREAK;
+    const nextNonSpaceIndex = f.indexAfter(SW_T_NON_SPACE, attributeEndIndex);
+    const hasTrailingLinebreak = nextNonSpaceIndex >= 0 && f.k(nextNonSpaceIndex) === SW_LINEBREAK;
+    const hasTrailingSpace = attributeEndIndex + 1 < f.count() && f.k(attributeEndIndex + 1) === SW_SPACE;
+    if (leadingSpaceIsAfterAttribute) {
+      startIndex = attrIndex - 1;
+    } else if (hasTrailingLinebreak) {
+      endIndex = nextNonSpaceIndex;
+      if (hasLeadingSpace && attrIndex > 1 && f.k(attrIndex - 2) === SW_LINEBREAK) {
+        startIndex = attrIndex - 1;
+      }
+    } else if (hasTrailingSpace) {
+      endIndex = attributeEndIndex + 1;
+    }
+    f.removeTokens(startIndex, endIndex + 1);
+  }
 };
