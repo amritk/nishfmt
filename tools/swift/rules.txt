@@ -103,7 +103,7 @@ redundantThrows guards swGuardTests bool
 redundantAsync guards swGuardTests bool
 swiftTestingTestCaseNames guards swGuardSwiftTesting bool
 redundantSwiftTestingSuite guards swGuardSwiftTesting bool
-nestedIf guards swGuardNestedIf bool
+nestedIf rules_nestedif swRuleNestedIf
 preferForLoop guards swGuardPreferForLoop bool
 redundantClosure guards swGuardRedundantClosure bool
 trailingClosures guards swGuardTrailingClosures bool

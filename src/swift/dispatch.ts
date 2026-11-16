@@ -126,7 +126,6 @@ import {
 } from "./rules";
 import {
   swGuardContentBuilder,
-  swGuardNestedIf,
   swGuardPreferForLoop,
   swGuardRedundantClosure,
   swGuardRedundantEmptyView,
@@ -201,6 +200,9 @@ import {
   swRuleSemicolons,
   swRuleTodos,
 } from "./rules_misc";
+import {
+  swRuleNestedIf,
+} from "./rules_nestedif";
 import {
   swRuleRedundantParens,
 } from "./rules_parens";
@@ -567,7 +569,8 @@ export const swRunRule = (f: SwFormatter, r: i32): boolean => {
     case SW_RULE_REDUNDANT_SWIFT_TESTING_SUITE:
       return swGuardSwiftTesting(f);
     case SW_RULE_NESTED_IF:
-      return swGuardNestedIf(f);
+      swRuleNestedIf(f);
+      return true;
     case SW_RULE_PREFER_FOR_LOOP:
       return swGuardPreferForLoop(f);
     case SW_RULE_REDUNDANT_CLOSURE:
