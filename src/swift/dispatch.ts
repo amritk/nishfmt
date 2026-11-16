@@ -130,7 +130,6 @@ import {
   swGuardPreferForLoop,
   swGuardRedundantEquatable,
   swGuardRedundantMemberwiseInit,
-  swGuardRedundantSwiftUIGroup,
   swGuardSwiftTestingTestCaseNames,
 } from "./guards";
 import {
@@ -262,6 +261,7 @@ import {
 } from "./rules_spacing";
 import {
   swRuleRedundantEmptyView,
+  swRuleRedundantSwiftUIGroup,
 } from "./rules_swiftui";
 import {
   swRuleNoForceTryInTests,
@@ -630,7 +630,8 @@ export const swRunRule = (f: SwFormatter, r: i32): boolean => {
       swRuleRedundantEmptyView(f);
       return true;
     case SW_RULE_REDUNDANT_SWIFT_U_I_GROUP:
-      return swGuardRedundantSwiftUIGroup(f);
+      swRuleRedundantSwiftUIGroup(f);
+      return true;
     case SW_RULE_YODA_CONDITIONS:
       swRuleYodaConditions(f);
       return true;

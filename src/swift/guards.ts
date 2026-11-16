@@ -202,5 +202,3 @@ export const swGuardRedundantEquatable = (f: SwFormatter): boolean => {
   return true;
 };
 
-export const swGuardRedundantSwiftUIGroup = (f: SwFormatter): boolean => !swHasIdent(f, "Group");
-
