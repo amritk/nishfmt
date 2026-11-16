@@ -12,6 +12,7 @@ import {
   SW_OP,
   SW_SPACE,
   SW_START,
+  SW_T_START_OF_SCOPE,
   SwTok,
   SwTokList,
   swIsEndOfScopeOf,
@@ -40,6 +41,12 @@ export class SwFormatter {
   // enclosingStringDelimiters, cached for one mutation count.
   enc: i32[];
   encMut: i32 = -1;
+  // endOfScope(at:) results, each valid while its stamp equals mutations + 1.
+  eoVal: i32[];
+  eoGen: i32[];
+  // index(of: .startOfScope, before:) results, stamped the same way.
+  csVal: i32[];
+  csGen: i32[];
 
   constructor(t: SwTokList) {
     this.t = t;
@@ -48,6 +55,10 @@ export class SwFormatter {
     this.refHi = [];
     this.refLive = [];
     this.enc = [];
+    this.eoVal = [];
+    this.eoGen = [];
+    this.csVal = [];
+    this.csGen = [];
   }
 
   count(): i32 {
@@ -173,6 +184,10 @@ export class SwFormatter {
   // MARK: access and mutation
 
   replaceToken(i: i32, k: i32, s: string, a: i32): void {
+    // Replacing a token with an equal one changes nothing the caches depend on.
+    if (this.t.k[i] === k && this.t.a[i] === a && this.t.s[i] === s) {
+      return;
+    }
     this.t.set(i, k, s, a);
     this.mutations = this.mutations + 1;
   }
@@ -410,7 +425,22 @@ export class SwFormatter {
     if (i <= 0) {
       return -1;
     }
-    return this.lastIndexInType(type, 0, i);
+    if (type !== SW_T_START_OF_SCOPE || i > this.count()) {
+      return this.lastIndexInType(type, 0, i);
+    }
+    // The current scope is asked for constantly: cache it per mutation count.
+    while (toI32(this.csGen.length) <= i) {
+      this.csGen.push(0);
+      this.csVal.push(0);
+    }
+    const stamp = this.mutations + 1;
+    if (this.csGen[i] === stamp) {
+      return this.csVal[i];
+    }
+    const r = this.lastIndexInType(type, 0, i);
+    this.csGen[i] = stamp;
+    this.csVal[i] = r;
+    return r;
   }
 
   /** index(of: Token(k, s, a), after: i). */

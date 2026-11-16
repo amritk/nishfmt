@@ -209,12 +209,13 @@ export const swRuleWrapArguments = (f: SwFormatter): void => {
         }
       }
     }
-    const firstIdentifierIndex = f.indexAfter(SW_T_NON_SPACE_OR_COMMENT_OR_LINEBREAK, i);
-    if (firstIdentifierIndex < 0 || swIsInStringLiteral(f, i)) {
-      continue;
-    }
+    // (Side-effect free checks, cheapest first.)
     const firstLinebreakIndex = f.indexInType(SW_T_LINEBREAK, i + 1, endOfScope);
     if (firstLinebreakIndex < 0) {
+      continue;
+    }
+    const firstIdentifierIndex = f.indexAfter(SW_T_NON_SPACE_OR_COMMENT_OR_LINEBREAK, i);
+    if (firstIdentifierIndex < 0 || swIsInStringLiteral(f, i)) {
       continue;
     }
     if (firstIdentifierIndex > firstLinebreakIndex) {

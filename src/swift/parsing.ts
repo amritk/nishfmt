@@ -169,7 +169,26 @@ export const swStartOfScope = (f: SwFormatter, index: i32): i32 => {
 export const swCurrentScope = (f: SwFormatter, index: i32): i32 => f.indexBefore(SW_T_START_OF_SCOPE, index);
 
 /** endOfScope(at:), or -1. */
+/** endOfScope(at:), cached per mutation count. */
 export const swEndOfScope = (f: SwFormatter, index: i32): i32 => {
+  if (index < 0 || index >= f.count()) {
+    return -1;
+  }
+  while (toI32(f.eoGen.length) <= index) {
+    f.eoGen.push(0);
+    f.eoVal.push(0);
+  }
+  const stamp = f.mutations + 1;
+  if (f.eoGen[index] === stamp) {
+    return f.eoVal[index];
+  }
+  const r = swEndOfScopeUncached(f, index);
+  f.eoGen[index] = stamp;
+  f.eoVal[index] = r;
+  return r;
+};
+
+const swEndOfScopeUncached = (f: SwFormatter, index: i32): i32 => {
   if (!f.has(index)) {
     return -1;
   }

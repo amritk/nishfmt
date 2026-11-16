@@ -7,8 +7,14 @@
 import { swIsInsideProtocol, swIsInStringLiteral, swParsePropertyDeclaration, swWrapIfFollowingOpeningBrace, swWrapStatementBody } from "./expr";
 import { SwFormatter } from "./formatter";
 import { swIsFunctionDeclarationKeyword, swParseFunctionDeclaration } from "./funcdecl";
-import { swStartOfConditionalStatement, swStartOfScope } from "./parsing";
-import { SW_END, SW_KEYWORD, SW_START, SW_T_NON_SPACE_OR_COMMENT_OR_LINEBREAK } from "./token";
+import { swIsStartOfClosure, swStartOfConditionalStatement, swStartOfScope } from "./parsing";
+import { SW_END, SW_KEYWORD, SW_LINEBREAK, SW_START, SW_T_NON_SPACE_OR_COMMENT, SW_T_NON_SPACE_OR_COMMENT_OR_LINEBREAK } from "./token";
+
+/** Whether wrapStatementBody(at:) is sure to leave a body already split over lines alone. */
+const swBodyAlreadyWrapped = (f: SwFormatter, bodyStart: i32): boolean => {
+  const first = f.indexAfter(SW_T_NON_SPACE_OR_COMMENT, bodyStart);
+  return first >= 0 && (f.k(first) === SW_END || f.k(first) === SW_LINEBREAK) && !swIsStartOfClosure(f, bodyStart);
+};
 
 /** wrapFunctionBodies. */
 export const swRuleWrapFunctionBodies = (f: SwFormatter): void => {
@@ -17,7 +23,7 @@ export const swRuleWrapFunctionBodies = (f: SwFormatter): void => {
       continue;
     }
     const d = swParseFunctionDeclaration(f, i);
-    if (d === null || d.bodyStart < 0 || swIsInsideProtocol(f, i)) {
+    if (d === null || d.bodyStart < 0 || swBodyAlreadyWrapped(f, d.bodyStart) || swIsInsideProtocol(f, i)) {
       continue;
     }
     swWrapStatementBody(f, d.bodyStart);
@@ -31,7 +37,7 @@ export const swRuleWrapPropertyBodies = (f: SwFormatter): void => {
       continue;
     }
     const p = swParsePropertyDeclaration(f, i);
-    if (p === null || p.bodyStart < 0 || swIsInsideProtocol(f, i)) {
+    if (p === null || p.bodyStart < 0 || swBodyAlreadyWrapped(f, p.bodyStart) || swIsInsideProtocol(f, i)) {
       continue;
     }
     swWrapStatementBody(f, p.bodyStart);
