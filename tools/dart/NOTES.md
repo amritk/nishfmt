@@ -56,10 +56,19 @@ leading `./` that `cmp.sh` expects; the corpus data here was fixed by hand.
 Measured on the shared 4-core machine (noisy; instruction counts with
 valgrind are the steadier measure, see `ir.sh`).
 
-- `dart format` over dart/raw: about 60 s wall, 65 s user.
-- fastfmt: see the final numbers in the commit log and the hand-off report.
-  With the driver's malloc tunables a single core takes about 9.5 s
-  (scan 0.4, parse 0.4, pieces 1.7, solve 5.4, output 1.3).
+Over dart/raw (10334 files), best of three, with the load average between
+10 and 50 from other jobs:
+
+| | wall |
+| --- | --- |
+| `dart format` | 55.2 s (63.7 s user) |
+| `taskset -c 0 dart format` | 59.9 s |
+| `fastfmt -i` (4 cores) | 3.40 s |
+| `taskset -c 0 fastfmt -i -j 1` | 9.49 s |
+
+The dev driver's `-prof` mode, with the same malloc tunables as the main
+driver, splits one core's time as scan 0.4 s, parse 0.4 s, pieces 1.7 s,
+solve 5.4 s, output 1.3 s.
 
 What made it fast, beyond writing it natively:
 
