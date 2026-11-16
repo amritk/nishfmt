@@ -39,8 +39,9 @@ import {
   swStrIsMacro,
 } from "./token";
 
-/** endOfExpression(at:upTo:), the delimiters being none or `?` (infix) when `upToTernary`. */
-export const swEndOfExpression = (f: SwFormatter, index0: i32, upToTernary: boolean): i32 => {
+/** endOfExpression(at:upTo:), the delimiters being none, `?` (infix) when `upToTernary`,
+ *  and also infix `&&`, `||` and `:` when `upToLogical`. */
+export const swEndOfExpression = (f: SwFormatter, index0: i32, upToTernary: boolean, upToLogical: boolean = false): i32 => {
   let index = index0;
   if (f.k(index) === SW_END) {
     index = f.indexAfter(SW_T_NON_SPACE_OR_LINEBREAK, index);
@@ -53,6 +54,9 @@ export const swEndOfExpression = (f: SwFormatter, index0: i32, upToTernary: bool
     const s = f.s(i);
     const a = f.a(i);
     if (upToTernary && f.op(i, "?", SW_OP_INFIX)) {
+      return lastIndex;
+    }
+    if (upToLogical && k === SW_OP && a === SW_OP_INFIX && (s === "&&" || s === "||" || s === ":")) {
       return lastIndex;
     }
     if (k === SW_OP && a === SW_OP_INFIX) {

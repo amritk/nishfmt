@@ -117,6 +117,6 @@ redundantEquatable guards swGuardRedundantEquatable bool
 redundantEnumerated guards swGuardRedundantEnumerated bool
 redundantEmptyView guards swGuardRedundantEmptyView bool
 redundantSwiftUIGroup guards swGuardRedundantSwiftUIGroup bool
-yodaConditions guards swGuardYodaConditions bool
+yodaConditions rules_yoda swRuleYodaConditions
 redundantParens rules_parens swRuleRedundantParens
 redundantReturn rules_return swRuleRedundantReturn

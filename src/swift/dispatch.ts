@@ -137,7 +137,6 @@ import {
   swGuardRedundantSwiftUIGroup,
   swGuardSimplifyGenericConstraints,
   swGuardSwiftTestingTestCaseNames,
-  swGuardYodaConditions,
 } from "./guards";
 import {
   swRuleDuplicateImports,
@@ -283,6 +282,9 @@ import {
   swRuleWrapLoopBodies,
   swRuleWrapPropertyBodies,
 } from "./rules_wrapbody";
+import {
+  swRuleYodaConditions,
+} from "./rules_yoda";
 
 /** Applies rule `r`; answers false when the rule is not ported or cannot handle the file. */
 export const swRunRule = (f: SwFormatter, r: i32): boolean => {
@@ -617,7 +619,8 @@ export const swRunRule = (f: SwFormatter, r: i32): boolean => {
     case SW_RULE_REDUNDANT_SWIFT_U_I_GROUP:
       return swGuardRedundantSwiftUIGroup(f);
     case SW_RULE_YODA_CONDITIONS:
-      return swGuardYodaConditions(f);
+      swRuleYodaConditions(f);
+      return true;
     case SW_RULE_REDUNDANT_PARENS:
       swRuleRedundantParens(f);
       return true;
