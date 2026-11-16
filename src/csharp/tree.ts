@@ -9,6 +9,7 @@
 
 import { growI32 } from "../core/arr";
 import { CsLexer } from "./lexer";
+import { uncheckedGet } from "nish:unsafe";
 import { csKindType, csTypeBase, csTypeShape } from "./kinds";
 
 export class CsTree {
@@ -37,15 +38,16 @@ export class CsTree {
     this.lx = lx;
     this.src = lx.src;
     const cap = lx.nt + 64;
+    const nb = lx.nt * 3 + 64;
     this.kind = new Array<i32>(cap);
     this.slot = new Array<i32>(cap);
     this.nslot = new Array<i32>(cap);
     this.parent = new Array<i32>(cap);
     this.first = new Array<i32>(cap);
     this.last = new Array<i32>(cap);
-    this.pool = new Array<i32>(cap * 3 + 64);
-    this.lsOff = new Array<i32>(cap / 2 + 64);
-    this.lsLen = new Array<i32>(cap / 2 + 64);
+    this.pool = new Array<i32>(nb);
+    this.lsOff = new Array<i32>(cap / 3 + 64);
+    this.lsLen = new Array<i32>(cap / 3 + 64);
     this.stk = new Array<i32>(1024);
   }
 
@@ -173,7 +175,7 @@ export class CsTree {
 
   /** Slot i of node n. */
   s(n: i32, i: i32): i32 {
-    return this.pool[this.slot[n] + i];
+    return uncheckedGet(this.pool, uncheckedGet(this.slot, n) + i);
   }
 
   /** The syntax type of node n. */
@@ -186,7 +188,7 @@ export class CsTree {
     if (n < 0) {
       return false;
     }
-    let t = csKindType(this.kind[n]);
+    let t = csKindType(uncheckedGet(this.kind, n));
     while (t !== 0) {
       if (t === y) {
         return true;
@@ -209,12 +211,12 @@ export class CsTree {
 
   /** Raw entry j of list l. */
   at(l: i32, j: i32): i32 {
-    return this.pool[this.lsOff[l] + j];
+    return uncheckedGet(this.pool, uncheckedGet(this.lsOff, l) + j);
   }
 
   /** Element j of a separated list. */
   sel(l: i32, j: i32): i32 {
-    return this.pool[this.lsOff[l] + j * 2];
+    return uncheckedGet(this.pool, uncheckedGet(this.lsOff, l) + j * 2);
   }
 
   /** The number of elements of a separated list. */

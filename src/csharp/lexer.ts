@@ -202,7 +202,7 @@ export class CsLexer {
     this.pos = start;
     this.lim = lim;
     this.syms = syms;
-    const cap = (lim - start) / 3 + 64;
+    const cap = (lim - start) / 5 + 64;
     this.kind = new Array<i32>(cap);
     this.ck = new Array<i32>(cap);
     this.flags = new Array<i32>(cap);
@@ -213,7 +213,7 @@ export class CsLexer {
     this.t0 = new Array<i32>(cap);
     this.t1 = new Array<i32>(cap);
     this.parent = new Array<i32>(cap);
-    const tc = (lim - start) / 4 + 64;
+    const tc = (lim - start) / 10 + 64;
     this.trKind = new Array<i32>(tc);
     this.trStart = new Array<i32>(tc);
     this.trEnd = new Array<i32>(tc);

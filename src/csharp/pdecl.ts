@@ -103,6 +103,7 @@ import {
   K_InitKeyword,
   K_InterfaceDeclaration,
   K_InterfaceKeyword,
+  K_InternalKeyword,
   K_LessThanEqualsToken,
   K_LessThanLessThanEqualsToken,
   K_LessThanLessThanToken,
@@ -134,7 +135,10 @@ import {
   K_PlusPlusToken,
   K_PlusToken,
   K_PrimaryConstructorBaseType,
+  K_PrivateKeyword,
   K_PropertyDeclaration,
+  K_ProtectedKeyword,
+  K_PublicKeyword,
   K_QualifiedName,
   K_QuestionToken,
   K_ReadOnlyKeyword,
@@ -2274,6 +2278,7 @@ const cspMemberDeclarationOrStatement = (p: CsParser): i32 => {
   const ms = cspMemberStart(p, true, attrs);
   const mods = ms.mods;
   const haveMods = p.t.count(mods) > 0;
+  const firstModKind = haveMods ? p.lx.kind[p.t.at(mods, 0)] : 0;
   if (p.k() === K_IdentifierToken && p.kindAt(1) === K_OpenParenToken && (haveAttrs || haveMods)) {
     // a local function with attributes or modifiers
     p.reset(start);
@@ -2319,6 +2324,16 @@ const cspMemberDeclarationOrStatement = (p: CsParser): i32 => {
     const s3 = cspLocalDeclarationStatement(p, a3);
     if (s3 >= 0 && !p.err) {
       return cspGlobalStatement(p, s3);
+    }
+    // Roslyn backs out of a local declaration that starts with an
+    // accessibility modifier and parses a member of the compilation unit
+    p.reset(start);
+    const mk = firstModKind;
+    if (mk === K_PublicKeyword || mk === K_PrivateKeyword || mk === K_ProtectedKeyword || mk === K_InternalKeyword) {
+      const r = cspMemberDeclarationCore(p, K_CompilationUnit);
+      if (r >= 0 && !p.err) {
+        return r;
+      }
     }
     p.fail("modifiers on a statement");
     return -1;

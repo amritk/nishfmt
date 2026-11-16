@@ -6,6 +6,7 @@
 
 import { growI32 } from "../core/arr";
 import { Out } from "../core/out";
+import { uncheckedGet, uncheckedSet } from "nish:unsafe";
 
 // Doc kinds.
 export const D_NULL: i32 = 0;
@@ -111,6 +112,15 @@ export const csPrintedWidth = (s: u8[], a: i32, b: i32): i32 => {
   return w;
 };
 
+/** The number of spaces and tabs ending s[a, b). */
+const csTrailingWs = (s: u8[], a: i32, b: i32): i32 => {
+  let e = b;
+  while (e > a && (toI32(s[e - 1]) === 32 || toI32(s[e - 1]) === 9)) {
+    e--;
+  }
+  return b - e;
+};
+
 export class CsDocs {
   src: u8[];
   n: i32 = 0;
@@ -135,8 +145,8 @@ export class CsDocs {
     this.c = new Array<i32>(c);
     this.d = new Array<i32>(c);
     this.e = new Array<i32>(c);
-    this.pool = new Array<i32>(c * 2);
-    this.sb = new Array<u8>(c);
+    this.pool = new Array<i32>(c + c / 6);
+    this.sb = new Array<u8>(c / 4 + 64);
     this.add(D_NULL, 0, 0, 0, 0);
     this.add(D_BREAKPARENT, 0, 0, 0, 0);
     this.add(D_HARDLINE, 0, 0, 0, 0);
@@ -177,13 +187,17 @@ export class CsDocs {
 
   /** A StringDoc over src[a, b). */
   strSrc(a: i32, b: i32): i32 {
-    return this.add(D_STRING, a, b, csPrintedWidth(this.src, a, b), SF_SRC);
+    const d = this.add(D_STRING, a, b, csPrintedWidth(this.src, a, b), SF_SRC);
+    this.e[d] = csTrailingWs(this.src, a, b);
+    return d;
   }
 
   /** A StringDoc over `s`, put in the arena. */
   strArena(s: string): i32 {
     const a = this.appendStr(s);
-    return this.add(D_STRING, a, this.ns, csPrintedWidth(this.sb, a, this.ns), 0);
+    const d = this.add(D_STRING, a, this.ns, csPrintedWidth(this.sb, a, this.ns), 0);
+    this.e[d] = csTrailingWs(this.sb, a, this.ns);
+    return d;
   }
 
   /** A StringDoc for a constant: the singletons for " " and "". */
@@ -199,7 +213,9 @@ export class CsDocs {
 
   /** A StringDoc over arena[a, b) (text appended with appendStr / appendBytes). */
   strAt(a: i32, b: i32, directive: boolean): i32 {
-    return this.add(D_STRING, a, b, csPrintedWidth(this.sb, a, b), directive ? SF_DIRECTIVE : 0);
+    const d = this.add(D_STRING, a, b, csPrintedWidth(this.sb, a, b), directive ? SF_DIRECTIVE : 0);
+    this.e[d] = csTrailingWs(this.sb, a, b);
+    return d;
   }
 
   appendStr(s: string): i32 {
@@ -371,7 +387,7 @@ export class CsDocs {
 
   /** Child i of a Concat. */
   at(d: i32, i: i32): i32 {
-    return this.pool[this.a[d] + i];
+    return uncheckedGet(this.pool, uncheckedGet(this.a, d) + i);
   }
 
   count(d: i32): i32 {
@@ -390,9 +406,9 @@ export class CsDocs {
 // ---- DocUtilities ----
 
 export const csdContainsBreak = (D: CsDocs, d: i32): boolean => {
-  const k = D.kind[d];
+  const k = uncheckedGet(D.kind, d);
   if (k === D_GROUP || k === D_CONDGROUP) {
-    if (D.b[d] !== 0) {
+    if (uncheckedGet(D.b, d) !== 0) {
       return true;
     }
   } else if (k === D_HARDLINE || k === D_LITERALLINE || k === D_BREAKPARENT) {
@@ -403,9 +419,9 @@ export const csdContainsBreak = (D: CsDocs, d: i32): boolean => {
     case D_CONDGROUP:
     case D_INDENT:
     case D_FORCEFLAT:
-      return csdContainsBreak(D, D.a[d]);
+      return csdContainsBreak(D, uncheckedGet(D.a, d));
     case D_CONCAT: {
-      const n = D.b[d];
+      const n = uncheckedGet(D.b, d);
       for (let i = 0; i < n; i++) {
         if (csdContainsBreak(D, D.at(d, i))) {
           return true;
@@ -414,7 +430,7 @@ export const csdContainsBreak = (D: CsDocs, d: i32): boolean => {
       return false;
     }
     case D_IFBREAK:
-      return csdContainsBreak(D, D.b[d]);
+      return csdContainsBreak(D, uncheckedGet(D.b, d));
     default:
       return false;
   }
@@ -435,7 +451,7 @@ const csdRemoveList = (D: CsDocs, docs: i32[], st: CsRemoveState): void => {
   let x = 0;
   while (x < toI32(docs.length)) {
     const doc = docs[x];
-    if (D.kind[doc] === D_HARDLINE) {
+    if (uncheckedGet(D.kind, doc) === D_HARDLINE) {
       if (st.removeNext) {
         docs[x] = DOC_NULL;
         return;
@@ -451,10 +467,10 @@ const csdRemoveList = (D: CsDocs, docs: i32[], st: CsRemoveState): void => {
 
 const csdRemoveConcat = (D: CsDocs, c: i32, st: CsRemoveState): void => {
   let x = 0;
-  const n = D.b[c];
+  const n = uncheckedGet(D.b, c);
   while (x < n) {
     const doc = D.at(c, x);
-    if (D.kind[doc] === D_HARDLINE) {
+    if (uncheckedGet(D.kind, doc) === D_HARDLINE) {
       if (st.removeNext) {
         D.setAt(c, x, DOC_NULL);
         return;
@@ -475,14 +491,14 @@ export const csdRemoveInitialDoubleHardLine = (D: CsDocs, doc: i32): i32 => {
 };
 
 const csdRemoveDoc = (D: CsDocs, doc: i32, st: CsRemoveState): void => {
-  switch (D.kind[doc]) {
+  switch (uncheckedGet(D.kind, doc)) {
     case D_STRING:
       return;
     case D_INDENT:
     case D_GROUP:
     case D_CONDGROUP: {
-      const c = D.a[doc];
-      if (D.kind[c] === D_HARDLINE) {
+      const c = uncheckedGet(D.a, doc);
+      if (uncheckedGet(D.kind, c) === D_HARDLINE) {
         if (st.removeNext) {
           D.a[doc] = DOC_NULL;
           return;
@@ -518,23 +534,23 @@ export const csdPropagateBreaks = (D: CsDocs, root: i32): void => {
       stack.pop();
       const ex = stack.pop();
       // OnExit
-      if (D.kind[ex] === D_FORCEFLAT) {
+      if (uncheckedGet(D.kind, ex) === D_FORCEFLAT) {
         forceFlat--;
       } else {
         canSkipBreak = false;
         const g = groupStack.pop();
-        if (D.b[g] !== 0) {
+        if (uncheckedGet(D.b, g) !== 0) {
           csdBreakParentGroup(D, groupStack);
         }
       }
       continue;
     }
-    const k = D.kind[doc];
+    const k = uncheckedGet(D.kind, doc);
     // OnEnter
     let enter = true;
-    if (k === D_STRING && (D.d[doc] & SF_DIRECTIVE) === 0) {
+    if (k === D_STRING && (uncheckedGet(D.d, doc) & SF_DIRECTIVE) === 0) {
       canSkipBreak = false;
-      if (D.b[doc] > D.a[doc]) {
+      if (uncheckedGet(D.b, doc) > uncheckedGet(D.a, doc)) {
         stringCount++;
       }
     } else if (k === D_GROUP || k === D_CONDGROUP) {
@@ -546,7 +562,7 @@ export const csdPropagateBreaks = (D: CsDocs, root: i32): void => {
       visited[doc] = 1;
     } else if ((k === D_HARDLINE || k === D_LITERALLINE || k === D_BREAKPARENT) && (forceFlat === 0 || k === D_LITERALLINE)) {
       const isAtStartOfLine = stringCount === stringCountAtLastHardLine;
-      if (k === D_HARDLINE && (D.b[doc] & HL_FOR_TRIVIA) !== 0 && (isAtStartOfLine || canSkipBreak)) {
+      if (k === D_HARDLINE && (uncheckedGet(D.b, doc) & HL_FOR_TRIVIA) !== 0 && (isAtStartOfLine || canSkipBreak)) {
         const gs = toI32(groupStack.length);
         if (!isAtStartOfLine && gs > 1) {
           D.b[groupStack[gs - 2]] = 1;
@@ -565,7 +581,7 @@ export const csdPropagateBreaks = (D: CsDocs, root: i32): void => {
       stack.pop();
       canSkipBreak = false;
       const g = groupStack.pop();
-      if (D.b[g] !== 0) {
+      if (uncheckedGet(D.b, g) !== 0) {
         csdBreakParentGroup(D, groupStack);
       }
       continue;
@@ -576,26 +592,26 @@ export const csdPropagateBreaks = (D: CsDocs, root: i32): void => {
       stack.pop();
     }
     if (k === D_CONCAT) {
-      const n = D.b[doc];
+      const n = uncheckedGet(D.b, doc);
       for (let x = n - 1; x >= 0; x--) {
         const ch = D.at(doc, x);
-        const ck = D.kind[ch];
+        const ck = uncheckedGet(D.kind, ch);
         if (forceFlat > 0 && (ck === D_LINE || ck === D_SOFTLINE || ck === D_HARDLINE)) {
           D.setAt(doc, x, ck === D_SOFTLINE ? DOC_EMPTY : DOC_SPACE);
         }
         stack.push(D.at(doc, x));
       }
     } else if (k === D_IFBREAK) {
-      stack.push(D.b[doc]);
-      stack.push(D.a[doc]);
+      stack.push(uncheckedGet(D.b, doc));
+      stack.push(uncheckedGet(D.a, doc));
     } else if (k === D_CONDGROUP) {
-      const off = D.d[doc];
-      const n = D.e[doc];
+      const off = uncheckedGet(D.d, doc);
+      const n = uncheckedGet(D.e, doc);
       for (let i = 0; i < n; i++) {
-        stack.push(D.pool[off + i]);
+        stack.push(uncheckedGet(D.pool, off + i));
       }
     } else if (k === D_GROUP || k === D_INDENT || k === D_FORCEFLAT) {
-      stack.push(D.a[doc]);
+      stack.push(uncheckedGet(D.a, doc));
     }
   }
 };
@@ -604,7 +620,7 @@ const csdBreakParentGroup = (D: CsDocs, groupStack: i32[]): void => {
   const n = toI32(groupStack.length);
   if (n > 0) {
     const g = groupStack[n - 1];
-    if (D.kind[g] !== D_CONDGROUP) {
+    if (uncheckedGet(D.kind, g) !== D_CONDGROUP) {
       D.b[g] = 1;
     }
   }
@@ -620,13 +636,11 @@ export class CsPrinter {
   useTabs: boolean;
   eolCr: boolean; // the end of line is \r\n
   // the command stack
-  cInd: i32[];
-  cMode: i32[];
+  cMI: i32[]; // indent << 2 | mode
   cDoc: i32[];
   nc: i32 = 0;
   // the fitter's scratch stack
-  sInd: i32[];
-  sMode: i32[];
+  sMI: i32[];
   sDoc: i32[];
   groupMode: i32[];
   currentWidth: i32 = 0;
@@ -642,11 +656,9 @@ export class CsPrinter {
     this.indentSize = indentSize;
     this.useTabs = useTabs;
     this.eolCr = eolCr;
-    this.cInd = new Array<i32>(256);
-    this.cMode = new Array<i32>(256);
+    this.cMI = new Array<i32>(256);
     this.cDoc = new Array<i32>(256);
-    this.sInd = new Array<i32>(256);
-    this.sMode = new Array<i32>(256);
+    this.sMI = new Array<i32>(256);
     this.sDoc = new Array<i32>(256);
     this.groupMode = new Array<i32>(D.ngroup + 1);
     for (let i = 0; i < D.ngroup + 1; i++) {
@@ -658,13 +670,11 @@ export class CsPrinter {
   push(doc: i32, mode: i32, ind: i32): void {
     const i = this.nc;
     if (i >= toI32(this.cDoc.length)) {
-      this.cInd = growI32(this.cInd, i * 2);
-      this.cMode = growI32(this.cMode, i * 2);
+      this.cMI = growI32(this.cMI, i * 2);
       this.cDoc = growI32(this.cDoc, i * 2);
     }
-    this.cInd[i] = ind;
-    this.cMode[i] = mode;
-    this.cDoc[i] = doc;
+    uncheckedSet(this.cMI, i, (ind << 2) | mode);
+    uncheckedSet(this.cDoc, i, doc);
     this.nc = i + 1;
   }
 
@@ -743,20 +753,21 @@ export class CsPrinter {
   appendText(d: i32): void {
     const D = this.D;
     const n = D.textLen(d);
-    if ((D.d[d] & SF_SRC) !== 0) {
-      this.out.range(D.src, D.a[d], D.b[d]);
+    if ((uncheckedGet(D.d, d) & SF_SRC) !== 0) {
+      this.out.range(D.src, uncheckedGet(D.a, d), uncheckedGet(D.b, d));
     } else {
-      this.out.range(D.sb, D.a[d], D.a[d] + n);
+      this.out.range(D.sb, uncheckedGet(D.a, d), uncheckedGet(D.a, d) + n);
     }
   }
 
   processNext(): void {
     this.nc = this.nc - 1;
-    const ind = this.cInd[this.nc];
-    const mode = this.cMode[this.nc];
-    const doc = this.cDoc[this.nc];
+    const mi = uncheckedGet(this.cMI, this.nc);
+    const ind = mi >> 2;
+    const mode = mi & 3;
+    const doc = uncheckedGet(this.cDoc, this.nc);
     const D = this.D;
-    const k = D.kind[doc];
+    const k = uncheckedGet(D.kind, doc);
     switch (k) {
       case D_NULL:
         return;
@@ -764,7 +775,7 @@ export class CsPrinter {
         this.processString(doc, ind);
         return;
       case D_CONCAT: {
-        const n = D.b[doc];
+        const n = uncheckedGet(D.b, doc);
         for (let x = n - 1; x >= 0; x--) {
           this.push(D.at(doc, x), mode, ind);
         }
@@ -781,7 +792,7 @@ export class CsPrinter {
         this.processGroup(doc, mode, ind);
         return;
       case D_INDENT:
-        this.push(D.a[doc], mode, ind + 1);
+        this.push(uncheckedGet(D.a, doc), mode, ind + 1);
         return;
       case D_TRIM:
         this.currentWidth -= this.trimTrailingWhitespace();
@@ -789,14 +800,14 @@ export class CsPrinter {
         return;
       case D_IFBREAK: {
         let gm = mode;
-        const id = D.c[doc];
+        const id = uncheckedGet(D.c, doc);
         if (id >= 0) {
           gm = this.groupMode[id];
           if (gm < 0) {
             panic("an ifBreak before the group it targets");
           }
         }
-        this.push(gm === PM_BREAK ? D.a[doc] : D.b[doc], mode, ind);
+        this.push(gm === PM_BREAK ? uncheckedGet(D.a, doc) : uncheckedGet(D.b, doc), mode, ind);
         return;
       }
       case D_BREAKPARENT:
@@ -824,10 +835,10 @@ export class CsPrinter {
         }
         return;
       case D_FORCEFLAT:
-        this.push(D.a[doc], PM_FORCE_FLAT, ind);
+        this.push(uncheckedGet(D.a, doc), PM_FORCE_FLAT, ind);
         return;
       case D_REGION:
-        if (D.c[doc] !== 0) {
+        if (uncheckedGet(D.c, doc) !== 0) {
           const n = toI32(this.regionIndents.length);
           if (n > 0) {
             this.appendIndent(this.regionIndents.pop());
@@ -841,7 +852,7 @@ export class CsPrinter {
         this.appendText(doc);
         return;
       case D_ALWAYSFITS:
-        this.push(D.a[doc], mode, ind);
+        this.push(uncheckedGet(D.a, doc), mode, ind);
         return;
       default:
         panic(`unknown doc ${k}`);
@@ -866,10 +877,10 @@ export class CsPrinter {
 
   appendComment(doc: i32, ind: i32): void {
     const D = this.D;
-    const buf = (D.d[doc] & SF_SRC) !== 0 ? D.src : D.sb;
-    const a = D.a[doc];
-    const b = D.b[doc];
-    const isMulti = D.c[doc] === CT_MULTI;
+    const buf = (uncheckedGet(D.d, doc) & SF_SRC) !== 0 ? D.src : D.sb;
+    const a = uncheckedGet(D.a, doc);
+    const b = uncheckedGet(D.b, doc);
+    const isMulti = uncheckedGet(D.c, doc) === CT_MULTI;
     // StringReader.ReadLine: lines split on \r\n, \r, \n
     let pos = a;
     let first = true;
@@ -953,12 +964,12 @@ export class CsPrinter {
       this.newLineNextStringValue = false;
     }
     this.appendText(doc);
-    this.currentWidth += D.c[doc];
+    this.currentWidth += uncheckedGet(D.c, doc);
   }
 
   processLine(doc: i32, mode: i32, ind: i32): void {
     const D = this.D;
-    const k = D.kind[doc];
+    const k = uncheckedGet(D.kind, doc);
     if (mode === PM_FLAT || mode === PM_FORCE_FLAT) {
       if (k === D_SOFTLINE) {
         return;
@@ -970,7 +981,7 @@ export class CsPrinter {
       }
       this.shouldRemeasure = true;
     }
-    const squash = k === D_HARDLINE && (D.b[doc] & HL_SQUASH) !== 0;
+    const squash = k === D_HARDLINE && (uncheckedGet(D.b, doc) & HL_SQUASH) !== 0;
     if (squash && this.out.n > 0 && this.endsWithNewLineAndWhitespace()) {
       return;
     }
@@ -982,7 +993,7 @@ export class CsPrinter {
       return;
     }
     if (!this.skipNextNewLine || !this.newLineNextStringValue) {
-      const noTrim = k === D_HARDLINE && (D.b[doc] & HL_NO_TRIM) !== 0;
+      const noTrim = k === D_HARDLINE && (uncheckedGet(D.b, doc) & HL_NO_TRIM) !== 0;
       if (!noTrim) {
         this.trimTrailingWhitespace();
       }
@@ -997,27 +1008,27 @@ export class CsPrinter {
 
   processGroup(doc: i32, mode: i32, ind: i32): void {
     const D = this.D;
-    const brk = D.b[doc] !== 0;
+    const brk = uncheckedGet(D.b, doc) !== 0;
     if ((mode === PM_FLAT || mode === PM_FORCE_FLAT) && !this.shouldRemeasure) {
-      this.push(D.a[doc], brk ? PM_BREAK : mode, ind);
+      this.push(uncheckedGet(D.a, doc), brk ? PM_BREAK : mode, ind);
     } else {
       this.shouldRemeasure = false;
-      if (!brk && this.fits(D.a[doc], PM_FLAT, ind)) {
-        this.push(D.a[doc], PM_FLAT, ind);
-      } else if (D.kind[doc] === D_CONDGROUP) {
-        const off = D.d[doc];
-        const n = D.e[doc];
+      if (!brk && this.fits(uncheckedGet(D.a, doc), PM_FLAT)) {
+        this.push(uncheckedGet(D.a, doc), PM_FLAT, ind);
+      } else if (uncheckedGet(D.kind, doc) === D_CONDGROUP) {
+        const off = uncheckedGet(D.d, doc);
+        const n = uncheckedGet(D.e, doc);
         if (brk) {
-          this.push(D.pool[off + n - 1], PM_BREAK, ind);
+          this.push(uncheckedGet(D.pool, off + n - 1), PM_BREAK, ind);
         } else {
           let found = false;
-          let lastDoc = D.a[doc];
+          let lastDoc = uncheckedGet(D.a, doc);
           let lastMode = PM_FLAT;
           for (let i = 1; i < n; i++) {
-            const opt = D.pool[off + i];
+            const opt = uncheckedGet(D.pool, off + i);
             lastDoc = opt;
             lastMode = mode;
-            if (!this.fits(opt, mode, ind)) {
+            if (!this.fits(opt, mode)) {
               continue;
             }
             this.push(opt, mode, ind);
@@ -1029,85 +1040,73 @@ export class CsPrinter {
           }
         }
       } else {
-        this.push(D.a[doc], PM_BREAK, ind);
+        this.push(uncheckedGet(D.a, doc), PM_BREAK, ind);
       }
     }
-    const id = D.c[doc];
+    const id = uncheckedGet(D.c, doc);
     if (id >= 0) {
-      this.groupMode[id] = this.cMode[this.nc - 1];
+      this.groupMode[id] = this.cMI[this.nc - 1] & 3;
     }
   }
 
-  spush(doc: i32, mode: i32, ind: i32, ns: i32): i32 {
+  spush(doc: i32, mode: i32, ns: i32): i32 {
     if (ns >= toI32(this.sDoc.length)) {
-      this.sInd = growI32(this.sInd, ns * 2);
-      this.sMode = growI32(this.sMode, ns * 2);
+      this.sMI = growI32(this.sMI, ns * 2);
       this.sDoc = growI32(this.sDoc, ns * 2);
     }
-    this.sInd[ns] = ind;
-    this.sMode[ns] = mode;
-    this.sDoc[ns] = doc;
+    uncheckedSet(this.sMI, ns, mode);
+    uncheckedSet(this.sDoc, ns, doc);
     return ns + 1;
   }
 
   /** DocFitter.Fits for the command (doc, mode, ind) with the remaining commands after it. */
-  fits(doc0: i32, mode0: i32, ind0: i32): boolean {
+  fits(doc0: i32, mode0: i32): boolean {
     const D = this.D;
     let remaining = this.width - this.currentWidth;
     let outputLength = 0;
     let trailingWhitespace = 0;
     let returnFalseIfMoreStringsFound = false;
-    let ns = this.spush(doc0, mode0, ind0, 0);
+    let ns = this.spush(doc0, mode0, 0);
     let x = 0; // index into the remaining commands, from the top
     while (x < this.nc || ns > 0) {
       if (remaining < 0) {
         return false;
       }
-      let ind = 0;
       let mode = 0;
       let doc = 0;
       if (ns > 0) {
         ns--;
-        ind = this.sInd[ns];
-        mode = this.sMode[ns];
-        doc = this.sDoc[ns];
+        mode = uncheckedGet(this.sMI, ns);
+        doc = uncheckedGet(this.sDoc, ns);
       } else {
         const ci = this.nc - 1 - x;
         x++;
-        ind = this.cInd[ci];
-        mode = this.cMode[ci];
-        doc = this.cDoc[ci];
+        mode = uncheckedGet(this.cMI, ci) & 3;
+        doc = uncheckedGet(this.cDoc, ci);
       }
-      const k = D.kind[doc];
+      const k = uncheckedGet(D.kind, doc);
       switch (k) {
         case D_NULL:
           break;
         case D_STRING: {
-          if ((D.d[doc] & SF_DIRECTIVE) !== 0) {
+          if ((uncheckedGet(D.d, doc) & SF_DIRECTIVE) !== 0) {
             continue;
           }
           if (returnFalseIfMoreStringsFound) {
             return false;
           }
-          const n = D.textLen(doc);
+          const n = uncheckedGet(D.b, doc) - uncheckedGet(D.a, doc);
           outputLength += n;
           // TrailingWhitespaceLength
-          let len = 0;
-          while (len < n) {
-            const c = D.textAt(doc, n - len - 1);
-            if (c !== 32 && c !== 9) {
-              break;
-            }
-            len++;
-          }
+          const len = uncheckedGet(D.e, doc);
           trailingWhitespace = len === n ? trailingWhitespace + len : len;
-          remaining -= D.c[doc];
+          remaining -= uncheckedGet(D.c, doc);
           break;
         }
         case D_CONCAT: {
-          const n = D.b[doc];
+          const n = uncheckedGet(D.b, doc);
           for (let i = n - 1; i >= 0; i--) {
-            ns = this.spush(D.at(doc, i), mode, ind, ns);
+            ns = this.spush(D.at(doc, i), mode, ns);
           }
           break;
         }
@@ -1116,7 +1115,7 @@ export class CsPrinter {
         case D_HARDLINE:
         case D_LITERALLINE:
           if (mode === PM_FLAT || mode === PM_FORCE_FLAT) {
-            if (k === D_HARDLINE && (D.b[doc] & HL_FOR_TRIVIA) !== 0) {
+            if (k === D_HARDLINE && (uncheckedGet(D.b, doc) & HL_FOR_TRIVIA) !== 0) {
               returnFalseIfMoreStringsFound = false;
             } else if (k === D_HARDLINE || k === D_LITERALLINE) {
               return true;
@@ -1131,28 +1130,28 @@ export class CsPrinter {
           return true;
         case D_GROUP:
         case D_CONDGROUP: {
-          const gm = D.b[doc] !== 0 ? PM_BREAK : mode;
-          let contents = D.a[doc];
+          const gm = uncheckedGet(D.b, doc) !== 0 ? PM_BREAK : mode;
+          let contents = uncheckedGet(D.a, doc);
           if (gm === PM_BREAK && k === D_CONDGROUP) {
-            contents = D.pool[D.d[doc] + D.e[doc] - 1];
+            contents = D.pool[uncheckedGet(D.d, doc) + uncheckedGet(D.e, doc) - 1];
           }
-          ns = this.spush(contents, gm, ind, ns);
-          const id = D.c[doc];
+          ns = this.spush(contents, gm, ns);
+          const id = uncheckedGet(D.c, doc);
           if (id >= 0) {
             this.groupMode[id] = gm;
           }
           break;
         }
         case D_INDENT:
-          ns = this.spush(D.a[doc], mode, ind + 1, ns);
+          ns = this.spush(uncheckedGet(D.a, doc), mode, ns);
           break;
         case D_IFBREAK: {
-          const id = D.c[doc];
+          const id = uncheckedGet(D.c, doc);
           let im = mode;
           if (id >= 0 && this.groupMode[id] >= 0) {
             im = this.groupMode[id];
           }
-          ns = this.spush(im === PM_BREAK ? D.a[doc] : D.b[doc], mode, ind, ns);
+          ns = this.spush(im === PM_BREAK ? uncheckedGet(D.a, doc) : uncheckedGet(D.b, doc), mode, ns);
           break;
         }
         case D_TRIM:
@@ -1169,7 +1168,7 @@ export class CsPrinter {
         case D_REGION:
           return false;
         case D_FORCEFLAT:
-          ns = this.spush(D.a[doc], PM_FORCE_FLAT, ind, ns);
+          ns = this.spush(uncheckedGet(D.a, doc), PM_FORCE_FLAT, ns);
           break;
         case D_BREAKPARENT:
           break;
