@@ -1728,7 +1728,9 @@ export class Parser {
     // Find the matching `]`, then what follows it.
     let i = lsq + 1;
     let depth = 1;
-    while (i < d.ntok - 1) {
+    // (A macro body ends at its directive's end: clang-format's token
+    // source answers eof there.)
+    while (i < d.ntok - 1 && !(this.macro >= 0 && d.ppId[i] !== this.macro)) {
       const k = d.kind[i];
       if (k === P_LSQUARE || k === P_LPAREN || k === P_LBRACE) {
         depth++;
@@ -1751,6 +1753,9 @@ export class Parser {
     let pdepth = 0;
     let seenArrow = false;
     while (j < d.ntok - 1) {
+      if (this.macro >= 0 && d.ppId[j] !== this.macro) {
+        return false;
+      }
       const k = d.kind[j];
       if (k === P_LBRACE && pdepth === 0) {
         break;
@@ -2336,15 +2341,19 @@ export class Parser {
         return;
       }
       if (k === P_LBRACE) {
+        // (clang-format's statement loop parses `requires {` at the
+        // `requires`: a requires expression, its body a block whatever
+        // follows it.)
+        if (this.isRequiresExpressionBrace()) {
+          d.bk[this.pos] = BK_BLOCK;
+          this.parseRequiresBody();
+          continue;
+        }
         if (d.bk[this.pos] === BK_UNKNOWN) {
           this.calculateBraceTypes();
         }
         if (d.bk[this.pos] === BK_BRACED_INIT) {
           this.parseBracedList();
-          continue;
-        }
-        if (this.isRequiresExpressionBrace()) {
-          this.parseRequiresBody();
           continue;
         }
         // A function body.

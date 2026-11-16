@@ -1713,6 +1713,7 @@ export class Formatter {
     let l = head;
     let prev = -1;
     let pend = -1; // where directives found inside the next line's statement start
+    let lastInl = -1; // the last directive line inside the statement being emitted
     while (l >= 0) {
       const f = d.lFirst[l];
       // A directive inside a statement lands after the statement's first token,
@@ -1842,8 +1843,16 @@ export class Formatter {
       }
       // clang-format moves a child block's directive lines out of it: they
       // are no line before the next one.
-      if (!(nested && (d.lType[l] === LT_PREPROCESSOR || d.lPP[l] === 1 || d.lInlineCmt[l] === 1))) {
-        prev = l;
+      // Directives inside a statement follow it in clang-format's line list:
+      // the statement's previous line is the one before them, and the last
+      // of them is the line before the statement's next line.
+      if (inlineLine) {
+        if (!nested) {
+          lastInl = l;
+        }
+      } else if (!(nested && (d.lType[l] === LT_PREPROCESSOR || d.lPP[l] === 1 || d.lInlineCmt[l] === 1))) {
+        prev = lastInl >= 0 ? lastInl : l;
+        lastInl = -1;
       }
       l = d.lSibling[l];
     }

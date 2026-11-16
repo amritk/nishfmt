@@ -1,0 +1,12 @@
+template <typename T> class Span {
+  template <size_t N>
+  constexpr Span(T( // NOLINT(google-explicit-constructor)
+      &a ABSL_ATTRIBUTE_LIFETIME_BOUND)[N]) noexcept
+      : Span(a, N) {}
+  template <size_t N>
+  constexpr Span(T(&a)[N]) noexcept : Span(a, N) {}
+  void f(T ( // c
+      &a)[N]);
+  void g(int ( // c
+      *a)(int));
+};

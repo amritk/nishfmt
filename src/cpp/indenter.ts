@@ -74,6 +74,7 @@ import { Doc } from "./doc";
 import { growI32 } from "../core/arr";
 import { utf8Width } from "../core/uwidth";
 import { Formatter } from "./format";
+import { requiresExprBrace } from "./classify";
 import {
   BK_BLOCK,
   BK_BRACED_INIT,
@@ -1139,7 +1140,11 @@ export class Indenter {
     }
     this.sol = a.nest[cur];
     this.lowest = a.nest[cur];
-    this.flagAll(F_BBP, false);
+    // Any break means the levels around have broken (clang-format's
+    // NestedBlockSpecialCase: not for the `}` of a requires expression).
+    if (!(d.kind[cur] === P_RBRACE && d.match[cur] >= 0 && requiresExprBrace(d, d.match[cur]))) {
+      this.flagAll(F_BBP, false);
+    }
     if (
       pnc >= 0 &&
       pnk !== P_COMMA &&
