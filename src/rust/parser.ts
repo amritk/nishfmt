@@ -2711,9 +2711,28 @@ export class RsParser {
   // ---------------------------------------------------------------- patterns
 
   /** A pattern allowing top-level alternatives, with an optional leading `|`. */
+  /**
+   * A pattern that may start with `|`. As in rustc, a leading `|` makes an or-pattern
+   * whose span starts at the `|`, even with one alternative.
+   */
   parsePatTopAlt(): i32 {
-    this.eatOr();
-    return this.parsePatAlts();
+    const vlo = this.lo();
+    if (!this.eatOr()) {
+      return this.parsePatAlts();
+    }
+    const first = this.parsePatNoTopAlt();
+    if (this.failed) {
+      return -1;
+    }
+    const n = this.nd(N_PAT_OR, vlo);
+    const mark = this.sp;
+    this.push(first);
+    while (this.isOrForPat()) {
+      this.bump();
+      this.push(this.parsePatNoTopAlt());
+    }
+    this.endList(n, mark);
+    return this.fin(n);
   }
 
   parsePatAlts(): i32 {
@@ -4272,6 +4291,9 @@ export class RsParser {
       this.bump();
       const gv116 = this.parsePatTopAlt();
       this.ast.a[s] = gv116;
+      if (!this.failed && this.ast.kind[gv116] === N_PAT_OR) {
+        return this.fail(); // `let` bindings require top-level or-patterns in parentheses
+      }
       if (this.eat(T_COLON)) {
         const gv117 = this.parseTy();
         this.ast.b[s] = gv117;
