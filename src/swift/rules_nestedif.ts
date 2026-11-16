@@ -5,10 +5,12 @@
 // Lockwood).
 
 import { swParsePropertyDeclaration } from "./expr";
+import { swCommentDirective } from "./imports";
 import { SwFormatter } from "./formatter";
 import { swEndOfScope, swSpaceEquivalentToTokens, swStartOfConditionalBranchBody } from "./parsing";
 import { swIsInResultBuilder } from "./rules_simple";
 import {
+  SW_COMMENT,
   SW_DELIM,
   SW_KEYWORD,
   SW_LINEBREAK,
@@ -53,7 +55,17 @@ const swHasComment = (f: SwFormatter, lo: i32, hi: i32): boolean => {
   return false;
 };
 
-const swHasMultilineString = (f: SwFormatter, lo: i32, hi: i32): boolean => {
+/** Whether a comment body in lo ..< hi reads as a comment directive (`word: ...`). */
+const swHasCommentDirective = (f: SwFormatter, lo: i32, hi: i32): boolean => {
+  for (let j = lo; j < hi; j++) {
+    if (f.k(j) === SW_COMMENT && swCommentDirective(f.s(j)).length !== 0) {
+      return true;
+    }
+  }
+  return false;
+};
+
+const swHasMultilineString =(f: SwFormatter, lo: i32, hi: i32): boolean => {
   for (let j = lo; j < hi; j++) {
     if (swIsMultilineStringDelimiter(f.k(j), f.s(j))) {
       return true;
@@ -124,7 +136,7 @@ const swFlattenElseIf = (f: SwFormatter, ifIndex: i32): boolean => {
   if (f.indexAfter(SW_T_NON_SPACE_OR_COMMENT_OR_LINEBREAK, nestedEnd) !== oe) {
     return false;
   }
-  if (swHasComment(f, elseIndex + 1, nestedIfIndex) || swHasComment(f, nestedEnd + 1, oe) || swHasMultilineString(f, nestedIfIndex, nestedEnd + 1)) {
+  if (swHasComment(f, elseIndex + 1, nestedIfIndex) || swHasComment(f, nestedEnd + 1, oe) || swHasMultilineString(f, nestedIfIndex, nestedEnd + 1) || swHasCommentDirective(f, nestedIfIndex, nestedEnd + 1)) {
     return false;
   }
   const outerIndent = f.currentIndentForLine(elseIndex);
@@ -162,6 +174,9 @@ const swNestedIfCommentLines = (f: SwFormatter, lo: i32, hi: i32): i32[] | null 
   const out: i32[] = [];
   if (!swHasComment(f, lo, hi)) {
     return out;
+  }
+  if (swHasCommentDirective(f, lo, hi)) {
+    return null;
   }
   let st = lo;
   for (let j = lo; j <= hi; j++) {
