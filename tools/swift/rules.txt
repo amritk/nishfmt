@@ -106,7 +106,7 @@ redundantSwiftTestingSuite guards swGuardRedundantSwiftTestingSuite bool
 nestedIf rules_nestedif swRuleNestedIf
 preferForLoop guards swGuardPreferForLoop bool
 redundantClosure guards swGuardRedundantClosure bool
-trailingClosures guards swGuardTrailingClosures bool
+trailingClosures rules_trailing swRuleTrailingClosures
 redundantVariable rules_misc2 swRuleRedundantVariable
 simplifyGenericConstraints guards swGuardSimplifyGenericConstraints bool
 repeatedGuard guards swGuardRepeatedGuard bool

@@ -368,7 +368,7 @@ const swSetModifier = (names: string[], ranges: SwTok[][], name: string, toks: S
 };
 
 /** unwrapLine(before:preservingComments: true) (maxWidth is 0). */
-const swUnwrapLine = (f: SwFormatter, tokenIndex: i32): void => {
+export const swUnwrapLine = (f: SwFormatter, tokenIndex: i32): void => {
   const nw = f.indexBefore(SW_T_NON_SPACE_OR_LINEBREAK, tokenIndex);
   if (nw < 0 || f.k(nw) === SW_COMMENT) {
     return;

@@ -138,7 +138,6 @@ import {
   swGuardRepeatedGuard,
   swGuardSimplifyGenericConstraints,
   swGuardSwiftTestingTestCaseNames,
-  swGuardTrailingClosures,
   swGuardYodaConditions,
 } from "./guards";
 import {
@@ -261,6 +260,9 @@ import {
   swRuleRedundantAsync,
   swRuleRedundantThrows,
 } from "./rules_tests";
+import {
+  swRuleTrailingClosures,
+} from "./rules_trailing";
 import {
   swRuleAndOperator,
   swRuleNumberFormatting,
@@ -587,7 +589,8 @@ export const swRunRule = (f: SwFormatter, r: i32): boolean => {
     case SW_RULE_REDUNDANT_CLOSURE:
       return swGuardRedundantClosure(f);
     case SW_RULE_TRAILING_CLOSURES:
-      return swGuardTrailingClosures(f);
+      swRuleTrailingClosures(f);
+      return true;
     case SW_RULE_REDUNDANT_VARIABLE:
       swRuleRedundantVariable(f);
       return true;
