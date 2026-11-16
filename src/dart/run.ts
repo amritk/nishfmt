@@ -6,7 +6,10 @@
 import { Out } from "../core/out";
 import { DtAst, dtNodeName, dtSig, N_NAMED_TYPE } from "./ast";
 import { DtParser } from "./parser";
+import { DtPiece, dtFixedState, dtKids, dtPin } from "./pieces";
 import { DtTokens, dtScan } from "./scanner";
+import { DtBuilder, DtCache, dtSolve } from "./solver";
+import { DtVisitor } from "./visitor";
 
 /** One file's Dart state; a fresh one formats each file, in a region of its own. */
 export class DartEngine {
@@ -55,7 +58,95 @@ export const formatDart = (e: DartEngine, path: string, src: u8[], n: i32, out: 
     dtDumpNode(p.a, toks, u16, unit, 0, out);
     return true;
   }
-  return false;
+  // The language version picks the style: only 3.13 and later are ported.
+  if (toks.verMajor >= 0 && (toks.verMajor < 3 || (toks.verMajor === 3 && toks.verMinor < 13))) {
+    if (e.debug) {
+      console.error(`${path}: language version ${toks.verMajor}.${toks.verMinor} is not ported`);
+    }
+    return false;
+  }
+  const v = new DtVisitor(toks, p.a);
+  const root = v.buildUnit(unit);
+  if (v.failed) {
+    if (e.debug) {
+      console.error(`${path}: ${v.why}`);
+    }
+    return false;
+  }
+  const pageWidth = dtPageWidth(toks);
+  dtPinByPageWidth(root, pageWidth);
+  const cache = new DtCache(pageWidth);
+  const sol = dtSolve(cache, root, -1, 0, 0);
+  const b = new DtBuilder(out, src, n, dtLineEnding(src, n));
+  b.traverse(sol.code);
+  b.finish();
+  return true;
+};
+
+/** A `// dart format width=N` comment before the first token, or 80. */
+const dtPageWidth = (t: DtTokens): i32 => {
+  const first = t.cFirst[1];
+  for (let k = 0; k < t.cCount[1]; k++) {
+    const ci = first + k;
+    const a = t.cStart[ci];
+    const b = t.cEnd[ci];
+    const pre = "// dart format width=";
+    const pn = toI32(pre.length);
+    if (b - a <= pn) {
+      continue;
+    }
+    let ok = true;
+    for (let j = 0; j < pn; j++) {
+      if (toI32(t.src[a + j]) !== pre.charCodeAt(j)) {
+        ok = false;
+        break;
+      }
+    }
+    if (!ok) {
+      continue;
+    }
+    let w = 0;
+    for (let j = a + pn; j < b; j++) {
+      const c = toI32(t.src[j]);
+      if (c < 48 || c > 57) {
+        ok = false;
+        break;
+      }
+      w = w * 10 + c - 48;
+      if (w > 100000000) {
+        ok = false;
+        break;
+      }
+    }
+    if (ok) {
+      return w;
+    }
+  }
+  return 80;
+};
+
+/** "\r\n" when the first line ends with one, else "\n". */
+const dtLineEnding = (src: u8[], n: i32): string => {
+  for (let i = 0; i < n; i++) {
+    const c = toI32(src[i]);
+    if (c === 13) {
+      return i + 1 < n && toI32(src[i + 1]) === 10 ? "\r\n" : "\n";
+    }
+    if (c === 10) {
+      return "\n";
+    }
+  }
+  return "\n";
+};
+
+const dtPinByPageWidth = (p: DtPiece, width: i32): void => {
+  const s = dtFixedState(p, width);
+  if (s >= 0) {
+    dtPin(p, s);
+  }
+  for (const k of dtKids(p)) {
+    dtPinByPageWidth(k, width);
+  }
 };
 
 /** The UTF-16 offset of each byte offset. */
