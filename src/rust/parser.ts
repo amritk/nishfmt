@@ -742,7 +742,8 @@ export class RsParser {
       unsafeWrap = true;
       this.ast.fl[a] = this.ast.fl[a] | AT_UNSAFE;
     }
-    this.ast.a[a] = this.parsePath(PS_MOD);
+    const gv1 = this.parsePath(PS_MOD);
+    this.ast.a[a] = gv1;
     if (this.failed) {
       return -1;
     }
@@ -757,10 +758,12 @@ export class RsParser {
   parseAttrArgs(a: i32): void {
     const k = this.tk();
     if (k === T_LPAREN || k === T_LBRACKET || k === T_LBRACE) {
-      this.ast.b[a] = this.parseTts();
+      const gv2 = this.parseTts();
+      this.ast.b[a] = gv2;
     } else if (k === T_EQ) {
       this.bump();
-      this.ast.c[a] = this.parseExpr();
+      const gv3 = this.parseExpr();
+      this.ast.c[a] = gv3;
     }
   }
 
@@ -1099,7 +1102,8 @@ export class RsParser {
   parseUse(lo: i32): i32 {
     const n = this.nd(N_USE, lo);
     this.bump(); // use
-    this.ast.a[n] = this.parseUseTree();
+    const gv4 = this.parseUseTree();
+    this.ast.a[n] = gv4;
     this.expect(T_SEMI);
     return this.fin(n);
   }
@@ -1201,7 +1205,8 @@ export class RsParser {
   parseForeignMod(lo: i32, isUnsafe: boolean): i32 {
     const n = this.nd(N_FOREIGN_MOD, lo);
     this.bump(); // extern
-    this.ast.x[n] = this.parseAbi();
+    const gv5 = this.parseAbi();
+    this.ast.x[n] = gv5;
     if (isUnsafe) {
       this.ast.fl[n] = IT_UNSAFE;
     }
@@ -1307,7 +1312,8 @@ export class RsParser {
       } else if (k === KW_EXTERN) {
         f = f | FN_EXTERN;
         this.bump();
-        this.ast.x[n] = this.parseAbi();
+        const gv6 = this.parseAbi();
+        this.ast.x[n] = gv6;
       } else {
         break;
       }
@@ -1319,7 +1325,8 @@ export class RsParser {
     this.ast.d[n] = this.itemIdent();
     const g = this.parseGenerics();
     this.ast.a[n] = g;
-    this.ast.b[n] = this.parseFnDecl(true);
+    const gv7 = this.parseFnDecl(true);
+    this.ast.b[n] = gv7;
     this.parseWhereInto(g);
     if (this.failed) {
       return -1;
@@ -1330,7 +1337,8 @@ export class RsParser {
     if (!this.is(T_LBRACE)) {
       return this.fail();
     }
-    this.ast.c[n] = this.parseBlock(this.lo(), 0);
+    const gv8 = this.parseBlock(this.lo(), 0);
+    this.ast.c[n] = gv8;
     return this.fin(n);
   }
 
@@ -1351,7 +1359,8 @@ export class RsParser {
     this.expect(T_RPAREN);
     this.endList(d, mark);
     if (this.eat(T_RARROW)) {
-      this.ast.a[d] = this.parseTyNoPlusOpt(true);
+      const gv9 = this.parseTyNoPlusOpt(true);
+      this.ast.a[d] = gv9;
     }
     return this.fin(d);
   }
@@ -1377,19 +1386,23 @@ export class RsParser {
       return n;
     }
     if (items || this.isNamedParam()) {
-      this.ast.a[n] = this.parsePatNoTopAlt();
+      const gv10 = this.parsePatNoTopAlt();
+      this.ast.a[n] = gv10;
       if (!this.expect(T_COLON)) {
         return -1;
       }
       if (this.is(T_DOTDOTDOT)) {
         const ty = this.nd(N_TY_CVARARGS, this.lo());
         this.bump();
-        this.ast.b[n] = this.fin(ty);
+        const gv11 = this.fin(ty);
+        this.ast.b[n] = gv11;
       } else {
-        this.ast.b[n] = this.parseTy();
+        const gv12 = this.parseTy();
+        this.ast.b[n] = gv12;
       }
     } else {
-      this.ast.b[n] = this.parseTy();
+      const gv13 = this.parseTy();
+      this.ast.b[n] = gv13;
     }
     this.fin(n);
     this.setAttrs(n, am, na);
@@ -1453,7 +1466,8 @@ export class RsParser {
     let f = PA_SELF_VALUE | (mutSelf ? PA_MUT : 0);
     if (this.eat(T_COLON)) {
       f = PA_SELF_EXPLICIT | (mutSelf ? PA_MUT : 0);
-      this.ast.b[n] = this.parseTy();
+      const gv14 = this.parseTy();
+      this.ast.b[n] = gv14;
     }
     this.ast.fl[n] = f;
     return n;
@@ -1501,16 +1515,19 @@ export class RsParser {
       if (this.is(T_COLON)) {
         this.ast.x[n] = this.p;
         this.bump();
-        this.ast.b[n] = this.parseLtBounds();
+        const gv15 = this.parseLtBounds();
+        this.ast.b[n] = gv15;
       }
     } else if (this.isKw(KW_CONST)) {
       this.ast.fl[n] = GP_CONST;
       this.bump();
       this.ast.d[n] = this.identTok();
       this.expect(T_COLON);
-      this.ast.a[n] = this.parseTy();
+      const gv16 = this.parseTy();
+      this.ast.a[n] = gv16;
       if (this.eat(T_EQ)) {
-        this.ast.c[n] = this.parseConstArg();
+        const gv17 = this.parseConstArg();
+        this.ast.c[n] = gv17;
       }
     } else {
       this.ast.fl[n] = GP_TYPE;
@@ -1518,10 +1535,12 @@ export class RsParser {
       if (this.is(T_COLON)) {
         this.ast.x[n] = this.p;
         this.bump();
-        this.ast.b[n] = this.parseBounds(true);
+        const gv18 = this.parseBounds(true);
+        this.ast.b[n] = gv18;
       }
       if (this.eat(T_EQ)) {
-        this.ast.c[n] = this.parseTy();
+        const gv19 = this.parseTy();
+        this.ast.c[n] = gv19;
       }
     }
     this.fin(n);
@@ -1574,7 +1593,8 @@ export class RsParser {
       this.ast.hi[w0] = this.ph;
       return;
     }
-    this.ast.a[g] = this.parseWhere();
+    const gv20 = this.parseWhere();
+    this.ast.a[g] = gv20;
   }
 
   parseWhere(): i32 {
@@ -1593,7 +1613,8 @@ export class RsParser {
         this.ast.d[pr] = this.p;
         this.bump();
         this.expect(T_COLON);
-        this.ast.b[pr] = this.parseLtBounds();
+        const gv21 = this.parseLtBounds();
+        this.ast.b[pr] = gv21;
         this.push(this.fin(pr));
       } else {
         let binder = -1;
@@ -1609,13 +1630,15 @@ export class RsParser {
           const pr = this.nd(N_WPRED_BOUND, lo);
           this.ast.a[pr] = ty;
           this.ast.c[pr] = binder;
-          this.ast.b[pr] = this.parseBounds(true);
+          const gv22 = this.parseBounds(true);
+          this.ast.b[pr] = gv22;
           this.push(this.fin(pr));
         } else if (this.is(T_EQ) || this.is(T_EQEQ)) {
           this.bump();
           const pr = this.nd(N_WPRED_EQ, lo);
           this.ast.a[pr] = ty;
-          this.ast.b[pr] = this.parseTy();
+          const gv23 = this.parseTy();
+          this.ast.b[pr] = gv23;
           this.push(this.fin(pr));
         } else {
           return this.fail();
@@ -1679,7 +1702,8 @@ export class RsParser {
           this.push(this.fin(l));
         } else {
           const ty = this.nd(N_TY_PATH, this.lo());
-          this.ast.b[ty] = this.parsePath(PS_TYPE);
+          const gv24 = this.parsePath(PS_TYPE);
+          this.ast.b[ty] = gv24;
           this.push(this.fin(ty));
         }
         if (!this.eat(T_COMMA)) {
@@ -1707,7 +1731,8 @@ export class RsParser {
     const n = this.nd(N_TRAIT_BOUND, lo);
     let f = 0;
     if (this.isKw(KW_FOR) && this.isLtAt(1)) {
-      this.ast.c[n] = this.parseForBinder();
+      const gv25 = this.parseForBinder();
+      this.ast.c[n] = gv25;
     }
     if (this.is(T_TILDE) && this.laKw(1) === KW_CONST) {
       this.bump();
@@ -1727,10 +1752,12 @@ export class RsParser {
       f = f | TB_NEGATIVE;
     }
     if (this.isKw(KW_FOR) && this.isLtAt(1) && this.ast.c[n] < 0) {
-      this.ast.c[n] = this.parseForBinder();
+      const gv26 = this.parseForBinder();
+      this.ast.c[n] = gv26;
     }
     this.ast.fl[n] = f;
-    this.ast.a[n] = this.parsePath(PS_TYPE);
+    const gv27 = this.parsePath(PS_TYPE);
+    this.ast.a[n] = gv27;
     return this.fin(n);
   }
 
@@ -1758,8 +1785,9 @@ export class RsParser {
         return this.fin(n);
       }
       this.parseRecordBody(vd);
-    } else if (this.eat(T_SEMI)) {
+    } else if (this.is(T_SEMI)) {
       this.parseWhereInto(g);
+      this.bump();
       this.ast.fl[vd] = VD_UNIT;
       this.ast.lo[vd] = this.ph;
       this.ast.hi[vd] = this.ph;
@@ -1788,7 +1816,8 @@ export class RsParser {
       const na = this.outerAttrs();
       const lo = this.lo();
       const f = this.nd(N_FIELD, lo);
-      this.ast.e[f] = this.parseVis();
+      const gv28 = this.parseVis();
+      this.ast.e[f] = gv28;
       if (this.isKw(KW_SAFE) && this.laIsIdent(1)) {
         this.bump();
         this.ast.fl[f] = FD_SAFE;
@@ -1799,9 +1828,11 @@ export class RsParser {
       }
       this.ast.d[f] = this.identTok();
       this.expect(T_COLON);
-      this.ast.a[f] = this.parseTy();
+      const gv29 = this.parseTy();
+      this.ast.a[f] = gv29;
       if (this.eat(T_EQ)) {
-        this.ast.c[f] = this.parseExpr();
+        const gv30 = this.parseExpr();
+        this.ast.c[f] = gv30;
       }
       this.fin(f);
       this.setAttrs(f, am, na);
@@ -1825,10 +1856,13 @@ export class RsParser {
       const na = this.outerAttrs();
       const lo = this.lo();
       const f = this.nd(N_FIELD, lo);
-      this.ast.e[f] = this.parseVis();
-      this.ast.a[f] = this.parseTy();
+      const gv31 = this.parseVis();
+      this.ast.e[f] = gv31;
+      const gv32 = this.parseTy();
+      this.ast.a[f] = gv32;
       if (this.eat(T_EQ)) {
-        this.ast.c[f] = this.parseExpr();
+        const gv33 = this.parseExpr();
+        this.ast.c[f] = gv33;
       }
       this.fin(f);
       this.setAttrs(f, am, na);
@@ -1859,7 +1893,8 @@ export class RsParser {
       const na = this.outerAttrs();
       const vlo = this.lo();
       const v = this.nd(N_VARIANT, vlo);
-      this.ast.e[v] = this.parseVis();
+      const gv34 = this.parseVis();
+      this.ast.e[v] = gv34;
       this.ast.d[v] = this.identTok();
       const vd = this.nd(N_VDATA, this.lo());
       this.ast.b[v] = vd;
@@ -1873,7 +1908,8 @@ export class RsParser {
         this.ast.hi[vd] = this.ph;
       }
       if (this.eat(T_EQ)) {
-        this.ast.c[v] = this.parseExpr();
+        const gv35 = this.parseExpr();
+        this.ast.c[v] = gv35;
       }
       this.fin(v);
       this.setAttrs(v, am, na);
@@ -1897,12 +1933,14 @@ export class RsParser {
     const g = this.parseGenerics();
     this.ast.a[n] = g;
     if (this.eat(T_COLON)) {
-      this.ast.b[n] = this.parseBounds(true);
+      const gv36 = this.parseBounds(true);
+      this.ast.b[n] = gv36;
     }
     if (this.eat(T_EQ)) {
       // A trait alias.
       this.ast.kind[n] = N_TRAIT_ALIAS;
-      this.ast.b[n] = this.parseBounds(true);
+      const gv37 = this.parseBounds(true);
+      this.ast.b[n] = gv37;
       this.parseWhereInto(g);
       this.expect(T_SEMI);
       return this.fin(n);
@@ -1963,7 +2001,8 @@ export class RsParser {
     }
     if (this.eatKw(KW_FOR)) {
       this.ast.b[n] = ty1;
-      this.ast.c[n] = this.parseTy();
+      const gv38 = this.parseTy();
+      this.ast.c[n] = gv38;
     } else {
       this.ast.c[n] = ty1;
     }
@@ -2001,13 +2040,16 @@ export class RsParser {
     const g = this.parseGenerics();
     this.ast.a[n] = g;
     if (this.eat(T_COLON)) {
-      this.ast.b[n] = this.parseBounds(true);
+      const gv39 = this.parseBounds(true);
+      this.ast.b[n] = gv39;
     }
     this.parseWhereInto(g);
     if (this.eat(T_EQ)) {
-      this.ast.c[n] = this.parseTy();
+      const gv40 = this.parseTy();
+      this.ast.c[n] = gv40;
       if (this.isKw(KW_WHERE)) {
-        this.ast.x[n] = this.parseWhere();
+        const gv41 = this.parseWhere();
+        this.ast.x[n] = gv41;
       }
     }
     this.expect(T_SEMI);
@@ -2024,12 +2066,14 @@ export class RsParser {
     const g = this.parseGenerics();
     this.ast.a[n] = g;
     if (this.eat(T_COLON)) {
-      this.ast.b[n] = this.parseTy();
+      const gv42 = this.parseTy();
+      this.ast.b[n] = gv42;
     } else {
       return this.fail();
     }
     if (this.eat(T_EQ)) {
-      this.ast.c[n] = this.parseExpr();
+      const gv43 = this.parseExpr();
+      this.ast.c[n] = gv43;
     }
     this.parseWhereInto(g);
     this.expect(T_SEMI);
@@ -2046,9 +2090,11 @@ export class RsParser {
     this.ast.fl[n] = f;
     this.ast.d[n] = this.itemIdent();
     this.expect(T_COLON);
-    this.ast.b[n] = this.parseTy();
+    const gv44 = this.parseTy();
+    this.ast.b[n] = gv44;
     if (this.eat(T_EQ)) {
-      this.ast.c[n] = this.parseExpr();
+      const gv45 = this.parseExpr();
+      this.ast.c[n] = gv45;
     }
     this.expect(T_SEMI);
     return this.fin(n);
@@ -2076,12 +2122,14 @@ export class RsParser {
     this.bump(); // macro
     this.ast.d[n] = this.identTok();
     if (this.is(T_LPAREN)) {
-      this.ast.b[n] = this.parseTts();
+      const gv46 = this.parseTts();
+      this.ast.b[n] = gv46;
     }
     if (!this.is(T_LBRACE)) {
       return this.fail();
     }
-    this.ast.a[n] = this.parseTts();
+    const gv47 = this.parseTts();
+    this.ast.a[n] = gv47;
     return this.fin(n);
   }
 
@@ -2112,14 +2160,17 @@ export class RsParser {
           this.bump();
         }
         if (this.isLt()) {
-          this.ast.a[sg] = this.parseAngleArgs();
+          const gv48 = this.parseAngleArgs();
+          this.ast.a[sg] = gv48;
         } else if (this.is(T_LPAREN)) {
-          this.ast.a[sg] = this.parseParenArgs();
+          const gv49 = this.parseParenArgs();
+          this.ast.a[sg] = gv49;
         }
       } else if (style === PS_EXPR) {
         if (this.is(T_COLONCOLON) && this.isLtAt(1)) {
           this.bump();
-          this.ast.a[sg] = this.parseAngleArgs();
+          const gv50 = this.parseAngleArgs();
+          this.ast.a[sg] = gv50;
         }
       }
       this.fin(sg);
@@ -2212,7 +2263,8 @@ export class RsParser {
     if (this.is(T_LBRACE)) {
       const lo = this.lo();
       const e = this.nd(N_EX_BLOCK, lo);
-      this.ast.a[e] = this.parseBlock(lo, 0);
+      const gv51 = this.parseBlock(lo, 0);
+      this.ast.a[e] = gv51;
       return this.fin(e);
     }
     if (this.isConstArgStart()) {
@@ -2221,7 +2273,8 @@ export class RsParser {
     // A path.
     const lo = this.lo();
     const e = this.nd(N_EX_PATH, lo);
-    this.ast.b[e] = this.parsePath(PS_EXPR);
+    const gv52 = this.parsePath(PS_EXPR);
+    this.ast.b[e] = gv52;
     return this.fin(e);
   }
 
@@ -2231,7 +2284,8 @@ export class RsParser {
       const u = this.nd(N_EX_UNARY, lo);
       this.bump();
       this.ast.x[u] = UN_NEG;
-      this.ast.a[u] = this.parseLit();
+      const gv53 = this.parseLit();
+      this.ast.a[u] = gv53;
       return this.fin(u);
     }
     return this.parseLit();
@@ -2260,13 +2314,16 @@ export class RsParser {
     this.ast.a[c] = ga;
     if (this.eat(T_EQ)) {
       if (this.isConstArgStart()) {
-        this.ast.e[c] = this.parseConstArg();
+        const gv54 = this.parseConstArg();
+        this.ast.e[c] = gv54;
       } else {
-        this.ast.b[c] = this.parseTy();
+        const gv55 = this.parseTy();
+        this.ast.b[c] = gv55;
       }
     } else {
       this.expect(T_COLON);
-      this.ast.c[c] = this.parseBounds(true);
+      const gv56 = this.parseBounds(true);
+      this.ast.c[c] = gv56;
     }
     return this.fin(c);
   }
@@ -2291,7 +2348,8 @@ export class RsParser {
     this.expect(T_RPAREN);
     this.endList(g, mark);
     if (this.eat(T_RARROW)) {
-      this.ast.a[g] = this.parseTyNoPlusOpt(false);
+      const gv57 = this.parseTyNoPlusOpt(false);
+      this.ast.a[g] = gv57;
     }
     return this.fin(g);
   }
@@ -2303,7 +2361,8 @@ export class RsParser {
     const lo = this.lo();
     const q = this.nd(N_QSELF, lo);
     this.eatLt();
-    this.ast.a[q] = this.parseTy();
+    const gv58 = this.parseTy();
+    this.ast.a[q] = gv58;
     const pa = this.nd(N_PATH, lo);
     const mark = this.sp;
     let pos = 0;
@@ -2402,7 +2461,8 @@ export class RsParser {
       } else {
         return this.fail();
       }
-      this.ast.a[ty] = this.parseTyNoPlus();
+      const gv59 = this.parseTyNoPlus();
+      this.ast.a[ty] = gv59;
       return this.fin(ty);
     }
     if (k === T_LBRACKET) {
@@ -2411,7 +2471,8 @@ export class RsParser {
       if (this.eat(T_SEMI)) {
         ty = this.nd(N_TY_ARRAY, lo);
         this.ast.a[ty] = elem;
-        this.ast.b[ty] = this.parseExpr();
+        const gv60 = this.parseExpr();
+        this.ast.b[ty] = gv60;
       } else {
         ty = this.nd(N_TY_SLICE, lo);
         this.ast.a[ty] = elem;
@@ -2429,7 +2490,8 @@ export class RsParser {
       if (this.eatKw(KW_MUT)) {
         this.ast.fl[ty] = MUT;
       }
-      this.ast.a[ty] = this.parseTyNoPlus();
+      const gv61 = this.parseTyNoPlus();
+      this.ast.a[ty] = gv61;
       return this.fin(ty);
     }
     if (kk === KW_UNDERSCORE) {
@@ -2449,7 +2511,8 @@ export class RsParser {
       const b = this.nd(N_BOUNDS, lo);
       const tb = this.nd(N_TRAIT_BOUND, lo);
       this.ast.c[tb] = binder;
-      this.ast.a[tb] = this.parsePath(PS_TYPE);
+      const gv62 = this.parsePath(PS_TYPE);
+      this.ast.a[tb] = gv62;
       this.fin(tb);
       const mark = this.sp;
       this.push(tb);
@@ -2470,14 +2533,16 @@ export class RsParser {
     if (kk === KW_IMPL) {
       ty = this.nd(N_TY_IMPL, lo);
       this.bump();
-      this.ast.b[ty] = this.parseBounds(allowPlus);
+      const gv63 = this.parseBounds(allowPlus);
+      this.ast.b[ty] = gv63;
       return this.fin(ty);
     }
     if (kk === KW_DYN && this.canBeginBoundAt1()) {
       ty = this.nd(N_TY_DYN, lo);
       this.bump();
       this.ast.fl[ty] = TY_DYN;
-      this.ast.b[ty] = this.parseBounds(allowPlus);
+      const gv64 = this.parseBounds(allowPlus);
+      this.ast.b[ty] = gv64;
       return this.fin(ty);
     }
     if (k === T_LT || k === T_SHL) {
@@ -2507,7 +2572,8 @@ export class RsParser {
         this.bump();
         const mac = this.nd(N_MAC, lo);
         this.ast.a[mac] = pa;
-        this.ast.b[mac] = this.parseTts();
+        const gv65 = this.parseTts();
+        this.ast.b[mac] = gv65;
         this.fin(mac);
         ty = this.nd(N_TY_MAC, lo);
         this.ast.a[ty] = mac;
@@ -2580,7 +2646,8 @@ export class RsParser {
 
   parseBareTraitObject(lo: i32, allowPlus: boolean): i32 {
     const ty = this.nd(N_TY_DYN, lo);
-    this.ast.b[ty] = this.parseBounds(allowPlus);
+    const gv66 = this.parseBounds(allowPlus);
+    this.ast.b[ty] = gv66;
     return this.fin(ty);
   }
 
@@ -2619,14 +2686,16 @@ export class RsParser {
       } else if (k === KW_EXTERN) {
         f = f | FN_EXTERN;
         this.bump();
-        this.ast.x[ty] = this.parseAbi();
+        const gv67 = this.parseAbi();
+        this.ast.x[ty] = gv67;
       } else {
         break;
       }
     }
     this.ast.fl[ty] = f;
     this.bump(); // fn
-    this.ast.b[ty] = this.parseFnDecl(false);
+    const gv68 = this.parseFnDecl(false);
+    this.ast.b[ty] = gv68;
     return this.fin(ty);
   }
 
@@ -2686,16 +2755,19 @@ export class RsParser {
     if (this.isKw(KW_CONST) && this.la(1) === T_LBRACE) {
       this.bump();
       const e = this.nd(N_EX_CONST_BLOCK, lo);
-      this.ast.a[e] = this.parseBlock(this.lo(), 0);
+      const gv69 = this.parseBlock(this.lo(), 0);
+      this.ast.a[e] = gv69;
       return this.fin(e);
     }
     if (this.isPathStart()) {
       const e = this.nd(N_EX_PATH, lo);
       if (this.isLt()) {
-        this.ast.a[e] = this.parseQPath(PS_EXPR);
+        const gv70 = this.parseQPath(PS_EXPR);
+        this.ast.a[e] = gv70;
         this.ast.b[e] = this.qpPath;
       } else {
-        this.ast.b[e] = this.parsePath(PS_EXPR);
+        const gv71 = this.parsePath(PS_EXPR);
+        this.ast.b[e] = gv71;
       }
       return this.fin(e);
     }
@@ -2716,7 +2788,8 @@ export class RsParser {
     }
     this.bump();
     if (this.isPatRangeEnd() && !(k === T_DOTDOT && this.isPatTerminator())) {
-      this.ast.b[n] = this.parseRangeEnd();
+      const gv72 = this.parseRangeEnd();
+      this.ast.b[n] = gv72;
     }
     return this.fin(n);
   }
@@ -2742,7 +2815,8 @@ export class RsParser {
       if (this.eatKw(KW_MUT)) {
         this.ast.fl[pat] = MUT;
       }
-      this.ast.a[pat] = this.parsePatRange(false);
+      const gv73 = this.parsePatRange(false);
+      this.ast.a[pat] = gv73;
       return this.fin(pat);
     }
     if (k === T_LPAREN) {
@@ -2814,7 +2888,8 @@ export class RsParser {
     if (kk === KW_BOX) {
       pat = this.nd(N_PAT_BOX, lo);
       this.bump();
-      this.ast.a[pat] = this.parsePatRange(false);
+      const gv74 = this.parsePatRange(false);
+      this.ast.a[pat] = gv74;
       return this.fin(pat);
     }
     if (kk === KW_CONST && this.la(1) === T_LBRACE) {
@@ -2855,7 +2930,8 @@ export class RsParser {
         this.bump();
         const mac = this.nd(N_MAC, lo);
         this.ast.a[mac] = pa;
-        this.ast.b[mac] = this.parseTts();
+        const gv75 = this.parseTts();
+        this.ast.b[mac] = gv75;
         this.fin(mac);
         pat = this.nd(N_PAT_MAC, lo);
         this.ast.a[pat] = mac;
@@ -2931,7 +3007,8 @@ export class RsParser {
     }
     this.ast.d[pat] = this.identTok();
     if (this.eat(T_AT)) {
-      this.ast.a[pat] = this.parsePatRange(true);
+      const gv76 = this.parsePatRange(true);
+      this.ast.a[pat] = gv76;
     }
     return this.fin(pat);
   }
@@ -2957,7 +3034,8 @@ export class RsParser {
         this.ast.d[f] = this.p;
         this.bump();
         this.bump();
-        this.ast.a[f] = this.parsePatTopAlt();
+        const gv77 = this.parsePatTopAlt();
+        this.ast.a[f] = gv77;
       } else {
         // Shorthand: `ref mut x`, `box x`, `x`.
         let isBox = false;
@@ -3104,7 +3182,8 @@ export class RsParser {
         this.bump();
         const c = this.nd(N_EX_CAST, lo);
         this.ast.a[c] = lhs;
-        this.ast.b[c] = this.parseTyNoPlus();
+        const gv78 = this.parseTyNoPlus();
+        this.ast.b[c] = gv78;
         lhs = this.fin(c);
         continue;
       }
@@ -3116,7 +3195,8 @@ export class RsParser {
           this.ast.fl[r] = RANGE_CLOSED;
         }
         if (this.isRangeRhsStart()) {
-          this.ast.b[r] = this.parseExprAssoc(P_RANGE + 1);
+          const gv79 = this.parseExprAssoc(P_RANGE + 1);
+          this.ast.b[r] = gv79;
         }
         lhs = this.fin(r);
         break;
@@ -3153,7 +3233,8 @@ export class RsParser {
       this.ast.fl[r] = RANGE_CLOSED;
     }
     if (this.isRangeRhsStart()) {
-      this.ast.b[r] = this.parseExprAssoc(P_RANGE + 1);
+      const gv80 = this.parseExprAssoc(P_RANGE + 1);
+      this.ast.b[r] = gv80;
     }
     return this.fin(r);
   }
@@ -3239,7 +3320,8 @@ export class RsParser {
       this.bump();
       const u = this.nd(N_EX_UNARY, lo);
       this.ast.x[u] = k === T_NOT ? UN_NOT : k === T_MINUS ? UN_NEG : UN_DEREF;
-      this.ast.a[u] = this.parseExprPrefix();
+      const gv81 = this.parseExprPrefix();
+      this.ast.a[u] = gv81;
       return this.fin(u);
     }
     if (k === T_AND || k === T_ANDAND) {
@@ -3258,7 +3340,8 @@ export class RsParser {
         f = MUT;
       }
       this.ast.fl[u] = f;
-      this.ast.a[u] = this.parseExprPrefix();
+      const gv82 = this.parseExprPrefix();
+      this.ast.a[u] = gv82;
       return this.fin(u);
     }
     if (this.isKw(KW_BOX) && this.canBeginExprAt1()) {
@@ -3307,7 +3390,8 @@ export class RsParser {
         this.bump();
         const ix = this.nd(N_EX_INDEX, lo);
         this.ast.a[ix] = e;
-        this.ast.b[ix] = this.parseExprRes(0);
+        const gv83 = this.parseExprRes(0);
+        this.ast.b[ix] = gv83;
         this.expect(T_RBRACKET);
         e = this.fin(ix);
         continue;
@@ -3459,7 +3543,8 @@ export class RsParser {
       if (this.eat(T_SEMI)) {
         const rp = this.nd(N_EX_REPEAT, lo);
         this.ast.a[rp] = first;
-        this.ast.b[rp] = this.parseExprAssoc(0);
+        const gv84 = this.parseExprAssoc(0);
+        this.ast.b[rp] = gv84;
         this.expect(T_RBRACKET);
         this.res = old;
         return this.fin(rp);
@@ -3530,7 +3615,8 @@ export class RsParser {
       if (this.la(1) === T_LBRACE) {
         this.bump();
         const cb = this.nd(N_EX_CONST_BLOCK, lo);
-        this.ast.a[cb] = this.parseBlock(this.lo(), 0);
+        const gv85 = this.parseBlock(this.lo(), 0);
+        this.ast.a[cb] = gv85;
         return this.fin(cb);
       }
       return this.parseClosure(lo);
@@ -3538,14 +3624,16 @@ export class RsParser {
     if (kk === KW_TRY && this.la(1) === T_LBRACE) {
       this.bump();
       const tb = this.nd(N_EX_TRY_BLOCK, lo);
-      this.ast.a[tb] = this.parseBlock(this.lo(), 0);
+      const gv86 = this.parseBlock(this.lo(), 0);
+      this.ast.a[tb] = gv86;
       return this.fin(tb);
     }
     if (kk === KW_RETURN) {
       this.bump();
       const r = this.nd(N_EX_RET, lo);
       if (this.canBeginExpr()) {
-        this.ast.a[r] = this.parseExprAssoc(0);
+        const gv87 = this.parseExprAssoc(0);
+        this.ast.a[r] = gv87;
       }
       return this.fin(r);
     }
@@ -3566,7 +3654,8 @@ export class RsParser {
         this.bump();
       }
       if (this.canBeginExpr() && !(this.is(T_LBRACE) && (this.res & R_NO_STRUCT) !== 0)) {
-        this.ast.a[b] = this.parseExprAssoc(0);
+        const gv88 = this.parseExprAssoc(0);
+        this.ast.a[b] = gv88;
       }
       return this.fin(b);
     }
@@ -3574,14 +3663,16 @@ export class RsParser {
       this.bump();
       const y = this.nd(N_EX_YIELD, lo);
       if (this.canBeginExpr()) {
-        this.ast.a[y] = this.parseExprAssoc(0);
+        const gv89 = this.parseExprAssoc(0);
+        this.ast.a[y] = gv89;
       }
       return this.fin(y);
     }
     if (kk === KW_BECOME) {
       this.bump();
       const y = this.nd(N_EX_BECOME, lo);
-      this.ast.a[y] = this.parseExprAssoc(0);
+      const gv90 = this.parseExprAssoc(0);
+      this.ast.a[y] = gv90;
       return this.fin(y);
     }
     if (kk === KW_DO && this.la(1) === T_IDENT) {
@@ -3590,14 +3681,16 @@ export class RsParser {
     if (kk === KW_LET) {
       this.bump();
       const le = this.nd(N_EX_LET, lo);
-      this.ast.a[le] = this.parsePatTopAlt();
+      const gv91 = this.parsePatTopAlt();
+      this.ast.a[le] = gv91;
       if (!this.expect(T_EQ)) {
         return -1;
       }
       const old = this.res;
       this.res = old & ~R_STMT_EXPR;
       // The scrutinee stops before `&&` and `||`.
-      this.ast.b[le] = this.parseExprAssoc(P_COMPARE);
+      const gv92 = this.parseExprAssoc(P_COMPARE);
+      this.ast.b[le] = gv92;
       this.res = old;
       return this.fin(le);
     }
@@ -3614,7 +3707,8 @@ export class RsParser {
         if (this.eatKw(KW_MOVE)) {
           this.ast.fl[ab] = CL_MOVE;
         }
-        this.ast.a[ab] = this.parseBlock(this.lo(), 0);
+        const gv93 = this.parseBlock(this.lo(), 0);
+        this.ast.a[ab] = gv93;
         return this.fin(ab);
       }
       return this.parseClosure(lo);
@@ -3643,7 +3737,8 @@ export class RsParser {
         this.bump();
         const mac = this.nd(N_MAC, lo);
         this.ast.a[mac] = pa;
-        this.ast.b[mac] = this.parseTts();
+        const gv94 = this.parseTts();
+        this.ast.b[mac] = gv94;
         this.fin(mac);
         const e = this.nd(N_EX_MAC, lo);
         this.ast.a[e] = mac;
@@ -3674,7 +3769,8 @@ export class RsParser {
           this.ast.fl[s] = ST_REST;
         } else {
           this.ast.fl[s] = ST_BASE;
-          this.ast.c[s] = this.parseExprAssoc(0);
+          const gv95 = this.parseExprAssoc(0);
+          this.ast.c[s] = gv95;
         }
         break;
       }
@@ -3687,7 +3783,8 @@ export class RsParser {
         this.ast.d[f] = this.p;
         this.bump();
         this.bump();
-        this.ast.a[f] = this.parseExprAssoc(0);
+        const gv96 = this.parseExprAssoc(0);
+        this.ast.a[f] = gv96;
       } else if (tk === T_IDENT) {
         // Shorthand.
         const pe = this.nd(N_EX_PATH, flo);
@@ -3725,7 +3822,8 @@ export class RsParser {
     const c = this.nd(N_EX_CLOSURE, lo);
     let f = 0;
     if (this.isKw(KW_FOR) && this.isLtAt(1)) {
-      this.ast.c[c] = this.parseForBinder();
+      const gv97 = this.parseForBinder();
+      this.ast.c[c] = gv97;
     }
     if (this.eatKw(KW_CONST)) {
       f = f | CL_CONST;
@@ -3757,7 +3855,8 @@ export class RsParser {
         const pat = this.parsePatNoTopAlt();
         this.ast.a[pn] = pat;
         if (this.eat(T_COLON)) {
-          this.ast.b[pn] = this.parseTy();
+          const gv98 = this.parseTy();
+          this.ast.b[pn] = gv98;
         } else if (pat >= 0) {
           const it = this.nd(N_TY_INFER, this.ast.lo[pat]);
           this.ast.hi[it] = this.ast.hi[pat];
@@ -3777,18 +3876,21 @@ export class RsParser {
     this.endList(decl, mark);
     const old = this.res;
     if (this.eat(T_RARROW)) {
-      this.ast.a[decl] = this.parseTyNoPlus();
+      const gv99 = this.parseTyNoPlus();
+      this.ast.a[decl] = gv99;
       this.fin(decl);
       if (!this.is(T_LBRACE)) {
         return this.fail();
       }
       this.res = old & ~(R_STMT_EXPR | R_ALLOW_LET);
-      this.ast.a[c] = this.parseBlockExpr(this.lo(), -1, 0);
+      const gv100 = this.parseBlockExpr(this.lo(), -1, 0);
+      this.ast.a[c] = gv100;
       this.res = old;
     } else {
       this.fin(decl);
       this.res = old & ~(R_STMT_EXPR | R_ALLOW_LET);
-      this.ast.a[c] = this.parseExprAssoc(0);
+      const gv101 = this.parseExprAssoc(0);
+      this.ast.a[c] = gv101;
       this.res = old;
     }
     this.ast.b[c] = decl;
@@ -3802,18 +3904,22 @@ export class RsParser {
   parseIf(lo: i32): i32 {
     const n = this.nd(N_EX_IF, lo);
     this.bump(); // if
-    this.ast.a[n] = this.parseCond();
+    const gv102 = this.parseCond();
+    this.ast.a[n] = gv102;
     if (!this.is(T_LBRACE)) {
       return this.fail();
     }
-    this.ast.b[n] = this.parseBlock(this.lo(), 0);
+    const gv103 = this.parseBlock(this.lo(), 0);
+    this.ast.b[n] = gv103;
     if (this.isKw(KW_ELSE)) {
       this.bump();
       const elo = this.lo();
       if (this.isKw(KW_IF)) {
-        this.ast.c[n] = this.parseIf(elo);
+        const gv104 = this.parseIf(elo);
+        this.ast.c[n] = gv104;
       } else if (this.is(T_LBRACE)) {
-        this.ast.c[n] = this.parseBlockExpr(elo, -1, 0);
+        const gv105 = this.parseBlockExpr(elo, -1, 0);
+        this.ast.c[n] = gv105;
       } else {
         return this.fail();
       }
@@ -3825,11 +3931,13 @@ export class RsParser {
     const n = this.nd(N_EX_WHILE, lo);
     this.ast.d[n] = label;
     this.bump(); // while
-    this.ast.a[n] = this.parseCond();
+    const gv106 = this.parseCond();
+    this.ast.a[n] = gv106;
     if (!this.is(T_LBRACE)) {
       return this.fail();
     }
-    this.ast.b[n] = this.parseBlock(this.lo(), 0);
+    const gv107 = this.parseBlock(this.lo(), 0);
+    this.ast.b[n] = gv107;
     return this.fin(n);
   }
 
@@ -3840,7 +3948,8 @@ export class RsParser {
     if (!this.is(T_LBRACE)) {
       return this.fail();
     }
-    this.ast.b[n] = this.parseBlock(this.lo(), 0);
+    const gv108 = this.parseBlock(this.lo(), 0);
+    this.ast.b[n] = gv108;
     return this.fin(n);
   }
 
@@ -3852,22 +3961,26 @@ export class RsParser {
       this.bump();
       this.ast.fl[n] = FOR_AWAIT;
     }
-    this.ast.a[n] = this.parsePatTopAlt();
+    const gv109 = this.parsePatTopAlt();
+    this.ast.a[n] = gv109;
     if (!this.eatKw(KW_IN)) {
       return this.fail();
     }
-    this.ast.b[n] = this.parseExprRes(R_NO_STRUCT);
+    const gv110 = this.parseExprRes(R_NO_STRUCT);
+    this.ast.b[n] = gv110;
     if (!this.is(T_LBRACE)) {
       return this.fail();
     }
-    this.ast.c[n] = this.parseBlock(this.lo(), 0);
+    const gv111 = this.parseBlock(this.lo(), 0);
+    this.ast.c[n] = gv111;
     return this.fin(n);
   }
 
   parseMatch(lo: i32): i32 {
     const n = this.nd(N_EX_MATCH, lo);
     this.bump(); // match
-    this.ast.a[n] = this.parseExprRes(R_NO_STRUCT);
+    const gv112 = this.parseExprRes(R_NO_STRUCT);
+    this.ast.a[n] = gv112;
     if (!this.is(T_LBRACE)) {
       return this.fail();
     }
@@ -3885,9 +3998,11 @@ export class RsParser {
       const alo = this.lo();
       const arm = this.nd(N_ARM, alo);
       this.res = 0;
-      this.ast.a[arm] = this.parsePatTopAlt();
+      const gv113 = this.parsePatTopAlt();
+      this.ast.a[arm] = gv113;
       if (this.eatKw(KW_IF)) {
-        this.ast.b[arm] = this.parseExprRes(R_ALLOW_LET);
+        const gv114 = this.parseExprRes(R_ALLOW_LET);
+        this.ast.b[arm] = gv114;
       }
       if (this.failed) {
         break;
@@ -3924,7 +4039,8 @@ export class RsParser {
   parseBlockExpr(lo: i32, label: i32, rules: i32): i32 {
     const e = this.nd(N_EX_BLOCK, lo);
     this.ast.d[e] = label;
-    this.ast.a[e] = this.parseBlock(lo, rules);
+    const gv115 = this.parseBlock(lo, rules);
+    this.ast.a[e] = gv115;
     return this.fin(e);
   }
 
@@ -4040,18 +4156,22 @@ export class RsParser {
     if (this.isKw(KW_LET)) {
       s = this.nd(N_LOCAL, lo);
       this.bump();
-      this.ast.a[s] = this.parsePatTopAlt();
+      const gv116 = this.parsePatTopAlt();
+      this.ast.a[s] = gv116;
       if (this.eat(T_COLON)) {
-        this.ast.b[s] = this.parseTy();
+        const gv117 = this.parseTy();
+        this.ast.b[s] = gv117;
       }
       if (this.eat(T_EQ)) {
-        this.ast.c[s] = this.parseExprRes(0);
+        const gv118 = this.parseExprRes(0);
+        this.ast.c[s] = gv118;
         if (this.isKw(KW_ELSE)) {
           this.bump();
           if (!this.is(T_LBRACE)) {
             return this.fail();
           }
-          this.ast.x[s] = this.parseBlock(this.lo(), 0);
+          const gv119 = this.parseBlock(this.lo(), 0);
+          this.ast.x[s] = gv119;
         }
       }
       if (!this.expect(T_SEMI)) {

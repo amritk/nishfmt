@@ -157,6 +157,12 @@ export const N_STMT_SEMI: i32 = 154; // a: expr
 export const N_STMT_EMPTY: i32 = 155;
 export const N_STMT_MAC: i32 = 156; // a: N_MAC; fl: MS_*
 
+// ---- Formatter-made nodes
+export const N_META: i32 = 160; // a: path, b: list args node or -1 (list: inner metas), d: name-value lit token or -1; x: MK_*
+export const N_META_LIT: i32 = 161; // d: literal token
+export const N_MACRO_KW: i32 = 162; // d: keyword token (a macro argument)
+export const N_MACRO_ARGS: i32 = 163; // list: parsed macro args; x: delimiter style; fl: MA_*
+
 // ---- Flags
 export const AT_INNER: i32 = 1;
 export const AT_DOC: i32 = 2;
