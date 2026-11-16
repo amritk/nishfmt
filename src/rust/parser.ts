@@ -1756,9 +1756,13 @@ export class RsParser {
     } else if (this.eat(T_NOT)) {
       f = f | TB_NEGATIVE;
     }
-    if (this.isKw(KW_FOR) && this.isLtAt(1) && this.ast.c[n] < 0) {
-      const gv26 = this.parseForBinder();
-      this.ast.c[n] = gv26;
+    // rustc reports a binder with `?`/`!` (BinderAndPolarity) and a binder after the
+    // modifiers (BinderBeforeModifiers): errors it recovers from.
+    if (this.ast.c[n] >= 0 && (f & (TB_MAYBE | TB_NEGATIVE)) !== 0) {
+      return this.fail();
+    }
+    if (this.isKw(KW_FOR) && this.isLtAt(1)) {
+      return this.fail();
     }
     this.ast.fl[n] = f;
     const gv27 = this.parsePath(PS_TYPE);
@@ -3854,6 +3858,11 @@ export class RsParser {
       const flo = this.lo();
       const f = this.nd(N_EXFIELD, flo);
       const tk = this.tk();
+      if (tk === T_IDENT && this.off < 0 && rsIsReserved(this.kw())) {
+        // parse_field_name: a keyword (`_` too) is not a field name.
+        this.failed = true;
+        break;
+      }
       if ((tk === T_IDENT || tk === T_INT) && this.la(1) === T_COLON) {
         this.ast.d[f] = this.p;
         this.bump();
