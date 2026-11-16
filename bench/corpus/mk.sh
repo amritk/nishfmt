@@ -28,10 +28,14 @@ case $lang in
   cs) pat=(-name '*.cs') ;;
   *) echo "unknown language $lang" >&2; exit 2 ;;
 esac
+# C++: files over 250 KB (generated tables, fused single headers) take
+# clang-format minutes each, so they are left out.
+size=-2M
+[ "$lang" = cpp ] && size=-250k
 d=$CORPUS/$lang
 rm -rf "$d" && mkdir -p "$d/raw"
 for r in $(awk -v l="$lang" '$1==l{print $2}' "$here/repos.txt" | tr / _); do
-  (cd "$REPOS" && find "$r" -type f \( "${pat[@]}" \) -not -path '*/.git/*' -size -2M -print0 | tar --null -cf - -T -) \
+  (cd "$REPOS" && find "$r" -type f \( "${pat[@]}" \) -not -path '*/.*/*' -size $size -print0 | tar --null -cf - -T -) \
     | (cd "$d/raw" && tar xf -)
 done
 # Ruby: a fixed sample of 2000 files (RuboCop is slow).
@@ -47,10 +51,12 @@ cd "$d/ref"
 case $lang in
   cpp) find . -type f -print0 | xargs -0 -P"$(nproc)" -I{} sh -c \
          'clang-format -i --style="{BasedOnStyle: LLVM, ColumnLimit: 120}" "$1" 2>/dev/null || echo "$1" >> ../failed.txt' _ {} ;;
+  # A batch that fails is redone file by file from the raw copies: neither
+  # tool is idempotent on every file, so none may be formatted twice.
   java) find . -type f -print0 | xargs -0 -P"$(nproc)" -n 200 sh -c \
-          'for f; do :; done; java -jar '"$GJF"' --replace "$@" 2>/dev/null || for f; do java -jar '"$GJF"' --replace "$f" 2>/dev/null || echo "$f" >> ../failed.txt; done' _ ;;
+          'java -jar '"$GJF"' --replace "$@" 2>/dev/null || for f; do cp "../raw/$f" "$f"; java -jar '"$GJF"' --replace "$f" 2>/dev/null || echo "$f" >> ../failed.txt; done' _ ;;
   kt) find . -type f -print0 | xargs -0 -P"$(nproc)" -n 300 sh -c \
-        'java -jar '"$KTFMT"' "$@" >/dev/null 2>&1 || for f; do java -jar '"$KTFMT"' "$f" >/dev/null 2>&1 || echo "$f" >> ../failed.txt; done' _ ;;
+        'java -jar '"$KTFMT"' "$@" >/dev/null 2>&1 || for f; do cp "../raw/$f" "$f"; java -jar '"$KTFMT"' "$f" >/dev/null 2>&1 || echo "$f" >> ../failed.txt; done' _ ;;
   rb) printf 'AllCops:\n  TargetRubyVersion: 3.3\n' > ../rubocop.yml
       find . -type f -print0 | xargs -0 -P"$(nproc)" -n 100 sh -c \
         'rubocop -a -c ../rubocop.yml --cache false --format quiet "$@" >/dev/null 2>&1; true' _

@@ -12,13 +12,26 @@ import { KLexemes } from "./lexer";
 import { KMultilineStrings } from "./mlstring";
 import { KParser } from "./parser";
 import { KPasses } from "./passes";
-import { ktTypeName } from "./types";
+import { T_WHITE_SPACE, ktTypeName } from "./types";
 import { KVisitor } from "./visitor";
+
+// FFKPROF: nanoseconds per phase, summed over a worker's files (module
+// storage outlives the per-file regions): 1 parse, 2 passes, 3 tokenize,
+// 4 visit, 5 layout, 6 the rest; 7 counts parses; 8-10 split parsing into
+// lexing, parsing and building the tree; 11 and 13 count reparses after the
+// passes and for the multi-line string pass; 12 times addCommasMapped; 14
+// and 15 count markers and nodes.
+const KPROF = new BigInt64Array(16);
+
+/** Prints the phase times FFKPROF collected. */
+export const kprofPrint = (): void => {
+  const m = toI64(1000000);
+  console.error(`kotlin: parse ${KPROF[1] / m} (${KPROF[7]} parses) passes ${KPROF[2] / m} tokenize ${KPROF[3] / m} visit ${KPROF[4] / m} layout ${KPROF[5] / m} after ${KPROF[6] / m} ms; lex ${KPROF[8] / m} parser ${KPROF[9] / m} build ${KPROF[10] / m}; reparses: steps ${KPROF[11]} commas-mapped ${KPROF[12] / m} ms; trim ${KPROF[13]} markers ${KPROF[14]} nodes ${KPROF[15]}`);
+};
 
 /** One worker's reusable Kotlin state. */
 export class KotlinEngine {
   lx: KLexemes;
-  lx2: KLexemes;
   // The code lexemes of the text before and after pretty printing.
   mInStart: i32[];
   mInEnd: i32[];
@@ -39,9 +52,11 @@ export class KotlinEngine {
   parsed: boolean = false;
   debug: boolean = false;
   dump: boolean = false;
+  prof: boolean = false;
+  profT: i64[];
   constructor() {
+    this.profT = [toI64(0), toI64(0), toI64(0), toI64(0), toI64(0), toI64(0)];
     this.lx = new KLexemes();
-    this.lx2 = new KLexemes();
     this.mInStart = new Array<i32>(256);
     this.mInEnd = new Array<i32>(256);
     this.mOutStart = new Array<i32>(256);
@@ -62,13 +77,30 @@ export class KotlinEngine {
 
 /** Parses `src[0, n)` into the engine's tree; answers false when it does not parse. */
 export const parseKotlin = (e: KotlinEngine, src: u8[], n: i32): boolean => {
+  if (!e.prof) {
+    e.lx.lex(src, n);
+    if (e.lx.failed) {
+      return false;
+    }
+    e.b.reset();
+    e.p.parseScript();
+    e.b.build();
+    return !e.b.failed;
+  }
+  const t0 = monotonicNanos();
   e.lx.lex(src, n);
   if (e.lx.failed) {
     return false;
   }
+  const t1 = monotonicNanos();
   e.b.reset();
   e.p.parseScript();
+  const t2 = monotonicNanos();
   e.b.build();
+  const t3 = monotonicNanos();
+  KPROF[8] = KPROF[8] + (t1 - t0);
+  KPROF[9] = KPROF[9] + (t2 - t1);
+  KPROF[10] = KPROF[10] + (t3 - t2);
   return !e.b.failed;
 };
 
@@ -119,6 +151,34 @@ const dumpNode = (e: KotlinEngine, node: i32, depth: i32, u16: i32[], out: Out):
 
 /** Formats `src0[0, n0)` into `out` as ktfmt does; answers false when the file cannot be formatted. */
 export const formatKotlin = (e: KotlinEngine, path: string, src0: u8[], n0: i32, out: Out): boolean => {
+  // A byte order mark stays in front; the text after it is what is formatted.
+  if (n0 >= 3 && toI32(src0[0]) === 0xef && toI32(src0[1]) === 0xbb && toI32(src0[2]) === 0xbf) {
+    const rest = new Out(n0 + 1024);
+    if (!formatKotlin(e, path, src0.slice(3, n0), n0 - 3, rest)) {
+      return false;
+    }
+    out.n = 0;
+    out.range(src0, 0, 3);
+    out.range(rest.buf, 0, rest.n);
+    return true;
+  }
+  if (!e.prof) {
+    return formatKotlin0(e, path, src0, n0, out);
+  }
+  const t0 = monotonicNanos();
+  const ok = formatKotlin0(e, path, src0, n0, out);
+  // The phases add up their own slots; slot 6 takes what is left.
+  let other = monotonicNanos() - t0;
+  for (let i = 1; i < 6; i++) {
+    other = other - e.profT[i];
+    KPROF[i] = KPROF[i] + e.profT[i];
+    e.profT[i] = toI64(0);
+  }
+  KPROF[6] = KPROF[6] + other;
+  return ok;
+};
+
+const formatKotlin0 = (e: KotlinEngine, path: string, src0: u8[], n0: i32, out: Out): boolean => {
   // A shebang line is set aside and put back in front.
   let start = 0;
   if (n0 >= 2 && toI32(src0[0]) === 35 && toI32(src0[1]) === 33) {
@@ -171,7 +231,11 @@ export const formatKotlin = (e: KotlinEngine, path: string, src0: u8[], n0: i32,
     return false;
   }
   e.passes.reset(e.cur, e.curN);
+  const tp = e.prof ? monotonicNanos() : toI64(0);
   const all = e.passes.combined(0, e.buf2);
+  if (e.prof) {
+    e.profT[2] = e.profT[2] + (monotonicNanos() - tp);
+  }
   if (e.passes.failed) {
     if (e.debug) {
       console.error(`${path}: ${e.passes.failure}`);
@@ -182,13 +246,20 @@ export const formatKotlin = (e: KotlinEngine, path: string, src0: u8[], n0: i32,
     setCur(e, e.buf2.buf, e.buf2.n);
   }
   for (let step = 0; step < 3 && all === -1; step++) {
+    if (e.prof && !e.parsed) {
+      KPROF[11] = KPROF[11] + toI64(1);
+    }
     if (!ensureParsed(e, path)) {
       return false;
     }
     const ps = e.passes;
     ps.reset(e.cur, e.curN);
     const b2 = e.buf2;
+    const ts = e.prof ? monotonicNanos() : toI64(0);
     const changed = step === 0 ? ps.sortImports(0, b2) : step === 1 ? ps.dropRedundant(0, b2) : ps.addTrailingCommas(0, b2);
+    if (e.prof) {
+      e.profT[2] = e.profT[2] + (monotonicNanos() - ts);
+    }
     if (ps.failed) {
       if (e.debug) {
         console.error(`${path}: ${ps.failure}`);
@@ -219,7 +290,11 @@ export const formatKotlin = (e: KotlinEngine, path: string, src0: u8[], n0: i32,
   // pretty printing (whose code tokens the output keeps), unless that fails.
   let mapped = 0;
   if (!sameText(po.buf, po.n, e.cur, e.curN)) {
+    const tm = e.prof ? monotonicNanos() : toI64(0);
     mapped = addCommasMapped(e, po.buf, po.n);
+    if (e.prof) {
+      KPROF[12] = KPROF[12] + (monotonicNanos() - tm);
+    }
   }
   if (mapped === 1) {
     setCur(e, e.buf2.buf, e.buf2.n);
@@ -235,11 +310,18 @@ export const formatKotlin = (e: KotlinEngine, path: string, src0: u8[], n0: i32,
       }
     }
   }
+  if (e.prof && !e.parsed && kHasTrimCall(e.cur, e.curN)) {
+    KPROF[13] = KPROF[13] + toI64(1);
+  }
   if (kHasTrimCall(e.cur, e.curN) && !ensureParsed(e, path)) {
     return false;
   }
   if (e.parsed && e.ml.format(e.cur, e.curN, e.buf2)) {
     setCur(e, e.buf2.buf, e.buf2.n);
+  }
+  if (e.prof) {
+    KPROF[14] = KPROF[14] + toI64(e.b.nP);
+    KPROF[15] = KPROF[15] + toI64(e.b.tree.n);
   }
   const res = e.cur;
   out.n = 0;
@@ -282,11 +364,6 @@ const sameText = (a: u8[], an: i32, b: u8[], bn: i32): boolean => {
  */
 const addCommasMapped = (e: KotlinEngine, buf: u8[], n: i32): i32 => {
   const a = e.lx;
-  const b = e.lx2;
-  b.lex(buf, n);
-  if (b.failed) {
-    return -1;
-  }
   const need = a.count + 1;
   if (toI32(e.mInStart.length) < need) {
     e.mInStart = growI32(e.mInStart, need * 2);
@@ -298,41 +375,114 @@ const addCommasMapped = (e: KotlinEngine, buf: u8[], n: i32): i32 => {
   const inEnd = e.mInEnd;
   const outStart = e.mOutStart;
   const outEnd = e.mOutEnd;
+  // The pretty printer writes the code lexemes in order, as they were, and
+  // changes only the whitespace and comments around them, so each one is
+  // found by skipping whitespace (and comments, where the input had some
+  // before it) from where the last one ended.
   let m = 0;
   let j = 0;
+  let gap = false; // whether a comment came before this lexeme in the input
   for (let i = 0; i < a.count; i++) {
     const ty = a.type[i];
     if (isWsOrComment(ty)) {
+      if (ty !== T_WHITE_SPACE) {
+        gap = true;
+      }
       continue;
     }
-    while (j < b.count && isWsOrComment(b.type[j])) {
-      j++;
-    }
     const len = a.end[i] - a.start[i];
-    if (j >= b.count || b.end[j] - b.start[j] !== len) {
+    // Lexemes that touched in the input touch in the output unless the
+    // printer put whitespace between them (a lexeme that starts with
+    // whitespace is a string part, which goes out as it was).
+    const adjacent = !gap && i > 0 && a.end[i - 1] === a.start[i];
+    if (!adjacent || !kSameAt(a.src, a.start[i], len, buf, n, j)) {
+      j = gap ? kSkipWsAndComments(buf, n, j) : kSkipWs(buf, n, j);
+    }
+    gap = false;
+    if (j < 0 || j + len > n) {
       return -1;
     }
     // Soft keywords the parser remapped carry another type; compare text.
     for (let k = 0; k < len; k++) {
-      if (a.src[a.start[i] + k] !== buf[b.start[j] + k]) {
+      if (a.src[a.start[i] + k] !== buf[j + k]) {
         return -1;
       }
     }
     inStart[m] = a.start[i];
     inEnd[m] = a.end[i];
-    outStart[m] = b.start[j];
-    outEnd[m] = b.end[j];
+    outStart[m] = j;
+    outEnd[m] = j + len;
     m++;
-    j++;
+    j = j + len;
   }
-  while (j < b.count && isWsOrComment(b.type[j])) {
-    j++;
-  }
-  if (j !== b.count) {
+  if (kSkipWsAndComments(buf, n, j) !== n) {
     return -1;
   }
   e.passes.reset(e.cur, e.curN);
   return e.passes.addTrailingCommasMapped(0, buf, n, inStart, inEnd, outStart, outEnd, m, e.buf2);
+};
+
+/** Whether `src[a, a + len)` occurs in `buf[0, n)` at `j`. */
+const kSameAt = (src: u8[], a: i32, len: i32, buf: u8[], n: i32, j: i32): boolean => {
+  if (j < 0 || j + len > n) {
+    return false;
+  }
+  for (let k = 0; k < len; k++) {
+    if (src[a + k] !== buf[j + k]) {
+      return false;
+    }
+  }
+  return true;
+};
+
+/** The first offset from `j` that is not a space, tab or newline. */
+const kSkipWs = (buf: u8[], n: i32, j0: i32): i32 => {
+  let j = j0;
+  while (j < n) {
+    const c = toI32(buf[j]);
+    if (c !== 32 && c !== 9 && c !== 10 && c !== 13 && c !== 12) {
+      break;
+    }
+    j++;
+  }
+  return j;
+};
+
+/** The first offset from `j` past whitespace and Kotlin comments (block comments nest). */
+const kSkipWsAndComments = (buf: u8[], n: i32, j0: i32): i32 => {
+  if (j0 < 0) {
+    return -1;
+  }
+  let j = kSkipWs(buf, n, j0);
+  while (j + 1 < n && toI32(buf[j]) === 47) {
+    const c = toI32(buf[j + 1]);
+    if (c === 47) {
+      while (j < n && toI32(buf[j]) !== 10 && toI32(buf[j]) !== 13) {
+        j++;
+      }
+    } else if (c === 42) {
+      let depth = 1;
+      j += 2;
+      while (j < n && depth > 0) {
+        if (j + 1 < n && toI32(buf[j]) === 47 && toI32(buf[j + 1]) === 42) {
+          depth++;
+          j += 2;
+        } else if (j + 1 < n && toI32(buf[j]) === 42 && toI32(buf[j + 1]) === 47) {
+          depth--;
+          j += 2;
+        } else {
+          j++;
+        }
+      }
+      if (depth > 0) {
+        return -1;
+      }
+    } else {
+      break;
+    }
+    j = kSkipWs(buf, n, j);
+  }
+  return j;
 };
 
 /** Whether `.trimIndent()` or `.trimMargin()` occurs, so the multi-line string pass has work. */
@@ -375,7 +525,13 @@ const ensureParsed = (e: KotlinEngine, path: string): boolean => {
   if (e.parsed) {
     return true;
   }
-  if (!parseKotlin(e, e.cur, e.curN)) {
+  const t0 = e.prof ? monotonicNanos() : toI64(0);
+  const okp = parseKotlin(e, e.cur, e.curN);
+  if (e.prof) {
+    e.profT[1] = e.profT[1] + (monotonicNanos() - t0);
+    KPROF[7] = KPROF[7] + toI64(1);
+  }
+  if (!okp) {
     if (e.debug) {
       console.error(`${path}: does not parse`);
     }
@@ -387,14 +543,23 @@ const ensureParsed = (e: KotlinEngine, path: string): boolean => {
 
 /** Formatter.prettyPrint over the parsed tree: the result is left in `e.g.out`. */
 const prettyPrint = (e: KotlinEngine, src: u8[], n: i32): boolean => {
+  const t0 = e.prof ? monotonicNanos() : toI64(0);
   tokenizeKotlin(e.inp, e.b.tree, 0, src, n);
+  const t1 = e.prof ? monotonicNanos() : toI64(0);
   const g = e.g;
   g.reset();
   e.vis.reset(src);
   e.vis.visit(0);
   g.sync(n);
+  const t2 = e.prof ? monotonicNanos() : toI64(0);
   g.drain();
-  return g.layout();
+  const ok = g.layout();
+  if (e.prof) {
+    e.profT[3] = e.profT[3] + (t1 - t0);
+    e.profT[4] = e.profT[4] + (t2 - t1);
+    e.profT[5] = e.profT[5] + (monotonicNanos() - t2);
+  }
+  return ok;
 };
 
 export const isKotlinName = (name: string): boolean => name.endsWith(".kt") || name.endsWith(".kts");

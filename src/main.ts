@@ -6,7 +6,7 @@ import { Out } from "./core/out";
 import { Ignore, walk } from "./core/files";
 import { CppEngine, formatCpp, isCppName } from "./cpp/run";
 import { JavaEngine, formatJava, isJavaName } from "./java/run";
-import { KotlinEngine, formatKotlin, isKotlinName } from "./kotlin/run";
+import { KotlinEngine, formatKotlin, isKotlinName, kprofPrint } from "./kotlin/run";
 import { RubyEngine, formatRuby, isRubyName } from "./ruby/run";
 import { SwiftEngine, formatSwift, isSwiftName } from "./swift/run";
 import { RustEngine, formatRust, isRustName } from "./rust/run";
@@ -73,20 +73,13 @@ class Cli {
   }
 }
 
-/** One worker's reusable state: one engine per language and the output buffer. */
+/** One worker's reusable state: the C++ engine, its output buffer and the batch of other files. */
 class Engine {
   cpp: CppEngine;
-  java: JavaEngine;
-  kotlin: KotlinEngine;
   out: Out;
   job: Job;
   constructor(cli: Cli) {
     this.job = new Job();
-    this.kotlin = new KotlinEngine();
-    this.kotlin.debug = getenv("FFDEBUG") !== null;
-    this.kotlin.dump = getenv("FFKTDUMP") !== null;
-    this.java = new JavaEngine();
-    this.java.debug = getenv("FFDEBUG") !== null;
     this.cpp = new CppEngine(cli.width, cli.indent);
     this.cpp.once = cli.once;
     this.cpp.showReruns = cli.showReruns;
@@ -127,16 +120,31 @@ const usage = (): string =>
     "untouched and counted as skipped.",
   ].join("\n");
 
-/** A file in any language but C++ to format in a region of its own: what goes in, and the numbers that come out. */
+/** Files formatted in one region: up to this many, or until this many bytes were read. */
+const BATCH_FILES: i32 = 32;
+const BATCH_BYTES: i32 = 1048576;
+
+/**
+ * Files in one language but C++ to format in a region of their own: what
+ * goes in, and the numbers that come out. Kotlin and Java files share one
+ * engine across a batch, so its arrays grow once rather than once a file;
+ * the other languages take one file a batch.
+ */
 class Job {
-  path: string = "";
+  paths: string[];
+  count: i32 = 0;
+  done: i32 = 0;
   lang: i32 = 0;
   mode: i32 = 0;
   quiet: boolean = false;
-  // 0: the result (0 unchanged, 1 changed, 2 skipped, 3 unreadable), 1: bytes read.
+  // Per file k: 2k the result (0 unchanged, 1 changed, 2 skipped, 3 unreadable), 2k+1 the bytes read.
   res: i32[];
   constructor() {
-    this.res = new Array<i32>(2);
+    this.paths = [];
+    for (let i = 0; i < BATCH_FILES; i++) {
+      this.paths.push("");
+    }
+    this.res = new Array<i32>(2 * BATCH_FILES);
   }
 }
 
@@ -144,122 +152,179 @@ class JobRoot {
   done: i32 = 0;
 }
 
+/** The engines a batch formats with, made when a file first needs one. */
+class JobEngines {
+  kotlin: KotlinEngine | null = null;
+  java: JavaEngine | null = null;
+}
+
 /**
- * Formats a file in any language but C++ with a fresh engine, leaving the result code
- * in `job.res`; the caller runs it in a region of its own and frees it, so all it
- * allocates is given back when the file is done and a worker's memory does
- * not grow with the files it has formatted.
+ * Formats the batch's files, leaving each result in `job.res` and the number
+ * formatted in `job.done`; the caller runs it in a region of its own and
+ * frees it, so all it allocates is given back when the batch is done and a
+ * worker's memory does not grow with the files it has formatted.
  */
 const runJob = (job: Job): JobRoot => {
   const root = new JobRoot();
-  // The engines keep what they are given, so the path and the bytes are
-  // copies the region allocates.
-  let path = "";
-  for (let i = 0; i < toI32(job.path.length); i++) {
-    path = path + String.fromCharCode(job.path.charCodeAt(i));
-  }
-  const read = readFileBytesSync(path);
-  if (read === null) {
-    job.res[0] = 3;
-    return root;
-  }
-  const n = toI32(read.length);
-  const src = new Array<u8>(n);
-  src.set(read);
-  job.res[1] = n;
-  const out = new Out(n + 1024);
-  let ok = false;
-  if (job.lang === LANG_KOTLIN) {
-    const k = new KotlinEngine();
-    k.debug = getenv("FFDEBUG") !== null;
-    k.dump = getenv("FFKTDUMP") !== null;
-    ok = formatKotlin(k, path, src, n, out);
-  } else if (job.lang === LANG_RUBY) {
-    const r = new RubyEngine();
-    r.debug = getenv("FFDEBUG") !== null;
-    ok = formatRuby(r, path, src, n, out);
-  } else if (job.lang === LANG_SWIFT) {
-    const sw = new SwiftEngine();
-    sw.debug = getenv("FFDEBUG") !== null;
-    ok = formatSwift(sw, path, src, n, out);
-  } else if (job.lang === LANG_RUST) {
-    const rs = new RustEngine();
-    rs.debug = getenv("FFDEBUG") !== null;
-    ok = formatRust(rs, path, src, n, out);
-  } else if (job.lang === LANG_DART) {
-    const d = new DartEngine();
-    d.debug = getenv("FFDEBUG") !== null;
-    ok = formatDart(d, path, src, n, out);
-  } else if (job.lang === LANG_CSHARP) {
-    const cs = new CSharpEngine();
-    cs.debug = getenv("FFDEBUG") !== null;
-    ok = formatCSharp(cs, path, src, n, out);
-  } else {
-    const j = new JavaEngine();
-    j.debug = getenv("FFDEBUG") !== null;
-    ok = formatJava(j, path, src, n, out);
-  }
-  if (!ok) {
-    job.res[0] = 2;
-    if (job.mode === MODE_STDOUT) {
-      writeBytes(src, 0, n);
-    } else if (!job.quiet) {
-      console.error(`fastfmt: skipped ${path} (does not parse)`);
+  const engines = new JobEngines();
+  let bytes = 0;
+  let k = 0;
+  while (k < job.count && (k === 0 || bytes < BATCH_BYTES)) {
+    // The engines keep what they are given, so the path and the bytes are
+    // copies the region allocates.
+    let path = "";
+    const p0 = job.paths[k];
+    for (let i = 0; i < toI32(p0.length); i++) {
+      path = path + String.fromCharCode(p0.charCodeAt(i));
     }
-    return root;
-  }
-  let same = out.n === n;
-  if (same) {
-    for (let i = 0; i < n; i++) {
-      if (out.buf[i] !== src[i]) {
-        same = false;
-        break;
+    const read = readFileBytesSync(path);
+    job.res[2 * k + 1] = 0;
+    if (read === null) {
+      job.res[2 * k] = 3;
+      k++;
+      continue;
+    }
+    const n = toI32(read.length);
+    const src = new Array<u8>(n);
+    src.set(read);
+    job.res[2 * k + 1] = n;
+    const out = new Out(n + 1024);
+    let ok = false;
+    if (job.lang === LANG_KOTLIN) {
+      const k0 = engines.kotlin;
+      if (k0 !== null) {
+        ok = formatKotlin(k0, path, src, n, out);
+      } else {
+        const fresh = new KotlinEngine();
+        fresh.debug = getenv("FFDEBUG") !== null;
+        fresh.dump = getenv("FFKTDUMP") !== null;
+        fresh.prof = getenv("FFKPROF") !== null;
+        engines.kotlin = fresh;
+        ok = formatKotlin(fresh, path, src, n, out);
+      }
+    } else if (job.lang === LANG_JAVA) {
+      const j0 = engines.java;
+      if (j0 !== null) {
+        ok = formatJava(j0, path, src, n, out);
+      } else {
+        const fresh = new JavaEngine();
+        fresh.debug = getenv("FFDEBUG") !== null;
+        engines.java = fresh;
+        ok = formatJava(fresh, path, src, n, out);
+      }
+    } else if (job.lang === LANG_RUBY) {
+      const r = new RubyEngine();
+      r.debug = getenv("FFDEBUG") !== null;
+      ok = formatRuby(r, path, src, n, out);
+    } else if (job.lang === LANG_SWIFT) {
+      const sw = new SwiftEngine();
+      sw.debug = getenv("FFDEBUG") !== null;
+      ok = formatSwift(sw, path, src, n, out);
+    } else if (job.lang === LANG_RUST) {
+      const rs = new RustEngine();
+      rs.debug = getenv("FFDEBUG") !== null;
+      ok = formatRust(rs, path, src, n, out);
+    } else if (job.lang === LANG_DART) {
+      const d = new DartEngine();
+      d.debug = getenv("FFDEBUG") !== null;
+      ok = formatDart(d, path, src, n, out);
+    } else {
+      const cs = new CSharpEngine();
+      cs.debug = getenv("FFDEBUG") !== null;
+      ok = formatCSharp(cs, path, src, n, out);
+    }
+    if (!ok) {
+      job.res[2 * k] = 2;
+      if (job.mode === MODE_STDOUT) {
+        writeBytes(src, 0, n);
+      } else if (!job.quiet) {
+        console.error(`fastfmt: skipped ${path} (does not parse)`);
+      }
+      bytes = bytes + n;
+      k++;
+      continue;
+    }
+    let same = out.n === n;
+    if (same) {
+      for (let i = 0; i < n; i++) {
+        if (out.buf[i] !== src[i]) {
+          same = false;
+          break;
+        }
       }
     }
-  }
-  job.res[0] = same ? 0 : 1;
-  if (job.mode === MODE_STDOUT) {
-    writeBytes(out.buf, 0, out.n);
-  } else if (!same && job.mode === MODE_WRITE) {
-    if (writeFileBytesSync(path, out.buf.slice(0, out.n)) < 0) {
-      console.error(`fastfmt: cannot write ${path}`);
+    job.res[2 * k] = same ? 0 : 1;
+    if (job.mode === MODE_STDOUT) {
+      writeBytes(out.buf, 0, out.n);
+    } else if (!same && job.mode === MODE_WRITE) {
+      if (writeFileBytesSync(path, out.buf.slice(0, out.n)) < 0) {
+        console.error(`fastfmt: cannot write ${path}`);
+      }
+    } else if (!same && job.mode === MODE_CHECK) {
+      console.log(path);
     }
-  } else if (!same && job.mode === MODE_CHECK) {
-    console.log(path);
+    bytes = bytes + n;
+    k++;
+
   }
+  job.done = k;
   return root;
 };
 
-/** Formats one file; answers 0 unchanged, 1 changed, 2 skipped. */
-const formatFile = (path: string, cli: Cli, stats: Stats, eng: Engine): i32 => {
-  const lang0 = langOf(path);
-  if (lang0 >= LANG_JAVA) {
-    if (cli.trace) {
-      console.error(`file ${path}`);
+/** Whether files of a language share an engine within a batch. */
+const batches = (lang: i32): boolean => lang === LANG_KOTLIN || lang === LANG_JAVA;
+
+/**
+ * Formats `files[a, b)`: C++ files one by one with the worker's engine, the
+ * others in batches of one language, each batch in a region of its own.
+ */
+const formatFiles = (files: string[], a: i32, b: i32, cli: Cli, stats: Stats, eng: Engine): void => {
+  let i = a;
+  while (i < b) {
+    const lang = langOf(files[i]);
+    if (lang < LANG_JAVA) {
+      formatFile(files[i], cli, stats, eng);
+      i++;
+      continue;
     }
     const job = eng.job;
-    job.path = path;
-    job.lang = lang0;
+    job.count = 0;
+    const cap = batches(lang) ? BATCH_FILES : 1;
+    while (i + job.count < b && job.count < cap && langOf(files[i + job.count]) === lang) {
+      job.paths[job.count] = files[i + job.count];
+      if (cli.trace) {
+        console.error(`file ${files[i + job.count]}`);
+      }
+      job.count = job.count + 1;
+    }
+    job.lang = lang;
     job.mode = cli.mode;
     job.quiet = cli.quiet;
+    job.done = 0;
     const tr0 = monotonicNanos();
     free(regionWith(job, runJob));
     stats.prof[5] = stats.prof[5] + (monotonicNanos() - tr0);
-    const res = job.res[0];
-    if (res === 3) {
-      console.error(`fastfmt: cannot read ${path}`);
-      stats.skipped = stats.skipped + 1;
-      return 2;
+    for (let k = 0; k < job.done; k++) {
+      const res = job.res[2 * k];
+      if (res === 3) {
+        console.error(`fastfmt: cannot read ${files[i + k]}`);
+        stats.skipped = stats.skipped + 1;
+        continue;
+      }
+      stats.files = stats.files + 1;
+      stats.bytes = stats.bytes + toI64(job.res[2 * k + 1]);
+      if (res === 2) {
+        stats.skipped = stats.skipped + 1;
+      } else if (res === 1) {
+        stats.changed = stats.changed + 1;
+      }
     }
-    stats.files = stats.files + 1;
-    stats.bytes = stats.bytes + toI64(job.res[1]);
-    if (res === 2) {
-      stats.skipped = stats.skipped + 1;
-    } else if (res === 1) {
-      stats.changed = stats.changed + 1;
-    }
-    return res;
+    i = i + job.done;
   }
+};
+
+/** Formats one C++ file; answers 0 unchanged, 1 changed, 2 skipped. */
+const formatFile = (path: string, cli: Cli, stats: Stats, eng: Engine): i32 => {
   if (cli.trace) {
     console.error(`file ${path}`);
   }
@@ -274,13 +339,7 @@ const formatFile = (path: string, cli: Cli, stats: Stats, eng: Engine): i32 => {
   stats.bytes = stats.bytes + toI64(n);
   const out = eng.out;
   const tr0 = monotonicNanos();
-  const lang = langOf(path);
-  const okRun =
-    lang === LANG_JAVA
-      ? formatJava(eng.java, path, src, n, out)
-      : lang === LANG_KOTLIN
-        ? formatKotlin(eng.kotlin, path, src, n, out)
-        : formatCpp(eng.cpp, path, src, n, out, stats.prof);
+  const okRun = formatCpp(eng.cpp, path, src, n, out, stats.prof);
   stats.prof[5] = stats.prof[5] + (monotonicNanos() - tr0);
   if (!okRun) {
     stats.skipped = stats.skipped + 1;
@@ -423,14 +482,15 @@ const runWorker = (cli: Cli): i32 => {
   while (at < nf) {
     const size = chunkSize(nf - at, cli.jobs);
     if (createFileExclusiveSync(`${cli.worker}.c${c}`, "", 384) >= 0) {
-      for (let i = at; i < at + size; i++) {
-        formatFile(files[i], cli, stats, eng);
-      }
+      formatFiles(files, at, at + size, cli, stats, eng);
     }
     at = at + size;
     c++;
   }
   writeFileSync(cli.stats, `${stats.files} ${stats.changed} ${stats.skipped} ${stats.bytes}\n`);
+  if (getenv("FFKPROF") !== null) {
+    kprofPrint();
+  }
   if (getenv("FFPROF") !== null) {
     console.error(`worker: lex ${ms(stats.prof[0])} parse ${ms(stats.prof[1])} classify ${ms(stats.prof[2])} layout ${ms(stats.prof[3])} write ${ms(stats.prof[4])} run ${ms(stats.prof[5])} ms`);
   }
@@ -502,9 +562,7 @@ export const main = (): i32 => {
   const inProcess = cli.mode === MODE_STDOUT || files.length < 64 || getenv("GLIBC_TUNABLES") !== null;
   if (jobs === 1 && inProcess) {
     const eng = engineFor(cli);
-    for (const p of files) {
-      formatFile(p, cli, stats, eng);
-    }
+    formatFiles(files, 0, toI32(files.length), cli, stats, eng);
     if (getenv("FFPROF") !== null) {
       console.error(`searches ${eng.cpp.f.ind.stSearches} nodes ${eng.cpp.f.ind.stNodes} pops ${eng.cpp.f.ind.stPops} depth ${eng.cpp.f.ind.stDepth} listMiss ${eng.cpp.f.ind.stListMiss} listHit ${eng.cpp.f.ind.stListHit}`);
       console.error(`lex ${ms(stats.prof[0])} parse ${ms(stats.prof[1])} classify ${ms(stats.prof[2])} layout ${ms(stats.prof[3])} write ${ms(stats.prof[4])} run-total ${ms(stats.prof[5])} ms`);
