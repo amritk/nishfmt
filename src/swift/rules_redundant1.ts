@@ -463,7 +463,7 @@ const swEndOfVoidType = (f: SwFormatter, index: i32): i32 => {
 };
 
 /** isStartOfClosureType(at:). */
-const swIsStartOfClosureType = (f: SwFormatter, i: i32): boolean => {
+export const swIsStartOfClosureType = (f: SwFormatter, i: i32): boolean => {
   const te = swParseType(f, i);
   if (te < 0 || f.indexOfIn(SW_OP, "->", SW_OP_INFIX, i, te + 1) < 0) {
     return false;

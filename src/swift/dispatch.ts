@@ -27,8 +27,10 @@ import {
   SW_RULE_DUPLICATE_IMPORTS,
   SW_RULE_ELSE_ON_SAME_LINE,
   SW_RULE_EMPTY_BRACES,
+  SW_RULE_ENUM_NAMESPACES,
   SW_RULE_ENVIRONMENT_ENTRY,
   SW_RULE_EXTENSION_ACCESS_CONTROL,
+  SW_RULE_EXTENSION_ATTRIBUTES,
   SW_RULE_FILE_HEADER,
   SW_RULE_FILE_MACRO,
   SW_RULE_GENERIC_EXTENSIONS,
@@ -49,10 +51,12 @@ import {
   SW_RULE_REDUNDANT_BACKTICKS,
   SW_RULE_REDUNDANT_BREAK,
   SW_RULE_REDUNDANT_EXTENSION_A_C_L,
+  SW_RULE_REDUNDANT_FILEPRIVATE,
   SW_RULE_REDUNDANT_GET,
   SW_RULE_REDUNDANT_INTERNAL,
   SW_RULE_REDUNDANT_LET,
   SW_RULE_REDUNDANT_LET_ERROR,
+  SW_RULE_REDUNDANT_NIL_INIT,
   SW_RULE_REDUNDANT_OBJC,
   SW_RULE_REDUNDANT_OPTIONAL_BINDING,
   SW_RULE_REDUNDANT_PATTERN,
@@ -137,6 +141,12 @@ import {
 import {
   swRuleDocComments,
 } from "./rules_doc";
+import {
+  swRuleEnumNamespaces,
+  swRuleExtensionAttributes,
+  swRuleRedundantFileprivate,
+  swRuleRedundantNilInit,
+} from "./rules_ext";
 import {
   swRuleHoistTry,
 } from "./rules_hoist";
@@ -476,6 +486,18 @@ export const swRunRule = (f: SwFormatter, r: i32): boolean => {
       return true;
     case SW_RULE_WRAP_ARGUMENTS:
       swRuleWrapArguments(f);
+      return true;
+    case SW_RULE_REDUNDANT_FILEPRIVATE:
+      swRuleRedundantFileprivate(f);
+      return true;
+    case SW_RULE_REDUNDANT_NIL_INIT:
+      swRuleRedundantNilInit(f);
+      return true;
+    case SW_RULE_ENUM_NAMESPACES:
+      swRuleEnumNamespaces(f);
+      return true;
+    case SW_RULE_EXTENSION_ATTRIBUTES:
+      swRuleExtensionAttributes(f);
       return true;
     default:
       return false;

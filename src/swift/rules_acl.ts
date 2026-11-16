@@ -129,7 +129,7 @@ const swInsidePublicExtension = (f: SwFormatter, d: SwDecl): boolean => {
 };
 
 /** forEachRecursiveDeclaration, collected in order. */
-const swCollectRecursive = (ds: SwDecl[], out: SwDecl[]): void => {
+export const swCollectRecursive = (ds: SwDecl[], out: SwDecl[]): void => {
   for (const d of ds) {
     out.push(d);
     swCollectRecursive(d.body, out);
@@ -137,7 +137,7 @@ const swCollectRecursive = (ds: SwDecl[], out: SwDecl[]): void => {
 };
 
 /** forEachRecursiveDeclarationExcludingTypeBodies, collected in order. */
-const swCollectExcludingTypeBodies = (ds: SwDecl[], out: SwDecl[]): void => {
+export const swCollectExcludingTypeBodies = (ds: SwDecl[], out: SwDecl[]): void => {
   for (const d of ds) {
     if (d.kind === SW_DECL_IFDEF) {
       swCollectExcludingTypeBodies(d.body, out);
@@ -274,7 +274,7 @@ export const swRuleRedundantInternal = (f: SwFormatter): void => {
 };
 
 /** The closest parent that is a type (Declaration.parentType). */
-const swParentType = (d: SwDecl): SwDecl | null => {
+export const swParentType = (d: SwDecl): SwDecl | null => {
   let p = d.parent;
   while (p !== null) {
     if (p.kind === SW_DECL_TYPE) {
