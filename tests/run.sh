@@ -32,6 +32,32 @@ for src in "$here"/cases/*.cpp; do
   fi
 done
 
+# Other languages: each tests/cases/<lang>/<name>.<ext> with a <name>.expected
+# must format to it, and formatting the expected file must leave it unchanged.
+for src in "$here"/cases/*/*; do
+  [ -f "$src" ] || continue
+  file=$(basename "$src")
+  case "$file" in *.expected) continue ;; esac
+  dir=$(dirname "$src")
+  name=${file%.*}
+  ext=${file##*.}
+  expected="$dir/$name.expected"
+  [ -f "$expected" ] || continue
+  label="$(basename "$dir")/$name"
+  if "$bin" "$src" > "$work/out" && cmp -s "$work/out" "$expected"; then
+    pass=$((pass + 1))
+  else
+    echo "FAIL $label: output differs from $name.expected"
+    diff "$work/out" "$expected" | head -20
+    fail=$((fail + 1))
+  fi
+  cp "$expected" "$work/idem.$ext"
+  if ! "$bin" --check -q "$work/idem.$ext" > /dev/null; then
+    echo "FAIL $label: formatting $name.expected changes it"
+    fail=$((fail + 1))
+  fi
+done
+
 # Unbalanced input is skipped, not mangled.
 cp "$here/cases/unbalanced.cpp" "$work/unbalanced.cpp"
 "$bin" -i -q "$work/unbalanced.cpp" > /dev/null 2>&1

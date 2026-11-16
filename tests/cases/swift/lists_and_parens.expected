@@ -1,0 +1,31 @@
+let values = [
+    1,
+    2,
+    3,
+]
+
+let point = Point(
+    x: 1,
+    y: 2
+)
+
+if values.count > 2 {
+    print("many")
+}
+
+guard let first = values.first, let last = values.last else { return }
+
+let a: Int = 5
+let b = String("text")
+if a == 5 {
+    print(b)
+}
+
+for (key, _) in dictionary {
+    print(key)
+}
+
+switch value {
+case let (x, y): print(x, y)
+default: break
+}
