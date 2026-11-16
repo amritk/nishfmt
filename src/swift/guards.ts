@@ -3,9 +3,9 @@
 // starts from, and false (the file is not handled) otherwise.
 
 import { SwFormatter } from "./formatter";
-import { SW_DECL_TYPE, swParseDeclarations, swReleaseDecls } from "./decl";
+import { SwDecl, SW_DECL_TYPE, swDeclKeywordIndex, swParseDeclarations, swReleaseDecls } from "./decl";
 import { swParseFunctionDeclaration } from "./funcdecl";
-import { swEndOfScope } from "./parsing";
+import { swEndOfScope, swStartOfForLoopPattern } from "./parsing";
 import { swHasImport } from "./imports";
 import { swHasModifier } from "./modifiers";
 import { swLowercased } from "./rules_simple";
@@ -292,12 +292,33 @@ export const swGuardRedundantMemberwiseInit = (f: SwFormatter): boolean => {
       continue;
     }
     let inits = 0;
+    let initDecl: SwDecl | null = null;
     for (const b of d.body) {
       if (b.keyword === "init") {
         inits++;
+        initDecl = b;
       }
     }
-    if (inits === 1) {
+    if (inits !== 1 || initDecl === null) {
+      continue;
+    }
+    // The init must be non-failable, with a body, and every parameter labelled by its own name.
+    const ik = swDeclKeywordIndex(f, initDecl);
+    const nx = f.indexAfter(SW_T_NON_SPACE_OR_COMMENT_OR_LINEBREAK, ik);
+    if (nx >= 0 && f.k(nx) === SW_OP && (f.s(nx) === "?" || f.s(nx) === "!")) {
+      continue;
+    }
+    const fd = swParseFunctionDeclaration(f, ik);
+    if (fd === null || fd.bodyStart < 0) {
+      continue;
+    }
+    let labelsMatch = true;
+    for (const a of fd.args) {
+      if (a.internalLabel.length === 0 || a.externalLabel !== a.internalLabel) {
+        labelsMatch = false;
+      }
+    }
+    if (labelsMatch) {
       ok = false;
     }
   }
@@ -322,7 +343,33 @@ export const swGuardRedundantEquatable = (f: SwFormatter): boolean => {
   return true;
 };
 
-export const swGuardRedundantEnumerated = (f: SwFormatter): boolean => !swHasIdent(f, "enumerated");
+/** redundantEnumerated: no `for (a, b) in ....enumerated()`. */
+export const swGuardRedundantEnumerated = (f: SwFormatter): boolean => {
+  if (!swHasIdent(f, "enumerated")) {
+    return true;
+  }
+  const n = f.count();
+  for (let i = 0; i < n; i++) {
+    if (!f.kw(i, "for")) {
+      continue;
+    }
+    const ps = swStartOfForLoopPattern(f, i);
+    if (ps < 0 || !f.tok(ps, SW_START, "(")) {
+      continue;
+    }
+    const pe = swEndOfScope(f, ps);
+    const inIndex = pe >= 0 ? f.indexAfter(SW_T_NON_SPACE_OR_COMMENT_OR_LINEBREAK, pe) : -1;
+    if (inIndex < 0 || !f.kw(inIndex, "in")) {
+      continue;
+    }
+    for (let j = inIndex + 1; j < n && !f.tok(j, SW_START, "{"); j++) {
+      if (f.tok(j, SW_IDENT, "enumerated")) {
+        return false;
+      }
+    }
+  }
+  return true;
+};
 
 export const swGuardRedundantEmptyView = (f: SwFormatter): boolean => !swHasIdent(f, "EmptyView");
 
