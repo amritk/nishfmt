@@ -5,7 +5,7 @@
 // Developers): rewrite.rs, source_map.rs, visitor.rs (SnippetProvider).
 
 import { RsAst } from "./ast";
-import { rsFindUncommented } from "./comment";
+import { rsFindUncommented, rsFindUncommentedIn } from "./comment";
 import { RsTokens } from "./lexer";
 import { RsConfig } from "./shape";
 
@@ -145,8 +145,10 @@ export class RsCtx {
   // ---- SpanUtils
 
   optSpanBefore(lo: i32, hi: i32, needle: string): i32 {
-    const s = this.snippet(lo, hi);
-    const k = rsFindUncommented(s, needle);
+    if (lo >= hi) {
+      return -1;
+    }
+    const k = rsFindUncommentedIn(this.f.src, lo, hi, needle);
     return k < 0 ? -1 : lo + k;
   }
 

@@ -10,7 +10,7 @@ import { RsCtx } from "./context";
 import { rsLitEndsInDot, rsRewriteCall, rsRewriteExpr, rsRewriteNode, rsRewriteParen } from "./expr";
 import { RsListItem, rsExtractPreComment } from "./lists";
 import { RsShape } from "./shape";
-import { rsHasByte, rsIndexOfByte, rsIsBlank, rsLines, rsTrim, rsTrimEnd, rsWidth } from "./str";
+import { RsStrBuf, rsHasByte, rsIndexOfByte, rsIsBlank, rsLines, rsTrim, rsTrimEnd, rsWidth } from "./str";
 import { rsIdentStr, rsIsBlockExpr, rsLastLineExtendable } from "./utils";
 
 const CI_PARENT: i32 = 0;
@@ -235,28 +235,37 @@ const isPostComment = (s: string): boolean => {
 
 /** trim_tries. */
 const trimTries = (s: string): string => {
+  if (rsIndexOfByte(s, 63, 0) < 0 && rsIndexOfByte(s, 10, 0) < 0) {
+    return rsIsBlank(s) ? "" : s;
+  }
   const r = rsCharClasses(s);
-  let result = "";
-  let line = "";
+  const result = new RsStrBuf();
+  const line = new RsStrBuf();
+  let lineBlank = true;
   for (let ci = 0; ci < r.nc; ci++) {
     const i = r.starts[ci];
     const j = ci + 1 < r.nc ? r.starts[ci + 1] : toI32(s.length);
     const c = s.charCodeAt(i);
     if (c === 10) {
-      if (result.length === 0 || !rsIsBlank(line)) {
-        result = result + line + "\n";
+      if (result.len() === 0 || !lineBlank) {
+        result.add(line.str());
+        result.add("\n");
       }
-      line = "";
+      line.b.n = 0;
+      lineBlank = true;
     } else if (c === 63 && r.kinds[i] === K_NORMAL) {
       continue;
     } else {
-      line = line + s.slice(i, j);
+      line.addSlice(s, i, j);
+      if (!(c === 32 || (c >= 9 && c <= 13))) {
+        lineBlank = false;
+      }
     }
   }
-  if (!rsIsBlank(line)) {
-    result = result + line;
+  if (!lineBlank) {
+    result.add(line.str());
   }
-  return result;
+  return result.str();
 };
 
 const chTrimSpTab = (s: string): string => {

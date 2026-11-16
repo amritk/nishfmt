@@ -41,7 +41,7 @@ import {
 import { OC_MACRO_ARG, rsRewriteWithParens } from "./overflow";
 import { RsParser } from "./parser";
 import { RsShape, rsConfigWithMaxWidth, rsIndentStr, rsIndentStrNl } from "./shape";
-import { rsHasByte, rsLines, rsTrim, rsTrimEnd } from "./str";
+import { RsStrBuf, rsHasByte, rsLines, rsTrim, rsTrimEnd } from "./str";
 import { K_IN_STRING, K_NORMAL, K_START_STRING, rsCharClasses, rsFilteredStrFits, rsLineClasses } from "./comment";
 import { rsFormatCodeBlock, rsFormatSnippet } from "./format";
 import { rsRewriteTy } from "./types";
@@ -500,29 +500,31 @@ const formatLazyStatic = (ctx: RsCtx, shape: RsShape, mac: i32, name: string): s
 /** remove_trailing_white_spaces. */
 const removeTrailingWhiteSpaces = (text: string): string => {
   const r = rsCharClasses(text);
-  let buf = "";
-  let space = "";
+  const buf = new RsStrBuf();
+  let space = -1; // where the pending whitespace starts
   for (let ci = 0; ci < r.nc; ci++) {
     const i = r.starts[ci];
     const j = ci + 1 < r.nc ? r.starts[ci + 1] : toI32(text.length);
     const c = text.charCodeAt(i);
     if (c === 10) {
-      if (r.kinds[i] === K_IN_STRING) {
-        buf = buf + space;
+      if (r.kinds[i] === K_IN_STRING && space >= 0) {
+        buf.addSlice(text, space, i);
       }
-      space = "";
-      buf = buf + "\n";
+      space = -1;
+      buf.add("\n");
     } else if (c === 32 || c === 9 || c === 13 || c === 11 || c === 12) {
-      space = space + text.slice(i, j);
-    } else {
-      if (space.length !== 0) {
-        buf = buf + space;
-        space = "";
+      if (space < 0) {
+        space = i;
       }
-      buf = buf + text.slice(i, j);
+    } else {
+      if (space >= 0) {
+        buf.addSlice(text, space, i);
+        space = -1;
+      }
+      buf.addSlice(text, i, j);
     }
   }
-  return buf;
+  return buf.str();
 };
 
 class Branch {
@@ -545,36 +547,35 @@ class Branch {
 /** replace_names: `$name` becomes `zname`; null on `$(`. `olds`/`news` get the substitutions. */
 const replaceNames = (input: string, olds: string[], news: string[]): string | null => {
   const r = rsCharClasses(input);
-  let result = "";
+  const result = new RsStrBuf();
   let dollarCount = 0;
   let curName = "";
   for (let ci = 0; ci < r.nc; ci++) {
     const i = r.starts[ci];
     const j = ci + 1 < r.nc ? r.starts[ci + 1] : toI32(input.length);
-    const ch = input.slice(i, j);
     const c = input.charCodeAt(i);
     const alnum = (c >= 48 && c <= 57) || (c >= 65 && c <= 90) || (c >= 97 && c <= 122) || c >= 0x80;
     if (r.kinds[i] !== K_NORMAL) {
-      result = result + ch;
+      result.addSlice(input, i, j);
     } else if (c === 36) {
       dollarCount++;
     } else if (dollarCount === 0) {
-      result = result + ch;
+      result.addSlice(input, i, j);
     } else if (!alnum && curName.length !== 0) {
-      result = result + registerMetavariable(olds, news, curName, dollarCount);
-      result = result + ch;
+      result.add(registerMetavariable(olds, news, curName, dollarCount));
+      result.addSlice(input, i, j);
       dollarCount = 0;
       curName = "";
     } else if (c === 40 && curName.length === 0) {
       return null;
     } else if (alnum || c === 95) {
-      curName = curName + ch;
+      curName = curName + input.slice(i, j);
     }
   }
   if (curName.length !== 0) {
-    result = result + registerMetavariable(olds, news, curName, dollarCount);
+    result.add(registerMetavariable(olds, news, curName, dollarCount));
   }
-  return result;
+  return result.str();
 };
 
 const registerMetavariable = (olds: string[], news: string[], name: string, dollarCount: i32): string => {
@@ -604,17 +605,22 @@ const replaceAll = (s: string, from: string, to: string): string => {
   if (from.length === 0) {
     return s;
   }
-  let out = "";
+  const out = new RsStrBuf();
   let i = 0;
   for (;;) {
     const k = s.indexOf(from, i);
     if (k < 0) {
       break;
     }
-    out = out + s.slice(i, k) + to;
+    out.addSlice(s, i, k);
+    out.add(to);
     i = k + toI32(from.length);
   }
-  return out + s.slice(i, toI32(s.length));
+  if (i === 0) {
+    return s;
+  }
+  out.addSlice(s, i, toI32(s.length));
+  return out.str();
 };
 
 const isEmptyLine = (s: string): boolean => rsTrim(s).length === 0;
@@ -662,18 +668,20 @@ const rewriteBranch = (ctx: RsCtx, br: Branch, shape: RsShape, multi: boolean): 
     return null;
   }
   const indentStr = rsIndentStr(cfg, bbi, bal);
-  let newBody = "";
+  const nb = new RsStrBuf();
   let needIndent = true;
   const lc = rsLineClasses(rsTrimEnd(fm.text));
   for (let i = 0; i < lc.n; i++) {
     const l = lc.lines[i];
     if (!isEmptyLine(l) && needIndent && !fm.skipped.contains(i + 1)) {
-      newBody = newBody + indentStr;
+      nb.add(indentStr);
     }
-    newBody = newBody + l + "\n";
+    nb.add(l);
+    nb.add("\n");
     const k = lc.kinds[i];
     needIndent = !(k === K_IN_STRING || k === K_START_STRING);
   }
+  let newBody = nb.str();
   for (let i = 0; i < olds.length; i++) {
     if (oldBody.indexOf(news[i]) >= 0) {
       return null;

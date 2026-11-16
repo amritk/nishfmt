@@ -13,6 +13,7 @@ import {
 } from "./comment";
 import { RsConfig, RsShape, rsIndentStr, rsShapeLegacy } from "./shape";
 import {
+  RsStrBuf,
   rsCountNewlines,
   rsHasByte,
   rsIndexOfByte,
@@ -258,7 +259,7 @@ export const rsWriteList = (items: RsListItem[], f: RsListFormatting): string | 
   const tactic = f.tactic;
   const sepLen = toI32(f.separator.length);
   let trailingSeparator = f.needsTrailingSeparator();
-  let result = "";
+  const result = new RsStrBuf();
   const st = new PostState();
   let sepPlace = f.separatorPlace;
   if (tactic !== DLT_VERTICAL && f.separator === ",") {
@@ -294,22 +295,22 @@ export const rsWriteList = (items: RsListItem[], f: RsListFormatting): string | 
     }
     if (tactic === DLT_HORIZONTAL) {
       if (!first) {
-        result = result + " ";
+        result.add(" ");
       }
     } else if (tactic >= DLT_SPECIAL_MACRO) {
       const numArgsBefore = tactic - DLT_SPECIAL_MACRO;
       if (i === 0) {
         // Nothing.
       } else if (i < numArgsBefore) {
-        result = result + " ";
+        result.add(" ");
       } else if (i <= numArgsBefore + 1) {
-        result = result + "\n" + indentStr;
+        result.add("\n" + indentStr);
       } else {
-        result = result + " ";
+        result.add(" ");
       }
     } else if (tactic === DLT_VERTICAL) {
-      if (!first && innerItem.length !== 0 && result.length !== 0) {
-        result = result + "\n" + indentStr;
+      if (!first && innerItem.length !== 0 && result.len() !== 0) {
+        result.add("\n" + indentStr);
       }
     } else if (tactic === DLT_MIXED) {
       const totalWidth = rsTotalItemWidth(item) + itemSepLen;
@@ -318,13 +319,13 @@ export const rsWriteList = (items: RsListItem[], f: RsListFormatting): string | 
         prevItemHadPostComment ||
         (f.nested && (prevItemIsNestedImport || (!first && innerItem.indexOf("::") >= 0)))
       ) {
-        result = result + "\n" + indentStr;
+        result.add("\n" + indentStr);
         lineLen = 0;
         if (f.endsWithNewline) {
           trailingSeparator = true;
         }
       } else if (lineLen > 0) {
-        result = result + " ";
+        result.add(" ");
         lineLen += 1;
       }
       if (last && f.endsWithNewline) {
@@ -339,7 +340,7 @@ export const rsWriteList = (items: RsListItem[], f: RsListFormatting): string | 
       if (comment === null) {
         return null;
       }
-      result = result + comment;
+      result.add(comment);
       if (innerItem.length !== 0) {
         if (tactic === DLT_VERTICAL || tactic === DLT_MIXED || tactic >= DLT_SPECIAL_MACRO) {
           let keepComment = false;
@@ -350,36 +351,36 @@ export const rsWriteList = (items: RsListItem[], f: RsListFormatting): string | 
             keepComment = totalWidth <= f.shape.width;
           }
           if (keepComment) {
-            result = result + " ";
+            result.add(" ");
           } else {
-            result = result + "\n" + indentStr;
+            result.add("\n" + indentStr);
             const it2 = item.item;
             lineLen = it2 === null ? 0 : rsWidth(it2);
           }
         } else {
-          result = result + " ";
+          result.add(" ");
         }
       }
       st.itemMaxWidth = -1;
     }
     if (separate && sepPlace === SP_FRONT && !first) {
-      result = result + rsTrim(f.separator) + " ";
+      result.add(rsTrim(f.separator) + " ");
     }
-    result = result + innerItem;
+    result.add(innerItem);
     const post = item.post;
     if (tactic === DLT_HORIZONTAL && post !== null) {
       const formatted = rsRewriteComment(post, rsShapeLegacy(f.shape.width, 0, 0), f.cfg);
       if (formatted === null) {
         return null;
       }
-      result = result + " " + formatted;
+      result.add(" " + formatted);
     }
     if (separate && sepPlace === SP_BACK) {
-      result = result + f.separator;
+      result.add(f.separator);
     }
     if (tactic !== DLT_HORIZONTAL && post !== null) {
       const comment = post;
-      const overhead = rsLastLineWidth(result, f.cfg.tabSpaces) + rsFirstLineWidth(rsTrim(comment));
+      const overhead = rsLastLineWidth(result.lastLine(), f.cfg.tabSpaces) + rsFirstLineWidth(rsTrim(comment));
       const formatted0 = rewritePostComment(st, items, i, last, innerItem, comment, overhead, itemLastLineWidth, f);
       if (formatted0 === null) {
         return null;
@@ -388,7 +389,7 @@ export const rsWriteList = (items: RsListItem[], f: RsListFormatting): string | 
       if (!startsWithNewline(comment)) {
         if (f.alignComments) {
           let align = postCommentAlignment(st.itemMaxWidth, rsWidth(innerItem));
-          if (rsFirstLineWidth(formatted) + rsLastLineWidth(result, f.cfg.tabSpaces) + align + 1 > f.cfg.maxWidth) {
+          if (rsFirstLineWidth(formatted) + rsLastLineWidth(result.lastLine(), f.cfg.tabSpaces) + align + 1 > f.cfg.maxWidth) {
             st.itemMaxWidth = -1;
             const formatted1 = rewritePostComment(st, items, i, last, innerItem, comment, overhead, itemLastLineWidth, f);
             if (formatted1 === null) {
@@ -398,30 +399,30 @@ export const rsWriteList = (items: RsListItem[], f: RsListFormatting): string | 
             align = postCommentAlignment(st.itemMaxWidth, rsWidth(innerItem));
           }
           for (let k = 0; k <= align; k++) {
-            result = result + " ";
+            result.add(" ");
           }
         }
         if (!f.alignComments || (last && st.itemMaxWidth >= 0 && !separate && f.separator.length !== 0)) {
-          result = result + " ";
+          result.add(" ");
         }
       } else {
-        result = result + "\n" + indentStr;
+        result.add("\n" + indentStr);
       }
       if (rsHasByte(formatted, 10)) {
         st.itemMaxWidth = -1;
       }
-      result = result + formatted;
+      result.add(formatted);
     } else {
       st.itemMaxWidth = -1;
     }
     if (f.preserveNewline && !last && tactic === DLT_VERTICAL && item.newLines) {
       st.itemMaxWidth = -1;
-      result = result + "\n";
+      result.add("\n");
     }
     prevItemHadPostComment = post !== null;
     prevItemIsNestedImport = innerItem.indexOf("::") >= 0;
   }
-  return result;
+  return result.str();
 };
 
 const postCommentAlignment = (itemMaxWidth: i32, innerWidth: i32): i32 => {

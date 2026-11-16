@@ -4,7 +4,45 @@
 //
 // For rustfmt 1.9.0 (MIT OR Apache-2.0, Copyright The Rust Project Developers).
 
+import { Out } from "../core/out";
 import { cpWidth } from "../core/uwidth";
+
+/** A growing string: appends in place instead of copying the whole result each time. */
+export class RsStrBuf {
+  b: Out;
+  constructor() {
+    this.b = new Out(256);
+  }
+
+  add(s: string): void {
+    this.b.str(s);
+  }
+
+  /** Appends `s[a, b)`. */
+  addSlice(s: string, a: i32, b: i32): void {
+    this.b.reserve(b - a);
+    for (let i = a; i < b; i++) {
+      this.b.byte(s.charCodeAt(i));
+    }
+  }
+
+  len(): i32 {
+    return this.b.n;
+  }
+
+  /** The text after the last newline. */
+  lastLine(): string {
+    let i = this.b.n - 1;
+    while (i >= 0 && toI32(this.b.buf[i]) !== 10) {
+      i--;
+    }
+    return String.fromBytes(this.b.buf, i + 1, this.b.n);
+  }
+
+  str(): string {
+    return String.fromBytes(this.b.buf, 0, this.b.n);
+  }
+}
 
 /** Whether byte `c` is ASCII whitespace as Rust's `char::is_whitespace` sees it. */
 export const rsIsWsByte = (c: i32): boolean => c === 32 || (c >= 9 && c <= 13);
@@ -264,6 +302,23 @@ export const rsLastLine = (s: string): string => {
   return i < 0 ? s : s.slice(i + 1, toI32(s.length));
 };
 
+// cpWidth + 2 for the code points below 0x10000 seen so far (0: not yet).
+const rsCpWidthCache = new Int32Array(65536);
+
+/** cpWidth, memoized for the Basic Multilingual Plane. */
+const rsCpWidth = (cp: i32): i32 => {
+  if (cp >= 65536) {
+    return cpWidth(cp);
+  }
+  const c = rsCpWidthCache[cp];
+  if (c !== 0) {
+    return c - 2;
+  }
+  const w = cpWidth(cp);
+  rsCpWidthCache[cp] = w + 2;
+  return w;
+};
+
 /** The display width of `s`, as unicode-width's `UnicodeWidthStr::width` counts it. */
 export const rsWidth = (s: string): i32 => {
   const n = toI32(s.length);
@@ -304,7 +359,7 @@ export const rsWidth = (s: string): i32 => {
     for (let j = 1; j < k && i + j < n; j++) {
       cp = (cp << 6) | (s.charCodeAt(i + j) & 63);
     }
-    const cw = cpWidth(cp);
+    const cw = rsCpWidth(cp);
     if (cw > 0) {
       w += cw;
     }

@@ -10,6 +10,7 @@ import { growI32 } from "../core/arr";
 import { RsCtx } from "./context";
 import { RsConfig, RsShape, rsIndentFromWidth, rsIndentStr, rsIndentStrNl } from "./shape";
 import {
+  RsStrBuf,
   rsCountMatches,
   rsIndexOfByte,
   rsIsAlnumByte,
@@ -80,20 +81,55 @@ const nextChar = (s: string, i: i32, n: i32): i32 => {
   return j;
 };
 
-/** Runs CharClasses over `s`. */
-export const rsCharClasses = (s: string): RsClasses => {
-  const n = toI32(s.length);
-  const r = new RsClasses(n);
-  let st = S_NORMAL;
-  let arg = 0;
-  let i = 0;
-  while (i < n) {
-    const j = nextChar(s, i, n);
-    const chr = s.charCodeAt(i);
+const at8 = (src: u8[], i: i32): i32 => toI32(src[i]);
+
+const next8 = (src: u8[], i: i32, n: i32): i32 => {
+  let j = i + 1;
+  while (j < n && (toI32(src[j]) & 0xc0) === 0x80) {
+    j++;
+  }
+  return j;
+};
+
+/** CharClasses as a stream over the bytes `src[i, n)`: `next` gives each char's kind. */
+export class RsCharScan {
+  src: u8[];
+  n: i32;
+  i: i32; // the next char
+  cs: i32 = 0; // the char `next` last gave
+  st: i32 = 0;
+  arg: i32 = 0;
+  constructor(src: u8[], i: i32, n: i32) {
+    this.src = src;
+    this.i = i;
+    this.n = n;
+  }
+
+  /** The kind of the next char (its start in `cs`), or -1 at the end. */
+  next(): i32 {
+    if (this.i >= this.n) {
+      return -1;
+    }
+    const src = this.src;
+    const n = this.n;
+    const i = this.i;
+    if (this.st === S_NORMAL) {
+      // Plain code: no state change.
+      const c0 = toI32(src[i]);
+      if (c0 < 128 && c0 !== 114 && c0 !== 34 && c0 !== 39 && c0 !== 47) {
+        this.cs = i;
+        this.i = i + 1;
+        return K_NORMAL;
+      }
+    }
+    let st = this.st;
+    let arg = this.arg;
+    const j = next8(src, i, n);
+    const chr = toI32(src[i]);
     let kind = K_NORMAL;
     // The peeks: chars after this one.
     const p1 = j;
-    const c1 = p1 < n ? s.charCodeAt(p1) : -1;
+    const c1 = p1 < n ? at8(src, p1) : -1;
     let done = false;
     if (st === S_LIT_RAW_STRING) {
       kind = K_IN_STRING;
@@ -105,11 +141,11 @@ export const rsCharClasses = (s: string): RsClasses => {
           let ok = true;
           let q = p1;
           for (let k = 0; k < arg; k++) {
-            if (q >= n || s.charCodeAt(q) !== 35) {
+            if (q >= n || at8(src, q) !== 35) {
               ok = false;
               break;
             }
-            q = nextChar(s, q, n);
+            q = next8(src, q, n);
           }
           if (ok) {
             st = S_RAW_STRING_SUFFIX;
@@ -162,12 +198,12 @@ export const rsCharClasses = (s: string): RsClasses => {
           arg = 0;
         } else if (c1 === 35) {
           // is_raw_string_prefix: '#'s then '"'.
-          let q = nextChar(s, p1, n);
+          let q = next8(src, p1, n);
           let isRaw = false;
           while (q < n) {
-            const cq = s.charCodeAt(q);
+            const cq = at8(src, q);
             if (cq === 35) {
-              q = nextChar(s, q, n);
+              q = next8(src, q, n);
               continue;
             }
             isRaw = cq === 34;
@@ -186,8 +222,8 @@ export const rsCharClasses = (s: string): RsClasses => {
         if (c1 === 92) {
           st = S_LIT_CHAR;
         } else {
-          const p2 = p1 < n ? nextChar(s, p1, n) : n;
-          const c2 = p2 < n ? s.charCodeAt(p2) : -1;
+          const p2 = p1 < n ? next8(src, p1, n) : n;
+          const c2 = p2 < n ? at8(src, p2) : -1;
           if (c2 === 39) {
             st = S_LIT_CHAR;
           }
@@ -246,15 +282,66 @@ export const rsCharClasses = (s: string): RsClasses => {
     if (done) {
       // (the status is already set)
     }
-    r.starts[r.nc] = i;
+    this.st = st;
+    this.arg = arg;
+    this.cs = i;
+    this.i = j;
+    return kind;
+  }
+}
+
+const strToBytes = (s: string): u8[] => {
+  const n = toI32(s.length);
+  const b = new Array<u8>(n + 1);
+  for (let i = 0; i < n; i++) {
+    b[i] = toU8(s.charCodeAt(i));
+  }
+  return b;
+};
+
+/** Runs CharClasses over `s`. */
+export const rsCharClasses = (s: string): RsClasses => {
+  const n = toI32(s.length);
+  const r = new RsClasses(n);
+  const sc = new RsCharScan(strToBytes(s), 0, n);
+  for (;;) {
+    const kind = sc.next();
+    if (kind < 0) {
+      break;
+    }
+    r.starts[r.nc] = sc.cs;
     r.nc = r.nc + 1;
-    for (let k = i; k < j; k++) {
+    for (let k = sc.cs; k < sc.i; k++) {
       r.kinds[k] = kind;
     }
-    i = j;
   }
-  r.endNormal = st === S_NORMAL;
+  r.endNormal = sc.st === S_NORMAL;
   return r;
+};
+
+/** find_uncommented over the bytes `src[lo, hi)`: the offset from `lo`, or -1. Stops at the first match. */
+export const rsFindUncommentedIn = (src: u8[], lo: i32, hi: i32, pat: string): i32 => {
+  const m = toI32(pat.length);
+  const sc = new RsCharScan(src, lo, hi);
+  let ni = 0;
+  for (;;) {
+    const k = sc.next();
+    if (k < 0) {
+      break;
+    }
+    if (ni >= m) {
+      return sc.cs - m - lo;
+    }
+    if ((k === K_NORMAL || k === K_IN_STRING) && toI32(src[sc.cs]) === pat.charCodeAt(ni)) {
+      ni++;
+    } else {
+      ni = 0;
+    }
+  }
+  if (ni < m) {
+    return -1;
+  }
+  return hi - m - lo;
 };
 
 /** Whether `text` contains any comment. */
@@ -275,26 +362,8 @@ export const rsContainsComment = (text: string): boolean => {
 
 /** FindUncommented::find_uncommented. */
 export const rsFindUncommented = (s: string, pat: string): i32 => {
-  const r = rsCharClasses(s);
-  const m = toI32(pat.length);
-  let ni = 0; // position in the needle
-  for (let ci = 0; ci < r.nc; ci++) {
-    const i = r.starts[ci];
-    if (ni >= m) {
-      return i - m;
-    }
-    const k = r.kinds[i];
-    const b = s.charCodeAt(i);
-    if ((k === K_NORMAL || k === K_IN_STRING) && b === pat.charCodeAt(ni)) {
-      ni++;
-    } else {
-      ni = 0;
-    }
-  }
-  if (ni < m) {
-    return -1;
-  }
-  return toI32(s.length) - m;
+  const n = toI32(s.length);
+  return rsFindUncommentedIn(strToBytes(s), 0, n, pat);
 };
 
 /** FindUncommented::find_last_uncommented. */
@@ -554,13 +623,13 @@ const commentPayload = (comment: string): string => {
 
 const commentContent = (code: string): string => {
   const sl = rsUngroupedSlices(code);
-  let out = "";
+  const out = new RsStrBuf();
   for (let i = 0; i < sl.n; i++) {
     if (sl.kind[i] === CK_COMMENT) {
-      out = out + commentPayload(code.slice(sl.start[i], sl.end[i]));
+      out.add(commentPayload(code.slice(sl.start[i], sl.end[i])));
     }
   }
-  return out;
+  return out.str();
 };
 
 /** changed_comment_content. */
@@ -569,13 +638,15 @@ export const rsChangedCommentContent = (orig: string, nw: string): boolean => co
 /** filter_normal_code. */
 export const rsFilterNormalCode = (code: string): string => {
   const lc = rsLineClasses(code);
-  let buf = "";
+  const bb = new RsStrBuf();
   for (let i = 0; i < lc.n; i++) {
     const k = lc.kinds[i];
     if (k === K_NORMAL || k === K_START_STRING || k === K_IN_STRING || k === K_END_STRING) {
-      buf = buf + lc.lines[i] + "\n";
+      bb.add(lc.lines[i]);
+      bb.add("\n");
     }
   }
+  let buf = bb.str();
   if (!code.endsWith("\n") && buf.endsWith("\n")) {
     buf = buf.slice(0, toI32(buf.length) - 1);
   }
@@ -795,23 +866,26 @@ export const rsTrimLeftPreserveLayout = (orig: string, bi: i32, al: i32, cfg: Rs
   if (minPrefix < 0) {
     return null;
   }
-  let out = firstLine + "\n";
+  const out = new RsStrBuf();
+  out.add(firstLine);
+  out.add("\n");
   for (let i = 0; i < toI32(lines.length); i++) {
     if (i > 0) {
-      out = out + "\n";
+      out.add("\n");
     }
     if (!trimmed[i]) {
-      out = out + lines[i];
+      out.add(lines[i]);
     } else if (widths[i] >= 0) {
       let extra = widths[i] - minPrefix;
       if (extra < 0) {
         extra = 0;
       }
       const ind = rsIndentFromWidth(cfg, bi + al + extra);
-      out = out + rsIndentStr(cfg, ind.bi, ind.al) + lines[i];
+      out.add(rsIndentStr(cfg, ind.bi, ind.al));
+      out.add(lines[i]);
     }
   }
-  return out;
+  return out.str();
 };
 
 // identify_comment at the default configuration.
