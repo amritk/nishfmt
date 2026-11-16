@@ -10,6 +10,10 @@ as `rustfmt --edition 2021 < file` formats one file.
 | `/work/c/rust` (sources as found) | 7899 / 7899 | 0 |
 | `/work/c/rust2` (sources reformatted first, see below) | 7899 / 7899 | 0 |
 | rustfmt's own `tests/source` and `tests/target` inputs (dev driver) | 1850 / 1850 | 53 |
+| the same, given the rust2 treatment | 1839 / 1839 | 51 |
+| the crates in `~/.cargo/registry/src` | 3306 / 3306 | 0 |
+| the same, given the rust2 treatment | 3306 / 3306 | 0 |
+| a third of `rust/raw` with every line's indentation removed | 2647 / 2647 | 0 |
 
 Both corpora leave out the 450 files rustfmt itself rejects (`failed.txt`),
 mostly for edition 2024 syntax such as let chains, an error under
@@ -56,7 +60,10 @@ where the binary disagrees with the source the port follows the binary:
 - light_rewrite_comment keeps the whitespace char before a leading `*`
   (none when the `*` is at column 0) instead of inserting a space;
 - CharClasses takes any `r#` for a raw-string prefix, and the closing quote
-  of a raw string without `#`s is normal code.
+  of a raw string without `#`s is normal code;
+- an enum whose variant list fails is pushed as header, then the body's
+  snippet on a new line at the (still raised) variant indent; generics that
+  fail there panic (the file is skipped).
 
 ## Speed
 
@@ -65,7 +72,7 @@ All on the shared 4-core machine, the 8349 files of `/work/c/rust/raw`
 
 | | 4 cores | 1 core (`taskset -c 0`, fastfmt `-j 1`) |
 | --- | --- | --- |
-| fastfmt (`cmp.sh`, `-i -q`) | 1.50 s | 5.37 s |
+| fastfmt (`cmp.sh`, `-i -q`) | 1.50 s (2.9 s with the machine loaded) | 5.2–5.4 s |
 | rustfmt, 100 files per process (`xargs -n 100`) | 11.9 s | 31.0 s |
 | rustfmt, one file per process through stdin | 148 s | 442 s |
 
