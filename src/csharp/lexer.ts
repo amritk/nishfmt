@@ -1061,12 +1061,14 @@ export class CsLexer {
     if (colon >= 0) {
       const ct = this.addToken(K_ColonToken, colon, colon + 1, lead0, lead1);
       this.flags[ct] = TF_HOLE_END;
+      this.ck[ob] = ct;
       this.addToken(K_InterpolatedStringTextToken, colon + 1, fmtEnd, this.ntr, this.ntr);
       const cb = this.addToken(K_CloseBraceToken, closeStart, closeEnd, this.ntr, this.ntr);
       this.flags[cb] = TF_HOLE_END;
     } else {
       const cb = this.addToken(K_CloseBraceToken, closeStart, closeEnd, lead0, lead1);
       this.flags[cb] = TF_HOLE_END;
+      this.ck[ob] = cb;
     }
     this.pos = closeEnd;
   }
