@@ -9,6 +9,7 @@ as `rustfmt --edition 2021 < file` formats one file.
 | --- | --- | --- |
 | `/work/c/rust` (sources as found) | 7899 / 7899 | 0 |
 | `/work/c/rust2` (sources reformatted first, see below) | 7899 / 7899 | 0 |
+| rustfmt's own `tests/source` and `tests/target` inputs (dev driver) | 1850 / 1850 | 53 |
 
 Both corpora leave out the 450 files rustfmt itself rejects (`failed.txt`),
 mostly for edition 2024 syntax such as let chains, an error under
@@ -21,6 +22,41 @@ vertical params, leading match pipes, CRLF, no import reordering, …) and the
 reference is then the default rustfmt run over that. Raw files there are
 far from their formatted form, so far more of the formatter is exercised
 than on `rust` (where 81% of the files are already formatted).
+
+The third set is every `.rs` under `/opt/ref/rustfmt-src/tests/{source,target}`
+that the reference binary formats at the default config through stdin (the
+`// rustfmt-*` option comments there are ignored outside rustfmt's test
+harness). It is full of rare syntax and comment placements; the 53 skipped
+files use syntax the parser does not take (unstable features such as
+`super let`, `mut ref`, pin sugar, postfix match, guard patterns, unsafe
+fields/binders, `final`/`impl` restrictions), macros 2.0, or
+`rustfmt::skip::macros`/`attributes`.
+
+## The reference is the 1.9.0 binary, not the source at hand
+
+`/opt/ref/rustfmt-src` is rustfmt **1.12.0**; the reference binary is
+1.9.0. The 1.10–1.12 entries of its `CHANGELOG.md` list what changed, and
+where the binary disagrees with the source the port follows the binary:
+
+- trait impls print `impl const Tr for T` (inherent: `const impl S`);
+- an associated type alias prints `default` before its visibility, and an
+  opaque (`impl Trait`) type alias in an impl drops its visibility;
+- unnamed params (`fn(i32)`, a foreign fn's `...`) drop their attributes;
+- a fn pointer type looks for its parameter list from the start of the
+  whole type (so a `(` in a `for<#[attr] 'a>` binder is taken for it);
+- a struct pattern field's missing-comment span runs up to the pattern, so
+  `ident:` is duplicated after a comment between attribute and field;
+- loop bodies drop their inner attributes;
+- parentheses are added before `.method()` only, not before `.field`/`.await`;
+- nested parentheses are removed even when they carry attributes (dropped);
+- empty generic args are dropped inside macros too;
+- generic const items are kept as written;
+- `macro_rules! /* c */ name` loses the comment;
+- `for  await` (not exactly one space) panics, so such files are skipped;
+- light_rewrite_comment keeps the whitespace char before a leading `*`
+  (none when the `*` is at column 0) instead of inserting a space;
+- CharClasses takes any `r#` for a raw-string prefix, and the closing quote
+  of a raw string without `#`s is normal code.
 
 ## Speed
 
@@ -95,7 +131,7 @@ byte.
 
 ## Not ported (the file is skipped: `formatRust` answers false)
 
-None of these occur in either corpus.
+None of these occur in the two corpora.
 
 - `macro` (macros 2.0) definitions with a body.
 - Foreign items other than fns, statics, type aliases and macro calls.
@@ -103,8 +139,9 @@ None of these occur in either corpus.
   where-clause equality predicates.
 - Expression, pattern and type kinds the dispatchers do not know
   (`rewrite of node kind`, `expr kind`, `pattern kind`, `type kind`).
-- `#[rustfmt::skip::macros(...)]` / `skip_macro_invocations` (attribute-driven
-  macro skipping) is not read; `#[rustfmt::skip]` is.
+- `#[rustfmt::skip::macros(...)]` / `#[rustfmt::skip::attributes(...)]`
+  (the skip context); `#[rustfmt::skip]` is handled, including as an inner
+  attribute of a block or a fn body.
 
 ## Known differences
 
@@ -119,7 +156,8 @@ None on the corpora. Approximations that could show elsewhere:
 `tests/cases/rust/*.rs` with `*.expected` from `rustfmt --edition 2021`:
 macro_rules bodies, macro arguments rustc rejects or recovers from, a
 frontmatter after a shebang, raw-ident mod order, long attribute literals,
-and where clauses that grow the AST arrays. `tests/run.sh` only runs the
+where clauses that grow the AST arrays, and the 1.9.0 behaviors above
+(`binary_quirks`). Every `.expected` is a fixed point of the reference. `tests/run.sh` only runs the
 top-level C++ cases; these need a Rust loop (format each `.rs`, compare
 with `.expected`, and check each `.expected` is left unchanged).
 
