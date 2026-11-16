@@ -57,7 +57,7 @@ import {
   rsLastLineWidth,
   rsRewriteComment,
 } from "./comment";
-import { RsCtx, RsFile } from "./context";
+import { RsCtx, RsFile, RsRanges } from "./context";
 import { rsFormatStmt } from "./expr";
 import { rsFormatImport } from "./imports";
 import {
@@ -89,6 +89,7 @@ export class RsVisitor {
   isLoopBlock: boolean = false;
   isMacroDef: boolean = false;
   macroRewriteFailure: boolean = false;
+  skipped: RsRanges;
   // The source span this visitor works over (the snippet provider's).
   startPos: i32 = 0;
   endPos: i32 = 0;
@@ -98,6 +99,7 @@ export class RsVisitor {
     this.ast = f.ast;
     this.buf = new Out(256);
     this.endPos = f.n;
+    this.skipped = new RsRanges();
   }
 
   shape(): RsShape {
@@ -107,7 +109,34 @@ export class RsVisitor {
   ctx(): RsCtx {
     const c = new RsCtx(this.f);
     c.isMacroDef = this.isMacroDef;
+    c.skipped = this.skipped;
     return c;
+  }
+
+  /** with_context's tail: a macro failure in `c` is this visitor's. */
+  took(c: RsCtx): void {
+    if (c.macroRewriteFailure) {
+      this.macroRewriteFailure = true;
+    }
+  }
+
+  /** Drop for a visitor made from a context: its macro failure goes to the context. */
+  giveTo(c: RsCtx): void {
+    if (this.macroRewriteFailure) {
+      c.macroRewriteFailure = true;
+    }
+  }
+
+  /** line_number: the newlines in the buffer. */
+  lineNumber(): i32 {
+    let k = 0;
+    const b = this.buf.buf;
+    for (let i = 0; i < this.buf.n; i++) {
+      if (toI32(b[i]) === 10) {
+        k++;
+      }
+    }
+    return k;
   }
 
   snippet(lo: i32, hi: i32): string {
@@ -349,9 +378,21 @@ export class RsVisitor {
     this.pushRewriteInner(lo, hi, rw);
   }
 
-  pushSkippedWithSpan(lo: i32, hi: i32): void {
+  /** push_skipped_with_span: node `n`'s attributes, its span [lo, hi) and `mainLo`, the span's lo without attributes. */
+  pushSkippedWithSpan(n: i32, lo: i32, hi: i32, mainLo: i32): void {
+    const ast = this.ast;
     this.formatMissingWithIndent(lo);
+    let attrsEnd = 1;
+    for (let i = 0; i < ast.atn[n]; i++) {
+      const l = this.f.lineOf(ast.hi[ast.attr(n, i)]);
+      if (i === 0 || l > attrsEnd) {
+        attrsEnd = l;
+      }
+    }
+    const firstLine = this.f.lineOf(mainLo);
+    const slo = attrsEnd + 1 < firstLine ? attrsEnd + 1 : firstLine;
     this.pushRewriteInner(lo, hi, null);
+    this.skipped.push(slo, this.lineNumber() + 1);
   }
 
   /** visit_attrs over node `n`'s attributes of one style; answers true when they contain a skip. */
@@ -400,7 +441,7 @@ export class RsVisitor {
     const k = ast.kind[item];
     if (k === N_USE || k === N_EXTERN_CRATE) {
       if (rsAttrsContainSkip(this.ctx(), item)) {
-        this.pushSkippedWithSpan(this.spanLoWithAttrs(item), ast.hi[item]);
+        this.pushSkippedWithSpan(item, this.spanLoWithAttrs(item), ast.hi[item], ast.lo[item]);
         return;
       }
     } else if (k === N_MOD && (ast.fl[item] & IT_LOADED) === 0 && rsAttrsContainSkip(this.ctx(), item)) {
@@ -408,7 +449,7 @@ export class RsVisitor {
       return;
     } else {
       if (this.visitAttrs(item, false)) {
-        this.pushSkippedWithSpan(this.spanLoWithAttrs(item), ast.hi[item]);
+        this.pushSkippedWithSpan(item, this.spanLoWithAttrs(item), ast.hi[item], ast.lo[item]);
         return;
       }
     }
@@ -417,9 +458,15 @@ export class RsVisitor {
     if (k === N_USE) {
       rsFormatImport(this, item);
     } else if (k === N_IMPL) {
-      this.pushRewrite(lo, hi, rsFormatImpl(this.ctx(), item, this.bi, this.al));
+      const c = this.ctx();
+      const rw = rsFormatImpl(c, item, this.bi, this.al);
+      this.took(c);
+      this.pushRewrite(lo, hi, rw);
     } else if (k === N_TRAIT) {
-      this.pushRewrite(lo, hi, rsFormatTrait(this.ctx(), item, this.bi, this.al));
+      const c = this.ctx();
+      const rw = rsFormatTrait(c, item, this.bi, this.al);
+      this.took(c);
+      this.pushRewrite(lo, hi, rw);
     } else if (k === N_TRAIT_ALIAS) {
       this.pushRewrite(lo, hi, rsFormatTraitAlias(this.ctx(), item, this.shape()));
     } else if (k === N_EXTERN_CRATE) {
@@ -472,7 +519,7 @@ export class RsVisitor {
   visitAssocItem(item: i32): void {
     const ast = this.ast;
     if (this.visitAttrs(item, false)) {
-      this.pushSkippedWithSpan(ast.lo[item], ast.hi[item]);
+      this.pushSkippedWithSpan(item, ast.lo[item], ast.hi[item], ast.lo[item]);
       return;
     }
     const k = ast.kind[item];
@@ -495,9 +542,7 @@ export class RsVisitor {
     const shape = this.shape().satSubWidth(1);
     const ctx = this.ctx();
     const rw0 = rsRewriteMacro(ctx, mac, shape, isItem ? rsMacroPosItem() : rsMacroPosStatement());
-    if (ctx.macroRewriteFailure) {
-      this.macroRewriteFailure = true;
-    }
+    this.took(ctx);
     let lo = ast.lo[mac];
     let hi = ast.hi[mac];
     let rw = rw0;
@@ -565,16 +610,18 @@ export class RsVisitor {
     if (k === N_LOCAL || k === N_STMT_EXPR || k === N_STMT_SEMI) {
       const attrsOf = k === N_LOCAL ? s : ast.a[s];
       if (rsAttrsContainSkip(this.ctx(), attrsOf)) {
-        this.pushSkippedWithSpan(slo, shi);
+        this.pushSkippedWithSpan(attrsOf, slo, shi, ast.lo[attrsOf]);
       } else {
-        const rw = rsFormatStmt(this.ctx(), this.shape(), s, isLast);
+        const c = this.ctx();
+        const rw = rsFormatStmt(c, this.shape(), s, isLast);
+        this.took(c);
         this.pushRewrite(slo, shi, rw);
       }
       return;
     }
     if (k === N_STMT_MAC) {
       if (this.visitAttrs(s, false)) {
-        this.pushSkippedWithSpan(slo, shi);
+        this.pushSkippedWithSpan(s, slo, shi, ast.lo[ast.a[s]]);
       } else {
         this.visitMac(ast.a[s], false, s);
       }

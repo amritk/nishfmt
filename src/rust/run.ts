@@ -5,13 +5,11 @@
 
 import { Out } from "../core/out";
 import { RsAst } from "./ast";
-import { rsAttrsContainSkip } from "./attr";
-import { RsCtx, RsFile } from "./context";
 import { rsDump } from "./dump";
+import { rsFormatSource } from "./format";
 import { RsTokens, rsLex } from "./lexer";
 import { RsParser } from "./parser";
 import { RsConfig } from "./shape";
-import { RsVisitor } from "./visitor";
 
 /** One file's Rust state; a fresh one formats each file, in a region of its own. */
 export class RustEngine {
@@ -48,63 +46,40 @@ export const formatRust = (e: RustEngine, path: string, src0: u8[], n0: i32, out
     }
     n = k;
   }
-  const t = new RsTokens(src, n);
-  rsLex(t);
-  if (t.failed) {
-    if (e.debug) {
-      console.error(`${path}: lexing failed`);
+  if (e.dump || e.parseOnly) {
+    const t = new RsTokens(src, n);
+    rsLex(t);
+    if (t.failed) {
+      return false;
     }
-    return false;
+    const ast = new RsAst(t.nt);
+    const p = new RsParser(t, ast);
+    const root = p.parseCrate();
+    if (p.failed || root < 0) {
+      return false;
+    }
+    p.finishInnerAttrs();
+    if (e.dump) {
+      out.str(rsDump(ast, t, root));
+    }
+    return true;
   }
-  const ast = new RsAst(t.nt);
-  const p = new RsParser(t, ast);
-  const root = p.parseCrate();
-  if (p.failed || root < 0) {
+  const r = rsFormatSource(src, n, new RsConfig(), false);
+  if (r.parseFailed || r.unsupported || r.broken) {
     if (e.debug) {
-      const at = p.p < t.nt ? t.lo[p.p] : n;
       let line = 1;
-      for (let i = 0; i < at && i < n; i++) {
+      for (let i = 0; i < r.failAt && i < n; i++) {
         if (toI32(src[i]) === 10) {
           line++;
         }
       }
-      console.error(`${path}:${line}: parse failed at token ${p.p}`);
+      const where = r.parseFailed ? `:${line}` : "";
+      const what = r.unsupported ? "unsupported: " + r.why : r.broken ? "span lookup failed: " + r.why : r.why;
+      console.error(`${path}${where}: ${what}`);
     }
     return false;
   }
-  p.finishInnerAttrs();
-  if (e.dump) {
-    out.str(rsDump(ast, t, root));
-    return true;
-  }
-  if (e.parseOnly) {
-    return true;
-  }
-  const f = new RsFile(src, n, t, ast, new RsConfig());
-  // #![rustfmt::skip] on the crate leaves the file as it is.
-  if (rsAttrsContainSkip(new RsCtx(f), root)) {
-    out.range(src, 0, n);
-    return true;
-  }
-  const v = new RsVisitor(f);
-  v.buf = new Out(n + n / 4 + 1024);
-  v.lastPos = 0;
-  v.skipEmptyLines(n);
-  v.formatCrate(root);
-  if (f.unsupported || f.broken) {
-    if (e.debug) {
-      console.error(`${path}: ${f.unsupported ? "unsupported: " + f.why : "span lookup failed: " + f.why}`);
-    }
-    return false;
-  }
-  // append_newline; format_lines then makes a run of trailing newlines one.
-  v.buf.byte(10);
-  const b = v.buf.buf;
-  let m = v.buf.n;
-  while (m >= 2 && toI32(b[m - 2]) === 10) {
-    m--;
-  }
-  out.range(b, 0, m);
+  out.str(r.text);
   return true;
 };
 

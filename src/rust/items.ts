@@ -300,6 +300,7 @@ const rsRewriteForeignItem = (ctx: RsCtx, item: i32, shape: RsShape): string | n
       sub.al = shape.al;
       sub.lastPos = lo;
       visitFn(sub, item);
+      sub.giveTo(ctx);
       itemStr = String.fromBytes(sub.buf.buf, 0, sub.buf.n);
     } else {
       const fb = rewriteFnBase(ctx, shape.bi, shape.al, item, lo, hi - 1, FBS_NONE);
@@ -1751,6 +1752,7 @@ export const rsFormatImpl = (ctx: RsCtx, item: i32, bi: i32, al: i32): string | 
       sub.visitAssocItem(ast.kid(item, i));
     }
     sub.formatMissing(hi - 1);
+    sub.giveTo(ctx);
     const inner = rsIndentStrNl(cfg, sub.bi, sub.al);
     const outer = rsIndentStrNl(cfg, bi, 0);
     result = result + inner + rsTrim(String.fromBytes(sub.buf.buf, 0, sub.buf.n)) + outer;
@@ -1932,6 +1934,7 @@ export const rsFormatTrait = (ctx: RsCtx, item: i32, bi: i32, al: i32): string |
       sub.visitAssocItem(ast.kid(item, i));
     }
     sub.formatMissing(hi - 1);
+    sub.giveTo(ctx);
     result = result + rsIndentStrNl(cfg, sub.bi, sub.al) + rsTrim(String.fromBytes(sub.buf.buf, 0, sub.buf.n)) + outer;
   } else if (rsHasByte(result, 10)) {
     result = result + outer;

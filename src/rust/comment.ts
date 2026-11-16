@@ -1049,6 +1049,8 @@ export const rsCombineStrsWithMissingComments = (
 export const rsRecoverCommentRemoved = (ctx: RsCtx, nw: string, lo: i32, hi: i32): string => {
   const snippet = ctx.snippet(lo, hi);
   if (snippet !== nw && rsChangedCommentContent(snippet, nw)) {
+    // error_on_unformatted is on for a macro body: ErrorKind::LostComment.
+    ctx.f.lostComment = true;
     return snippet;
   }
   return nw;

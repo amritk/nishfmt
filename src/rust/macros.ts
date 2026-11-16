@@ -36,12 +36,14 @@ import {
   T_LPAREN,
   T_SEMI,
   rsIsReserved,
+  RsTokens,
 } from "./lexer";
 import { OC_MACRO_ARG, rsRewriteWithParens } from "./overflow";
 import { RsParser } from "./parser";
-import { RsShape, rsIndentStr, rsIndentStrNl } from "./shape";
+import { RsShape, rsConfigWithMaxWidth, rsIndentStr, rsIndentStrNl } from "./shape";
 import { rsHasByte, rsLines, rsTrim, rsTrimEnd } from "./str";
-import { rsCharClasses, K_IN_STRING } from "./comment";
+import { K_IN_STRING, K_NORMAL, K_START_STRING, rsCharClasses, rsFilteredStrFits, rsLineClasses } from "./comment";
+import { rsFormatCodeBlock, rsFormatSnippet } from "./format";
 import { rsRewriteTy } from "./types";
 import { rsFormatVisibility, rsIdentStr } from "./utils";
 import { RsVisitor } from "./visitor";
@@ -130,6 +132,7 @@ const rewriteItemAsArg = (ctx: RsCtx, item: i32, shape: RsShape): string | null 
   v.al = shape.al;
   v.lastPos = rsItemSpanLo(ctx.ast, item);
   v.visitItem(item);
+  v.giveTo(ctx);
   return String.fromBytes(v.buf.buf, 0, v.buf.n);
 };
 
@@ -423,6 +426,7 @@ const rewriteMacroWithItems = (ctx: RsCtx, items: i32[], name: string, shape: Rs
   for (const it of items) {
     v.visitItem(it);
   }
+  v.giveTo(ctx);
   const buf = rsTrim(String.fromBytes(v.buf.buf, 0, v.buf.n));
   return name + opener + rsIndentStrNl(cfg, v.bi, v.al) + buf + rsIndentStrNl(cfg, shape.bi, shape.al) + closer + semi;
 };
@@ -526,17 +530,163 @@ class Branch {
   hi: i32;
   argsOpen: i32;
   argsKind: i32;
-  bodyLo: i32;
-  bodyHi: i32;
-  constructor(lo: i32, hi: i32, argsOpen: i32, argsKind: i32, bodyLo: i32, bodyHi: i32) {
+  bodyOpen: i32; // the body's delimiter tokens
+  bodyClose: i32;
+  constructor(lo: i32, hi: i32, argsOpen: i32, argsKind: i32, bodyOpen: i32, bodyClose: i32) {
     this.lo = lo;
     this.hi = hi;
     this.argsOpen = argsOpen;
     this.argsKind = argsKind;
-    this.bodyLo = bodyLo;
-    this.bodyHi = bodyHi;
+    this.bodyOpen = bodyOpen;
+    this.bodyClose = bodyClose;
   }
 }
+
+/** replace_names: `$name` becomes `zname`; null on `$(`. `olds`/`news` get the substitutions. */
+const replaceNames = (input: string, olds: string[], news: string[]): string | null => {
+  const r = rsCharClasses(input);
+  let result = "";
+  let dollarCount = 0;
+  let curName = "";
+  for (let ci = 0; ci < r.nc; ci++) {
+    const i = r.starts[ci];
+    const j = ci + 1 < r.nc ? r.starts[ci + 1] : toI32(input.length);
+    const ch = input.slice(i, j);
+    const c = input.charCodeAt(i);
+    const alnum = (c >= 48 && c <= 57) || (c >= 65 && c <= 90) || (c >= 97 && c <= 122) || c >= 0x80;
+    if (r.kinds[i] !== K_NORMAL) {
+      result = result + ch;
+    } else if (c === 36) {
+      dollarCount++;
+    } else if (dollarCount === 0) {
+      result = result + ch;
+    } else if (!alnum && curName.length !== 0) {
+      result = result + registerMetavariable(olds, news, curName, dollarCount);
+      result = result + ch;
+      dollarCount = 0;
+      curName = "";
+    } else if (c === 40 && curName.length === 0) {
+      return null;
+    } else if (alnum || c === 95) {
+      curName = curName + ch;
+    }
+  }
+  if (curName.length !== 0) {
+    result = result + registerMetavariable(olds, news, curName, dollarCount);
+  }
+  return result;
+};
+
+const registerMetavariable = (olds: string[], news: string[], name: string, dollarCount: i32): string => {
+  let nw = "";
+  for (let i = 0; i < dollarCount - 1; i++) {
+    nw = nw + "$";
+  }
+  nw = nw + "z" + name;
+  let old = "";
+  for (let i = 0; i < dollarCount; i++) {
+    old = old + "$";
+  }
+  old = old + name;
+  // A HashMap insert: a repeated name replaces its entry.
+  for (let i = 0; i < olds.length; i++) {
+    if (olds[i] === old) {
+      news[i] = nw;
+      return nw;
+    }
+  }
+  olds.push(old);
+  news.push(nw);
+  return nw;
+};
+
+const replaceAll = (s: string, from: string, to: string): string => {
+  if (from.length === 0) {
+    return s;
+  }
+  let out = "";
+  let i = 0;
+  for (;;) {
+    const k = s.indexOf(from, i);
+    if (k < 0) {
+      break;
+    }
+    out = out + s.slice(i, k) + to;
+    i = k + toI32(from.length);
+  }
+  return out + s.slice(i, toI32(s.length));
+};
+
+const isEmptyLine = (s: string): boolean => rsTrim(s).length === 0;
+
+/** MacroBranch::rewrite (format_macro_matchers off, format_macro_bodies on). */
+const rewriteBranch = (ctx: RsCtx, br: Branch, shape: RsShape, multi: boolean): string | null => {
+  const cfg = ctx.cfg;
+  const t = ctx.f.t;
+  if (br.argsKind !== T_LPAREN) {
+    return null;
+  }
+  const oldBody = rsTrim(ctx.snippet(t.hi[br.bodyOpen], t.lo[br.bodyClose]));
+  const hasBlockBody = oldBody.startsWith("{");
+  if (shape.subWidth(5) === null) {
+    return null;
+  }
+  let result = ctx.snippet(t.lo[br.argsOpen], t.hi[t.match[br.argsOpen]]);
+  if (multi) {
+    result = result + " =>";
+  }
+  const olds: string[] = [];
+  const news: string[] = [];
+  const bodyStr = replaceNames(oldBody, olds, news);
+  if (bodyStr === null) {
+    return null;
+  }
+  result = result + " {";
+  const bbi = hasBlockBody ? shape.bi : shape.bi + cfg.tabSpaces;
+  const bal = shape.al;
+  const newWidth = cfg.maxWidth - (bbi + bal);
+  let bodyCfg = rsConfigWithMaxWidth(newWidth);
+  let fm0 = rsFormatSnippet(ctx, bodyStr, bodyCfg, true);
+  if (fm0 === null) {
+    if (ctx.f.unsupported) {
+      return null;
+    }
+    bodyCfg = rsConfigWithMaxWidth(newWidth + cfg.tabSpaces);
+    fm0 = rsFormatCodeBlock(ctx, bodyStr, bodyCfg, true);
+  }
+  const fm = fm0;
+  if (fm === null) {
+    return null;
+  }
+  if (!rsFilteredStrFits(fm.text, bodyCfg.maxWidth, cfg.tabSpaces, shape)) {
+    return null;
+  }
+  const indentStr = rsIndentStr(cfg, bbi, bal);
+  let newBody = "";
+  let needIndent = true;
+  const lc = rsLineClasses(rsTrimEnd(fm.text));
+  for (let i = 0; i < lc.n; i++) {
+    const l = lc.lines[i];
+    if (!isEmptyLine(l) && needIndent && !fm.skipped.contains(i + 1)) {
+      newBody = newBody + indentStr;
+    }
+    newBody = newBody + l + "\n";
+    const k = lc.kinds[i];
+    needIndent = !(k === K_IN_STRING || k === K_START_STRING);
+  }
+  for (let i = 0; i < olds.length; i++) {
+    if (oldBody.indexOf(news[i]) >= 0) {
+      return null;
+    }
+    newBody = replaceAll(newBody, news[i], olds[i]);
+  }
+  if (hasBlockBody) {
+    result = result + rsTrim(newBody);
+  } else if (newBody.length !== 0) {
+    result = result + "\n" + newBody + rsIndentStr(cfg, shape.bi, shape.al);
+  }
+  return result + "}";
+};
 
 /** format_header over [snippet, lo, hi] parts. */
 const formatHeaderParts = (ctx: RsCtx, shape: RsShape, snippets: string[], los: i32[], his: i32[]): string => {
@@ -566,6 +716,12 @@ const formatHeaderParts = (ctx: RsCtx, shape: RsShape, snippets: string[], los: 
   return result;
 };
 
+/** The token after the token tree at `i`. */
+const ttEnd = (t: RsTokens, i: i32): i32 => {
+  const k = t.kind[i];
+  return k === T_LPAREN || k === T_LBRACKET || k === T_LBRACE ? t.match[i] + 1 : i + 1;
+};
+
 /** rewrite_macro_def. */
 export const rsRewriteMacroDef = (ctx: RsCtx, shape: RsShape, bi: i32, al: i32, item: i32): string | null => {
   const ast = ctx.ast;
@@ -588,7 +744,8 @@ export const rsRewriteMacroDef = (ctx: RsCtx, shape: RsShape, bi: i32, al: i32, 
   // MacroParser::parse.
   const branches: Branch[] = [];
   let i = bodyOpen + 1;
-  while (i < bodyClose) {
+  // While at least two token trees remain.
+  while (i < bodyClose && ttEnd(t, i) < bodyClose) {
     const k = t.kind[i];
     if (!(k === T_LPAREN || k === T_LBRACKET || k === T_LBRACE)) {
       return snippet;
@@ -610,19 +767,14 @@ export const rsRewriteMacroDef = (ctx: RsCtx, shape: RsShape, bi: i32, al: i32, 
       return snippet;
     }
     const bc = t.match[i];
-    const bodyLo = t.lo[i];
-    const bodyHi = t.hi[bc];
-    let bhi = bodyHi;
+    const bo = i;
+    let bhi = t.hi[bc];
     i = bc + 1;
     if (i < bodyClose && t.kind[i] === T_SEMI) {
       bhi = t.hi[i];
       i++;
     }
-    branches.push(new Branch(blo, bhi, argsOpen, argsKind, bodyLo, bodyHi));
-  }
-  if (branches.length > 0) {
-    ctx.unsupported("macro_rules bodies (format_macro_bodies)");
-    return null;
+    branches.push(new Branch(blo, bhi, argsOpen, argsKind, bo, bc));
   }
   // The header: `macro_rules!` and the name.
   const bang = ctx.spanAfter(lo, hi, "!");
@@ -649,12 +801,12 @@ export const rsRewriteMacroDef = (ctx: RsCtx, shape: RsShape, bi: i32, al: i32, 
     (k: i32): i32 => branches[k].lo,
     (k: i32): i32 => branches[k].hi,
     (k: i32): string | null => {
-      const br = branches[k];
-      if (br.argsKind !== T_LPAREN) {
-        return null;
+      const r = rewriteBranch(ctx, branches[k], armShape, true);
+      if (r === null && ctx.macroRewriteFailure) {
+        const br = branches[k];
+        return rsTrim(ctx.snippet(t.hi[br.bodyOpen], t.lo[br.bodyClose]));
       }
-      const ac = t.match[br.argsOpen];
-      return ctx.snippet(t.lo[br.argsOpen], t.hi[ac]) + " => " + ctx.snippet(br.bodyLo, br.bodyHi);
+      return r;
     },
     ctx.spanAfter(lo, hi, "{"),
     hi,

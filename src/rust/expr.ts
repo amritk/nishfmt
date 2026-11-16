@@ -503,7 +503,6 @@ export const rsRewriteBlockWithVisitor = (ctx: RsCtx, prefix: string, b: i32, wi
   v.al = shape.al;
   v.isIfElseBlock = ctx.isIfElseBlock;
   v.isLoopBlock = ctx.isLoopBlock;
-  v.isMacroDef = ctx.isMacroDef;
   if ((ast.fl[b] & BLK_UNSAFE) !== 0 || label >= 0) {
     const snippet = ctx.snippet(ast.lo[b], ast.hi[b]);
     const op = rsFindUncommented(snippet, "{");
@@ -516,6 +515,8 @@ export const rsRewriteBlockWithVisitor = (ctx: RsCtx, prefix: string, b: i32, wi
   }
   const labelStr = rewriteLabel(ctx, label);
   v.visitBlockWith(b, withAttrs, hasBraces);
+  ctx.skipped.append(v.skipped);
+  v.giveTo(ctx);
   return prefix + labelStr + String.fromBytes(v.buf.buf, 0, v.buf.n);
 };
 

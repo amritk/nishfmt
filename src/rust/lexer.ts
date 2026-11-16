@@ -399,6 +399,95 @@ const suffixEnd = (src: u8[], n: i32, i: i32): i32 => {
   return i;
 };
 
+const isHorizontalWs = (c: i32): boolean => c === 32 || c === 9;
+
+/**
+ * A frontmatter (`---` fenced block) at the start of the file, after the
+ * shebang and whitespace: skipped like whitespace. One rustc would report an
+ * error for (bad opening, infostring or closing) fails the lex.
+ */
+const skipFrontmatter = (t: RsTokens, src: u8[], n: i32, i0: i32): i32 => {
+  let j = i0;
+  while (j < n && rsIsWs(toI32(src[j]))) {
+    j++;
+  }
+  if (!(j + 2 < n && toI32(src[j]) === 45 && toI32(src[j + 1]) === 45 && toI32(src[j + 2]) === 45)) {
+    return i0;
+  }
+  if (j > i0 && toI32(src[j - 1]) !== 10) {
+    t.failed = true; // whitespace before the opening that is not a newline
+    return i0;
+  }
+  let k = j;
+  while (k < n && toI32(src[k]) === 45) {
+    k++;
+  }
+  const len = k - j;
+  if (len > 255) {
+    t.failed = true;
+    return i0;
+  }
+  while (k < n && isHorizontalWs(toI32(src[k]))) {
+    k++;
+  }
+  if (k < n && rsIsIdStart(toI32(src[k]))) {
+    k++;
+    while (k < n && (rsIsIdContinue(toI32(src[k])) || toI32(src[k]) === 45 || toI32(src[k]) === 46)) {
+      k++;
+    }
+  }
+  while (k < n && isHorizontalWs(toI32(src[k]))) {
+    k++;
+  }
+  if (k >= n || toI32(src[k]) !== 10) {
+    t.failed = true; // an invalid infostring
+    return i0;
+  }
+  // The closing fence: a line starting with `len` dashes.
+  let p = k;
+  for (;;) {
+    while (p < n && toI32(src[p]) !== 10) {
+      p++;
+    }
+    if (p >= n) {
+      t.failed = true; // unclosed
+      return i0;
+    }
+    let d = 0;
+    while (p + 1 + d < n && toI32(src[p + 1 + d]) === 45) {
+      d++;
+    }
+    if (d >= len) {
+      break;
+    }
+    p++;
+  }
+  for (let q = k; q < p; q++) {
+    if (toI32(src[q]) === 13) {
+      t.failed = true; // a bare CR in the content
+      return i0;
+    }
+  }
+  let e = p + 1;
+  let d = 0;
+  while (e < n && toI32(src[e]) === 45) {
+    e++;
+    d++;
+  }
+  if (d !== len) {
+    t.failed = true; // the closing fence's length differs
+    return i0;
+  }
+  while (e < n && toI32(src[e]) !== 10) {
+    if (!isHorizontalWs(toI32(src[e]))) {
+      t.failed = true; // characters after the closing fence
+      return i0;
+    }
+    e++;
+  }
+  return e;
+};
+
 /** Lexes `src[0, n)`; a lexing error sets `failed`. */
 export const rsLex = (t: RsTokens): void => {
   const src = t.src;
@@ -436,6 +525,10 @@ export const rsLex = (t: RsTokens): void => {
       }
       t.shebang = i;
     }
+  }
+  i = skipFrontmatter(t, src, n, i);
+  if (t.failed) {
+    return;
   }
   let stack = new Array<i32>(64);
   let sp = 0;

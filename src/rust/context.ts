@@ -21,12 +21,75 @@ export class RsFile {
   why: string = "";
   // Set when a span helper did not find its needle (rustfmt would panic).
   broken: boolean = false;
+  // recover_comment_removed kept a snippet (ErrorKind::LostComment).
+  lostComment: boolean = false;
+  // The byte offset of each line's start, built on first use.
+  lineStarts: i32[];
+  nLines: i32 = -1;
   constructor(src: u8[], n: i32, t: RsTokens, ast: RsAst, cfg: RsConfig) {
     this.src = src;
     this.n = n;
     this.t = t;
     this.ast = ast;
     this.cfg = cfg;
+    this.lineStarts = [];
+  }
+
+  /** line_of_byte_pos: the 1-based line holding byte `pos`. */
+  lineOf(pos: i32): i32 {
+    if (this.nLines < 0) {
+      this.lineStarts.push(0);
+      for (let i = 0; i < this.n; i++) {
+        if (toI32(this.src[i]) === 10) {
+          this.lineStarts.push(i + 1);
+        }
+      }
+      this.nLines = toI32(this.lineStarts.length);
+    }
+    let lo = 0;
+    let hi = this.nLines - 1;
+    while (lo < hi) {
+      const mid = (lo + hi + 1) >> 1;
+      if (this.lineStarts[mid] <= pos) {
+        lo = mid;
+      } else {
+        hi = mid - 1;
+      }
+    }
+    return lo + 1;
+  }
+}
+
+/** A visitor's skipped_range: inclusive 1-based line pairs. */
+export class RsRanges {
+  lo: i32[];
+  hi: i32[];
+  constructor() {
+    this.lo = [];
+    this.hi = [];
+  }
+
+  push(lo: i32, hi: i32): void {
+    this.lo.push(lo);
+    this.hi.push(hi);
+  }
+
+  append(o: RsRanges): void {
+    for (let i = 0; i < o.lo.length; i++) {
+      this.lo.push(o.lo[i]);
+      this.hi.push(o.hi[i]);
+    }
+    o.lo = [];
+    o.hi = [];
+  }
+
+  contains(line: i32): boolean {
+    for (let i = 0; i < this.lo.length; i++) {
+      if (this.lo[i] <= line && line <= this.hi[i]) {
+        return true;
+      }
+    }
+    return false;
   }
 }
 
@@ -41,10 +104,13 @@ export class RsCtx {
   forceOneLineChain: boolean = false;
   isMacroDef: boolean = false;
   macroRewriteFailure: boolean = false;
+  // The skipped_range of the visitor this context came from.
+  skipped: RsRanges;
   constructor(f: RsFile) {
     this.f = f;
     this.ast = f.ast;
     this.cfg = f.cfg;
+    this.skipped = new RsRanges();
   }
 
   snippet(lo: i32, hi: i32): string {
@@ -141,6 +207,7 @@ export class RsCtx {
     c.isLoopBlock = this.isLoopBlock;
     c.forceOneLineChain = this.forceOneLineChain;
     c.isMacroDef = this.isMacroDef;
+    c.skipped = this.skipped;
     return c;
   }
 }
