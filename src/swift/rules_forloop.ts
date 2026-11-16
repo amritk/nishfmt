@@ -4,7 +4,7 @@
 // Ported from SwiftFormat 0.64.7 (MIT License, Copyright (c) 2016 Nick
 // Lockwood).
 
-import { Regex, regexCompile } from "nish/regex";
+import { swSingularized } from "./singular";
 import { swIsUnsafeExpression } from "./expr";
 import { SwFormatter } from "./formatter";
 import { swCurrentScope, swEndOfScope, swIsAttribute, swIsUnwrap, swParseType, swStartOfScope } from "./parsing";
@@ -30,17 +30,6 @@ import {
   swIsSwiftKeyword,
 } from "./token";
 
-// Singularize.swift's rules, in order: pattern, replacement.
-const SW_SINGULAR_RULES: string =
-  "s$\t\neaux$\teau\nae$\ta\nera$\tus\n(e)ae$\t$1us\n(ss)$\t$1\n(tt?)i$\t$1o\n([tivdl])a$\t$1um\n(i)ves$\t$1fe\n" +
-  "([alr]|oo|ie)ves$\t$1f\n([th]ive)s$\t$1\n([^aeiouy]|qu)ies$\t$1y\n(ov|mb)ies$\t$1ie\n(x|ch|ss|sh)es$\t$1\n" +
-  "([ml])ice$\t$1ouse\n(d)ice$\t$1ie\n(bus|ato)es$\t$1\n(cris|test)es$\t$1is\n^(pra|a)xes$\t$1xis\n([sz])es$\t$1\n" +
-  "(ace|ase)s$\t$1\n(ias)es$\t$1\n(z)zes$\t$1\n((ba|grou)se)s$\t$1\n(x)en\t$1\n(oa|ly|gno|op|the|ip)ses$\t$1sis\n" +
-  "(rt|ind|ap|cod)ices$\t$1ex\n(tr|end)ices$\t$1ix\n(oc|radi|vir|octop|alumn|cill|cact|fung|ul|ab)i$\t$1us\n" +
-  "(vir)ii$\t$1us\n(quiz)zes$\t$1\n(pe)ople$\t$1rson\n(m)en$\t$1an\n(child)ren$\t$1\n(t)eeth$\t$1ooth\n" +
-  "(g)eese$\t$1oose\n(iteri|en)a$\t$1on\n(bison|craft|deer|equipment|fish|fruit|grouse|money|news|offspring)$\t$1\n" +
-  "(info(rmation)?|rice|salmon|series|sheep|shrimp|species|swine|trout|tuna)$\t$1\n(data|media)$\t$1";
-
 const swIsAsciiString = (s: string): boolean => {
   for (let i = 0; i < toI32(s.length); i++) {
     if (s.charCodeAt(i) >= 128) {
@@ -48,52 +37,6 @@ const swIsAsciiString = (s: string): boolean => {
     }
   }
   return true;
-};
-
-const swAsciiLowerChar = (c: i32): i32 => (c >= 65 && c <= 90 ? c + 32 : c);
-const swAsciiUpperChar = (c: i32): i32 => (c >= 97 && c <= 122 ? c - 32 : c);
-
-/** String.singularized() for an ASCII string; null for nil. */
-const swSingularized = (s: string): string | null => {
-  const lines: string[] = [];
-  let start = 0;
-  const all = SW_SINGULAR_RULES;
-  for (let i = 0; i <= toI32(all.length); i++) {
-    if (i === toI32(all.length) || all.charCodeAt(i) === 10) {
-      lines.push(all.substring(start, i));
-      start = i + 1;
-    }
-  }
-  let result = "";
-  let found = false;
-  for (let q = toI32(lines.length) - 1; q >= 0; q--) {
-    const line = lines[q];
-    const tab = line.indexOf("\t");
-    const compiled = regexCompile(line.substring(0, tab), "i");
-    if (compiled.isErr()) {
-      return null;
-    }
-    const re: Regex = compiled.value;
-    if (re.test(s)) {
-      result = re.replaceAll(s, line.substring(tab + 1));
-      found = true;
-      break;
-    }
-  }
-  if (!found) {
-    return null;
-  }
-  // removingPrefix("all")
-  if (result.startsWith("all") || result.startsWith("All")) {
-    const rest = result.substring(3);
-    if (rest.length === 0) {
-      return null;
-    }
-    const c = rest.charCodeAt(0);
-    const first = result.startsWith("all") ? swAsciiLowerChar(c) : swAsciiUpperChar(c);
-    return String.fromCharCode(first) + rest.substring(1);
-  }
-  return result;
 };
 
 const swTokenizeString = (src: string): SwTok[] => {
