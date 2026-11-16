@@ -3,8 +3,13 @@
 // starts from, and false (the file is not handled) otherwise.
 
 import { SwFormatter } from "./formatter";
+import { swParseFunctionDeclaration } from "./funcdecl";
 import { swHasImport } from "./imports";
+import { swHasModifier } from "./modifiers";
+import { swLowercased } from "./rules_simple";
+import { swDetectTestingFramework, swIsTestCase, SW_TEST_NONE } from "./rules_tests";
 import {
+  SW_OP_POSTFIX,
   SW_END,
   SW_IDENT,
   SW_NUMBER,
@@ -39,11 +44,64 @@ const swHasKeyword = (f: SwFormatter, name: string): boolean => {
   return false;
 };
 
-/** Rules that only act on files importing XCTest or Testing. */
-export const swGuardTests = (f: SwFormatter): boolean => !swHasImport(f, "Testing") && !swHasImport(f, "XCTest");
+/** noForceUnwrapInTests: no `!` in the body of a test case. */
+export const swGuardNoForceUnwrapInTests = (f: SwFormatter): boolean => {
+  const framework = swDetectTestingFramework(f);
+  if (framework === SW_TEST_NONE) {
+    return true;
+  }
+  const n = f.count();
+  for (let i = 0; i < n; i++) {
+    if (!f.kw(i, "func")) {
+      continue;
+    }
+    const fd = swParseFunctionDeclaration(f, i);
+    if (fd === null || fd.bodyStart < 0 || !swIsTestCase(f, i, fd, framework)) {
+      continue;
+    }
+    for (let j = fd.bodyStart; j <= fd.bodyEnd; j++) {
+      if (f.op(j, "!", SW_OP_POSTFIX)) {
+        return false;
+      }
+    }
+  }
+  return true;
+};
 
-/** Rules that only act on files importing Testing. */
-export const swGuardSwiftTesting = (f: SwFormatter): boolean => !swHasImport(f, "Testing");
+/** swiftTestingTestCaseNames (raw identifiers need Swift 6.2, suite names are preserved): no `@Test` func named `test...`. */
+export const swGuardSwiftTestingTestCaseNames = (f: SwFormatter): boolean => {
+  if (!swHasImport(f, "Testing")) {
+    return true;
+  }
+  const n = f.count();
+  for (let i = 0; i < n; i++) {
+    if (!f.kw(i, "func") || !swHasModifier(f, i, "@Test")) {
+      continue;
+    }
+    const m = f.indexAfter(SW_T_NON_SPACE_OR_COMMENT_OR_LINEBREAK, i);
+    if (m >= 0 && f.k(m) === SW_IDENT) {
+      const s = f.s(m);
+      if (s.startsWith("test") || swLowercased(s).startsWith("`test")) {
+        return false;
+      }
+    }
+  }
+  return true;
+};
+
+/** redundantSwiftTestingSuite: no `@Suite`. */
+export const swGuardRedundantSwiftTestingSuite = (f: SwFormatter): boolean => {
+  if (!swHasImport(f, "Testing")) {
+    return true;
+  }
+  const n = f.count();
+  for (let i = 0; i < n; i++) {
+    if (f.k(i) === SW_KEYWORD && f.s(i) === "@Suite") {
+      return false;
+    }
+  }
+  return true;
+};
 
 /** nestedIf: no `{` directly followed by `if`. */
 export const swGuardNestedIf = (f: SwFormatter): boolean => {
@@ -174,7 +232,22 @@ export const swGuardContentBuilder = (f: SwFormatter): boolean => {
 /** redundantMemberwiseInit: no struct with an init. */
 export const swGuardRedundantMemberwiseInit = (f: SwFormatter): boolean => !(swHasKeyword(f, "struct") && swHasKeyword(f, "init"));
 
-export const swGuardRedundantEquatable = (f: SwFormatter): boolean => !swHasIdent(f, "Equatable");
+/** redundantEquatable: no `Equatable` alongside a `func ==`. */
+export const swGuardRedundantEquatable = (f: SwFormatter): boolean => {
+  if (!swHasIdent(f, "Equatable")) {
+    return true;
+  }
+  const n = f.count();
+  for (let i = 0; i < n; i++) {
+    if (f.kw(i, "func")) {
+      const m = f.indexAfter(SW_T_NON_SPACE_OR_COMMENT_OR_LINEBREAK, i);
+      if (m >= 0 && f.k(m) === SW_OP && f.s(m) === "==") {
+        return false;
+      }
+    }
+  }
+  return true;
+};
 
 export const swGuardRedundantEnumerated = (f: SwFormatter): boolean => !swHasIdent(f, "enumerated");
 

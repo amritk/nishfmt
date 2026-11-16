@@ -126,17 +126,18 @@ import {
 } from "./rules";
 import {
   swGuardContentBuilder,
+  swGuardNoForceUnwrapInTests,
   swGuardPreferForLoop,
   swGuardRedundantClosure,
   swGuardRedundantEmptyView,
   swGuardRedundantEnumerated,
   swGuardRedundantEquatable,
   swGuardRedundantMemberwiseInit,
+  swGuardRedundantSwiftTestingSuite,
   swGuardRedundantSwiftUIGroup,
   swGuardRepeatedGuard,
   swGuardSimplifyGenericConstraints,
-  swGuardSwiftTesting,
-  swGuardTests,
+  swGuardSwiftTestingTestCaseNames,
   swGuardTrailingClosures,
   swGuardYodaConditions,
 } from "./guards";
@@ -564,7 +565,7 @@ export const swRunRule = (f: SwFormatter, r: i32): boolean => {
       swRuleRedundantType(f);
       return true;
     case SW_RULE_NO_FORCE_UNWRAP_IN_TESTS:
-      return swGuardTests(f);
+      return swGuardNoForceUnwrapInTests(f);
     case SW_RULE_NO_FORCE_TRY_IN_TESTS:
       swRuleNoForceTryInTests(f);
       return true;
@@ -575,9 +576,9 @@ export const swRunRule = (f: SwFormatter, r: i32): boolean => {
       swRuleRedundantAsync(f);
       return true;
     case SW_RULE_SWIFT_TESTING_TEST_CASE_NAMES:
-      return swGuardSwiftTesting(f);
+      return swGuardSwiftTestingTestCaseNames(f);
     case SW_RULE_REDUNDANT_SWIFT_TESTING_SUITE:
-      return swGuardSwiftTesting(f);
+      return swGuardRedundantSwiftTestingSuite(f);
     case SW_RULE_NESTED_IF:
       swRuleNestedIf(f);
       return true;
