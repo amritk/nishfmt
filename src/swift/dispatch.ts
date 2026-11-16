@@ -131,10 +131,8 @@ import {
   swGuardRedundantEmptyView,
   swGuardRedundantEnumerated,
   swGuardRedundantEquatable,
-  swGuardRedundantInit,
   swGuardRedundantMemberwiseInit,
   swGuardRedundantSwiftUIGroup,
-  swGuardRedundantVariable,
   swGuardRepeatedGuard,
   swGuardSimplifyGenericConstraints,
   swGuardSwiftTesting,
@@ -200,6 +198,10 @@ import {
   swRuleSemicolons,
   swRuleTodos,
 } from "./rules_misc";
+import {
+  swRuleRedundantInit,
+  swRuleRedundantVariable,
+} from "./rules_misc2";
 import {
   swRuleNestedIf,
 } from "./rules_nestedif";
@@ -578,13 +580,15 @@ export const swRunRule = (f: SwFormatter, r: i32): boolean => {
     case SW_RULE_TRAILING_CLOSURES:
       return swGuardTrailingClosures(f);
     case SW_RULE_REDUNDANT_VARIABLE:
-      return swGuardRedundantVariable(f);
+      swRuleRedundantVariable(f);
+      return true;
     case SW_RULE_SIMPLIFY_GENERIC_CONSTRAINTS:
       return swGuardSimplifyGenericConstraints(f);
     case SW_RULE_REPEATED_GUARD:
       return swGuardRepeatedGuard(f);
     case SW_RULE_REDUNDANT_INIT:
-      return swGuardRedundantInit(f);
+      swRuleRedundantInit(f);
+      return true;
     case SW_RULE_CONTENT_BUILDER:
       return swGuardContentBuilder(f);
     case SW_RULE_REDUNDANT_MEMBERWISE_INIT:

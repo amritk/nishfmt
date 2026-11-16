@@ -107,10 +107,10 @@ nestedIf rules_nestedif swRuleNestedIf
 preferForLoop guards swGuardPreferForLoop bool
 redundantClosure guards swGuardRedundantClosure bool
 trailingClosures guards swGuardTrailingClosures bool
-redundantVariable guards swGuardRedundantVariable bool
+redundantVariable rules_misc2 swRuleRedundantVariable
 simplifyGenericConstraints guards swGuardSimplifyGenericConstraints bool
 repeatedGuard guards swGuardRepeatedGuard bool
-redundantInit guards swGuardRedundantInit bool
+redundantInit rules_misc2 swRuleRedundantInit
 contentBuilder guards swGuardContentBuilder bool
 redundantMemberwiseInit guards swGuardRedundantMemberwiseInit bool
 redundantEquatable guards swGuardRedundantEquatable bool
