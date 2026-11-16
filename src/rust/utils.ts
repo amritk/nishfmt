@@ -49,7 +49,7 @@ import {
 import { rsTrimmedLastLineWidth } from "./comment";
 import { RsCtx } from "./context";
 import { T_RSTR } from "./lexer";
-import { rsHasByte, rsIndexOfByte, rsLines, rsWsLenAt } from "./str";
+import { rsFirstLineOpt, rsHasByte, rsIndexOfByte, rsLastLineOpt, rsLines, rsWsLenAt } from "./str";
 
 /** rewrite_ident: the snippet of the ident token `tok`. */
 export const rsIdentStr = (ctx: RsCtx, tok: i32): string => {
@@ -152,13 +152,13 @@ export const rsFnHeaderStr = (ctx: RsCtx, vis: i32, fl: i32, abi: i32): string =
 export const rsIsSingleLineStr = (s: string): boolean => !rsHasByte(s, 10);
 
 export const rsFirstLineContainsSingleLineComment = (s: string): boolean => {
-  const ls = rsLines(s);
-  return ls.length > 0 && ls[0].indexOf("//") >= 0;
+  const l = rsFirstLineOpt(s);
+  return l !== null && l.indexOf("//") >= 0;
 };
 
 export const rsLastLineContainsSingleLineComment = (s: string): boolean => {
-  const ls = rsLines(s);
-  return ls.length > 0 && ls[ls.length - 1].indexOf("//") >= 0;
+  const l = rsLastLineOpt(s);
+  return l !== null && l.indexOf("//") >= 0;
 };
 
 export const rsIsAttributesExtendable = (s: string): boolean => !rsHasByte(s, 10) && !rsLastLineContainsSingleLineComment(s);
@@ -200,8 +200,8 @@ export const rsExtraOffset = (text: string, usedWidth: i32): i32 => {
 export const rsStartsWithNewline = (s: string): boolean => s.startsWith("\n") || s.startsWith("\r\n");
 
 export const rsFirstLineEndsWith = (s: string, c: i32): boolean => {
-  const ls = rsLines(s);
-  return ls.length > 0 && ls[0].length > 0 && ls[0].charCodeAt(toI32(ls[0].length) - 1) === c;
+  const l = rsFirstLineOpt(s);
+  return l !== null && l.length > 0 && l.charCodeAt(toI32(l.length) - 1) === c;
 };
 
 /**

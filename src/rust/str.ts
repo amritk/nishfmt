@@ -277,6 +277,42 @@ export const rsLines = (s: string): string[] => {
   return out;
 };
 
+/** `s.lines().next()`: the first line without its `\r`, or null when `s` is empty. */
+export const rsFirstLineOpt = (s: string): string | null => {
+  const n = toI32(s.length);
+  if (n === 0) {
+    return null;
+  }
+  let e = rsIndexOfByte(s, 10, 0);
+  if (e < 0) {
+    e = n;
+  }
+  if (e > 0 && s.charCodeAt(e - 1) === 13) {
+    e--;
+  }
+  return s.slice(0, e);
+};
+
+/** `s.lines().last()`: the last line without its `\r`, or null when `s` is empty. */
+export const rsLastLineOpt = (s: string): string | null => {
+  let n = toI32(s.length);
+  if (n === 0) {
+    return null;
+  }
+  if (s.charCodeAt(n - 1) === 10) {
+    n--; // a final newline ends the last line instead of starting one
+  }
+  let a = n - 1;
+  while (a >= 0 && s.charCodeAt(a) !== 10) {
+    a--;
+  }
+  let e = n;
+  if (e > a + 1 && s.charCodeAt(e - 1) === 13) {
+    e--;
+  }
+  return s.slice(a + 1, e);
+};
+
 /** Split at every `\n` (Rust's `split('\n')`), keeping empty pieces. */
 export const rsSplitNl = (s: string): string[] => {
   const out: string[] = [];

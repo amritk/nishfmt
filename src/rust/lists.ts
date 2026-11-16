@@ -18,6 +18,7 @@ import {
   rsHasByte,
   rsIndexOfByte,
   rsLastIndexOfByte,
+  rsLastLineOpt,
   rsLines,
   rsTrim,
   rsTrimStart,
@@ -283,8 +284,8 @@ export const rsWriteList = (items: RsListItem[], f: RsListFormatting): string | 
     const itemSepLen = separate ? sepLen : 0;
     let itemLastLine = innerItem;
     if (item.isMultiline()) {
-      const ls = rsLines(innerItem);
-      itemLastLine = ls.length > 0 ? ls[ls.length - 1] : "";
+      const ll = rsLastLineOpt(innerItem);
+      itemLastLine = ll === null ? "" : ll;
     }
     let itemLastLineWidth = rsWidth(itemLastLine) + itemSepLen;
     if (itemLastLine.startsWith(indentStr)) {

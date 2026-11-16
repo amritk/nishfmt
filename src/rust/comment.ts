@@ -531,35 +531,47 @@ export const rsCommentCodeSlices = (s: string): RsSlices => {
 /** UngroupedCommentCodeSlices: code runs, and one comment per slice. */
 export const rsUngroupedSlices = (s: string): RsSlices => {
   const out = new RsSlices();
-  const r = rsCharClasses(s);
   const n = toI32(s.length);
-  let ci = 0;
-  while (ci < r.nc) {
-    const startIdx = r.starts[ci];
-    const kind = r.kinds[startIdx];
-    ci++;
+  if (rsIndexOfByte(s, 47, 0) < 0) {
+    // No comment: one code slice.
+    if (n > 0) {
+      out.add(CK_NORMAL, 0, n);
+    }
+    return out;
+  }
+  const sc = new RsCharScan(strToBytes(s), 0, n);
+  let k = sc.next();
+  let at = sc.cs;
+  while (k >= 0) {
+    const kind = k;
+    const startIdx = at;
+    k = sc.next();
+    at = sc.cs;
     if (kind === K_NORMAL || kind === K_IN_STRING) {
-      while (ci < r.nc && !rsKindIsComment(r.kinds[r.starts[ci]])) {
-        ci++;
+      while (k >= 0 && !rsKindIsComment(k)) {
+        k = sc.next();
+        at = sc.cs;
       }
     } else if (kind === K_START_COMMENT) {
       // `loop { match next() { Some(k) if inside_comment => continue, _ => break } }`: the
       // char that ends the loop is consumed too.
       for (;;) {
-        if (ci >= r.nc) {
+        if (k < 0) {
           break;
         }
-        const k = r.kinds[r.starts[ci]];
-        ci++;
-        if (!rsKindInsideComment(k)) {
+        const kk = k;
+        k = sc.next();
+        at = sc.cs;
+        if (!rsKindInsideComment(kk)) {
           break;
         }
       }
     } else {
       // rustfmt panics here; it cannot happen for well-formed input.
-      ci++;
+      k = sc.next();
+      at = sc.cs;
     }
-    const end = ci < r.nc ? r.starts[ci] : n;
+    const end = k >= 0 ? at : n;
     out.add(rsKindIsComment(kind) ? CK_COMMENT : CK_NORMAL, startIdx, end);
   }
   return out;
