@@ -4,15 +4,6 @@
 // Ported from SwiftFormat 0.64.7 (MIT License, Copyright (c) 2016 Nick
 // Lockwood).
 
-import { SwFormatter } from "./formatter";
-import {
-  swRuleConsecutiveBlankLines,
-  swRuleConsecutiveSpaces,
-  swRuleLinebreakAtEndOfFile,
-  swRuleLinebreaks,
-  swRuleTrailingSpace,
-} from "./rules_space";
-import { swRuleIndent } from "./rule_indent";
 
 const SW_RULE_NAMES: string =
   "andOperator anyObjectProtocol applicationMain assertionFailures blankLineAfterImports blankLinesAroundMark blankLinesAtEndOfScope blankLinesAtStartOfScope blankLinesBetweenChainedFunctions blankLinesBetweenImports blankLinesBetweenScopes braces consecutiveBlankLines consecutiveSpaces duplicateImports emptyBraces enumNamespaces environmentEntry extensionAccessControl extensionAttributes fileHeader docComments docCommentsBeforeModifiers fileMacro genericExtensions headerFileName hoistAwait hoistPatternLet hoistTry initCoderUnavailable leadingDelimiters linebreakAtEndOfFile linebreaks modifierOrder modifiersOnSameLine nestedIf noForceTryInTests numberFormatting opaqueGenericParameters preferForLoop preferKeyPath redundantAsync redundantBackticks redundantBreak consistentSwitchCaseSpacing redundantEmptyView redundantEquatable redundantExtensionACL redundantFileprivate redundantGet redundantInternal redundantLet redundantLetError redundantNilInit redundantObjc redundantParens redundantPattern redundantPublic redundantRawValues redundantReturn conditionalAssignment redundantClosure redundantSelf redundantOptionalBinding redundantStaticSelf redundantSwiftUIGroup contentBuilder redundantType redundantInit redundantMemberwiseInit redundantTypedThrows redundantVariable redundantVoidReturnType repeatedGuard semicolons simplifyGenericConstraints sortDeclarations sortImports sortTypealiases spaceAroundBraces spaceAroundBrackets spaceAroundComments spaceAroundGenerics spaceAroundOperators spaceAroundParens spaceInsideBraces spaceInsideBrackets spaceInsideComments spaceInsideGenerics spaceInsideParens strongOutlets strongifiedSelf swiftTestingTestCaseNames redundantSwiftTestingSuite todos trailingClosures trailingCommas typeSugar unusedArguments redundantEnumerated noForceUnwrapInTests redundantThrows void wrap wrapArguments trailingSpace indent wrapAttributes wrapFunctionBodies wrapIfExpressionBodies wrapIfStatementBodies wrapLoopBodies wrapMultilineStatementBraces elseOnSameLine wrapPropertyBodies wrapSingleLineComments yodaConditions";
@@ -158,30 +149,3 @@ export const swRuleName = (r: i32): string => {
 /** runOnceOnly. */
 export const swRuleRunsOnce = (r: i32): boolean => r === SW_RULE_FILE_HEADER || r === SW_RULE_HEADER_FILE_NAME;
 
-/** Applies rule `r`; answers false when the rule is not ported and might change the file. */
-export const swRunRule = (f: SwFormatter, r: i32): boolean => {
-  switch (r) {
-    case SW_RULE_CONSECUTIVE_BLANK_LINES:
-      swRuleConsecutiveBlankLines(f);
-      return true;
-    case SW_RULE_CONSECUTIVE_SPACES:
-      swRuleConsecutiveSpaces(f);
-      return true;
-    case SW_RULE_FILE_HEADER:
-      // fileHeader is `ignore` by default.
-      return true;
-    case SW_RULE_LINEBREAK_AT_END_OF_FILE:
-      swRuleLinebreakAtEndOfFile(f);
-      return true;
-    case SW_RULE_LINEBREAKS:
-      swRuleLinebreaks(f);
-      return true;
-    case SW_RULE_INDENT:
-      return swRuleIndent(f);
-    case SW_RULE_TRAILING_SPACE:
-      swRuleTrailingSpace(f);
-      return true;
-    default:
-      return false;
-  }
-};

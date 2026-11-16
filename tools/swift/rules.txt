@@ -1,0 +1,51 @@
+# The ported default rules: `name module function [bool]`, or `name noop why`.
+# tools/swift/gen_dispatch.py turns this into src/swift/dispatch.ts.
+
+anyObjectProtocol noop needs swiftVersion >= 4.1
+applicationMain noop needs swiftVersion >= 5.3
+conditionalAssignment noop needs swiftVersion >= 5.9
+environmentEntry noop needs swiftVersion >= 6.0
+fileHeader noop the header option is `ignore`
+fileMacro noop needs languageMode >= 6
+genericExtensions noop needs swiftVersion >= 5.7
+hoistAwait noop needs swiftVersion >= 5.5
+opaqueGenericParameters noop needs swiftVersion >= 5.7
+preferKeyPath noop needs swiftVersion >= 5.2
+redundantOptionalBinding noop needs swiftVersion >= 5.7
+redundantTypedThrows noop needs swiftVersion >= 6.0
+sortDeclarations noop acts only on swiftformat:sort comments (files with directives are skipped)
+strongifiedSelf noop needs swiftVersion >= 4.2
+wrap noop maxWidth is 0
+wrapAttributes noop every attribute mode is `preserve`
+wrapIfExpressionBodies noop if expressions need swiftVersion >= 5.9
+wrapSingleLineComments noop maxWidth is 0
+
+blankLineAfterImports rules_blank swRuleBlankLineAfterImports
+blankLinesAtEndOfScope rules_blank swRuleBlankLinesAtEndOfScope
+blankLinesAtStartOfScope rules_blank swRuleBlankLinesAtStartOfScope
+blankLinesBetweenImports rules_blank swRuleBlankLinesBetweenImports
+consecutiveBlankLines rules_space swRuleConsecutiveBlankLines
+consecutiveSpaces rules_space swRuleConsecutiveSpaces
+docCommentsBeforeModifiers rules_blank swRuleDocCommentsBeforeModifiers
+emptyBraces rules_blank swRuleEmptyBraces
+indent rule_indent swRuleIndent bool
+leadingDelimiters rules_blank swRuleLeadingDelimiters
+linebreakAtEndOfFile rules_space swRuleLinebreakAtEndOfFile
+linebreaks rules_space swRuleLinebreaks
+redundantBreak rules_simple swRuleRedundantBreak
+redundantGet rules_simple swRuleRedundantGet
+redundantLet rules_simple swRuleRedundantLet
+redundantLetError rules_simple swRuleRedundantLetError
+spaceAroundBraces rules_spacing swRuleSpaceAroundBraces
+spaceAroundBrackets rules_spacing swRuleSpaceAroundBrackets
+spaceAroundComments rules_spacing swRuleSpaceAroundComments
+spaceAroundGenerics rules_spacing swRuleSpaceAroundGenerics
+spaceAroundOperators rules_spacing swRuleSpaceAroundOperators
+spaceAroundParens rules_spacing swRuleSpaceAroundParens
+spaceInsideBraces rules_spacing swRuleSpaceInsideBraces
+spaceInsideBrackets rules_spacing swRuleSpaceInsideBrackets
+spaceInsideComments rules_spacing swRuleSpaceInsideComments
+spaceInsideGenerics rules_spacing swRuleSpaceInsideGenerics
+spaceInsideParens rules_spacing swRuleSpaceInsideParens
+strongOutlets rules_simple swRuleStrongOutlets
+trailingSpace rules_space swRuleTrailingSpace

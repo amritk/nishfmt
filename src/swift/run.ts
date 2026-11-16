@@ -7,7 +7,8 @@
 
 import { Out } from "../core/out";
 import { SwFormatter } from "./formatter";
-import { swRuleName, swRunRule, SW_RULE_COUNT, SW_RULE_INDENT, SW_RULE_TRAILING_SPACE, swRuleRunsOnce } from "./rules";
+import { swRunRule } from "./dispatch";
+import { swRuleName, SW_RULE_COUNT, SW_RULE_INDENT, SW_RULE_TRAILING_SPACE, swRuleRunsOnce } from "./rules";
 import { SW_COMMENT, SW_ERROR, SW_OP, SwTokList } from "./token";
 import { swTokenize, swValidUtf8 } from "./tokenizer";
 
