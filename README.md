@@ -17,7 +17,7 @@ output byte for byte:
 
 | Language | Files | Matches | Corpus result |
 | --- | --- | --- | ---: |
-| Java | `.java` | google-java-format 1.28 | 7626 / 7627 |
+| Java | `.java` | google-java-format 1.28 | 7627 / 7627 |
 | Kotlin | `.kt .kts` | ktfmt 0.64 (default style) | 9602 / 9602 |
 | C# | `.cs` | CSharpier 1.4.0, default options | 13988 / 13988 |
 | Dart | `.dart` | `dart format` (Dart 3.14; tall style, short style below 3.7) | 10313 / 10313 |
