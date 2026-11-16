@@ -78,6 +78,7 @@ import {
   PP_ENDIF,
   PP_ELSE,
   K_IDENT,
+  P_AT,
   K_STRING,
   KW_USING,
   KW_TYPENAME,
@@ -378,6 +379,9 @@ export class Formatter {
     this.fileStem = lower(dot > 0 ? base.slice(0, dot) : base);
     this.fileName = lower(base);
     this.isMainFile = ext === ".c" || ext === ".cc" || ext === ".cpp" || ext === ".c++" || ext === ".cxx" || ext === ".m" || ext === ".mm";
+    // clang-format formats these as Objective-C when they hold any (its
+    // guessLanguage); only Objective-C constructs tell the two apart.
+    this.d.objcLang = ext === ".h" || ext === "" || ext === ".m" || ext === ".mm";
   }
 
 
@@ -642,6 +646,11 @@ export class Formatter {
     const f = d.lFirst[l];
     const k = d.kind[f];
     const n = d.nxt[f];
+    // Objective-C's `@public`, `@protected`, `@package`, `@private`.
+    if (k === P_AT && n >= 0) {
+      const nk = d.kind[n];
+      return nk === KW_PUBLIC || nk === KW_PRIVATE || nk === KW_PROTECTED || (nk === K_IDENT && d.is(n, "package"));
+    }
     if (n < 0) {
       return k === KW_PUBLIC || k === KW_PRIVATE || k === KW_PROTECTED;
     }
@@ -2160,6 +2169,11 @@ export class Formatter {
     const p = new Parser(d);
     p.parseFile();
     if (d.failed) {
+      return PASS_FAIL;
+    }
+    // Objective-C beyond declarations (literals, @implementation, method
+    // bodies): the file is left alone.
+    if (d.objcSeen && d.objcOther) {
       return PASS_FAIL;
     }
     if (mayRestart && this.sortUsings()) {

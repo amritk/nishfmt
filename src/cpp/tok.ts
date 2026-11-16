@@ -237,6 +237,9 @@ export const TT_GENERIC_SELECTION_COLON: i32 = 56; // `_Generic(x, int: a)`
 export const TT_INLINE_ASM_SYMBOLIC_NAME_LSQUARE: i32 = 57; // `asm(... : [name] "=r"(x))`
 export const TT_DO_WHILE: i32 = 58; // the `while` ending a do-while
 export const TT_INLINE_ASM_BRACE: i32 = 59; // the braces of `__asm { ... }`
+export const TT_OBJC_METHOD_SPECIFIER: i32 = 60; // the `-` or `+` starting an Objective-C method declaration
+export const TT_SELECTOR_NAME: i32 = 61; // a part of an Objective-C selector (`initWithX` in `initWithX:`)
+export const TT_OBJC_METHOD_EXPR: i32 = 62; // the `:` after a selector part
 
 // Brace kinds.
 export const BK_UNKNOWN: i32 = 0;
