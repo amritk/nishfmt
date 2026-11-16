@@ -160,6 +160,7 @@ export class JVisitor {
   path: i32[];
   nPath: i32 = 0;
   typeAnnotationSimpleNames: string[];
+  exprDepth: i32 = 0; // scans of ExpressionTrees open (JavaInputAstVisitor.inExpression)
 
   constructor(g: GEngine, t: JTree) {
     this.g = g;
@@ -177,7 +178,15 @@ export class JVisitor {
     this.minusTwo = g.constIndent(-2);
     this.minusFour = g.constIndent(-4);
     this.nPath = 0;
+    this.exprDepth = 0;
     this.typeAnnotationSimpleNames = [];
+  }
+
+  /** JavaInputAstVisitor.markForPartialFormat: a region boundary, outside expressions only. */
+  markForPartialFormat(): void {
+    if (this.exprDepth === 0) {
+      this.g.markForPartialFormat();
+    }
   }
 
   // ---- Helpers ---------------------------------------------------------------
@@ -240,7 +249,16 @@ export class JVisitor {
     this.path[this.nPath] = n;
     this.nPath = this.nPath + 1;
     const previous = this.g.depthNow();
+    // javac's JCExpression subclasses: every expression and type node but a type parameter.
+    const k = this.t.kind[n];
+    const expr = (k >= N_IDENTIFIER && k <= N_ANNOTATED_TYPE) || k === N_ANNOTATION;
+    if (expr) {
+      this.exprDepth = this.exprDepth + 1;
+    }
     this.visit(n);
+    if (expr) {
+      this.exprDepth = this.exprDepth - 1;
+    }
     this.nPath = this.nPath - 1;
     if (this.g.depthNow() !== previous) {
       this.g.fail("unclosed ops");
@@ -620,6 +638,7 @@ export class JVisitor {
     const g = this.g;
     let afterFirstToken = false;
     if (t.b[n] >= 0) {
+      this.markForPartialFormat();
       this.visitPackage(t.b[n], t.a[n]);
       g.forcedBreak();
       afterFirstToken = true;
@@ -631,6 +650,7 @@ export class JVisitor {
         g.blankLineWanted(BL_YES);
       }
       for (let i = 0; i < this.len(imports); i++) {
+        this.markForPartialFormat();
         g.blankLineWanted(BL_PRESERVE);
         this.scan(this.at(imports, i));
         g.forcedBreak();
@@ -647,6 +667,7 @@ export class JVisitor {
       if (afterFirstToken) {
         g.blankLineWanted(BL_YES);
       }
+      this.markForPartialFormat();
       this.scan(ty);
       g.forcedBreak();
       afterFirstToken = true;
@@ -656,14 +677,18 @@ export class JVisitor {
       if (afterFirstToken) {
         g.blankLineWanted(BL_YES);
       }
+      this.markForPartialFormat();
       this.visitModule(t.e[n]);
       g.forcedBreak();
     }
+    // A boundary at EOF, so that the whole file can be formatted.
+    this.markForPartialFormat();
   }
 
   dropEmptyDeclarations(): void {
     while (this.g.peekIs(";")) {
       this.g.forcedBreak();
+      this.markForPartialFormat();
       this.token(";");
     }
   }
@@ -938,6 +963,7 @@ export class JVisitor {
           g.forcedBreak();
           g.blankLineWanted(BL_PRESERVE);
         }
+        this.markForPartialFormat();
         this.visitEnumConstantDeclaration(enumConstants[i]);
       }
       if (g.peekIs(",")) {
@@ -1033,6 +1059,7 @@ export class JVisitor {
       } else if (thisOneGetsBlankLineBefore || lastOneGotBlankLineBefore) {
         g.blankLineWanted(BL_YES);
       }
+      this.markForPartialFormat();
       if (t.kind[decl] === N_VARIABLE) {
         const frags: i32[] = [decl];
         while (i < nd && t.kind[decls[i]] === N_VARIABLE && t.start[decls[i]] === t.start[decl]) {
@@ -1050,6 +1077,7 @@ export class JVisitor {
     g.forcedBreak();
     g.close();
     g.forcedBreak();
+    this.markForPartialFormat();
     if (braces) {
       g.blankLineWanted(BL_NO);
       this.tokenInd("}", this.plusTwo);
@@ -1556,6 +1584,7 @@ export class JVisitor {
       g.close();
       g.forcedBreak();
       g.blankLineWanted(BL_NO);
+      this.markForPartialFormat();
     }
     this.tokenInd("}", this.plusTwo);
   }
@@ -2034,6 +2063,7 @@ export class JVisitor {
       g.forcedBreak();
       g.close();
       g.blankLineWanted(allowTrailingBlank ? BL_PRESERVE : BL_NO);
+      this.markForPartialFormat();
       this.tokenInd("}", this.plusTwo);
     }
   }
@@ -2066,6 +2096,7 @@ export class JVisitor {
       if (afterFirstToken) {
         g.blankLineWanted(BL_PRESERVE);
       }
+      this.markForPartialFormat();
       afterFirstToken = true;
       if (t.kind[s] === N_VARIABLE) {
         const frags: i32[] = [s];
@@ -2358,6 +2389,7 @@ export class JVisitor {
     const t = this.t;
     const g = this.g;
     this.sync(n);
+    this.markForPartialFormat();
     g.forcedBreak();
     const labels = t.a[n];
     const isDefault = this.len(labels) === 1 && t.kind[this.at(labels, 0)] === N_DEFAULT_CASE_LABEL;
@@ -3387,6 +3419,7 @@ export class JVisitor {
       let prev = -1;
       for (let i = 0; i < this.len(dirs); i++) {
         const d = this.at(dirs, i);
+        this.markForPartialFormat();
         g.blankLineWanted(prev >= 0 && prev !== t.kind[d] ? BL_YES : BL_NO);
         g.forcedBreak();
         this.scan(d);

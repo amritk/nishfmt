@@ -1,7 +1,8 @@
 // google-java-format's StringWrapper, run on the formatted text: a string
 // literal on a line past 100 columns is split at word boundaries into a `+`
-// chain, and text blocks are re-indented. The partial re-format gjf runs on
-// those ranges first leaves already formatted text as it is, so it is skipped.
+// chain, and text blocks are re-indented. Before that, the ranges to replace
+// are formatted again (`partial.ts`), and when that changes the text the
+// replacements are found again on the new text.
 //
 // Ported from google-java-format 1.28 (Apache License 2.0, Copyright 2018 Google Inc.).
 
@@ -44,7 +45,7 @@ const guavaWsLen = (s: string, i: i32): i32 => {
   return 0;
 };
 
-class Repl {
+export class Repl {
   start: i32 = 0;
   end: i32 = 0;
   text: string = "";
@@ -121,8 +122,8 @@ export class StringWrapper {
     return p + 2 < this.inp.n && toI32(src[p]) === 34 && toI32(src[p + 1]) === 34 && toI32(src[p + 2]) === 34;
   }
 
-  /** The replacements for the parsed text; writes the result into `out` and answers whether it changed. */
-  wrap(sep: string, out: Out): boolean {
+  /** Reflower.getReflowReplacements for the parsed text, in the order they are put. */
+  replacements(sep: string): Repl[] {
     const t = this.t;
     this.sep = sep;
     const nn = t.n;
@@ -159,9 +160,11 @@ export class StringWrapper {
     for (const x of longs) {
       repls.push(this.wrapLong(x));
     }
-    if (repls.length === 0) {
-      return false;
-    }
+    return repls;
+  }
+
+  /** applyReplacements: writes the parsed text with `repls` applied into `out`. */
+  apply(repls: Repl[], out: Out): void {
     // A TreeRangeMap: a later put of a range overrides what it overlaps.
     // Sort by start; equal ranges keep the later one.
     const keep: Repl[] = [];
@@ -199,7 +202,6 @@ export class StringWrapper {
       at = r.end;
     }
     out.range(src, at, this.inp.n);
-    return true;
   }
 
   private wrapLong(lit: i32): Repl {
@@ -360,6 +362,50 @@ export class StringWrapper {
     return r;
   }
 }
+
+/** The keys of the TreeRangeMap the replacements are put into, as [start, end) pairs in order: a later range splits what it overlaps. */
+export const replacementRanges = (repls: Repl[]): i32[] => {
+  let ks: i32[] = [];
+  for (const r of repls) {
+    if (r.start >= r.end) {
+      continue;
+    }
+    const nk: i32[] = [];
+    for (let i = 0; i + 1 < toI32(ks.length); i += 2) {
+      const s = ks[i];
+      const e = ks[i + 1];
+      if (e <= r.start || s >= r.end) {
+        nk.push(s);
+        nk.push(e);
+        continue;
+      }
+      if (s < r.start) {
+        nk.push(s);
+        nk.push(r.start);
+      }
+      if (e > r.end) {
+        nk.push(r.end);
+        nk.push(e);
+      }
+    }
+    // Insert in order.
+    let at = 0;
+    while (at < toI32(nk.length) && nk[at] < r.start) {
+      at += 2;
+    }
+    const sorted: i32[] = [];
+    for (let i = 0; i < at; i++) {
+      sorted.push(nk[i]);
+    }
+    sorted.push(r.start);
+    sorted.push(r.end);
+    for (let i = at; i < toI32(nk.length); i++) {
+      sorted.push(nk[i]);
+    }
+    ks = sorted;
+  }
+  return ks;
+};
 
 const escapedNewlineAt = (s: string, idx: i32): i32 => {
   let off = 0;

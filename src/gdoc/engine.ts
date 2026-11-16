@@ -128,6 +128,19 @@ export class GEngine {
   nOutLines: i32 = 0;
   scratch: Out;
 
+  // Partial formatting, kept only while `partial` is set (google-java-format's
+  // StringWrapper re-formats ranges): OpsBuilder's region boundaries as
+  // JavaOutput.partialFormatRanges (closed tok-number ranges, in order), and
+  // InputOutput.ranges, the tok numbers on each output line.
+  partial: boolean = false;
+  lastBoundary: i32 = -1;
+  nPf: i32 = 0;
+  pfLo: i32[];
+  pfHi: i32[];
+  nLineR: i32 = 0;
+  lineRLo: i32[]; // -1 for an empty range
+  lineRHi: i32[];
+
   constructor(inp: GInput) {
     this.inp = inp;
     this.rewrite = keepComment;
@@ -177,6 +190,10 @@ export class GEngine {
     this.cellTag = new Array<i32>(64);
     this.cellNext = new Array<i32>(64);
     this.spaces = new Array<u8>(256);
+    this.pfLo = new Array<i32>(0);
+    this.pfHi = new Array<i32>(0);
+    this.lineRLo = new Array<i32>(0);
+    this.lineRHi = new Array<i32>(0);
   }
 
   /** Clears everything for the next file; the input must be filled already. */
@@ -211,6 +228,9 @@ export class GEngine {
     this.nSpaces = 0;
     this.lineStart = 0;
     this.nOutLines = 0;
+    this.lastBoundary = -1;
+    this.nPf = 0;
+    this.nLineR = 0;
     this.constIndent(0); // ZERO is indent 0
   }
 
@@ -470,11 +490,11 @@ export class GEngine {
     if (st < 0) {
       return pos;
     }
-    let start = inp.tPos[inp.kTok[st]];
-    const line0 = this.lineOf(start);
+    const tokPos = inp.tPos[inp.kTok[st]];
+    let start = tokPos;
     for (let j = 0; j < inp.kBeforeN[st]; j++) {
       const t = inp.refs[inp.kBefore[st] + j];
-      if (line0 !== this.lineOf(inp.tPos[t])) {
+      if (this.breakBetween(inp.tPos[t], tokPos)) {
         return start;
       }
       if ((inp.tFlags[t] & TF_COMMENT) !== 0 && inp.tPos[t] < start) {
@@ -484,19 +504,20 @@ export class GEngine {
     return start;
   }
 
-  /** The 1-based line of a position. */
-  lineOf(pos: i32): i32 {
-    let line = 1;
+  /**
+   * Whether positions `a` <= `b` are on different lines (javac's LineMap):
+   * a "\n", or a "\r" not before "\n", in [a, b). Scanning only between
+   * the two keeps this linear in the distance, not in the position.
+   */
+  private breakBetween(a: i32, b: i32): boolean {
     const src = this.inp.src;
-    for (let i = 0; i < pos; i++) {
+    for (let i = a; i < b; i++) {
       const c = toI32(src[i]);
-      if (c === 10) {
-        line++;
-      } else if (c === 13 && !(i + 1 < this.inp.n && toI32(src[i + 1]) === 10)) {
-        line++;
+      if (c === 10 || (c === 13 && !(i + 1 < this.inp.n && toI32(src[i + 1]) === 10))) {
+        return true;
       }
     }
-    return line;
+    return false;
   }
 
   guessToken(s: string): void {
@@ -545,6 +566,81 @@ export class GEngine {
       }
     }
     return inp.tIdx[inp.kTok[k]];
+  }
+
+  /** The last numbered tok of a token: its last comment after, else itself (JavaOutput.endTok). */
+  lastNumbered(k: i32): i32 {
+    const inp = this.inp;
+    for (let j = inp.kAfterN[k] - 1; j >= 0; j--) {
+      const t = inp.refs[inp.kAfter[k] + j];
+      if (inp.tIdx[t] >= 0) {
+        return inp.tIdx[t];
+      }
+    }
+    return inp.tIdx[inp.kTok[k]];
+  }
+
+  /**
+   * OpsBuilder.markForPartialFormat: a boundary of a region that can be
+   * re-formatted alone, [boundary0, boundary1), [boundary1, boundary2), ...;
+   * JavaOutput keeps each region as the closed range of its tok numbers.
+   */
+  markForPartialFormat(): void {
+    if (!this.partial) {
+      return;
+    }
+    if (this.lastBoundary === -1) {
+      this.lastBoundary = this.tokenI;
+      return;
+    }
+    if (this.tokenI === this.lastBoundary) {
+      return;
+    }
+    const lo = this.firstNumbered(this.lastBoundary);
+    const hi = this.lastNumbered(this.tokenI - 1);
+    this.lastBoundary = this.tokenI;
+    // A RangeSet: a range connected to the last one joins it.
+    const n = this.nPf;
+    if (n > 0 && lo <= this.pfHi[n - 1] && hi >= this.pfLo[n - 1]) {
+      if (lo < this.pfLo[n - 1]) {
+        this.pfLo[n - 1] = lo;
+      }
+      if (hi > this.pfHi[n - 1]) {
+        this.pfHi[n - 1] = hi;
+      }
+      return;
+    }
+    if (n >= toI32(this.pfLo.length)) {
+      this.pfLo = growI32(this.pfLo, n * 2 + 16);
+      this.pfHi = growI32(this.pfHi, n * 2 + 16);
+    }
+    this.pfLo[n] = lo;
+    this.pfHi[n] = hi;
+    this.nPf = n + 1;
+  }
+
+  /** InputOutput.ranges[line] = union(ranges[line], [lo, hi)). */
+  private addLineRange(line: i32, lo: i32, hi: i32): void {
+    while (this.nLineR <= line) {
+      if (this.nLineR >= toI32(this.lineRLo.length)) {
+        this.lineRLo = growI32(this.lineRLo, this.nLineR * 2 + 16);
+        this.lineRHi = growI32(this.lineRHi, this.nLineR * 2 + 16);
+      }
+      this.lineRLo[this.nLineR] = -1;
+      this.lineRHi[this.nLineR] = -1;
+      this.nLineR = this.nLineR + 1;
+    }
+    if (this.lineRLo[line] < 0) {
+      this.lineRLo[line] = lo;
+      this.lineRHi[line] = hi;
+    } else {
+      if (lo < this.lineRLo[line]) {
+        this.lineRLo[line] = lo;
+      }
+      if (hi > this.lineRHi[line]) {
+        this.lineRHi[line] = hi;
+      }
+    }
   }
 
   /** OpsBuilder.blankLineWanted: at the next token. */
@@ -673,6 +769,7 @@ export class GEngine {
 
   /** OpsBuilder.build: the ops with every token's comments threaded in. */
   build(): void {
+    this.markForPartialFormat();
     const inp = this.inp;
     const opsN = this.nOps;
     for (let i = 0; i < opsN; i++) {
@@ -1270,6 +1367,7 @@ export class GEngine {
       this.nSpaces = 0;
     } else {
       const out = this.out;
+      let rangesSet = false;
       let i = a;
       while (i < b) {
         const c = toI32(buf[i]);
@@ -1290,7 +1388,12 @@ export class GEngine {
               this.nOutLines = this.nOutLines + 1;
               this.lineStart = out.n;
             }
+            rangesSet = false;
             this.newlinesPending = this.newlinesPending - 1;
+          }
+          if (this.partial && lo >= 0 && !rangesSet) {
+            this.addLineRange(this.nOutLines, lo, hi);
+            rangesSet = true;
           }
           if (this.nSpaces > 0) {
             out.range(this.spaces, 0, this.nSpaces);
@@ -1335,6 +1438,11 @@ export class GEngine {
     }
     if (this.nOutLines === 0) {
       out.byte(10);
+    }
+    if (this.partial) {
+      // The EOF tok's range follows the lines.
+      const eofLine = this.nLineR > this.nOutLines ? this.nLineR : this.nOutLines;
+      this.addLineRange(eofLine, this.inp.kN, this.inp.kN + 1);
     }
   }
 

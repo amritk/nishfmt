@@ -10,7 +10,8 @@ import { JParser } from "./parser";
 import { JVisitor } from "./visitor";
 import { rewriteJavaComment } from "./comments";
 import { ImportFixer } from "./imports";
-import { StringWrapper, needWrapping } from "./strings";
+import { StringWrapper, needWrapping, replacementRanges } from "./strings";
+import { partialFormat } from "./partial";
 import { reorderModifiers } from "./modifiers";
 
 /** One worker's reusable Java state. */
@@ -116,11 +117,50 @@ export const formatJava = (e: JavaEngine, path: string, src0: u8[], n0: i32, out
   // StringWrapper, on the formatted text.
   let res = g.out;
   if (needWrapping(g.out.buf, g.out.n)) {
-    const fmt = g.out.buf.slice(0, g.out.n);
+    let fmt = g.out.buf.slice(0, g.out.n);
     if (lexJava(e.inp, fmt, toI32(fmt.length))) {
-      e.parser.parse();
-      if (!e.parser.err && e.wrapper.wrap("\n", e.buf3)) {
-        res = e.buf3;
+      const root2 = e.parser.parse();
+      if (!e.parser.err) {
+        let repls = e.wrapper.replacements("\n");
+        if (repls.length > 0) {
+          // formatSource(input, ranges): the text is formatted again and the
+          // regions around the ranges are taken from that. ModifierOrderer has
+          // nothing to do there: the first pass sorted every run of modifiers.
+          g.partial = true;
+          g.reset();
+          e.vis.reset();
+          e.vis.scan(root2);
+          g.sync(toI32(fmt.length));
+          g.drain();
+          const ok = g.layout();
+          g.partial = false;
+          if (!ok) {
+            if (e.debug) {
+              console.error(`${path}: partial format: ${g.failure}`);
+            }
+            return false;
+          }
+          const changed = partialFormat(e.inp, g, replacementRanges(repls), e.buf2);
+          if (changed < 0) {
+            if (e.debug) {
+              console.error(`${path}: partial format failed`);
+            }
+            return false;
+          }
+          if (changed === 1) {
+            fmt = e.buf2.buf.slice(0, e.buf2.n);
+            if (!lexJava(e.inp, fmt, toI32(fmt.length))) {
+              return false;
+            }
+            e.parser.parse();
+            if (e.parser.err) {
+              return false;
+            }
+            repls = e.wrapper.replacements("\n");
+          }
+          e.wrapper.apply(repls, e.buf3);
+          res = e.buf3;
+        }
       }
     }
   }
