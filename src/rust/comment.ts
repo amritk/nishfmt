@@ -787,24 +787,25 @@ const trimEndUnlessTwo = (s: string, isDoc: boolean): string => {
 const lightRewriteComment = (orig: string, bi: i32, al: i32, cfg: RsConfig, isDoc: boolean): string => {
   const ls = rsLines(orig);
   const sep = "\n" + rsIndentStr(cfg, bi, al);
-  let out = "";
+  const out = new RsStrBuf();
   for (let i = 0; i < toI32(ls.length); i++) {
     const l = ls[i];
     const fnw = rsTrimStartLen(l);
     let left = "";
     if (fnw < toI32(l.length)) {
-      if (l.charCodeAt(fnw) === 42) {
-        left = " " + l.slice(fnw, toI32(l.length));
+      // rustfmt 1.9 keeps the whitespace char before a leading `*` (none at column 0).
+      if (l.charCodeAt(fnw) === 42 && fnw > 0) {
+        left = l.slice(fnw - 1, toI32(l.length));
       } else {
         left = l.slice(fnw, toI32(l.length));
       }
     }
     if (i > 0) {
-      out = out + sep;
+      out.add(sep);
     }
-    out = out + trimEndUnlessTwo(left, isDoc);
+    out.add(trimEndUnlessTwo(left, isDoc));
   }
-  return out;
+  return out.str();
 };
 
 const rsTrimStartLen = (s: string): i32 => {

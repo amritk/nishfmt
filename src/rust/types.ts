@@ -149,7 +149,8 @@ const rewriteSegment = (ctx: RsCtx, pc: i32, seg: i32, st: SegState, spanHi: i32
     if (gs === null) {
       return null;
     }
-    if (ast.kind[args] === N_GARGS && (ast.ln[args] > 0 || ctx.insideMacro)) {
+    // rustfmt 1.9 drops empty generic args, inside macros too.
+    if (ast.kind[args] === N_GARGS && ast.ln[args] > 0) {
       const sepSnippet = rsTrim(ctx.snippet(ctx.f.t.hi[ast.d[seg]], ast.lo[args]));
       const force = ctx.insideMacro && sepSnippet.startsWith("::");
       if (pc === PC_EXPR || force) {
@@ -167,7 +168,7 @@ export const rsRewriteGenericArgs = (ctx: RsCtx, args: i32, shape: RsShape, lo: 
   const ast = ctx.ast;
   const k = ast.kind[args];
   if (k === N_GARGS) {
-    if (ast.ln[args] === 0 && !ctx.insideMacro) {
+    if (ast.ln[args] === 0) {
       return "";
     }
     const items: i32[] = [];

@@ -3838,6 +3838,7 @@ export class RsParser {
     const mark = this.sp;
     while (!this.failed && !this.is(T_RBRACE)) {
       if (this.is(T_DOTDOT)) {
+        this.ast.e[s] = this.lo(); // the `..`
         this.bump();
         if (this.is(T_RBRACE)) {
           this.ast.fl[s] = ST_REST;

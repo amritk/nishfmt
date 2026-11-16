@@ -1077,7 +1077,8 @@ export const rsRewriteParen = (ctx: RsCtx, sub0: i32, shape: RsShape, lo0: i32, 
     if (pre === null || post === null) {
       return null;
     }
-    if (ast.kind[sub] === N_EX_PAREN && pre.length === 0 && post.length === 0 && ast.atn[sub] === 0) {
+    // rustfmt 1.9 removes the nested parentheses even when they carry attributes, dropping those.
+    if (ast.kind[sub] === N_EX_PAREN && pre.length === 0 && post.length === 0) {
       lo = ast.lo[sub];
       hi = ast.hi[sub];
       sub = ast.a[sub];

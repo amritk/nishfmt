@@ -1496,7 +1496,8 @@ const rewriteStatic = (ctx: RsCtx, item: i32, bi: i32, al: i32): string | null =
   const cfg = ctx.cfg;
   const isConst = ast.kind[item] === N_CONST;
   const g = isConst ? ast.a[item] : -1;
-  if (g >= 0 && ast.ln[ast.a[g]] > 0) {
+  // rustfmt 1.9 does not format generic const items (generic_const_items): kept as written.
+  if (g >= 0 && (ast.ln[ast.a[g]] > 0 || ast.ln[g] > 0)) {
     return null;
   }
   const ty = ast.b[item];
