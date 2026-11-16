@@ -69,6 +69,27 @@ export const rsWsLenAt = (s: string, i: i32): i32 => {
   return 0;
 };
 
+/** rsWsLenAt over the bytes `src[i, n)`. */
+export const rsWsLenAtBytes = (src: u8[], i: i32, n: i32): i32 => {
+  const c = toI32(src[i]);
+  if (c < 128) {
+    return rsIsWsByte(c) ? 1 : 0;
+  }
+  if (c === 0xc2 && i + 1 < n) {
+    const d = toI32(src[i + 1]);
+    return d === 0x85 || d === 0xa0 ? 2 : 0;
+  }
+  if ((c === 0xe1 || c === 0xe2 || c === 0xe3) && i + 2 < n) {
+    const d = toI32(src[i + 1]);
+    const e = toI32(src[i + 2]);
+    if (c === 0xe1 && d === 0x9a && e === 0x80) return 3; // U+1680
+    if (c === 0xe2 && d === 0x80 && ((e >= 0x80 && e <= 0x8a) || e === 0xa8 || e === 0xa9 || e === 0xaf)) return 3;
+    if (c === 0xe2 && d === 0x81 && e === 0x9f) return 3; // U+205F
+    if (c === 0xe3 && d === 0x80 && e === 0x80) return 3; // U+3000
+  }
+  return 0;
+};
+
 /** The length of a Unicode whitespace character ending at `j` (exclusive), or 0. */
 const wsLenBefore = (s: string, j: i32): i32 => {
   if (j <= 0) {

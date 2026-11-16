@@ -68,28 +68,17 @@ const MA_FAILED: i32 = 1;
 const MA_VEC_WITH_SEMI: i32 = 2;
 const MA_TRAILING_COMMA: i32 = 4;
 
-/** macro_style: the first delimiter in the snippet. */
+/**
+ * macro_style: the first of `(`, `[`, `{` outside comments in the snippet.
+ * Only the path and comments come before the arguments' delimiter, so it is
+ * that delimiter.
+ */
 const macroStyle = (ctx: RsCtx, mac: i32): i32 => {
-  const s = ctx.snip(mac);
-  let p = rsFindUncommented(s, "(");
-  let b = rsFindUncommented(s, "[");
-  let c = rsFindUncommented(s, "{");
-  if (p < 0) {
-    p = 0x7fffffff;
-  }
-  if (b < 0) {
-    b = 0x7fffffff;
-  }
-  if (c < 0) {
-    c = 0x7fffffff;
-  }
-  if (p < b && p < c) {
+  const k = ctx.ast.x[ctx.ast.b[mac]];
+  if (k === T_LPAREN) {
     return DS_PAREN;
   }
-  if (b < c) {
-    return DS_BRACKET;
-  }
-  return DS_BRACE;
+  return k === T_LBRACKET ? DS_BRACKET : DS_BRACE;
 };
 
 export const rsMacroStyleIsBraces = (ctx: RsCtx, mac: i32): boolean => macroStyle(ctx, mac) === DS_BRACE;

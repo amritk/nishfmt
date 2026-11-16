@@ -49,8 +49,17 @@ const reorderableKind = (ctx: RsCtx, item: i32): i32 => {
   return RK_OTHER;
 };
 
-/** The line (1-based) of byte offset `pos`. */
-const lineOf = (ctx: RsCtx, pos: i32): i32 => ctx.f.lineOf(pos);
+/** The newlines in `src[a, b)`: the difference of the lines of `b` and `a`. */
+const newlinesBetween = (ctx: RsCtx, a: i32, b: i32): i32 => {
+  const src = ctx.f.src;
+  let k = 0;
+  for (let i = a; i < b; i++) {
+    if (toI32(src[i]) === 10) {
+      k++;
+    }
+  }
+  return k;
+};
 
 const cmpStrBytes = (a: string, b: string): i32 => {
   const n = toI32(a.length) < toI32(b.length) ? toI32(a.length) : toI32(b.length);
@@ -205,17 +214,16 @@ export const rsVisitItemsWithReordering = (v: RsVisitor, items: i32[]): void => 
       continue;
     }
     // walk_reorderable_or_regroupable_items, in_group.
-    let lastHi = lineOf(ctx, ast.hi[items[i]]);
+    // An item stays in the group when it starts less than two lines after
+    // the previous one ends: fewer than two newlines between them.
     let k = i;
     while (k < n) {
       if (reorderableKind(ctx, items[k]) !== kind) {
         break;
       }
-      const curLo = lineOf(ctx, rsLoWithAttrs(ast, items[k]));
-      if (k > i && !(curLo < lastHi + 2)) {
+      if (k > i && newlinesBetween(ctx, ast.hi[items[k - 1]], rsLoWithAttrs(ast, items[k])) >= 2) {
         break;
       }
-      lastHi = lineOf(ctx, ast.hi[items[k]]);
       k++;
     }
     const group: i32[] = [];

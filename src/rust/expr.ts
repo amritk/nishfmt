@@ -80,6 +80,7 @@ import { rsAttrsContainSkip, rsRewriteAttrs, rsRewriteMetaItem, rsRewriteNodeAtt
 import { rsRewriteChain } from "./chains";
 import { rsRewriteClosure } from "./closures";
 import {
+  RsCharScan,
   rsCharClasses,
   rsCombineStrsWithMissingComments,
   rsContainsComment,
@@ -112,7 +113,7 @@ import { OC_EXPR, OC_TY, OC_PAT, rsRewriteWithParens, rsRewriteWithSquareBracket
 import { RsPairParts, SPB_BACK, SPB_FRONT, rsRewriteAllPairs, rsRewritePair } from "./pairs";
 import { rsRewritePat } from "./patterns";
 import { RsShape, rsIndentStr, rsIndentStrNl, rsShapeIndented, rsShapeLegacy } from "./shape";
-import { rsCountNewlines, rsHasByte, rsLines, rsTrim, rsTrimEnd, rsTrimStart, rsWidth, rsWsLenAt } from "./str";
+import { rsCountNewlines, rsHasByte, rsLines, rsTrim, rsTrimEnd, rsTrimStart, rsWidth, rsWsLenAt, rsWsLenAtBytes } from "./str";
 import { PC_EXPR, rsRewriteGenericParam, rsRewritePath, rsRewritePreciseArg, rsRewriteSegmentParam, rsRewriteTy } from "./types";
 import { rsFirstLineEndsWith, rsIdentStr, rsLastLineExtendable, rsLoWithAttrs } from "./utils";
 import { RsVisitor } from "./visitor";
@@ -1027,14 +1028,18 @@ export const rsIsMethodCall = (ast: RsAst, e: i32): boolean => {
 
 /** span_ends_with_comma. */
 export const rsSpanEndsWithComma = (ctx: RsCtx, lo: i32, hi: i32): boolean => {
-  const s = ctx.snippet(lo, hi);
-  const r = rsCharClasses(s);
+  const src = ctx.f.src;
+  const sc = new RsCharScan(src, lo, hi);
   let result = false;
   let prev = 0;
-  for (let ci = 0; ci < r.nc; ci++) {
-    const i = r.starts[ci];
-    const c = s.charCodeAt(i);
-    if (rsKindIsComment(r.kinds[i]) || rsWsLenAt(s, i) > 0) {
+  for (;;) {
+    const k = sc.next();
+    if (k < 0) {
+      break;
+    }
+    const i = sc.cs;
+    const c = toI32(src[i]);
+    if (rsKindIsComment(k) || rsWsLenAtBytes(src, i, hi) > 0) {
       continue;
     }
     if (c === 41 || c === 125 || c === 93) {
@@ -1244,8 +1249,8 @@ const rewriteStructLit = (ctx: RsCtx, e: i32, shape: RsShape): string | null => 
   );
   const tactic = rsStructLitTactic(hShape, ctx, items);
   const nested = rsShapeForTactic(tactic, hShape, vShape);
-  const endsWithComma = rsSpanEndsWithComma(ctx, lo, hi);
-  const forceNoTrailing = ctx.insideMacro && !endsWithComma;
+  // span_ends_with_comma only matters inside a macro.
+  const forceNoTrailing = ctx.insideMacro && !rsSpanEndsWithComma(ctx, lo, hi);
   const fmt = rsStructLitFormatting(nested, tactic, ctx, forceNoTrailing || hasBaseOrRest);
   const fieldsStr = rsWriteList(items, fmt);
   if (fieldsStr === null) {
