@@ -1652,6 +1652,7 @@ export class DtParser {
         const nm = this.expectId();
         cname = this.mk(N_PRIMARY_CONSTRUCTOR_NAME, d, d, nm);
       }
+      this.primaryParams = true;
       const params = this.parseFormalParameterList(FP_NORMAL);
       return this.mk(N_PRIMARY_CONSTRUCTOR_DECLARATION, beg, cst, name, tps, cname, params);
     }
@@ -2334,7 +2335,15 @@ export class DtParser {
   // ---------------------------------------------------------------------
   // Formal parameters.
 
+  // Whether the next parameter list is a primary constructor's, whose
+  // parameters may be `var` or `final`.
+  primaryParams: boolean = false;
+  inPrimary: boolean = false;
+
   parseFormalParameterList(ctx: i32): i32 {
+    const saveIn = this.inPrimary;
+    this.inPrimary = this.primaryParams;
+    this.primaryParams = false;
     const lp = this.expect(T_LPAREN);
     const params: i32[] = [];
     let leftDelim = -1;
@@ -2371,6 +2380,7 @@ export class DtParser {
       this.fail("unclosed optional parameters");
     }
     const rp = this.expect(T_RPAREN);
+    this.inPrimary = saveIn;
     return this.mk(N_FORMAL_PARAMETER_LIST, lp, lp, this.a.list(params), leftDelim, rightDelim, rp);
   }
 
@@ -2398,6 +2408,10 @@ export class DtParser {
     if ((mk === K_VAR || mk === K_FINAL || mk === K_CONST) && this.modifierFollows(this.p)) {
       mutable = this.p;
       this.p = mutable + 1;
+      if (!this.inPrimary || mk === K_CONST) {
+        this.fail("var, final or const on a parameter");
+        return -1;
+      }
     }
     let type = -1;
     let fieldKw = -1;

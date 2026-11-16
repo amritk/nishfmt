@@ -801,7 +801,7 @@ export class DtWriter {
   }
 }
 
-const req = (p: DtPiece | null): DtPiece => {
+const dtReq = (p: DtPiece | null): DtPiece => {
   if (p === null) {
     panic("dart: missing piece");
   }
@@ -820,17 +820,17 @@ const dtFormatPiece = (w: DtWriter, p: DtPiece, s: i32): void => {
       if (s === S_SPLIT) {
         w.pushIndent(IN_EXPRESSION);
         w.setShapeMode(SM_BEFORE_HEADLINE);
-        w.format(req(p.a), false);
+        w.format(dtReq(p.a), false);
         w.setShapeMode(SM_AFTER_HEADLINE);
         w.newline();
         w.popIndent();
         w.pushIndent(IN_ASSIGNMENT);
-        w.format(req(p.b), false);
+        w.format(dtReq(p.b), false);
         w.popIndent();
       } else {
-        w.format(req(p.a), false);
+        w.format(dtReq(p.a), false);
         w.space();
-        w.format(req(p.b), false);
+        w.format(dtReq(p.b), false);
       }
       return;
     case PK_CASE_EXPRESSION: {
@@ -838,7 +838,7 @@ const dtFormatPiece = (w: DtWriter, p: DtPiece, s: i32): void => {
       if (indentPattern) {
         w.pushIndent(IN_EXPRESSION);
       }
-      w.format(req(p.a), false);
+      w.format(dtReq(p.a), false);
       if (indentPattern) {
         w.popIndent();
       }
@@ -850,13 +850,13 @@ const dtFormatPiece = (w: DtWriter, p: DtPiece, s: i32): void => {
         w.popIndent();
       }
       w.space();
-      w.format(req(p.c), false);
+      w.format(dtReq(p.c), false);
       const indentBody = s !== S_UNSPLIT && s !== CASE_BLOCK_BODY;
       if (indentBody) {
         w.pushIndent(IN_BLOCK);
       }
       w.splitIf(s === CASE_BEFORE_BODY || s === CASE_BEFORE_WHEN_AND_BODY);
-      w.format(req(p.d), false);
+      w.format(dtReq(p.d), false);
       if (indentBody) {
         w.popIndent();
       }
@@ -866,14 +866,14 @@ const dtFormatPiece = (w: DtWriter, p: DtPiece, s: i32): void => {
       const calls = p.list;
       const n = toI32(calls.length);
       if (s === S_UNSPLIT) {
-        w.format(req(p.a), false);
+        w.format(dtReq(p.a), false);
         for (let i = 0; i < n; i++) {
           w.format(calls[i], false);
         }
       } else if (s === CHAIN_SPLIT_AFTER_PROPERTIES) {
         w.pushIndent(p.i2);
         w.setShapeMode(SM_BEFORE_HEADLINE);
-        w.format(req(p.a), false);
+        w.format(dtReq(p.a), false);
         for (let i = 0; i < p.i0; i++) {
           w.format(calls[i], false);
         }
@@ -887,14 +887,14 @@ const dtFormatPiece = (w: DtWriter, p: DtPiece, s: i32): void => {
         if (p.b0) {
           w.setShapeMode(SM_OTHER);
         }
-        w.format(req(p.a), false);
+        w.format(dtReq(p.a), false);
         for (let i = 0; i < n; i++) {
           w.format(calls[i], false);
         }
       } else {
         w.pushIndent(p.i2);
         w.setShapeMode(SM_BEFORE_HEADLINE);
-        w.format(req(p.a), false);
+        w.format(dtReq(p.a), false);
         w.setShapeMode(SM_AFTER_HEADLINE);
         for (let i = 0; i < n; i++) {
           w.newline();
@@ -905,7 +905,7 @@ const dtFormatPiece = (w: DtWriter, p: DtPiece, s: i32): void => {
       return;
     }
     case PK_CLAUSE:
-      w.format(req(p.a), false);
+      w.format(dtReq(p.a), false);
       w.pushIndent(IN_EXPRESSION);
       for (let i = 0; i < p.list.length; i++) {
         if (p.b0 && i === 0) {
@@ -918,7 +918,7 @@ const dtFormatPiece = (w: DtWriter, p: DtPiece, s: i32): void => {
       w.popIndent();
       return;
     case PK_CONSTRUCTOR: {
-      w.format(req(p.a), false);
+      w.format(dtReq(p.a), false);
       const params = p.b;
       if (params !== null) {
         w.format(params, false);
@@ -932,7 +932,7 @@ const dtFormatPiece = (w: DtWriter, p: DtPiece, s: i32): void => {
       if (inits !== null) {
         w.pushIndent(IN_BLOCK);
         w.splitIf(s === CTOR_BEFORE_INITIALIZERS);
-        w.format(req(p.d), false);
+        w.format(dtReq(p.d), false);
         w.space();
         if (p.b1 && s === CTOR_BETWEEN_INITIALIZERS) {
           w.pushIndent(IN_INITIALIZER_OPTIONAL);
@@ -943,7 +943,7 @@ const dtFormatPiece = (w: DtWriter, p: DtPiece, s: i32): void => {
         w.popIndent();
         w.popIndent();
       }
-      w.format(req(p.f), false);
+      w.format(dtReq(p.f), false);
       return;
     }
     case PK_CONTROL_FLOW: {
@@ -966,12 +966,12 @@ const dtFormatPiece = (w: DtWriter, p: DtPiece, s: i32): void => {
       return;
     }
     case PK_FOR:
-      w.format(req(p.a), false);
+      w.format(dtReq(p.a), false);
       w.space();
       if (p.b0) {
         w.pushIndent(IN_CONTROL_FLOW_CLAUSE);
       }
-      w.format(req(p.b), false);
+      w.format(dtReq(p.b), false);
       if (p.b0) {
         w.popIndent();
       }
@@ -980,9 +980,9 @@ const dtFormatPiece = (w: DtWriter, p: DtPiece, s: i32): void => {
       if (s === S_SPLIT) {
         w.pushIndent(IN_EXPRESSION);
       }
-      w.format(req(p.a), false);
+      w.format(dtReq(p.a), false);
       w.splitIf(s === S_SPLIT);
-      w.format(req(p.b), false);
+      w.format(dtReq(p.b), false);
       if (s === S_SPLIT) {
         w.popIndent();
       }
@@ -990,24 +990,24 @@ const dtFormatPiece = (w: DtWriter, p: DtPiece, s: i32): void => {
     case PK_GROUPING:
       w.pushIndent(IN_GROUPING);
       w.setShapeMode(SM_OTHER);
-      w.format(req(p.a), false);
+      w.format(dtReq(p.a), false);
       w.popIndent();
       return;
     case PK_PREFIX:
       w.pushIndent(IN_GROUPING);
-      w.format(req(p.a), false);
+      w.format(dtReq(p.a), false);
       w.popIndent();
       return;
     case PK_IF_CASE: {
       if (s !== S_UNSPLIT) {
         w.pushIndent(IN_EXPRESSION);
       }
-      w.format(req(p.a), false);
+      w.format(dtReq(p.a), false);
       w.splitIf(s === IFCASE_BEFORE_CASE || s === IFCASE_BEFORE_CASE_AND_WHEN);
       if (!p.b0) {
         w.pushIndent(IN_CONTROL_FLOW_CLAUSE);
       }
-      w.format(req(p.b), false);
+      w.format(dtReq(p.b), false);
       if (!p.b0) {
         w.popIndent();
       }
@@ -1050,7 +1050,7 @@ const dtFormatPiece = (w: DtWriter, p: DtPiece, s: i32): void => {
       for (const c of p.list) {
         w.format(c, false);
       }
-      w.format(req(p.a), false);
+      w.format(dtReq(p.a), false);
       return;
     case PK_LIST: {
       const els = p.list;
@@ -1137,18 +1137,18 @@ const dtFormatPiece = (w: DtWriter, p: DtPiece, s: i32): void => {
       return;
     }
     case PK_BLOCK:
-      w.format(req(p.a), false);
+      w.format(dtReq(p.a), false);
       w.pushIndent(IN_BLOCK);
       w.setShapeMode(SM_BLOCK);
       w.newline();
-      w.format(req(p.b), false);
+      w.format(dtReq(p.b), false);
       w.popIndent();
       w.newline();
       w.setShapeMode(SM_MERGE);
-      w.format(req(p.c), false);
+      w.format(dtReq(p.c), false);
       return;
     case PK_SEQUENCE_ELEMENT:
-      w.format(req(p.a), false);
+      w.format(dtReq(p.a), false);
       for (const c of p.list) {
         w.space();
         w.format(c, false);
@@ -1183,15 +1183,15 @@ const dtFormatPiece = (w: DtWriter, p: DtPiece, s: i32): void => {
       w.newline();
       return;
     case PK_TYPE:
-      w.format(req(p.a), false);
+      w.format(dtReq(p.a), false);
       if (p.i0 !== TB_SEMICOLON) {
         w.space();
       }
-      w.format(req(p.b), false);
+      w.format(dtReq(p.b), false);
       return;
     case PK_PRIMARY_TYPE: {
-      w.format(req(p.a), false);
-      w.format(req(p.b), false);
+      w.format(dtReq(p.a), false);
+      w.format(dtReq(p.b), false);
       const nc = toI32(p.list.length);
       const indent = s === PRIMARY_BEFORE_CLAUSES || (s === PRIMARY_BETWEEN_CLAUSES && nc > 1) || s === S_SPLIT;
       if (indent) {
@@ -1207,16 +1207,16 @@ const dtFormatPiece = (w: DtWriter, p: DtPiece, s: i32): void => {
       if (p.i0 !== TB_SEMICOLON) {
         w.space();
       }
-      w.format(req(p.c), false);
+      w.format(dtReq(p.c), false);
       return;
     }
     case PK_TYPE_PARAMETER_BOUND:
       if (s === BOUND_BEFORE_EXTENDS) {
         w.pushIndent(IN_EXPRESSION);
       }
-      w.format(req(p.a), false);
+      w.format(dtReq(p.a), false);
       w.splitIf(s === BOUND_BEFORE_EXTENDS);
-      w.format(req(p.b), false);
+      w.format(dtReq(p.b), false);
       if (s === BOUND_BEFORE_EXTENDS) {
         w.popIndent();
       }
@@ -1225,17 +1225,17 @@ const dtFormatPiece = (w: DtWriter, p: DtPiece, s: i32): void => {
       if (s === S_SPLIT) {
         w.pushIndent(IN_EXPRESSION);
       }
-      w.format(req(p.a), false);
+      w.format(dtReq(p.a), false);
       w.splitIf(s === S_SPLIT);
-      w.format(req(p.b), false);
+      w.format(dtReq(p.b), false);
       w.space();
-      w.format(req(p.c), false);
+      w.format(dtReq(p.c), false);
       if (s === S_SPLIT) {
         w.popIndent();
       }
       return;
     case PK_VARIABLE: {
-      w.format(req(p.a), false);
+      w.format(dtReq(p.a), false);
       if (s === VAR_BETWEEN) {
         w.pushIndent(IN_EXPRESSION);
       }

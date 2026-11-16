@@ -117,7 +117,7 @@ export const dtShapeMerge = (a: i32, b: i32): i32 => {
   return SH_OTHER;
 };
 
-const anyIf = (c: boolean): i32 => (c ? SH_ALL : SH_INLINE);
+const dtAnyIf = (c: boolean): i32 => (c ? SH_ALL : SH_INLINE);
 
 // Indentation kinds (the back end's Indent enum).
 export const IN_NONE: i32 = 0;
@@ -710,7 +710,7 @@ export const dtPreventSplit = (p: DtPiece): void => {
 };
 
 /** Whether `x` is the (possibly null) `y`. */
-const is = (x: DtPiece, y: DtPiece | null): boolean => y !== null && x === y;
+const dtIsP = (x: DtPiece, y: DtPiece | null): boolean => y !== null && x === y;
 
 /** Piece.allowedChildShapes. */
 export const dtAllowed = (p: DtPiece, s: i32, child: DtPiece): i32 => {
@@ -719,30 +719,30 @@ export const dtAllowed = (p: DtPiece, s: i32, child: DtPiece): i32 => {
       if (s === S_UNSPLIT) {
         return SH_INLINE;
       }
-      if (s === ASSIGN_BLOCK_LEFT && is(child, p.a)) {
+      if (s === ASSIGN_BLOCK_LEFT && dtIsP(child, p.a)) {
         return SH_BLOCK;
       }
-      if (s === ASSIGN_BLOCK_LEFT && is(child, p.b)) {
+      if (s === ASSIGN_BLOCK_LEFT && dtIsP(child, p.b)) {
         return SH_INLINE | SH_OTHER;
       }
-      if (s === ASSIGN_BLOCK_OR_HEADLINE_RIGHT && is(child, p.b)) {
+      if (s === ASSIGN_BLOCK_OR_HEADLINE_RIGHT && dtIsP(child, p.b)) {
         return SH_BLOCK | SH_HEADLINE;
       }
       return SH_ALL;
     case PK_CASE_EXPRESSION:
-      if (is(child, p.a) && p.b1) {
+      if (dtIsP(child, p.a) && p.b1) {
         return SH_ALL;
       }
-      if (is(child, p.c)) {
+      if (dtIsP(child, p.c)) {
         return SH_ALL;
       }
-      if (s === CASE_BLOCK_BODY && is(child, p.d)) {
+      if (s === CASE_BLOCK_BODY && dtIsP(child, p.d)) {
         return SH_BLOCK;
       }
-      if (s === CASE_BEFORE_BODY && is(child, p.a)) {
-        return anyIf(p.b === null);
+      if (s === CASE_BEFORE_BODY && dtIsP(child, p.a)) {
+        return dtAnyIf(p.b === null);
       }
-      if (s === CASE_BEFORE_BODY && is(child, p.d)) {
+      if (s === CASE_BEFORE_BODY && dtIsP(child, p.d)) {
         return SH_ALL;
       }
       if (s === CASE_BEFORE_WHEN_AND_BODY) {
@@ -750,7 +750,7 @@ export const dtAllowed = (p: DtPiece, s: i32, child: DtPiece): i32 => {
       }
       return SH_INLINE;
     case PK_CHAIN:
-      if (is(child, p.a)) {
+      if (dtIsP(child, p.a)) {
         if (s === S_UNSPLIT || s === CHAIN_BLOCK_TRAILING_CALL || s === CHAIN_SPLIT_AFTER_PROPERTIES) {
           return SH_INLINE | SH_BLOCK;
         }
@@ -766,44 +766,44 @@ export const dtAllowed = (p: DtPiece, s: i32, child: DtPiece): i32 => {
           }
         }
       } else if (s === CHAIN_BLOCK_TRAILING_CALL) {
-        return anyIf(p.list[p.i1] === child);
+        return dtAnyIf(p.list[p.i1] === child);
       }
       return SH_ALL;
     case PK_CLAUSE:
-      if (is(child, p.a)) {
-        return anyIf(s === S_SPLIT);
+      if (dtIsP(child, p.a)) {
+        return dtAnyIf(s === S_SPLIT);
       }
       if (p.b0 && child === p.list[0]) {
-        return anyIf(s === S_SPLIT);
+        return dtAnyIf(s === S_SPLIT);
       }
-      return anyIf(s !== S_UNSPLIT);
+      return dtAnyIf(s !== S_UNSPLIT);
     case PK_CONSTRUCTOR:
-      if (is(child, p.f)) {
+      if (dtIsP(child, p.f)) {
         return SH_ALL;
       }
-      return anyIf(p.e === null || s !== S_UNSPLIT);
+      return dtAnyIf(p.e === null || s !== S_UNSPLIT);
     case PK_CONTROL_FLOW:
     case PK_INFIX:
-      return anyIf(s === S_SPLIT);
+      return dtAnyIf(s === S_SPLIT);
     case PK_FOR_IN:
       if (s === S_UNSPLIT) {
-        if (is(child, p.b)) {
+        if (dtIsP(child, p.b)) {
           return SH_INLINE | SH_BLOCK;
         }
         return SH_INLINE;
       }
       return SH_ALL;
     case PK_IF_CASE:
-      if (s === S_UNSPLIT && is(child, p.b) && p.b0 && p.c === null) {
+      if (s === S_UNSPLIT && dtIsP(child, p.b) && p.b0 && p.c === null) {
         return SH_INLINE | SH_BLOCK;
       }
-      if (s === IFCASE_BEFORE_WHEN && p.c !== null && is(child, p.c)) {
+      if (s === IFCASE_BEFORE_WHEN && p.c !== null && dtIsP(child, p.c)) {
         return SH_ALL;
       }
-      if (s === IFCASE_BEFORE_CASE && is(child, p.b) && p.c === null) {
+      if (s === IFCASE_BEFORE_CASE && dtIsP(child, p.b) && p.c === null) {
         return SH_ALL;
       }
-      if (s === IFCASE_BEFORE_CASE && is(child, p.a)) {
+      if (s === IFCASE_BEFORE_CASE && dtIsP(child, p.a)) {
         return SH_ALL;
       }
       if (s === IFCASE_BEFORE_CASE_AND_WHEN) {
@@ -814,32 +814,32 @@ export const dtAllowed = (p: DtPiece, s: i32, child: DtPiece): i32 => {
       if (s === S_SPLIT) {
         return SH_ALL;
       }
-      if (is(child, p.a)) {
+      if (dtIsP(child, p.a)) {
         return SH_ALL;
       }
-      if (is(child, p.b)) {
+      if (dtIsP(child, p.b)) {
         return SH_ALL;
       }
-      return anyIf(child.kind === PK_LIST_ELEMENT && child.b0);
+      return dtAnyIf(child.kind === PK_LIST_ELEMENT && child.b0);
     case PK_TYPE:
-      if (is(child, p.b)) {
+      if (dtIsP(child, p.b)) {
         return SH_ALL;
       }
-      return anyIf(p.i0 !== TB_LIST || s === S_SPLIT);
+      return dtAnyIf(p.i0 !== TB_LIST || s === S_SPLIT);
     case PK_PRIMARY_TYPE: {
-      if (is(child, p.a)) {
+      if (dtIsP(child, p.a)) {
         return SH_ALL;
       }
       if (s === S_UNSPLIT) {
-        if (!is(child, p.c)) {
+        if (!dtIsP(child, p.c)) {
           return SH_INLINE;
         }
       } else if (s === PRIMARY_BEFORE_CLAUSES) {
-        if (is(child, p.b)) {
+        if (dtIsP(child, p.b)) {
           return SH_INLINE;
         }
       } else if (s === PRIMARY_INLINE_CLAUSES) {
-        if (is(child, p.b)) {
+        if (dtIsP(child, p.b)) {
           return SH_BLOCK;
         }
         for (const c of p.list) {
@@ -848,7 +848,7 @@ export const dtAllowed = (p: DtPiece, s: i32, child: DtPiece): i32 => {
           }
         }
       } else if (s === PRIMARY_BETWEEN_CLAUSES) {
-        if (is(child, p.b)) {
+        if (dtIsP(child, p.b)) {
           return SH_BLOCK;
         }
       }
@@ -859,14 +859,14 @@ export const dtAllowed = (p: DtPiece, s: i32, child: DtPiece): i32 => {
         return SH_INLINE;
       }
       if (s === BOUND_INSIDE) {
-        return anyIf(is(child, p.b));
+        return dtAnyIf(dtIsP(child, p.b));
       }
       return SH_ALL;
     case PK_TYPE_TEST:
       if (s === S_UNSPLIT) {
         return SH_INLINE;
       }
-      if (s === TYPE_TEST_BLOCK && is(child, p.a)) {
+      if (s === TYPE_TEST_BLOCK && dtIsP(child, p.a)) {
         return SH_BLOCK;
       }
       return SH_ALL;
@@ -874,10 +874,10 @@ export const dtAllowed = (p: DtPiece, s: i32, child: DtPiece): i32 => {
       if (p.list.length === 1 && !p.b0) {
         return SH_ALL;
       }
-      if (is(child, p.a)) {
-        return anyIf(s !== S_UNSPLIT);
+      if (dtIsP(child, p.a)) {
+        return dtAnyIf(s !== S_UNSPLIT);
       }
-      return anyIf(p.list.length === 1 || s !== S_UNSPLIT);
+      return dtAnyIf(p.list.length === 1 || s !== S_UNSPLIT);
     default:
       return SH_ALL;
   }

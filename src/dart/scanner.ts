@@ -195,11 +195,11 @@ export class DtTokens {
   }
 }
 
-const isIdStart = (c: i32): boolean => (c >= 97 && c <= 122) || (c >= 65 && c <= 90) || c === 95 || c === 36;
-const isIdPart = (c: i32): boolean =>
+const dtIsIdStart = (c: i32): boolean => (c >= 97 && c <= 122) || (c >= 65 && c <= 90) || c === 95 || c === 36;
+const dtIsIdPart = (c: i32): boolean =>
   (c >= 97 && c <= 122) || (c >= 65 && c <= 90) || c === 95 || c === 36 || (c >= 48 && c <= 57);
-const isDigit = (c: i32): boolean => c >= 48 && c <= 57;
-const isHex = (c: i32): boolean => (c >= 48 && c <= 57) || (c >= 97 && c <= 102) || (c >= 65 && c <= 70);
+const dtIsDigit = (c: i32): boolean => c >= 48 && c <= 57;
+const dtIsHex = (c: i32): boolean => (c >= 48 && c <= 57) || (c >= 97 && c <= 102) || (c >= 65 && c <= 70);
 
 /** Scans one file. */
 export class DtScanner {
@@ -392,7 +392,7 @@ export class DtScanner {
     }
     let major = 0;
     const ms = i;
-    while (i < b && isDigit(this.at(i))) {
+    while (i < b && dtIsDigit(this.at(i))) {
       major = major * 10 + this.at(i) - 48;
       if (major > 100000) {
         return;
@@ -405,7 +405,7 @@ export class DtScanner {
     i++;
     let minor = 0;
     const ns = i;
-    while (i < b && isDigit(this.at(i))) {
+    while (i < b && dtIsDigit(this.at(i))) {
       minor = minor * 10 + this.at(i) - 48;
       if (minor > 100000) {
         return;
@@ -432,14 +432,14 @@ export class DtScanner {
 
   token(c: i32): void {
     const p = this.p;
-    if (isIdStart(c)) {
+    if (dtIsIdStart(c)) {
       // A raw string?
       if (c === 114 && (this.at(p + 1) === 39 || this.at(p + 1) === 34)) {
         this.string(p, p + 1, true);
         return;
       }
       let i = p + 1;
-      while (i < this.n && isIdPart(toI32(this.src[i]))) {
+      while (i < this.n && dtIsIdPart(toI32(this.src[i]))) {
         i++;
       }
       this.add(T_IDENT, p, i);
@@ -447,7 +447,7 @@ export class DtScanner {
       this.p = i;
       return;
     }
-    if (isDigit(c) || (c === 46 && isDigit(this.at(p + 1)))) {
+    if (dtIsDigit(c) || (c === 46 && dtIsDigit(this.at(p + 1)))) {
       this.number(p);
       return;
     }
@@ -691,22 +691,22 @@ export class DtScanner {
   number(p: i32): void {
     let i = p;
     let isDouble = false;
-    if (this.at(i) === 48 && (this.at(i + 1) === 120 || this.at(i + 1) === 88) && isHex(this.at(i + 2))) {
+    if (this.at(i) === 48 && (this.at(i + 1) === 120 || this.at(i + 1) === 88) && dtIsHex(this.at(i + 2))) {
       i += 3;
-      while (isHex(this.at(i)) || (this.at(i) === 95 && this.sepOk(i, true))) {
+      while (dtIsHex(this.at(i)) || (this.at(i) === 95 && this.sepOk(i, true))) {
         i++;
       }
       this.add(T_INT, p, i);
       this.p = i;
       return;
     }
-    while (isDigit(this.at(i)) || (this.at(i) === 95 && this.sepOk(i, false))) {
+    while (dtIsDigit(this.at(i)) || (this.at(i) === 95 && this.sepOk(i, false))) {
       i++;
     }
-    if (this.at(i) === 46 && isDigit(this.at(i + 1))) {
+    if (this.at(i) === 46 && dtIsDigit(this.at(i + 1))) {
       isDouble = true;
       i++;
-      while (isDigit(this.at(i)) || (this.at(i) === 95 && this.sepOk(i, false))) {
+      while (dtIsDigit(this.at(i)) || (this.at(i) === 95 && this.sepOk(i, false))) {
         i++;
       }
     }
@@ -716,10 +716,10 @@ export class DtScanner {
       if (this.at(j) === 43 || this.at(j) === 45) {
         j++;
       }
-      if (isDigit(this.at(j))) {
+      if (dtIsDigit(this.at(j))) {
         isDouble = true;
         i = j;
-        while (isDigit(this.at(i)) || (this.at(i) === 95 && this.sepOk(i, false))) {
+        while (dtIsDigit(this.at(i)) || (this.at(i) === 95 && this.sepOk(i, false))) {
           i++;
         }
       }
@@ -735,7 +735,7 @@ export class DtScanner {
       j++;
     }
     const c = this.at(j);
-    return hex ? isHex(c) : isDigit(c);
+    return hex ? dtIsHex(c) : dtIsDigit(c);
   }
 
   /** Scans a string literal starting at `a` whose quote is at `q`. */
