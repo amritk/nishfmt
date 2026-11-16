@@ -3922,7 +3922,8 @@ export class DtParser {
     const l = this.a.list(xs);
     for (let i = 0; i < xs.length; i++) {
       const x = xs[i];
-      if (this.a.kind[x] === N_ADJACENT_STRINGS) {
+      // An argument that failed to parse is -1.
+      if (x >= 0 && this.a.kind[x] === N_ADJACENT_STRINGS) {
         let other = false;
         for (let j = 0; j < xs.length; j++) {
           if (j !== i && this.isStringLiteral(xs[j])) {
