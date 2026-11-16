@@ -95,3 +95,4 @@ redundantFileprivate rules_ext swRuleRedundantFileprivate
 redundantNilInit rules_ext swRuleRedundantNilInit
 enumNamespaces rules_ext swRuleEnumNamespaces
 extensionAttributes rules_ext swRuleExtensionAttributes
+redundantType rules_redtype swRuleRedundantType

@@ -38,8 +38,8 @@ export const swIsStartOfClosureOrFunctionBody = (f: SwFormatter, i: i32): boolea
   return f.lastIs(SW_T_KEYWORD, i, SW_KEYWORD, "func");
 };
 
-/** declarationScope(at:). */
-export const swDeclarationScope = (f: SwFormatter, i: i32): i32 => {
+/** declarationIndexAndScope(at:), packed as (index + 1) * 4 + scope; index -1 for nil. */
+export const swDeclarationIndexAndScope = (f: SwFormatter, i: i32): i32 => {
   let unpaired = 0;
   let cur = i;
   let sos = -1;
@@ -71,10 +71,13 @@ export const swDeclarationScope = (f: SwFormatter, i: i32): i32 => {
   }
   const s = f.s(kw);
   if (s === "class" || s === "actor" || s === "struct" || s === "enum" || s === "protocol" || s === "extension") {
-    return SW_SCOPE_TYPE;
+    return (kw + 1) * 4 + SW_SCOPE_TYPE;
   }
-  return SW_SCOPE_LOCAL;
+  return (kw + 1) * 4 + SW_SCOPE_LOCAL;
 };
+
+/** declarationScope(at:). */
+export const swDeclarationScope = (f: SwFormatter, i: i32): i32 => swDeclarationIndexAndScope(f, i) & 3;
 
 /** shouldBeDocComment(at:endOfComment:): 1 true, 0 false, -1 nil. */
 const swShouldBeDocComment = (f: SwFormatter, indices: i32[], endOfComment: i32): i32 => {

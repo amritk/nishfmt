@@ -64,6 +64,7 @@ import {
   SW_RULE_REDUNDANT_RAW_VALUES,
   SW_RULE_REDUNDANT_SELF,
   SW_RULE_REDUNDANT_STATIC_SELF,
+  SW_RULE_REDUNDANT_TYPE,
   SW_RULE_REDUNDANT_TYPED_THROWS,
   SW_RULE_REDUNDANT_VOID_RETURN_TYPE,
   SW_RULE_SEMICOLONS,
@@ -158,6 +159,9 @@ import {
   swRuleSemicolons,
   swRuleTodos,
 } from "./rules_misc";
+import {
+  swRuleRedundantType,
+} from "./rules_redtype";
 import {
   swRuleAssertionFailures,
   swRuleInitCoderUnavailable,
@@ -498,6 +502,9 @@ export const swRunRule = (f: SwFormatter, r: i32): boolean => {
       return true;
     case SW_RULE_EXTENSION_ATTRIBUTES:
       swRuleExtensionAttributes(f);
+      return true;
+    case SW_RULE_REDUNDANT_TYPE:
+      swRuleRedundantType(f);
       return true;
     default:
       return false;
