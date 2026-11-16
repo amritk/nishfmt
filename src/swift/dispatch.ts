@@ -86,6 +86,7 @@ import {
   SW_RULE_UNUSED_ARGUMENTS,
   SW_RULE_VOID,
   SW_RULE_WRAP,
+  SW_RULE_WRAP_ARGUMENTS,
   SW_RULE_WRAP_ATTRIBUTES,
   SW_RULE_WRAP_FUNCTION_BODIES,
   SW_RULE_WRAP_IF_EXPRESSION_BODIES,
@@ -197,6 +198,9 @@ import {
 import {
   swRuleUnusedArguments,
 } from "./rules_unused";
+import {
+  swRuleWrapArguments,
+} from "./rules_wraparg";
 import {
   swRuleWrapFunctionBodies,
   swRuleWrapIfStatementBodies,
@@ -469,6 +473,9 @@ export const swRunRule = (f: SwFormatter, r: i32): boolean => {
       return true;
     case SW_RULE_UNUSED_ARGUMENTS:
       swRuleUnusedArguments(f);
+      return true;
+    case SW_RULE_WRAP_ARGUMENTS:
+      swRuleWrapArguments(f);
       return true;
     default:
       return false;
