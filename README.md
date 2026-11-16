@@ -20,7 +20,7 @@ output byte for byte:
 | Java | `.java` | google-java-format 1.28 | 7626 / 7627 |
 | Kotlin | `.kt .kts` | ktfmt 0.64 (default style) | 9602 / 9602 |
 | C# | `.cs` | CSharpier 1.4.0, default options | 13988 / 13988 |
-| Dart | `.dart` | `dart format` (Dart 3.14, tall style) | 10310 / 10313 |
+| Dart | `.dart` | `dart format` (Dart 3.14; tall style, short style below 3.7) | 10313 / 10313 |
 | Swift | `.swift` | SwiftFormat 0.64.7, default rules | 5959 / 6710 (the rest skipped) |
 | Ruby | RuboCop's default `Include` (`.rb`, `Gemfile`, `.gemspec`, ...) | `rubocop -a` 1.92.2, default config, `TargetRubyVersion: 3.3` | 4239 / 4239 |
 
@@ -49,19 +49,28 @@ corpus of the same files first formatted with other widths and indents
 (`cs2`) also matches on all 13988. The 4 files CSharpier refuses are left
 out. There is no native reimplementation of CSharpier to compare with.
 
-| Dart, 10313 files | Identical | 4 cores | 1 core |
+| Dart, 10313 files (tall style) | Identical | 4 cores | 1 core |
 | --- | ---: | ---: | ---: |
 | `dart format` 3.14 | reference | 55.2 s | 59.9 s |
-| fastfmt | 10310 | 3.08 s | 9.39 s |
+| fastfmt | 10313 | 3.08 s | 8.50 s |
 
-The Dart side ports dart_style's tall style: a scanner and parser to the
-analyzer's AST shapes, the piece builder, the solver and its cost model,
-and the comment handling. The three files left declare a language version
-below 3.7 (`// @dart=2.19` and the like), which dart format lays out in the
-older short style, not ported yet; fastfmt leaves those files unchanged.
-The corpus is flutter/packages, flutter/samples, riverpod, bloc, http,
-getx, flame, dart_style, shelf, dio and test, plus `dart2`, the same files
-first formatted at other widths and in the short style (10310 / 10313).
+| Dart, 8218 files (short style) | Identical | 4 cores | 1 core |
+| --- | ---: | ---: | ---: |
+| `dart format` 3.14 | reference | 25.4 s | 25.6 s |
+| fastfmt | 8218 | 3.76 s | 6.27 s |
+
+The Dart side ports dart_style whole: a scanner and parser to the
+analyzer's AST shapes; the tall style's piece builder, solver and cost
+model, with the variants `dart format` 3.14 still keeps for language
+versions 3.7, 3.8 to 3.12 and 3.13 on; and the short style used below 3.7
+(source visitor, chunk builder, rules and line splitter). The version comes
+from the file's `// @dart=` comment, else 3.14; fastfmt does not read
+package configs for it. The corpus is flutter/packages, flutter/samples,
+riverpod, bloc, http, getx, flame, dart_style, shelf, dio and test, plus
+`dart2`, the same files first formatted at other widths (10313 / 10313),
+`dart3`, the same files marked `// @dart=2.19` or `3.6` for the short style
+(8218 / 8218), and `dart4`, marked `3.7`, `3.8` or `3.12` (8663 / 8663).
+Files the reference rejects at their version are left out.
 
 | Swift, 6710 files | Identical | 4 cores | 1 core |
 | --- | ---: | ---: | ---: |
