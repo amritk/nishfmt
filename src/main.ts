@@ -1,6 +1,8 @@
-// fastfmt: a fast C++ formatter whose output matches clang-format's LLVM
-// style. The CLI walks the paths it is given, formats every C++ source in
-// parallel worker processes, and prints a timing summary.
+// fastfmt: a fast multi-language formatter whose output matches each
+// language's reference tool (clang-format, google-java-format, ktfmt,
+// RuboCop, SwiftFormat, rustfmt, dart format, CSharpier). The CLI walks the
+// paths it is given, formats every source in parallel worker processes, and
+// prints a timing summary.
 
 import { Out } from "./core/out";
 import { Ignore, walk } from "./core/files";
@@ -104,18 +106,27 @@ const usage = (): string =>
   [
     "usage: fastfmt [options] <file-or-dir>...",
     "",
-    "Formats C++ (.cpp .cc .cxx .hpp .hh .hxx .h) in clang-format's LLVM style.",
+    "Formats each file to match its language's reference formatter:",
+    "  C++ (.cpp .cc .cxx .hpp .hh .hxx .h)  clang-format 18, LLVM style",
+    "  Java (.java)                        google-java-format 1.28",
+    "  Kotlin (.kt .kts)                   ktfmt 0.64",
+    "  Ruby (.rb, Gemfile, .gemspec, ...)  rubocop -a 1.92.2",
+    "  Swift (.swift)                      SwiftFormat 0.64.7",
+    "  Rust (.rs)                          rustfmt 1.9.0, edition 2021",
+    "  Dart (.dart)                        dart format 3.14",
+    "  C# (.cs)                            CSharpier 1.4.0",
+    "",
     "A single file with no mode prints the result to stdout.",
     "",
     "  -i, --write     rewrite files in place",
     "  --check         list files that would change; exit 1 if any",
-    "  --width <n>     column limit (default 120)",
-    "  --indent <n>    indent width (default 2)",
+    "  --width <n>     C++ column limit (default 120)",
+    "  --indent <n>    C++ indent width (default 2)",
     "  -j <n>          worker processes (default: one per core)",
     "  -q, --quiet     no summary",
     "  -h, --help      this text",
     "",
-    "A `// fastfmt off` ... `// fastfmt on` region is left as written; a file",
+    "In C++, a `// fastfmt off` ... `// fastfmt on` region is left as written; a file",
     "that does not parse (unbalanced brackets, unterminated literals) is left",
     "untouched and counted as skipped.",
   ].join("\n");
@@ -279,11 +290,17 @@ const batches = (lang: i32): boolean => lang === LANG_KOTLIN || lang === LANG_JA
  * others in batches of one language, each batch in a region of its own.
  */
 const formatFiles = (files: string[], a: i32, b: i32, cli: Cli, stats: Stats, eng: Engine): void => {
+  // The walk does not stat names that look like sources, so a directory
+  // named like one (`Directory.swift`) arrives here; it is walked once the
+  // files around it are done.
+  const dirs: string[] = [];
   let i = a;
   while (i < b) {
     const lang = langOf(files[i]);
     if (lang < LANG_JAVA) {
-      formatFile(files[i], cli, stats, eng);
+      if (formatFile(files[i], cli, stats, eng) === 3) {
+        dirs.push(files[i]);
+      }
       i++;
       continue;
     }
@@ -307,6 +324,10 @@ const formatFiles = (files: string[], a: i32, b: i32, cli: Cli, stats: Stats, en
     for (let k = 0; k < job.done; k++) {
       const res = job.res[2 * k];
       if (res === 3) {
+        if (isDirectorySync(files[i + k])) {
+          dirs.push(files[i + k]);
+          continue;
+        }
         console.error(`fastfmt: cannot read ${files[i + k]}`);
         stats.skipped = stats.skipped + 1;
         continue;
@@ -321,15 +342,23 @@ const formatFiles = (files: string[], a: i32, b: i32, cli: Cli, stats: Stats, en
     }
     i = i + job.done;
   }
+  for (const d of dirs) {
+    const sub: string[] = [];
+    walk(d, sub, new Ignore(), langOf);
+    formatFiles(sub, 0, toI32(sub.length), cli, stats, eng);
+  }
 };
 
-/** Formats one C++ file; answers 0 unchanged, 1 changed, 2 skipped. */
+/** Formats one C++ file; answers 0 unchanged, 1 changed, 2 skipped, 3 a directory. */
 const formatFile = (path: string, cli: Cli, stats: Stats, eng: Engine): i32 => {
   if (cli.trace) {
     console.error(`file ${path}`);
   }
   const src = readFileBytesSync(path);
   if (src === null) {
+    if (isDirectorySync(path)) {
+      return 3;
+    }
     console.error(`fastfmt: cannot read ${path}`);
     stats.skipped = stats.skipped + 1;
     return 2;
