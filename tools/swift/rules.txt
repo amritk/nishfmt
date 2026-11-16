@@ -119,3 +119,4 @@ redundantEmptyView guards swGuardRedundantEmptyView bool
 redundantSwiftUIGroup guards swGuardRedundantSwiftUIGroup bool
 yodaConditions guards swGuardYodaConditions bool
 redundantParens rules_parens swRuleRedundantParens
+redundantReturn rules_return swRuleRedundantReturn

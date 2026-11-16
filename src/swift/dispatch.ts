@@ -75,6 +75,7 @@ import {
   SW_RULE_REDUNDANT_PATTERN,
   SW_RULE_REDUNDANT_PUBLIC,
   SW_RULE_REDUNDANT_RAW_VALUES,
+  SW_RULE_REDUNDANT_RETURN,
   SW_RULE_REDUNDANT_SELF,
   SW_RULE_REDUNDANT_STATIC_SELF,
   SW_RULE_REDUNDANT_SWIFT_TESTING_SUITE,
@@ -216,6 +217,9 @@ import {
   swRuleRedundantRawValues,
   swRuleRedundantVoidReturnType,
 } from "./rules_redundant1";
+import {
+  swRuleRedundantReturn,
+} from "./rules_return";
 import {
   swRuleRedundantSelf,
   swRuleRedundantStaticSelf,
@@ -594,6 +598,9 @@ export const swRunRule = (f: SwFormatter, r: i32): boolean => {
       return swGuardYodaConditions(f);
     case SW_RULE_REDUNDANT_PARENS:
       swRuleRedundantParens(f);
+      return true;
+    case SW_RULE_REDUNDANT_RETURN:
+      swRuleRedundantReturn(f);
       return true;
     default:
       return false;
