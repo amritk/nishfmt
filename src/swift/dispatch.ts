@@ -125,9 +125,6 @@ import {
   SW_RULE_YODA_CONDITIONS,
 } from "./rules";
 import {
-  swGuardPreferForLoop,
-} from "./guards";
-import {
   swRuleDuplicateImports,
   swRuleSortImports,
 } from "./imports";
@@ -183,6 +180,9 @@ import {
   swRuleRedundantFileprivate,
   swRuleRedundantNilInit,
 } from "./rules_ext";
+import {
+  swRulePreferForLoop,
+} from "./rules_forloop";
 import {
   swRuleSimplifyGenericConstraints,
 } from "./rules_generic";
@@ -606,7 +606,8 @@ export const swRunRule = (f: SwFormatter, r: i32): boolean => {
       swRuleNestedIf(f);
       return true;
     case SW_RULE_PREFER_FOR_LOOP:
-      return swGuardPreferForLoop(f);
+      swRulePreferForLoop(f);
+      return true;
     case SW_RULE_REDUNDANT_CLOSURE:
       swRuleRedundantClosure(f);
       return true;

@@ -96,7 +96,6 @@ redundantNilInit rules_ext swRuleRedundantNilInit
 enumNamespaces rules_ext swRuleEnumNamespaces
 extensionAttributes rules_ext swRuleExtensionAttributes
 redundantType rules_redtype swRuleRedundantType
-# Not ported yet: conservative guards (true when the rule cannot apply, else the file is skipped).
 noForceUnwrapInTests rules_unwrap swRuleNoForceUnwrapInTests
 noForceTryInTests rules_tests swRuleNoForceTryInTests
 redundantThrows rules_tests swRuleRedundantThrows
@@ -104,7 +103,7 @@ redundantAsync rules_tests swRuleRedundantAsync
 swiftTestingTestCaseNames rules_tests swRuleSwiftTestingTestCaseNames
 redundantSwiftTestingSuite rules_tests swRuleRedundantSwiftTestingSuite
 nestedIf rules_nestedif swRuleNestedIf
-preferForLoop guards swGuardPreferForLoop bool
+preferForLoop rules_forloop swRulePreferForLoop
 redundantClosure rules_closure swRuleRedundantClosure
 trailingClosures rules_trailing swRuleTrailingClosures
 redundantVariable rules_misc2 swRuleRedundantVariable
