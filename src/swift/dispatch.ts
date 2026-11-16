@@ -127,7 +127,6 @@ import {
 import {
   swGuardNoForceUnwrapInTests,
   swGuardPreferForLoop,
-  swGuardRedundantEquatable,
   swGuardRedundantMemberwiseInit,
 } from "./guards";
 import {
@@ -177,6 +176,9 @@ import {
 import {
   swRuleRedundantEnumerated,
 } from "./rules_enumerated";
+import {
+  swRuleRedundantEquatable,
+} from "./rules_equatable";
 import {
   swRuleEnumNamespaces,
   swRuleExtensionAttributes,
@@ -624,7 +626,8 @@ export const swRunRule = (f: SwFormatter, r: i32): boolean => {
     case SW_RULE_REDUNDANT_MEMBERWISE_INIT:
       return swGuardRedundantMemberwiseInit(f);
     case SW_RULE_REDUNDANT_EQUATABLE:
-      return swGuardRedundantEquatable(f);
+      swRuleRedundantEquatable(f);
+      return true;
     case SW_RULE_REDUNDANT_ENUMERATED:
       swRuleRedundantEnumerated(f);
       return true;

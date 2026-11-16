@@ -150,20 +150,3 @@ export const swGuardRedundantMemberwiseInit = (f: SwFormatter): boolean => {
   return ok;
 };
 
-/** redundantEquatable: no `Equatable` alongside a `func ==`. */
-export const swGuardRedundantEquatable = (f: SwFormatter): boolean => {
-  if (!swHasIdent(f, "Equatable")) {
-    return true;
-  }
-  const n = f.count();
-  for (let i = 0; i < n; i++) {
-    if (f.kw(i, "func")) {
-      const m = f.indexAfter(SW_T_NON_SPACE_OR_COMMENT_OR_LINEBREAK, i);
-      if (m >= 0 && f.k(m) === SW_OP && f.s(m) === "==") {
-        return false;
-      }
-    }
-  }
-  return true;
-};
-
