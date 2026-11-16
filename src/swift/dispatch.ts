@@ -256,6 +256,11 @@ import {
   swRuleSpaceInsideParens,
 } from "./rules_spacing";
 import {
+  swRuleNoForceTryInTests,
+  swRuleRedundantAsync,
+  swRuleRedundantThrows,
+} from "./rules_tests";
+import {
   swRuleAndOperator,
   swRuleNumberFormatting,
   swRuleTypeSugar,
@@ -561,11 +566,14 @@ export const swRunRule = (f: SwFormatter, r: i32): boolean => {
     case SW_RULE_NO_FORCE_UNWRAP_IN_TESTS:
       return swGuardTests(f);
     case SW_RULE_NO_FORCE_TRY_IN_TESTS:
-      return swGuardTests(f);
+      swRuleNoForceTryInTests(f);
+      return true;
     case SW_RULE_REDUNDANT_THROWS:
-      return swGuardTests(f);
+      swRuleRedundantThrows(f);
+      return true;
     case SW_RULE_REDUNDANT_ASYNC:
-      return swGuardTests(f);
+      swRuleRedundantAsync(f);
+      return true;
     case SW_RULE_SWIFT_TESTING_TEST_CASE_NAMES:
       return swGuardSwiftTesting(f);
     case SW_RULE_REDUNDANT_SWIFT_TESTING_SUITE:

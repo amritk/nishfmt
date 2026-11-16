@@ -98,9 +98,9 @@ extensionAttributes rules_ext swRuleExtensionAttributes
 redundantType rules_redtype swRuleRedundantType
 # Not ported yet: conservative guards (true when the rule cannot apply, else the file is skipped).
 noForceUnwrapInTests guards swGuardTests bool
-noForceTryInTests guards swGuardTests bool
-redundantThrows guards swGuardTests bool
-redundantAsync guards swGuardTests bool
+noForceTryInTests rules_tests swRuleNoForceTryInTests
+redundantThrows rules_tests swRuleRedundantThrows
+redundantAsync rules_tests swRuleRedundantAsync
 swiftTestingTestCaseNames guards swGuardSwiftTesting bool
 redundantSwiftTestingSuite guards swGuardSwiftTesting bool
 nestedIf rules_nestedif swRuleNestedIf

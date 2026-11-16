@@ -1,0 +1,248 @@
+// SwiftFormat's test-only rules: noForceTryInTests, redundantThrows and
+// redundantAsync (both testsOnly), with detectTestingFramework(), isTestCase(at:in:for:),
+// isInFunctionBody(of:at:), addThrowsEffect(to:) and removeEffect(_:from:).
+//
+// Ported from SwiftFormat 0.64.7 (MIT License, Copyright (c) 2016 Nick
+// Lockwood).
+
+import { SwFormatter } from "./formatter";
+import { SwFuncDecl, swParseFunctionDeclaration } from "./funcdecl";
+import { swHasImport } from "./imports";
+import { swHasModifier } from "./modifiers";
+import { swEndOfScope, swIsStartOfClosure, swIsUnwrap, swLastSignificantKeyword, swStartOfScope, SW_EX_WHERE } from "./parsing";
+import { SW_IDENT, SW_KEYWORD, SW_OP, SW_OP_POSTFIX, SW_SPACE, SW_START, SW_T_NON_SPACE_OR_COMMENT_OR_LINEBREAK, SwTok } from "./token";
+
+export const SW_TEST_NONE: i32 = 0;
+export const SW_TEST_XCTEST: i32 = 1;
+export const SW_TEST_SWIFT_TESTING: i32 = 2;
+
+/** detectTestingFramework(). */
+export const swDetectTestingFramework = (f: SwFormatter): i32 => {
+  const t = swHasImport(f, "Testing");
+  const x = swHasImport(f, "XCTest");
+  if (t && x) {
+    return SW_TEST_NONE;
+  }
+  if (t) {
+    return SW_TEST_SWIFT_TESTING;
+  }
+  return x ? SW_TEST_XCTEST : SW_TEST_NONE;
+};
+
+/** isTestCase(at:in:for:). */
+export const swIsTestCase = (f: SwFormatter, funcKeywordIndex: i32, fd: SwFuncDecl, framework: i32): boolean => {
+  if (framework === SW_TEST_XCTEST) {
+    return fd.hasName && fd.name.startsWith("test") && fd.returnStart < 0 && fd.args.length === 0;
+  }
+  return swHasModifier(f, funcKeywordIndex, "@Test");
+};
+
+/** isInFunctionBody(of:at:). */
+export const swIsInFunctionBody = (f: SwFormatter, fd: SwFuncDecl, index: i32): boolean => {
+  if (fd.bodyStart < 0 || index < fd.bodyStart || index > fd.bodyEnd) {
+    return false;
+  }
+  const sos = swStartOfScope(f, index);
+  if (sos < 0) {
+    return false;
+  }
+  if (sos === fd.bodyStart) {
+    return true;
+  }
+  if (swIsStartOfClosure(f, sos)) {
+    return false;
+  }
+  if (swLastSignificantKeyword(f, sos, SW_EX_WHERE) === "func") {
+    return false;
+  }
+  return swIsInFunctionBody(f, fd, sos);
+};
+
+/** isInStringInterpolation(at:). */
+const swIsInStringInterpolation = (f: SwFormatter, index: i32): boolean => {
+  const sos = swStartOfScope(f, index);
+  if (sos < 0) {
+    return false;
+  }
+  if (f.tok(sos, SW_START, '"') || f.tok(sos, SW_START, '"""')) {
+    return true;
+  }
+  return swIsInStringInterpolation(f, sos);
+};
+
+/** The effect strings of a declaration (`throws(E)` as one string). */
+const swEffects = (f: SwFormatter, fd: SwFuncDecl): string[] => {
+  const out: string[] = [];
+  if (fd.effectsStart < 0) {
+    return out;
+  }
+  for (let j = fd.effectsStart; j <= fd.effectsEnd; j++) {
+    const s = f.s(j);
+    if (!(f.k(j) === SW_KEYWORD || f.k(j) === SW_IDENT) || !(s === "async" || s === "throws" || s === "rethrows")) {
+      continue;
+    }
+    if (s === "throws") {
+      const p = f.indexAfter(SW_T_NON_SPACE_OR_COMMENT_OR_LINEBREAK, j);
+      if (p >= 0 && p <= fd.effectsEnd && f.tok(p, SW_START, "(")) {
+        const e = swEndOfScope(f, p);
+        if (e >= 0) {
+          out.push(f.text(j, e + 1));
+          j = e;
+          continue;
+        }
+      }
+    }
+    out.push(s);
+  }
+  return out;
+};
+
+const swHasEffectPrefix = (effects: string[], prefix: string): boolean => {
+  for (const e of effects) {
+    if (e.startsWith(prefix)) {
+      return true;
+    }
+  }
+  return false;
+};
+
+/** addThrowsEffect(to:). */
+const swAddThrowsEffect = (f: SwFormatter, fd: SwFuncDecl): void => {
+  if (swEffects(f, fd).indexOf("throws") >= 0) {
+    return;
+  }
+  if (fd.effectsStart >= 0) {
+    const asyncIndex = f.indexOfIn(SW_IDENT, "async", 0, fd.effectsStart, fd.effectsEnd + 1);
+    if (asyncIndex >= 0) {
+      f.insertToks([new SwTok(SW_SPACE, " ", 0), new SwTok(SW_KEYWORD, "throws", 0)], asyncIndex + 1);
+    } else {
+      f.insertToks([new SwTok(SW_KEYWORD, "throws", 0), new SwTok(SW_SPACE, " ", 0)], fd.effectsEnd);
+    }
+  } else {
+    f.insertToks([new SwTok(SW_SPACE, " ", 0), new SwTok(SW_KEYWORD, "throws", 0)], fd.argsEnd + 1);
+  }
+};
+
+/** removeEffect(_:from:). */
+const swRemoveEffect = (f: SwFormatter, effect: string, fd: SwFuncDecl): void => {
+  if (fd.effectsStart < 0) {
+    return;
+  }
+  let effectIndex = f.indexOfIn(SW_KEYWORD, effect, 0, fd.effectsStart, fd.effectsEnd + 1);
+  if (effectIndex < 0) {
+    effectIndex = f.indexOfIn(SW_IDENT, effect, 0, fd.effectsStart, fd.effectsEnd + 1);
+  }
+  if (effectIndex < 0) {
+    return;
+  }
+  let endIndex = effectIndex;
+  if (effect === "throws") {
+    const p = f.indexAfter(SW_T_NON_SPACE_OR_COMMENT_OR_LINEBREAK, effectIndex);
+    if (p >= 0 && f.tok(p, SW_START, "(")) {
+      const e = swEndOfScope(f, p);
+      if (e >= 0) {
+        endIndex = e;
+      }
+    }
+  }
+  if (endIndex + 1 < f.count() && f.k(endIndex + 1) === SW_SPACE) {
+    endIndex++;
+  }
+  f.removeTokens(effectIndex, endIndex + 1);
+};
+
+/** noForceTryInTests. */
+export const swRuleNoForceTryInTests = (f: SwFormatter): void => {
+  const framework = swDetectTestingFramework(f);
+  if (framework === SW_TEST_NONE) {
+    return;
+  }
+  for (let i = f.enumStart(); i >= 0; i = f.enumNext()) {
+    if (!f.kw(i, "func")) {
+      continue;
+    }
+    const fd = swParseFunctionDeclaration(f, i);
+    if (fd === null || !swIsTestCase(f, i, fd, framework) || fd.bodyStart < 0) {
+      continue;
+    }
+    let found = false;
+    let abort = false;
+    for (let index = fd.bodyEnd; index >= fd.bodyStart; index--) {
+      if (!f.kw(index, "try")) {
+        continue;
+      }
+      const n = f.indexAfter(SW_T_NON_SPACE_OR_COMMENT_OR_LINEBREAK, index);
+      if (n < 0) {
+        abort = true;
+        break;
+      }
+      if (!f.op(n, "!", SW_OP_POSTFIX)) {
+        continue;
+      }
+      if (!swIsInFunctionBody(f, fd, index) || swIsInStringInterpolation(f, index)) {
+        continue;
+      }
+      f.removeToken(n);
+      found = true;
+    }
+    if (abort || !found) {
+      continue;
+    }
+    swAddThrowsEffect(f, fd);
+  }
+};
+
+/** redundantThrows / redundantAsync (testsOnly). */
+const swRedundantEffect = (f: SwFormatter, effect: string): void => {
+  const framework = swDetectTestingFramework(f);
+  if (framework === SW_TEST_NONE) {
+    return;
+  }
+  const marker = effect === "throws" ? "try" : "await";
+  for (let i = f.enumStart(); i >= 0; i = f.enumNext()) {
+    if (!f.kw(i, "func") && !f.kw(i, "init") && !f.kw(i, "subscript")) {
+      continue;
+    }
+    const fd = swParseFunctionDeclaration(f, i);
+    if (fd === null || !swHasEffectPrefix(swEffects(f, fd), effect) || fd.bodyStart < 0) {
+      continue;
+    }
+    if (swHasModifier(f, i, "override")) {
+      continue;
+    }
+    if (!f.kw(i, "func") || !swIsTestCase(f, i, fd, framework)) {
+      continue;
+    }
+    let contains = false;
+    for (let index = fd.bodyStart; index <= fd.bodyEnd; index++) {
+      if (f.kw(index, marker)) {
+        if (effect === "throws") {
+          const n = f.indexAfter(SW_T_NON_SPACE_OR_COMMENT_OR_LINEBREAK, index);
+          if (n >= 0 && swIsUnwrap(f, n)) {
+            continue;
+          }
+        }
+        if (swIsInFunctionBody(f, fd, index)) {
+          contains = true;
+          break;
+        }
+      } else if (effect === "throws" && f.kw(index, "throw")) {
+        if (swIsInFunctionBody(f, fd, index)) {
+          contains = true;
+          break;
+        }
+      }
+    }
+    if (!contains) {
+      swRemoveEffect(f, effect, fd);
+    }
+  }
+};
+
+export const swRuleRedundantThrows = (f: SwFormatter): void => {
+  swRedundantEffect(f, "throws");
+};
+
+export const swRuleRedundantAsync = (f: SwFormatter): void => {
+  swRedundantEffect(f, "async");
+};
