@@ -3,7 +3,9 @@
 // starts from, and false (the file is not handled) otherwise.
 
 import { SwFormatter } from "./formatter";
+import { SW_DECL_TYPE, swParseDeclarations, swReleaseDecls } from "./decl";
 import { swParseFunctionDeclaration } from "./funcdecl";
+import { swEndOfScope } from "./parsing";
 import { swHasImport } from "./imports";
 import { swHasModifier } from "./modifiers";
 import { swLowercased } from "./rules_simple";
@@ -180,8 +182,26 @@ export const swGuardSimplifyGenericConstraints = (f: SwFormatter): boolean => {
   }
   const n = f.count();
   for (let i = 0; i < n; i++) {
-    if (f.tok(i, SW_START, "<")) {
-      return false;
+    if (f.kw(i, "func")) {
+      const fd = swParseFunctionDeclaration(f, i);
+      if (fd !== null && fd.genericStart >= 0 && fd.whereStart >= 0) {
+        return false;
+      }
+    } else if (f.kw(i, "struct") || f.kw(i, "class") || f.kw(i, "enum") || f.kw(i, "actor")) {
+      const name = f.indexAfter(SW_T_NON_SPACE_OR_COMMENT_OR_LINEBREAK, i);
+      const gs = name >= 0 ? f.indexAfter(SW_T_NON_SPACE_OR_COMMENT_OR_LINEBREAK, name) : -1;
+      if (gs < 0 || !f.tok(gs, SW_START, "<")) {
+        continue;
+      }
+      const ge = swEndOfScope(f, gs);
+      if (ge < 0) {
+        continue;
+      }
+      const w = f.indexOfAfter(SW_KEYWORD, "where", 0, ge);
+      const b = f.indexOfAfter(SW_START, "{", 0, ge);
+      if (w >= 0 && b >= 0 && w < b) {
+        return false;
+      }
     }
   }
   return true;
@@ -230,7 +250,30 @@ export const swGuardContentBuilder = (f: SwFormatter): boolean => {
 };
 
 /** redundantMemberwiseInit: no struct with an init. */
-export const swGuardRedundantMemberwiseInit = (f: SwFormatter): boolean => !(swHasKeyword(f, "struct") && swHasKeyword(f, "init"));
+/** redundantMemberwiseInit: no top-level struct with exactly one init. */
+export const swGuardRedundantMemberwiseInit = (f: SwFormatter): boolean => {
+  if (!(swHasKeyword(f, "struct") && swHasKeyword(f, "init"))) {
+    return true;
+  }
+  const decls = swParseDeclarations(f);
+  let ok = true;
+  for (const d of decls) {
+    if (d.keyword !== "struct" || d.kind !== SW_DECL_TYPE) {
+      continue;
+    }
+    let inits = 0;
+    for (const b of d.body) {
+      if (b.keyword === "init") {
+        inits++;
+      }
+    }
+    if (inits === 1) {
+      ok = false;
+    }
+  }
+  swReleaseDecls(f, decls);
+  return ok;
+};
 
 /** redundantEquatable: no `Equatable` alongside a `func ==`. */
 export const swGuardRedundantEquatable = (f: SwFormatter): boolean => {
