@@ -69,5 +69,7 @@ case $lang in
   dart) "$DART" format . > /dev/null 2> ../dartformat.log; grep -o '[^ ]*\.dart' ../dartformat.log | sort -u >> ../failed.txt ;;
   cs) "$CSHARPIER" format . > ../csharpier.log 2>&1; grep -o '[^ ]*\.cs\b' ../csharpier.log | sort -u >> ../failed.txt ;;
 esac
+# Every entry is a path from here, starting "./" as cmp.sh expects.
+sed -i -e 's|^\./||' -e 's|^|./|' ../failed.txt
 sort -u -o ../failed.txt ../failed.txt
 echo "$lang: $(find . -type f | wc -l) files, reference failed on $(wc -l < ../failed.txt)"

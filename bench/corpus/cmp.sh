@@ -15,8 +15,9 @@ rm -rf "$w" && mkdir -p "$w" && cp -r "$d/raw" "$w/out"
 s=$(date +%s.%N)
 "$bin" -i -q "$@" "$w/out"
 e=$(date +%s.%N)
-diff -rq "$w/out" "$d/ref" | grep -v '^Only' | awk '{print $2}' | sed "s|^$w/out/|./|" \
-  | grep -vxF -f "$d/failed.txt" > "$w/differ.txt"
+# "Files <out> and <ref> differ", with paths that may hold spaces.
+diff -rq "$w/out" "$d/ref" | grep '^Files ' | sed -e 's|^Files ||' -e "s| and $d/ref/.* differ\$||" \
+  -e "s|^$w/out/|./|" | grep -vxF -f "$d/failed.txt" > "$w/differ.txt"
 total=$(( $(find "$d/ref" -type f | wc -l) - $(wc -l < "$d/failed.txt") ))
 nd=$(wc -l < "$w/differ.txt")
 (cd "$w/out" && while read -r f; do diff -u "$f" "$d/ref/$f"; done < "$w/differ.txt") > "$w/all.diff"
