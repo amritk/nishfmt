@@ -89,3 +89,4 @@ redundantSelf rules_self swRuleRedundantSelf
 redundantStaticSelf rules_self swRuleRedundantStaticSelf
 trailingCommas rules_commas swRuleTrailingCommas
 hoistPatternLet rules_hoistlet swRuleHoistPatternLet
+unusedArguments rules_unused swRuleUnusedArguments

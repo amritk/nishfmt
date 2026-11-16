@@ -83,6 +83,7 @@ import {
   SW_RULE_TRAILING_COMMAS,
   SW_RULE_TRAILING_SPACE,
   SW_RULE_TYPE_SUGAR,
+  SW_RULE_UNUSED_ARGUMENTS,
   SW_RULE_VOID,
   SW_RULE_WRAP,
   SW_RULE_WRAP_ATTRIBUTES,
@@ -193,6 +194,9 @@ import {
   swRuleTypeSugar,
   swRuleVoid,
 } from "./rules_types";
+import {
+  swRuleUnusedArguments,
+} from "./rules_unused";
 import {
   swRuleWrapFunctionBodies,
   swRuleWrapIfStatementBodies,
@@ -462,6 +466,9 @@ export const swRunRule = (f: SwFormatter, r: i32): boolean => {
       return true;
     case SW_RULE_HOIST_PATTERN_LET:
       swRuleHoistPatternLet(f);
+      return true;
+    case SW_RULE_UNUSED_ARGUMENTS:
+      swRuleUnusedArguments(f);
       return true;
     default:
       return false;
