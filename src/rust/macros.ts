@@ -635,6 +635,10 @@ export const rsRewriteMacroDef = (ctx: RsCtx, shape: RsShape, bi: i32, al: i32, 
     }
     branches.push(new Branch(blo, bhi, argsOpen, argsKind, bodyLo, bodyHi));
   }
+  if (branches.length > 0) {
+    ctx.unsupported("macro_rules bodies (format_macro_bodies)");
+    return null;
+  }
   // The header: `macro_rules!` and the name.
   const bang = ctx.spanAfter(lo, hi, "!");
   const identTok = ast.d[item];

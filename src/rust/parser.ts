@@ -344,6 +344,8 @@ const P_SUM: i32 = 12;
 const P_PRODUCT: i32 = 13;
 const P_CAST: i32 = 14;
 
+const isCompareTok = (k: i32): boolean => k === T_EQEQ || k === T_NE || k === T_LT || k === T_GT || k === T_LE || k === T_GE;
+
 // Path styles.
 const PS_EXPR: i32 = 0;
 const PS_TYPE: i32 = 1;
@@ -3187,7 +3189,14 @@ export class RsParser {
         lhs = this.fin(c);
         continue;
       }
+      if (prec === P_COMPARE && this.ast.kind[lhs] === N_EX_BINARY && isCompareTok(this.ast.x[lhs])) {
+        // rustc: comparison operators cannot be chained (an error it recovers from).
+        return this.fail();
+      }
       if (prec === P_RANGE) {
+        if (k === T_DOTDOTDOT) {
+          return this.fail(); // `...` in an expression: an error rustc recovers from
+        }
         this.bump();
         const r = this.nd(N_EX_RANGE, lo);
         this.ast.a[r] = lhs;
@@ -4232,10 +4241,10 @@ export class RsParser {
       // Outer attributes of an expression statement are the expression's.
       this.setAttrs(e, am, na);
     } else if (sk === N_STMT_MAC) {
-      if ((this.ast.fl[s] & MS_BRACES) === 0 && this.eat(T_SEMI)) {
+      if (this.eat(T_SEMI)) {
         this.ast.fl[s] = MS_SEMI;
       } else if ((this.ast.fl[s] & MS_BRACES) !== 0) {
-        // `m! {};`: the semicolon stays a separate empty statement in rustc.
+        // `m! {}` needs no semicolon.
       } else if (!this.is(T_RBRACE) && !this.is(T_EOF)) {
         return this.fail();
       }

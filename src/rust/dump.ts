@@ -30,7 +30,7 @@ const dumpNode = (ast: RsAst, t: RsTokens, n: i32, depth: i32, out: string[]): v
   const fields = [ast.a[n], ast.b[n], ast.c[n], ast.e[n]];
   const names = ["a", "b", "c", "e"];
   for (let f = 0; f < 4; f++) {
-    if (fields[f] >= 0 && fields[f] < ast.n) {
+    if (ast.kind[n] !== 4 && fields[f] >= 0 && fields[f] < ast.n) {
       out.push(`${pad}  .${names[f]}`);
       dumpNode(ast, t, fields[f], depth + 2, out);
     }

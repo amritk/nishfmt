@@ -978,7 +978,7 @@ export const rsCanBeOverflowedExpr = (ctx: RsCtx, e: i32, len: i32): boolean => 
     return len === 1;
   }
   if (k === N_EX_IF || k === N_EX_FOR || k === N_EX_LOOP || k === N_EX_WHILE) {
-    return false;
+    return len === 1; // combine_control_expr
   }
   if (k === N_EX_ASYNC || k === N_EX_BLOCK || k === N_EX_CLOSURE || k === N_EX_TRY_BLOCK) {
     return true;

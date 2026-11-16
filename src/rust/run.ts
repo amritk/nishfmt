@@ -24,16 +24,11 @@ export class RustEngine {
 /** Formats `src[0, n)` into `out` as rustfmt does; answers false when the file cannot be formatted. */
 export const formatRust = (e: RustEngine, path: string, src0: u8[], n0: i32, out: Out): boolean => {
   out.n = 0;
-  // rustc normalizes CRLF line endings to LF when it loads a file.
+  // rustc drops a byte order mark and normalizes CRLF line endings to LF
+  // when it loads a file; the newline style (Auto) then sees only LF.
   let src = src0;
   let n = n0;
-  let crlf = false;
-  for (let i = 0; i < n0; i++) {
-    if (toI32(src0[i]) === 10) {
-      crlf = i > 0 && toI32(src0[i - 1]) === 13;
-      break;
-    }
-  }
+  const bom = n0 >= 3 && toI32(src0[0]) === 0xef && toI32(src0[1]) === 0xbb && toI32(src0[2]) === 0xbf ? 3 : 0;
   let hasCr = false;
   for (let i = 0; i + 1 < n0; i++) {
     if (toI32(src0[i]) === 13 && toI32(src0[i + 1]) === 10) {
@@ -41,10 +36,10 @@ export const formatRust = (e: RustEngine, path: string, src0: u8[], n0: i32, out
       break;
     }
   }
-  if (hasCr) {
+  if (hasCr || bom > 0) {
     src = new Array<u8>(n0 + 1);
     let k = 0;
-    for (let i = 0; i < n0; i++) {
+    for (let i = bom; i < n0; i++) {
       if (toI32(src0[i]) === 13 && i + 1 < n0 && toI32(src0[i + 1]) === 10) {
         continue;
       }
@@ -102,28 +97,14 @@ export const formatRust = (e: RustEngine, path: string, src0: u8[], n0: i32, out
     }
     return false;
   }
-  // append_newline, then the newline style (Auto: the first line ending decides).
+  // append_newline; format_lines then makes a run of trailing newlines one.
   v.buf.byte(10);
   const b = v.buf.buf;
-  // format_lines: a run of trailing newlines becomes one.
   let m = v.buf.n;
   while (m >= 2 && toI32(b[m - 2]) === 10) {
     m--;
   }
-  if (!crlf) {
-    out.range(b, 0, m);
-    return true;
-  }
-  let s = 0;
-  for (let i = 0; i < m; i++) {
-    if (toI32(b[i]) === 10) {
-      out.range(b, s, i);
-      out.byte(13);
-      out.byte(10);
-      s = i + 1;
-    }
-  }
-  out.range(b, s, m);
+  out.range(b, 0, m);
   return true;
 };
 
