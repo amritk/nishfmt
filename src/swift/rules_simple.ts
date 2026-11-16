@@ -21,6 +21,7 @@ import {
   SW_T_IDENTIFIER,
   SW_T_NON_SPACE,
   SW_T_NON_SPACE_OR_COMMENT_OR_LINEBREAK,
+  SW_T_START_OF_SCOPE,
   SW_T_NON_SPACE_OR_LINEBREAK,
 } from "./token";
 
@@ -105,11 +106,27 @@ export const swLowercased = (s: string): string => {
   return String.fromBytes(b, 0, n);
 };
 
+/** index(before: i, where: one of `{`, `:`, `#if`): the (cached) current scope when it is one of
+ *  those; the same backward scan otherwise answers -1, except past a `//` comment start. */
+const swScopeStartBraceColonIf = (f: SwFormatter, i: i32): i32 => {
+  const cs = f.indexBefore(SW_T_START_OF_SCOPE, i);
+  if (cs < 0) {
+    return -1;
+  }
+  if (f.tok(cs, SW_START, "{") || f.tok(cs, SW_START, ":") || f.tok(cs, SW_START, "#if")) {
+    return cs;
+  }
+  if (f.tok(cs, SW_START, "//")) {
+    return swIndexBeforeWhere(f, i, (g, j) => g.tok(j, SW_START, "{") || g.tok(j, SW_START, ":") || g.tok(j, SW_START, "#if"));
+  }
+  return -1;
+};
+
 /** isInResultBuilder(at:). */
 export const swIsInResultBuilder = (f: SwFormatter, i0: i32): boolean => {
   let i = i0;
   while (true) {
-    const startIndex = swIndexBeforeWhere(f, i, (g, j) => g.tok(j, SW_START, "{") || g.tok(j, SW_START, ":") || g.tok(j, SW_START, "#if"));
+    const startIndex = swScopeStartBraceColonIf(f, i);
     if (startIndex < 0) {
       return false;
     }

@@ -72,16 +72,19 @@ export class SwTok {
   }
 }
 
-/** The token list: kinds, strings and aux values, with cheap edits at the end. */
+/** The token list: kinds, strings and aux values, with cheap edits at the end; `c` holds each
+ *  token's scope code (swScopeCode), so scope-aware scans compare integers. */
 export class SwTokList {
   k: i32[];
   s: string[];
   a: i32[];
+  c: i32[];
 
   constructor() {
     this.k = [];
     this.s = [];
     this.a = [];
+    this.c = [];
   }
 
   count(): i32 {
@@ -92,12 +95,14 @@ export class SwTokList {
     this.k.push(k);
     this.s.push(s);
     this.a.push(a);
+    this.c.push(swScopeCode(k, s));
   }
 
   set(i: i32, k: i32, s: string, a: i32): void {
     this.k[i] = k;
     this.s[i] = s;
     this.a[i] = a;
+    this.c[i] = swScopeCode(k, s);
   }
 
   insertAt(i: i32, k: i32, s: string, a: i32): void {
@@ -105,28 +110,33 @@ export class SwTokList {
     this.k.push(0);
     this.s.push("");
     this.a.push(0);
+    this.c.push(0);
     for (let j = n; j > i; j--) {
       this.k[j] = this.k[j - 1];
       this.s[j] = this.s[j - 1];
       this.a[j] = this.a[j - 1];
+      this.c[j] = this.c[j - 1];
     }
     this.k[i] = k;
     this.s[i] = s;
     this.a[i] = a;
+    this.c[i] = swScopeCode(k, s);
   }
 
-  /** Inserts `m` copies of nothing at `i` (filled by the caller). */
+  /** Inserts `m` copies of nothing at `i` (filled by the caller with set). */
   openGap(i: i32, m: i32): void {
     const n = toI32(this.k.length);
     for (let j = 0; j < m; j++) {
       this.k.push(0);
       this.s.push("");
       this.a.push(0);
+      this.c.push(0);
     }
     for (let j = n - 1; j >= i; j--) {
       this.k[j + m] = this.k[j];
       this.s[j + m] = this.s[j];
       this.a[j + m] = this.a[j];
+      this.c[j + m] = this.c[j];
     }
   }
 
@@ -136,10 +146,12 @@ export class SwTokList {
       this.k[j] = this.k[j + 1];
       this.s[j] = this.s[j + 1];
       this.a[j] = this.a[j + 1];
+      this.c[j] = this.c[j + 1];
     }
     this.k.pop();
     this.s.pop();
     this.a.pop();
+    this.c.pop();
   }
 
   /** Removes [i, j). */
@@ -153,11 +165,13 @@ export class SwTokList {
       this.k[x] = this.k[x + m];
       this.s[x] = this.s[x + m];
       this.a[x] = this.a[x + m];
+      this.c[x] = this.c[x + m];
     }
     for (let x = 0; x < m; x++) {
       this.k.pop();
       this.s.pop();
       this.a.pop();
+      this.c.pop();
     }
   }
 
@@ -166,6 +180,7 @@ export class SwTokList {
       this.k.pop();
       this.s.pop();
       this.a.pop();
+      this.c.pop();
     }
   }
 
@@ -174,6 +189,7 @@ export class SwTokList {
     t.k = this.k.slice(0, toI32(this.k.length));
     t.s = this.s.slice(0, toI32(this.s.length));
     t.a = this.a.slice(0, toI32(this.a.length));
+    t.c = this.c.slice(0, toI32(this.c.length));
     return t;
   }
 }
@@ -427,3 +443,176 @@ export const swIsRvalue = (k: i32, s: string, a: i32): boolean => {
 /** Token.isSwitchCaseOrDefault. */
 export const swIsSwitchCaseOrDefault = (k: i32, s: string): boolean =>
   (k === SW_END && (s === "case" || s === "default")) || (k === SW_KEYWORD && s === "@unknown");
+
+// Scope codes (SwTokList.c): what a scope-aware scan needs to know about a token.
+export const SW_SC_OTHER: i32 = 0;
+export const SW_SC_PAREN: i32 = 1;
+export const SW_SC_BRACKET: i32 = 2;
+export const SW_SC_ANGLE: i32 = 3;
+export const SW_SC_BRACE: i32 = 4;
+export const SW_SC_COLON: i32 = 5;
+export const SW_SC_BLOCK_COMMENT: i32 = 6;
+export const SW_SC_IF: i32 = 7;
+export const SW_SC_LINE_COMMENT: i32 = 8;
+export const SW_SC_HASHBANG: i32 = 9;
+export const SW_SC_START_OTHER: i32 = 10;
+export const SW_SC_END_PAREN: i32 = 21;
+export const SW_SC_END_BRACKET: i32 = 22;
+export const SW_SC_END_ANGLE: i32 = 23;
+export const SW_SC_END_BRACE: i32 = 24;
+export const SW_SC_CASE: i32 = 25;
+export const SW_SC_DEFAULT: i32 = 26;
+export const SW_SC_END_BLOCK_COMMENT: i32 = 27;
+export const SW_SC_ENDIF: i32 = 28;
+export const SW_SC_END_OTHER: i32 = 30;
+export const SW_SC_LINEBREAK: i32 = 40;
+export const SW_SC_DELIM_COLON: i32 = 41;
+export const SW_SC_KEYWORD: i32 = 50;
+export const SW_SC_ATTRIBUTE: i32 = 51;
+
+/** The scope code of a token. */
+export const swScopeCode = (k: i32, s: string): i32 => {
+  if (k === SW_START) {
+    if (s === "(") {
+      return SW_SC_PAREN;
+    }
+    if (s === "[") {
+      return SW_SC_BRACKET;
+    }
+    if (s === "<") {
+      return SW_SC_ANGLE;
+    }
+    if (s === "{") {
+      return SW_SC_BRACE;
+    }
+    if (s === ":") {
+      return SW_SC_COLON;
+    }
+    if (s === "/*") {
+      return SW_SC_BLOCK_COMMENT;
+    }
+    if (s === "#if") {
+      return SW_SC_IF;
+    }
+    if (s === "//") {
+      return SW_SC_LINE_COMMENT;
+    }
+    if (s === "#!") {
+      return SW_SC_HASHBANG;
+    }
+    return SW_SC_START_OTHER;
+  }
+  if (k === SW_END) {
+    if (s === ")") {
+      return SW_SC_END_PAREN;
+    }
+    if (s === "]") {
+      return SW_SC_END_BRACKET;
+    }
+    if (s === ">") {
+      return SW_SC_END_ANGLE;
+    }
+    if (s === "}") {
+      return SW_SC_END_BRACE;
+    }
+    if (s === "case") {
+      return SW_SC_CASE;
+    }
+    if (s === "default") {
+      return SW_SC_DEFAULT;
+    }
+    if (s === "*/") {
+      return SW_SC_END_BLOCK_COMMENT;
+    }
+    if (s === "#endif") {
+      return SW_SC_ENDIF;
+    }
+    return SW_SC_END_OTHER;
+  }
+  if (k === SW_LINEBREAK) {
+    return SW_SC_LINEBREAK;
+  }
+  if (k === SW_DELIM && s === ":") {
+    return SW_SC_DELIM_COLON;
+  }
+  if (k === SW_KEYWORD) {
+    return s.startsWith("@") ? SW_SC_ATTRIBUTE : SW_SC_KEYWORD;
+  }
+  return SW_SC_OTHER;
+};
+
+/** tokens[end].isEndOfScope(tokens[start]) from scope codes; falls back to the strings for
+ *  string delimiters and `?` / `case` colons. */
+export const swClosesByCode = (t: SwTokList, end: i32, start: i32): boolean => {
+  const ce = t.c[end];
+  const cs = t.c[start];
+  if (ce >= SW_SC_END_PAREN && ce <= SW_SC_ENDIF) {
+    if (cs === SW_SC_START_OTHER) {
+      return false;
+    }
+    if (ce === SW_SC_END_PAREN) {
+      return cs === SW_SC_PAREN;
+    }
+    if (ce === SW_SC_END_BRACKET) {
+      return cs === SW_SC_BRACKET;
+    }
+    if (ce === SW_SC_END_ANGLE) {
+      return cs === SW_SC_ANGLE;
+    }
+    if (ce === SW_SC_END_BRACE || ce === SW_SC_CASE || ce === SW_SC_DEFAULT) {
+      return cs === SW_SC_BRACE || cs === SW_SC_COLON;
+    }
+    if (ce === SW_SC_END_BLOCK_COMMENT) {
+      return cs === SW_SC_BLOCK_COMMENT;
+    }
+    return cs === SW_SC_IF;
+  }
+  if (ce === SW_SC_LINEBREAK) {
+    return cs === SW_SC_LINE_COMMENT || cs === SW_SC_HASHBANG;
+  }
+  if (ce === SW_SC_OTHER || ce === SW_SC_KEYWORD || ce === SW_SC_ATTRIBUTE) {
+    return false;
+  }
+  if (ce >= SW_SC_PAREN && ce <= SW_SC_START_OTHER && ce !== SW_SC_COLON) {
+    return false;
+  }
+  return swIsEndOfScopeOf(t.k[end], t.s[end], t.k[start], t.s[start], t.a[start]);
+};
+
+/** tokens[i].is(type), reading the scope code for comment, keyword and attribute tests. */
+export const swTokIsAt = (t: SwTokList, i: i32, type: i32): boolean => {
+  const k = t.k[i];
+  if (type === SW_T_NON_SPACE_OR_COMMENT_OR_LINEBREAK) {
+    if (k === SW_SPACE || k === SW_LINEBREAK || k === SW_COMMENT) {
+      return false;
+    }
+    const c = t.c[i];
+    return !(c === SW_SC_LINE_COMMENT || c === SW_SC_BLOCK_COMMENT || c === SW_SC_END_BLOCK_COMMENT);
+  }
+  if (type === SW_T_NON_SPACE) {
+    return k !== SW_SPACE;
+  }
+  if (type === SW_T_START_OF_SCOPE) {
+    return k === SW_START;
+  }
+  if (type === SW_T_LINEBREAK) {
+    return k === SW_LINEBREAK;
+  }
+  if (type === SW_T_KEYWORD) {
+    return t.c[i] === SW_SC_KEYWORD;
+  }
+  if (type === SW_T_NON_SPACE_OR_COMMENT) {
+    if (k === SW_SPACE || k === SW_COMMENT) {
+      return false;
+    }
+    const c = t.c[i];
+    return !(c === SW_SC_LINE_COMMENT || c === SW_SC_BLOCK_COMMENT || c === SW_SC_END_BLOCK_COMMENT);
+  }
+  if (type === SW_T_NON_SPACE_OR_LINEBREAK) {
+    return !(k === SW_SPACE || k === SW_LINEBREAK);
+  }
+  if (type === SW_T_NON_LINEBREAK) {
+    return k !== SW_LINEBREAK;
+  }
+  return swTokIs(k, t.s[i], t.a[i], type);
+};

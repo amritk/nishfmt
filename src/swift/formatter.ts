@@ -18,6 +18,16 @@ import {
   SwTok,
   SwTokList,
   swIsEndOfScopeOf,
+  swClosesByCode,
+  swTokIsAt,
+  SW_SC_COLON,
+  SW_SC_END_BRACE,
+  SW_SC_ENDIF,
+  SW_SC_IF,
+  SW_SC_LINE_COMMENT,
+  SW_SC_ATTRIBUTE,
+  SW_SC_CASE,
+  SW_SC_DEFAULT,
   swIsMultilineStringDelimiter,
   swIsSwitchCaseOrDefault,
   swKindIsComment,
@@ -174,7 +184,7 @@ export class SwFormatter {
 
   /** tokens[i].isEndOfScope(tokens[j]). */
   closes(i: i32, j: i32): boolean {
-    return swIsEndOfScopeOf(this.t.k[i], this.t.s[i], this.t.k[j], this.t.s[j], this.t.a[j]);
+    return swClosesByCode(this.t, i, j);
   }
 
   // MARK: enablement
@@ -575,24 +585,25 @@ export class SwFormatter {
     const n = this.count();
     const lo = lo0 < 0 ? 0 : lo0;
     const hi = hi0 > n ? n : hi0;
+    const t = this.t;
     const stack: i32[] = [];
     for (let i = lo; i < hi; i++) {
-      const k = this.t.k[i];
-      const s = this.t.s[i];
-      if (k === SW_END && s === "#endif") {
-        while (stack.length !== 0 && !this.tok(stack[toI32(stack.length) - 1], SW_START, "#if")) {
+      const k = t.k[i];
+      const c = t.c[i];
+      if (c === SW_SC_ENDIF) {
+        while (stack.length !== 0 && t.c[stack[toI32(stack.length) - 1]] !== SW_SC_IF) {
           stack.pop();
         }
       }
       const m = toI32(stack.length);
-      if (m !== 0 && this.closes(i, stack[m - 1])) {
+      if (m !== 0 && swClosesByCode(t, i, stack[m - 1])) {
         stack.pop();
-        if (k === SW_LINEBREAK && stack.length === 0 && swTokIs(k, s, this.t.a[i], type)) {
+        if (k === SW_LINEBREAK && stack.length === 0 && swTokIsAt(t, i, type)) {
           return i;
         }
-      } else if (swIsSwitchCaseOrDefault(k, s) && m !== 0 && this.tok(stack[m - 1], SW_START, "#if")) {
+      } else if ((c === SW_SC_CASE || c === SW_SC_DEFAULT || (c === SW_SC_ATTRIBUTE && t.s[i] === "@unknown")) && m !== 0 && t.c[stack[m - 1]] === SW_SC_IF) {
         continue;
-      } else if (m === 0 && swTokIs(k, s, this.t.a[i], type)) {
+      } else if (m === 0 && swTokIsAt(t, i, type)) {
         return i;
       } else if (k === SW_END) {
         return -1;
@@ -616,41 +627,42 @@ export class SwFormatter {
     const n = this.count();
     const lo = lo0 < 0 ? 0 : lo0;
     const hi = hi0 > n ? n : hi0;
+    const t = this.t;
     let linebreakEncountered = false;
     const stack: i32[] = [];
     for (let i = hi - 1; i >= lo; i--) {
-      const k = this.t.k[i];
-      const s = this.t.s[i];
-      const a = this.t.a[i];
+      const k = t.k[i];
+      const c = t.c[i];
       const m = toI32(stack.length);
       const top = m === 0 ? -1 : stack[m - 1];
+      const topc = m === 0 ? -1 : t.c[top];
       if (k === SW_START) {
-        if (s === ":" && top >= 0 && (this.tok(top, SW_END, "#endif") || this.tok(top, SW_END, "}"))) {
+        if (c === SW_SC_COLON && (topc === SW_SC_ENDIF || topc === SW_SC_END_BRACE)) {
           continue;
         }
-        if (top >= 0 && this.closes(top, i)) {
+        if (top >= 0 && swClosesByCode(t, top, i)) {
           stack.pop();
           continue;
         }
-        if (s === "//" && linebreakEncountered) {
+        if (c === SW_SC_LINE_COMMENT && linebreakEncountered) {
           linebreakEncountered = false;
           continue;
         }
-        if (swTokIs(k, s, a, type)) {
+        if (swTokIsAt(t, i, type)) {
           return i;
         }
-        if (s === "//" && hi < n && this.t.k[hi] === SW_LINEBREAK) {
+        if (c === SW_SC_LINE_COMMENT && hi < n && t.k[hi] === SW_LINEBREAK) {
           continue;
         }
         return -1;
       }
-      if (m === 0 && swTokIs(k, s, a, type)) {
+      if (m === 0 && swTokIsAt(t, i, type)) {
         return i;
       }
       if (k === SW_LINEBREAK) {
         linebreakEncountered = true;
       } else if (k === SW_END) {
-        if ((s === "case" || s === "default") && top >= 0 && (this.tok(top, SW_END, "#endif") || this.tok(top, SW_END, "}"))) {
+        if ((c === SW_SC_CASE || c === SW_SC_DEFAULT) && (topc === SW_SC_ENDIF || topc === SW_SC_END_BRACE)) {
           continue;
         }
         stack.push(i);
