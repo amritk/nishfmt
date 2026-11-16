@@ -312,9 +312,11 @@ const rewriteMacroInner = (ctx: RsCtx, mac: i32, shape: RsShape, pos: i32, isNes
     return name + " {}";
   }
   if (name === "lazy_static!" && !hasComment) {
+    // null when it does not parse (then formatted like any macro), "" when
+    // it parses but does not format (a macro failure).
     const r = formatLazyStatic(ctx, shape, mac, name);
     if (r !== null) {
-      return r;
+      return r.length === 0 ? null : r;
     }
     if (ctx.f.unsupported) {
       return null;
@@ -438,7 +440,7 @@ const formatLazyStatic = (ctx: RsCtx, shape: RsShape, mac: i32, name: string): s
     }
     p.eatKw(KW_STATIC);
     p.eatKw(KW_REF);
-    if (p.tk() !== T_IDENT) {
+    if (p.tk() !== T_IDENT || (p.off < 0 && rsIsReserved(p.kw()))) {
       return null;
     }
     const id = p.identTok();
@@ -465,16 +467,16 @@ const formatLazyStatic = (ctx: RsCtx, shape: RsShape, mac: i32, name: string): s
     const vis = rsFormatVisibility(ctx, elems[i * 4]);
     const ts = rsRewriteTy(ctx, elems[i * 4 + 2], nested);
     if (ts === null) {
-      return null;
+      return ""; // parsed, but did not format
     }
     const stmt = `${vis}static ref ${ctx.tokStr(elems[i * 4 + 1])}: ${ts} =`;
     const sh = nested.subWidth(1);
     if (sh === null) {
-      return null;
+      return ""; // parsed, but did not format
     }
     const r = rsRewriteAssignRhs(ctx, stmt, elems[i * 4 + 3], RHS_EXPR, sh);
     if (r === null) {
-      return null;
+      return ""; // parsed, but did not format
     }
     result = result + r + ";";
     if (i !== n - 1) {
