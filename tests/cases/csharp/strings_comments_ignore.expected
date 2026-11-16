@@ -1,0 +1,50 @@
+namespace Demo
+{
+    // a leading comment
+    class Strings /* trailing block */
+    {
+        #region Fields
+        private string a =
+            @"verbatim
+   keeps its lines";
+        private string b = """
+            raw string
+              indented line
+            """;
+        private string c = $"""
+            interpolated {a} raw
+            """;
+        private string d = $"normal {a, 10:N2} interpolated";
+        #endregion
+
+        // csharpier-ignore
+        private   int   ignored   =   1;
+
+        // csharpier-ignore-start
+        private   int   ignoredToo   =   2;
+        // csharpier-ignore-end
+
+        public void M() // trailing comment
+        {
+            /* block
+               comment */
+            var x = 1; // after x
+#if DEBUG
+            Console.WriteLine("debug");
+#else
+            Console.WriteLine("release");
+#endif
+            switch (x)
+            {
+                case 1:
+                    break;
+                case 2:
+                {
+                    break;
+                }
+                default:
+                    return;
+            }
+        }
+    }
+}

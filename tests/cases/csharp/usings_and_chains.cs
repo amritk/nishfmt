@@ -1,0 +1,28 @@
+using Zeta;
+using System.Linq;
+using static System.Math;
+using Alpha = Some.Namespace.Thing;
+using global::Foo.Bar;
+using System;
+using alpha_beta;
+using AlphaBeta;
+global using System.Text;
+namespace Demo;
+
+public static class Chains
+{
+    public static void Run(IEnumerable<int> items, IServiceCollection services)
+    {
+        var result = items.Where(o => o > 10).Select(o => o * 2).OrderBy(o => o).ThenBy(o => -o).ToList();
+        services.AddSingleton<IFoo, Foo>().AddScoped<IBar, Bar>().AddTransient<IBaz, Baz>().BuildServiceProvider();
+        this.CallMethod().CallOtherMethod().CallThirdMethodWithALongName().CallAFourthMethodToo(someArgument);
+        var x = someObject?.Property?.OtherProperty?.YetAnotherPropertyWithALongName?.FinalPropertyName ?? defaultValue;
+        context.Entities.Include(o => o.Children).ThenInclude(o => o.GrandChildren).ThenInclude(o => o.Things).Where(o => o.IsActive).ToListAsync();
+        var y = condition ? someVeryLongFunctionName(argumentNumberOne, argumentNumberTwo) : otherFunction(argumentNumberThree);
+        var z = firstCondition && secondCondition || thirdConditionWithALongName && fourthConditionWithALongName || fifth;
+        CallMethod(firstArgument, secondArgument, o => { DoSomething(o); DoSomethingElse(o); });
+        var anonymous = new { Name = "Name", Value = 12, Other = "Other value", Fourth = 4 };
+        int[] numbers = [1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22, 23, 24];
+        var s = value switch { 1 => "one", 2 => "two", > 3 and < 10 => "some", _ => throw new ArgumentException(nameof(value)) };
+    }
+}

@@ -1,0 +1,55 @@
+public enum DateParseHandling
+{
+    /// <summary>
+    /// a
+    /// </summary>
+    DateTime = 1,
+#if HAVE_DATE_TIME_OFFSET
+    /// <summary>
+    /// b
+    /// </summary>
+    DateTimeOffset = 2
+#endif
+}
+
+class C
+{
+    int A;
+#if true
+    /// b
+    int B;
+#endif
+#if DEBUG
+    [X]
+    int D;
+#else
+    int E;
+#endif
+}
+
+class P
+{
+    private int Builder
+    {
+        get
+        {
+            if (!field.Metadata.IsInModel)
+            {
+                // a comment before field
+                field = property.Builder;
+            }
+            return field;
+        }
+    }
+
+    static bool TryGetVulgarFraction(int numerator, int denominator, out char fraction)
+    {
+        fraction = ((int)numerator, (int)denominator) switch
+        {
+            (1, 2) => 'a',
+            (1, 3) => 'b',
+            _ => 'c',
+        };
+        return x is Foo(1, 2) { Length: > 2 } f;
+    }
+}
