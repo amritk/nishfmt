@@ -17,6 +17,8 @@ export const main = (): i32 => {
   const out = new Out(n + 1024);
   const e = new RustEngine();
   e.debug = getenv("FFDEBUG") !== null;
+  e.dump = getenv("FFDUMP") !== null;
+  e.parseOnly = getenv("FFPARSE") !== null;
   if (!formatRust(e, path, src, n, out)) {
     return 1;
   }
