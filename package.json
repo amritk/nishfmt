@@ -1,6 +1,6 @@
 {
   "name": "@amritk/nishfmt",
-  "version": "0.0.0",
+  "version": "0.1.0",
   "description": "One fast native formatter for C++, Java, Kotlin, Ruby, Swift, Rust, Dart and C#, matching each language's reference formatter byte for byte. Written in Nish.",
   "license": "MIT",
   "repository": {
