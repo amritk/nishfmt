@@ -13,18 +13,26 @@ Where the two goals pull apart, matching wins, then speed.
 
 | Language | Directory | Reference | One file, through stdin |
 | --- | --- | --- | --- |
-| Swift | `src/swift` | SwiftFormat 0.64.7, default rules | `/opt/ref/swiftformat stdin --quiet < f` |
+| C++ | `src/cpp` | clang-format 18, `{BasedOnStyle: LLVM, ColumnLimit: 120}` | `clang-format --style='{BasedOnStyle: LLVM, ColumnLimit: 120}' < f` |
+| Java | `src/java` | google-java-format 1.28 | `java -jar $GJF - < f` |
+| Kotlin | `src/kotlin` | ktfmt 0.64, default style | `java -jar $KTFMT - < f` |
+| Ruby | `src/ruby` | `rubocop -a` 1.92.2, `TargetRubyVersion: 3.3` | `bench/corpus/mk.sh` shows the invocation |
+| Swift | `src/swift` | SwiftFormat 0.64.7, default rules | `swiftformat stdin --quiet < f` |
 | Rust | `src/rust` | rustfmt 1.9.0, default config, edition 2021 | `rustfmt --edition 2021 < f` |
-| Dart | `src/dart` | `dart format` (Dart 3.14, tall style) | `dart format < f` |
+| Dart | `src/dart` | `dart format` (Dart 3.14) | `dart format < f` |
 | C# | `src/csharp` | CSharpier 1.4.0, default options | `csharpier format --write-stdout < f` |
+
+A new language takes a directory of its own, a prefix for its names (below),
+a corpus (`bench/corpus/repos.txt` and a case in `mk.sh`) and a row in the
+README's table.
 
 ## Nish
 
 nishfmt is written in Nish, a static subset of TypeScript compiled to native
-code. **Read `$NISHPKG/docs/AI.md` before writing any** (`NISHPKG` is the nish npm
-package, here `/opt/nishpkg/node_modules/nish`). It is the whole language
+code. **Read `.nish/docs/AI.md` before writing any** (`scripts/fetch-nish.sh`
+installs the pinned compiler, docs included, into `.nish/`). It is the whole language
 as rules, with the traps first. The compiler is
-`$NISHPKG/../.bin/nish` (`nish file.ts --json` for diagnostics, `--link out`
+`.nish/bin/nish` (`nish file.ts --json` for diagnostics, `--link out`
 for a binary). The traps that cost the most in earlier ports:
 
 - No `as`, no regex, no `split`/`lastIndexOf`, no inheritance, no closures
@@ -63,27 +71,26 @@ for a binary). The traps that cost the most in earlier ports:
   - CSharpier 1.4.0 (MIT License, Copyright (c) 2021 Bela VanderVoort)
   - A parser ported from Roslyn / the Dart analyzer / rustc_parse also
     names its source (MIT / BSD-3-Clause / MIT OR Apache-2.0).
-- Sources: SwiftFormat `/opt/ref/swiftformat-src`, rustfmt
-  `/opt/ref/rustfmt-src`, dart_style `/work/repos/dart-lang_dart_style`,
-  CSharpier `/work/repos/belav_csharpier`.
+- Port from the reference tool's source at the version in the table: clone
+  it at that tag. The rustfmt port found that a source tree of another
+  version differs in about 15 places (`tools/rust/NOTES.md`).
 
 ## Building and checking
 
 ```bash
-NISH=/opt/nishpkg/node_modules/.bin/nish
-$NISH tools/dev/<lang>.ts --link /tmp/<lang>dev     # this language only: seconds
-/tmp/<lang>dev file > out                            # prints the result; exit 1 = skipped
+.nish/bin/nish tools/dev/<lang>.ts --link dist/<lang>dev   # this language only: seconds
+dist/<lang>dev file > out                                   # prints the result; exit 1 = skipped
 diff out <(reference command < file)
-NISH=$NISH ./build.sh /tmp/ffk                       # the whole binary: ~2 minutes
-bash bench/corpus/cmp.sh /tmp/ffk <lang>             # the corpus gate
+npm run build                                               # the whole binary: ~2 minutes
+bash bench/corpus/cmp.sh dist/nishfmt <lang>                # the corpus gate
 ```
 
-The corpus for each language is `/work/c/<lang>/raw` (sources from public
-repositories, as found), `/work/c/<lang>/ref` (the reference tool's output)
-and `/work/c/<lang>/failed.txt` (files the reference rejected, left out).
-`bench/corpus/mk.sh` builds it. `cmp.sh` puts the files that differ in
-`/work/out/<lang>/differ.txt` and their diffs in `all.diff`; use
-`WORK=/work/out-<you>` so two runs don't collide. For quick loops, compare
+The corpus for each language is `bench/work/corpus/<lang>/raw` (sources
+from public repositories, as found), `ref/` (the reference tool's output)
+and `failed.txt` (files the reference rejected, left out);
+[Benchmarks](benchmarks.md) says how to build it. `cmp.sh` puts the files
+that differ in `bench/work/out/<lang>/differ.txt` and their diffs in
+`all.diff`; set `WORK` to a directory of your own so two runs don't collide. For quick loops, compare
 a sample of files with the dev driver against `ref/`.
 
 Ported formatters are checked file by file: when a file differs, find the
@@ -93,7 +100,7 @@ Unhandled input is skipped (`false`), never guessed.
 
 ## Speed
 
-Measure with `cmp.sh` and with `taskset -c 0 /tmp/ffk -i -q -j 1 <copy of raw>`.
+Measure with `cmp.sh` and with `taskset -c 0 dist/nishfmt -i -q -j 1 <copy of raw>`.
 What made the earlier ports fast:
 
 - Struct-of-arrays: tokens and nodes as indices into parallel `i32[]`
@@ -112,11 +119,6 @@ leaves it unchanged.
 
 ## Commits
 
-Commit in your worktree branch with messages like the existing history
-(`feat(nishfmt): ...`, a body saying what and why, a `Measured:` line for
-performance changes). End each message with:
-
-    Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>
-    Claude-Session: https://claude.ai/code/session_01WUtc12fauWbzRYaAd6snzH
-
-Never push, and never name a model in a commit or in code.
+Conventional commits, as [CLAUDE.md](../CLAUDE.md) says: `feat(<lang>): ...`
+with a body saying what and why, and a `Measured:` line for a performance
+change.

@@ -1,20 +1,24 @@
 # nishfmt
 
-A fast C++ formatter written in [Nish](https://github.com/amritk/nish), which also
-formats Java, Kotlin, Ruby, C#, Dart, Swift and Rust (see [Languages and speed](#languages-and-speed)). Its
-output aims to match `clang-format`'s LLVM style (the target is
-`{BasedOnStyle: LLVM, ColumnLimit: 120}`) byte for byte, many times faster.
+One fast native formatter for C++, Java, Kotlin, Ruby, Swift, Rust, Dart
+and C#. For each language it matches one reference formatter byte for byte
+(clang-format, google-java-format, ktfmt, RuboCop, SwiftFormat, rustfmt,
+`dart format` and CSharpier), and it is 4 to 76 times faster than that
+formatter, depending on the language and the number of cores. Where a Rust
+reimplementation of the reference exists (ktrs, rbcop), nishfmt is faster
+than it too.
 
-This is a rewrite, not a port: its own lexer, parser, classifier and data
-layout, written to make the same decisions clang-format makes. Its rules and
-penalties were checked against clang-format's behaviour and source as a
-reference.
+nishfmt is written in [Nish](https://github.com/amritk/nish), a static subset
+of TypeScript compiled ahead of time to a native binary. It formats code in
+those eight languages, not Nish itself. Each formatter except C++ is a port of
+its reference tool, translated into Nish; the C++ formatter is a rewrite that
+makes clang-format's decisions. A file nishfmt cannot format exactly as the
+reference tool would is left untouched.
 
 ## Languages and speed
 
-One binary formats eight languages, each to match one reference tool's
-output byte for byte. Times are for formatting the whole corpus in place
-(`nishfmt -i`), on a 4-core container and pinned to one core:
+Times are for formatting each corpus in place, on a 4-core container and
+pinned to one core:
 
 | Language | Matches | Files | Identical | Reference tool, 4 cores / 1 core | Rust reimplementation, 4 cores / 1 core | nishfmt, 4 cores / 1 core |
 | --- | --- | ---: | ---: | ---: | ---: | ---: |
@@ -46,256 +50,94 @@ output byte for byte. Times are for formatting the whole corpus in place
 - nitrocop, another Rust reimplementation of RuboCop, matched on fewer than
   a quarter of the files of an earlier sample and is left out.
 
-The corpora are the sources of public repositories as found
-(`bench/corpus/repos.txt` lists them; `bench/corpus/mk.sh` rebuilds a corpus
-and `cmp.sh` compares against it). Each language's sources and second
-corpora are described below.
+[Benchmarks](docs/benchmarks.md) says how each corpus was built and how to
+rerun every number.
 
-### Notes by language
+## Install
 
-The C# side ports CSharpier's whole pipeline onto a Roslyn-shaped syntax tree
-of its own: the lexer with Roslyn's trivia, the parser (C# 14), every node
-printer, Prettier's Doc printer, member chains, using and modifier sorting,
-`csharpier-ignore`, generated-code detection and the reprint for each set of
-preprocessor symbols. The corpus is Newtonsoft.Json, AutoMapper, MediatR,
-Polly, Serilog, Dapper, NUnit, xUnit, CSharpier, Humanizer,
-CleanArchitecture, EF Core, NLog, RestSharp and FluentValidation; a second
-corpus of the same files first formatted with other widths and indents
-(`cs2`) also matches on all 13988. The 4 files CSharpier refuses are left
-out.
+Each [release](https://github.com/amritk/nishfmt/releases) attaches a
+prebuilt binary for Linux and macOS (x86_64 and arm64), with `SHA256SUMS` and
+signed build provenance: unpack it and put `bin/nishfmt` on your `PATH`.
+There is no release yet; until there is, build from source.
 
-The Dart side ports dart_style whole: a scanner and parser to the
-analyzer's AST shapes; the tall style's piece builder, solver and cost
-model, with the variants `dart format` 3.14 still keeps for language
-versions 3.7, 3.8 to 3.12 and 3.13 on; and the short style used below 3.7
-(source visitor, chunk builder, rules and line splitter). The version comes
-from the file's `// @dart=` comment, else 3.14; nishfmt does not read
-package configs for it. The corpus is flutter/packages, flutter/samples,
-riverpod, bloc, http, getx, flame, dart_style, shelf, dio and test, plus
-`dart2`, the same files first formatted at other widths (10313 / 10313),
-`dart3`, the same files marked `// @dart=2.19` or `3.6` for the short style
-(8218 / 8218), and `dart4`, marked `3.7`, `3.8` or `3.12` (8663 / 8663).
-Files the reference rejects at their version are left out.
-
-The Rust side ports rustfmt 1.9.0 onto a lexer and parser modelled on
-rustc_parse (a struct-of-arrays AST with rustc's spans): its items,
-expressions, chains, patterns, types, comments, imports and macros, with
-`macro_rules!` bodies formatted as rustfmt does by default. The corpus is cargo, tokio,
-serde, ripgrep, clap, hyper, alacritty, diesel, bevy, regex, fd, bat and
-nushell; the 450 files rustfmt
-rejects under edition 2021 (mostly let chains) are left out. `rust2`, the
-same files first formatted with five other rustfmt configs, also matches on
-all 7899, as do the 3306 crates of a cargo registry and rustfmt's own test
-inputs. Macros 2.0 bodies and `rustfmt::skip::macros` are not ported; such
-files are left unchanged.
-
-The Swift side ports SwiftFormat's tokenizer, its Formatter and helpers,
-the rule loop and every default rule, `swiftformat:` directive comments
-(`disable`, `enable`, `:next`, `:previous`, `:this`), and Swift's grapheme
-counting and Unicode case data where SwiftFormat's decisions depend on them.
-Directives that set options or sort declarations, and code points whose
-Unicode data may differ from SwiftFormat's, make nishfmt skip the file and
-leave it as it is; no corpus file needs that. The corpus
-is swift-nio, Alamofire, Vapor, the Composable Architecture, RxSwift,
-Kingfisher, SnapKit, SwiftLint, swift-argument-parser, swift-collections,
-Moya, swift-format, SourceKitten and the Kickstarter iOS app.
-
-The Ruby side ports RuboCop's whole pipeline: the parser gem's lexer, racc
-grammar and AST builder (following Prism, which RuboCop parses Ruby 3.3 with,
-where the two differ), the TreeRewriter and corrector merging, rubocop
-directive comments, the inspect-correct loop and every cop RuboCop enables by
-default (393; the ones that never correct under `-a` run once, so that
-Lint/RedundantCopDisableDirective can judge directives). The Ruby corpus is
-a 2000-file sample of Rails, Discourse, Homebrew, RuboCop, the parser gem,
-Jekyll, Sinatra, Devise and rspec-core, less the one file RuboCop rejects;
-earlier samples of 739 and 1500 files matched on every file as well.
-`tools/ruby/README.md` lists the generators.
-
-## Build and use
+To build from source you need clang and lld from LLVM 15 or newer (CI uses
+18) and Node 22 for the scripts:
 
 ```bash
-PATH=/path/to/nish/build/seed/bin:$PATH ./build.sh   # → build/nishfmt
+bash scripts/fetch-nish.sh   # the pinned Nish compiler, into .nish/
+npm ci
+npm run build                # dist/nishfmt
 ```
+
+## Usage
 
 ```bash
-build/nishfmt file.cpp        # prints the formatted file
-build/nishfmt -i src/         # rewrites every C++ file under src/ in place
-build/nishfmt --check src/    # lists files that would change; exits 1 if any
+nishfmt file.cpp        # print the formatted file
+nishfmt -i src/         # rewrite every supported file under src/ in place
+nishfmt --check src/    # list the files that would change; exit 1 if any
 ```
 
-| Option | Meaning |
-| --- | --- |
-| `-i`, `--write` | rewrite files in place |
-| `--check` | list the files that would change; exit status 1 if any would |
-| `--width <n>` | column limit (default 120) |
-| `--indent <n>` | indent width (default 2) |
-| `-j <n>` | worker processes (default: one per core) |
-| `-q`, `--quiet` | no summary line |
-
-Directories are walked recursively for `.cpp .cc .cxx .hpp .hh .hxx .h`,
-honouring basic `.gitignore` patterns. When the run ends, a summary line is
-printed:
-
+<!-- x-release-please-start-version -->
+```text
+$ nishfmt --version
+nishfmt 0.0.0
 ```
+<!-- x-release-please-end -->
+
+```text
+$ nishfmt --help
+usage: nishfmt [options] <file-or-dir>...
+
+Formats each file to match its language's reference formatter:
+  C++ (.cpp .cc .cxx .hpp .hh .hxx .h)  clang-format 18, LLVM style
+  Java (.java)                        google-java-format 1.28
+  Kotlin (.kt .kts)                   ktfmt 0.64
+  Ruby (.rb, Gemfile, .gemspec, ...)  rubocop -a 1.92.2
+  Swift (.swift)                      SwiftFormat 0.64.7
+  Rust (.rs)                          rustfmt 1.9.0, edition 2021
+  Dart (.dart)                        dart format 3.14
+  C# (.cs)                            CSharpier 1.4.0
+
+A single file with no mode prints the result to stdout.
+
+  -i, --write     rewrite files in place
+  --check         list files that would change; exit 1 if any
+  --width <n>     C++ column limit (default 120)
+  --indent <n>    C++ indent width (default 2)
+  -j <n>          worker processes (default: one per core)
+  -q, --quiet     no summary
+  -h, --help      this text
+  -v, --version   print the version
+
+A file nishfmt cannot format exactly as the reference tool would (one that
+does not parse, say) is left untouched and counted as skipped. In C++, a
+`// nishfmt off` ... `// nishfmt on` region is left as written.
+```
+
+Directories are walked recursively, skipping hidden entries and honouring
+basic `.gitignore` patterns. Each run ends with a summary line:
+
+```text
 nishfmt: 30194 files, reformatted 30163, skipped 0; 108.8 MB in 2040 ms (53 MB/s, 4 workers)
 ```
 
-The formatter leaves some code as written:
+## Documentation
 
-- regions between `// nishfmt off` and `// nishfmt on`;
-- regions between `// clang-format off` and `// clang-format on`;
-- whole files that do not parse, such as files with unbalanced brackets or an
-  unterminated literal. These count as skipped.
+- [C++](docs/cpp.md): results by repository, and how the formatter works
+- [Languages](docs/languages.md): how each port is built and what its corpus is
+- [Benchmarks](docs/benchmarks.md): the corpora, the reference tools and the timings
+- [Design](docs/design.md): the command line, the workers and memory
+- [Porting a formatter](docs/porting.md): how a language gets into nishfmt
 
-## Tests and benchmark
+## Develop
 
-```bash
-tests/run.sh build/nishfmt
-```
+`npm test` runs the regression cases in `tests/cases/`: each formats to its
+`.expected` file, the reference tool's output, and formatting the expected
+file leaves it unchanged. `npm run lint` runs biome, and the corpus gates in
+[Benchmarks](docs/benchmarks.md) check every language against its reference.
+The rules for working in this repository are in [CLAUDE.md](CLAUDE.md).
 
-The test script checks that each `tests/cases/*.cpp` formats to its
-`.expected` file: clang-format 18.1.3's fixed point, its output rerun until it
-stops changing (one run is not always stable). It also checks that:
+## License
 
-- formatting an `.expected` file leaves it unchanged;
-- an unbalanced file is left untouched;
-- `// nishfmt off` keeps a region verbatim.
-
-The benchmark compares nishfmt with clang-format on public C++ repositories.
-Clone one and run:
-
-```bash
-bench/compare-repo.sh build/nishfmt path/to/repo bench/work/repo
-```
-
-Both tools format a copy of the repository's C++ sources at the same style
-(the repository's own `.clang-format` is ignored); the script reports the
-files that come out identical and both tools' times, and lists the files that
-differ in `bench/work/repo/differ.txt`.
-
-## Results
-
-Measured on a 4-core cloud container against clang-format 18.1.3. The
-reference for each file is clang-format's fixed point: its output on the
-repository's original source, rerun until it stops changing (one run is not
-always stable; a few files never settle and are left out, as are files
-clang-format fails on under a 4 GB memory cap). "Identical" counts files whose
-nishfmt output matches that fixed point byte for byte, from one nishfmt run.
-clang-format ran one file per process, two at a time; nishfmt ran once over
-the whole tree with 4 workers. Peak memory is the largest single process.
-
-| Repository | Files | Identical | clang-format | nishfmt | Peak memory, clang-format | Peak memory, nishfmt |
-| --- | ---: | ---: | ---: | ---: | ---: | ---: |
-| leveldb | 132 | 100.0% | 1.4 s | 0.05 s | 66 MB | 17 MB |
-| googletest | 157 | 100.0% | 3.9 s | 0.24 s | 124 MB | 65 MB |
-| bitcoin | 1537 | 99.7% | 20.4 s | 0.66 s | 270 MB | 194 MB |
-| folly | 2398 | 99.8% | 29.5 s | 0.72 s | 140 MB | 104 MB |
-| abseil-cpp | 880 | 99.9% | 12.3 s | 0.43 s | 165 MB | 117 MB |
-| protobuf | 1183 | 100.0% | 63.4 s | 2.1 s | 1448 MB | 964 MB |
-| rocksdb | 1422 | 100.0% | 63.7 s | 6.8 s | 3732 MB | 1862 MB |
-| json | 629 | 99.7% | 40.2 s | 9.4 s | 3770 MB | 2863 MB |
-| godot | 7368 | 99.7% | 220.6 s | 10.0 s | 1794 MB | 1933 MB |
-| opencv | 3422 | 99.3% | 87.8 s | 10.6 s | 3853 MB | 2577 MB |
-| fmt | 73 | 97.3% | 15.0 s | 1.1 s | 3555 MB | 651 MB |
-| **all** | **19201** | **99.7%** | | | | |
-
-Objective-C headers are left out of these counts (127 `.h` files, in godot,
-opencv and protobuf, with `@interface`, `@implementation`, `@protocol`,
-`@class` or `@end` lines). clang-format formats them as Objective-C; nishfmt
-now does the same for declarations (`@interface`, `@protocol`, method
-declarations and their selector wrapping) and leaves a header with other
-Objective-C (literals, `@implementation`, method bodies) untouched. Times
-and memory are for the whole tree.
-
-The regression corpus (`bench/corpus`, 10344 files from the same kind of
-repositories, each capped at 250 KB, the reference one `clang-format -i`
-run) matches on 10306. Of the 38 left, 26 are files on which a second
-clang-format run changes its own output; nishfmt gives the settled output
-there, as above. Its times are in [Languages and speed](#languages-and-speed).
-
-On a generated corpus of 30,194 files (108.8 MB) of SDK code, every file
-matches clang-format's output (2 of its files are still unstable under
-clang-format itself), in 2.9 s against clang-format's 23.4 s.
-
-What is left, roughly by size:
-
-- A long tail of single constructs, most of them one file each:
-  assembler-like macro bodies, comment sections that span several lines
-  and reflow, deeply nested lambdas in braced lists, and rare spacing
-  rules.
-- Run time and memory are dominated by a few files with conditional
-  compilation (each combination of `#if` branches is a formatting pass, as
-  in clang-format) and by large lookup tables, which are slow for both
-  tools.
-
-## Design
-
-nishfmt is a rewrite in Nish, not a port: its own data layout and passes,
-written to make the same decisions clang-format makes.
-
-1. **Lexer** (`src/cpp/lexer.ts`). Builds token columns in one pass: kind,
-   offsets, preceding newlines and whitespace, original column and width.
-   Directives and header names are marked, and `>>` is split so templates
-   close one bracket at a time.
-2. **Parser** (`src/cpp/parser.ts`). Cuts the tokens into unwrapped lines with an
-   indent level. Lambda bodies, requires-expressions and other blocks inside
-   expressions become child lines of their `{`. A comment alone on the line
-   under a trailing comment continues it. If a file's brackets do not balance,
-   the parse fails and the file is left untouched.
-3. **Classifier** (`src/cpp/classify.ts`). One forward pass over each line with a
-   bracket stack gives each token its role (template bracket, pointer or
-   multiplication, unary or binary operator, declaration name, kind of colon)
-   and the spacing before it.
-4. **Annotator** (`src/cpp/annotate.ts`). For every line: widths, forced breaks
-   and spacing. For lines that need breaking: the implicit parentheses of
-   operator precedence, where a break may go and what it costs, unbreakable
-   tails, braced-list column layouts, and per-token flags for the breaker.
-5. **Line breaker** (`src/cpp/indenter.ts`). A line that fits is written as is.
-   Otherwise the breaker runs clang-format's search: states are expanded
-   cheapest first, ties going to the state made first, under clang-format's
-   rules for where each token goes after a break and what each break costs.
-   The search is exact; the speed comes from how it is stored:
-   - a state's bracket stack is a chain of shared records, copied only where
-     a step changes it, with its hash kept on the top record;
-   - the queue is one FIFO bucket per penalty value under a small heap of
-     distinct penalties;
-   - a state's no-break successor that is sure to be popped next is expanded
-     without queueing;
-   - a child block's cost is counted only when its state reaches the front of
-     the queue;
-   - results are cached by line and indent within a file, and by a 64-bit
-     hash of everything the search reads across files, so a statement that
-     recurs (common in generated code) is searched once.
-6. **Formatter** (`src/cpp/format.ts`). Indentation, blank lines, joining short
-   functions and empty blocks, include sorting (a source file's own header
-   first), namespace end comments (added or corrected), chained-conditional
-   and trailing-comment alignment, line-comment reflow, and writing.
-
-**Parallelism.** Nish refuses file I/O inside threads, so the parent walks
-the tree, writes one file list, and spawns itself as `nishfmt --worker` once
-per core. Workers claim chunks of the list by creating the chunk's marker
-file exclusively; chunks shrink to single files near the end so no worker
-finishes long after the others. Each worker reuses one engine (token tables,
-search pools, output buffer) for every file it formats.
-
-Set `FFPROF=1` to print per-phase timings and search counts, and `FFDEBUG=1`
-to dump each line's annotations.
-
-## What Nish could add
-
-A few features in Nish would make this faster or simpler:
-
-1. **File I/O in `spawn`/`parallelMap` bodies.** Reading and writing a file
-   inside a thread is refused today. That is what forces the multi-process
-   design, with its list files, re-exec and stats files. Threads would remove
-   about 100 lines and the process start-up cost.
-2. **Escape analysis that follows fresh objects.** A parallel body that builds
-   a fresh object is refused, even when that object never escapes the body:
-   - an object whose constructor stores allocations into its fields;
-   - an object built by calling methods on a fresh local.
-
-   Accepting these would let each thread own its engine.
-3. **The same analysis for `using arena()` scopes.** A function that builds
-   an object graph inside an arena scope is refused with "stores an
-   allocation into memory". With per-file arenas, the engine would not need
-   hand-written `reset` methods to keep memory flat.
+MIT. The ported formatters keep their projects' licenses; see
+[THIRD_PARTY_NOTICES.md](THIRD_PARTY_NOTICES.md).
