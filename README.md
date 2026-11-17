@@ -1,7 +1,8 @@
 # nishfmt
 
-One fast native formatter for C++, Java, Kotlin, Ruby, Swift, Rust, Dart
-and C#. For each language it matches one reference formatter byte for byte
+This is not a formatter FOR nish, its one fast native formatter 
+for C++, Java, Kotlin, Ruby, Swift, Rust, Dart and C# written in nish. 
+For each language it matches one reference formatter byte for byte
 (clang-format, google-java-format, ktfmt, RuboCop, SwiftFormat, rustfmt,
 `dart format` and CSharpier), and it is 4 to 76 times faster than that
 formatter, depending on the language and the number of cores. Where a Rust
