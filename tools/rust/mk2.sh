@@ -6,7 +6,7 @@
 #
 #   mk2.sh [jobs]
 set -uo pipefail
-CORPUS=${CORPUS:-/work/c} J=${1:-2}
+CORPUS=${CORPUS:-$(cd "$(dirname "$0")/../.." && pwd)/bench/work/corpus} J=${1:-2}
 src=$CORPUS/rust/raw d=$CORPUS/rust2
 rm -rf "$d" && mkdir -p "$d" && cp -r "$src" "$d/raw"
 : > "$d/failed.txt"

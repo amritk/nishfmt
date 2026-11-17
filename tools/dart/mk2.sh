@@ -7,7 +7,7 @@
 #
 #   mk2.sh
 set -uo pipefail
-CORPUS=${CORPUS:-/work/c} DART=${DART:-dart}
+CORPUS=${CORPUS:-$(cd "$(dirname "$0")/../.." && pwd)/bench/work/corpus} DART=${DART:-dart}
 src=$CORPUS/dart/raw d=$CORPUS/dart2
 rm -rf "$d" && mkdir -p "$d"
 cp -r "$src" "$d/raw"

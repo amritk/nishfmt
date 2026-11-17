@@ -8,7 +8,7 @@
 #   mk3.sh dart4   # 3.7, 3.8 or 3.12 (the older tall styles)
 set -uo pipefail
 name=${1:-dart3}
-CORPUS=${CORPUS:-/work/c} DART=${DART:-dart}
+CORPUS=${CORPUS:-$(cd "$(dirname "$0")/../.." && pwd)/bench/work/corpus} DART=${DART:-dart}
 src=$CORPUS/dart/raw d=$CORPUS/$name
 rm -rf "$d" && mkdir -p "$d"
 cp -r "$src" "$d/raw"

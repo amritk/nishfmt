@@ -9,7 +9,8 @@
 # $WORK/<lang>/differ.txt and a diff of them in $WORK/<lang>/all.diff.
 set -uo pipefail
 bin=$1 lang=$2; shift 2
-CORPUS=${CORPUS:-/work/c} WORK=${WORK:-/work/out}
+here=$(cd "$(dirname "$0")" && pwd)
+CORPUS=${CORPUS:-$here/../work/corpus} WORK=${WORK:-$here/../work/out}
 d=$CORPUS/$lang w=$WORK/$lang
 rm -rf "$w" && mkdir -p "$w" && cp -r "$d/raw" "$w/out"
 s=$(date +%s.%N)

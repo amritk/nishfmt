@@ -6,15 +6,20 @@
 #
 #   mk.sh cpp|java|kt|rb|swift|rust|dart|cs
 #
-# Tools: clang-format 18; $GJF, $KTFMT jars; rubocop 1.92.2; $SWIFTFORMAT;
-# rustfmt; $DART; csharpier.
+# Tools, each from the environment or PATH: clang-format 18; $GJF and $KTFMT,
+# the google-java-format 1.28 and ktfmt 0.64 all-dependencies jars (required
+# for java and kt); rubocop 1.92.2; $SWIFTFORMAT (swiftformat 0.64.7);
+# rustfmt 1.9.0; $DART (Dart 3.14); $CSHARPIER (csharpier 1.4.0).
 set -uo pipefail
 here=$(cd "$(dirname "$0")" && pwd)
 lang=$1
-REPOS=${REPOS:-/work/repos} CORPUS=${CORPUS:-/work/c}
-GJF=${GJF:-/opt/ref/google-java-format-1.28.0-all-deps.jar}
-KTFMT=${KTFMT:-/opt/ref/ktfmt-0.64-with-dependencies.jar}
-SWIFTFORMAT=${SWIFTFORMAT:-/opt/ref/swiftformat}
+REPOS=${REPOS:-$here/../work/repos} CORPUS=${CORPUS:-$here/../work/corpus}
+GJF=${GJF:-} KTFMT=${KTFMT:-}
+SWIFTFORMAT=${SWIFTFORMAT:-swiftformat}
+if { [ "$lang" = java ] && [ -z "$GJF" ]; } || { [ "$lang" = kt ] && [ -z "$KTFMT" ]; }; then
+  echo "mk.sh: set GJF (java) or KTFMT (kt) to the reference tool's all-dependencies jar" >&2
+  exit 2
+fi
 DART=${DART:-dart}
 CSHARPIER=${CSHARPIER:-csharpier}
 case $lang in

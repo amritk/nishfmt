@@ -6,7 +6,7 @@
 #
 #   mkcs2.sh
 set -uo pipefail
-CORPUS=${CORPUS:-/work/c} CSHARPIER=${CSHARPIER:-csharpier}
+CORPUS=${CORPUS:-$(cd "$(dirname "$0")/../.." && pwd)/bench/work/corpus} CSHARPIER=${CSHARPIER:-csharpier}
 export DOTNET_ROOT=${DOTNET_ROOT:-/usr/lib/dotnet}
 d=$CORPUS/cs2
 rm -rf "$d" && mkdir -p "$d" && cp -r "$CORPUS/cs/raw" "$d/raw"
