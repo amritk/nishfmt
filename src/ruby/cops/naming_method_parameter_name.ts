@@ -17,7 +17,7 @@ export class CopNamingMethodParameterName {
   constructor() {
     this.c = new RbCop("Naming/MethodParameterName");
   }
-  // fastfmt: detect-only
+  // nishfmt: detect-only
 
   run(src: RbSource): void {
     this.c.begin(src);

@@ -19,7 +19,7 @@ export class CopLintUselessElseWithoutRescue {
     this.c = new RbCop("Lint/UselessElseWithoutRescue");
   }
 
-  // fastfmt: detect-only
+  // nishfmt: detect-only
 
   run(src: RbSource): void {
     this.c.begin(src);

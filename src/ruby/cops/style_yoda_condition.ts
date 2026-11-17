@@ -36,7 +36,7 @@ export class CopStyleYodaCondition {
     this.c = new RbCop("Style/YodaCondition");
   }
 
-  // fastfmt: detect-only
+  // nishfmt: detect-only
 
   run(src: RbSource): void {
     this.c.begin(src);

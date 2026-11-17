@@ -119,7 +119,7 @@ export class CopNamingMemoizedInstanceVariableName {
   constructor() {
     this.c = new RbCop("Naming/MemoizedInstanceVariableName");
   }
-  // fastfmt: detect-only
+  // nishfmt: detect-only
 
   run(src: RbSource): void {
     this.c.begin(src);

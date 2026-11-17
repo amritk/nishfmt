@@ -16,7 +16,7 @@ export class CopLintDuplicateCaseCondition {
     this.c = new RbCop("Lint/DuplicateCaseCondition");
   }
 
-  // fastfmt: detect-only
+  // nishfmt: detect-only
 
   run(src: RbSource): void {
     this.c.begin(src);

@@ -20,7 +20,7 @@ export class CopStyleCombinableLoops {
     this.c = new RbCop("Style/CombinableLoops");
   }
 
-  // fastfmt: detect-only
+  // nishfmt: detect-only
 
   run(src: RbSource): void {
     this.c.begin(src);

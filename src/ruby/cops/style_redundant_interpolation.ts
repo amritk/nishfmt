@@ -15,7 +15,7 @@ export class CopStyleRedundantInterpolation {
     this.c = new RbCop("Style/RedundantInterpolation");
   }
 
-  // fastfmt: detect-only
+  // nishfmt: detect-only
 
   run(src: RbSource): void {
     this.c.begin(src);

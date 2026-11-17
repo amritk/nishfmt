@@ -16,7 +16,7 @@ export class CopStyleAndOr {
     this.c = new RbCop("Style/AndOr");
   }
 
-  // fastfmt: detect-only
+  // nishfmt: detect-only
 
   run(src: RbSource): void {
     this.c.begin(src);

@@ -1,8 +1,8 @@
 #!/usr/bin/env bash
-# Formats a copy of an unformatted corpus with fastfmt and compares it with
+# Formats a copy of an unformatted corpus with nishfmt and compares it with
 # clang-format's output for the same input.
 #
-#   bench/compare.sh <fastfmt-binary> <raw-dir> <clang-dir> [work-dir]
+#   bench/compare.sh <nishfmt-binary> <raw-dir> <clang-dir> [work-dir]
 #
 # Prints the wall time, the files that differ, and a sample diff.
 set -euo pipefail

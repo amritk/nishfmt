@@ -15,7 +15,7 @@ export class CopStyleOptionalArguments {
     this.c = new RbCop("Style/OptionalArguments");
   }
 
-  // fastfmt: detect-only
+  // nishfmt: detect-only
 
   run(src: RbSource): void {
     this.c.begin(src);

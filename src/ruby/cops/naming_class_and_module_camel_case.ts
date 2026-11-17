@@ -32,7 +32,7 @@ export class CopNamingClassAndModuleCamelCase {
   constructor() {
     this.c = new RbCop("Naming/ClassAndModuleCamelCase");
   }
-  // fastfmt: detect-only
+  // nishfmt: detect-only
 
   run(src: RbSource): void {
     this.c.begin(src);

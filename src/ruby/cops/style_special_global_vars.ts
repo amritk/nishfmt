@@ -19,7 +19,7 @@ export class CopStyleSpecialGlobalVars {
     this.c = new RbCop("Style/SpecialGlobalVars");
   }
 
-  // fastfmt: detect-only
+  // nishfmt: detect-only
 
   run(src: RbSource): void {
     this.c.begin(src);

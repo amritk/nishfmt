@@ -100,7 +100,7 @@ export class CopLintSelfAssignment {
     this.c = new RbCop("Lint/SelfAssignment");
   }
 
-  // fastfmt: detect-only
+  // nishfmt: detect-only
 
   run(src: RbSource): void {
     this.c.begin(src);

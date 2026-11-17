@@ -14,7 +14,7 @@ export class CopStyleHashTransformValues {
     this.c = new RbCop("Style/HashTransformValues");
   }
 
-  // fastfmt: detect-only
+  // nishfmt: detect-only
 
   run(src: RbSource): void {
     this.c.begin(src);

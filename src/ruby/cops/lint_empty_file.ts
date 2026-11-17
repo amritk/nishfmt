@@ -13,7 +13,7 @@ export class CopLintEmptyFile {
     this.c = new RbCop("Lint/EmptyFile");
   }
 
-  // fastfmt: detect-only
+  // nishfmt: detect-only
 
   run(src: RbSource): void {
     this.c.begin(src);

@@ -18,7 +18,7 @@ export class CopStyleSlicingWithRange {
     this.c = new RbCop("Style/SlicingWithRange");
   }
 
-  // fastfmt: detect-only
+  // nishfmt: detect-only
 
   run(src: RbSource): void {
     this.c.begin(src);

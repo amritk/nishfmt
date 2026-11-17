@@ -17,7 +17,7 @@ export class CopLintUnderscorePrefixedVariableName {
     this.c = new RbCop("Lint/UnderscorePrefixedVariableName");
   }
 
-  // fastfmt: detect-only
+  // nishfmt: detect-only
 
   run(src: RbSource): void {
     this.c.begin(src);

@@ -29,7 +29,7 @@ export class CopStyleSingleArgumentDig {
     this.c = new RbCop("Style/SingleArgumentDig");
   }
 
-  // fastfmt: detect-only
+  // nishfmt: detect-only
 
   run(src: RbSource): void {
     this.c.begin(src);

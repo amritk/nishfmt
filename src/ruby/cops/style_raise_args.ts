@@ -16,7 +16,7 @@ export class CopStyleRaiseArgs {
     this.c = new RbCop("Style/RaiseArgs");
   }
 
-  // fastfmt: detect-only
+  // nishfmt: detect-only
 
   run(src: RbSource): void {
     this.c.begin(src);

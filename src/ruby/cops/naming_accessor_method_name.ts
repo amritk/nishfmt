@@ -15,7 +15,7 @@ export class CopNamingAccessorMethodName {
   constructor() {
     this.c = new RbCop("Naming/AccessorMethodName");
   }
-  // fastfmt: detect-only
+  // nishfmt: detect-only
 
   run(src: RbSource): void {
     this.c.begin(src);

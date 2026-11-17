@@ -15,7 +15,7 @@ export class CopStylePreferredHashMethods {
     this.c = new RbCop("Style/PreferredHashMethods");
   }
 
-  // fastfmt: detect-only
+  // nishfmt: detect-only
 
   run(src: RbSource): void {
     this.c.begin(src);

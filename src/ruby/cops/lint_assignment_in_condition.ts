@@ -39,7 +39,7 @@ export class CopLintAssignmentInCondition {
     this.c = new RbCop("Lint/AssignmentInCondition");
   }
 
-  // fastfmt: detect-only
+  // nishfmt: detect-only
 
   run(src: RbSource): void {
     this.c.begin(src);

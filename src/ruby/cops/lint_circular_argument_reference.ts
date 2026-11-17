@@ -15,7 +15,7 @@ export class CopLintCircularArgumentReference {
     this.c = new RbCop("Lint/CircularArgumentReference");
   }
 
-  // fastfmt: detect-only
+  // nishfmt: detect-only
 
   run(src: RbSource): void {
     this.c.begin(src);

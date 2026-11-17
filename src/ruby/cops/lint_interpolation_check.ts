@@ -17,7 +17,7 @@ export class CopLintInterpolationCheck {
     this.c = new RbCop("Lint/InterpolationCheck");
   }
 
-  // fastfmt: detect-only
+  // nishfmt: detect-only
 
   run(src: RbSource): void {
     this.c.begin(src);

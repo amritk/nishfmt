@@ -13,7 +13,7 @@ export class CopMetricsCyclomaticComplexity {
   constructor() {
     this.c = new RbCop("Metrics/CyclomaticComplexity");
   }
-  // fastfmt: detect-only
+  // nishfmt: detect-only
 
   run(src: RbSource): void {
     this.c.begin(src);

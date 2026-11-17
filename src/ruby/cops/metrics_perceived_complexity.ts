@@ -13,7 +13,7 @@ export class CopMetricsPerceivedComplexity {
   constructor() {
     this.c = new RbCop("Metrics/PerceivedComplexity");
   }
-  // fastfmt: detect-only
+  // nishfmt: detect-only
 
   run(src: RbSource): void {
     this.c.begin(src);

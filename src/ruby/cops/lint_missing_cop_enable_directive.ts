@@ -18,7 +18,7 @@ export class CopLintMissingCopEnableDirective {
     this.reg = new LdhRegistry();
   }
 
-  // fastfmt: detect-only
+  // nishfmt: detect-only
 
   run(src: RbSource): void {
     this.c.begin(src);

@@ -64,7 +64,7 @@ export class CopStyleZeroLengthPredicate {
     this.c = new RbCop("Style/ZeroLengthPredicate");
   }
 
-  // fastfmt: detect-only
+  // nishfmt: detect-only
 
   run(src: RbSource): void {
     this.c.begin(src);

@@ -25,7 +25,7 @@ export class CopStyleNumericPredicate {
     this.c = new RbCop("Style/NumericPredicate");
   }
 
-  // fastfmt: detect-only
+  // nishfmt: detect-only
 
   run(src: RbSource): void {
     this.c.begin(src);

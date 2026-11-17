@@ -15,7 +15,7 @@ export class CopStyleBeginBlock {
     this.c = new RbCop("Style/BeginBlock");
   }
 
-  // fastfmt: detect-only
+  // nishfmt: detect-only
 
   run(src: RbSource): void {
     this.c.begin(src);

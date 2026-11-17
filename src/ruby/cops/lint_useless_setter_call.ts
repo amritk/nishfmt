@@ -119,7 +119,7 @@ export class CopLintUselessSetterCall {
     this.c = new RbCop("Lint/UselessSetterCall");
   }
 
-  // fastfmt: detect-only
+  // nishfmt: detect-only
 
   run(src: RbSource): void {
     this.c.begin(src);

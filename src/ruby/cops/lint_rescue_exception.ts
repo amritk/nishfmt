@@ -17,7 +17,7 @@ export class CopLintRescueException {
     this.c = new RbCop("Lint/RescueException");
   }
 
-  // fastfmt: detect-only
+  // nishfmt: detect-only
 
   run(src: RbSource): void {
     this.c.begin(src);

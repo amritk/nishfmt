@@ -93,7 +93,7 @@ export class CopStyleDoubleNegation {
     this.c = new RbCop("Style/DoubleNegation");
   }
 
-  // fastfmt: detect-only
+  // nishfmt: detect-only
 
   run(src: RbSource): void {
     this.c.begin(src);

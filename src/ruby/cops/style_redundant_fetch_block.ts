@@ -59,7 +59,7 @@ export class CopStyleRedundantFetchBlock {
     this.c = new RbCop("Style/RedundantFetchBlock");
   }
 
-  // fastfmt: detect-only
+  // nishfmt: detect-only
 
   run(src: RbSource): void {
     this.c.begin(src);

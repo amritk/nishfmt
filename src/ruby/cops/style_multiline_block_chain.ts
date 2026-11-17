@@ -15,7 +15,7 @@ export class CopStyleMultilineBlockChain {
     this.c = new RbCop("Style/MultilineBlockChain");
   }
 
-  // fastfmt: detect-only
+  // nishfmt: detect-only
 
   run(src: RbSource): void {
     this.c.begin(src);

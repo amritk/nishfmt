@@ -38,7 +38,7 @@ export class CopLintSafeNavigationChain {
     this.c = new RbCop("Lint/SafeNavigationChain");
   }
 
-  // fastfmt: detect-only
+  // nishfmt: detect-only
 
   run(src: RbSource): void {
     this.c.begin(src);

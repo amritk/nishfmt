@@ -30,7 +30,7 @@ export class CopNamingVariableName {
   constructor() {
     this.c = new RbCop("Naming/VariableName");
   }
-  // fastfmt: detect-only
+  // nishfmt: detect-only
 
   run(src: RbSource): void {
     this.c.begin(src);

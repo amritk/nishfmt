@@ -88,7 +88,7 @@ export class CopSecurityEval {
   constructor() {
     this.c = new RbCop("Security/Eval");
   }
-  // fastfmt: detect-only
+  // nishfmt: detect-only
 
   run(src: RbSource): void {
     this.c.begin(src);
@@ -138,7 +138,7 @@ export class CopSecurityJSONLoad {
   constructor() {
     this.c = new RbCop("Security/JSONLoad");
   }
-  // fastfmt: detect-only
+  // nishfmt: detect-only
 
   run(src: RbSource): void {
     this.c.begin(src);
@@ -168,7 +168,7 @@ export class CopSecurityMarshalLoad {
   constructor() {
     this.c = new RbCop("Security/MarshalLoad");
   }
-  // fastfmt: detect-only
+  // nishfmt: detect-only
 
   run(src: RbSource): void {
     this.c.begin(src);
@@ -222,7 +222,7 @@ export class CopSecurityOpen {
   constructor() {
     this.c = new RbCop("Security/Open");
   }
-  // fastfmt: detect-only
+  // nishfmt: detect-only
 
   run(src: RbSource): void {
     this.c.begin(src);
@@ -248,7 +248,7 @@ export class CopSecurityYAMLLoad {
   constructor() {
     this.c = new RbCop("Security/YAMLLoad");
   }
-  // fastfmt: detect-only
+  // nishfmt: detect-only
 
   /** maximum_target_ruby_version 3.0: no offense under TargetRubyVersion 3.3. */
   run(src: RbSource): void {

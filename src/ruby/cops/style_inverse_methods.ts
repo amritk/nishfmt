@@ -70,7 +70,7 @@ export class CopStyleInverseMethods {
     this.ignE = [];
   }
 
-  // fastfmt: detect-only
+  // nishfmt: detect-only
 
   run(src: RbSource): void {
     this.c.begin(src);

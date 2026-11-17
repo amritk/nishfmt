@@ -18,7 +18,7 @@ export class CopLintRedundantWithObject {
     this.c = new RbCop("Lint/RedundantWithObject");
   }
 
-  // fastfmt: detect-only
+  // nishfmt: detect-only
 
   run(src: RbSource): void {
     this.c.begin(src);

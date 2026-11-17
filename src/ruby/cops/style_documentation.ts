@@ -153,7 +153,7 @@ export class CopStyleDocumentation {
     this.as = new ScnAssoc();
   }
 
-  // fastfmt: detect-only
+  // nishfmt: detect-only
 
   run(src: RbSource): void {
     this.c.begin(src);

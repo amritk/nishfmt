@@ -21,7 +21,7 @@ export class CopLintStructNewOverride {
     this.c = new RbCop("Lint/StructNewOverride");
   }
 
-  // fastfmt: detect-only
+  // nishfmt: detect-only
 
   run(src: RbSource): void {
     this.c.begin(src);

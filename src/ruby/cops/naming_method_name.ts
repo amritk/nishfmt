@@ -33,7 +33,7 @@ export class CopNamingMethodName {
   constructor() {
     this.c = new RbCop("Naming/MethodName");
   }
-  // fastfmt: detect-only
+  // nishfmt: detect-only
 
   run(src: RbSource): void {
     this.c.begin(src);

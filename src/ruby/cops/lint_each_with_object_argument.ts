@@ -16,7 +16,7 @@ export class CopLintEachWithObjectArgument {
     this.c = new RbCop("Lint/EachWithObjectArgument");
   }
 
-  // fastfmt: detect-only
+  // nishfmt: detect-only
 
   run(src: RbSource): void {
     this.c.begin(src);

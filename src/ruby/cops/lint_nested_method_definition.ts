@@ -31,7 +31,7 @@ export class CopLintNestedMethodDefinition {
     this.c = new RbCop("Lint/NestedMethodDefinition");
   }
 
-  // fastfmt: detect-only
+  // nishfmt: detect-only
 
   run(src: RbSource): void {
     this.c.begin(src);

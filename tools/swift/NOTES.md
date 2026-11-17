@@ -35,7 +35,7 @@ Corpus (`WORK=/work/out-swift2 bash bench/corpus/cmp.sh <bin> swift`): 6710 / 67
 Every default rule is ported (no guards left).
 
 Timings on the corpus (6710 files): swiftformat 131.7 s wall on 4 cores, 262.5 s with
-`taskset -c 0`; fastfmt 13.8 s with cmp.sh on 4 cores and 28.6 s with `taskset -c 0 ffk -i -q
+`taskset -c 0`; nishfmt 13.8 s with cmp.sh on 4 cores and 28.6 s with `taskset -c 0 ffk -i -q
 -j 1` (best of 3), both measured on a shared, loaded machine (see Performance).
 
 Ported rules: everything in `tools/swift/rules.txt` with a module other than `noop`.
@@ -109,7 +109,7 @@ Measured with `taskset -c 0 <bin> -i -q -j 1 <copy of raw>`, best of 3 (the mach
 and loaded, so compare builds back to back): 36.6 s with every rule ported (commit b47ac19),
 28.6 s after the caching and scope-code commits. Profile with `nish tools/dev/swift.ts -g
 --link devg` and `valgrind --tool=callgrind devg <file>` (one file), or the full binary with
-`--trace-children=yes` (fastfmt formats in worker processes).
+`--trace-children=yes` (nishfmt formats in worker processes).
 
 What is in place:
 

@@ -18,7 +18,7 @@ export class CopLintNextWithoutAccumulator {
     this.c = new RbCop("Lint/NextWithoutAccumulator");
   }
 
-  // fastfmt: detect-only
+  // nishfmt: detect-only
 
   run(src: RbSource): void {
     this.c.begin(src);

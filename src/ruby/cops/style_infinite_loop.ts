@@ -157,7 +157,7 @@ export class CopStyleInfiniteLoop {
     this.c = new RbCop("Style/InfiniteLoop");
   }
 
-  // fastfmt: detect-only
+  // nishfmt: detect-only
 
   run(src: RbSource): void {
     this.c.begin(src);

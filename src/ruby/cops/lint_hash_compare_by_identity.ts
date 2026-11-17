@@ -15,7 +15,7 @@ export class CopLintHashCompareByIdentity {
     this.c = new RbCop("Lint/HashCompareByIdentity");
   }
 
-  // fastfmt: detect-only
+  // nishfmt: detect-only
 
   run(src: RbSource): void {
     this.c.begin(src);

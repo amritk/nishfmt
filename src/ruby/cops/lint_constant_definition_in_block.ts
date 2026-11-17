@@ -16,7 +16,7 @@ export class CopLintConstantDefinitionInBlock {
     this.c = new RbCop("Lint/ConstantDefinitionInBlock");
   }
 
-  // fastfmt: detect-only
+  // nishfmt: detect-only
 
   run(src: RbSource): void {
     this.c.begin(src);

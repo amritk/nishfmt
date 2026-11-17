@@ -134,7 +134,7 @@ export class CopLintFormatParameterMismatch {
     this.c = new RbCop("Lint/FormatParameterMismatch");
   }
 
-  // fastfmt: detect-only
+  // nishfmt: detect-only
 
   run(src: RbSource): void {
     this.c.begin(src);

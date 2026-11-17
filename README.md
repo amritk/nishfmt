@@ -1,4 +1,4 @@
-# fastfmt
+# nishfmt
 
 A fast C++ formatter written in [Nish](https://github.com/amritk/nish), which also
 formats Java, Kotlin, Ruby, C#, Dart, Swift and Rust (see [Languages and speed](#languages-and-speed)). Its
@@ -14,9 +14,9 @@ reference.
 
 One binary formats eight languages, each to match one reference tool's
 output byte for byte. Times are for formatting the whole corpus in place
-(`fastfmt -i`), on a 4-core container and pinned to one core:
+(`nishfmt -i`), on a 4-core container and pinned to one core:
 
-| Language | Matches | Files | Identical | Reference tool, 4 cores / 1 core | Rust reimplementation, 4 cores / 1 core | fastfmt, 4 cores / 1 core |
+| Language | Matches | Files | Identical | Reference tool, 4 cores / 1 core | Rust reimplementation, 4 cores / 1 core | nishfmt, 4 cores / 1 core |
 | --- | --- | ---: | ---: | ---: | ---: | ---: |
 | C++ | clang-format 18, `{BasedOnStyle: LLVM, ColumnLimit: 120}` | 10344 | 10306 | 87.0 s / 212.9 s | none | **7.07 s / 28.9 s** |
 | Java | google-java-format 1.28 | 7627 | 7627 | 75.2 s / 252.9 s | none | **2.17 s / 8.64 s** |
@@ -29,10 +29,10 @@ output byte for byte. Times are for formatting the whole corpus in place
 | Ruby | `rubocop -a` 1.92.2, default config, `TargetRubyVersion: 3.3` | 1998 | 1998 | 303.9 s / 289.6 s | rbcop 0.1.4: 6.55 s / 20.4 s | **4.00 s / 12.7 s** |
 
 - **Files** counts the corpus files the reference tool accepts, and
-  **Identical** how many of them fastfmt formats byte for byte as it does.
+  **Identical** how many of them nishfmt formats byte for byte as it does.
   Times cover the whole corpus directory, including the few files the
   reference rejects.
-- One core is `taskset -c 0`, with `-j 1` for fastfmt. fastfmt's times are
+- One core is `taskset -c 0`, with `-j 1` for nishfmt. nishfmt's times are
   the best of three. The C++, Java and Ruby rows were measured together on
   an otherwise idle machine, the reference tools one run each; the others
   during porting on a busier shared machine, so compare within a row.
@@ -40,7 +40,7 @@ output byte for byte. Times are for formatting the whole corpus in place
   google-java-format JVM over all files; CSharpier on .NET 10 with
   `--no-cache`; rustfmt 100 files a process; RuboCop with `--parallel` on 4
   cores. ktfmt was not run on one core.
-- fastfmt picks the language from the file name: `.cpp .cc .cxx .hpp .hh
+- nishfmt picks the language from the file name: `.cpp .cc .cxx .hpp .hh
   .hxx .h`, `.java`, `.kt .kts`, `.cs`, `.dart`, `.swift`, `.rs`, and
   RuboCop's default `Include` for Ruby (`.rb`, `Gemfile`, `.gemspec`, ...).
 - nitrocop, another Rust reimplementation of RuboCop, matched on fewer than
@@ -69,7 +69,7 @@ analyzer's AST shapes; the tall style's piece builder, solver and cost
 model, with the variants `dart format` 3.14 still keeps for language
 versions 3.7, 3.8 to 3.12 and 3.13 on; and the short style used below 3.7
 (source visitor, chunk builder, rules and line splitter). The version comes
-from the file's `// @dart=` comment, else 3.14; fastfmt does not read
+from the file's `// @dart=` comment, else 3.14; nishfmt does not read
 package configs for it. The corpus is flutter/packages, flutter/samples,
 riverpod, bloc, http, getx, flame, dart_style, shelf, dio and test, plus
 `dart2`, the same files first formatted at other widths (10313 / 10313),
@@ -94,7 +94,7 @@ the rule loop and every default rule, `swiftformat:` directive comments
 (`disable`, `enable`, `:next`, `:previous`, `:this`), and Swift's grapheme
 counting and Unicode case data where SwiftFormat's decisions depend on them.
 Directives that set options or sort declarations, and code points whose
-Unicode data may differ from SwiftFormat's, make fastfmt skip the file and
+Unicode data may differ from SwiftFormat's, make nishfmt skip the file and
 leave it as it is; no corpus file needs that. The corpus
 is swift-nio, Alamofire, Vapor, the Composable Architecture, RxSwift,
 Kingfisher, SnapKit, SwiftLint, swift-argument-parser, swift-collections,
@@ -114,13 +114,13 @@ earlier samples of 739 and 1500 files matched on every file as well.
 ## Build and use
 
 ```bash
-PATH=/path/to/nish/build/seed/bin:$PATH ./build.sh   # → build/fastfmt
+PATH=/path/to/nish/build/seed/bin:$PATH ./build.sh   # → build/nishfmt
 ```
 
 ```bash
-build/fastfmt file.cpp        # prints the formatted file
-build/fastfmt -i src/         # rewrites every C++ file under src/ in place
-build/fastfmt --check src/    # lists files that would change; exits 1 if any
+build/nishfmt file.cpp        # prints the formatted file
+build/nishfmt -i src/         # rewrites every C++ file under src/ in place
+build/nishfmt --check src/    # lists files that would change; exits 1 if any
 ```
 
 | Option | Meaning |
@@ -137,12 +137,12 @@ honouring basic `.gitignore` patterns. When the run ends, a summary line is
 printed:
 
 ```
-fastfmt: 30194 files, reformatted 30163, skipped 0; 108.8 MB in 2040 ms (53 MB/s, 4 workers)
+nishfmt: 30194 files, reformatted 30163, skipped 0; 108.8 MB in 2040 ms (53 MB/s, 4 workers)
 ```
 
 The formatter leaves some code as written:
 
-- regions between `// fastfmt off` and `// fastfmt on`;
+- regions between `// nishfmt off` and `// nishfmt on`;
 - regions between `// clang-format off` and `// clang-format on`;
 - whole files that do not parse, such as files with unbalanced brackets or an
   unterminated literal. These count as skipped.
@@ -150,7 +150,7 @@ The formatter leaves some code as written:
 ## Tests and benchmark
 
 ```bash
-tests/run.sh build/fastfmt
+tests/run.sh build/nishfmt
 ```
 
 The test script checks that each `tests/cases/*.cpp` formats to its
@@ -159,13 +159,13 @@ stops changing (one run is not always stable). It also checks that:
 
 - formatting an `.expected` file leaves it unchanged;
 - an unbalanced file is left untouched;
-- `// fastfmt off` keeps a region verbatim.
+- `// nishfmt off` keeps a region verbatim.
 
-The benchmark compares fastfmt with clang-format on public C++ repositories.
+The benchmark compares nishfmt with clang-format on public C++ repositories.
 Clone one and run:
 
 ```bash
-bench/compare-repo.sh build/fastfmt path/to/repo bench/work/repo
+bench/compare-repo.sh build/nishfmt path/to/repo bench/work/repo
 ```
 
 Both tools format a copy of the repository's C++ sources at the same style
@@ -180,11 +180,11 @@ reference for each file is clang-format's fixed point: its output on the
 repository's original source, rerun until it stops changing (one run is not
 always stable; a few files never settle and are left out, as are files
 clang-format fails on under a 4 GB memory cap). "Identical" counts files whose
-fastfmt output matches that fixed point byte for byte, from one fastfmt run.
-clang-format ran one file per process, two at a time; fastfmt ran once over
+nishfmt output matches that fixed point byte for byte, from one nishfmt run.
+clang-format ran one file per process, two at a time; nishfmt ran once over
 the whole tree with 4 workers. Peak memory is the largest single process.
 
-| Repository | Files | Identical | clang-format | fastfmt | Peak memory, clang-format | Peak memory, fastfmt |
+| Repository | Files | Identical | clang-format | nishfmt | Peak memory, clang-format | Peak memory, nishfmt |
 | --- | ---: | ---: | ---: | ---: | ---: | ---: |
 | leveldb | 132 | 100.0% | 1.4 s | 0.05 s | 66 MB | 17 MB |
 | googletest | 157 | 100.0% | 3.9 s | 0.24 s | 124 MB | 65 MB |
@@ -201,7 +201,7 @@ the whole tree with 4 workers. Peak memory is the largest single process.
 
 Objective-C headers are left out of these counts (127 `.h` files, in godot,
 opencv and protobuf, with `@interface`, `@implementation`, `@protocol`,
-`@class` or `@end` lines). clang-format formats them as Objective-C; fastfmt
+`@class` or `@end` lines). clang-format formats them as Objective-C; nishfmt
 now does the same for declarations (`@interface`, `@protocol`, method
 declarations and their selector wrapping) and leaves a header with other
 Objective-C (literals, `@implementation`, method bodies) untouched. Times
@@ -210,7 +210,7 @@ and memory are for the whole tree.
 The regression corpus (`bench/corpus`, 10344 files from the same kind of
 repositories, each capped at 250 KB, the reference one `clang-format -i`
 run) matches on 10306. Of the 38 left, 26 are files on which a second
-clang-format run changes its own output; fastfmt gives the settled output
+clang-format run changes its own output; nishfmt gives the settled output
 there, as above. Its times are in [Languages and speed](#languages-and-speed).
 
 On a generated corpus of 30,194 files (108.8 MB) of SDK code, every file
@@ -230,7 +230,7 @@ What is left, roughly by size:
 
 ## Design
 
-fastfmt is a rewrite in Nish, not a port: its own data layout and passes,
+nishfmt is a rewrite in Nish, not a port: its own data layout and passes,
 written to make the same decisions clang-format makes.
 
 1. **Lexer** (`src/cpp/lexer.ts`). Builds token columns in one pass: kind,
@@ -272,7 +272,7 @@ written to make the same decisions clang-format makes.
    and trailing-comment alignment, line-comment reflow, and writing.
 
 **Parallelism.** Nish refuses file I/O inside threads, so the parent walks
-the tree, writes one file list, and spawns itself as `fastfmt --worker` once
+the tree, writes one file list, and spawns itself as `nishfmt --worker` once
 per core. Workers claim chunks of the list by creating the chunk's marker
 file exclusively; chunks shrink to single files near the end so no worker
 finishes long after the others. Each worker reuses one engine (token tables,

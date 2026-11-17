@@ -15,7 +15,7 @@ export class CopLintIneffectiveAccessModifier {
     this.c = new RbCop("Lint/IneffectiveAccessModifier");
   }
 
-  // fastfmt: detect-only
+  // nishfmt: detect-only
 
   run(src: RbSource): void {
     this.c.begin(src);

@@ -100,7 +100,7 @@ export class CopMetricsClassLength {
   constructor() {
     this.c = new RbCop("Metrics/ClassLength");
   }
-  // fastfmt: detect-only
+  // nishfmt: detect-only
 
   run(src: RbSource): void {
     this.c.begin(src);

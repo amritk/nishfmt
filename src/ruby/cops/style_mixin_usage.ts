@@ -31,7 +31,7 @@ export class CopStyleMixinUsage {
     this.c = new RbCop("Style/MixinUsage");
   }
 
-  // fastfmt: detect-only
+  // nishfmt: detect-only
 
   run(src: RbSource): void {
     this.c.begin(src);

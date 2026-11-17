@@ -16,7 +16,7 @@ export class CopLayoutEndOfLine {
   constructor() {
     this.c = new RbCop("Layout/EndOfLine");
   }
-  // fastfmt: detect-only
+  // nishfmt: detect-only
 
   run(src: RbSource): void {
     this.c.begin(src);

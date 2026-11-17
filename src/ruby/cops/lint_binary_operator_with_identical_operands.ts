@@ -16,7 +16,7 @@ export class CopLintBinaryOperatorWithIdenticalOperands {
     this.c = new RbCop("Lint/BinaryOperatorWithIdenticalOperands");
   }
 
-  // fastfmt: detect-only
+  // nishfmt: detect-only
 
   run(src: RbSource): void {
     this.c.begin(src);

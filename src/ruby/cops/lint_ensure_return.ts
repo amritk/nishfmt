@@ -16,7 +16,7 @@ export class CopLintEnsureReturn {
     this.c = new RbCop("Lint/EnsureReturn");
   }
 
-  // fastfmt: detect-only
+  // nishfmt: detect-only
 
   run(src: RbSource): void {
     this.c.begin(src);

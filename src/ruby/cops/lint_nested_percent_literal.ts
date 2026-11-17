@@ -188,7 +188,7 @@ export class CopLintNestedPercentLiteral {
     this.c = new RbCop("Lint/NestedPercentLiteral");
   }
 
-  // fastfmt: detect-only
+  // nishfmt: detect-only
 
   run(src: RbSource): void {
     this.c.begin(src);

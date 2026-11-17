@@ -78,7 +78,7 @@ export class CopStyleSymbolProc {
     this.c = new RbCop("Style/SymbolProc");
   }
 
-  // fastfmt: detect-only
+  // nishfmt: detect-only
 
   run(src: RbSource): void {
     this.c.begin(src);

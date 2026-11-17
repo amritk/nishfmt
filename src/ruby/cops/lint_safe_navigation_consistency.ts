@@ -25,7 +25,7 @@ export class CopLintSafeNavigationConsistency {
     this.c = new RbCop("Lint/SafeNavigationConsistency");
   }
 
-  // fastfmt: detect-only
+  // nishfmt: detect-only
 
   run(src: RbSource): void {
     this.c.begin(src);

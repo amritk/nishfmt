@@ -15,7 +15,7 @@ export class CopStyleClassVars {
     this.c = new RbCop("Style/ClassVars");
   }
 
-  // fastfmt: detect-only
+  // nishfmt: detect-only
 
   run(src: RbSource): void {
     this.c.begin(src);

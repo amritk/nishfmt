@@ -23,7 +23,7 @@ export class CopLintOutOfRangeRegexpRef {
     this.c = new RbCop("Lint/OutOfRangeRegexpRef");
   }
 
-  // fastfmt: detect-only
+  // nishfmt: detect-only
 
   run(src: RbSource): void {
     this.c.begin(src);

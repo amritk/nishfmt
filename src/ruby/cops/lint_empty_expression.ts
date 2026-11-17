@@ -14,7 +14,7 @@ export class CopLintEmptyExpression {
     this.c = new RbCop("Lint/EmptyExpression");
   }
 
-  // fastfmt: detect-only
+  // nishfmt: detect-only
 
   run(src: RbSource): void {
     this.c.begin(src);

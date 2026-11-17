@@ -36,7 +36,7 @@ export class CopStyleStringConcatenation {
     this.c = new RbCop("Style/StringConcatenation");
   }
 
-  // fastfmt: detect-only
+  // nishfmt: detect-only
 
   run(src: RbSource): void {
     this.c.begin(src);

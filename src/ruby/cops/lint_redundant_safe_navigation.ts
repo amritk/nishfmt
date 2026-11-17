@@ -56,7 +56,7 @@ export class CopLintRedundantSafeNavigation {
     this.c = new RbCop("Lint/RedundantSafeNavigation");
   }
 
-  // fastfmt: detect-only
+  // nishfmt: detect-only
 
   run(src: RbSource): void {
     this.c.begin(src);

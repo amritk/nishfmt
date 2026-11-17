@@ -81,7 +81,7 @@ export class CopStyleAccessModifierDeclarations {
     this.c = new RbCop("Style/AccessModifierDeclarations");
   }
 
-  // fastfmt: detect-only
+  // nishfmt: detect-only
 
   run(src: RbSource): void {
     this.c.begin(src);

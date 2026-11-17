@@ -1,6 +1,6 @@
 #!/bin/bash
 # Regenerates/checks Dart regression cases in tests/cases/dart.
-# usage: cases.sh <fastfmt-dart-bin> [--regen]
+# usage: cases.sh <nishfmt-dart-bin> [--regen]
 # With --regen, writes each NAME.expected from `dart format < NAME.dart`.
 # Then checks that the binary formats NAME.dart to NAME.expected and leaves
 # NAME.expected unchanged.

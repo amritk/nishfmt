@@ -20,7 +20,7 @@ export class CopLintMissingSuper {
     this.c = new RbCop("Lint/MissingSuper");
   }
 
-  // fastfmt: detect-only
+  // nishfmt: detect-only
 
   run(src: RbSource): void {
     this.c.begin(src);

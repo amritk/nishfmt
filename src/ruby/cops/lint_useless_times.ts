@@ -17,7 +17,7 @@ export class CopLintUselessTimes {
     this.c = new RbCop("Lint/UselessTimes");
   }
 
-  // fastfmt: detect-only
+  // nishfmt: detect-only
 
   run(src: RbSource): void {
     this.c.begin(src);

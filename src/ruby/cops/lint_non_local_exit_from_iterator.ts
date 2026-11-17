@@ -28,7 +28,7 @@ export class CopLintNonLocalExitFromIterator {
     this.c = new RbCop("Lint/NonLocalExitFromIterator");
   }
 
-  // fastfmt: detect-only
+  // nishfmt: detect-only
 
   run(src: RbSource): void {
     this.c.begin(src);

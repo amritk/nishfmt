@@ -1,9 +1,9 @@
 #!/usr/bin/env bash
-# Formats a copy of $CORPUS/<lang>/raw with fastfmt and compares it with the
+# Formats a copy of $CORPUS/<lang>/raw with nishfmt and compares it with the
 # reference output in $CORPUS/<lang>/ref, leaving out the files the reference
 # tool rejected.
 #
-#   cmp.sh <fastfmt-binary> <lang> [fastfmt options...]
+#   cmp.sh <nishfmt-binary> <lang> [nishfmt options...]
 #
 # Prints the wall time and the identical count; the files that differ are in
 # $WORK/<lang>/differ.txt and a diff of them in $WORK/<lang>/all.diff.

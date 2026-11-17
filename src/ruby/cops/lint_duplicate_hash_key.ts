@@ -17,7 +17,7 @@ export class CopLintDuplicateHashKey {
     this.c = new RbCop("Lint/DuplicateHashKey");
   }
 
-  // fastfmt: detect-only
+  // nishfmt: detect-only
 
   run(src: RbSource): void {
     this.c.begin(src);

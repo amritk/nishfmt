@@ -16,7 +16,7 @@ export class CopStyleModuleFunction {
     this.c = new RbCop("Style/ModuleFunction");
   }
 
-  // fastfmt: detect-only
+  // nishfmt: detect-only
 
   run(src: RbSource): void {
     this.c.begin(src);

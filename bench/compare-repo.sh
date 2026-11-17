@@ -1,8 +1,8 @@
 #!/usr/bin/env bash
 # Formats a copy of a repository's C++ sources with clang-format and with
-# fastfmt, at the same style, and reports how many files come out identical.
+# nishfmt, at the same style, and reports how many files come out identical.
 #
-#   bench/compare-repo.sh <fastfmt-binary> <repo-dir> <work-dir>
+#   bench/compare-repo.sh <nishfmt-binary> <repo-dir> <work-dir>
 #
 # The repository's own .clang-format is ignored: both tools use LLVM style
 # with a 120-column limit. <work-dir>/differ.txt lists the files that differ.
@@ -34,4 +34,4 @@ diff -rq "$work/ff" "$work/clang" | grep -v '^Only' | awk '{print $2}' | sed "s|
 nd=$(wc -l < "$work/differ.txt")
 total=$((total - failed))
 echo "$(basename "$repo"): $((total - nd)) / $total identical (clang-format failed on $failed);" \
-  "clang-format ${clang}s, fastfmt ${ff}s"
+  "clang-format ${clang}s, nishfmt ${ff}s"

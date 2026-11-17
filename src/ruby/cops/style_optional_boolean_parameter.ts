@@ -16,7 +16,7 @@ export class CopStyleOptionalBooleanParameter {
     this.c = new RbCop("Style/OptionalBooleanParameter");
   }
 
-  // fastfmt: detect-only
+  // nishfmt: detect-only
 
   run(src: RbSource): void {
     this.c.begin(src);

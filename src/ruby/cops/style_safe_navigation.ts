@@ -252,7 +252,7 @@ export class CopStyleSafeNavigation {
     this.c = new RbCop("Style/SafeNavigation");
   }
 
-  // fastfmt: detect-only
+  // nishfmt: detect-only
 
   run(src: RbSource): void {
     this.c.begin(src);

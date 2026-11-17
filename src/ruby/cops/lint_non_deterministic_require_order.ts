@@ -68,7 +68,7 @@ export class CopLintNonDeterministicRequireOrder {
     this.c = new RbCop("Lint/NonDeterministicRequireOrder");
   }
 
-  // fastfmt: detect-only
+  // nishfmt: detect-only
 
   private registry(): LdhRegistry {
     const r = this.reg;

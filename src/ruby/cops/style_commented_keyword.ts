@@ -122,7 +122,7 @@ export class CopStyleCommentedKeyword {
     this.c = new RbCop("Style/CommentedKeyword");
   }
 
-  // fastfmt: detect-only
+  // nishfmt: detect-only
 
   run(src: RbSource): void {
     this.c.begin(src);

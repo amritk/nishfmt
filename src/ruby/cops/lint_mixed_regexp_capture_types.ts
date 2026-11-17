@@ -16,7 +16,7 @@ export class CopLintMixedRegexpCaptureTypes {
     this.c = new RbCop("Lint/MixedRegexpCaptureTypes");
   }
 
-  // fastfmt: detect-only
+  // nishfmt: detect-only
 
   run(src: RbSource): void {
     this.c.begin(src);

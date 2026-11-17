@@ -16,7 +16,7 @@ export class CopLintDisjunctiveAssignmentInConstructor {
     this.c = new RbCop("Lint/DisjunctiveAssignmentInConstructor");
   }
 
-  // fastfmt: detect-only
+  // nishfmt: detect-only
 
   run(src: RbSource): void {
     this.c.begin(src);

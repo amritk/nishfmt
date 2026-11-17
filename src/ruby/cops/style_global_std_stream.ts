@@ -15,7 +15,7 @@ export class CopStyleGlobalStdStream {
     this.c = new RbCop("Style/GlobalStdStream");
   }
 
-  // fastfmt: detect-only
+  // nishfmt: detect-only
 
   run(src: RbSource): void {
     this.c.begin(src);

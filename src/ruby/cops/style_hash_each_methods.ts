@@ -118,7 +118,7 @@ export class CopStyleHashEachMethods {
     this.c = new RbCop("Style/HashEachMethods");
   }
 
-  // fastfmt: detect-only
+  // nishfmt: detect-only
 
   run(src: RbSource): void {
     this.c.begin(src);

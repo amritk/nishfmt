@@ -109,7 +109,7 @@ export class CopLintDuplicateMethods {
     this.scopes = new Set<string>();
   }
 
-  // fastfmt: detect-only
+  // nishfmt: detect-only
 
   run(src: RbSource): void {
     this.c.begin(src);

@@ -16,7 +16,7 @@ export class CopLintUriEscapeUnescape {
     this.c = new RbCop("Lint/UriEscapeUnescape");
   }
 
-  // fastfmt: detect-only
+  // nishfmt: detect-only
 
   run(src: RbSource): void {
     this.c.begin(src);

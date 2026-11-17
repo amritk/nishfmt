@@ -80,8 +80,8 @@ valgrind are the steadier measure, see `ir.sh`).
 | --- | --- | --- |
 | `dart format` | 55.2 s wall (63.7 s user) | 24.4 s |
 | `taskset -c 0 dart format` | 59.9 s | |
-| `fastfmt -i` (4 cores) | 3.4 s | 3.8 s |
-| `taskset -c 0 fastfmt -i -j 1` | 8.8 s | 6.5 s |
+| `nishfmt -i` (4 cores) | 3.4 s | 3.8 s |
+| `taskset -c 0 nishfmt -i -j 1` | 8.8 s | 6.5 s |
 
 Best of two or three runs, with load averages of 7 to 50 from other jobs.
 

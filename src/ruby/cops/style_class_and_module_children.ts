@@ -30,7 +30,7 @@ export class CopStyleClassAndModuleChildren {
     this.c = new RbCop("Style/ClassAndModuleChildren");
   }
 
-  // fastfmt: detect-only
+  // nishfmt: detect-only
 
   run(src: RbSource): void {
     this.c.begin(src);

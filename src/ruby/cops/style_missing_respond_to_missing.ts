@@ -29,7 +29,7 @@ export class CopStyleMissingRespondToMissing {
     this.c = new RbCop("Style/MissingRespondToMissing");
   }
 
-  // fastfmt: detect-only
+  // nishfmt: detect-only
 
   run(src: RbSource): void {
     this.c.begin(src);

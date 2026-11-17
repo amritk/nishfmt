@@ -56,7 +56,7 @@ export class CopLintPercentStringArray {
     this.c = new RbCop("Lint/PercentStringArray");
   }
 
-  // fastfmt: detect-only
+  // nishfmt: detect-only
 
   run(src: RbSource): void {
     this.c.begin(src);

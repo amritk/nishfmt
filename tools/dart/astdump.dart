@@ -1,4 +1,4 @@
-// Dumps the analyzer's AST for Dart files, one node per line, so fastfmt's
+// Dumps the analyzer's AST for Dart files, one node per line, so nishfmt's
 // Dart parser can be compared with it (tools/dart/astcmp.sh).
 //
 //   dart run --packages=<dart_style>/.dart_tool/package_config.json \
@@ -44,7 +44,7 @@ void main(List<String> args) {
       var name = node.runtimeType.toString();
       if (name.endsWith('Impl')) name = name.substring(0, name.length - 4);
       var begin = node.beginToken;
-      // Skip a leading doc comment, as fastfmt's nodes begin at code.
+      // Skip a leading doc comment, as nishfmt's nodes begin at code.
       if (node is AnnotatedNode) {
         begin = node.metadata.isNotEmpty
             ? node.metadata.first.beginToken

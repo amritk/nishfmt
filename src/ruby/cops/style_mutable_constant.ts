@@ -189,7 +189,7 @@ export class CopStyleMutableConstant {
     return false;
   }
 
-  // fastfmt: detect-only
+  // nishfmt: detect-only
 
   run(src: RbSource): void {
     this.c.begin(src);

@@ -68,7 +68,7 @@ export class CopNamingConstantName {
   constructor() {
     this.c = new RbCop("Naming/ConstantName");
   }
-  // fastfmt: detect-only
+  // nishfmt: detect-only
 
   run(src: RbSource): void {
     this.c.begin(src);

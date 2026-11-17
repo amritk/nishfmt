@@ -57,7 +57,7 @@ export class CopNamingPredicatePrefix {
   constructor() {
     this.c = new RbCop("Naming/PredicatePrefix");
   }
-  // fastfmt: detect-only
+  // nishfmt: detect-only
 
   run(src: RbSource): void {
     this.c.begin(src);

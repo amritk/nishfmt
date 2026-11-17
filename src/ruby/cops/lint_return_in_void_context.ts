@@ -17,7 +17,7 @@ export class CopLintReturnInVoidContext {
     this.c = new RbCop("Lint/ReturnInVoidContext");
   }
 
-  // fastfmt: detect-only
+  // nishfmt: detect-only
 
   run(src: RbSource): void {
     this.c.begin(src);

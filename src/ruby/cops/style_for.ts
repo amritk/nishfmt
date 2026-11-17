@@ -15,7 +15,7 @@ export class CopStyleFor {
     this.c = new RbCop("Style/For");
   }
 
-  // fastfmt: detect-only
+  // nishfmt: detect-only
 
   run(src: RbSource): void {
     this.c.begin(src);

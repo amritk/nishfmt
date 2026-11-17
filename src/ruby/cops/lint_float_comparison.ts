@@ -26,7 +26,7 @@ export class CopLintFloatComparison {
     this.c = new RbCop("Lint/FloatComparison");
   }
 
-  // fastfmt: detect-only
+  // nishfmt: detect-only
 
   run(src: RbSource): void {
     this.c.begin(src);

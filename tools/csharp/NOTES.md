@@ -3,8 +3,8 @@
 Target: byte-for-byte `csharpier format` 1.4.0 output with the default
 options (printWidth 100, indent 4 spaces, end of line auto), checked with
 
-    WORK=/work/out-cs bash bench/corpus/cmp.sh <fastfmt> cs
-    WORK=/work/out-cs bash bench/corpus/cmp.sh <fastfmt> cs2
+    WORK=/work/out-cs bash bench/corpus/cmp.sh <nishfmt> cs
+    WORK=/work/out-cs bash bench/corpus/cmp.sh <nishfmt> cs2
 
 `cs2` is the `cs` corpus pre-formatted with odd options per directory
 (printWidth 40 / 150, tabs, indent 2; see `mkcs2.sh`) and referenced with the
@@ -89,7 +89,7 @@ and a BOM the test harness adds.
 | | 4 cores | 1 core (`taskset -c 0`, `-j 1`) |
 | --- | --- | --- |
 | csharpier 1.4.0 (`--no-cache`) | 40.7 s | 122.1 s |
-| fastfmt (cmp.sh wall time) | 2.0 s | 6.6-7.0 s |
+| nishfmt (cmp.sh wall time) | 2.0 s | 6.6-7.0 s |
 
 The machine is shared, so wall times vary by about 30%; callgrind on 200
 corpus files went from 1.59G to 1.34G instructions with the buffer sizing,

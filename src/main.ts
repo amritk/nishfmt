@@ -1,4 +1,4 @@
-// fastfmt: a fast multi-language formatter whose output matches each
+// nishfmt: a fast multi-language formatter whose output matches each
 // language's reference tool (clang-format, google-java-format, ktfmt,
 // RuboCop, SwiftFormat, rustfmt, dart format, CSharpier). The CLI walks the
 // paths it is given, formats every source in parallel worker processes, and
@@ -104,7 +104,7 @@ const ms = (x: i64): i64 => x / toI64(1000000);
 
 const usage = (): string =>
   [
-    "usage: fastfmt [options] <file-or-dir>...",
+    "usage: nishfmt [options] <file-or-dir>...",
     "",
     "Formats each file to match its language's reference formatter:",
     "  C++ (.cpp .cc .cxx .hpp .hh .hxx .h)  clang-format 18, LLVM style",
@@ -126,7 +126,7 @@ const usage = (): string =>
     "  -q, --quiet     no summary",
     "  -h, --help      this text",
     "",
-    "In C++, a `// fastfmt off` ... `// fastfmt on` region is left as written; a file",
+    "In C++, a `// nishfmt off` ... `// nishfmt on` region is left as written; a file",
     "that does not parse (unbalanced brackets, unterminated literals) is left",
     "untouched and counted as skipped.",
   ].join("\n");
@@ -249,7 +249,7 @@ const runJob = (job: Job): JobRoot => {
       if (job.mode === MODE_STDOUT) {
         writeBytes(src, 0, n);
       } else if (!job.quiet) {
-        console.error(`fastfmt: skipped ${path} (does not parse)`);
+        console.error(`nishfmt: skipped ${path} (does not parse)`);
       }
       bytes = bytes + n;
       k++;
@@ -269,7 +269,7 @@ const runJob = (job: Job): JobRoot => {
       writeBytes(out.buf, 0, out.n);
     } else if (!same && job.mode === MODE_WRITE) {
       if (writeFileBytesSync(path, out.buf.slice(0, out.n)) < 0) {
-        console.error(`fastfmt: cannot write ${path}`);
+        console.error(`nishfmt: cannot write ${path}`);
       }
     } else if (!same && job.mode === MODE_CHECK) {
       console.log(path);
@@ -328,7 +328,7 @@ const formatFiles = (files: string[], a: i32, b: i32, cli: Cli, stats: Stats, en
           dirs.push(files[i + k]);
           continue;
         }
-        console.error(`fastfmt: cannot read ${files[i + k]}`);
+        console.error(`nishfmt: cannot read ${files[i + k]}`);
         stats.skipped = stats.skipped + 1;
         continue;
       }
@@ -359,7 +359,7 @@ const formatFile = (path: string, cli: Cli, stats: Stats, eng: Engine): i32 => {
     if (isDirectorySync(path)) {
       return 3;
     }
-    console.error(`fastfmt: cannot read ${path}`);
+    console.error(`nishfmt: cannot read ${path}`);
     stats.skipped = stats.skipped + 1;
     return 2;
   }
@@ -375,7 +375,7 @@ const formatFile = (path: string, cli: Cli, stats: Stats, eng: Engine): i32 => {
     if (cli.mode === MODE_STDOUT) {
       writeBytes(src, 0, n);
     } else if (!cli.quiet) {
-      console.error(`fastfmt: skipped ${path} (does not parse)`);
+      console.error(`nishfmt: skipped ${path} (does not parse)`);
     }
     return 2;
   }
@@ -399,7 +399,7 @@ const formatFile = (path: string, cli: Cli, stats: Stats, eng: Engine): i32 => {
   if (cli.mode === MODE_WRITE) {
     const r = writeFileBytesSync(path, out.buf.slice(0, out.n));
     if (r < 0) {
-      console.error(`fastfmt: cannot write ${path}`);
+      console.error(`nishfmt: cannot write ${path}`);
     }
   } else if (cli.mode === MODE_CHECK) {
     console.log(path);
@@ -441,12 +441,12 @@ const parseArgs = (cli: Cli): i32 => {
       return 0;
     } else if (a === "--width" || a === "--indent" || a === "-j") {
       if (i + 1 >= toI32(argv.length)) {
-        console.error(`fastfmt: ${a} needs a value`);
+        console.error(`nishfmt: ${a} needs a value`);
         return 2;
       }
       const v = parseInt(argv[i + 1]);
       if (v <= 0) {
-        console.error(`fastfmt: bad value for ${a}`);
+        console.error(`nishfmt: bad value for ${a}`);
         return 2;
       }
       if (a === "--width") {
@@ -465,7 +465,7 @@ const parseArgs = (cli: Cli): i32 => {
       cli.stats = argv[i + 2];
       i += 2;
     } else if (a.startsWith("-")) {
-      console.error(`fastfmt: unknown option ${a}\n${usage()}`);
+      console.error(`nishfmt: unknown option ${a}\n${usage()}`);
       return 2;
     } else {
       cli.paths.push(a);
@@ -576,7 +576,7 @@ export const main = (): i32 => {
     }
   }
   if (cli.mode === MODE_STDOUT && files.length !== 1) {
-    console.error("fastfmt: several files: pass -i to rewrite them or --check to list changes");
+    console.error("nishfmt: several files: pass -i to rewrite them or --check to list changes");
     return 2;
   }
   const stats = new Stats();
@@ -599,7 +599,7 @@ export const main = (): i32 => {
   } else {
     const self = realpathSync("/proc/self/exe") ?? process.argv[0];
     const tmp = getenv("TMPDIR") ?? "/tmp";
-    const tag = `${tmp}/fastfmt-${wallClockNanos()}`;
+    const tag = `${tmp}/nishfmt-${wallClockNanos()}`;
     const pids: i32[] = [];
     const listPath = `${tag}.list`;
     writeFileSync(listPath, files.join("\n"));
@@ -640,7 +640,7 @@ export const main = (): i32 => {
     const mbTenths = kb * 10 / 1024;
     const rate = ms > 0 ? kb * 1000 / 1024 / ms : 0;
     const verb = cli.mode === MODE_WRITE ? "reformatted" : "would reformat";
-    console.error(`fastfmt: ${stats.files} files, ${verb} ${stats.changed}, skipped ${stats.skipped}; ${mbTenths / 10}.${mbTenths % 10} MB in ${ms} ms (${rate} MB/s, ${jobs} workers)`);
+    console.error(`nishfmt: ${stats.files} files, ${verb} ${stats.changed}, skipped ${stats.skipped}; ${mbTenths / 10}.${mbTenths % 10} MB in ${ms} ms (${rate} MB/s, ${jobs} workers)`);
   }
   if (cli.mode === MODE_CHECK && stats.changed > 0) {
     return 1;

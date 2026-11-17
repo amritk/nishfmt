@@ -31,7 +31,7 @@ export class CopMetricsModuleLength {
   constructor() {
     this.c = new RbCop("Metrics/ModuleLength");
   }
-  // fastfmt: detect-only
+  // nishfmt: detect-only
 
   run(src: RbSource): void {
     this.c.begin(src);

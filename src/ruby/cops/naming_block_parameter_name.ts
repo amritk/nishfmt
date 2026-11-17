@@ -15,7 +15,7 @@ export class CopNamingBlockParameterName {
   constructor() {
     this.c = new RbCop("Naming/BlockParameterName");
   }
-  // fastfmt: detect-only
+  // nishfmt: detect-only
 
   run(src: RbSource): void {
     this.c.begin(src);

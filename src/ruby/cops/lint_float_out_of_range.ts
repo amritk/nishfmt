@@ -113,7 +113,7 @@ export class CopLintFloatOutOfRange {
     this.c = new RbCop("Lint/FloatOutOfRange");
   }
 
-  // fastfmt: detect-only
+  // nishfmt: detect-only
 
   run(src: RbSource): void {
     this.c.begin(src);

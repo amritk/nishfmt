@@ -15,7 +15,7 @@ export class CopLintBooleanSymbol {
     this.c = new RbCop("Lint/BooleanSymbol");
   }
 
-  // fastfmt: detect-only
+  // nishfmt: detect-only
 
   run(src: RbSource): void {
     this.c.begin(src);

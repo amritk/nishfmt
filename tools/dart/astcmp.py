@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Compares two AST dumps (tools/dart/astdump.dart vs fastfmt's FFDTDUMP=ast).
+"""Compares two AST dumps (tools/dart/astdump.dart vs nishfmt's FFDTDUMP=ast).
 
     astcmp.py theirs.txt mine.txt
 

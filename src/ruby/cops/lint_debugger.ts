@@ -32,7 +32,7 @@ export class CopLintDebugger {
     this.c = new RbCop("Lint/Debugger");
   }
 
-  // fastfmt: detect-only
+  // nishfmt: detect-only
 
   run(src: RbSource): void {
     this.c.begin(src);

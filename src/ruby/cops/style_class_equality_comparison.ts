@@ -19,7 +19,7 @@ export class CopStyleClassEqualityComparison {
     this.c = new RbCop("Style/ClassEqualityComparison");
   }
 
-  // fastfmt: detect-only
+  // nishfmt: detect-only
 
   run(src: RbSource): void {
     this.c.begin(src);

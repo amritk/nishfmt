@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Compares fastfmt's Dart parser with the analyzer over a corpus directory.
+# Compares nishfmt's Dart parser with the analyzer over a corpus directory.
 #
 #   astcmp.sh <dartdev-binary> <dir> [workdir]
 #

@@ -70,7 +70,7 @@ export class CopMetricsParameterLists {
   constructor() {
     this.c = new RbCop("Metrics/ParameterLists");
   }
-  // fastfmt: detect-only
+  // nishfmt: detect-only
 
   run(src: RbSource): void {
     this.c.begin(src);

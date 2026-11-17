@@ -161,7 +161,7 @@ export class CopBundlerDuplicatedGem {
   constructor() {
     this.c = new RbCop("Bundler/DuplicatedGem");
   }
-  // fastfmt: detect-only
+  // nishfmt: detect-only
 
   run(src: RbSource): void {
     this.c.begin(src);
@@ -269,7 +269,7 @@ export class CopBundlerDuplicatedGroup {
   constructor() {
     this.c = new RbCop("Bundler/DuplicatedGroup");
   }
-  // fastfmt: detect-only
+  // nishfmt: detect-only
 
   run(src: RbSource): void {
     this.c.begin(src);
@@ -314,7 +314,7 @@ export class CopBundlerGemFilename {
   constructor() {
     this.c = new RbCop("Bundler/GemFilename");
   }
-  // fastfmt: detect-only
+  // nishfmt: detect-only
 
   run(src: RbSource): void {
     this.c.begin(src);
@@ -392,7 +392,7 @@ export class CopGemspecDuplicatedAssignment {
   constructor() {
     this.c = new RbCop("Gemspec/DuplicatedAssignment");
   }
-  // fastfmt: detect-only
+  // nishfmt: detect-only
 
   run(src: RbSource): void {
     this.c.begin(src);
@@ -555,7 +555,7 @@ export class CopGemspecRequiredRubyVersion {
   constructor() {
     this.c = new RbCop("Gemspec/RequiredRubyVersion");
   }
-  // fastfmt: detect-only
+  // nishfmt: detect-only
 
   run(src: RbSource): void {
     this.c.begin(src);
@@ -601,7 +601,7 @@ export class CopGemspecRubyVersionGlobalsUsage {
   constructor() {
     this.c = new RbCop("Gemspec/RubyVersionGlobalsUsage");
   }
-  // fastfmt: detect-only
+  // nishfmt: detect-only
 
   run(src: RbSource): void {
     this.c.begin(src);

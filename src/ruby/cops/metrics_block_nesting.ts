@@ -31,7 +31,7 @@ export class CopMetricsBlockNesting {
     this.ignS = [];
     this.ignE = [];
   }
-  // fastfmt: detect-only
+  // nishfmt: detect-only
 
   run(src: RbSource): void {
     this.c.begin(src);

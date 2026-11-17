@@ -1835,7 +1835,7 @@ export class Formatter {
         }
       }
       this.firstEmitted = inlineLine ? fe0 : true;
-      // `// fastfmt off` / `// clang-format off` on this line starts a raw region.
+      // `// nishfmt off` / `// clang-format off` on this line starts a raw region.
       for (let t = f; t >= 0; t = d.nxt[t]) {
         if (d.kind[t] === K_COMMENT) {
           const m = this.offMarker(t);
@@ -1986,10 +1986,10 @@ export class Formatter {
       i++;
     }
     const e = d.end[t];
-    if (d.startsWithAt(i, e, "fastfmt off") || d.startsWithAt(i, e, "clang-format off")) {
+    if (d.startsWithAt(i, e, "nishfmt off") || d.startsWithAt(i, e, "clang-format off")) {
       return 1;
     }
-    if (d.startsWithAt(i, e, "fastfmt on") || d.startsWithAt(i, e, "clang-format on")) {
+    if (d.startsWithAt(i, e, "nishfmt on") || d.startsWithAt(i, e, "clang-format on")) {
       return 2;
     }
     return 0;
@@ -3073,7 +3073,7 @@ export class Formatter {
     if (e - a < 2 || toI32(this.d.src[a]) !== 47) {
       return false;
     }
-    return this.textIs(a, e, "/* clang-format off */") || this.markerAt(a, e, "// clang-format off") || this.textIs(a, e, "/* fastfmt off */") || this.markerAt(a, e, "// fastfmt off");
+    return this.textIs(a, e, "/* clang-format off */") || this.markerAt(a, e, "// clang-format off") || this.textIs(a, e, "/* nishfmt off */") || this.markerAt(a, e, "// nishfmt off");
   }
 
   /** Whether trimmed line [a, e) turns formatting back on. */
@@ -3081,7 +3081,7 @@ export class Formatter {
     if (e - a < 2 || toI32(this.d.src[a]) !== 47) {
       return false;
     }
-    return this.textIs(a, e, "/* clang-format on */") || this.markerAt(a, e, "// clang-format on") || this.textIs(a, e, "/* fastfmt on */") || this.markerAt(a, e, "// fastfmt on");
+    return this.textIs(a, e, "/* clang-format on */") || this.markerAt(a, e, "// clang-format on") || this.textIs(a, e, "/* nishfmt on */") || this.markerAt(a, e, "// nishfmt on");
   }
 
   /** Whether [a, e) is `m`, or starts with `m` then `:`. */
@@ -4613,7 +4613,7 @@ export class Formatter {
     return !this.isPragma(t) && !this.isPragma(p);
   }
 
-  /** `// clang-format on|off`, `// fastfmt on|off` or an IWYU pragma. */
+  /** `// clang-format on|off`, `// nishfmt on|off` or an IWYU pragma. */
   isPragma(t: i32): boolean {
     const d = this.d;
     if (this.offMarker(t) !== 0) {

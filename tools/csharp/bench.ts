@@ -1,4 +1,4 @@
-// Formats C# files in one process, each in a region of its own as fastfmt
+// Formats C# files in one process, each in a region of its own as nishfmt
 // does, for profiling:
 //   nish tools/csharp/bench.ts --link /tmp/csbench && /tmp/csbench [-r N] files...
 // prints how many formatted and how many were refused.

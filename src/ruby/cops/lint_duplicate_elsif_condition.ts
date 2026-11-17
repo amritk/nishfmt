@@ -17,7 +17,7 @@ export class CopLintDuplicateElsifCondition {
     this.c = new RbCop("Lint/DuplicateElsifCondition");
   }
 
-  // fastfmt: detect-only
+  // nishfmt: detect-only
 
   run(src: RbSource): void {
     this.c.begin(src);

@@ -29,7 +29,7 @@ for f in sorted(os.listdir(cops_dir)):
             raise SystemExit(f"{name} is not in the registry order")
         # A detection-only cop (no corrections; its offenses only tell
         # Lint/RedundantCopDisableDirective which directives are needed).
-        detect = "fastfmt: detect-only" in m.group(2)
+        detect = "nishfmt: detect-only" in m.group(2)
         cops.append((rank[name], name, cls, f[:-3], detect))
 cops.sort()
 

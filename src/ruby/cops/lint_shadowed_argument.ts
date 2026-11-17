@@ -106,7 +106,7 @@ export class CopLintShadowedArgument {
     this.c = new RbCop("Lint/ShadowedArgument");
   }
 
-  // fastfmt: detect-only
+  // nishfmt: detect-only
 
   run(src: RbSource): void {
     this.c.begin(src);

@@ -14,7 +14,7 @@ export class CopNamingAsciiIdentifiers {
   constructor() {
     this.c = new RbCop("Naming/AsciiIdentifiers");
   }
-  // fastfmt: detect-only
+  // nishfmt: detect-only
 
   run(src: RbSource): void {
     this.c.begin(src);

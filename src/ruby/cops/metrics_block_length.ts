@@ -19,7 +19,7 @@ export class CopMetricsBlockLength {
   constructor() {
     this.c = new RbCop("Metrics/BlockLength");
   }
-  // fastfmt: detect-only
+  // nishfmt: detect-only
 
   run(src: RbSource): void {
     this.c.begin(src);

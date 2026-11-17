@@ -17,7 +17,7 @@ export class CopLintOrderedMagicComments {
     this.c = new RbCop("Lint/OrderedMagicComments");
   }
 
-  // fastfmt: detect-only
+  // nishfmt: detect-only
 
   run(src: RbSource): void {
     this.c.begin(src);

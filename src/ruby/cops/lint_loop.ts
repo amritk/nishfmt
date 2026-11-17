@@ -16,7 +16,7 @@ export class CopLintLoop {
     this.c = new RbCop("Lint/Loop");
   }
 
-  // fastfmt: detect-only
+  // nishfmt: detect-only
 
   run(src: RbSource): void {
     this.c.begin(src);

@@ -17,7 +17,7 @@ export class CopLintSuppressedException {
     this.c = new RbCop("Lint/SuppressedException");
   }
 
-  // fastfmt: detect-only
+  // nishfmt: detect-only
 
   run(src: RbSource): void {
     this.c.begin(src);

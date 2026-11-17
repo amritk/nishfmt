@@ -1,6 +1,6 @@
-# Porting a formatter to fastfmt
+# Porting a formatter to nishfmt
 
-How a new language gets into fastfmt. The Kotlin port (ktfmt) and the Ruby
+How a new language gets into nishfmt. The Kotlin port (ktfmt) and the Ruby
 port (RuboCop) are the worked examples: read `src/kotlin/run.ts` and
 `src/ruby/run.ts` before you start.
 
@@ -20,7 +20,7 @@ Where the two goals pull apart, matching wins, then speed.
 
 ## Nish
 
-fastfmt is written in Nish, a static subset of TypeScript compiled to native
+nishfmt is written in Nish, a static subset of TypeScript compiled to native
 code. **Read `$NISHPKG/docs/AI.md` before writing any** (`NISHPKG` is the nish npm
 package, here `/opt/nishpkg/node_modules/nish`). It is the whole language
 as rules, with the traps first. The compiler is
@@ -40,7 +40,7 @@ for a binary). The traps that cost the most in earlier ports:
   example `SwToken`, `rsParseExpr`, `DtPiece`, `csPrintNode`.
 - Results, not exceptions: a function that can fail answers a flag or a
   sentinel. A file the port cannot handle makes `formatX` answer `false`
-  (fastfmt then leaves it untouched and counts it as skipped). That is always
+  (nishfmt then leaves it untouched and counts it as skipped). That is always
   better than wrong output.
 
 ## Where the code goes
@@ -113,7 +113,7 @@ leaves it unchanged.
 ## Commits
 
 Commit in your worktree branch with messages like the existing history
-(`feat(fastfmt): ...`, a body saying what and why, a `Measured:` line for
+(`feat(nishfmt): ...`, a body saying what and why, a `Measured:` line for
 performance changes). End each message with:
 
     Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>

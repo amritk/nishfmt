@@ -17,7 +17,7 @@ export class CopLintInheritException {
     this.c = new RbCop("Lint/InheritException");
   }
 
-  // fastfmt: detect-only
+  // nishfmt: detect-only
 
   run(src: RbSource): void {
     this.c.begin(src);

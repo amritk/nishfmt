@@ -115,7 +115,7 @@ export class CopStyleHashLikeCase {
     this.c = new RbCop("Style/HashLikeCase");
   }
 
-  // fastfmt: detect-only
+  // nishfmt: detect-only
 
   run(src: RbSource): void {
     this.c.begin(src);

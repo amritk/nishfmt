@@ -61,7 +61,7 @@ export class CopNamingHeredocDelimiterNaming {
   constructor() {
     this.c = new RbCop("Naming/HeredocDelimiterNaming");
   }
-  // fastfmt: detect-only
+  // nishfmt: detect-only
 
   run(src: RbSource): void {
     this.c.begin(src);

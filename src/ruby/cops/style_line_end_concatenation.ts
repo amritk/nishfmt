@@ -26,7 +26,7 @@ export class CopStyleLineEndConcatenation {
     this.c = new RbCop("Style/LineEndConcatenation");
   }
 
-  // fastfmt: detect-only
+  // nishfmt: detect-only
 
   run(src: RbSource): void {
     this.c.begin(src);

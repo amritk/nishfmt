@@ -17,7 +17,7 @@ export class CopLintUselessMethodDefinition {
     this.c = new RbCop("Lint/UselessMethodDefinition");
   }
 
-  // fastfmt: detect-only
+  // nishfmt: detect-only
 
   run(src: RbSource): void {
     this.c.begin(src);

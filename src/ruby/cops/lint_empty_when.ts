@@ -17,7 +17,7 @@ export class CopLintEmptyWhen {
     this.c = new RbCop("Lint/EmptyWhen");
   }
 
-  // fastfmt: detect-only
+  // nishfmt: detect-only
 
   run(src: RbSource): void {
     this.c.begin(src);
