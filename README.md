@@ -1,20 +1,18 @@
 # nishfmt
 
-This is not a formatter FOR nish, its one fast native formatter 
-for C++, Java, Kotlin, Ruby, Swift, Rust, Dart and C# written in nish. 
-For each language it matches one reference formatter byte for byte
-(clang-format, google-java-format, ktfmt, RuboCop, SwiftFormat, rustfmt,
-`dart format` and CSharpier), and it is 4 to 76 times faster than that
-formatter, depending on the language and the number of cores. It uses each
-tool's default settings and reads no configuration files; see
-[Settings](#settings).
+nishfmt is not a formatter for Nish code. It is one fast native formatter for
+C++, Java, Kotlin, Ruby, Swift, Rust, Dart and C#, written in Nish. For each
+language it matches one reference formatter byte for byte (clang-format,
+google-java-format, ktfmt, RuboCop, SwiftFormat, rustfmt, `dart format` and
+CSharpier), and it is 4 to 76 times faster than that formatter, depending on
+the language and the number of cores. It uses each tool's default settings
+and reads no configuration files; see [Settings](#settings).
 
 nishfmt is written in [Nish](https://github.com/amritk/nish), a static subset
-of TypeScript compiled ahead of time to a native binary. It formats code in
-those eight languages, not Nish itself. Each formatter except C++ is a port of
-its reference tool, translated into Nish; the C++ formatter is a rewrite that
-makes clang-format's decisions. A file nishfmt cannot format exactly as the
-reference tool would is left untouched.
+of TypeScript compiled ahead of time to a native binary. Each formatter
+except C++ is a port of its reference tool, translated into Nish; the C++
+formatter is a rewrite that makes clang-format's decisions. A file nishfmt
+cannot format exactly as the reference tool would is left untouched.
 
 ## Languages and speed
 
@@ -48,9 +46,6 @@ pinned to one core:
 - nishfmt picks the language from the file name: `.cpp .cc .cxx .hpp .hh
   .hxx .h`, `.java`, `.kt .kts`, `.cs`, `.dart`, `.swift`, `.rs`, and
   RuboCop's default `Include` for Ruby (`.rb`, `Gemfile`, `.gemspec`, ...).
-- Where a Rust reimplementation of the reference tool exists (ktrs for
-  ktfmt, rbcop for RuboCop), nishfmt is faster than it too;
-  [Benchmarks](docs/benchmarks.md#rust-reimplementations) has the numbers.
 
 [Benchmarks](docs/benchmarks.md) says how each corpus was built and how to
 rerun every number.
