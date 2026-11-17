@@ -5,9 +5,9 @@ for C++, Java, Kotlin, Ruby, Swift, Rust, Dart and C# written in nish.
 For each language it matches one reference formatter byte for byte
 (clang-format, google-java-format, ktfmt, RuboCop, SwiftFormat, rustfmt,
 `dart format` and CSharpier), and it is 4 to 76 times faster than that
-formatter, depending on the language and the number of cores. Where a Rust
-reimplementation of the reference exists (ktrs, rbcop), nishfmt is faster
-than it too.
+formatter, depending on the language and the number of cores. It uses each
+tool's default settings and reads no configuration files; see
+[Settings](#settings).
 
 nishfmt is written in [Nish](https://github.com/amritk/nish), a static subset
 of TypeScript compiled ahead of time to a native binary. It formats code in
@@ -21,17 +21,17 @@ reference tool would is left untouched.
 Times are for formatting each corpus in place, on a 4-core container and
 pinned to one core:
 
-| Language | Matches | Files | Identical | Reference tool, 4 cores / 1 core | Rust reimplementation, 4 cores / 1 core | nishfmt, 4 cores / 1 core |
-| --- | --- | ---: | ---: | ---: | ---: | ---: |
-| C++ | clang-format 18, `{BasedOnStyle: LLVM, ColumnLimit: 120}` | 10344 | 10306 | 87.0 s / 212.9 s | none | **7.07 s / 28.9 s** |
-| Java | google-java-format 1.28 | 7627 | 7627 | 75.2 s / 252.9 s | none | **2.17 s / 8.64 s** |
-| Kotlin | ktfmt 0.64, default style | 9602 | 9602 | 92.9 s / not run | ktrs 0.5.1: 2.43 s / 8.96 s | **2.03 s / 7.02 s** |
-| C# | CSharpier 1.4.0, default options | 13988 | 13988 | 63.0 s / 122.7 s | none | **3.10 s / 6.63 s** |
-| Dart, tall style | `dart format` 3.14 | 10313 | 10313 | 55.2 s / 59.9 s | none | **3.08 s / 8.50 s** |
-| Dart, short style (below 3.7) | `dart format` 3.14 | 8218 | 8218 | 25.4 s / 25.6 s | none | **3.76 s / 6.27 s** |
-| Swift | SwiftFormat 0.64.7, default rules | 6710 | 6710 | 131.7 s / 262.5 s | none | **10.2 s / 29.4 s** |
-| Rust | rustfmt 1.9.0, default config, edition 2021 | 7899 | 7899 | 7.6 s / 29.1 s | none (rustfmt is native) | **1.35 s / 5.0 s** |
-| Ruby | `rubocop -a` 1.92.2, default config, `TargetRubyVersion: 3.3` | 1998 | 1998 | 303.9 s / 289.6 s | rbcop 0.1.4: 6.55 s / 20.4 s | **4.00 s / 12.7 s** |
+| Language | Matches | Files | Identical | Reference tool, 4 cores / 1 core | nishfmt, 4 cores / 1 core |
+| --- | --- | ---: | ---: | ---: | ---: |
+| C++ | clang-format 18, `{BasedOnStyle: LLVM, ColumnLimit: 120}` | 10344 | 10306 | 87.0 s / 212.9 s | **7.07 s / 28.9 s** |
+| Java | google-java-format 1.28 | 7627 | 7627 | 75.2 s / 252.9 s | **2.17 s / 8.64 s** |
+| Kotlin | ktfmt 0.64, default style | 9602 | 9602 | 92.9 s / not run | **2.03 s / 7.02 s** |
+| C# | CSharpier 1.4.0, default options | 13988 | 13988 | 63.0 s / 122.7 s | **3.10 s / 6.63 s** |
+| Dart, tall style | `dart format` 3.14 | 10313 | 10313 | 55.2 s / 59.9 s | **3.08 s / 8.50 s** |
+| Dart, short style (below 3.7) | `dart format` 3.14 | 8218 | 8218 | 25.4 s / 25.6 s | **3.76 s / 6.27 s** |
+| Swift | SwiftFormat 0.64.7, default rules | 6710 | 6710 | 131.7 s / 262.5 s | **10.2 s / 29.4 s** |
+| Rust | rustfmt 1.9.0, default config, edition 2021 | 7899 | 7899 | 7.6 s / 29.1 s | **1.35 s / 5.0 s** |
+| Ruby | `rubocop -a` 1.92.2, default config, `TargetRubyVersion: 3.3` | 1998 | 1998 | 303.9 s / 289.6 s | **4.00 s / 12.7 s** |
 
 - **Files** counts the corpus files the reference tool accepts, and
   **Identical** how many of them nishfmt formats byte for byte as it does.
@@ -48,17 +48,48 @@ pinned to one core:
 - nishfmt picks the language from the file name: `.cpp .cc .cxx .hpp .hh
   .hxx .h`, `.java`, `.kt .kts`, `.cs`, `.dart`, `.swift`, `.rs`, and
   RuboCop's default `Include` for Ruby (`.rb`, `Gemfile`, `.gemspec`, ...).
-- nitrocop, another Rust reimplementation of RuboCop, matched on fewer than
-  a quarter of the files of an earlier sample and is left out.
+- Where a Rust reimplementation of the reference tool exists (ktrs for
+  ktfmt, rbcop for RuboCop), nishfmt is faster than it too;
+  [Benchmarks](docs/benchmarks.md#rust-reimplementations) has the numbers.
 
 [Benchmarks](docs/benchmarks.md) says how each corpus was built and how to
 rerun every number.
+
+## Settings
+
+nishfmt formats each language the way its reference tool does at that
+tool's default settings, and only those. It reads no configuration file:
+`.clang-format`, `rustfmt.toml`, `.rubocop.yml`, `.swiftformat`,
+`.csharpierrc`, `.editorconfig` and `analysis_options.yaml` are all ignored,
+so a file comes out the same in any repository.
+
+- **Java, Kotlin, C#, Swift, Rust:** the tool's defaults: google-java-format's
+  Google style, ktfmt's default style, CSharpier's default options,
+  SwiftFormat's default rules, and rustfmt's default config with edition 2021.
+- **Dart:** `dart format`'s defaults. The language version, which picks the
+  style, comes from a file's `// @dart=` comment, else 3.14; package configs
+  are not read.
+- **Ruby:** `rubocop -a`: every cop RuboCop enables by default, with its safe
+  corrections only, targeting Ruby 3.3.
+- **C++:** the one exception. clang-format's own default is LLVM style at 80
+  columns; nishfmt uses LLVM style at 120, and `--width` and `--indent`
+  change the column limit and indent width.
+
+A project whose own configuration changes its formatter's output will see
+nishfmt differ from that formatter there.
 
 ## Install
 
 Each [release](https://github.com/amritk/nishfmt/releases) attaches a
 prebuilt binary for Linux and macOS (x86_64 and arm64), with `SHA256SUMS` and
 signed build provenance: unpack it and put `bin/nishfmt` on your `PATH`.
+Releases are also published to npm, which installs the binary for your
+machine:
+
+```bash
+npm install -g @amritk/nishfmt
+```
+
 There is no release yet; until there is, build from source.
 
 To build from source you need clang and lld from LLVM 15 or newer (CI uses
