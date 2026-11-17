@@ -95,7 +95,12 @@ that `.github/workflows/release.yml` calls, pinned by commit:
    starts `release.yml` on the tag.
 3. That run builds `dist/nishfmt` on Linux and macOS, x86_64 and arm64,
    checks each binary's `--version`, and attaches the tarballs with
-   `SHA256SUMS` and signed build provenance to the release.
+   `SHA256SUMS` and signed build provenance to the release. It then
+   publishes `@amritk/nishfmt` (a launcher) and one
+   `@amritk/nishfmt-<target>` package per target to npm, through trusted
+   publishing from the `npm` environment. A package's first publish needs an
+   `NPM_TOKEN` secret in that environment, since trusted publishing cannot
+   create a package.
 
 The release PR is opened with `GITHUB_TOKEN`, so CI does not run on it by
 itself; close and reopen it to run the checks before merging.

@@ -8,9 +8,6 @@
     "url": "git+https://github.com/amritk/nishfmt.git"
   },
   "homepage": "https://github.com/amritk/nishfmt",
-  "bin": {
-    "nishfmt": "dist/nishfmt"
-  },
   "engines": {
     "nish": ">=0.40.1"
   },
