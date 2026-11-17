@@ -27,7 +27,11 @@ export class CopLintEmptyConditionalBody {
       if (a.type(n) !== NT_IF || scnIfBranch(src, n) !== V_NIL) {
         continue;
       }
-      if (ssxHas(src, n, F_BEGIN) && ssxHas(src, n, F_END) && src.line(ssxFS(src, n, F_BEGIN)) === src.line(ssxFS(src, n, F_END))) {
+      if (
+        ssxHas(src, n, F_BEGIN) &&
+        ssxHas(src, n, F_END) &&
+        src.line(ssxFS(src, n, F_BEGIN)) === src.line(ssxFS(src, n, F_END))
+      ) {
         continue;
       }
       if (srdContainsComments(src, n) && !lbhCommentsContainDisables(src, n, this.c.name)) {

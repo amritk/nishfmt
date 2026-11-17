@@ -9,7 +9,8 @@ import { RbSource } from "../source";
 import { ssxFE, ssxFS, ssxHas, ssxIs, ssxLocIs, ssxSingleLine } from "./style_syntax_help";
 
 /** IfNode#unless?. */
-const lelUnless = (src: RbSource, n: i32): boolean => !ssxHas(src, n, F_QUESTION) && ssxFE(src, n, F_KEYWORD) - ssxFS(src, n, F_KEYWORD) === 6;
+const lelUnless = (src: RbSource, n: i32): boolean =>
+  !ssxHas(src, n, F_QUESTION) && ssxFE(src, n, F_KEYWORD) - ssxFS(src, n, F_KEYWORD) === 6;
 
 /** IfNode#else_branch. */
 const lelElseBranch = (src: RbSource, n: i32): i32 => (lelUnless(src, n) ? src.a.kid(n, 1) : src.a.kid(n, 2));

@@ -83,9 +83,19 @@ const swNMinus = (a: string[], b: string[]): string[] => {
 };
 
 const swSelfRequired = (s: string): boolean =>
-  s === "notice" || s === "info" || s === "debug" || s === "error" || s === "warning" || s === "fault" || s === "log" || s === "trace" || s === "critical";
-const swGlobalFunc = (s: string): boolean => s === "min" || s === "max" || s === "abs" || s === "print" || s === "stride" || s === "zip";
-const swOwnership = (s: string): boolean => s === "weak" || s === "unowned" || s === "unowned(safe)" || s === "unowned(unsafe)";
+  s === "notice" ||
+  s === "info" ||
+  s === "debug" ||
+  s === "error" ||
+  s === "warning" ||
+  s === "fault" ||
+  s === "log" ||
+  s === "trace" ||
+  s === "critical";
+const swGlobalFunc = (s: string): boolean =>
+  s === "min" || s === "max" || s === "abs" || s === "print" || s === "stride" || s === "zip";
+const swOwnership = (s: string): boolean =>
+  s === "weak" || s === "unowned" || s === "unowned(safe)" || s === "unowned(unsafe)";
 
 /** Walk state shared by the recursive helpers (Swift's inout index and stacks). */
 class SwSelfCtx {
@@ -157,7 +167,14 @@ const swIsAssignedToSelfRequiredType = (f: SwFormatter, i: i32): boolean => {
       return swIsSelfRequiredType(f, p);
     }
     const k = f.k(p);
-    if (k === SW_IDENT || f.op(p, ".", SW_OP_INFIX) || f.kw(p, "try") || f.kw(p, "await") || f.op(p, "?", SW_OP_POSTFIX) || f.op(p, "!", SW_OP_POSTFIX)) {
+    if (
+      k === SW_IDENT ||
+      f.op(p, ".", SW_OP_INFIX) ||
+      f.kw(p, "try") ||
+      f.kw(p, "await") ||
+      f.op(p, "?", SW_OP_POSTFIX) ||
+      f.op(p, "!", SW_OP_POSTFIX)
+    ) {
       index = p;
     } else {
       return false;
@@ -223,7 +240,14 @@ const swRemoveSelf = (f: SwFormatter, i: i32, exclude: string[], include: string
 };
 
 /** processDeclaredVariables(at:names:removeSelfKeyword:onlyLocal:scopeAllowsImplicitSelfRebinding:) with rebinding off. Answers the new index. */
-const swProcessDeclaredVariables = (f: SwFormatter, c: SwSelfCtx, index0: i32, names: string[], removeSelfKeyword: string, onlyLocal: boolean): i32 => {
+const swProcessDeclaredVariables = (
+  f: SwFormatter,
+  c: SwSelfCtx,
+  index0: i32,
+  names: string[],
+  removeSelfKeyword: string,
+  onlyLocal: boolean,
+): i32 => {
   let index = index0;
   const isConditional = swIsConditionalStatement(f, index);
   let declarationIndex = -1;
@@ -437,7 +461,15 @@ const swIsPropertyAccessorTok = (f: SwFormatter, i: i32, subscriptOnly: boolean)
 const swClosureLast = (c: SwSelfCtx): i32 => toI32(c.closAllows.length) - 1;
 
 /** processAccessors(_:for:at:...). */
-const swProcessAccessors = (f: SwFormatter, c: SwSelfCtx, subscriptOnly: boolean, name: string, localNames0: string[], dyn: boolean, cos: boolean): void => {
+const swProcessAccessors = (
+  f: SwFormatter,
+  c: SwSelfCtx,
+  subscriptOnly: boolean,
+  name: string,
+  localNames0: string[],
+  dyn: boolean,
+  cos: boolean,
+): void => {
   let found = false;
   const localNames = swNCopy(localNames0);
   while (!c.dead) {
@@ -578,7 +610,11 @@ const swProcessFunction = (f: SwFormatter, c: SwSelfCtx, localNames0: string[], 
 };
 
 const swSupportedSelfCapture = (s: string): boolean =>
-  s === "self" || s === "unowned self" || s === "unowned(safe) self" || s === "unowned(unsafe) self" || s === "weak self";
+  s === "self" ||
+  s === "unowned self" ||
+  s === "unowned(safe) self" ||
+  s === "unowned(unsafe) self" ||
+  s === "weak self";
 
 /** Splits tokens lo..<hi by `,` delimiters, omitting empty pieces: answers [lo0, hi0, lo1, hi1, ...]. */
 const swSplitByComma = (f: SwFormatter, lo: i32, hi: i32, out: i32[]): void => {
@@ -597,17 +633,34 @@ const swSplitByComma = (f: SwFormatter, lo: i32, hi: i32, out: i32[]): void => {
 const swTrimWs = (s: string): string => {
   let a = 0;
   let b = toI32(s.length);
-  while (a < b && (s.charCodeAt(a) === 32 || s.charCodeAt(a) === 9 || s.charCodeAt(a) === 10 || s.charCodeAt(a) === 13)) {
+  while (
+    a < b &&
+    (s.charCodeAt(a) === 32 || s.charCodeAt(a) === 9 || s.charCodeAt(a) === 10 || s.charCodeAt(a) === 13)
+  ) {
     a++;
   }
-  while (b > a && (s.charCodeAt(b - 1) === 32 || s.charCodeAt(b - 1) === 9 || s.charCodeAt(b - 1) === 10 || s.charCodeAt(b - 1) === 13)) {
+  while (
+    b > a &&
+    (s.charCodeAt(b - 1) === 32 ||
+      s.charCodeAt(b - 1) === 9 ||
+      s.charCodeAt(b - 1) === 10 ||
+      s.charCodeAt(b - 1) === 13)
+  ) {
     b--;
   }
   return s.substring(a, b);
 };
 
 /** processBody(at:...). */
-const swProcessBody = (f: SwFormatter, c: SwSelfCtx, inputLocalNames: string[], dyn: boolean, classOrStatic0: boolean, isTypeRoot: boolean, isInit: boolean): void => {
+const swProcessBody = (
+  f: SwFormatter,
+  c: SwSelfCtx,
+  inputLocalNames: string[],
+  dyn: boolean,
+  classOrStatic0: boolean,
+  isTypeRoot: boolean,
+  isInit: boolean,
+): void => {
   if (c.dead) {
     return;
   }
@@ -779,7 +832,11 @@ const swProcessBody = (f: SwFormatter, c: SwSelfCtx, inputLocalNames: string[], 
         s === "class" ||
         s === "actor" ||
         (s === "where" &&
-          (lastKeyword === "extension" || lastKeyword === "struct" || lastKeyword === "enum" || lastKeyword === "class" || lastKeyword === "actor")))
+          (lastKeyword === "extension" ||
+            lastKeyword === "struct" ||
+            lastKeyword === "enum" ||
+            lastKeyword === "class" ||
+            lastKeyword === "actor")))
     ) {
       if (!f.lastIs(SW_T_NON_SPACE_OR_COMMENT_OR_LINEBREAK, index, SW_KEYWORD, "import")) {
         const scopeStart = f.indexOfAfter(SW_START, "{", 0, index);
@@ -809,7 +866,11 @@ const swProcessBody = (f: SwFormatter, c: SwSelfCtx, inputLocalNames: string[], 
         c.typeNames.pop();
         c.typeKws.pop();
       }
-    } else if (isKw && s === "case" && (lastKeyword === "if" || lastKeyword === "while" || lastKeyword === "guard" || lastKeyword === "for")) {
+    } else if (
+      isKw &&
+      s === "case" &&
+      (lastKeyword === "if" || lastKeyword === "while" || lastKeyword === "guard" || lastKeyword === "for")
+    ) {
       // break
     } else if (isKw && (s === "var" || s === "let")) {
       lastKeywordIndex = index;
@@ -832,7 +893,8 @@ const swProcessBody = (f: SwFormatter, c: SwSelfCtx, inputLocalNames: string[], 
         lastKeyword = "";
       } else if (lastKeyword === "if" || lastKeyword === "while" || lastKeyword === "guard" || lastKeyword === "for") {
         const scopedNames = swNCopy(localNames);
-        const removeSelf = !dyn && ((c.staticSelf && classOrStatic) || (!c.staticSelf && !inClosureDisallowingImplicitSelf));
+        const removeSelf =
+          !dyn && ((c.staticSelf && classOrStatic) || (!c.staticSelf && !inClosureDisallowingImplicitSelf));
         const guardDeclared: string[] = [];
         if (lastKeyword === "guard") {
           swProcessDeclaredVariables(f, c, c.idx, guardDeclared, "", false);
@@ -862,7 +924,11 @@ const swProcessBody = (f: SwFormatter, c: SwSelfCtx, inputLocalNames: string[], 
           }
           c.idx = e + 1;
         }
-        while (toI32(scopeK.length) > 0 && scopeK[toI32(scopeK.length) - 1] === SW_START && scopeS[toI32(scopeS.length) - 1] === "(") {
+        while (
+          toI32(scopeK.length) > 0 &&
+          scopeK[toI32(scopeK.length) - 1] === SW_START &&
+          scopeS[toI32(scopeS.length) - 1] === "("
+        ) {
           scopeTok.pop();
           scopeK.pop();
           scopeS.pop();
@@ -887,7 +953,8 @@ const swProcessBody = (f: SwFormatter, c: SwSelfCtx, inputLocalNames: string[], 
           startIndex = j2;
         }
         c.idx = startIndex + 1;
-        const bodyLocalNames = lastKeyword === "guard" ? swNMinus(localNames, swNMinus(guardDeclared, inputLocalNames)) : scopedNames;
+        const bodyLocalNames =
+          lastKeyword === "guard" ? swNMinus(localNames, swNMinus(guardDeclared, inputLocalNames)) : scopedNames;
         swProcessBody(f, c, bodyLocalNames, dyn, classOrStatic, false, isInit);
         c.idx = c.idx - 1;
         lastKeyword = "";
@@ -895,7 +962,10 @@ const swProcessBody = (f: SwFormatter, c: SwSelfCtx, inputLocalNames: string[], 
         lastKeyword = s;
       }
       classOrStatic = false;
-    } else if ((isKw && s === "where" && lastKeyword === "in") || (k === SW_START && s === "{" && lastKeyword === "in" && !swIsStartOfClosure(f, index))) {
+    } else if (
+      (isKw && s === "where" && lastKeyword === "in") ||
+      (k === SW_START && s === "{" && lastKeyword === "in" && !swIsStartOfClosure(f, index))
+    ) {
       lastKeyword = "";
       const ln = swNCopy(localNames);
       const keywordIndex = f.indexOfBefore(SW_KEYWORD, "in", 0, index);
@@ -967,7 +1037,13 @@ const swProcessBody = (f: SwFormatter, c: SwSelfCtx, inputLocalNames: string[], 
     } else if (
       k === SW_START &&
       s === "{" &&
-      (lastKeyword === "for" || lastKeyword === "where" || lastKeyword === "if" || lastKeyword === "else" || lastKeyword === "while" || lastKeyword === "do" || lastKeyword === "repeat")
+      (lastKeyword === "for" ||
+        lastKeyword === "where" ||
+        lastKeyword === "if" ||
+        lastKeyword === "else" ||
+        lastKeyword === "while" ||
+        lastKeyword === "do" ||
+        lastKeyword === "repeat")
     ) {
       let skip = false;
       if (lastKeyword !== "repeat") {
@@ -1025,18 +1101,23 @@ const swProcessBody = (f: SwFormatter, c: SwSelfCtx, inputLocalNames: string[], 
     } else if (k === SW_IDENT && s === c.selfKw) {
       if (f.isEnabled() && !isTypeRoot && !dyn && (!c.staticSelf || classOrStatic)) {
         const dotIndex = f.indexAfter(SW_T_NON_SPACE_OR_LINEBREAK, index);
-        if (dotIndex >= 0 && f.op(dotIndex, ".", SW_OP_INFIX) && f.indexAfter(SW_T_NON_SPACE_OR_LINEBREAK, dotIndex) >= 0) {
+        if (
+          dotIndex >= 0 &&
+          f.op(dotIndex, ".", SW_OP_INFIX) &&
+          f.indexAfter(SW_T_NON_SPACE_OR_LINEBREAK, dotIndex) >= 0
+        ) {
           const cl2 = swClosureLast(c);
           if (!(cl2 >= 0 && !c.closAllows[cl2])) {
             swRemoveSelf(f, index, localNames, [], false);
           }
         }
       }
-    } else if ((k === SW_IDENT) || (isKw && swStrIsMacro(s))) {
+    } else if (k === SW_IDENT || (isKw && swStrIsMacro(s))) {
       let isTypeOf = false;
       if (k === SW_IDENT && s === "type") {
         const pi = f.indexAfter(SW_T_NON_SPACE_OR_COMMENT_OR_LINEBREAK, index);
-        isTypeOf = pi >= 0 && f.tok(pi, SW_START, "(") && f.nextIs(SW_T_NON_SPACE_OR_COMMENT_OR_LINEBREAK, pi, SW_IDENT, "of");
+        isTypeOf =
+          pi >= 0 && f.tok(pi, SW_START, "(") && f.nextIs(SW_T_NON_SPACE_OR_COMMENT_OR_LINEBREAK, pi, SW_IDENT, "of");
       }
       if (!isTypeOf && f.isEnabled() && !isTypeRoot && s === "lazy") {
         lastKeyword = "lazy";
@@ -1080,7 +1161,15 @@ const swNextNotIdent = (f: SwFormatter, i: i32): boolean => {
 };
 
 /** The closure case of processBody. */
-const swProcessClosure = (f: SwFormatter, c: SwSelfCtx, index: i32, localNames: string[], dyn: boolean, classOrStatic: boolean, isInit: boolean): void => {
+const swProcessClosure = (
+  f: SwFormatter,
+  c: SwSelfCtx,
+  index: i32,
+  localNames: string[],
+  dyn: boolean,
+  classOrStatic: boolean,
+  isInit: boolean,
+): void => {
   const ki = f.indexAfter(SW_T_KEYWORD, index);
   const inIndex = ki >= 0 && f.kw(ki, "in") ? ki : -1;
   let capLo = -1;

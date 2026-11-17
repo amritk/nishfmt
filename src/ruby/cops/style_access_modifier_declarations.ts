@@ -4,7 +4,20 @@
 // Ported from RuboCop 1.92.2 (MIT License, Copyright (c) 2012-24 Bozhidar
 // Batsov).
 
-import { F_BEGIN, F_SELECTOR, NT_ARRAY, NT_BLOCK, NT_CONST, NT_IF, NT_NUMBLOCK, NT_PAIR, NT_SEND, NT_SPLAT, NT_SYM, V_NIL } from "../ast";
+import {
+  F_BEGIN,
+  F_SELECTOR,
+  NT_ARRAY,
+  NT_BLOCK,
+  NT_CONST,
+  NT_IF,
+  NT_NUMBLOCK,
+  NT_PAIR,
+  NT_SEND,
+  NT_SPLAT,
+  NT_SYM,
+  V_NIL,
+} from "../ast";
 import { RbCop } from "../cop";
 import { RbSource } from "../source";
 import { ssxAccessModifier, ssxFE, ssxFS, ssxHas, ssxIs, ssxMeth } from "./style_syntax_help";
@@ -71,7 +84,11 @@ const rbAmdAllowed = (src: RbSource, n: i32): boolean => {
       return true;
     }
   }
-  return sym || rbAmdWrapped(src, n, " attr attr_reader attr_writer attr_accessor ", -1) || rbAmdWrapped(src, n, " alias_method ", 2);
+  return (
+    sym ||
+    rbAmdWrapped(src, n, " attr attr_reader attr_writer attr_accessor ", -1) ||
+    rbAmdWrapped(src, n, " alias_method ", 2)
+  );
 };
 
 export class CopStyleAccessModifierDeclarations {
@@ -111,7 +128,13 @@ export class CopStyleAccessModifierDeclarations {
             skip = true;
             break;
           }
-          if (ssxIs(src, s, NT_SEND) && !rbAmdAllowed(src, s) && a.nKid(s) >= 3 && a.kid(s, 2) !== V_NIL && ssxMeth(src, s) === ssxMeth(src, n)) {
+          if (
+            ssxIs(src, s, NT_SEND) &&
+            !rbAmdAllowed(src, s) &&
+            a.nKid(s) >= 3 &&
+            a.kid(s, 2) !== V_NIL &&
+            ssxMeth(src, s) === ssxMeth(src, n)
+          ) {
             skip = true;
             break;
           }

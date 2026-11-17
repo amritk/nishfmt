@@ -36,9 +36,11 @@ export const K_END_STRING: i32 = 8;
 export const K_IN_STRING: i32 = 9;
 
 export const rsKindIsComment = (k: i32): boolean => k >= K_START_COMMENT && k <= K_IN_STRING_COMMENTED;
-export const rsKindInsideComment = (k: i32): boolean => k === K_IN_COMMENT || (k >= K_START_STRING_COMMENTED && k <= K_IN_STRING_COMMENTED);
+export const rsKindInsideComment = (k: i32): boolean =>
+  k === K_IN_COMMENT || (k >= K_START_STRING_COMMENTED && k <= K_IN_STRING_COMMENTED);
 export const rsKindIsString = (k: i32): boolean => k === K_IN_STRING || k === K_START_STRING;
-export const rsKindIsCommentedString = (k: i32): boolean => k === K_IN_STRING_COMMENTED || k === K_START_STRING_COMMENTED;
+export const rsKindIsCommentedString = (k: i32): boolean =>
+  k === K_IN_STRING_COMMENTED || k === K_START_STRING_COMMENTED;
 
 // CodeCharKind.
 export const CK_NORMAL: i32 = 0;
@@ -984,7 +986,13 @@ const identifyComment = (orig: string, shape: RsShape, cfg: RsConfig, isDoc: boo
   if (restStr === null) {
     return null;
   }
-  return rewritten + "\n" + (hasBareLines && style.isLineComment() ? "\n" : "") + rsIndentStr(cfg, shape.bi, shape.al) + restStr;
+  return (
+    rewritten +
+    "\n" +
+    (hasBareLines && style.isLineComment() ? "\n" : "") +
+    rsIndentStr(cfg, shape.bi, shape.al) +
+    restStr
+  );
 };
 
 /** rewrite_comment(orig, block_style, shape, config). */
@@ -1005,7 +1013,12 @@ export const rsRewriteMissingComment = (snippet: string, shape: RsShape, cfg: Rs
 };
 
 /** recover_missing_comment_in_span over the text `snippet`. */
-export const rsRecoverMissingCommentInSpan = (snippet: string, shape: RsShape, cfg: RsConfig, usedWidth: i32): string | null => {
+export const rsRecoverMissingCommentInSpan = (
+  snippet: string,
+  shape: RsShape,
+  cfg: RsConfig,
+  usedWidth: i32,
+): string | null => {
   const mc = rsRewriteMissingComment(snippet, shape, cfg);
   if (mc === null) {
     return null;

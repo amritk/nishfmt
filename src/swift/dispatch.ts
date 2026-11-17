@@ -124,18 +124,9 @@ import {
   SW_RULE_WRAP_SINGLE_LINE_COMMENTS,
   SW_RULE_YODA_CONDITIONS,
 } from "./rules";
-import {
-  swRuleDuplicateImports,
-  swRuleSortImports,
-} from "./imports";
-import {
-  swRuleIndent,
-} from "./rule_indent";
-import {
-  swRuleExtensionAccessControl,
-  swRuleRedundantInternal,
-  swRuleRedundantPublic,
-} from "./rules_acl";
+import { swRuleDuplicateImports, swRuleSortImports } from "./imports";
+import { swRuleIndent } from "./rule_indent";
+import { swRuleExtensionAccessControl, swRuleRedundantInternal, swRuleRedundantPublic } from "./rules_acl";
 import {
   swRuleBlankLineAfterImports,
   swRuleBlankLinesAtEndOfScope,
@@ -154,68 +145,29 @@ import {
   swRuleModifiersOnSameLine,
   swRuleSortTypealiases,
 } from "./rules_blank2";
-import {
-  swRuleBraces,
-  swRuleElseOnSameLine,
-  swRuleWrapMultilineStatementBraces,
-} from "./rules_braces";
-import {
-  swRuleRedundantClosure,
-} from "./rules_closure";
-import {
-  swRuleTrailingCommas,
-} from "./rules_commas";
-import {
-  swRuleDocComments,
-} from "./rules_doc";
-import {
-  swRuleRedundantEnumerated,
-} from "./rules_enumerated";
-import {
-  swRuleRedundantEquatable,
-} from "./rules_equatable";
+import { swRuleBraces, swRuleElseOnSameLine, swRuleWrapMultilineStatementBraces } from "./rules_braces";
+import { swRuleRedundantClosure } from "./rules_closure";
+import { swRuleTrailingCommas } from "./rules_commas";
+import { swRuleDocComments } from "./rules_doc";
+import { swRuleRedundantEnumerated } from "./rules_enumerated";
+import { swRuleRedundantEquatable } from "./rules_equatable";
 import {
   swRuleEnumNamespaces,
   swRuleExtensionAttributes,
   swRuleRedundantFileprivate,
   swRuleRedundantNilInit,
 } from "./rules_ext";
-import {
-  swRulePreferForLoop,
-} from "./rules_forloop";
-import {
-  swRuleSimplifyGenericConstraints,
-} from "./rules_generic";
-import {
-  swRuleRepeatedGuard,
-} from "./rules_guard";
-import {
-  swRuleHoistTry,
-} from "./rules_hoist";
-import {
-  swRuleHoistPatternLet,
-} from "./rules_hoistlet";
-import {
-  swRuleRedundantMemberwiseInit,
-} from "./rules_memberwise";
-import {
-  swRuleBlankLinesBetweenChainedFunctions,
-  swRuleSemicolons,
-  swRuleTodos,
-} from "./rules_misc";
-import {
-  swRuleRedundantInit,
-  swRuleRedundantVariable,
-} from "./rules_misc2";
-import {
-  swRuleNestedIf,
-} from "./rules_nestedif";
-import {
-  swRuleRedundantParens,
-} from "./rules_parens";
-import {
-  swRuleRedundantType,
-} from "./rules_redtype";
+import { swRulePreferForLoop } from "./rules_forloop";
+import { swRuleSimplifyGenericConstraints } from "./rules_generic";
+import { swRuleRepeatedGuard } from "./rules_guard";
+import { swRuleHoistTry } from "./rules_hoist";
+import { swRuleHoistPatternLet } from "./rules_hoistlet";
+import { swRuleRedundantMemberwiseInit } from "./rules_memberwise";
+import { swRuleBlankLinesBetweenChainedFunctions, swRuleSemicolons, swRuleTodos } from "./rules_misc";
+import { swRuleRedundantInit, swRuleRedundantVariable } from "./rules_misc2";
+import { swRuleNestedIf } from "./rules_nestedif";
+import { swRuleRedundantParens } from "./rules_parens";
+import { swRuleRedundantType } from "./rules_redtype";
 import {
   swRuleAssertionFailures,
   swRuleInitCoderUnavailable,
@@ -226,13 +178,8 @@ import {
   swRuleRedundantRawValues,
   swRuleRedundantVoidReturnType,
 } from "./rules_redundant1";
-import {
-  swRuleRedundantReturn,
-} from "./rules_return";
-import {
-  swRuleRedundantSelf,
-  swRuleRedundantStaticSelf,
-} from "./rules_self";
+import { swRuleRedundantReturn } from "./rules_return";
+import { swRuleRedundantSelf, swRuleRedundantStaticSelf } from "./rules_self";
 import {
   swRuleRedundantBreak,
   swRuleRedundantGet,
@@ -260,11 +207,7 @@ import {
   swRuleSpaceInsideGenerics,
   swRuleSpaceInsideParens,
 } from "./rules_spacing";
-import {
-  swRuleContentBuilder,
-  swRuleRedundantEmptyView,
-  swRuleRedundantSwiftUIGroup,
-} from "./rules_swiftui";
+import { swRuleContentBuilder, swRuleRedundantEmptyView, swRuleRedundantSwiftUIGroup } from "./rules_swiftui";
 import {
   swRuleNoForceTryInTests,
   swRuleRedundantAsync,
@@ -272,33 +215,18 @@ import {
   swRuleRedundantThrows,
   swRuleSwiftTestingTestCaseNames,
 } from "./rules_tests";
-import {
-  swRuleTrailingClosures,
-} from "./rules_trailing";
-import {
-  swRuleAndOperator,
-  swRuleNumberFormatting,
-  swRuleTypeSugar,
-  swRuleVoid,
-} from "./rules_types";
-import {
-  swRuleUnusedArguments,
-} from "./rules_unused";
-import {
-  swRuleNoForceUnwrapInTests,
-} from "./rules_unwrap";
-import {
-  swRuleWrapArguments,
-} from "./rules_wraparg";
+import { swRuleTrailingClosures } from "./rules_trailing";
+import { swRuleAndOperator, swRuleNumberFormatting, swRuleTypeSugar, swRuleVoid } from "./rules_types";
+import { swRuleUnusedArguments } from "./rules_unused";
+import { swRuleNoForceUnwrapInTests } from "./rules_unwrap";
+import { swRuleWrapArguments } from "./rules_wraparg";
 import {
   swRuleWrapFunctionBodies,
   swRuleWrapIfStatementBodies,
   swRuleWrapLoopBodies,
   swRuleWrapPropertyBodies,
 } from "./rules_wrapbody";
-import {
-  swRuleYodaConditions,
-} from "./rules_yoda";
+import { swRuleYodaConditions } from "./rules_yoda";
 
 /** Applies rule `r`; answers false when the rule is not ported or cannot handle the file. */
 export const swRunRule = (f: SwFormatter, r: i32): boolean => {

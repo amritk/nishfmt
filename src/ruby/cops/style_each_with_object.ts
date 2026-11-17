@@ -6,7 +6,19 @@
 import { F_SELECTOR, NT_ARGS, NT_BEGIN, NT_BLOCK, NT_LVAR, NT_NUMBLOCK, V_NIL } from "../ast";
 import { RbCop } from "../cop";
 import { RbSource } from "../source";
-import { ssxAssignment, ssxBasicLiteral, ssxDescendants, ssxFE, ssxFS, ssxIs, ssxIsCall, ssxMeth, ssxSymText, ssxWholeLinesE, ssxWholeLinesS } from "./style_syntax_help";
+import {
+  ssxAssignment,
+  ssxBasicLiteral,
+  ssxDescendants,
+  ssxFE,
+  ssxFS,
+  ssxIs,
+  ssxIsCall,
+  ssxMeth,
+  ssxSymText,
+  ssxWholeLinesE,
+  ssxWholeLinesS,
+} from "./style_syntax_help";
 
 /** return_value: the body's last expression when it is an lvar (V_NIL otherwise). */
 const ssxEwoReturnValue = (src: RbSource, body: i32): i32 => {

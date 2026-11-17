@@ -34,7 +34,13 @@ const nhdnForbidden = (s: string): boolean => {
         e = i + 3;
       }
     }
-    if (e < 0 && i + 2 < n && nhdnUp(s.charCodeAt(i)) === 69 && nhdnUp(s.charCodeAt(i + 1)) === 78 && nhdnUp(s.charCodeAt(i + 2)) === 68) {
+    if (
+      e < 0 &&
+      i + 2 < n &&
+      nhdnUp(s.charCodeAt(i)) === 69 &&
+      nhdnUp(s.charCodeAt(i + 1)) === 78 &&
+      nhdnUp(s.charCodeAt(i + 2)) === 68
+    ) {
       e = i + 3;
     }
     if (e >= 0 && (e === n || nhdnSpace(s.charCodeAt(e)))) {

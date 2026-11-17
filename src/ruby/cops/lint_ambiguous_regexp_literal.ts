@@ -26,7 +26,16 @@ import { RbCop } from "../cop";
 import { rnE, rnHas } from "../node";
 import { RbRewriter } from "../rewriter";
 import { RbSource, TK_COMMENT } from "../source";
-import { TK_kDEFINED, TK_kNOT, TK_kSUPER, TK_kYIELD, TK_tCONSTANT, TK_tFID, TK_tIDENTIFIER, TK_tREGEXP_BEG } from "../tables";
+import {
+  TK_kDEFINED,
+  TK_kNOT,
+  TK_kSUPER,
+  TK_kYIELD,
+  TK_tCONSTANT,
+  TK_tFID,
+  TK_tIDENTIFIER,
+  TK_tREGEXP_BEG,
+} from "../tables";
 
 const rbArlIs = (src: RbSource, n: i32, t: i32): boolean => n !== V_NIL && src.a.isNode(n) && src.a.type(n) === t;
 
@@ -134,7 +143,10 @@ export class CopLintAmbiguousRegexpLiteral {
     }
     if (!up) {
       // part_of_hash_argument?
-      up = rbArlIs(src, node, NT_PAIR) || rbArlIs(src, par, NT_PAIR) || (rbArlIs(src, node, NT_HASH) && !rnHas(src, node, F_BEGIN));
+      up =
+        rbArlIs(src, node, NT_PAIR) ||
+        rbArlIs(src, par, NT_PAIR) ||
+        (rbArlIs(src, node, NT_HASH) && !rnHas(src, node, F_BEGIN));
     }
     if (up) {
       return this.findOffenseNode(src, par, rr);

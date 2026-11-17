@@ -81,7 +81,8 @@ export const rbLitContainsAny = (s: string, ds: string[]): boolean => {
 };
 
 /** ASCII letter or digit. */
-export const rbLitAsciiAlnum = (c: i32): boolean => (c >= 48 && c <= 57) || (c >= 65 && c <= 90) || (c >= 97 && c <= 122);
+export const rbLitAsciiAlnum = (c: i32): boolean =>
+  (c >= 48 && c <= 57) || (c >= 65 && c <= 90) || (c >= 97 && c <= 122);
 
 /** Ruby's regexp `\w` (ASCII only). */
 export const rbLitWordC = (c: i32): boolean => rbLitAsciiAlnum(c) || c === 95;
@@ -192,7 +193,8 @@ export const rbLitBlockLiteral = (src: RbSource, n: i32): boolean => {
 };
 
 /** ParameterizedNode#parenthesized?: loc.end is `)`. */
-export const rbLitParenthesized = (src: RbSource, n: i32): boolean => rnHas(src, n, F_END) && src.src(rnS(src, n, F_END), rnE(src, n, F_END)) === ")";
+export const rbLitParenthesized = (src: RbSource, n: i32): boolean =>
+  rnHas(src, n, F_END) && src.src(rnS(src, n, F_END), rnE(src, n, F_END)) === ")";
 
 /** PercentArray#invalid_percent_array_context?: an argument of an unparenthesized send with a block. */
 export const rbLitInvalidPercentContext = (src: RbSource, n: i32): boolean => {

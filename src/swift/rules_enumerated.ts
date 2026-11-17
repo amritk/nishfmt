@@ -10,7 +10,16 @@ import { swUnescaped } from "./funcdecl";
 import { swEndOfScope, swIsStartOfClosure, swStartOfForLoopPattern, swStartOfScope } from "./parsing";
 import { swParseFunctionCallArguments } from "./rules_trailing";
 import { swRemoveUsed } from "./rules_unused";
-import { SW_DELIM, SW_END, SW_IDENT, SW_OP, SW_OP_INFIX, SW_OP_PREFIX, SW_START, SW_T_NON_SPACE_OR_COMMENT_OR_LINEBREAK } from "./token";
+import {
+  SW_DELIM,
+  SW_END,
+  SW_IDENT,
+  SW_OP,
+  SW_OP_INFIX,
+  SW_OP_PREFIX,
+  SW_START,
+  SW_T_NON_SPACE_OR_COMMENT_OR_LINEBREAK,
+} from "./token";
 
 /** startOfMemberCallReceiver(endingAt:stoppingAtLeadingNegation:), or -1. */
 export const swStartOfMemberCallReceiver = (f: SwFormatter, dotIndex: i32, stopAtNegation: boolean): i32 => {
@@ -147,7 +156,10 @@ const swRemoveRedundantEnumerated = (f: SwFormatter, forIndex: i32): void => {
     return;
   }
   const rs = swStartOfMemberCallReceiver(f, dot, false);
-  if (rs < 0 || !(rs === ss || (f.tok(ss, SW_IDENT, "unsafe") && f.indexAfter(SW_T_NON_SPACE_OR_COMMENT_OR_LINEBREAK, ss) === rs))) {
+  if (
+    rs < 0 ||
+    !(rs === ss || (f.tok(ss, SW_IDENT, "unsafe") && f.indexAfter(SW_T_NON_SPACE_OR_COMMENT_OR_LINEBREAK, ss) === rs))
+  ) {
     return;
   }
   const after = f.indexAfter(SW_T_NON_SPACE_OR_COMMENT_OR_LINEBREAK, se);

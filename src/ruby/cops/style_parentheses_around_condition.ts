@@ -4,14 +4,40 @@
 // Ported from RuboCop 1.92.2 (MIT License, Copyright (c) 2012-24 Bozhidar
 // Batsov).
 
-import { F_BEGIN, F_END, F_HEREDOC_END, NT_BEGIN, NT_IF, NT_MASGN, NT_RESCUE, NT_SUPER, NT_UNTIL, NT_WHILE, NT_YIELD, V_NIL } from "../ast";
+import {
+  F_BEGIN,
+  F_END,
+  F_HEREDOC_END,
+  NT_BEGIN,
+  NT_IF,
+  NT_MASGN,
+  NT_RESCUE,
+  NT_SUPER,
+  NT_UNTIL,
+  NT_WHILE,
+  NT_YIELD,
+  V_NIL,
+} from "../ast";
 import { RbCop } from "../cop";
 import { rbFinalPos } from "../help";
 import { RbRewriter } from "../rewriter";
 import { RbSource } from "../source";
 import { scnBasicConditional, scnEachStr, scnHeredoc, scnModifier, scnTernary } from "./style_cond_help";
 import { stpSafeAssignment } from "./style_ternary_parentheses";
-import { ssxAssignment, ssxFE, ssxFS, ssxIs, ssxIsAnyBlock, ssxIsCall, ssxIsSpace, ssxLocIs, ssxMeth, ssxOperatorName, ssxParenthesized, ssxSetter } from "./style_syntax_help";
+import {
+  ssxAssignment,
+  ssxFE,
+  ssxFS,
+  ssxIs,
+  ssxIsAnyBlock,
+  ssxIsCall,
+  ssxIsSpace,
+  ssxLocIs,
+  ssxMeth,
+  ssxOperatorName,
+  ssxParenthesized,
+  ssxSetter,
+} from "./style_syntax_help";
 
 /** /[a-z]/ on one code point. */
 const spacLower = (c: i32): boolean => c >= 97 && c <= 122;

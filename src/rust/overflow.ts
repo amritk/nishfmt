@@ -332,7 +332,11 @@ class OvContext {
     const ctx = this.ctx;
     const ast = ctx.ast;
     const n = this.items.length;
-    const combineArgWithCallee = n === 1 && isExprItem(ast, this.oc, this.items[0]) && !hasAttrs(ast, this.oc, this.items[0]) && toI32(this.ident.length) < ctx.cfg.tabSpaces;
+    const combineArgWithCallee =
+      n === 1 &&
+      isExprItem(ast, this.oc, this.items[0]) &&
+      !hasAttrs(ast, this.oc, this.items[0]) &&
+      toI32(this.ident.length) < ctx.cfg.tabSpaces;
     const overflowLast = combineArgWithCallee || (n > 0 && canBeOverflowedItem(ctx, this.oc, this.items[n - 1], n));
     let placeholder: string | null = null;
     if (overflowLast) {
@@ -365,14 +369,28 @@ class OvContext {
     } else if (n > 0) {
       listItems[n - 1].item = itemRewrite(ctx, this.oc, this.items[n - 1], this.nestedShape);
       const it0 = listItems[0];
-      if (n === 1 && this.oneLineWidth !== 0 && !it0.hasComment() && !rsHasByte(it0.inner(), 10) && rsTotalItemWidth(it0) <= this.oneLineWidth) {
+      if (
+        n === 1 &&
+        this.oneLineWidth !== 0 &&
+        !it0.hasComment() &&
+        !rsHasByte(it0.inner(), 10) &&
+        rsTotalItemWidth(it0) <= this.oneLineWidth
+      ) {
         tactic = DLT_HORIZONTAL;
       } else {
         tactic = this.defaultTactic(listItems);
         if (tactic === DLT_VERTICAL) {
-          const numBefore = this.oc === OC_MACRO_ARG ? specialCaseArgs(this.ident) : this.oc === OC_META && this.ident === "fail" ? 0 : -1;
+          const numBefore =
+            this.oc === OC_MACRO_ARG
+              ? specialCaseArgs(this.ident)
+              : this.oc === OC_META && this.ident === "fail"
+                ? 0
+                : -1;
           if (numBefore >= 0) {
-            const allSimple = n > numBefore && isEveryExprSimple(ctx, this.oc, this.items, 0, numBefore) && isEveryExprSimple(ctx, this.oc, this.items, numBefore + 1, n);
+            const allSimple =
+              n > numBefore &&
+              isEveryExprSimple(ctx, this.oc, this.items, 0, numBefore) &&
+              isEveryExprSimple(ctx, this.oc, this.items, numBefore + 1, n);
             const before: RsListItem[] = [];
             const after: RsListItem[] = [];
             for (let i = 0; i < listItems.length; i++) {
@@ -384,12 +402,16 @@ class OvContext {
             }
             const oneLine =
               allSimple &&
-              rsDefinitiveTactic(before, LT_HORIZONTAL_VERTICAL, SEP_COMMA, this.nestedShape.width) === DLT_HORIZONTAL &&
+              rsDefinitiveTactic(before, LT_HORIZONTAL_VERTICAL, SEP_COMMA, this.nestedShape.width) ===
+                DLT_HORIZONTAL &&
               rsDefinitiveTactic(after, LT_HORIZONTAL_VERTICAL, SEP_COMMA, this.nestedShape.width) === DLT_HORIZONTAL;
             if (oneLine) {
               tactic = DLT_SPECIAL_MACRO + numBefore;
             }
-          } else if (isEveryExprSimple(ctx, this.oc, this.items, 0, n) && noLongItems(listItems, ctx.cfg.shortArrayElementWidthThreshold)) {
+          } else if (
+            isEveryExprSimple(ctx, this.oc, this.items, 0, n) &&
+            noLongItems(listItems, ctx.cfg.shortArrayElementWidthThreshold)
+          ) {
             tactic = DLT_MIXED;
           }
         }
@@ -445,7 +467,8 @@ class OvContext {
     const indentStr = rsIndentStrNl(cfg, shape.bi, 0);
     let result = this.ident + prefix;
     const fitsOneLine = toI32(itemsStr.length) + 2 <= shape.width;
-    const forceSingleLine = (ctx.insideMacro && !rsHasByte(itemsStr, 10) && fitsOneLine) || (isExtendable && extendWidth <= shape.width);
+    const forceSingleLine =
+      (ctx.insideMacro && !rsHasByte(itemsStr, 10) && fitsOneLine) || (isExtendable && extendWidth <= shape.width);
     if (forceSingleLine) {
       result = result + itemsStr;
     } else {
@@ -475,7 +498,14 @@ class RsItemsResult {
   }
 }
 
-const lastItemShape = (ctx: RsCtx, oc: i32, lists: i32[], items: RsListItem[], shape: RsShape, argsMaxWidth: i32): RsShape | null => {
+const lastItemShape = (
+  ctx: RsCtx,
+  oc: i32,
+  lists: i32[],
+  items: RsListItem[],
+  shape: RsShape,
+  argsMaxWidth: i32,
+): RsShape | null => {
   if (items.length === 1 && lists.length > 0 && !isNestedCallItem(ctx.ast, oc, lists[0])) {
     return shape;
   }
@@ -516,19 +546,47 @@ export const rsNeedBlockIndent = (s: string, indentWidth: i32): boolean => {
 };
 
 /** rewrite_with_parens; [lo, hi) is the span that holds the `(`. forceSep: -1 for None. */
-export const rsRewriteWithParens = (ctx: RsCtx, ident: string, items: i32[], oc: i32, shape: RsShape, lo: i32, hi: i32, itemMaxWidth: i32, forceSep: i32): string | null => {
+export const rsRewriteWithParens = (
+  ctx: RsCtx,
+  ident: string,
+  items: i32[],
+  oc: i32,
+  shape: RsShape,
+  lo: i32,
+  hi: i32,
+  itemMaxWidth: i32,
+  forceSep: i32,
+): string | null => {
   const c = new OvContext(ctx, items, oc, ident, shape, lo, hi, "(", ")", itemMaxWidth, forceSep, "", "");
   return c.rewrite(shape);
 };
 
 /** rewrite_with_angle_brackets. */
-export const rsRewriteWithAngleBrackets = (ctx: RsCtx, ident: string, items: i32[], oc: i32, shape: RsShape, lo: i32, hi: i32): string | null => {
+export const rsRewriteWithAngleBrackets = (
+  ctx: RsCtx,
+  ident: string,
+  items: i32[],
+  oc: i32,
+  shape: RsShape,
+  lo: i32,
+  hi: i32,
+): string | null => {
   const c = new OvContext(ctx, items, oc, ident, shape, lo, hi, "<", ">", ctx.cfg.maxWidth, -1, "", "");
   return c.rewrite(shape);
 };
 
 /** rewrite_with_square_brackets; delim: the token kind of the delimiter (T_LPAREN/T_LBRACE) or -1 for `[`. */
-export const rsRewriteWithSquareBrackets = (ctx: RsCtx, name: string, items: i32[], oc: i32, shape: RsShape, lo: i32, hi: i32, forceSep: i32, delim: i32): string | null => {
+export const rsRewriteWithSquareBrackets = (
+  ctx: RsCtx,
+  name: string,
+  items: i32[],
+  oc: i32,
+  shape: RsShape,
+  lo: i32,
+  hi: i32,
+  forceSep: i32,
+  delim: i32,
+): string | null => {
   let lhs = "[";
   let rhs = "]";
   if (delim === 26) {

@@ -69,7 +69,11 @@ export class CopStyleRescueModifier {
         ind = rmlSpaces(col + 1);
         off = rmlSpaces(col > 0 ? col - 1 : 0);
       }
-      if (a.type(op) === NT_ARRAY && !ssxLocIs(src, op, F_BEGIN, "[") && !(ssxHas(src, op, F_BEGIN) && src.at(ssxFS(src, op, F_BEGIN)) === 37)) {
+      if (
+        a.type(op) === NT_ARRAY &&
+        !ssxLocIs(src, op, F_BEGIN, "[") &&
+        !(ssxHas(src, op, F_BEGIN) && src.at(ssxFS(src, op, F_BEGIN)) === 37)
+      ) {
         k.wrap(a.exS(op), a.exE(op), "[", "]");
       }
       k.remove(a.exE(op), a.exE(r));
@@ -100,7 +104,11 @@ export class CopStyleRescueModifier {
     }
     for (const s of all) {
       const t = a.type(s);
-      if ((t === NT_STR || t === NT_DSTR || t === NT_XSTR) && rnHeredoc(src, s) && a.fE(a.map(s), F_HEREDOC_END) === he) {
+      if (
+        (t === NT_STR || t === NT_DSTR || t === NT_XSTR) &&
+        rnHeredoc(src, s) &&
+        a.fE(a.map(s), F_HEREDOC_END) === he
+      ) {
         return a.fS(a.map(s), F_HEREDOC_END);
       }
     }

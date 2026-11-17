@@ -134,7 +134,9 @@ export const csCodePoint = (s: u8[], p: i32, lim: i32): i32 => {
     return ((c & 0x0f) << 12) | ((toI32(s[p + 1]) & 0x3f) << 6) | (toI32(s[p + 2]) & 0x3f);
   }
   if (p + 3 < lim) {
-    return ((c & 0x07) << 18) | ((toI32(s[p + 1]) & 0x3f) << 12) | ((toI32(s[p + 2]) & 0x3f) << 6) | (toI32(s[p + 3]) & 0x3f);
+    return (
+      ((c & 0x07) << 18) | ((toI32(s[p + 1]) & 0x3f) << 12) | ((toI32(s[p + 2]) & 0x3f) << 6) | (toI32(s[p + 3]) & 0x3f)
+    );
   }
   return c;
 };
@@ -150,7 +152,15 @@ export const csIsWhitespaceCp = (c: i32): boolean => {
   if (c < 0x80) {
     return false;
   }
-  return c === 0xa0 || c === 0xfeff || c === 0x1680 || (c >= 0x2000 && c <= 0x200a) || c === 0x202f || c === 0x205f || c === 0x3000;
+  return (
+    c === 0xa0 ||
+    c === 0xfeff ||
+    c === 0x1680 ||
+    (c >= 0x2000 && c <= 0x200a) ||
+    c === 0x202f ||
+    c === 0x205f ||
+    c === 0x3000
+  );
 };
 
 /** SyntaxFacts.IsNewLine for a code point. */
@@ -415,7 +425,11 @@ export class CsLexer {
         break;
       case 38:
         this.pos += 1;
-        k = this.tryAdvance(61) ? K_AmpersandEqualsToken : this.tryAdvance(38) ? K_AmpersandAmpersandToken : K_AmpersandToken;
+        k = this.tryAdvance(61)
+          ? K_AmpersandEqualsToken
+          : this.tryAdvance(38)
+            ? K_AmpersandAmpersandToken
+            : K_AmpersandToken;
         break;
       case 94:
         this.pos += 1;

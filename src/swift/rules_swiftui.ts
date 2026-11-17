@@ -3,7 +3,13 @@
 // Ported from SwiftFormat 0.64.7 (MIT License, Copyright (c) 2016 Nick
 // Lockwood).
 
-import { swDeclKeywordIndex, swParseConformances, swParseDeclarations, swReleaseDecls, swStringExcludingLinebreaksAndComments } from "./decl";
+import {
+  swDeclKeywordIndex,
+  swParseConformances,
+  swParseDeclarations,
+  swReleaseDecls,
+  swStringExcludingLinebreaksAndComments,
+} from "./decl";
 import { swIsInsideProtocol, swParseExpressionEnd, swParsePropertyDeclaration } from "./expr";
 import { SwDecl, SwFormatter } from "./formatter";
 import { swParseFunctionDeclaration } from "./funcdecl";
@@ -12,7 +18,19 @@ import { swEndOfScope } from "./parsing";
 import { swCollectRecursive, swParentType } from "./rules_acl";
 import { swIsSingleExpression, swStartOfBody } from "./rules_return";
 import { swIsInResultBuilder } from "./rules_simple";
-import { SW_DELIM, SW_END, SW_IDENT, SW_KEYWORD, SW_LINEBREAK, SW_OP_INFIX, SW_SPACE, SW_START, SW_T_NON_SPACE, SW_T_NON_SPACE_OR_COMMENT_OR_LINEBREAK, SwTok } from "./token";
+import {
+  SW_DELIM,
+  SW_END,
+  SW_IDENT,
+  SW_KEYWORD,
+  SW_LINEBREAK,
+  SW_OP_INFIX,
+  SW_SPACE,
+  SW_START,
+  SW_T_NON_SPACE,
+  SW_T_NON_SPACE_OR_COMMENT_OR_LINEBREAK,
+  SwTok,
+} from "./token";
 
 export const swAllSpaceOrLinebreak = (f: SwFormatter, lo: i32, hi: i32): boolean => {
   for (let j = lo; j < hi; j++) {
@@ -50,7 +68,10 @@ const swExpressionIsEmptyView = (f: SwFormatter, lo: i32, hi: i32): boolean => {
 
 /** redundantEmptyViewElseRange(at:) as its upper bound (the range starts after the previous `}`), or -1. */
 const swRedundantEmptyViewElseEnd = (f: SwFormatter, elseIndex: i32): i32 => {
-  if (!swIsInResultBuilder(f, elseIndex) || f.nextIs(SW_T_NON_SPACE_OR_COMMENT_OR_LINEBREAK, elseIndex, SW_KEYWORD, "if")) {
+  if (
+    !swIsInResultBuilder(f, elseIndex) ||
+    f.nextIs(SW_T_NON_SPACE_OR_COMMENT_OR_LINEBREAK, elseIndex, SW_KEYWORD, "if")
+  ) {
     return -1;
   }
   const p = f.indexBefore(SW_T_NON_SPACE_OR_COMMENT_OR_LINEBREAK, elseIndex);
@@ -67,7 +88,11 @@ const swRedundantEmptyViewElseEnd = (f: SwFormatter, elseIndex: i32): i32 => {
   if (ee < 0 || f.indexAfter(SW_T_NON_SPACE_OR_COMMENT_OR_LINEBREAK, ee) !== eb) {
     return -1;
   }
-  if (!swAllSpaceOrLinebreak(f, sb + 1, first) || !swAllSpaceOrLinebreak(f, ee + 1, eb) || !swExpressionIsEmptyView(f, first, ee)) {
+  if (
+    !swAllSpaceOrLinebreak(f, sb + 1, first) ||
+    !swAllSpaceOrLinebreak(f, ee + 1, eb) ||
+    !swExpressionIsEmptyView(f, first, ee)
+  ) {
     return -1;
   }
   return eb;
@@ -217,7 +242,10 @@ export const swRuleRedundantSwiftUIGroup = (f: SwFormatter): void => {
     f.insertToks(bodyTokens, first);
     if (addAt >= 0) {
       const indent = f.currentIndentForLine(addAt);
-      const toks: SwTok[] = [new SwTok(SW_KEYWORD, "@ViewBuilder", 0), new SwTok(SW_LINEBREAK, "\n", f.linebreakLine(addAt))];
+      const toks: SwTok[] = [
+        new SwTok(SW_KEYWORD, "@ViewBuilder", 0),
+        new SwTok(SW_LINEBREAK, "\n", f.linebreakLine(addAt)),
+      ];
       if (indent.length !== 0) {
         toks.push(new SwTok(SW_SPACE, indent, 0));
       }

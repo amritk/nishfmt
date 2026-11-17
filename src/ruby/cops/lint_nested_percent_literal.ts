@@ -177,7 +177,8 @@ const lnplStartsLikeLiteral = (cs: i32[]): boolean => {
     return true;
   }
   const c = cs[1];
-  const typed = c === 105 || c === 73 || c === 113 || c === 81 || c === 114 || c === 115 || c === 119 || c === 87 || c === 120;
+  const typed =
+    c === 105 || c === 73 || c === 113 || c === 81 || c === 114 || c === 115 || c === 119 || c === 87 || c === 120;
   return typed && n >= 3 && !rbLitWordC(cs[2]);
 };
 

@@ -125,7 +125,13 @@ const kIsUnicodeLetter = (cp: i32): boolean => {
     return cp === 0xaa || cp === 0xb5 || cp === 0xba || (cp >= 0xc0 && cp <= 0xff && cp !== 0xd7 && cp !== 0xf7);
   }
   if (cp >= 0x2000 && cp <= 0x2bff) {
-    return (cp >= 0x2c00 && cp <= 0x2dff) || cp === 0x2071 || cp === 0x207f || (cp >= 0x2090 && cp <= 0x209c) || (cp >= 0x2102 && cp <= 0x214f && cp !== 0x2118);
+    return (
+      (cp >= 0x2c00 && cp <= 0x2dff) ||
+      cp === 0x2071 ||
+      cp === 0x207f ||
+      (cp >= 0x2090 && cp <= 0x209c) ||
+      (cp >= 0x2102 && cp <= 0x214f && cp !== 0x2118)
+    );
   }
   if (cp >= 0x3000 && cp <= 0x303f) {
     return cp === 0x3005 || cp === 0x3006 || (cp >= 0x3031 && cp <= 0x3035) || cp === 0x303b || cp === 0x303c;
@@ -346,7 +352,12 @@ export class KLexemes {
       if (s === S_SHORT_TEMPLATE_ENTRY) {
         const e = this.identEnd(i);
         if (e > i) {
-          const isThis = e - i === 4 && this.at(i) === 116 && this.at(i + 1) === 104 && this.at(i + 2) === 105 && this.at(i + 3) === 115;
+          const isThis =
+            e - i === 4 &&
+            this.at(i) === 116 &&
+            this.at(i + 1) === 104 &&
+            this.at(i + 2) === 105 &&
+            this.at(i + 3) === 115;
           this.popState();
           this.add(isThis ? T_THIS_KEYWORD : T_IDENTIFIER, i, e);
           i = e;
@@ -381,7 +392,8 @@ export class KLexemes {
     }
     if (this.state !== S_INITIAL && this.state !== S_LONG_TEMPLATE_ENTRY) {
       // An unterminated string or template at the end.
-      this.failed = this.failed || this.state === S_STRING || this.state === S_RAW_STRING || this.state === S_STRING_PREFIX;
+      this.failed =
+        this.failed || this.state === S_STRING || this.state === S_RAW_STRING || this.state === S_STRING_PREFIX;
     }
   }
 
@@ -426,7 +438,13 @@ export class KLexemes {
         return i + 1;
       }
       // ESCAPE_SEQUENCE: \uXXXX or \ and any char but \n.
-      if (this.at(i + 1) === 117 && kIsHex(this.at(i + 2)) && kIsHex(this.at(i + 3)) && kIsHex(this.at(i + 4)) && kIsHex(this.at(i + 5))) {
+      if (
+        this.at(i + 1) === 117 &&
+        kIsHex(this.at(i + 2)) &&
+        kIsHex(this.at(i + 3)) &&
+        kIsHex(this.at(i + 4)) &&
+        kIsHex(this.at(i + 5))
+      ) {
         this.add(T_ESCAPE_SEQUENCE, i, i + 6);
         return i + 6;
       }
@@ -591,7 +609,13 @@ export class KLexemes {
           break;
         }
         if (d === 92) {
-          if (this.at(j + 1) === 117 && kIsHex(this.at(j + 2)) && kIsHex(this.at(j + 3)) && kIsHex(this.at(j + 4)) && kIsHex(this.at(j + 5))) {
+          if (
+            this.at(j + 1) === 117 &&
+            kIsHex(this.at(j + 2)) &&
+            kIsHex(this.at(j + 3)) &&
+            kIsHex(this.at(j + 4)) &&
+            kIsHex(this.at(j + 5))
+          ) {
             j += 6;
             continue;
           }

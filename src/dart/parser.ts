@@ -613,7 +613,6 @@ export class DtParser {
     return sp === 0;
   }
 
-
   // ---------------------------------------------------------------------
   // Lookahead cursors: a token index times 4 plus the number of `>`
   // characters already taken from a compound `>>`-like token.
@@ -965,8 +964,19 @@ export class DtParser {
         const ak = this.ck(ai);
         const akw = this.ckw(ai);
         if (
-          !(ak === T_SEMI || ak === T_EQ || ak === T_LT || ak === T_LPAREN || ak === T_COMMA || ak === T_RPAREN ||
-            akw === K_IN || ak === T_RBRACE || ak === T_COLON || ak === T_RBRACKET || ak === T_EOF)
+          !(
+            ak === T_SEMI ||
+            ak === T_EQ ||
+            ak === T_LT ||
+            ak === T_LPAREN ||
+            ak === T_COMMA ||
+            ak === T_RPAREN ||
+            akw === K_IN ||
+            ak === T_RBRACE ||
+            ak === T_COLON ||
+            ak === T_RBRACKET ||
+            ak === T_EOF
+          )
         ) {
           if (getOrSet && (ak === T_ARROW || ak === T_LBRACE || akw === K_ASYNC || akw === K_SYNC || ak === T_EOF)) {
             // A getter or setter.
@@ -982,8 +992,15 @@ export class DtParser {
         const nk = this.ck(next);
         if (
           recovered ||
-          !(nk === T_COMMA || nk === T_GT || nk === T_SHR || nk === T_SHR_EQ || nk === T_USHR || nk === T_USHR_EQ ||
-            nk === T_EOF)
+          !(
+            nk === T_COMMA ||
+            nk === T_GT ||
+            nk === T_SHR ||
+            nk === T_SHR_EQ ||
+            nk === T_USHR ||
+            nk === T_USHR_EQ ||
+            nk === T_EOF
+          )
         ) {
           return this.ret(NO, false, false, false, false);
         }
@@ -1166,8 +1183,17 @@ export class DtParser {
     }
     const k = this.ck(e);
     if (
-      k === T_LPAREN || k === T_DOT || k === T_EQEQ || k === T_NE || k === T_RPAREN || k === T_RBRACKET ||
-      k === T_RBRACE || k === T_SEMI || k === T_COLON || k === T_COMMA || k === T_EOF
+      k === T_LPAREN ||
+      k === T_DOT ||
+      k === T_EQEQ ||
+      k === T_NE ||
+      k === T_RPAREN ||
+      k === T_RBRACKET ||
+      k === T_RBRACE ||
+      k === T_SEMI ||
+      k === T_COLON ||
+      k === T_COMMA ||
+      k === T_EOF
     ) {
       return e;
     }
@@ -1420,7 +1446,15 @@ export class DtParser {
   // Top-level declarations.
 
   isClassModifier(kw: i32): boolean {
-    return kw === K_ABSTRACT || kw === K_BASE || kw === K_INTERFACE || kw === K_FINAL || kw === K_SEALED || kw === K_MIXIN || kw === K_AUGMENT;
+    return (
+      kw === K_ABSTRACT ||
+      kw === K_BASE ||
+      kw === K_INTERFACE ||
+      kw === K_FINAL ||
+      kw === K_SEALED ||
+      kw === K_MIXIN ||
+      kw === K_AUGMENT
+    );
   }
 
   parseTopLevelDeclaration(meta: i32, start: i32): i32 {
@@ -1449,7 +1483,10 @@ export class DtParser {
       }
       return this.parseExtension(meta, start);
     }
-    if (kw === K_TYPEDEF && (this.isId(this.p + 1) || this.k(this.p + 1) === T_LPAREN || this.kw(this.p + 1) === K_VOID)) {
+    if (
+      kw === K_TYPEDEF &&
+      (this.isId(this.p + 1) || this.k(this.p + 1) === T_LPAREN || this.kw(this.p + 1) === K_VOID)
+    ) {
       return this.parseTypedef(meta, start);
     }
     return this.parseTopLevelMember(meta, start);
@@ -1495,7 +1532,14 @@ export class DtParser {
     }
     const nameTok = getSet >= 0 ? afterType + 1 : afterType;
     const after = this.k(nameTok + 1);
-    if (getSet >= 0 || after === T_LPAREN || after === T_LBRACE || after === T_LT || after === T_DOT || after === T_ARROW) {
+    if (
+      getSet >= 0 ||
+      after === T_LPAREN ||
+      after === T_LBRACE ||
+      after === T_LT ||
+      after === T_DOT ||
+      after === T_ARROW
+    ) {
       if (keyword >= 0 || late >= 0) {
         this.fail("modifier on function");
         return -1;
@@ -1602,13 +1646,30 @@ export class DtParser {
         const semi = this.expect(T_SEMI);
         this.className = saveClass;
         return this.mk(
-          N_CLASS_TYPE_ALIAS, start, meta, abs, base, iface, fin, sealed, mixin, classTok, name, tps, eq, sup, withC, impl, semi,
+          N_CLASS_TYPE_ALIAS,
+          start,
+          meta,
+          abs,
+          base,
+          iface,
+          fin,
+          sealed,
+          mixin,
+          classTok,
+          name,
+          tps,
+          eq,
+          sup,
+          withC,
+          impl,
+          semi,
         );
       }
     }
     const namePart = this.parseClassNamePart();
     const saveClass = this.className;
-    this.className = this.a.kind[namePart] === N_PRIMARY_CONSTRUCTOR_DECLARATION ? this.a.f(namePart, 1) : this.a.f(namePart, 0);
+    this.className =
+      this.a.kind[namePart] === N_PRIMARY_CONSTRUCTOR_DECLARATION ? this.a.f(namePart, 1) : this.a.f(namePart, 0);
     let ext = -1;
     if (this.kw(this.p) === K_EXTENDS) {
       const et = this.p;
@@ -1632,7 +1693,22 @@ export class DtParser {
     const body = this.parseClassBody();
     this.className = saveClass;
     return this.mk(
-      N_CLASS_DECLARATION, start, meta, abs, base, iface, fin, sealed, mixin, classTok, namePart, ext, withC, impl, native, body,
+      N_CLASS_DECLARATION,
+      start,
+      meta,
+      abs,
+      base,
+      iface,
+      fin,
+      sealed,
+      mixin,
+      classTok,
+      namePart,
+      ext,
+      withC,
+      impl,
+      native,
+      body,
     );
   }
 
@@ -1649,7 +1725,11 @@ export class DtParser {
     if (this.k(this.p) === T_LT) {
       tps = this.parseTypeParameterList();
     }
-    if (cst >= 0 || this.k(this.p) === T_LPAREN || (this.k(this.p) === T_DOT && this.isId(this.p + 1) && this.k(this.p + 2) === T_LPAREN)) {
+    if (
+      cst >= 0 ||
+      this.k(this.p) === T_LPAREN ||
+      (this.k(this.p) === T_DOT && this.isId(this.p + 1) && this.k(this.p + 2) === T_LPAREN)
+    ) {
       let cname = -1;
       if (this.k(this.p) === T_DOT) {
         const d = this.p;
@@ -1778,7 +1858,8 @@ export class DtParser {
     const enumTok = this.expectKw(K_ENUM);
     const namePart = this.parseClassNamePart();
     const saveClass = this.className;
-    this.className = this.a.kind[namePart] === N_PRIMARY_CONSTRUCTOR_DECLARATION ? this.a.f(namePart, 1) : this.a.f(namePart, 0);
+    this.className =
+      this.a.kind[namePart] === N_PRIMARY_CONSTRUCTOR_DECLARATION ? this.a.f(namePart, 1) : this.a.f(namePart, 0);
     const withC = this.parseWithClause();
     const impl = this.parseImplementsClause();
     let body = -1;
@@ -1949,13 +2030,23 @@ export class DtParser {
     if (factory >= 0) {
       return this.parseConstructor(meta, start, external, keyword, factory);
     }
-    if (this.kw(p) === K_NEW && (this.k(p + 1) === T_LPAREN || this.k(p + 1) === T_DOT || (this.isId(p + 1) && this.k(p + 2) === T_LPAREN))) {
+    if (
+      this.kw(p) === K_NEW &&
+      (this.k(p + 1) === T_LPAREN || this.k(p + 1) === T_DOT || (this.isId(p + 1) && this.k(p + 2) === T_LPAREN))
+    ) {
       return this.parseConstructor(meta, start, external, keyword, -1);
     }
-    if (this.isClassName(p) && (this.k(p + 1) === T_LPAREN || (this.k(p + 1) === T_DOT && this.k(p + 3) === T_LPAREN))) {
+    if (
+      this.isClassName(p) &&
+      (this.k(p + 1) === T_LPAREN || (this.k(p + 1) === T_DOT && this.k(p + 3) === T_LPAREN))
+    ) {
       return this.parseConstructor(meta, start, external, keyword, -1);
     }
-    if (this.kw(p) === K_THIS && keyword < 0 && (this.k(p + 1) === T_COLON || this.k(p + 1) === T_LBRACE || this.k(p + 1) === T_SEMI)) {
+    if (
+      this.kw(p) === K_THIS &&
+      keyword < 0 &&
+      (this.k(p + 1) === T_COLON || this.k(p + 1) === T_LBRACE || this.k(p + 1) === T_SEMI)
+    ) {
       const th = this.p;
       this.p = th + 1;
       let colon = -1;
@@ -1988,7 +2079,14 @@ export class DtParser {
     }
     const nameTok = getSet >= 0 || operator >= 0 ? afterType + 1 : afterType;
     const after = this.k(nameTok + 1);
-    if (getSet >= 0 || operator >= 0 || after === T_LPAREN || after === T_LT || after === T_LBRACE || after === T_ARROW) {
+    if (
+      getSet >= 0 ||
+      operator >= 0 ||
+      after === T_LPAREN ||
+      after === T_LT ||
+      after === T_LBRACE ||
+      after === T_ARROW
+    ) {
       if (keyword >= 0 || late >= 0) {
         this.fail("modifier on method");
         return -1;
@@ -2026,7 +2124,20 @@ export class DtParser {
       }
       const body = this.parseFunctionBody(false, true);
       const modifier = stat >= 0 ? stat : abs;
-      return this.mk(N_METHOD_DECLARATION, start, meta, external, modifier, ret, getSet, operator, name, tps, params, body);
+      return this.mk(
+        N_METHOD_DECLARATION,
+        start,
+        meta,
+        external,
+        modifier,
+        ret,
+        getSet,
+        operator,
+        name,
+        tps,
+        params,
+        body,
+      );
     }
     // A field.
     const listBeg = late >= 0 ? late : keyword >= 0 ? keyword : p;
@@ -2048,9 +2159,25 @@ export class DtParser {
       return this.k(i + 1) === T_LPAREN;
     }
     return (
-      k === T_GT || k === T_LE || k === T_GE || k === T_EQEQ || k === T_MINUS || k === T_PLUS || k === T_SLASH ||
-      k === T_TILDE_SLASH || k === T_STAR || k === T_PERCENT || k === T_BAR || k === T_CARET || k === T_AMP ||
-      k === T_SHL || k === T_SHR || k === T_USHR || k === T_INDEX || k === T_INDEX_EQ || k === T_TILDE
+      k === T_GT ||
+      k === T_LE ||
+      k === T_GE ||
+      k === T_EQEQ ||
+      k === T_MINUS ||
+      k === T_PLUS ||
+      k === T_SLASH ||
+      k === T_TILDE_SLASH ||
+      k === T_STAR ||
+      k === T_PERCENT ||
+      k === T_BAR ||
+      k === T_CARET ||
+      k === T_AMP ||
+      k === T_SHL ||
+      k === T_SHR ||
+      k === T_USHR ||
+      k === T_INDEX ||
+      k === T_INDEX_EQ ||
+      k === T_TILDE
     );
   }
 
@@ -2162,7 +2289,10 @@ export class DtParser {
     if (kw === K_ASSERT) {
       return this.parseAssert(true);
     }
-    if (kw === K_SUPER || (kw === K_THIS && (this.k(beg + 1) === T_LPAREN || (this.k(beg + 1) === T_DOT && this.k(beg + 3) === T_LPAREN)))) {
+    if (
+      kw === K_SUPER ||
+      (kw === K_THIS && (this.k(beg + 1) === T_LPAREN || (this.k(beg + 1) === T_DOT && this.k(beg + 3) === T_LPAREN)))
+    ) {
       this.p = beg + 1;
       let period = -1;
       let name = -1;
@@ -2172,7 +2302,14 @@ export class DtParser {
         name = this.identAny();
       }
       const args = this.parseArgumentList();
-      return this.mk(kw === K_SUPER ? N_SUPER_CONSTRUCTOR_INVOCATION : N_REDIRECTING_CONSTRUCTOR_INVOCATION, beg, beg, period, name, args);
+      return this.mk(
+        kw === K_SUPER ? N_SUPER_CONSTRUCTOR_INVOCATION : N_REDIRECTING_CONSTRUCTOR_INVOCATION,
+        beg,
+        beg,
+        period,
+        name,
+        args,
+      );
     }
     let th = -1;
     let period = -1;
@@ -2209,7 +2346,11 @@ export class DtParser {
     } else {
       t = this.parseNamedType();
     }
-    while (!this.failed && this.kw(this.p) === K_FUNCTION && (this.k(this.p + 1) === T_LT || this.k(this.p + 1) === T_LPAREN)) {
+    while (
+      !this.failed &&
+      this.kw(this.p) === K_FUNCTION &&
+      (this.k(this.p + 1) === T_LT || this.k(this.p + 1) === T_LPAREN)
+    ) {
       t = this.parseGenericFunctionType(t);
     }
     return t;
@@ -2466,7 +2607,12 @@ export class DtParser {
       const v = this.parseExpression();
       def = this.mk(N_FORMAL_PARAMETER_DEFAULT_CLAUSE, sep, sep, v);
     }
-    const nk = fieldKw < 0 ? N_REGULAR_FORMAL_PARAMETER : this.kw(fieldKw) === K_THIS ? N_FIELD_FORMAL_PARAMETER : N_SUPER_FORMAL_PARAMETER;
+    const nk =
+      fieldKw < 0
+        ? N_REGULAR_FORMAL_PARAMETER
+        : this.kw(fieldKw) === K_THIS
+          ? N_FIELD_FORMAL_PARAMETER
+          : N_SUPER_FORMAL_PARAMETER;
     return this.mk(nk, beg, meta, req, cov, mutable, type, fieldKw, period, name, suffix, def, kind);
   }
 
@@ -2497,7 +2643,10 @@ export class DtParser {
     let keyword = -1;
     let star = -1;
     const kw = this.kw(beg);
-    if ((kw === K_ASYNC || kw === K_SYNC) && (this.k(beg + 1) === T_LBRACE || this.k(beg + 1) === T_ARROW || this.k(beg + 1) === T_STAR)) {
+    if (
+      (kw === K_ASYNC || kw === K_SYNC) &&
+      (this.k(beg + 1) === T_LBRACE || this.k(beg + 1) === T_ARROW || this.k(beg + 1) === T_STAR)
+    ) {
       keyword = beg;
       this.p = beg + 1;
       if (this.k(this.p) === T_STAR) {
@@ -2817,7 +2966,10 @@ export class DtParser {
           if (this.speculateConditional(ai + 1)) {
             te = NO;
           }
-        } else if (!(this.k(ai) === T_IDENT && this.t.kw[ai] !== K_NONE) && !(this.k(ai) === T_SEMI || this.k(ai) === T_COMMA || this.k(ai) === T_RPAREN || this.k(ai) === T_EOF)) {
+        } else if (
+          !(this.k(ai) === T_IDENT && this.t.kw[ai] !== K_NONE) &&
+          !(this.k(ai) === T_SEMI || this.k(ai) === T_COMMA || this.k(ai) === T_RPAREN || this.k(ai) === T_EOF)
+        ) {
           te = NO;
         }
       } else {
@@ -3494,9 +3646,20 @@ export class DtParser {
       const q = next - 1;
       let keep = false;
       if (
-        nk === T_RPAREN || nk === T_RBRACE || nk === T_RBRACKET || nk === T_QUESTION || nk === T_QQ || nk === T_COMMA ||
-        nk === T_SEMI || nk === T_COLON || nkw === K_IS || nkw === K_AS || nk === T_DOTDOT || nk === T_BARBAR ||
-        nk === T_AMPAMP || nk === T_EOF
+        nk === T_RPAREN ||
+        nk === T_RBRACE ||
+        nk === T_RBRACKET ||
+        nk === T_QUESTION ||
+        nk === T_QQ ||
+        nk === T_COMMA ||
+        nk === T_SEMI ||
+        nk === T_COLON ||
+        nkw === K_IS ||
+        nkw === K_AS ||
+        nk === T_DOTDOT ||
+        nk === T_BARBAR ||
+        nk === T_AMPAMP ||
+        nk === T_EOF
       ) {
         keep = true;
       } else if (nk === T_LBRACE || nkw === K_WHEN) {
@@ -3671,7 +3834,15 @@ export class DtParser {
           return false;
         }
         const ak = this.k(e + 1);
-        if (ak === T_SEMI || ak === T_DOT || ak === T_COMMA || ak === T_DOTDOT || ak === T_QUESTION || ak === T_QDOT || ak === T_RPAREN) {
+        if (
+          ak === T_SEMI ||
+          ak === T_DOT ||
+          ak === T_COMMA ||
+          ak === T_DOTDOT ||
+          ak === T_QUESTION ||
+          ak === T_QDOT ||
+          ak === T_RPAREN
+        ) {
           return true;
         }
         return this.isBinaryOperator(e + 1);

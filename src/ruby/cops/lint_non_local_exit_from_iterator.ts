@@ -49,7 +49,11 @@ export class CopLintNonLocalExitFromIterator {
             break;
           }
           const m = ssxMeth(src, s);
-          if (ldhType(src, s) === NT_SEND && (m === "define_method" || m === "define_singleton_method") && a.nKid(s) === 3) {
+          if (
+            ldhType(src, s) === NT_SEND &&
+            (m === "define_method" || m === "define_singleton_method") &&
+            a.nKid(s) === 3
+          ) {
             break;
           }
           if (!lnleNoArguments(src, p) && ssxIsCall(src, s) && a.kid(s, 0) !== V_NIL) {

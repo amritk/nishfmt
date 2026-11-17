@@ -94,9 +94,24 @@ import { rnHeredoc } from "../node";
 import { RbRewriter } from "../rewriter";
 import { RbSource } from "../source";
 import { rmlAsgnType } from "./layout_multiline_help";
-import { sbhCallArgs, sbhComparisonName, sbhLambdaLiteral, sbhMethodName, sbhOperatorMethod, SbhReparse } from "./style_body_help";
+import {
+  sbhCallArgs,
+  sbhComparisonName,
+  sbhLambdaLiteral,
+  sbhMethodName,
+  sbhOperatorMethod,
+  SbhReparse,
+} from "./style_body_help";
 import { ssxAstEqual } from "./style_syntax_reparse";
-import { ssxDescendants, ssxHas, ssxIsAnyBlock, ssxIsCall, ssxIsSpace, ssxLocIs, ssxSingleLine } from "./style_syntax_help";
+import {
+  ssxDescendants,
+  ssxHas,
+  ssxIsAnyBlock,
+  ssxIsCall,
+  ssxIsSpace,
+  ssxLocIs,
+  ssxSingleLine,
+} from "./style_syntax_help";
 
 // ---- Node predicates ------------------------------------------------------------------
 
@@ -131,7 +146,15 @@ const sbhRpRange = (src: RbSource, n: i32): boolean => sbhRpIs(src, n, NT_IRANGE
 /** Node#special_keyword? */
 const sbhRpSpecialKeyword = (src: RbSource, n: i32): boolean => {
   const t = src.a.type(n);
-  if (t !== NT_STR && t !== NT_SYM && t !== NT_INT && t !== NT_CONST && t !== NT___FILE__ && t !== NT___LINE__ && t !== NT___ENCODING__) {
+  if (
+    t !== NT_STR &&
+    t !== NT_SYM &&
+    t !== NT_INT &&
+    t !== NT_CONST &&
+    t !== NT___FILE__ &&
+    t !== NT___LINE__ &&
+    t !== NT___ENCODING__
+  ) {
     return false;
   }
   const s = src.nodeSrc(n);
@@ -140,7 +163,10 @@ const sbhRpSpecialKeyword = (src: RbSource, n: i32): boolean => {
 
 /** MethodIdentifierPredicates#prefix_not? */
 const sbhRpPrefixNot = (src: RbSource, n: i32): boolean =>
-  ssxIsCall(src, n) && src.a.kid(n, 0) !== V_NIL && sbhMethodName(src, n) === "!" && ssxLocIs(src, n, F_SELECTOR, "not");
+  ssxIsCall(src, n) &&
+  src.a.kid(n, 0) !== V_NIL &&
+  sbhMethodName(src, n) === "!" &&
+  ssxLocIs(src, n, F_SELECTOR, "not");
 
 /** Node#keyword? */
 const sbhRpKeyword = (src: RbSource, n: i32): boolean => {
@@ -445,7 +471,14 @@ const sbhRpSquareBrackets = (src: RbSource, n: i32): boolean => {
   }
   for (const d of all) {
     const t = a.type(d);
-    if ((t === NT_SEND && a.nKid(d) === 2) || t === NT_STR || t === NT_ARRAY || t === NT_HASH || t === NT_CONST || sbhRpVariable(t)) {
+    if (
+      (t === NT_SEND && a.nKid(d) === 2) ||
+      t === NT_STR ||
+      t === NT_ARRAY ||
+      t === NT_HASH ||
+      t === NT_CONST ||
+      sbhRpVariable(t)
+    ) {
       return true;
     }
   }
@@ -515,7 +548,10 @@ export class CopStyleRedundantParentheses {
     }
     const p = src.parent(n);
     // rescue?: {^resbody ^^resbody}
-    if (p !== V_NIL && (a.type(p) === NT_RESBODY || (src.parent(p) !== V_NIL && a.type(src.parent(p)) === NT_RESBODY))) {
+    if (
+      p !== V_NIL &&
+      (a.type(p) === NT_RESBODY || (src.parent(p) !== V_NIL && a.type(src.parent(p)) === NT_RESBODY))
+    ) {
       return true;
     }
     // in_pattern_matching_in_method_argument?
@@ -600,7 +636,10 @@ export class CopStyleRedundantParentheses {
       return;
     }
     // call_node?
-    if (ssxIsCall(src, node) || (ssxIsAnyBlock(src, node) && ssxLocIs(src, node, F_END, "}") && !sbhRpLambdaOrProc(src, node))) {
+    if (
+      ssxIsCall(src, node) ||
+      (ssxIsAnyBlock(src, node) && ssxLocIs(src, node, F_END, "}") && !sbhRpLambdaOrProc(src, node))
+    ) {
       this.checkSend(src, b, node);
     }
   }
@@ -675,7 +714,13 @@ export class CopStyleRedundantParentheses {
     if (p !== V_NIL && a.type(p) === NT_BEGIN && src.parent(p) !== V_NIL && a.type(src.parent(p)) === NT_DSTR) {
       return "an interpolated expression";
     }
-    if (this.argOfParenCall(src, b, node) && !((t === NT_AND || t === NT_OR) && (ssxLocIs(src, node, F_OPERATOR, "and") || ssxLocIs(src, node, F_OPERATOR, "or")))) {
+    if (
+      this.argOfParenCall(src, b, node) &&
+      !(
+        (t === NT_AND || t === NT_OR) &&
+        (ssxLocIs(src, node, F_OPERATOR, "and") || ssxLocIs(src, node, F_OPERATOR, "or"))
+      )
+    ) {
       return "a method argument";
     }
     // oneline_rescue_parentheses_required?
@@ -684,7 +729,10 @@ export class CopStyleRedundantParentheses {
       let req = true;
       if (pt === NT_IF && ssxHas(src, p, F_QUESTION)) {
         req = false;
-      } else if ((pt === NT_IF || pt === NT_WHILE || pt === NT_UNTIL || pt === NT_CASE || pt === NT_CASE_MATCH) && sbhRpEq(src, a.kid(p, 0), b)) {
+      } else if (
+        (pt === NT_IF || pt === NT_WHILE || pt === NT_UNTIL || pt === NT_CASE || pt === NT_CASE_MATCH) &&
+        sbhRpEq(src, a.kid(p, 0), b)
+      ) {
         req = false;
       } else if (pt === NT_SEND || pt === NT_CSEND || pt === NT_ARRAY || pt === NT_PAIR) {
         req = false;
@@ -768,7 +816,10 @@ export class CopStyleRedundantParentheses {
     if (p === V_NIL || a.type(p) !== NT_BEGIN) {
       return false;
     }
-    return (a.kid(node, 0) === V_NIL && sbhRpEq(src, b, a.kid(p, 0))) || (a.kid(node, 1) === V_NIL && sbhRpEq(src, b, a.kid(p, -1)));
+    return (
+      (a.kid(node, 0) === V_NIL && sbhRpEq(src, b, a.kid(p, 0))) ||
+      (a.kid(node, 1) === V_NIL && sbhRpEq(src, b, a.kid(p, -1)))
+    );
   }
 
   /** argument_of_parenthesized_method_call? */

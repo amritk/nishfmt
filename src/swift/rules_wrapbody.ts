@@ -4,11 +4,24 @@
 // Ported from SwiftFormat 0.64.7 (MIT License, Copyright (c) 2016 Nick
 // Lockwood).
 
-import { swIsInsideProtocol, swIsInStringLiteral, swParsePropertyDeclaration, swWrapIfFollowingOpeningBrace, swWrapStatementBody } from "./expr";
+import {
+  swIsInsideProtocol,
+  swIsInStringLiteral,
+  swParsePropertyDeclaration,
+  swWrapIfFollowingOpeningBrace,
+  swWrapStatementBody,
+} from "./expr";
 import { SwFormatter } from "./formatter";
 import { swIsFunctionDeclarationKeyword, swParseFunctionDeclaration } from "./funcdecl";
 import { swIsStartOfClosure, swStartOfConditionalStatement, swStartOfScope } from "./parsing";
-import { SW_END, SW_KEYWORD, SW_LINEBREAK, SW_START, SW_T_NON_SPACE_OR_COMMENT, SW_T_NON_SPACE_OR_COMMENT_OR_LINEBREAK } from "./token";
+import {
+  SW_END,
+  SW_KEYWORD,
+  SW_LINEBREAK,
+  SW_START,
+  SW_T_NON_SPACE_OR_COMMENT,
+  SW_T_NON_SPACE_OR_COMMENT_OR_LINEBREAK,
+} from "./token";
 
 /** Whether wrapStatementBody(at:) is sure to leave a body already split over lines alone. */
 const swBodyAlreadyWrapped = (f: SwFormatter, bodyStart: i32): boolean => {
@@ -94,4 +107,3 @@ export const swRuleWrapIfStatementBodies = (f: SwFormatter): void => {
     swWrapStatementBody(f, s);
   }
 };
-

@@ -95,13 +95,17 @@ export const swIsLiteralIdentifier = (f: SwFormatter, i: i32): boolean =>
   f.k(i) === SW_IDENT && (f.s(i) === "true" || f.s(i) === "false" || f.s(i) === "nil");
 
 /** Token.isUnwrapOperator. */
-export const swIsUnwrap = (f: SwFormatter, i: i32): boolean => f.has(i) && f.k(i) === SW_OP && f.a(i) === SW_OP_POSTFIX && (f.s(i) === "?" || f.s(i) === "!");
+export const swIsUnwrap = (f: SwFormatter, i: i32): boolean =>
+  f.has(i) && f.k(i) === SW_OP && f.a(i) === SW_OP_POSTFIX && (f.s(i) === "?" || f.s(i) === "!");
 
-export const swIsKeyword = (f: SwFormatter, i: i32): boolean => f.has(i) && f.k(i) === SW_KEYWORD && !f.s(i).startsWith("@");
+export const swIsKeyword = (f: SwFormatter, i: i32): boolean =>
+  f.has(i) && f.k(i) === SW_KEYWORD && !f.s(i).startsWith("@");
 
-export const swIsAttribute = (f: SwFormatter, i: i32): boolean => f.has(i) && f.k(i) === SW_KEYWORD && f.s(i).startsWith("@");
+export const swIsAttribute = (f: SwFormatter, i: i32): boolean =>
+  f.has(i) && f.k(i) === SW_KEYWORD && f.s(i).startsWith("@");
 
-export const swIsMacroTok = (f: SwFormatter, i: i32): boolean => f.has(i) && f.k(i) === SW_KEYWORD && swStrIsMacro(f.s(i));
+export const swIsMacroTok = (f: SwFormatter, i: i32): boolean =>
+  f.has(i) && f.k(i) === SW_KEYWORD && swStrIsMacro(f.s(i));
 
 export const swIsSpaceOrCommentOrLinebreak = (f: SwFormatter, i: i32): boolean => {
   const k = f.k(i);
@@ -131,7 +135,8 @@ export const swIsDeclarationTypeKeywordStr = (s: string): boolean =>
   s === "associatedtype" ||
   s === "macro";
 
-export const swIsDeclarationTypeKeyword = (f: SwFormatter, i: i32): boolean => f.has(i) && f.k(i) === SW_KEYWORD && swIsDeclarationTypeKeywordStr(f.s(i));
+export const swIsDeclarationTypeKeyword = (f: SwFormatter, i: i32): boolean =>
+  f.has(i) && f.k(i) === SW_KEYWORD && swIsDeclarationTypeKeywordStr(f.s(i));
 
 /** Token.isPropertyAccessorKeyword. */
 export const swIsPropertyAccessorKeyword = (f: SwFormatter, i: i32): boolean => {
@@ -143,7 +148,9 @@ export const swIsPropertyAccessorKeyword = (f: SwFormatter, i: i32): boolean => 
     return false;
   }
   const s = f.s(i);
-  return s === "get" || s === "set" || s === "_read" || s === "_modify" || s === "willSet" || s === "didSet" || s === "init";
+  return (
+    s === "get" || s === "set" || s === "_read" || s === "_modify" || s === "willSet" || s === "didSet" || s === "init"
+  );
 };
 
 // MARK: scopes
@@ -261,7 +268,15 @@ export const swIndexOfLastSignificantKeyword = (f: SwFormatter, i: i32, ex: i32 
     return -1;
   }
   const kw = f.s(index);
-  if (kw.startsWith("#") || swExcluded(kw, ex) || kw === "in" || kw === "is" || kw === "as" || kw === "try" || kw === "await") {
+  if (
+    kw.startsWith("#") ||
+    swExcluded(kw, ex) ||
+    kw === "in" ||
+    kw === "is" ||
+    kw === "as" ||
+    kw === "try" ||
+    kw === "await"
+  ) {
     return swIndexOfLastSignificantKeyword(f, index - 1, ex);
   }
   return index;
@@ -331,7 +346,8 @@ export const swStartOfConditionalStatement = (f: SwFormatter, i: i32, ex: i32 = 
   return -1;
 };
 
-export const swIsConditionalStatement = (f: SwFormatter, i: i32, ex: i32 = 0): boolean => swStartOfConditionalStatement(f, i, ex) >= 0;
+export const swIsConditionalStatement = (f: SwFormatter, i: i32, ex: i32 = 0): boolean =>
+  swStartOfConditionalStatement(f, i, ex) >= 0;
 
 /** isConditionalAssignment(at:). */
 export const swIsConditionalAssignment = (f: SwFormatter, i: i32): boolean => {
@@ -469,7 +485,10 @@ export const swIsStartOfClosure = (f: SwFormatter, i: i32): boolean => {
     const endIndex = swEndOfScope(f, i);
     if (endIndex >= 0) {
       const n = f.indexAfter(SW_T_NON_SPACE_OR_COMMENT, endIndex);
-      if ((n >= 0 && (f.tok(n, SW_START, "(") || f.op(n, ".", SW_OP_INFIX))) || swNextIs(f, SW_T_NON_SPACE_OR_COMMENT_OR_LINEBREAK, endIndex, SW_START, "{")) {
+      if (
+        (n >= 0 && (f.tok(n, SW_START, "(") || f.op(n, ".", SW_OP_INFIX))) ||
+        swNextIs(f, SW_T_NON_SPACE_OR_COMMENT_OR_LINEBREAK, endIndex, SW_START, "{")
+      ) {
         return true;
       }
     }
@@ -486,11 +505,16 @@ export const swIsStartOfClosure = (f: SwFormatter, i: i32): boolean => {
     (pk === SW_START && (ps === "(" || ps === "[" || ps === "{")) ||
     (pk === SW_OP && (pa === SW_OP_INFIX || pa === SW_OP_PREFIX)) ||
     pk === SW_DELIM ||
-    (pk === SW_KEYWORD && (ps === "return" || ps === "in" || ps === "where" || ps === "try" || ps === "throw" || ps === "await"))
+    (pk === SW_KEYWORD &&
+      (ps === "return" || ps === "in" || ps === "where" || ps === "try" || ps === "throw" || ps === "await"))
   ) {
     return true;
   }
-  if ((pk === SW_OP && pa === SW_OP_NONE) || (pk === SW_KEYWORD && (ps === "deinit" || ps === "catch" || ps === "else" || ps === "repeat" || ps === "throws" || ps === "rethrows"))) {
+  if (
+    (pk === SW_OP && pa === SW_OP_NONE) ||
+    (pk === SW_KEYWORD &&
+      (ps === "deinit" || ps === "catch" || ps === "else" || ps === "repeat" || ps === "throws" || ps === "rethrows"))
+  ) {
     return false;
   }
   if (pk === SW_END && ps === "}") {
@@ -532,7 +556,10 @@ export const swIsStartOfClosure = (f: SwFormatter, i: i32): boolean => {
       } else {
         return true;
       }
-    } else if (f.op(prev, "->", SW_OP_INFIX) || (qk === SW_KEYWORD && (qs === "init" || qs === "subscript" || qs === "throws"))) {
+    } else if (
+      f.op(prev, "->", SW_OP_INFIX) ||
+      (qk === SW_KEYWORD && (qs === "init" || qs === "subscript" || qs === "throws"))
+    ) {
       return false;
     } else if (qk === SW_END && qs === ">") {
       const startIndex = f.indexOfBefore(SW_START, "<", 0, prev);
@@ -664,7 +691,13 @@ export const swClosureInKeyword = (f: SwFormatter, closureStart: i32): i32 => {
           if (f.tok(nn, SW_DELIM, ",")) {
             argIndex = nn + 1;
             continue;
-          } else if (f.kw(nn, "in") || f.op(nn, "->", SW_OP_INFIX) || f.kw(nn, "throws") || f.kw(nn, "rethrows") || f.tok(nn, SW_IDENT, "async")) {
+          } else if (
+            f.kw(nn, "in") ||
+            f.op(nn, "->", SW_OP_INFIX) ||
+            f.kw(nn, "throws") ||
+            f.kw(nn, "rethrows") ||
+            f.tok(nn, SW_IDENT, "async")
+          ) {
             break;
           } else {
             return -1;
@@ -997,7 +1030,12 @@ const swCpAtStr = (s: string, i: i32): i32 => {
   if (c < 0xf0) {
     return ((c & 0x0f) << 12) | ((s.charCodeAt(i + 1) & 0x3f) << 6) | (s.charCodeAt(i + 2) & 0x3f);
   }
-  return ((c & 0x07) << 18) | ((s.charCodeAt(i + 1) & 0x3f) << 12) | ((s.charCodeAt(i + 2) & 0x3f) << 6) | (s.charCodeAt(i + 3) & 0x3f);
+  return (
+    ((c & 0x07) << 18) |
+    ((s.charCodeAt(i + 1) & 0x3f) << 12) |
+    ((s.charCodeAt(i + 2) & 0x3f) << 6) |
+    (s.charCodeAt(i + 3) & 0x3f)
+  );
 };
 
 // MARK: statements
@@ -1141,7 +1179,12 @@ export const swIsTrailingClosureLabel = (f: SwFormatter, i: i32): boolean => {
 };
 
 /** isStartOfStatement(at:in:treatingCollectionKeysAsStart:). */
-export const swIsStartOfStatement = (f: SwFormatter, i: i32, scope: string | null = null, treatingKeys: boolean = true): boolean => {
+export const swIsStartOfStatement = (
+  f: SwFormatter,
+  i: i32,
+  scope: string | null = null,
+  treatingKeys: boolean = true,
+): boolean => {
   if (!f.has(i)) {
     return true;
   }
@@ -1209,7 +1252,10 @@ export const swIsStartOfStatement = (f: SwFormatter, i: i32, scope: string | nul
     if (swNextIs(f, SW_T_NON_SPACE_OR_COMMENT_OR_LINEBREAK, i, SW_KEYWORD, "let")) {
       return true;
     }
-    if (swPrevIs(f, SW_T_NON_SPACE_OR_COMMENT_OR_LINEBREAK, i, SW_END, ")") && swLastSignificantKeyword(f, i) === "func") {
+    if (
+      swPrevIs(f, SW_T_NON_SPACE_OR_COMMENT_OR_LINEBREAK, i, SW_END, ")") &&
+      swLastSignificantKeyword(f, i) === "func"
+    ) {
       return false;
     }
     stage = 1;
@@ -1327,7 +1373,9 @@ export const swIsGuardElse = (f: SwFormatter, index: i32): boolean => {
   if (sos < 0) {
     return true;
   }
-  if (swLastSignificantKeyword(f, sos - 1, SW_EX_AS | SW_EX_IS | SW_EX_TRY | SW_EX_VAR | SW_EX_LET | SW_EX_CASE) !== "if") {
+  if (
+    swLastSignificantKeyword(f, sos - 1, SW_EX_AS | SW_EX_IS | SW_EX_TRY | SW_EX_VAR | SW_EX_LET | SW_EX_CASE) !== "if"
+  ) {
     return true;
   }
   return false;
@@ -1426,7 +1474,11 @@ const swScanIfdefEnd = (f: SwFormatter, ifIndex: i32, containsCase: boolean[]): 
       if (depth === 1) {
         brace--;
       }
-    } else if (depth === 1 && brace === 0 && ((k === SW_END && (s === "case" || s === "default")) || (k === SW_KEYWORD && s === "@unknown"))) {
+    } else if (
+      depth === 1 &&
+      brace === 0 &&
+      ((k === SW_END && (s === "case" || s === "default")) || (k === SW_KEYWORD && s === "@unknown"))
+    ) {
       containsCase[0] = true;
     }
   }
@@ -1452,7 +1504,10 @@ const swFirstIfdefBoundary = (f: SwFormatter, start: i32, end: i32): i32 => {
         }
         i = e;
       }
-    } else if ((k === SW_KEYWORD && (s === "#else" || s === "#elseif")) || (k === SW_END && s === "#endif" && brace === 0)) {
+    } else if (
+      (k === SW_KEYWORD && (s === "#else" || s === "#elseif")) ||
+      (k === SW_END && s === "#endif" && brace === 0)
+    ) {
       return i;
     }
     i++;
@@ -1460,7 +1515,8 @@ const swFirstIfdefBoundary = (f: SwFormatter, start: i32, end: i32): i32 => {
   return -1;
 };
 
-const swIsCaseOrDefault = (f: SwFormatter, i: i32): boolean => (f.k(i) === SW_END && (f.s(i) === "case" || f.s(i) === "default")) || f.kw(i, "@unknown");
+const swIsCaseOrDefault = (f: SwFormatter, i: i32): boolean =>
+  (f.k(i) === SW_END && (f.s(i) === "case" || f.s(i) === "default")) || f.kw(i, "@unknown");
 
 export const swSwitchStatementBranches = (f: SwFormatter, switchIndex: i32): SwBranches | null => {
   const sss = f.indexOfAfter(SW_START, "{", 0, switchIndex);
@@ -1710,12 +1766,25 @@ export const swLinewrapIndent = (f: SwFormatter, index: i32): string => {
     }
     return "    ";
   }
-  if (f.k(firstToken) === SW_END && swNextIs(f, SW_T_NON_SPACE_OR_COMMENT_OR_LINEBREAK, firstNonBrace - 1, SW_DELIM, ",")) {
+  if (
+    f.k(firstToken) === SW_END &&
+    swNextIs(f, SW_T_NON_SPACE_OR_COMMENT_OR_LINEBREAK, firstNonBrace - 1, SW_DELIM, ",")
+  ) {
     return "";
   }
-  let keywordIndex = swLastIndexInWhere(f, firstNonBrace, commaIndex, (g, j) => g.kw(j, "if") || g.kw(j, "guard") || g.kw(j, "while"));
+  let keywordIndex = swLastIndexInWhere(
+    f,
+    firstNonBrace,
+    commaIndex,
+    (g, j) => g.kw(j, "if") || g.kw(j, "guard") || g.kw(j, "while"),
+  );
   if (keywordIndex < 0) {
-    keywordIndex = swLastIndexInWhere(f, firstNonBrace, commaIndex, (g, j) => g.kw(j, "let") || g.kw(j, "var") || g.kw(j, "case"));
+    keywordIndex = swLastIndexInWhere(
+      f,
+      firstNonBrace,
+      commaIndex,
+      (g, j) => g.kw(j, "let") || g.kw(j, "var") || g.kw(j, "case"),
+    );
   }
   if (keywordIndex < 0) {
     return "    ";

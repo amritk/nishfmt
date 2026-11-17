@@ -231,10 +231,18 @@ export class StringWrapper {
     }
     let startIdx = idx;
     let endIdx = idx + 1;
-    while (startIdx > 0 && this.isStringLit(flat[startIdx - 1]) && this.noComments(flat[startIdx - 1], flat[startIdx])) {
+    while (
+      startIdx > 0 &&
+      this.isStringLit(flat[startIdx - 1]) &&
+      this.noComments(flat[startIdx - 1], flat[startIdx])
+    ) {
       startIdx--;
     }
-    while (endIdx < toI32(flat.length) && this.isStringLit(flat[endIdx]) && this.noComments(flat[endIdx - 1], flat[endIdx])) {
+    while (
+      endIdx < toI32(flat.length) &&
+      this.isStringLit(flat[endIdx]) &&
+      this.noComments(flat[endIdx - 1], flat[endIdx])
+    ) {
       endIdx++;
     }
     const first = startIdx === 0;
@@ -431,7 +439,14 @@ const totalLengthLessThanOrEqual = (input: string[], from: i32, length: i32): bo
 };
 
 /** StringWrapper.reflow. */
-const reflowStr = (sep: string, columnLimit: i32, startColumn: i32, trailing: i32, comps: string[], first0: boolean): string => {
+const reflowStr = (
+  sep: string,
+  columnLimit: i32,
+  startColumn: i32,
+  trailing: i32,
+  comps: string[],
+  first0: boolean,
+): string => {
   let width = columnLimit - startColumn - 2;
   let i = 0;
   const n = toI32(comps.length);

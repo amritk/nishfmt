@@ -44,7 +44,6 @@ export const SW_DECL_SIMPLE: i32 = 0;
 export const SW_DECL_TYPE: i32 = 1;
 export const SW_DECL_IFDEF: i32 = 2;
 
-
 export const swDeclLo = (f: SwFormatter, d: SwDecl): i32 => f.refLo[d.h];
 export const swDeclHi = (f: SwFormatter, d: SwDecl): i32 => f.refHi[d.h];
 
@@ -111,11 +110,19 @@ const swIsFreestandingMacroExpansion = (f: SwFormatter, index: i32, lo: i32, hi:
 export const swIndexOfNextDeclarationStart = (f: SwFormatter, index: i32): i32 => {
   let s = index;
   while (true) {
-    const n = swIndexAfterWhere(f, s, (g, j) => swIsDeclarationTypeKeyword(g, j) || g.tok(j, SW_START, "#if") || swStrIsMacro(g.s(j)));
+    const n = swIndexAfterWhere(
+      f,
+      s,
+      (g, j) => swIsDeclarationTypeKeyword(g, j) || g.tok(j, SW_START, "#if") || swStrIsMacro(g.s(j)),
+    );
     if (n < 0) {
       return -1;
     }
-    if (swIsDeclarationTypeKeyword(f, n) || f.tok(n, SW_START, "#if") || swIsFreestandingMacroExpansion(f, n, 0, f.count())) {
+    if (
+      swIsDeclarationTypeKeyword(f, n) ||
+      f.tok(n, SW_START, "#if") ||
+      swIsFreestandingMacroExpansion(f, n, 0, f.count())
+    ) {
       return n;
     }
     s = n;
@@ -220,7 +227,13 @@ export const swEndOfDeclarationInTypeBody = (f: SwFormatter, kwIndex: i32): i32 
     if (sk >= 0 && swIsDeclarationTypeKeyword(f, sk)) {
       searchIndex = sk;
     }
-  } else if (f.kw(kwIndex, "protocol") || f.kw(kwIndex, "struct") || f.kw(kwIndex, "actor") || f.kw(kwIndex, "enum") || f.kw(kwIndex, "extension")) {
+  } else if (
+    f.kw(kwIndex, "protocol") ||
+    f.kw(kwIndex, "struct") ||
+    f.kw(kwIndex, "actor") ||
+    f.kw(kwIndex, "enum") ||
+    f.kw(kwIndex, "extension")
+  ) {
     const ss = f.indexOfAfter(SW_START, "{", 0, kwIndex);
     if (ss >= 0) {
       const e = swEndOfScope(f, ss);
@@ -264,9 +277,19 @@ export const swEndOfDeclarationInTypeBody = (f: SwFormatter, kwIndex: i32): i32 
       endOfDeclaration = last;
     }
   }
-  while (endOfDeclaration >= 0 && f.has(endOfDeclaration + 1) && (f.k(endOfDeclaration + 1) === SW_SPACE || f.k(endOfDeclaration + 1) === SW_LINEBREAK)) {
+  while (
+    endOfDeclaration >= 0 &&
+    f.has(endOfDeclaration + 1) &&
+    (f.k(endOfDeclaration + 1) === SW_SPACE || f.k(endOfDeclaration + 1) === SW_LINEBREAK)
+  ) {
     if (f.k(endOfDeclaration + 1) === SW_SPACE) {
-      if (!(f.k(endOfDeclaration) === SW_LINEBREAK && f.has(endOfDeclaration + 2) && f.k(endOfDeclaration + 2) === SW_LINEBREAK)) {
+      if (
+        !(
+          f.k(endOfDeclaration) === SW_LINEBREAK &&
+          f.has(endOfDeclaration + 2) &&
+          f.k(endOfDeclaration + 2) === SW_LINEBREAK
+        )
+      ) {
         break;
       }
     }
@@ -422,7 +445,8 @@ export const swParseEnclosingType = (f: SwFormatter, index: i32): SwDecl | null 
 };
 
 /** The declaration's modifiers (Declaration.modifiers). */
-export const swDeclModifiers = (f: SwFormatter, d: SwDecl): string[] => swModifiersForDeclaration(f, swDeclKeywordIndex(f, d)).names;
+export const swDeclModifiers = (f: SwFormatter, d: SwDecl): string[] =>
+  swModifiersForDeclaration(f, swDeclKeywordIndex(f, d)).names;
 
 /** isStoredProperty(atIntroducerIndex:). */
 export const swIsStoredProperty = (f: SwFormatter, introducer: i32): boolean => {
@@ -527,7 +551,12 @@ export const swStringExcludingLinebreaksAndComments = (f: SwFormatter, lo: i32, 
       while (index < hi && f.k(index) === SW_SPACE) {
         index++;
       }
-      if (any && !lastIsSpace && index < hi && (lastSpaced || f.op(index, "&", SW_OP_INFIX) || f.op(index, "->", SW_OP_INFIX))) {
+      if (
+        any &&
+        !lastIsSpace &&
+        index < hi &&
+        (lastSpaced || f.op(index, "&", SW_OP_INFIX) || f.op(index, "->", SW_OP_INFIX))
+      ) {
         parts.push(" ");
         lastIsSpace = true;
         lastSpaced = false;

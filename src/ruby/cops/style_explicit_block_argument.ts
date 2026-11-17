@@ -43,7 +43,15 @@ const sbhEbIs = (src: RbSource, n: i32, t: i32): boolean => src.a.isNode(n) && s
 
 /** Whether a node is of the :argument group. */
 const sbhEbArgument = (t: i32): boolean =>
-  t === NT_ARG || t === NT_OPTARG || t === NT_RESTARG || t === NT_KWARG || t === NT_KWOPTARG || t === NT_KWRESTARG || t === NT_BLOCKARG || t === NT_FORWARD_ARG || t === NT_SHADOWARG;
+  t === NT_ARG ||
+  t === NT_OPTARG ||
+  t === NT_RESTARG ||
+  t === NT_KWARG ||
+  t === NT_KWOPTARG ||
+  t === NT_KWRESTARG ||
+  t === NT_BLOCKARG ||
+  t === NT_FORWARD_ARG ||
+  t === NT_SHADOWARG;
 
 /** The name (first child) of an argument or lvasgn as a string ("" for nil). */
 const sbhEbName = (src: RbSource, n: i32): string => {

@@ -560,7 +560,10 @@ export const csdPropagateBreaks = (D: CsDocs, root: i32): void => {
         enter = false;
       }
       visited[doc] = 1;
-    } else if ((k === D_HARDLINE || k === D_LITERALLINE || k === D_BREAKPARENT) && (forceFlat === 0 || k === D_LITERALLINE)) {
+    } else if (
+      (k === D_HARDLINE || k === D_LITERALLINE || k === D_BREAKPARENT) &&
+      (forceFlat === 0 || k === D_LITERALLINE)
+    ) {
       const isAtStartOfLine = stringCount === stringCountAtLastHardLine;
       if (k === D_HARDLINE && (uncheckedGet(D.b, doc) & HL_FOR_TRIVIA) !== 0 && (isAtStartOfLine || canSkipBreak)) {
         const gs = toI32(groupStack.length);
@@ -1236,4 +1239,12 @@ const csCpAt = (buf: u8[], i: i32, b: i32): i32 => {
 
 /** char.IsWhiteSpace for a non-ASCII code point. */
 export const csIsDotnetWhiteSpaceCp = (c: i32): boolean =>
-  c === 0x85 || c === 0xa0 || c === 0x1680 || (c >= 0x2000 && c <= 0x200a) || c === 0x2028 || c === 0x2029 || c === 0x202f || c === 0x205f || c === 0x3000;
+  c === 0x85 ||
+  c === 0xa0 ||
+  c === 0x1680 ||
+  (c >= 0x2000 && c <= 0x200a) ||
+  c === 0x2028 ||
+  c === 0x2029 ||
+  c === 0x202f ||
+  c === 0x205f ||
+  c === 0x3000;

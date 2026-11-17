@@ -40,7 +40,10 @@ export const ssxModuleName = (src: RbSource, n: i32): boolean => {
 
 /** (send (self) :class). */
 export const ssxSelfClass = (src: RbSource, n: i32): boolean =>
-  ssxIs(src, n, NT_SEND) && ssxIs(src, src.a.kid(n, 0), NT_SELF) && ssxMeth(src, n) === "class" && ssxArgc(src, n) === 0;
+  ssxIs(src, n, NT_SEND) &&
+  ssxIs(src, src.a.kid(n, 0), NT_SELF) &&
+  ssxMeth(src, n) === "class" &&
+  ssxArgc(src, n) === 0;
 
 /** requires_parentheses? */
 const ssxCeRequiresParens = (src: RbSource, n: i32): boolean => {
@@ -51,7 +54,8 @@ const ssxCeRequiresParens = (src: RbSource, n: i32): boolean => {
   return t === NT_SEND && ssxOperatorName(ssxMeth(src, n));
 };
 
-const ssxCeParen = (src: RbSource, n: i32): string => (ssxCeRequiresParens(src, n) ? `(${src.nodeSrc(n)})` : src.nodeSrc(n));
+const ssxCeParen = (src: RbSource, n: i32): string =>
+  ssxCeRequiresParens(src, n) ? `(${src.nodeSrc(n)})` : src.nodeSrc(n);
 
 const ssxCeNumeric = (src: RbSource, n: i32): boolean => {
   const t = src.a.type(n);

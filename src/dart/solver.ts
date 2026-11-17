@@ -530,7 +530,14 @@ export const dtSolve = (cache: DtCache, root: DtPiece, rootState: i32, leading: 
 };
 
 /** Solution.expand, adding each new solution to `queue`. */
-const dtExpand = (cache: DtCache, s: DtSolution, root: DtPiece, leading: i32, subsequent: i32, queue: DtQueue): void => {
+const dtExpand = (
+  cache: DtCache,
+  s: DtSolution,
+  root: DtPiece,
+  leading: i32,
+  subsequent: i32,
+  queue: DtQueue,
+): void => {
   // dart_style binds the expand pieces before the i-th to unsplit afresh for
   // every new solution. Binding depends only on the solution's states, so
   // the same bindings are made once here, on `base`, and each new solution
@@ -916,14 +923,25 @@ export class DtWriter {
   }
 
   formatInline(piece: DtPiece): void {
-    if (!this.emit && piece.kind === PK_CODE && piece.list.length === 0 && piece.list2.length === 0 && piece.lines.length === 1 && !dtHasStates(piece)) {
+    if (
+      !this.emit &&
+      piece.kind === PK_CODE &&
+      piece.list.length === 0 &&
+      piece.list2.length === 0 &&
+      piece.lines.length === 1 &&
+      !dtHasStates(piece)
+    ) {
       // The common leaf, measured: what the general path below does for
       // it, where its shape stays inline.
       this.write(piece.lines[0], piece.lens[0], piece.soft);
       const n = this.nFmt;
       if (n > 0) {
         const parent = this.fmtPiece[n - 1];
-        if (!dtIs37() && dtMayRefuseInline(parent.kind) && (dtAllowed(parent, this.state(parent), piece) & SH_INLINE) === 0) {
+        if (
+          !dtIs37() &&
+          dtMayRefuseInline(parent.kind) &&
+          (dtAllowed(parent, this.state(parent), piece) & SH_INLINE) === 0
+        ) {
           this.sol.invalidate(parent);
         }
       }
@@ -1580,4 +1598,3 @@ const dtFormatPiece = (w: DtWriter, p: DtPiece, s: i32): void => {
       panic(`dart: unknown piece ${p.kind}`);
   }
 };
-

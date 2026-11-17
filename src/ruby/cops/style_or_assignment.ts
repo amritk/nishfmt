@@ -45,7 +45,13 @@ export class CopStyleOrAssignment {
         // unless_assignment?: (if (var _v) nil? (asgn _v _))
         const v = a.kid(n, 0);
         const asg = a.kid(n, 2);
-        if (!soaVar(src, v) || a.kid(n, 1) !== V_NIL || !soaAsgn(src, asg) || a.nKid(asg) < 2 || soaName(src, v) !== soaName(src, asg)) {
+        if (
+          !soaVar(src, v) ||
+          a.kid(n, 1) !== V_NIL ||
+          !soaAsgn(src, asg) ||
+          a.nKid(asg) < 2 ||
+          soaName(src, v) !== soaName(src, asg)
+        ) {
           continue;
         }
         const k = this.c.offense(a.exS(n), a.exE(n));

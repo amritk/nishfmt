@@ -6,7 +6,6 @@
 // Foundation and Contributors), for CSharpier 1.4.0 (MIT License, Copyright
 // (c) 2021 Bela VanderVoort).
 
-
 // Precedence
 
 import {
@@ -364,13 +363,8 @@ import {
   cspVariableInitializer,
   cspParenthesizedParameterList,
 } from "./pdecl";
-import {
-  cspBlock,
-  cspIsPossibleTypedIdentifierStartAt,
-} from "./pstmt";
-import {
-  TF_HOLE_END,
-} from "./lexer";
+import { cspBlock, cspIsPossibleTypedIdentifierStartAt } from "./pstmt";
+import { TF_HOLE_END } from "./lexer";
 
 export const PREC_EXPRESSION: i32 = 0;
 export const PREC_ASSIGNMENT: i32 = 0;
@@ -618,7 +612,8 @@ const cspAssignmentKind = (t: i32): i32 => {
 export const cspIsExpectedBinaryOperator = (t: i32): boolean => cspBinaryKind(t) !== 0;
 export const cspIsExpectedAssignmentOperator = (t: i32): boolean => cspAssignmentKind(t) !== 0;
 
-const cspIsPostfixUnaryToken = (t: i32): boolean => t === K_PlusPlusToken || t === K_MinusMinusToken || t === K_ExclamationToken;
+const cspIsPostfixUnaryToken = (t: i32): boolean =>
+  t === K_PlusPlusToken || t === K_MinusMinusToken || t === K_ExclamationToken;
 
 export const cspIsPatternKind = (k: i32): boolean => {
   switch (k) {
@@ -728,7 +723,8 @@ const cspIsInvalidSubExpression = (k: i32): boolean => {
   }
 };
 
-export const cspIsAtDotDot = (p: CsParser): boolean => p.k() === K_DotToken && p.kindAt(1) === K_DotToken && p.noTriviaBetween(0);
+export const cspIsAtDotDot = (p: CsParser): boolean =>
+  p.k() === K_DotToken && p.kindAt(1) === K_DotToken && p.noTriviaBetween(0);
 
 const cspEatDotDot = (p: CsParser): i32 => {
   if (p.kindAt(2) === K_DotToken && p.noTriviaBetween(1)) {
@@ -738,7 +734,8 @@ const cspEatDotDot = (p: CsParser): i32 => {
   return p.eatMerged(K_DotDotToken, 2);
 };
 
-export const cspIsPossibleAwaitExpressionStatement = (p: CsParser): boolean => p.inAsync && p.k() === K_IdentifierToken && p.ck() === K_AwaitKeyword;
+export const cspIsPossibleAwaitExpressionStatement = (p: CsParser): boolean =>
+  p.inAsync && p.k() === K_IdentifierToken && p.ck() === K_AwaitKeyword;
 
 export const cspIsAwaitExpression = (p: CsParser): boolean => {
   if (p.k() === K_IdentifierToken && p.ck() === K_AwaitKeyword) {
@@ -866,10 +863,17 @@ const cspCurrentOperator = (p: CsParser): CsOp => {
   }
   let k1 = p.k() === K_IdentifierToken ? p.ck() : p.k();
   let n = 1;
-  if (k1 === K_GreaterThanToken && (p.kindAt(1) === K_GreaterThanToken || p.kindAt(1) === K_GreaterThanEqualsToken) && p.noTriviaBetween(0)) {
+  if (
+    k1 === K_GreaterThanToken &&
+    (p.kindAt(1) === K_GreaterThanToken || p.kindAt(1) === K_GreaterThanEqualsToken) &&
+    p.noTriviaBetween(0)
+  ) {
     if (p.kindAt(1) === K_GreaterThanToken) {
       if ((p.kindAt(2) === K_GreaterThanToken || p.kindAt(2) === K_GreaterThanEqualsToken) && p.noTriviaBetween(1)) {
-        k1 = p.kindAt(2) === K_GreaterThanToken ? K_GreaterThanGreaterThanGreaterThanToken : K_GreaterThanGreaterThanGreaterThanEqualsToken;
+        k1 =
+          p.kindAt(2) === K_GreaterThanToken
+            ? K_GreaterThanGreaterThanGreaterThanToken
+            : K_GreaterThanGreaterThanGreaterThanEqualsToken;
         n = 3;
       } else {
         k1 = K_GreaterThanGreaterThanToken;
@@ -983,7 +987,11 @@ const cspAssignmentExpression = (p: CsParser, kind: i32, left: i32, opTok: i32):
   const m = p.sp();
   p.push(left);
   p.push(opTok);
-  if (kind === K_SimpleAssignmentExpression && p.k() === K_RefKeyword && !cspIsPossibleLambdaExpression(p, PREC_ASSIGNMENT)) {
+  if (
+    kind === K_SimpleAssignmentExpression &&
+    p.k() === K_RefKeyword &&
+    !cspIsPossibleLambdaExpression(p, PREC_ASSIGNMENT)
+  ) {
     const rm = p.sp();
     p.push(p.eat());
     p.push(cspExpressionCore(p));
@@ -1159,7 +1167,10 @@ const cspScanDesignation = (p: CsParser, permitTuple: boolean): boolean => {
 };
 
 const cspIsPossibleDeconstructionLeft = (p: CsParser, precedence: i32): boolean => {
-  if (precedence > PREC_ASSIGNMENT || !((p.k() === K_IdentifierToken && p.t.tokIs(p.cur(), "var")) || csIsPredefinedType(p.k()))) {
+  if (
+    precedence > PREC_ASSIGNMENT ||
+    !((p.k() === K_IdentifierToken && p.t.tokIs(p.cur(), "var")) || csIsPredefinedType(p.k()))
+  ) {
     return false;
   }
   const m = p.mark();
@@ -1231,7 +1242,8 @@ const cspLiteralKind = (t: i32): i32 => {
   }
 };
 
-const cspPrimaryExpression = (p: CsParser, precedence: i32): i32 => cspPostfixExpression(p, cspPrimaryWithoutPostfix(p, precedence));
+const cspPrimaryExpression = (p: CsParser, precedence: i32): i32 =>
+  cspPostfixExpression(p, cspPrimaryWithoutPostfix(p, precedence));
 
 const cspKeywordParenExpr = (p: CsParser, kind: i32, typeArg: boolean, orVoid: boolean): i32 => {
   const m = p.sp();
@@ -1553,8 +1565,10 @@ const cspWhenNotNull = (p: CsParser, first: i32): i32 => {
 
 // ---- argument lists ----
 
-export const cspArgumentList = (p: CsParser): i32 => cspArgumentListImpl(p, K_OpenParenToken, K_CloseParenToken, K_ArgumentList);
-export const cspBracketedArgumentList = (p: CsParser): i32 => cspArgumentListImpl(p, K_OpenBracketToken, K_CloseBracketToken, K_BracketedArgumentList);
+export const cspArgumentList = (p: CsParser): i32 =>
+  cspArgumentListImpl(p, K_OpenParenToken, K_CloseParenToken, K_ArgumentList);
+export const cspBracketedArgumentList = (p: CsParser): i32 =>
+  cspArgumentListImpl(p, K_OpenBracketToken, K_CloseBracketToken, K_BracketedArgumentList);
 
 const cspArgumentListImpl = (p: CsParser, open: i32, close: i32, kind: i32): i32 => {
   const isIndexer = open === K_OpenBracketToken;
@@ -1579,9 +1593,11 @@ const cspArgumentListImpl = (p: CsParser, open: i32, close: i32, kind: i32): i32
   return p.node(kind, m);
 };
 
-const cspIsValidArgumentRefKindKeyword = (k: i32): boolean => k === K_RefKeyword || k === K_OutKeyword || k === K_InKeyword;
+const cspIsValidArgumentRefKindKeyword = (k: i32): boolean =>
+  k === K_RefKeyword || k === K_OutKeyword || k === K_InKeyword;
 
-const cspIsPossibleArgumentExpression = (p: CsParser): boolean => cspIsValidArgumentRefKindKeyword(p.k()) || cspIsPossibleExpression(p);
+const cspIsPossibleArgumentExpression = (p: CsParser): boolean =>
+  cspIsValidArgumentRefKindKeyword(p.k()) || cspIsPossibleExpression(p);
 
 const cspArgumentExpression = (p: CsParser, isIndexer: boolean): i32 => {
   const m = p.sp();
@@ -1594,7 +1610,10 @@ const cspArgumentExpression = (p: CsParser, isIndexer: boolean): i32 => {
     p.push(-1);
   }
   let refKind = -1;
-  if (cspIsValidArgumentRefKindKeyword(p.k()) && !(p.k() === K_RefKeyword && cspIsPossibleLambdaExpression(p, PREC_EXPRESSION))) {
+  if (
+    cspIsValidArgumentRefKindKeyword(p.k()) &&
+    !(p.k() === K_RefKeyword && cspIsPossibleLambdaExpression(p, PREC_EXPRESSION))
+  ) {
     refKind = p.eat();
   }
   p.push(refKind);
@@ -1743,7 +1762,8 @@ const cspScanParenthesizedLambda = (p: CsParser, precedence: i32): boolean =>
   cspScanImplicitlyTypedLambda(p, precedence) || cspScanExplicitlyTypedLambda(p, precedence);
 
 const cspIsParameterModifierIncludingScoped = (p: CsParser, i: i32): boolean =>
-  cspIsParameterModifierExcludingScoped(p.kindAt(i)) || (p.kindAt(i) === K_IdentifierToken && p.ckAt(i) === K_ScopedKeyword);
+  cspIsParameterModifierExcludingScoped(p.kindAt(i)) ||
+  (p.kindAt(i) === K_IdentifierToken && p.ckAt(i) === K_ScopedKeyword);
 
 const cspScanImplicitlyTypedLambda = (p: CsParser, precedence: i32): boolean => {
   if (precedence > PREC_LAMBDA) {
@@ -1812,7 +1832,13 @@ const cspShouldParseLambdaParameterType = (p: CsParser): boolean => {
   }
   if (cspIsTrueIdentifierAt(p, 0)) {
     const k1 = p.kindAt(1);
-    if (k1 !== K_CommaToken && k1 !== K_CloseParenToken && k1 !== K_EqualsGreaterThanToken && k1 !== K_OpenBraceToken && k1 !== K_EqualsToken) {
+    if (
+      k1 !== K_CommaToken &&
+      k1 !== K_CloseParenToken &&
+      k1 !== K_EqualsGreaterThanToken &&
+      k1 !== K_OpenBraceToken &&
+      k1 !== K_EqualsToken
+    ) {
       return true;
     }
   }
@@ -2112,7 +2138,8 @@ const cspScanCast = (p: CsParser, forPattern: boolean, inSwitchArmPattern: boole
   }
 };
 
-const cspIsBinaryPatternKeyword = (p: CsParser): boolean => p.k() === K_IdentifierToken && (p.ck() === K_OrKeyword || p.ck() === K_AndKeyword);
+const cspIsBinaryPatternKeyword = (p: CsParser): boolean =>
+  p.k() === K_IdentifierToken && (p.ck() === K_OrKeyword || p.ck() === K_AndKeyword);
 
 const cspIsBinaryPattern = (p: CsParser): boolean => {
   if (!cspIsBinaryPatternKeyword(p)) {
@@ -2599,10 +2626,20 @@ const cspInterpolation = (p: CsParser): i32 => {
 
 // ---- queries ----
 
-export const cspIsQueryExpression = (p: CsParser, mayBeVariableDeclaration: boolean, mayBeMemberDeclaration: boolean): boolean =>
-  p.k() === K_IdentifierToken && p.ck() === K_FromKeyword && cspIsQueryExpressionAfterFrom(p, mayBeVariableDeclaration, mayBeMemberDeclaration);
+export const cspIsQueryExpression = (
+  p: CsParser,
+  mayBeVariableDeclaration: boolean,
+  mayBeMemberDeclaration: boolean,
+): boolean =>
+  p.k() === K_IdentifierToken &&
+  p.ck() === K_FromKeyword &&
+  cspIsQueryExpressionAfterFrom(p, mayBeVariableDeclaration, mayBeMemberDeclaration);
 
-const cspIsQueryExpressionAfterFrom = (p: CsParser, mayBeVariableDeclaration: boolean, mayBeMemberDeclaration: boolean): boolean => {
+const cspIsQueryExpressionAfterFrom = (
+  p: CsParser,
+  mayBeVariableDeclaration: boolean,
+  mayBeMemberDeclaration: boolean,
+): boolean => {
   const pk1 = p.kindAt(1);
   if (csIsPredefinedType(pk1)) {
     return true;
@@ -2871,7 +2908,11 @@ const cspLooksLikeTypeOfPattern = (p: CsParser): boolean => {
   if (csIsPredefinedType(tk)) {
     return true;
   }
-  if (tk === K_IdentifierToken && !p.t.tokIs(p.cur(), "_") && (p.ck() !== K_NameOfKeyword || p.kindAt(1) !== K_OpenParenToken)) {
+  if (
+    tk === K_IdentifierToken &&
+    !p.t.tokIs(p.cur(), "_") &&
+    (p.ck() !== K_NameOfKeyword || p.kindAt(1) !== K_OpenParenToken)
+  ) {
     return true;
   }
   if (p.k() === K_OpenParenToken) {
@@ -3080,7 +3121,11 @@ const cspLooksLikeCastForPattern = (p: CsParser, inSwitchArmPattern: boolean): b
 };
 
 const cspPropertyPatternClauseOpt = (p: CsParser, inSwitchArmPattern: boolean): i32 => {
-  if (cspIsTrueIdentifier(p) && cspIsValidPatternDesignation(p, inSwitchArmPattern) && p.kindAt(1) === K_OpenBraceToken) {
+  if (
+    cspIsTrueIdentifier(p) &&
+    cspIsValidPatternDesignation(p, inSwitchArmPattern) &&
+    p.kindAt(1) === K_OpenBraceToken
+  ) {
     p.fail("designator before property pattern");
     return -1;
   }

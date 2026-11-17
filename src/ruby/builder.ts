@@ -160,11 +160,9 @@ import {
   VT_FLOAT,
   VT_INT,
   VT_RATIONAL,
-
   VT_SYM,
   V_NIL,
   vIdx,
-
   vTag,
   rbFloatInspect,
 } from "./ast";
@@ -354,7 +352,6 @@ export class RbParseState {
     }
     return lo + 1;
   }
-
 }
 
 export class RbBuilder {
@@ -1095,11 +1092,19 @@ export class RbBuilder {
 
   constGlobal(colon3T: i32, nameT: i32): i32 {
     const cbase = this.n0(NT_CBASE, this.tokenMap(colon3T));
-    return this.n(NT_CONST, this.a.list2(cbase, this.a.sym(this.value(nameT))), this.constantMap(cbase, colon3T, nameT));
+    return this.n(
+      NT_CONST,
+      this.a.list2(cbase, this.a.sym(this.value(nameT))),
+      this.constantMap(cbase, colon3T, nameT),
+    );
   }
 
   constFetch(scope: i32, colon2T: i32, nameT: i32): i32 {
-    return this.n(NT_CONST, this.a.list2(scope, this.a.sym(this.value(nameT))), this.constantMap(scope, colon2T, nameT));
+    return this.n(
+      NT_CONST,
+      this.a.list2(scope, this.a.sym(this.value(nameT))),
+      this.constantMap(scope, colon2T, nameT),
+    );
   }
 
   __ENCODING__(t: i32): i32 {
@@ -1156,7 +1161,16 @@ export class RbBuilder {
   opAssign(lhs0: i32, opT: i32, rhs: i32): i32 {
     let lhs = lhs0;
     const t = this.a.type(lhs);
-    if (t === NT_GVASGN || t === NT_IVASGN || t === NT_LVASGN || t === NT_CVASGN || t === NT_CASGN || t === NT_SEND || t === NT_CSEND || t === NT_INDEX) {
+    if (
+      t === NT_GVASGN ||
+      t === NT_IVASGN ||
+      t === NT_LVASGN ||
+      t === NT_CVASGN ||
+      t === NT_CASGN ||
+      t === NT_SEND ||
+      t === NT_CSEND ||
+      t === NT_INDEX
+    ) {
       const op = this.value(opT);
       const m = this.a.copyMap(this.a.map(lhs));
       this.a.setT(m, F_OPERATOR, opT);
@@ -1211,12 +1225,20 @@ export class RbBuilder {
 
   defMethod(defT: i32, nameT: i32, args: i32, body: i32, endT: i32): i32 {
     this.checkReservedForNumparam(this.value(nameT));
-    return this.n(NT_DEF, this.a.list3(this.a.sym(this.value(nameT)), args, body), this.definitionMap(defT, V_NIL, nameT, endT));
+    return this.n(
+      NT_DEF,
+      this.a.list3(this.a.sym(this.value(nameT)), args, body),
+      this.definitionMap(defT, V_NIL, nameT, endT),
+    );
   }
 
   defEndlessMethod(defT: i32, nameT: i32, args: i32, assignmentT: i32, body: i32): i32 {
     this.checkReservedForNumparam(this.value(nameT));
-    return this.n(NT_DEF, this.a.list3(this.a.sym(this.value(nameT)), args, body), this.endlessDefinitionMap(defT, V_NIL, nameT, assignmentT, body));
+    return this.n(
+      NT_DEF,
+      this.a.list3(this.a.sym(this.value(nameT)), args, body),
+      this.endlessDefinitionMap(defT, V_NIL, nameT, assignmentT, body),
+    );
   }
 
   defSingleton(defT: i32, definee: i32, dotT: i32, nameT: i32, args: i32, body: i32, endT: i32): i32 {
@@ -1385,7 +1407,11 @@ export class RbBuilder {
   }
 
   callLambda(lambdaT: i32): i32 {
-    return this.n(NT_SEND, this.a.list2(V_NIL, this.a.sym("lambda")), this.sendMap(V_NIL, V_NIL, lambdaT, V_NIL, V_NIL, V_NIL));
+    return this.n(
+      NT_SEND,
+      this.a.list2(V_NIL, this.a.sym("lambda")),
+      this.sendMap(V_NIL, V_NIL, lambdaT, V_NIL, V_NIL, V_NIL),
+    );
   }
 
   block(methodCall: i32, beginT: i32, args0: i32, body: i32, endT: i32): i32 {
@@ -1408,11 +1434,22 @@ export class RbBuilder {
       blockType = NT_NUMBLOCK;
       args = this.a.kid(args, 0);
     }
-    if (mt === NT_SEND || mt === NT_CSEND || mt === NT_INDEX || mt === NT_SUPER || mt === NT_ZSUPER || mt === NT_LAMBDA) {
+    if (
+      mt === NT_SEND ||
+      mt === NT_CSEND ||
+      mt === NT_INDEX ||
+      mt === NT_SUPER ||
+      mt === NT_ZSUPER ||
+      mt === NT_LAMBDA
+    ) {
       return this.n(blockType, this.a.list3(methodCall, args, body), this.blockMap(this.exS(methodCall), beginT, endT));
     }
     const actualSend = this.a.kid(methodCall, 0);
-    const block = this.n(blockType, this.a.list3(actualSend, args, body), this.blockMap(this.exS(actualSend), beginT, endT));
+    const block = this.n(
+      blockType,
+      this.a.list3(actualSend, args, body),
+      this.blockMap(this.exS(actualSend), beginT, endT),
+    );
     const m = this.a.copyMap(this.a.map(methodCall));
     this.a.setF(m, F_EXPRESSION, this.exS(methodCall), this.exE(block));
     return this.n(mt, this.a.list1(block), m);
@@ -1426,7 +1463,11 @@ export class RbBuilder {
   attrAsgn(receiver: i32, dotT: i32, selectorT: i32): i32 {
     const name = `${this.value(selectorT)}=`;
     const type = this.callTypeForDot(dotT);
-    return this.n(type, this.a.list2(receiver, this.a.sym(name)), this.sendMap(receiver, dotT, selectorT, V_NIL, V_NIL, V_NIL));
+    return this.n(
+      type,
+      this.a.list2(receiver, this.a.sym(name)),
+      this.sendMap(receiver, dotT, selectorT, V_NIL, V_NIL, V_NIL),
+    );
   }
 
   index(receiver: i32, lbrackT: i32, indexes: i32, rbrackT: i32): i32 {
@@ -1450,7 +1491,11 @@ export class RbBuilder {
   }
 
   binaryOp(receiver: i32, opT: i32, arg: i32): i32 {
-    return this.n(NT_SEND, this.a.list3(receiver, this.a.sym(this.value(opT)), arg), this.sendBinaryOpMap(receiver, opT, arg));
+    return this.n(
+      NT_SEND,
+      this.a.list3(receiver, this.a.sym(this.value(opT)), arg),
+      this.sendBinaryOpMap(receiver, opT, arg),
+    );
   }
 
   matchOp(receiver: i32, matchT: i32, arg: i32): i32 {
@@ -1478,7 +1523,11 @@ export class RbBuilder {
       const nilNode = this.n0(NT_BEGIN, this.collectionMap(beginT, V_NIL, endT));
       return this.n(NT_SEND, this.a.list2(nilNode, this.a.sym("!")), this.sendUnaryOpMap(notT, nilNode));
     }
-    return this.n(NT_SEND, this.a.list2(this.checkCondition(receiver), this.a.sym("!")), this.sendMap(V_NIL, V_NIL, notT, beginT, this.a.list1(receiver), endT));
+    return this.n(
+      NT_SEND,
+      this.a.list2(this.checkCondition(receiver), this.a.sym("!")),
+      this.sendMap(V_NIL, V_NIL, notT, beginT, this.a.list1(receiver), endT),
+    );
   }
 
   logicalOp(type: i32, lhs: i32, opT: i32, rhs: i32): i32 {
@@ -1486,16 +1535,28 @@ export class RbBuilder {
   }
 
   condition(condT: i32, cond: i32, thenT: i32, ifTrue: i32, elseT: i32, ifFalse: i32, endT: i32): i32 {
-    return this.n(NT_IF, this.a.list3(this.checkCondition(cond), ifTrue, ifFalse), this.conditionMap(condT, cond, thenT, ifTrue, elseT, ifFalse, endT));
+    return this.n(
+      NT_IF,
+      this.a.list3(this.checkCondition(cond), ifTrue, ifFalse),
+      this.conditionMap(condT, cond, thenT, ifTrue, elseT, ifFalse, endT),
+    );
   }
 
   conditionMod(ifTrue: i32, ifFalse: i32, condT: i32, cond: i32): i32 {
     const pre = ifTrue !== V_NIL ? ifTrue : ifFalse;
-    return this.n(NT_IF, this.a.list3(this.checkCondition(cond), ifTrue, ifFalse), this.keywordModMap(pre, condT, cond));
+    return this.n(
+      NT_IF,
+      this.a.list3(this.checkCondition(cond), ifTrue, ifFalse),
+      this.keywordModMap(pre, condT, cond),
+    );
   }
 
   ternary(cond: i32, questionT: i32, ifTrue: i32, colonT: i32, ifFalse: i32): i32 {
-    return this.n(NT_IF, this.a.list3(this.checkCondition(cond), ifTrue, ifFalse), this.ternaryMap(cond, questionT, colonT, ifFalse));
+    return this.n(
+      NT_IF,
+      this.a.list3(this.checkCondition(cond), ifTrue, ifFalse),
+      this.ternaryMap(cond, questionT, colonT, ifFalse),
+    );
   }
 
   when(whenT: i32, patterns: i32, thenT: i32, body: i32): i32 {
@@ -1546,10 +1607,21 @@ export class RbBuilder {
   }
 
   rescueBody(rescueT: i32, excList: i32, assocT: i32, excVar: i32, thenT: i32, compstmt: i32): i32 {
-    return this.n(NT_RESBODY, this.a.list3(excList, excVar, compstmt), this.rescueBodyMap(rescueT, excList, assocT, excVar, thenT, compstmt));
+    return this.n(
+      NT_RESBODY,
+      this.a.list3(excList, excVar, compstmt),
+      this.rescueBodyMap(rescueT, excList, assocT, excVar, thenT, compstmt),
+    );
   }
 
-  beginBody(compound0: i32, rescueBodies: i32 = 0, elseT: i32 = 0, else_: i32 = 0, ensureT: i32 = 0, ensure_: i32 = 0): i32 {
+  beginBody(
+    compound0: i32,
+    rescueBodies: i32 = 0,
+    elseT: i32 = 0,
+    else_: i32 = 0,
+    ensureT: i32 = 0,
+    ensure_: i32 = 0,
+  ): i32 {
     let compound = compound0;
     if (this.a.len(rescueBodies) > 0) {
       const kids = this.a.list1(compound);
@@ -1581,7 +1653,11 @@ export class RbBuilder {
     }
     if (ensureT !== V_NIL) {
       const ens = this.a.list1(ensure_);
-      compound = this.n(NT_ENSURE, this.a.list2(compound, ensure_), this.ehKeywordMap(compound, ensureT, ens, V_NIL, V_NIL));
+      compound = this.n(
+        NT_ENSURE,
+        this.a.list2(compound, ensure_),
+        this.ehKeywordMap(compound, ensureT, ens, V_NIL, V_NIL),
+      );
     }
     return compound;
   }
@@ -1748,7 +1824,11 @@ export class RbBuilder {
         this.a.push(nodes, el);
       }
     }
-    return this.n(trailing ? NT_ARRAY_PATTERN_WITH_TAIL : NT_ARRAY_PATTERN, nodes, this.collectionMap(lbrackT, elements, rbrackT));
+    return this.n(
+      trailing ? NT_ARRAY_PATTERN_WITH_TAIL : NT_ARRAY_PATTERN,
+      nodes,
+      this.collectionMap(lbrackT, elements, rbrackT),
+    );
   }
 
   findPattern(lbrackT: i32, elements: i32, rbrackT: i32): i32 {
@@ -1756,7 +1836,11 @@ export class RbBuilder {
   }
 
   matchWithTrailingComma(match: i32, commaT: i32): i32 {
-    return this.n(NT_MATCH_WITH_TRAILING_COMMA, this.a.list1(match), this.exprMap(this.exS(match), rbMax(this.exE(match), this.tE(commaT))));
+    return this.n(
+      NT_MATCH_WITH_TRAILING_COMMA,
+      this.a.list1(match),
+      this.exprMap(this.exS(match), rbMax(this.exE(match), this.tE(commaT))),
+    );
   }
 
   constPattern(c: i32, ldelimT: i32, pattern: i32, rdelimT: i32): i32 {
@@ -1818,7 +1902,12 @@ export class RbBuilder {
       return cond;
     }
     if (t === NT_AND || t === NT_OR) {
-      return this.a.updated(cond, t, this.a.list2(this.checkCondition(this.a.kid(cond, 0)), this.checkCondition(this.a.kid(cond, 1))), -2);
+      return this.a.updated(
+        cond,
+        t,
+        this.a.list2(this.checkCondition(this.a.kid(cond, 0)), this.checkCondition(this.a.kid(cond, 1))),
+        -2,
+      );
     }
     if (t === NT_IRANGE || t === NT_ERANGE) {
       const lhs = this.a.kid(cond, 0);
@@ -1845,7 +1934,16 @@ export class RbBuilder {
         continue;
       }
       const t = this.a.type(arg);
-      if (t === NT_ARG || t === NT_OPTARG || t === NT_RESTARG || t === NT_BLOCKARG || t === NT_KWARG || t === NT_KWOPTARG || t === NT_KWRESTARG || t === NT_SHADOWARG) {
+      if (
+        t === NT_ARG ||
+        t === NT_OPTARG ||
+        t === NT_RESTARG ||
+        t === NT_BLOCKARG ||
+        t === NT_KWARG ||
+        t === NT_KWOPTARG ||
+        t === NT_KWRESTARG ||
+        t === NT_SHADOWARG
+      ) {
         const nh = this.a.kid(arg, 0);
         if (nh === V_NIL) {
           continue;
@@ -1929,7 +2027,16 @@ export class RbBuilder {
 
   validateDefinee(d: i32): boolean {
     const t = this.a.type(d);
-    if (t === NT_INT || t === NT_STR || t === NT_DSTR || t === NT_SYM || t === NT_DSYM || t === NT_REGEXP || t === NT_ARRAY || t === NT_HASH) {
+    if (
+      t === NT_INT ||
+      t === NT_STR ||
+      t === NT_DSTR ||
+      t === NT_SYM ||
+      t === NT_DSYM ||
+      t === NT_REGEXP ||
+      t === NT_ARRAY ||
+      t === NT_HASH
+    ) {
       this.diag();
       return false;
     }
@@ -2042,7 +2149,8 @@ const rbMin = (a: i32, b: i32): i32 => (a < 0 ? b : b < 0 ? a : a < b ? a : b);
 const rbMax = (a: i32, b: i32): i32 => (a > b ? a : b);
 
 /** `_1`..`_9`. */
-const rbIsNumparam = (s: string): boolean => s.length === 2 && s.charCodeAt(0) === 95 && s.charCodeAt(1) >= 49 && s.charCodeAt(1) <= 57;
+const rbIsNumparam = (s: string): boolean =>
+  s.length === 2 && s.charCodeAt(0) === 95 && s.charCodeAt(1) >= 49 && s.charCodeAt(1) <= 57;
 
 const rbStartsUpper = (s: string): boolean => s.length > 0 && s.charCodeAt(0) >= 65 && s.charCodeAt(0) <= 90;
 

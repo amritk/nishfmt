@@ -24,7 +24,12 @@ export class CopStyleProc {
       }
       const s = a.kid(n, 0);
       // (send (const {nil? cbase} :Proc) :new)
-      if (!ssxIs(src, s, NT_SEND) || a.nKid(s) !== 2 || ssxMeth(src, s) !== "new" || !ssxGlobalConst(src, a.kid(s, 0), "Proc")) {
+      if (
+        !ssxIs(src, s, NT_SEND) ||
+        a.nKid(s) !== 2 ||
+        ssxMeth(src, s) !== "new" ||
+        !ssxGlobalConst(src, a.kid(s, 0), "Proc")
+      ) {
         continue;
       }
       const k = this.c.offense(a.exS(s), a.exE(s));

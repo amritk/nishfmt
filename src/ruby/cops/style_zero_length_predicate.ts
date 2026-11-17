@@ -51,7 +51,12 @@ const rbZlpNonPolymorphic = (src: RbSource, p: i32): boolean => {
   if ((m === "new" || m === "open") && rbZlpConst(src, c, " File Tempfile StringIO ")) {
     return true;
   }
-  if (m === "new" && ssxIs(src, c, NT_CONST) && a.text(a.kid(c, 1)) === "Stat" && rbZlpConst(src, a.kid(c, 0), " File ")) {
+  if (
+    m === "new" &&
+    ssxIs(src, c, NT_CONST) &&
+    a.text(a.kid(c, 1)) === "Stat" &&
+    rbZlpConst(src, a.kid(c, 0), " File ")
+  ) {
     return true;
   }
   return false;

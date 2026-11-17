@@ -209,11 +209,28 @@ export const swIsSwiftKeyword = (s: string): boolean => {
       return s === "func" || s === "else" || s === "case" || s === "init" || s === "enum";
     case 5:
       return (
-        s === "class" || s === "guard" || s === "catch" || s === "throw" || s === "where" || s === "break" || s === "while" || s === "inout" || s === "defer" || s === "await"
+        s === "class" ||
+        s === "guard" ||
+        s === "catch" ||
+        s === "throw" ||
+        s === "where" ||
+        s === "break" ||
+        s === "while" ||
+        s === "inout" ||
+        s === "defer" ||
+        s === "await"
       );
     case 6:
       return (
-        s === "return" || s === "public" || s === "import" || s === "static" || s === "switch" || s === "struct" || s === "throws" || s === "deinit" || s === "repeat"
+        s === "return" ||
+        s === "public" ||
+        s === "import" ||
+        s === "static" ||
+        s === "switch" ||
+        s === "struct" ||
+        s === "throws" ||
+        s === "deinit" ||
+        s === "repeat"
       );
     case 7:
       return s === "private" || s === "default" || s === "consume" || s === "discard";
@@ -234,7 +251,13 @@ export const swIsSwiftKeyword = (s: string): boolean => {
 
 /** String.isKeywordInTypeContext. */
 export const swIsKeywordInTypeContext = (s: string): boolean =>
-  s === "borrowing" || s === "consuming" || s === "isolated" || s === "sending" || s === "some" || s === "any" || s === "of";
+  s === "borrowing" ||
+  s === "consuming" ||
+  s === "isolated" ||
+  s === "sending" ||
+  s === "some" ||
+  s === "any" ||
+  s === "of";
 
 /** String.isMacro: starts with `#` and is not a conditional compilation directive. */
 export const swStrIsMacro = (s: string): boolean =>

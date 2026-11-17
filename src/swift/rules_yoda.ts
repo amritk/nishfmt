@@ -167,7 +167,10 @@ export const swRuleYodaConditions = (f: SwFormatter): void => {
     if (nextIndex < 0) {
       continue;
     }
-    if (swIsConstant(f, nextIndex) && !swYodaIsOperator(f, f.indexAfter(SW_T_NON_SPACE_OR_COMMENT_OR_LINEBREAK, nextIndex))) {
+    if (
+      swIsConstant(f, nextIndex) &&
+      !swYodaIsOperator(f, f.indexAfter(SW_T_NON_SPACE_OR_COMMENT_OR_LINEBREAK, nextIndex))
+    ) {
       continue;
     }
     const endIndex = swEndOfExpression(f, nextIndex, true, true);

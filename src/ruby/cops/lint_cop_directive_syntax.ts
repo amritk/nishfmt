@@ -12,7 +12,8 @@ import { LdhDirective, LdhRegistry, ldhStrip, ldhWords } from "./lint_directive_
 const lcdsSpace = (c: i32): boolean => c === 32 || (c >= 9 && c <= 13);
 
 /** Ruby's \w, with non-ASCII counted as a word character for \b. */
-const lcdsWord = (c: i32): boolean => (c >= 48 && c <= 57) || (c >= 65 && c <= 90) || (c >= 97 && c <= 122) || c === 95 || c >= 128;
+const lcdsWord = (c: i32): boolean =>
+  (c >= 48 && c <= 57) || (c >= 65 && c <= 90) || (c >= 97 && c <= 122) || c === 95 || c >= 128;
 
 /** The modes, longest first (MODES_PATTERN). */
 const LCDS_MODES: string = " disable-next enable-next todo-next disable enable next todo push pop ";
@@ -270,7 +271,8 @@ export class CopLintCopDirectiveSyntax {
       this.c.offense(cs, ce);
       return true;
     }
-    const nextMode = d.mode === "disable-next" || d.mode === "todo-next" || d.mode === "enable-next" || d.mode === "next";
+    const nextMode =
+      d.mode === "disable-next" || d.mode === "todo-next" || d.mode === "enable-next" || d.mode === "next";
     if (nextMode && !src.commentOnlyLine(d.line)) {
       this.c.offense(cs, ce);
       return true;

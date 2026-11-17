@@ -6,7 +6,6 @@
 // Foundation and Contributors), for CSharpier 1.4.0 (MIT License, Copyright
 // (c) 2021 Bela VanderVoort).
 
-
 // NameOptions
 
 import {
@@ -145,19 +144,10 @@ import {
   K_WhereKeyword,
   K_WithKeyword,
 } from "./kinds";
-import {
-  growI32,
-} from "../core/arr";
-import {
-  CsLexer,
-  TF_HOLE_END,
-} from "./lexer";
-import {
-  CsTree,
-} from "./tree";
-import {
-  cspParameterModifiers,
-} from "./pdecl";
+import { growI32 } from "../core/arr";
+import { CsLexer, TF_HOLE_END } from "./lexer";
+import { CsTree } from "./tree";
+import { cspParameterModifiers } from "./pdecl";
 import {
   cspExpressionCore,
   cspIsPossibleExpression,
@@ -548,7 +538,6 @@ export const cspIsCurrentTokenDefinitelyPartialModifier = (p: CsParser, onlyForT
   return r;
 };
 
-
 /** The DeclarationModifiers of a token, as a nonzero code, or 0 for none (scoped excluded). */
 
 export const MOD_PARTIAL: i32 = 100;
@@ -674,7 +663,6 @@ export const cspIsPossibleMemberName = (p: CsParser): boolean => {
   }
 };
 
-
 /** IsUnambiguousAnonymousFunctionModifierListFollowedByOpenParen. */
 export const cspIsUnambiguousAnonymousFunctionModifierListFollowedByOpenParen = (p: CsParser): boolean =>
   cspIsUnambiguousModifierListFollowedByOpenParen(p);
@@ -753,7 +741,8 @@ const cspScanTypeArgumentList = (p: CsParser, options: i32): i32 => {
     case K_IdentifierToken:
       if (
         (options & (NO_AFTER_IS | NO_DEFINITE_PATTERN | NO_AFTER_OUT)) !== 0 ||
-        ((options & NO_AFTER_TUPLE_COMMA) !== 0 && (p.kindAt(1) === K_CommaToken || p.kindAt(1) === K_CloseParenToken)) ||
+        ((options & NO_AFTER_TUPLE_COMMA) !== 0 &&
+          (p.kindAt(1) === K_CommaToken || p.kindAt(1) === K_CloseParenToken)) ||
         ((options & NO_FIRST_ELEMENT_OF_POSSIBLE_TUPLE_LITERAL) !== 0 && p.kindAt(1) === K_CommaToken)
       ) {
         return STA_DEFINITE;
@@ -919,7 +908,6 @@ export const cspTypeArgumentList = (p: CsParser): i32 => {
   p.push(p.expect(K_GreaterThanToken));
   return p.node(K_TypeArgumentList, m);
 };
-
 
 const cspTypeArgument = (p: CsParser): i32 => {
   if (p.k() === K_OpenBracketToken && p.kindAt(1) !== K_CloseBracketToken) {
@@ -1128,7 +1116,12 @@ const cspScanFunctionPointerType = (p: CsParser): i32 => {
   if (p.k() === K_IdentifierToken) {
     const ck = p.ck();
     const k1 = p.kindAt(1);
-    if (ck === K_ManagedKeyword || ck === K_UnmanagedKeyword || cspIsPossibleFunctionPointerParameterListStart(k1) || k1 === K_OpenBracketToken) {
+    if (
+      ck === K_ManagedKeyword ||
+      ck === K_UnmanagedKeyword ||
+      cspIsPossibleFunctionPointerParameterListStart(k1) ||
+      k1 === K_OpenBracketToken
+    ) {
       p.lastScan = p.eat();
     } else {
       return ST_MUST_BE_TYPE;
@@ -1227,7 +1220,12 @@ const cspTypeCore = (p: CsParser, mode: i32): i32 => {
       break;
     }
     if (k === K_AsteriskToken) {
-      if (mode === PT_AFTER_IS || mode === PT_DEFINITE_PATTERN || mode === PT_AFTER_TUPLE_COMMA || mode === PT_FIRST_ELEMENT_OF_POSSIBLE_TUPLE_LITERAL) {
+      if (
+        mode === PT_AFTER_IS ||
+        mode === PT_DEFINITE_PATTERN ||
+        mode === PT_AFTER_TUPLE_COMMA ||
+        mode === PT_FIRST_ELEMENT_OF_POSSIBLE_TUPLE_LITERAL
+      ) {
         if (cspPointerTypeModsFollowedByRankAndDimensionSpecifier(p)) {
           type = cspPointerTypeMods(p, type);
           continue;
@@ -1475,4 +1473,3 @@ const cspFunctionPointerType = (p: CsParser): i32 => {
   p.push(p.node(K_FunctionPointerParameterList, lm0));
   return p.node(K_FunctionPointerType, m);
 };
-

@@ -30,7 +30,8 @@ import { ldhNilOrKernel } from "./lint_detect_help";
 import { ssxDefName, ssxMeth } from "./style_syntax_help";
 
 /** redefinable_flow_method?. */
-const lucRedefinable = (m: string): boolean => m === "raise" || m === "fail" || m === "throw" || m === "exit" || m === "exit!" || m === "abort";
+const lucRedefinable = (m: string): boolean =>
+  m === "raise" || m === "fail" || m === "throw" || m === "exit" || m === "exit!" || m === "abort";
 
 export class CopLintUnreachableCode {
   c: RbCop;

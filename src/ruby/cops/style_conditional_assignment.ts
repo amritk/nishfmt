@@ -32,7 +32,16 @@ import {
 import { RbCop } from "../cop";
 import { RbRewriter } from "../rewriter";
 import { RbSource } from "../source";
-import { SCN_MAX, scnBranches, scnElseBranch, scnElsif, scnIfBranch, scnLen, scnSpaces, scnTernary } from "./style_cond_help";
+import {
+  SCN_MAX,
+  scnBranches,
+  scnElseBranch,
+  scnElsif,
+  scnIfBranch,
+  scnLen,
+  scnSpaces,
+  scnTernary,
+} from "./style_cond_help";
 import { scnCorrectionParses } from "./style_cond_reparse";
 import { ssxHas, ssxIs, ssxIsSpace, ssxMeth } from "./style_syntax_help";
 
@@ -55,14 +64,26 @@ const scaAssignmentType = (src: RbSource, n: i32): boolean => {
     return false;
   }
   const t = src.a.type(n);
-  if (t === NT_CASGN || t === NT_CVASGN || t === NT_GVASGN || t === NT_IVASGN || t === NT_LVASGN || t === NT_AND_ASGN || t === NT_OR_ASGN || t === NT_OP_ASGN || t === NT_MASGN) {
+  if (
+    t === NT_CASGN ||
+    t === NT_CVASGN ||
+    t === NT_GVASGN ||
+    t === NT_IVASGN ||
+    t === NT_LVASGN ||
+    t === NT_AND_ASGN ||
+    t === NT_OR_ASGN ||
+    t === NT_OP_ASGN ||
+    t === NT_MASGN
+  ) {
     return true;
   }
   if (t !== NT_SEND) {
     return false;
   }
   const m = ssxMeth(src, n);
-  return m === "[]=" || m === "<<" || m === "=~" || m === "!~" || m === "<=>" || m.endsWith("=") || m === "<" || m === ">";
+  return (
+    m === "[]=" || m === "<<" || m === "=~" || m === "!~" || m === "<=>" || m.endsWith("=") || m === "<" || m === ">"
+  );
 };
 
 /** ConditionalAssignmentHelper#lhs. */

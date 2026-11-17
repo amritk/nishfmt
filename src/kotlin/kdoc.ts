@@ -153,7 +153,14 @@ class KdParagraph {
 
 /** Paragraph.canBreakAt. */
 const kdCanBreakAt = (prev: string, word: string): boolean => {
-  if (word.startsWith("#") || word.startsWith("```") || kdIsDirectiveMarker(word) || word.startsWith("@") || kdIsTodo(word) || word.startsWith(">")) {
+  if (
+    word.startsWith("#") ||
+    word.startsWith("```") ||
+    kdIsDirectiveMarker(word) ||
+    word.startsWith("@") ||
+    kdIsTodo(word) ||
+    word.startsWith(">")
+  ) {
     return false;
   }
   if (prev === "@sample") {
@@ -276,7 +283,10 @@ class KdBuilder {
         kdIsDirectiveMarker(w) ||
         kdIsLine(w, 3) ||
         kdIsHeader(w) ||
-        (kdLen(s) > 2 && (kdWsAt(s, 0) === 0 || kdWsAt(s, 1) === 0) && j < n - 1 && kdIsBlank(this.lineContent(this.lines[j - 1])))
+        (kdLen(s) > 2 &&
+          (kdWsAt(s, 0) === 0 || kdWsAt(s, 1) === 0) &&
+          j < n - 1 &&
+          kdIsBlank(this.lineContent(this.lines[j - 1])))
       );
     }
     return true;
@@ -298,7 +308,10 @@ class KdBuilder {
       }
       let brk = false;
       if (mode === UNTIL_HTML_LIST) {
-        brk = kdStartsWithIgnoreCase(without, "<li>") || kdStartsWithIgnoreCase(without, "</ul>") || kdStartsWithIgnoreCase(without, "</ol>");
+        brk =
+          kdStartsWithIgnoreCase(without, "<li>") ||
+          kdStartsWithIgnoreCase(without, "</ul>") ||
+          kdStartsWithIgnoreCase(without, "</ol>");
       } else if (mode === UNTIL_LIST_ITEM) {
         brk = kdIsBlank(without);
       }
@@ -384,13 +397,21 @@ class KdBuilder {
       const without = kdTrim(withIndent);
       const indentOf = kdLen(withIndent) - kdLen(without);
       const prevP = this.paragraph.prev;
-      if (withIndent.startsWith("    ") && (i === 1 || kdIsBlank(this.lineContent(this.lines[i - 2]))) && (prevP === null || indentOf >= prevP.originalIndent + 4)) {
+      if (
+        withIndent.startsWith("    ") &&
+        (i === 1 || kdIsBlank(this.lineContent(this.lines[i - 2]))) &&
+        (prevP === null || indentOf >= prevP.originalIndent + 4)
+      ) {
         i = this.addPreformatted(i - 1, false, false, false, PRE_UNINDENTED);
       } else if (without.startsWith("-") && kdContainsOnly(without, "-| ")) {
         const p = this.newParagraphAt(i - 1, l, withIndent, without);
         this.appendText(without);
         this.newParagraphAt(i, l, withIndent, without).block = true;
-        if (kdIsLine(withIndent, 3) && (i < 2 || kdIsBlank(this.lineContent(this.lines[i - 2]))) && (i > n - 1 || kdIsBlank(this.lineContent(this.lines[i])))) {
+        if (
+          kdIsLine(withIndent, 3) &&
+          (i < 2 || kdIsBlank(this.lineContent(this.lines[i - 2]))) &&
+          (i > n - 1 || kdIsBlank(this.lineContent(this.lines[i])))
+        ) {
           p.separator = true;
         }
       } else if (without.startsWith("=") && kdContainsOnly(without, "= ")) {
@@ -416,7 +437,13 @@ class KdBuilder {
         let isFirst = true;
         while (i < n) {
           const qTrimmed = kdTrim(this.lineContent(this.lines[i]));
-          if (kdIsBlank(qTrimmed) || kdIsKDocTag(qTrimmed) || kdIsTodo(qTrimmed) || kdIsDirectiveMarker(qTrimmed) || kdIsHeader(qTrimmed)) {
+          if (
+            kdIsBlank(qTrimmed) ||
+            kdIsKDocTag(qTrimmed) ||
+            kdIsTodo(qTrimmed) ||
+            kdIsDirectiveMarker(qTrimmed) ||
+            kdIsHeader(qTrimmed)
+          ) {
             break;
           }
           if (!qTrimmed.startsWith("> ") && kdIsListItem(qTrimmed)) {
@@ -692,7 +719,10 @@ class KdBuilder {
       } else if (kdIsHeader(text)) {
         sep = true;
       } else if (p.preformatted) {
-        sep = !prev.preformatted && !kdStartsWithIgnoreCase(text, "<pre") && (!kdTrimStart(text).startsWith("```") || !kdIsExpectingMore(prev.content));
+        sep =
+          !prev.preformatted &&
+          !kdStartsWithIgnoreCase(text, "<pre") &&
+          (!kdTrimStart(text).startsWith("```") || !kdIsExpectingMore(prev.content));
       } else if (prev.preformatted && kdStartsWithIgnoreCase(prev.content, "</pre>")) {
         sep = false;
       } else if (p.continuation) {
@@ -1025,7 +1055,10 @@ const kdIsHeaderDivider = (barCount: i32, s: string): boolean => {
       continue;
     } else if (
       c === 45 &&
-      (kdStartsWithAt(s, "--", i) || kdStartsWithAt(s, "-:", i) || (i > 1 && kdStartsWithAt(s, ":-:", i - 2)) || (i > 1 && kdStartsWithAt(s, ":--", i - 2)))
+      (kdStartsWithAt(s, "--", i) ||
+        kdStartsWithAt(s, "-:", i) ||
+        (i > 1 && kdStartsWithAt(s, ":-:", i - 2)) ||
+        (i > 1 && kdStartsWithAt(s, ":--", i - 2)))
     ) {
       while (i < n && s.charCodeAt(i) === 45) {
         i++;
@@ -1300,9 +1333,11 @@ const kdStartsWithIgnoreCaseAt = (s: string, p: string, i: i32): boolean => {
 
 const kdStartsWithIgnoreCase = (s: string, p: string): boolean => kdStartsWithIgnoreCaseAt(s, p, 0);
 
-const kdEndsWithIgnoreCase = (s: string, p: string): boolean => kdStartsWithIgnoreCaseAt(s, p, toI32(s.length) - toI32(p.length));
+const kdEndsWithIgnoreCase = (s: string, p: string): boolean =>
+  kdStartsWithIgnoreCaseAt(s, p, toI32(s.length) - toI32(p.length));
 
-const kdEqualsIgnoreCase = (s: string, p: string): boolean => s.length === p.length && kdStartsWithIgnoreCaseAt(s, p, 0);
+const kdEqualsIgnoreCase = (s: string, p: string): boolean =>
+  s.length === p.length && kdStartsWithIgnoreCaseAt(s, p, 0);
 
 const kdIndexOfIgnoreCase = (s: string, p: string): i32 => {
   for (let i = 0; i + toI32(p.length) <= toI32(s.length); i++) {
@@ -1391,7 +1426,9 @@ const kdIsListItem = (s: string): boolean => {
   while (i < toI32(s.length) && kdIsDigit(s.charCodeAt(i))) {
     i++;
   }
-  return i > 0 && i + 1 < toI32(s.length) && (s.charCodeAt(i) === 46 || s.charCodeAt(i) === 41) && s.charCodeAt(i + 1) === 32;
+  return (
+    i > 0 && i + 1 < toI32(s.length) && (s.charCodeAt(i) === 46 || s.charCodeAt(i) === 41) && s.charCodeAt(i + 1) === 32
+  );
 };
 
 const kdIsTodo = (s: string): boolean => s.startsWith("TODO:") || s.startsWith("TODO(");

@@ -486,7 +486,12 @@ export class DtsVisitor {
       return false;
     }
     const k = this.kind(this.f(n, 0));
-    return !(k === N_CONDITIONAL_EXPRESSION || k === N_BINARY_EXPRESSION || k === N_PREFIX_EXPRESSION || k === N_AWAIT_EXPRESSION);
+    return !(
+      k === N_CONDITIONAL_EXPRESSION ||
+      k === N_BINARY_EXPRESSION ||
+      k === N_PREFIX_EXPRESSION ||
+      k === N_AWAIT_EXPRESSION
+    );
   }
 
   isStringLiteral(n: i32): boolean {
@@ -781,7 +786,7 @@ export class DtsVisitor {
     const quoteStart = line.startsWith("r") ? 1 : 0;
     const quoteEnd = quoteStart + 3;
     let backslashCount = 0;
-    if (n > quoteEnd && (dtsStartsAt(line, "'''", quoteStart) || dtsStartsAt(line, "\"\"\"", quoteStart))) {
+    if (n > quoteEnd && (dtsStartsAt(line, "'''", quoteStart) || dtsStartsAt(line, '"""', quoteStart))) {
       let cursor = quoteEnd;
       while (true) {
         let c = line.charCodeAt(cursor);
@@ -891,7 +896,11 @@ export class DtsVisitor {
         this.v(this.f(n, 1));
         return;
       case N_BINARY_EXPRESSION:
-        this.visitBinary(n, dtPrecedence(this.t.kind[this.f(n, 1)], K_NONE), this.kind(this.parent[n]) !== N_EXPRESSION_FUNCTION_BODY);
+        this.visitBinary(
+          n,
+          dtPrecedence(this.t.kind[this.f(n, 1)], K_NONE),
+          this.kind(this.parent[n]) !== N_EXPRESSION_FUNCTION_BODY,
+        );
         return;
       case N_BLOCK: {
         const stmts = this.items(this.f(n, 1));
@@ -1359,11 +1368,27 @@ export class DtsVisitor {
         return;
       case N_LIST_LITERAL:
       case N_SET_OR_MAP_LITERAL:
-        this.visitCollectionLiteral(this.f(n, 2), this.items(this.f(n, 3)), this.f(n, 4), this.f(n, 0), this.f(n, 1), true, false);
+        this.visitCollectionLiteral(
+          this.f(n, 2),
+          this.items(this.f(n, 3)),
+          this.f(n, 4),
+          this.f(n, 0),
+          this.f(n, 1),
+          true,
+          false,
+        );
         return;
       case N_LIST_PATTERN:
       case N_MAP_PATTERN:
-        this.visitCollectionLiteral(this.f(n, 1), this.items(this.f(n, 2)), this.f(n, 3), -1, this.f(n, 0), false, false);
+        this.visitCollectionLiteral(
+          this.f(n, 1),
+          this.items(this.f(n, 2)),
+          this.f(n, 3),
+          -1,
+          this.f(n, 0),
+          false,
+          false,
+        );
         return;
       case N_LOGICAL_AND_PATTERN:
       case N_LOGICAL_OR_PATTERN:
@@ -1866,7 +1891,11 @@ export class DtsVisitor {
     const tk = this.kind(target);
     if (this.isCollectionLiteral(target)) {
       splitIfTargetSplits = false;
-    } else if (tk === N_METHOD_INVOCATION || tk === N_FUNCTION_EXPRESSION_INVOCATION || tk === N_INSTANCE_CREATION_EXPRESSION) {
+    } else if (
+      tk === N_METHOD_INVOCATION ||
+      tk === N_FUNCTION_EXPRESSION_INVOCATION ||
+      tk === N_INSTANCE_CREATION_EXPRESSION
+    ) {
       const al = tk === N_METHOD_INVOCATION ? this.f(target, 4) : this.f(target, 2);
       splitIfTargetSplits = !this.listHasCommaAfter(this.items(this.f(al, 1)));
     }
@@ -3719,7 +3748,10 @@ class DtsCallChain {
     let inBlockCalls = false;
     for (let i = 0; i < rest.length; i++) {
       const call = rest[i];
-      if (call.kind === SEL_METHOD && new DtsArgList(v, -1, -1, v.items(v.f(v.f(call.node, 4), 1))).hasBlockArguments()) {
+      if (
+        call.kind === SEL_METHOD &&
+        new DtsArgList(v, -1, -1, v.items(v.f(v.f(call.node, 4), 1))).hasBlockArguments()
+      ) {
         inBlockCalls = true;
         this.hasBlockCalls = true;
         this.blockCalls.push(call);
@@ -3858,7 +3890,12 @@ class DtsCallChain {
     if (!this.hasBlockCalls && this.calls.length > 0 && selector === this.calls[this.calls.length - 1]) {
       this.disableRule();
     }
-    if (this.properties.length === 0 && this.calls.length === 1 && !this.hasBlockCalls && this.v.kind(this.target) === N_SIMPLE_IDENTIFIER) {
+    if (
+      this.properties.length === 0 &&
+      this.calls.length === 1 &&
+      !this.hasBlockCalls &&
+      this.v.kind(this.target) === N_SIMPLE_IDENTIFIER
+    ) {
       this.endSpanOnce();
     }
   }

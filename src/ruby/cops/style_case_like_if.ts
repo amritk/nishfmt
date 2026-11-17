@@ -3,7 +3,18 @@
 // Ported from RuboCop 1.92.2 (MIT License, Copyright (c) 2012-24 Bozhidar
 // Batsov).
 
-import { NT_BEGIN, NT_CONST, NT_ERANGE, NT_IF, NT_IRANGE, NT_MATCH_WITH_LVASGN, NT_OR, NT_REGEXP, NT_SEND, V_NIL } from "../ast";
+import {
+  NT_BEGIN,
+  NT_CONST,
+  NT_ERANGE,
+  NT_IF,
+  NT_IRANGE,
+  NT_MATCH_WITH_LVASGN,
+  NT_OR,
+  NT_REGEXP,
+  NT_SEND,
+  V_NIL,
+} from "../ast";
 import { RbCop } from "../cop";
 import { RbSource } from "../source";
 import { vfNamedCaptures, vfSameNode } from "./lint_variable_force";

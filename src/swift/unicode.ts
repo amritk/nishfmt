@@ -100,7 +100,12 @@ export const swUniCpAt = (s: string, i: i32): i32 => {
   if (c < 0xf0) {
     return ((c & 0x0f) << 12) | ((s.charCodeAt(i + 1) & 0x3f) << 6) | (s.charCodeAt(i + 2) & 0x3f);
   }
-  return ((c & 0x07) << 18) | ((s.charCodeAt(i + 1) & 0x3f) << 12) | ((s.charCodeAt(i + 2) & 0x3f) << 6) | (s.charCodeAt(i + 3) & 0x3f);
+  return (
+    ((c & 0x07) << 18) |
+    ((s.charCodeAt(i + 1) & 0x3f) << 12) |
+    ((s.charCodeAt(i + 2) & 0x3f) << 6) |
+    (s.charCodeAt(i + 3) & 0x3f)
+  );
 };
 
 const swUniLen = (c: i32): i32 => (c < 0x80 ? 1 : c < 0xe0 ? 2 : c < 0xf0 ? 3 : 4);
@@ -245,7 +250,14 @@ export const swCharacterIsUppercase = (s: string, i: i32): boolean => {
   let j = i;
   while (j < e) {
     const d = s.charCodeAt(j);
-    const v = d < 0x80 ? (d >= 65 && d <= 90 ? SW_UNI_LOWER_CHANGES : d >= 97 && d <= 122 ? SW_UNI_UPPER_CHANGES : 0) : swUniProps(swUniCpAt(s, j));
+    const v =
+      d < 0x80
+        ? d >= 65 && d <= 90
+          ? SW_UNI_LOWER_CHANGES
+          : d >= 97 && d <= 122
+            ? SW_UNI_UPPER_CHANGES
+            : 0
+        : swUniProps(swUniCpAt(s, j));
     if ((v & SW_UNI_UPPER_CHANGES) !== 0) {
       upperChanges = true;
     }
@@ -275,7 +287,11 @@ export const swUniJoinsPrevious = (s: string, i: i32): boolean => {
 export const swUniCheckPrefix = (s: string, upto: i32): void => {
   const n = toI32(s.length) < upto ? toI32(s.length) : upto;
   for (let i = 1; i < n; i++) {
-    if ((s.charCodeAt(i) >= 0x80 || s.charCodeAt(i - 1) >= 0x80) && (s.charCodeAt(i) & 0xc0) !== 0x80 && swUniJoinsPrevious(s, i)) {
+    if (
+      (s.charCodeAt(i) >= 0x80 || s.charCodeAt(i - 1) >= 0x80) &&
+      (s.charCodeAt(i) & 0xc0) !== 0x80 &&
+      swUniJoinsPrevious(s, i)
+    ) {
       SW_UNI_UNCERTAIN[0] = 1;
       return;
     }

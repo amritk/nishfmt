@@ -16,7 +16,13 @@ const sbhCaWordChar = (c: i32): boolean => {
   if (c < 0x80) {
     return ssxIsWord(c);
   }
-  if ((c >= 0x2000 && c <= 0x206f) || (c >= 0x3000 && c <= 0x303f) || (c >= 0xff00 && c <= 0xff0f) || c === 0xa0 || (c >= 0xa1 && c <= 0xbf && c !== 0xaa && c !== 0xb5 && c !== 0xba)) {
+  if (
+    (c >= 0x2000 && c <= 0x206f) ||
+    (c >= 0x3000 && c <= 0x303f) ||
+    (c >= 0xff00 && c <= 0xff0f) ||
+    c === 0xa0 ||
+    (c >= 0xa1 && c <= 0xbf && c !== 0xaa && c !== 0xb5 && c !== 0xba)
+  ) {
     return false;
   }
   return true;

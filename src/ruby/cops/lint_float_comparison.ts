@@ -3,7 +3,19 @@
 // Ported from RuboCop 1.92.2 (MIT License, Copyright (c) 2012-24 Bozhidar
 // Batsov).
 
-import { NT_BEGIN, NT_CASE, NT_COMPLEX, NT_CSEND, NT_FLOAT, NT_INT, NT_NIL, NT_RATIONAL, NT_SEND, NT_WHEN, V_NIL } from "../ast";
+import {
+  NT_BEGIN,
+  NT_CASE,
+  NT_COMPLEX,
+  NT_CSEND,
+  NT_FLOAT,
+  NT_INT,
+  NT_NIL,
+  NT_RATIONAL,
+  NT_SEND,
+  NT_WHEN,
+  V_NIL,
+} from "../ast";
 import { RbCop } from "../cop";
 import { RbSource } from "../source";
 import { lforFloatClass } from "./lint_float_out_of_range";
@@ -108,7 +120,15 @@ export class CopLintFloatComparison {
     if (!ssxIs(src, r, NT_FLOAT)) {
       return false;
     }
-    if (m === "@-" || m === "abs" || m === "magnitude" || m === "modulo" || m === "next_float" || m === "prev_float" || m === "quo") {
+    if (
+      m === "@-" ||
+      m === "abs" ||
+      m === "magnitude" ||
+      m === "modulo" ||
+      m === "next_float" ||
+      m === "prev_float" ||
+      m === "quo"
+    ) {
       return true;
     }
     if (m === "angle" || m === "arg" || m === "phase") {

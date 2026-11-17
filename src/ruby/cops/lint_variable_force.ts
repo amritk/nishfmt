@@ -118,17 +118,31 @@ export class VfScope {
 
 /** SCOPE_TYPES. */
 export const vfScopeType = (t: i32): boolean =>
-  t === NT_BLOCK || t === NT_NUMBLOCK || t === NT_CLASS || t === NT_SCLASS || t === NT_DEFS || t === NT_MODULE || t === NT_DEF;
+  t === NT_BLOCK ||
+  t === NT_NUMBLOCK ||
+  t === NT_CLASS ||
+  t === NT_SCLASS ||
+  t === NT_DEFS ||
+  t === NT_MODULE ||
+  t === NT_DEF;
 
 /** ARGUMENT_DECLARATION_TYPES. */
 export const vfArgType = (t: i32): boolean =>
-  t === NT_ARG || t === NT_OPTARG || t === NT_RESTARG || t === NT_KWARG || t === NT_KWOPTARG || t === NT_KWRESTARG || t === NT_BLOCKARG || t === NT_SHADOWARG;
+  t === NT_ARG ||
+  t === NT_OPTARG ||
+  t === NT_RESTARG ||
+  t === NT_KWARG ||
+  t === NT_KWOPTARG ||
+  t === NT_KWRESTARG ||
+  t === NT_BLOCKARG ||
+  t === NT_SHADOWARG;
 
 /** OPERATOR_ASSIGNMENT_TYPES. */
 export const vfOpAsgnType = (t: i32): boolean => t === NT_OR_ASGN || t === NT_AND_ASGN || t === NT_OP_ASGN;
 
 /** LOOP_TYPES. */
-export const vfLoopType = (t: i32): boolean => t === NT_WHILE_POST || t === NT_UNTIL_POST || t === NT_WHILE || t === NT_UNTIL || t === NT_FOR;
+export const vfLoopType = (t: i32): boolean =>
+  t === NT_WHILE_POST || t === NT_UNTIL_POST || t === NT_WHILE || t === NT_UNTIL || t === NT_FOR;
 
 /** Scope::OUTER_SCOPE_CHILD_INDICES: the last outer child index, or -1 for none. */
 const vfOuterHi = (t: i32): i32 => {
@@ -160,7 +174,8 @@ const vfBranchType = (t: i32): boolean =>
   t === NT_ENSURE;
 
 /** Whether c is a word character of a regexp group name. */
-const vfNameChar = (c: i32): boolean => (c >= 48 && c <= 57) || (c >= 65 && c <= 90) || (c >= 97 && c <= 122) || c === 95 || c >= 128;
+const vfNameChar = (c: i32): boolean =>
+  (c >= 48 && c <= 57) || (c >= 65 && c <= 90) || (c >= 97 && c <= 122) || c === 95 || c >= 128;
 
 /** Regexp#named_captures.keys of a regexp literal (its source text, options). */
 export const vfNamedCaptures = (src: RbSource, re: i32): string[] => {
@@ -604,7 +619,8 @@ export class VfForce {
       if (t === NT_IF || t === NT_WHILE || t === NT_UNTIL) {
         let modifier = false;
         if (t === NT_IF) {
-          modifier = (ssxLocIs(src, p, F_KEYWORD, "if") || ssxLocIs(src, p, F_KEYWORD, "unless")) && !ssxHas(src, p, F_END);
+          modifier =
+            (ssxLocIs(src, p, F_KEYWORD, "if") || ssxLocIs(src, p, F_KEYWORD, "unless")) && !ssxHas(src, p, F_END);
         } else {
           modifier = !ssxHas(src, p, F_END);
         }

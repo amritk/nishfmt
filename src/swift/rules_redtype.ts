@@ -41,7 +41,12 @@ import {
 
 /** endOfExpression(at:upTo:), the delimiters being none, `?` (infix) when `upToTernary`,
  *  and also infix `&&`, `||` and `:` when `upToLogical`. */
-export const swEndOfExpression = (f: SwFormatter, index0: i32, upToTernary: boolean, upToLogical: boolean = false): i32 => {
+export const swEndOfExpression = (
+  f: SwFormatter,
+  index0: i32,
+  upToTernary: boolean,
+  upToLogical: boolean = false,
+): i32 => {
   let index = index0;
   if (f.k(index) === SW_END) {
     index = f.indexAfter(SW_T_NON_SPACE_OR_LINEBREAK, index);
@@ -78,7 +83,8 @@ export const swEndOfExpression = (f: SwFormatter, index0: i32, upToTernary: bool
       (s === "<" ||
         wasOperator ||
         (s === "{" && swIsStartOfClosure(f, i)) ||
-        (s === "(" && (swIsSubscriptOrFunctionCall(f, i) || swIsMacroTok(f, f.indexBefore(SW_T_NON_SPACE_OR_COMMENT, i)))) ||
+        (s === "(" &&
+          (swIsSubscriptOrFunctionCall(f, i) || swIsMacroTok(f, f.indexBefore(SW_T_NON_SPACE_OR_COMMENT, i)))) ||
         (s === "[" && swIsSubscriptOrFunctionCall(f, i)))
     ) {
       wasOperator = false;
@@ -219,7 +225,12 @@ const swSimplifiableLiteralEnd = (f: SwFormatter, typeName: string, parenIndex: 
       if (!swStrIn(typeName, "Double Float Float16 Float80")) {
         return -1;
       }
-    } else if (!swStrIn(typeName, "Int Int8 Int16 Int32 Int64 Int128 UInt UInt8 UInt16 UInt32 UInt64 UInt128 Double Float Float16 Float80 StaticBigInt")) {
+    } else if (
+      !swStrIn(
+        typeName,
+        "Int Int8 Int16 Int32 Int64 Int128 UInt UInt8 UInt16 UInt32 UInt64 UInt128 Double Float Float16 Float80 StaticBigInt",
+      )
+    ) {
       return -1;
     }
   } else if (isStr) {
@@ -230,7 +241,9 @@ const swSimplifiableLiteralEnd = (f: SwFormatter, typeName: string, parenIndex: 
     if (typeName !== "Bool") {
       return -1;
     }
-  } else if (!swStrIn(typeName, "ArraySlice ContiguousArray Set SIMD2 SIMD3 SIMD4 SIMD8 SIMD16 SIMD32 SIMD64 SIMDMask")) {
+  } else if (
+    !swStrIn(typeName, "ArraySlice ContiguousArray Set SIMD2 SIMD3 SIMD4 SIMD8 SIMD16 SIMD32 SIMD64 SIMDMask")
+  ) {
     return -1;
   }
   return argEnd;
@@ -243,7 +256,14 @@ class SwRTCtx {
 }
 
 /** removeType(after:i:j:wasValue:). */
-const swRemoveType = (f: SwFormatter, c: SwRTCtx, indexBeforeStartOfType: i32, i: i32, j: i32, wasValue: boolean): void => {
+const swRemoveType = (
+  f: SwFormatter,
+  c: SwRTCtx,
+  indexBeforeStartOfType: i32,
+  i: i32,
+  j: i32,
+  wasValue: boolean,
+): void => {
   if (c.isInferred) {
     f.removeTokens(c.colonIndex, c.typeEndIndex + 1);
     if (f.has(c.colonIndex - 1) && f.k(c.colonIndex - 1) === SW_SPACE) {
@@ -281,7 +301,11 @@ const swRemoveType = (f: SwFormatter, c: SwRTCtx, indexBeforeStartOfType: i32, i
     }
   } else {
     const nextIndex = f.indexAfter(SW_T_NON_SPACE_OR_COMMENT_OR_LINEBREAK, j);
-    if (nextIndex >= 0 && f.op(nextIndex, ".", SW_OP_INFIX) && f.indexOfIn(SW_OP, ".", SW_OP_INFIX, nextIndex + 1, endIndex) < 0) {
+    if (
+      nextIndex >= 0 &&
+      f.op(nextIndex, ".", SW_OP_INFIX) &&
+      f.indexOfIn(SW_OP, ".", SW_OP_INFIX, nextIndex + 1, endIndex) < 0
+    ) {
       f.removeTokens(valueStartIndex, j + 1);
     }
   }

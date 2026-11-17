@@ -43,7 +43,13 @@ export class CopStyleSingleArgumentDig {
         continue;
       }
       const t = a.type(x);
-      if (t === NT_SPLAT || t === NT_BLOCK_PASS || t === NT_FORWARDED_RESTARG || t === NT_FORWARDED_ARGS || t === NT_HASH) {
+      if (
+        t === NT_SPLAT ||
+        t === NT_BLOCK_PASS ||
+        t === NT_FORWARDED_RESTARG ||
+        t === NT_FORWARDED_ARGS ||
+        t === NT_HASH
+      ) {
         continue;
       }
       // ignore_dig_chain?: Style/DigChain's Enabled is `pending`, which cop_enabled? takes as true.

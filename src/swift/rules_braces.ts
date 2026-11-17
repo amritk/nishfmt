@@ -5,7 +5,16 @@
 // Lockwood).
 
 import { SwFormatter, swIndexBeforeWhere } from "./formatter";
-import { swEndOfScope, swHasLinebreak, swIndexOfLastSignificantKeyword, swIsGuardElse, swIsStartOfClosure, SW_EX_CASE, SW_EX_LET, SW_EX_VAR } from "./parsing";
+import {
+  swEndOfScope,
+  swHasLinebreak,
+  swIndexOfLastSignificantKeyword,
+  swIsGuardElse,
+  swIsStartOfClosure,
+  SW_EX_CASE,
+  SW_EX_LET,
+  SW_EX_VAR,
+} from "./parsing";
 import {
   SW_DELIM,
   SW_END,

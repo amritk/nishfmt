@@ -16,7 +16,8 @@ import { lalBeginsItsLine, lalFirstLine, lalLastLine, lalSingleLine, lalSpaces }
 const rbHashAlKey = (src: RbSource, n: i32): i32 => (src.a.type(n) === NT_KWSPLAT ? n : src.a.kid(n, 0));
 
 /** HashElementNode#same_line?. */
-const rbHashAlSameLine = (src: RbSource, x: i32, y: i32): boolean => lalLastLine(src, x) === lalFirstLine(src, y) || lalFirstLine(src, x) === lalLastLine(src, y);
+const rbHashAlSameLine = (src: RbSource, x: i32, y: i32): boolean =>
+  lalLastLine(src, x) === lalFirstLine(src, y) || lalFirstLine(src, x) === lalLastLine(src, y);
 
 /** first_pair.key_delta(current) (left alignment). */
 const rbHashAlKeyDelta = (src: RbSource, first: i32, cur: i32): i32 => {

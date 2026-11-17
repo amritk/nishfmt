@@ -51,7 +51,19 @@ import { rsRewriteNodeAttrs } from "./attr";
 import { rsCombineStrsWithMissingComments, rsContainsComment, rsFirstLineWidth, rsLastLineWidth } from "./comment";
 import { RsCtx } from "./context";
 import { EXPR_SUB, RHS_BOUNDS, rsFormatExpr, rsRewriteAssignRhs, rsRewriteTuple, rsRewriteUnaryPrefix } from "./expr";
-import { DLT_HORIZONTAL, DLT_VERTICAL, LT_HORIZONTAL_VERTICAL, RsListFormatting, RsListItem, SEP_COMMA, ST_NEVER, ST_VERTICAL, rsDefinitiveTactic, rsItemizeList, rsWriteList } from "./lists";
+import {
+  DLT_HORIZONTAL,
+  DLT_VERTICAL,
+  LT_HORIZONTAL_VERTICAL,
+  RsListFormatting,
+  RsListItem,
+  SEP_COMMA,
+  ST_NEVER,
+  ST_VERTICAL,
+  rsDefinitiveTactic,
+  rsItemizeList,
+  rsWriteList,
+} from "./lists";
 import { rsMacroPosExpr, rsRewriteMacro } from "./macros";
 import { OC_PRECISE, OC_SEGMENT_PARAM, OC_TY, rsRewriteWithAngleBrackets } from "./overflow";
 import { RsPairParts, SPB_BACK, rsRewritePair } from "./pairs";
@@ -110,7 +122,17 @@ class SegState {
   }
 }
 
-const rewritePathSegments = (ctx: RsCtx, pc: i32, buffer0: string, path: i32, from: i32, to: i32, st: SegState, spanHi: i32, shape0: RsShape): string | null => {
+const rewritePathSegments = (
+  ctx: RsCtx,
+  pc: i32,
+  buffer0: string,
+  path: i32,
+  from: i32,
+  to: i32,
+  st: SegState,
+  spanHi: i32,
+  shape0: RsShape,
+): string | null => {
   const ast = ctx.ast;
   let buffer = buffer0;
   let first = true;
@@ -240,7 +262,15 @@ const rewriteConstraint = (ctx: RsCtx, n: i32, shape: RsShape): string | null =>
 };
 
 /** format_function_type: `decl` lists the input types (an N_PGARGS or N_FNDECL), `output` is -1 or a type. */
-const formatFunctionType = (ctx: RsCtx, decl: i32, output: i32, variadic: boolean, spanLo: i32, spanHi: i32, shape: RsShape): string | null => {
+const formatFunctionType = (
+  ctx: RsCtx,
+  decl: i32,
+  output: i32,
+  variadic: boolean,
+  spanLo: i32,
+  spanHi: i32,
+  shape: RsShape,
+): string | null => {
   const ast = ctx.ast;
   const cfg = ctx.cfg;
   const tyShape = shape.offsetLeft(4);
@@ -278,7 +308,8 @@ const formatFunctionType = (ctx: RsCtx, decl: i32, output: i32, variadic: boolea
       ",",
       (i: i32): i32 => (isFnDecl ? paramLo(ast, ast.kid(decl, i)) : ast.lo[ast.kid(decl, i)]),
       (i: i32): i32 => (isFnDecl ? ast.hi[ast.b[ast.kid(decl, i)]] : ast.hi[ast.kid(decl, i)]),
-      (i: i32): string | null => (isFnDecl ? rsRewriteParam(ctx, ast.kid(decl, i), listShape) : rsRewriteTy(ctx, ast.kid(decl, i), listShape)),
+      (i: i32): string | null =>
+        isFnDecl ? rsRewriteParam(ctx, ast.kid(decl, i), listShape) : rsRewriteTy(ctx, ast.kid(decl, i), listShape),
       listLo,
       spanHi,
       false,
@@ -461,7 +492,13 @@ const boundHi = (ast: RsAst, b: i32): i32 => ast.hi[b];
 
 const isTraitBound = (ast: RsAst, b: i32): boolean => ast.kind[b] !== N_LIFETIME;
 
-const joinBounds = (ctx: RsCtx, shape: RsShape, bounds: i32, needIndent: boolean, forceNewline: boolean): string | null => {
+const joinBounds = (
+  ctx: RsCtx,
+  shape: RsShape,
+  bounds: i32,
+  needIndent: boolean,
+  forceNewline: boolean,
+): string | null => {
   const ast = ctx.ast;
   const cfg = ctx.cfg;
   const n = ast.ln[bounds];
@@ -498,7 +535,8 @@ const joinBounds = (ctx: RsCtx, shape: RsShape, bounds: i32, needIndent: boolean
       leadingLo = ctx.spanAfter(boundHi(ast, prev), boundLo(ast, item), "+");
       hasLeadingComment = rsContainsComment(ctx.snippet(leadingLo, boundLo(ast, item)));
     }
-    const prevHasTrailingComment = prevTrailingLo >= 0 && rsContainsComment(ctx.snippet(prevTrailingLo, prevTrailingHi));
+    const prevHasTrailingComment =
+      prevTrailingLo >= 0 && rsContainsComment(ctx.snippet(prevTrailingLo, prevTrailingHi));
     const sh = needIndent && forceNewline ? shape.blockIndent(cfg.tabSpaces).withMaxWidth(cfg) : shape;
     const ws = forceNewline && (!prevExtendable || !inOrder) ? rsIndentStrNl(cfg, sh.bi, sh.al) : " ";
     let joiner = ws + "+ ";
@@ -622,7 +660,15 @@ export const rsRewriteGenericParam = (ctx: RsCtx, p: i32, shape: RsShape): strin
   if (na > 0) {
     const last = ast.attr(p, na - 1);
     if (rsContainsComment(ctx.snippet(ast.hi[last], paramStart))) {
-      return rsCombineStrsWithMissingComments(ctx, result, param, ast.hi[last], paramStart, shape, (ast.fl[last] & AT_DOC) === 0);
+      return rsCombineStrsWithMissingComments(
+        ctx,
+        result,
+        param,
+        ast.hi[last],
+        paramStart,
+        shape,
+        (ast.fl[last] & AT_DOC) === 0,
+      );
     }
     if ((ast.fl[last] & AT_DOC) !== 0) {
       result = result + rsIndentStrNl(ctx.cfg, shape.bi, shape.al);
@@ -638,7 +684,7 @@ export const rsGenericParamLo = (ast: RsAst, p: i32): i32 => (ast.atn[p] > 0 ? a
 export const rsGenericParamHi = (ctx: RsCtx, p: i32): i32 => {
   const ast = ctx.ast;
   const b = ast.b[p];
-  let hi = b >= 0 && ast.ln[b] > 0 ? ast.hi[ast.kid(b, ast.ln[b] - 1)] : ctx.f.t.hi[ast.d[p]];
+  const hi = b >= 0 && ast.ln[b] > 0 ? ast.hi[ast.kid(b, ast.ln[b] - 1)] : ctx.f.t.hi[ast.d[p]];
   let tyHi = hi;
   const f = ast.fl[p];
   if ((f & GP_TYPE) !== 0 && ast.c[p] >= 0) {
@@ -858,6 +904,5 @@ export const rsRewritePreciseArg = (ctx: RsCtx, n: i32, shape: RsShape): string 
   }
   return rsRewritePath(ctx, PC_TYPE, -1, ast.b[n], shape);
 };
-
 
 export const rsIsTraitBoundNode = (ast: RsAst, b: i32): boolean => ast.kind[b] === N_TRAIT_BOUND;

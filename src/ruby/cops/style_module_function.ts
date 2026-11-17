@@ -49,7 +49,13 @@ export class CopStyleModuleFunction {
       }
       for (const x of nodes) {
         // (send nil? :extend self)
-        if (ssxIs(src, x, NT_SEND) && a.kid(x, 0) === V_NIL && ssxMeth(src, x) === "extend" && a.nKid(x) === 3 && ssxIs(src, a.kid(x, 2), NT_SELF)) {
+        if (
+          ssxIs(src, x, NT_SEND) &&
+          a.kid(x, 0) === V_NIL &&
+          ssxMeth(src, x) === "extend" &&
+          a.nKid(x) === 3 &&
+          ssxIs(src, a.kid(x, 2), NT_SELF)
+        ) {
           this.c.offense(a.exS(x), a.exE(x));
         }
       }

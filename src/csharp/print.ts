@@ -166,15 +166,8 @@ import {
   Y_TypeParameter,
   Y_VariableDeclarator,
 } from "./kinds";
-import {
-  CsLexer,
-  csCodePoint,
-  csCpLen,
-  csIsWhitespaceCp,
-} from "./lexer";
-import {
-  CsTree,
-} from "./tree";
+import { CsLexer, csCodePoint, csCpLen, csIsWhitespaceCp } from "./lexer";
+import { CsTree } from "./tree";
 import {
   CT_MULTI,
   CT_SINGLE,
@@ -485,7 +478,8 @@ export const cswHasIgnoreComment = (P: CsPrint, a: i32, b: i32, which: i32): boo
   return false;
 };
 
-export const cswNodeHasIgnore = (P: CsPrint, n: i32, which: i32): boolean => cswHasIgnoreComment(P, cswLeadA(P, n), cswLeadB(P, n), which);
+export const cswNodeHasIgnore = (P: CsPrint, n: i32, which: i32): boolean =>
+  cswHasIgnoreComment(P, cswLeadA(P, n), cswLeadB(P, n), which);
 
 /** ExtraNewLines.Print over the trivia [a, b). */
 export const cswExtraNewLinesRange = (P: CsPrint, a: i32, b: i32): i32 => {
@@ -519,7 +513,13 @@ const cswInsert = (docs: i32[], at: i32, v: i32): void => {
 };
 
 /** PrivatePrintLeadingTrivia over the trivia [a, b). */
-export const cswLeadingTrivia = (P: CsPrint, a: i32, b: i32, includeInitialNewLines: boolean, skipLastHardline: boolean): i32 => {
+export const cswLeadingTrivia = (
+  P: CsPrint,
+  a: i32,
+  b: i32,
+  includeInitialNewLines: boolean,
+  skipLastHardline: boolean,
+): i32 => {
   if (b <= a) {
     return DOC_NULL;
   }
@@ -667,13 +667,15 @@ export const cswTrailingTrivia = (P: CsPrint, a: i32, b: i32): i32 => {
   return P.D.concat(docs);
 };
 
-export const cswTrailingTriviaTok = (P: CsPrint, t: i32): i32 => (t < 0 ? DOC_NULL : cswTrailingTrivia(P, P.lx.t0[t], P.lx.t1[t]));
+export const cswTrailingTriviaTok = (P: CsPrint, t: i32): i32 =>
+  t < 0 ? DOC_NULL : cswTrailingTrivia(P, P.lx.t0[t], P.lx.t1[t]);
 
 /** Token.PrintLeadingTrivia(token) with the leading trivia [a, b). */
 export const cswLeadingTriviaTokRange = (P: CsPrint, t: i32, a: i32, b: i32): i32 => {
   const lx = P.lx;
   const kind = lx.kind[t];
-  const isClosingBrace = kind === K_CloseBraceToken || (kind === K_CloseBracketToken && P.t.is(lx.parent[t], Y_CollectionExpression));
+  const isClosingBrace =
+    kind === K_CloseBraceToken || (kind === K_CloseBracketToken && P.t.is(lx.parent[t], Y_CollectionExpression));
   let printed = cswLeadingTrivia(P, a, b, false, isClosingBrace);
   const hasDirective = cswAnyDirective(lx, a, b);
   if (hasDirective) {
@@ -706,7 +708,10 @@ const cswVerbatimText = (P: CsPrint, t: i32, kind: i32): boolean => {
   }
   if (kind === K_InterpolatedStringTextToken) {
     const e = P.par(P.lx.parent[t]);
-    return P.t.is(e, Y_InterpolatedStringExpression) && P.tk(P.s(e, F_InterpolatedStringExpression_StringStartToken)) === K_InterpolatedVerbatimStringStartToken;
+    return (
+      P.t.is(e, Y_InterpolatedStringExpression) &&
+      P.tk(P.s(e, F_InterpolatedStringExpression_StringStartToken)) === K_InterpolatedVerbatimStringStartToken
+    );
   }
   return false;
 };
@@ -794,7 +799,7 @@ const cswConsumeThroughNewLine = (src: u8[], buf: CsBuf, a: i32, b: i32): i32 =>
 
 /** The indentation whitespace of a multi-line raw string's closing token [a, b): after its line break, before the quotes. */
 export const cswRawIndentStart = (src: u8[], a: i32, b: i32): i32 => {
-  let i = a;
+  const i = a;
   const c = toI32(src[i]);
   if (c === 13 && i + 1 < b && toI32(src[i + 1]) === 10) {
     return i + 2;
@@ -818,7 +823,13 @@ export const cswRawIndentEnd = (src: u8[], a: i32, b: i32): i32 => {
 };
 
 /** Pushes the lines of buf split on \r\n, \r and \n as StringDocs, each followed by a line doc chosen like the raw string printers do. */
-const cswRawLines = (P: CsPrint, contents: i32[], buf: CsBuf, lastLineIsIndented: boolean, lineAfterLast: boolean): void => {
+const cswRawLines = (
+  P: CsPrint,
+  contents: i32[],
+  buf: CsBuf,
+  lastLineIsIndented: boolean,
+  lineAfterLast: boolean,
+): void => {
   const D = P.D;
   let s = 0;
   let i = 0;
@@ -846,11 +857,24 @@ const cswRawLines = (P: CsPrint, contents: i32[], buf: CsBuf, lastLineIsIndented
   }
 };
 
-export const cswRawLinesExport = (P: CsPrint, contents: i32[], buf: CsBuf, lastLineIsIndented: boolean, lineAfterLast: boolean): void =>
-  cswRawLines(P, contents, buf, lastLineIsIndented, lineAfterLast);
+export const cswRawLinesExport = (
+  P: CsPrint,
+  contents: i32[],
+  buf: CsBuf,
+  lastLineIsIndented: boolean,
+  lineAfterLast: boolean,
+): void => cswRawLines(P, contents, buf, lastLineIsIndented, lineAfterLast);
 
 /** Token.PrintSyntaxToken: suffix -1 for none; the leading trivia is [la, lb). */
-export const cswTokFull = (P: CsPrint, t: i32, suffix: i32, skipLead: boolean, skipTrail: boolean, la: i32, lb: i32): i32 => {
+export const cswTokFull = (
+  P: CsPrint,
+  t: i32,
+  suffix: i32,
+  skipLead: boolean,
+  skipTrail: boolean,
+  la: i32,
+  lb: i32,
+): i32 => {
   if (t < 0) {
     return DOC_NULL;
   }
@@ -988,15 +1012,20 @@ export const csIsTrimByteAt = (s: u8[], i: i32, b: i32): boolean => {
   return csIsDotnetWhiteSpaceCp(csCodePoint(s, i, b));
 };
 
-export const cswTok = (P: CsPrint, t: i32): i32 => (t < 0 ? DOC_NULL : cswTokFull(P, t, -1, false, false, P.lx.l0[t], P.lx.l1[t]));
+export const cswTok = (P: CsPrint, t: i32): i32 =>
+  t < 0 ? DOC_NULL : cswTokFull(P, t, -1, false, false, P.lx.l0[t], P.lx.l1[t]);
 
-export const cswTokSfx = (P: CsPrint, t: i32, sfx: i32): i32 => (t < 0 ? DOC_NULL : cswTokFull(P, t, sfx, false, false, P.lx.l0[t], P.lx.l1[t]));
+export const cswTokSfx = (P: CsPrint, t: i32, sfx: i32): i32 =>
+  t < 0 ? DOC_NULL : cswTokFull(P, t, sfx, false, false, P.lx.l0[t], P.lx.l1[t]);
 
-export const cswTokSfxNoLead = (P: CsPrint, t: i32, sfx: i32): i32 => (t < 0 ? DOC_NULL : cswTokFull(P, t, sfx, true, false, P.lx.l0[t], P.lx.l1[t]));
+export const cswTokSfxNoLead = (P: CsPrint, t: i32, sfx: i32): i32 =>
+  t < 0 ? DOC_NULL : cswTokFull(P, t, sfx, true, false, P.lx.l0[t], P.lx.l1[t]);
 
-export const cswTokNoLead = (P: CsPrint, t: i32): i32 => (t < 0 ? DOC_NULL : cswTokFull(P, t, -1, true, false, P.lx.l0[t], P.lx.l1[t]));
+export const cswTokNoLead = (P: CsPrint, t: i32): i32 =>
+  t < 0 ? DOC_NULL : cswTokFull(P, t, -1, true, false, P.lx.l0[t], P.lx.l1[t]);
 
-export const cswTokNoTrail = (P: CsPrint, t: i32): i32 => (t < 0 ? DOC_NULL : cswTokFull(P, t, -1, false, true, P.lx.l0[t], P.lx.l1[t]));
+export const cswTokNoTrail = (P: CsPrint, t: i32): i32 =>
+  t < 0 ? DOC_NULL : cswTokFull(P, t, -1, false, true, P.lx.l0[t], P.lx.l1[t]);
 
 /** Token.HasComments. */
 export const cswTokHasComments = (P: CsPrint, t: i32): boolean => {
@@ -1182,7 +1211,10 @@ export const cswSepList = (P: CsPrint, l: i32, item: i32, afterSep: i32, start: 
     const isTrailingSeparator = x === n - 1;
     if (isTrailingSeparator) {
       const st = P.sep(l, x);
-      if (cswAnyComment(lx, lx.t0[st], lx.t1[st]) || (closing >= 0 && cswAnyDirective(lx, lx.l0[closing], lx.l1[closing]))) {
+      if (
+        cswAnyComment(lx, lx.t0[st], lx.t1[st]) ||
+        (closing >= 0 && cswAnyDirective(lx, lx.l0[closing], lx.l1[closing]))
+      ) {
         docs.push(cswTok(P, st));
       } else if (closing >= 0) {
         docs.push(cswTrailingComma(P, closing, false));
@@ -1199,7 +1231,6 @@ export const cswSepList = (P: CsPrint, l: i32, item: i32, afterSep: i32, start: 
   }
   return P.D.concat(docs);
 };
-
 
 // ---- Modifiers ----
 
@@ -1344,7 +1375,10 @@ export const cswAttributeLists = (P: CsPrint, node: i32, l: i32): i32 => {
     return DOC_NULL;
   }
   const isInline =
-    P.is(node, Y_TypeParameter) || P.is(node, Y_Parameter) || P.is(node, Y_ParenthesizedLambdaExpression) || P.is(node, Y_AccessorDeclaration);
+    P.is(node, Y_TypeParameter) ||
+    P.is(node, Y_Parameter) ||
+    P.is(node, Y_ParenthesizedLambdaExpression) ||
+    P.is(node, Y_AccessorDeclaration);
   const sep = isInline ? DOC_LINE : DOC_HARDLINE;
   const docs: i32[] = [];
   for (let i = 0; i < n; i++) {
@@ -1423,7 +1457,11 @@ export const cswNodesRespectingRangeIgnore = (P: CsPrint, l: i32): i32[] => {
     const node = P.at(l, i);
     if (cswNodeHasIgnore(P, node, IGN_END)) {
       const code = cswTrimmedDoc(P, unf);
-      statements.push(firstUnformatted >= 0 && P.is(firstUnformatted, Y_Statement) ? P.D.concat([cswExtraNewLines(P, firstUnformatted), code]) : code);
+      statements.push(
+        firstUnformatted >= 0 && P.is(firstUnformatted, Y_Statement)
+          ? P.D.concat([cswExtraNewLines(P, firstUnformatted), code])
+          : code,
+      );
       unf.n = 0;
       firstUnformatted = -1;
       printUnformatted = false;
@@ -1441,7 +1479,11 @@ export const cswNodesRespectingRangeIgnore = (P: CsPrint, l: i32): i32[] => {
   }
   if (unf.n > 0) {
     const code = cswTrimmedDoc(P, unf);
-    statements.push(firstUnformatted >= 0 && P.is(firstUnformatted, Y_Statement) ? P.D.concat([cswExtraNewLines(P, firstUnformatted), code]) : code);
+    statements.push(
+      firstUnformatted >= 0 && P.is(firstUnformatted, Y_Statement)
+        ? P.D.concat([cswExtraNewLines(P, firstUnformatted), code])
+        : code,
+    );
   }
   return statements;
 };
@@ -1508,14 +1550,20 @@ export const cswArgumentListLike = (P: CsPrint, open: i32, args: i32, close: i32
   const lx = P.lx;
   if (n === 1 && P.is(e0, Y_SimpleLambdaExpression) && !cswAnyComment(lx, cswLeadA(P, e0), cswLeadB(P, e0))) {
     const gid = D.newGroupId();
-    const head = D.groupWithId(gid, [D.indent([DOC_SOFTLINE, cswArgumentModifiers(P, a0), cswSimpleLambdaHead(P, e0)])]);
+    const head = D.groupWithId(gid, [
+      D.indent([DOC_SOFTLINE, cswArgumentModifiers(P, a0), cswSimpleLambdaHead(P, e0)]),
+    ]);
     const body = cswSimpleLambdaBody(P, e0);
     a = D.concat([
       head,
       D.ifBreak(D.indent1(D.group1(body)), body, gid),
       cswLambdaBodyIsBraced(P, cswLambdaBody(P, e0)) ? D.ifBreak(DOC_SOFTLINE, DOC_NULL, gid) : DOC_SOFTLINE,
     ]);
-  } else if (n === 1 && P.is(e0, Y_ParenthesizedLambdaExpression) && P.scount(P.s(P.s(e0, F_ParenthesizedLambdaExpression_ParameterList), F_ParameterList_Parameters)) === 0) {
+  } else if (
+    n === 1 &&
+    P.is(e0, Y_ParenthesizedLambdaExpression) &&
+    P.scount(P.s(P.s(e0, F_ParenthesizedLambdaExpression_ParameterList), F_ParameterList_Parameters)) === 0
+  ) {
     const gid = D.newGroupId();
     a = D.concat([
       D.groupWithId(gid, [D.indent([DOC_SOFTLINE, cswArgumentModifiers(P, a0), cswParenLambdaHead(P, e0)])]),
@@ -1533,7 +1581,9 @@ export const cswArgumentListLike = (P: CsPrint, open: i32, args: i32, close: i32
 };
 
 const cswArrowToken = (P: CsPrint, lambda: i32): i32 =>
-  P.is(lambda, Y_SimpleLambdaExpression) ? P.s(lambda, F_SimpleLambdaExpression_ArrowToken) : P.s(lambda, F_ParenthesizedLambdaExpression_ArrowToken);
+  P.is(lambda, Y_SimpleLambdaExpression)
+    ? P.s(lambda, F_SimpleLambdaExpression_ArrowToken)
+    : P.s(lambda, F_ParenthesizedLambdaExpression_ArrowToken);
 
 const cswTrailingLambdaCandidate = (P: CsPrint, open: i32, args: i32): boolean => {
   const n = P.scount(args);
@@ -1633,7 +1683,12 @@ export const cswRightHandSide = (P: CsPrint, left: i32, leftDoc: i32, opDoc: i32
       return D.concat([D.group1(leftDoc), opDoc, D.indent([DOC_LINE, cswNode(P, right)])]);
     default: {
       const gid = D.newGroupId();
-      return D.group([D.group1(leftDoc), opDoc, D.groupWithId(gid, [D.indent1(DOC_LINE)]), D.indentIfBreak(cswNode(P, right), gid)]);
+      return D.group([
+        D.group1(leftDoc),
+        opDoc,
+        D.groupWithId(gid, [D.indent1(DOC_LINE)]),
+        D.indentIfBreak(cswNode(P, right), gid),
+      ]);
     }
   }
 };
@@ -1648,7 +1703,12 @@ const cswRhsLayout = (P: CsPrint, left: i32, right: i32): i32 => {
   const shouldChain =
     P.is(left, Y_AssignmentExpression) &&
     (P.is(lp, Y_AssignmentExpression) || P.is(lp, Y_EqualsValueClause)) &&
-    (!isTail || !(P.is(P.par(lp), Y_ExpressionStatement) || P.is(P.par(lp), Y_VariableDeclarator) || P.is(P.par(lp), Y_ArrowExpressionClause)));
+    (!isTail ||
+      !(
+        P.is(P.par(lp), Y_ExpressionStatement) ||
+        P.is(P.par(lp), Y_VariableDeclarator) ||
+        P.is(P.par(lp), Y_ArrowExpressionClause)
+      ));
   if (shouldChain) {
     return !isTail ? L_CHAIN : L_CHAIN_TAIL;
   }
@@ -1668,10 +1728,16 @@ const cswRhsLayout = (P: CsPrint, left: i32, right: i32): i32 => {
   if (rk === K_CollectionExpression) {
     return L_BASIC_SPACE;
   }
-  if (P.is(right, Y_LiteralExpression) && P.tk(P.s(right, F_LiteralExpression_Token)) === K_MultiLineRawStringLiteralToken) {
+  if (
+    P.is(right, Y_LiteralExpression) &&
+    P.tk(P.s(right, F_LiteralExpression_Token)) === K_MultiLineRawStringLiteralToken
+  ) {
     return L_BASIC_SPACE;
   }
-  if (P.is(right, Y_InterpolatedStringExpression) && P.tk(P.s(right, F_InterpolatedStringExpression_StringStartToken)) === K_InterpolatedMultiLineRawStringStartToken) {
+  if (
+    P.is(right, Y_InterpolatedStringExpression) &&
+    P.tk(P.s(right, F_InterpolatedStringExpression_StringStartToken)) === K_InterpolatedMultiLineRawStringStartToken
+  ) {
     return L_BASIC_SPACE;
   }
   if (P.is(right, Y_InitializerExpression)) {
@@ -1691,14 +1757,25 @@ const cswRhsLayout = (P: CsPrint, left: i32, right: i32): i32 => {
     if (P.is(c, Y_BinaryExpression) || P.is(c, Y_ParenthesizedExpression)) {
       return L_BREAK_AFTER_OP;
     }
-    if (P.is(P.s(right, F_ConditionalExpression_WhenFalse), Y_ConditionalExpression) && !P.is(P.s(right, F_ConditionalExpression_WhenTrue), Y_ConditionalExpression)) {
+    if (
+      P.is(P.s(right, F_ConditionalExpression_WhenFalse), Y_ConditionalExpression) &&
+      !P.is(P.s(right, F_ConditionalExpression_WhenTrue), Y_ConditionalExpression)
+    ) {
       return L_BREAK_AFTER_OP;
     }
   }
-  if (P.is(right, Y_InterpolatedStringExpression) || P.is(right, Y_IsPatternExpression) || P.is(right, Y_LiteralExpression) || P.is(right, Y_QueryExpression)) {
+  if (
+    P.is(right, Y_InterpolatedStringExpression) ||
+    P.is(right, Y_IsPatternExpression) ||
+    P.is(right, Y_LiteralExpression) ||
+    P.is(right, Y_QueryExpression)
+  ) {
     return L_BREAK_AFTER_OP;
   }
-  if (P.is(right, Y_StackAllocArrayCreationExpression) && P.s(right, F_StackAllocArrayCreationExpression_Initializer) < 0) {
+  if (
+    P.is(right, Y_StackAllocArrayCreationExpression) &&
+    P.s(right, F_StackAllocArrayCreationExpression_Initializer) < 0
+  ) {
     return L_BREAK_AFTER_OP;
   }
   return L_FLUID;
@@ -1707,7 +1784,13 @@ const cswRhsLayout = (P: CsPrint, left: i32, right: i32): i32 => {
 // ---- MembersWithForcedLines ----
 
 /** MembersWithForcedLines.Print over the member list l of node (a separated list when `separated`). */
-export const cswMembersWithForcedLines = (P: CsPrint, node: i32, l: i32, separated: boolean, skipFirstHardLine: boolean): i32[] => {
+export const cswMembersWithForcedLines = (
+  P: CsPrint,
+  node: i32,
+  l: i32,
+  separated: boolean,
+  skipFirstHardLine: boolean,
+): i32[] => {
   const lx = P.lx;
   const result: i32[] = [];
   if (!skipFirstHardLine) {
@@ -1754,7 +1837,12 @@ export const cswMembersWithForcedLines = (P: CsPrint, node: i32, l: i32, separat
       mk === K_RecordDeclaration ||
       mk === K_RecordStructDeclaration ||
       mk === K_StructDeclaration;
-    if (mk === K_MethodDeclaration && P.k(node) === K_ClassDeclaration && cswHasModifier(P, P.s(node, 1), K_AbstractKeyword) && cswHasModifier(P, P.s(member, 1), K_AbstractKeyword)) {
+    if (
+      mk === K_MethodDeclaration &&
+      P.k(node) === K_ClassDeclaration &&
+      cswHasModifier(P, P.s(node, 1), K_AbstractKeyword) &&
+      cswHasModifier(P, P.s(member, 1), K_AbstractKeyword)
+    ) {
       blankLineIsForced = false;
     }
     if (mi === 0) {
@@ -1779,7 +1867,12 @@ export const cswMembersWithForcedLines = (P: CsPrint, node: i32, l: i32, separat
       const k = lx.trKind[ti];
       if (k === K_EndOfLineTrivia || cswIsCommentKind(k)) {
         containsCommentOrNewLine = true;
-      } else if (k === K_PragmaWarningDirectiveTrivia || k === K_PragmaChecksumDirectiveTrivia || k === K_IfDirectiveTrivia || k === K_EndRegionDirectiveTrivia) {
+      } else if (
+        k === K_PragmaWarningDirectiveTrivia ||
+        k === K_PragmaChecksumDirectiveTrivia ||
+        k === K_IfDirectiveTrivia ||
+        k === K_EndRegionDirectiveTrivia
+      ) {
         printExtraNewLines = true;
       } else if (k === K_EndIfDirectiveTrivia) {
         containsEndIfOrRegion = true;
@@ -1808,7 +1901,12 @@ export const cswMembersWithForcedLines = (P: CsPrint, node: i32, l: i32, separat
     if (
       addBlankLine &&
       ((!containsEndIfOrRegion && containsIf && !containsEol) ||
-        (containsEndIfOrRegion && !containsIf && !containsElif && !containsElse && !lineFollowsEndIf && !printExtraNewLines))
+        (containsEndIfOrRegion &&
+          !containsIf &&
+          !containsElif &&
+          !containsElse &&
+          !lineFollowsEndIf &&
+          !printExtraNewLines))
     ) {
       P.nextTriviaNeedsLine = true;
     }
@@ -1836,7 +1934,15 @@ export const cswHasModifier = (P: CsPrint, l: i32, kind: i32): boolean => {
   return false;
 };
 
-const cswMemberSeparator = (P: CsPrint, node: i32, l: i32, separated: boolean, mi: i32, nsep: i32, member: i32): i32 => {
+const cswMemberSeparator = (
+  P: CsPrint,
+  node: i32,
+  l: i32,
+  separated: boolean,
+  mi: i32,
+  nsep: i32,
+  member: i32,
+): i32 => {
   if (!separated) {
     return DOC_NULL;
   }
@@ -2043,7 +2149,9 @@ class CsUsingGroups {
 }
 
 const cswUsingLead = (P: CsPrint, g: CsUsingGroups, u: i32): i32 => {
-  const r = g.isFirst ? cswLeadingTrivia(P, g.la, g.lb, false, false) : cswLeadingTrivia(P, cswLeadA(P, u), cswLeadB(P, u), false, false);
+  const r = g.isFirst
+    ? cswLeadingTrivia(P, g.la, g.lb, false, false)
+    : cswLeadingTrivia(P, cswLeadA(P, u), cswLeadB(P, u), false, false);
   g.isFirst = false;
   return r;
 };

@@ -301,8 +301,15 @@ const cspNamespaceBody = (p: CsParser, parentKind: i32): i32 => {
       seen = NP_EXTERNS;
       continue;
     }
-    if (k === K_UsingKeyword || (k === K_IdentifierToken && p.ck() === K_GlobalKeyword && p.kindAt(1) === K_UsingKeyword)) {
-      if (k === K_UsingKeyword && isGlobal && (p.kindAt(1) === K_OpenParenToken || cspIsPossibleTopLevelUsingLocalDeclarationStatement(p))) {
+    if (
+      k === K_UsingKeyword ||
+      (k === K_IdentifierToken && p.ck() === K_GlobalKeyword && p.kindAt(1) === K_UsingKeyword)
+    ) {
+      if (
+        k === K_UsingKeyword &&
+        isGlobal &&
+        (p.kindAt(1) === K_OpenParenToken || cspIsPossibleTopLevelUsingLocalDeclarationStatement(p))
+      ) {
         // a top-level using statement
       } else {
         if (seen > NP_USINGS) {
@@ -419,7 +426,10 @@ const cspIsPossibleTopLevelUsingLocalDeclarationStatement = (p: CsParser): boole
     r = true;
   } else {
     const st = cspScanType(p, PT_NORMAL);
-    r = st !== ST_NOT_TYPE && p.k() === K_IdentifierToken && (p.kindAt(1) === K_EqualsToken || p.kindAt(1) === K_SemicolonToken || p.kindAt(1) === K_CommaToken);
+    r =
+      st !== ST_NOT_TYPE &&
+      p.k() === K_IdentifierToken &&
+      (p.kindAt(1) === K_EqualsToken || p.kindAt(1) === K_SemicolonToken || p.kindAt(1) === K_CommaToken);
     if (st !== ST_NOT_TYPE && (p.k() === K_EqualsToken || p.k() === K_SemicolonToken)) {
       r = false;
     }
@@ -568,7 +578,10 @@ const cspAttributeArgument = (p: CsParser): i32 => {
 // ---- modifiers ----
 
 /** ShouldContextualKeywordBeTreatedAsModifier. */
-const cspShouldContextualKeywordBeTreatedAsModifier = (p: CsParser, parsingStatementNotDeclaration: boolean): boolean => {
+const cspShouldContextualKeywordBeTreatedAsModifier = (
+  p: CsParser,
+  parsingStatementNotDeclaration: boolean,
+): boolean => {
   // IsNonContextualModifier(PeekToken(1))
   const k1 = p.kindAt(1);
   if (k1 !== K_IdentifierToken && cspModifierKind(k1, p.ckAt(1)) !== 0) {
@@ -632,7 +645,10 @@ export const cspModifiers = (p: CsParser, forTopLevelStatements: boolean): boole
     if (mod === MOD_REF) {
       // isRefReturningMember
       const nk = p.kindAt(1);
-      if (!(nk === K_IdentifierToken && (p.ckAt(1) === K_RecordKeyword || p.ckAt(1) === K_UnionKeyword)) && cspIsTypeFollowedByMemberName(p)) {
+      if (
+        !(nk === K_IdentifierToken && (p.ckAt(1) === K_RecordKeyword || p.ckAt(1) === K_UnionKeyword)) &&
+        cspIsTypeFollowedByMemberName(p)
+      ) {
         return isPossibleTypeDeclaration;
       }
       if (forTopLevelStatements && !cspShouldConsumeRefAtTopLevel(p)) {
@@ -672,12 +688,17 @@ const cspShouldConsumeRefAtTopLevel = (p: CsParser): boolean => {
     p.eat();
   }
   const ck = p.k() === K_IdentifierToken ? p.ck() : 0;
-  const r = ck === K_RecordKeyword || ck === K_UnionKeyword || ck === K_ExtensionKeyword || cspIsTypeDeclarationStart(p);
+  const r =
+    ck === K_RecordKeyword || ck === K_UnionKeyword || ck === K_ExtensionKeyword || cspIsTypeDeclarationStart(p);
   p.reset(m);
   return r;
 };
 
-export const cspIsDefiniteScopedModifier = (p: CsParser, isFunctionPointerParameter: boolean, isLambdaParameter: boolean): boolean => {
+export const cspIsDefiniteScopedModifier = (
+  p: CsParser,
+  isFunctionPointerParameter: boolean,
+  isLambdaParameter: boolean,
+): boolean => {
   if (p.k() !== K_IdentifierToken || p.ck() !== K_ScopedKeyword) {
     return false;
   }
@@ -701,10 +722,19 @@ export const cspIsDefiniteScopedModifier = (p: CsParser, isFunctionPointerParame
 };
 
 export const cspIsParameterModifierExcludingScoped = (k: i32): boolean =>
-  k === K_ThisKeyword || k === K_RefKeyword || k === K_OutKeyword || k === K_InKeyword || k === K_ParamsKeyword || k === K_ReadOnlyKeyword;
+  k === K_ThisKeyword ||
+  k === K_RefKeyword ||
+  k === K_OutKeyword ||
+  k === K_InKeyword ||
+  k === K_ParamsKeyword ||
+  k === K_ReadOnlyKeyword;
 
 /** ParseParameterModifiers: pushes the modifier tokens. */
-export const cspParameterModifiers = (p: CsParser, isFunctionPointerParameter: boolean, isLambdaParameter: boolean): void => {
+export const cspParameterModifiers = (
+  p: CsParser,
+  isFunctionPointerParameter: boolean,
+  isLambdaParameter: boolean,
+): void => {
   let seenScoped = false;
   while (!p.err) {
     if (cspIsParameterModifierExcludingScoped(p.k())) {
@@ -787,7 +817,8 @@ const cspMemberStart = (p: CsParser, forTopLevel: boolean, attrs: i32): CsMember
   return new CsMemberStart(attrs, mods, possible);
 };
 
-const cspIsExtensionContainerStart = (p: CsParser): boolean => p.k() === K_IdentifierToken && p.ck() === K_ExtensionKeyword;
+const cspIsExtensionContainerStart = (p: CsParser): boolean =>
+  p.k() === K_IdentifierToken && p.ck() === K_ExtensionKeyword;
 
 const cspMemberDeclarationCore = (p: CsParser, parentKind: i32): i32 => {
   const attrs = cspAttributeDeclarations(p, false);
@@ -840,7 +871,7 @@ const cspMemberDeclarationCore = (p: CsParser, parentKind: i32): i32 => {
       return -1;
     }
     if (mn.eis < 0 && mn.ident < 0 && mn.tpl < 0) {
-      if (!(cspLooksLikeStartOfPropertyBody(p, type, modsList))) {
+      if (!cspLooksLikeStartOfPropertyBody(p, type, modsList)) {
         p.fail("incomplete member");
         return -1;
       }
@@ -1071,8 +1102,6 @@ const cspAccumulateExplicitInterfaceName = (p: CsParser, name: i32, sep: i32): C
   }
   return new CsAccName(n, p.expect(K_DotToken));
 };
-
-
 
 const cspIsOperatorKeyword = (p: CsParser): boolean =>
   p.k() === K_ImplicitKeyword || p.k() === K_ExplicitKeyword || p.k() === K_OperatorKeyword;
@@ -1334,7 +1363,15 @@ const cspOperatorDeclaration = (p: CsParser, attrs: i32, mods: i32, type: i32, e
   return p.node(K_OperatorDeclaration, m);
 };
 
-const cspIndexerDeclaration = (p: CsParser, attrs: i32, mods: i32, type: i32, eis: i32, thisTok: i32, tpl: i32): i32 => {
+const cspIndexerDeclaration = (
+  p: CsParser,
+  attrs: i32,
+  mods: i32,
+  type: i32,
+  eis: i32,
+  thisTok: i32,
+  tpl: i32,
+): i32 => {
   if (tpl >= 0) {
     p.fail("generic indexer");
     return -1;
@@ -1441,7 +1478,10 @@ const cspAccessorKind = (ck: i32): i32 => {
 };
 
 const cspAccessorModifiers = (p: CsParser): void => {
-  while (!p.err && (cspModifierKind(p.k(), p.ck()) !== 0 || (p.k() === K_IdentifierToken && p.ck() === K_ScopedKeyword))) {
+  while (
+    !p.err &&
+    (cspModifierKind(p.k(), p.ck()) !== 0 || (p.k() === K_IdentifierToken && p.ck() === K_ScopedKeyword))
+  ) {
     const t = p.eat();
     if (p.lx.kind[t] === K_IdentifierToken) {
       p.convert(t, p.lx.ck[t]);
@@ -1450,7 +1490,8 @@ const cspAccessorModifiers = (p: CsParser): void => {
   }
 };
 
-const cspIsAccessorBodyStart = (k: i32): boolean => k === K_OpenBraceToken || k === K_SemicolonToken || k === K_EqualsGreaterThanToken;
+const cspIsAccessorBodyStart = (k: i32): boolean =>
+  k === K_OpenBraceToken || k === K_SemicolonToken || k === K_EqualsGreaterThanToken;
 
 const cspIsPossibleAccessor = (p: CsParser): boolean => {
   if (cspIsPossibleAttributeDeclaration(p)) {
@@ -1466,7 +1507,10 @@ const cspIsPossibleAccessor = (p: CsParser): boolean => {
   } else if (cspIsAccessorBodyStart(p.k())) {
     r = true;
   } else if (parsedMods) {
-    r = p.k() === K_CloseBraceToken || p.k() === K_EndOfFileToken || (p.k() === K_IdentifierToken && cspIsAccessorBodyStart(p.kindAt(1)));
+    r =
+      p.k() === K_CloseBraceToken ||
+      p.k() === K_EndOfFileToken ||
+      (p.k() === K_IdentifierToken && cspIsAccessorBodyStart(p.kindAt(1)));
   } else {
     r = p.k() === K_IdentifierToken;
   }
@@ -1556,7 +1600,11 @@ const cspIsPossibleParameter = (p: CsParser): boolean => {
     case K_IdentifierToken:
       return cspIsTrueIdentifier(p);
     default:
-      return cspIsParameterModifierExcludingScoped(k) || cspIsDefiniteScopedModifier(p, false, false) || csIsPredefinedType(k);
+      return (
+        cspIsParameterModifierExcludingScoped(k) ||
+        cspIsDefiniteScopedModifier(p, false, false) ||
+        csIsPredefinedType(k)
+      );
   }
 };
 
@@ -1727,7 +1775,13 @@ export const VF_FOR_STATEMENT: i32 = 8;
  * allowLocalFunctions, answers the local function statement it found instead
  * (pushing nothing), or -1.
  */
-export const cspVariableDeclarators = (p: CsParser, type: i32, flags: i32, allowLocalFunctions: boolean, stopOnCloseParen: boolean): i32 => {
+export const cspVariableDeclarators = (
+  p: CsParser,
+  type: i32,
+  flags: i32,
+  allowLocalFunctions: boolean,
+  stopOnCloseParen: boolean,
+): i32 => {
   const lm = p.sp();
   const first = cspVariableDeclarator(p, type, flags, true, allowLocalFunctions);
   if (first === -3) {
@@ -1740,7 +1794,10 @@ export const cspVariableDeclarators = (p: CsParser, type: i32, flags: i32, allow
     }
     if (p.k() === K_CommaToken) {
       if ((flags & VF_FOR_STATEMENT) !== 0 && p.kindAt(1) !== K_SemicolonToken) {
-        const legal = p.kindAt(1) === K_IdentifierToken && !(p.inQuery) && (p.kindAt(2) === K_CommaToken || p.kindAt(2) === K_EqualsToken || p.kindAt(2) === K_SemicolonToken);
+        const legal =
+          p.kindAt(1) === K_IdentifierToken &&
+          !p.inQuery &&
+          (p.kindAt(2) === K_CommaToken || p.kindAt(2) === K_EqualsToken || p.kindAt(2) === K_SemicolonToken);
         if (!legal) {
           break;
         }
@@ -1756,7 +1813,13 @@ export const cspVariableDeclarators = (p: CsParser, type: i32, flags: i32, allow
 };
 
 /** One declarator; -3 when it turned out to be a local function (left as the last node). */
-const cspVariableDeclarator = (p: CsParser, type: i32, flags: i32, isFirst: boolean, allowLocalFunctions: boolean): i32 => {
+const cspVariableDeclarator = (
+  p: CsParser,
+  type: i32,
+  flags: i32,
+  isFirst: boolean,
+  allowLocalFunctions: boolean,
+): i32 => {
   const name = cspIdentifierToken(p);
   if (p.err) {
     return -1;
@@ -1845,7 +1908,6 @@ const cspVariableDeclarator = (p: CsParser, type: i32, flags: i32, isFirst: bool
   return p.node(K_VariableDeclarator, m);
 };
 
-
 export const cspVariableInitializer = (p: CsParser): i32 =>
   p.k() === K_OpenBraceToken ? cspArrayInitializer(p) : cspExpressionCore(p);
 
@@ -1870,7 +1932,12 @@ const cspMainTypeDeclaration = (p: CsParser, attrs: i32, mods: i32): i32 => {
     if (p.k() === K_ClassKeyword || p.k() === K_StructKeyword) {
       recordMod = p.eat();
     }
-  } else if ((p.k() === K_StructKeyword || p.k() === K_ClassKeyword) && p.kindAt(1) === K_IdentifierToken && p.ckAt(1) === K_RecordKeyword && p.kindAt(2) === K_IdentifierToken) {
+  } else if (
+    (p.k() === K_StructKeyword || p.k() === K_ClassKeyword) &&
+    p.kindAt(1) === K_IdentifierToken &&
+    p.ckAt(1) === K_RecordKeyword &&
+    p.kindAt(2) === K_IdentifierToken
+  ) {
     p.fail("misplaced record");
     return -1;
   } else {
@@ -1948,7 +2015,8 @@ const cspMainTypeDeclaration = (p: CsParser, attrs: i32, mods: i32): i32 => {
       kind = K_UnionDeclaration;
       break;
     case K_RecordKeyword:
-      kind = recordMod >= 0 && p.lx.kind[recordMod] === K_StructKeyword ? K_RecordStructDeclaration : K_RecordDeclaration;
+      kind =
+        recordMod >= 0 && p.lx.kind[recordMod] === K_StructKeyword ? K_RecordStructDeclaration : K_RecordDeclaration;
       break;
     case K_ExtensionKeyword:
       kind = K_ExtensionBlockDeclaration;
@@ -1979,7 +2047,12 @@ const cspBaseList = (p: CsParser): i32 => {
     p.push(first);
     p.push(p.node(K_SimpleBaseType, bm));
   }
-  while (p.k() !== K_OpenBraceToken && p.k() !== K_SemicolonToken && !cspIsCurrentTokenWhereOfConstraintClause(p) && !p.err) {
+  while (
+    p.k() !== K_OpenBraceToken &&
+    p.k() !== K_SemicolonToken &&
+    !cspIsCurrentTokenWhereOfConstraintClause(p) &&
+    !p.err
+  ) {
     if (p.k() === K_CommaToken) {
       p.push(p.eat());
       const bm = p.sp();
@@ -2036,7 +2109,12 @@ const cspTypeParameterConstraintClause = (p: CsParser): i32 => {
   p.push(c);
   while (!p.err) {
     const k = p.k();
-    if (k === K_OpenBraceToken || k === K_SemicolonToken || k === K_EqualsGreaterThanToken || (k === K_IdentifierToken && p.ck() === K_WhereKeyword)) {
+    if (
+      k === K_OpenBraceToken ||
+      k === K_SemicolonToken ||
+      k === K_EqualsGreaterThanToken ||
+      (k === K_IdentifierToken && p.ck() === K_WhereKeyword)
+    ) {
       break;
     }
     const haveComma = k === K_CommaToken;
@@ -2371,4 +2449,10 @@ const cspGlobalStatement = (p: CsParser, stmt: i32): i32 => {
 
 // Unused imports kept referenced.
 export const cspDeclUnused = (p: CsParser): boolean =>
-  cspIsPossibleExpression(p) || cspCanStartExpression(p) || cspIsPossibleType(p) || cspBracketedArgumentList(p) < 0 || K_ArrayType === 0 || K_DotDotToken === 0 || K_FileKeyword === 0;
+  cspIsPossibleExpression(p) ||
+  cspCanStartExpression(p) ||
+  cspIsPossibleType(p) ||
+  cspBracketedArgumentList(p) < 0 ||
+  K_ArrayType === 0 ||
+  K_DotDotToken === 0 ||
+  K_FileKeyword === 0;

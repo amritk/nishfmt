@@ -402,7 +402,12 @@ export const dtsHardRule = (): DtsRule => {
 };
 
 /** PositionalRule. */
-export const dtsPositionalRule = (collectionRule: DtsRule | null, argumentCount: i32, leading: i32, trailing: i32): DtsRule => {
+export const dtsPositionalRule = (
+  collectionRule: DtsRule | null,
+  argumentCount: i32,
+  leading: i32,
+  trailing: i32,
+): DtsRule => {
   const r = new DtsRule(DTS_RULE_POSITIONAL, DTS_COST_NORMAL);
   r.leading = leading;
   r.trailing = trailing;
@@ -1175,7 +1180,13 @@ export class DtsLineWriter {
   out: string[];
   nonEmpty: boolean = false;
 
-  constructor(cx: DtsContext, lineEnding: string, chunks: DtsChunk[], blockIndentation: i32, cache: Map<i64, DtsResult>) {
+  constructor(
+    cx: DtsContext,
+    lineEnding: string,
+    chunks: DtsChunk[],
+    blockIndentation: i32,
+    cache: Map<i64, DtsResult>,
+  ) {
     this.cx = cx;
     this.lineEnding = lineEnding;
     this.chunks = chunks;
@@ -1680,7 +1691,12 @@ export class DtsState {
           }
         }
         const totalIndent = c.nesting.total;
-        if (previousNesting !== null && totalIndent !== 0 && totalIndent === previousNesting.total && c.nesting !== previousNesting) {
+        if (
+          previousNesting !== null &&
+          totalIndent !== 0 &&
+          totalIndent === previousNesting.total &&
+          c.nesting !== previousNesting
+        ) {
           this.overflowChars += 10000;
         }
         previousNesting = c.nesting;

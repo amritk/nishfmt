@@ -3,7 +3,23 @@
 // Ported from RuboCop 1.92.2 (MIT License, Copyright (c) 2012-24 Bozhidar
 // Batsov).
 
-import { F_HEREDOC_END, NT_ARRAY, NT_BEGIN, NT_CONST, NT_CVAR, NT_DSTR, NT_GVAR, NT_IVAR, NT_LVAR, NT_NIL, NT_SELF, NT_SEND, NT_STR, NT_XSTR, V_NIL } from "../ast";
+import {
+  F_HEREDOC_END,
+  NT_ARRAY,
+  NT_BEGIN,
+  NT_CONST,
+  NT_CVAR,
+  NT_DSTR,
+  NT_GVAR,
+  NT_IVAR,
+  NT_LVAR,
+  NT_NIL,
+  NT_SELF,
+  NT_SEND,
+  NT_STR,
+  NT_XSTR,
+  V_NIL,
+} from "../ast";
 import { RbCop } from "../cop";
 import { rnHeredoc } from "../node";
 import { RbSource } from "../source";
@@ -25,7 +41,14 @@ const sbhReMessageSource = (src: RbSource, m: i32): string => {
   if (ssxIsCall(src, m)) {
     req = sbhMethodName(src, m) !== "[]" && (sbhOperatorMethod(src, m) || (a.nKid(m) > 2 && !ssxParenthesized(src, m)));
   } else {
-    req = !(ssxBasicLiteral(src, m) || sbhReVariable(t) || t === NT_CONST || t === NT_SELF || t === NT_BEGIN || t === NT_ARRAY);
+    req = !(
+      ssxBasicLiteral(src, m) ||
+      sbhReVariable(t) ||
+      t === NT_CONST ||
+      t === NT_SELF ||
+      t === NT_BEGIN ||
+      t === NT_ARRAY
+    );
   }
   return req ? `(${s}).to_s` : `${s}.to_s`;
 };
@@ -72,7 +95,12 @@ export class CopStyleRedundantException {
       }
       // compact?
       const nc = a.kid(n, 2);
-      if (!sbhReIs(src, nc, NT_SEND) || a.nKid(nc) !== 3 || sbhMethodName(src, nc) !== "new" || !ssxGlobalConst(src, a.kid(nc, 0), "RuntimeError")) {
+      if (
+        !sbhReIs(src, nc, NT_SEND) ||
+        a.nKid(nc) !== 3 ||
+        sbhMethodName(src, nc) !== "new" ||
+        !ssxGlobalConst(src, a.kid(nc, 0), "RuntimeError")
+      ) {
         continue;
       }
       const msg = a.kid(nc, 2);
@@ -91,7 +119,11 @@ export class CopStyleRedundantException {
       }
       for (const s of all) {
         const t = a.type(s);
-        if ((t === NT_STR || t === NT_DSTR || t === NT_XSTR) && rnHeredoc(src, s) && a.fE(a.map(s), F_HEREDOC_END) < a.exE(nc)) {
+        if (
+          (t === NT_STR || t === NT_DSTR || t === NT_XSTR) &&
+          rnHeredoc(src, s) &&
+          a.fE(a.map(s), F_HEREDOC_END) < a.exE(nc)
+        ) {
           inside = true;
         }
       }

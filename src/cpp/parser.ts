@@ -356,7 +356,13 @@ export class Parser {
     while (this.cur() === K_COMMENT && this.first < 0) {
       // `/* x */ code` on one line belongs to the code.
       const n = this.pos + 1;
-      if (d.at(d.start[this.pos] + 1) === 42 && n < d.ntok && d.nl[n] === 0 && d.kind[n] !== K_COMMENT && d.kind[n] !== K_EOF) {
+      if (
+        d.at(d.start[this.pos] + 1) === 42 &&
+        n < d.ntok &&
+        d.nl[n] === 0 &&
+        d.kind[n] !== K_COMMENT &&
+        d.kind[n] !== K_EOF
+      ) {
         break;
       }
       this.push();
@@ -464,7 +470,10 @@ export class Parser {
       }
     }
     let q = d.lLast[l] + 1;
-    while (q < this.pos && (d.kind[q] === K_COMMENT || d.inPP[q] === 1 || (d.kind[q] === P_HASH && d.ppKind[q] !== PP_NONE))) {
+    while (
+      q < this.pos &&
+      (d.kind[q] === K_COMMENT || d.inPP[q] === 1 || (d.kind[q] === P_HASH && d.ppKind[q] !== PP_NONE))
+    ) {
       q++;
     }
     if (q !== this.pos || d.kind[d.lLast[l]] !== K_COMMENT) {
@@ -529,7 +538,6 @@ export class Parser {
     }
     this.finishLine(isInclude ? LT_IMPORT : LT_PREPROCESSOR);
   }
-
 
   /**
    * `#define NAME(params) body`: the head is a line of its own and the body
@@ -614,7 +622,10 @@ export class Parser {
         i++;
       }
       const ki = d.kind[i];
-      if (d.nl[i] === 0 && (ki === KW_IF || ki === KW_WHILE || ki === KW_FOR || ki === KW_SWITCH || ki === KW_DO || ki === KW_TRY)) {
+      if (
+        d.nl[i] === 0 &&
+        (ki === KW_IF || ki === KW_WHILE || ki === KW_FOR || ki === KW_SWITCH || ki === KW_DO || ki === KW_TRY)
+      ) {
         while (this.pos < i) {
           this.push();
         }
@@ -706,7 +717,12 @@ export class Parser {
         // A goto label in code: one level out, like a case label. (In a
         // macro body, not on its first line: clang-format's
         // `!Line->InMacroBody || CurrentLines->size() > 1`.)
-        if ((this.first < 0 || attrOnly) && !this.mustDecl && this.peek(1) === P_COLON && (this.macro < 0 || this.d.nline > this.macroBodyStart)) {
+        if (
+          (this.first < 0 || attrOnly) &&
+          !this.mustDecl &&
+          this.peek(1) === P_COLON &&
+          (this.macro < 0 || this.d.nline > this.macroBodyStart)
+        ) {
           this.parseCaseLabel();
           return;
         }
@@ -861,7 +877,12 @@ export class Parser {
     this.push();
     // clang-format's parseBlock takes a `;` right after the `}` (records
     // handle their own trailing tokens).
-    if (this.cur() === P_SEMI && lbraceType !== TT_CLASS_LBRACE && lbraceType !== TT_STRUCT_LBRACE && lbraceType !== TT_UNION_LBRACE) {
+    if (
+      this.cur() === P_SEMI &&
+      lbraceType !== TT_CLASS_LBRACE &&
+      lbraceType !== TT_STRUCT_LBRACE &&
+      lbraceType !== TT_UNION_LBRACE
+    ) {
       this.push();
     }
   }
@@ -943,7 +964,15 @@ export class Parser {
       // So are line comments continuing the last one's section (clang-format
       // reads them into the line): the block then still follows the label.
       const minCol = this.first >= 0 ? d.origCol(this.first) + 1 : 0;
-      while (d.kind[this.pos] === K_COMMENT && d.nl[this.pos] === 1 && d.at(d.start[this.pos] + 1) === 47 && this.last >= 0 && d.kind[this.last] === K_COMMENT && d.at(d.start[this.last] + 1) === 47 && d.origCol(this.pos) >= minCol) {
+      while (
+        d.kind[this.pos] === K_COMMENT &&
+        d.nl[this.pos] === 1 &&
+        d.at(d.start[this.pos] + 1) === 47 &&
+        this.last >= 0 &&
+        d.kind[this.last] === K_COMMENT &&
+        d.at(d.start[this.last] + 1) === 47 &&
+        d.origCol(this.pos) >= minCol
+      ) {
         this.push();
       }
     }
@@ -1320,7 +1349,12 @@ export class Parser {
     }
     // `} // c` then `while (...)`: the comment trails the `}` line, which
     // the while still goes on.
-    if (braced && this.cur() === K_COMMENT && this.d.nl[this.pos] === 0 && this.d.kind[this.nextNonComment(this.pos)] === KW_WHILE) {
+    if (
+      braced &&
+      this.cur() === K_COMMENT &&
+      this.d.nl[this.pos] === 0 &&
+      this.d.kind[this.nextNonComment(this.pos)] === KW_WHILE
+    ) {
       while (this.cur() === K_COMMENT) {
         this.push();
       }
@@ -1420,7 +1454,11 @@ export class Parser {
       }
       this.push();
       // `catch /* x */ (...)`: comments before the parameter stay on the line.
-      while (this.cur() === K_COMMENT && this.d.nl[this.pos] === 0 && this.d.kind[this.nextNonComment(this.pos)] === P_LPAREN) {
+      while (
+        this.cur() === K_COMMENT &&
+        this.d.nl[this.pos] === 0 &&
+        this.d.kind[this.nextNonComment(this.pos)] === P_LPAREN
+      ) {
         this.push();
       }
       if (this.cur() === P_LPAREN) {
@@ -1828,7 +1866,14 @@ export class Parser {
     }
     // `auto [a, b]`, `const auto &[a, b]`: a structured binding.
     let q = prev;
-    while (q >= 0 && (d.kind[q] === KW_CONST || d.kind[q] === KW_VOLATILE || d.kind[q] === P_AMP || d.kind[q] === P_AMPAMP || d.kind[q] === K_COMMENT)) {
+    while (
+      q >= 0 &&
+      (d.kind[q] === KW_CONST ||
+        d.kind[q] === KW_VOLATILE ||
+        d.kind[q] === P_AMP ||
+        d.kind[q] === P_AMPAMP ||
+        d.kind[q] === K_COMMENT)
+    ) {
       q = d.prv[q];
     }
     if (q >= 0 && d.kind[q] === KW_AUTO) {
@@ -1886,10 +1931,41 @@ export class Parser {
       } else if (pdepth === 0) {
         if (k === P_ARROW) {
           seenArrow = true;
-        } else if (seenArrow && (k === KW_TRUE || k === KW_FALSE || k === P_PLUS || k === P_MINUS || k === P_EXCLAIM || k === P_TILDE || k === P_SLASH || k === P_PERCENT || k === P_LESSLESS || k === P_PIPE || k === P_PIPEPIPE || k === P_CARET || k === P_EQUALEQUAL || k === P_EXCLAIMEQUAL || k === P_GREATEREQUAL || k === P_LESSEQUAL || k === P_QUESTION || k === P_COLON)) {
+        } else if (
+          seenArrow &&
+          (k === KW_TRUE ||
+            k === KW_FALSE ||
+            k === P_PLUS ||
+            k === P_MINUS ||
+            k === P_EXCLAIM ||
+            k === P_TILDE ||
+            k === P_SLASH ||
+            k === P_PERCENT ||
+            k === P_LESSLESS ||
+            k === P_PIPE ||
+            k === P_PIPEPIPE ||
+            k === P_CARET ||
+            k === P_EQUALEQUAL ||
+            k === P_EXCLAIMEQUAL ||
+            k === P_GREATEREQUAL ||
+            k === P_LESSEQUAL ||
+            k === P_QUESTION ||
+            k === P_COLON)
+        ) {
           // (clang-format's tryToParseLambda takes operators after the arrow:
           // a template argument's arithmetic, or C++/CX's `^`.)
-        } else if (!(lambdaWord(k) || k === K_NUMBER || k === P_COLONCOLON || k === P_AMP || k === P_AMPAMP || k === P_STAR || k === P_COMMA || k === P_ELLIPSIS)) {
+        } else if (
+          !(
+            lambdaWord(k) ||
+            k === K_NUMBER ||
+            k === P_COLONCOLON ||
+            k === P_AMP ||
+            k === P_AMPAMP ||
+            k === P_STAR ||
+            k === P_COMMA ||
+            k === P_ELLIPSIS
+          )
+        ) {
           return false;
         }
       } else if (k === P_SEMI || k === P_LBRACE || k === P_RBRACE) {
@@ -1952,7 +2028,10 @@ export class Parser {
       // (Inside a macro body, the whole directive is skipped.)
       while (this.macro >= 0 && next < d.ntok - 1 && d.kind[next] === P_HASH && d.ppKind[next] !== PP_NONE) {
         next++;
-        while (next < d.ntok - 1 && (d.kind[next] === K_COMMENT || (d.inPP[next] === 1 && d.ppKind[next] === PP_NONE))) {
+        while (
+          next < d.ntok - 1 &&
+          (d.kind[next] === K_COMMENT || (d.inPP[next] === 1 && d.ppKind[next] === PP_NONE))
+        ) {
           next++;
         }
       }
@@ -1976,13 +2055,26 @@ export class Parser {
             if (nk === P_LPAREN) {
               braced = true;
             }
-            if (nk === P_COMMA || nk === P_PERIOD || nk === P_COLON || nk === P_RPAREN || nk === P_RSQUARE || nk === P_ELLIPSIS) {
+            if (
+              nk === P_COMMA ||
+              nk === P_PERIOD ||
+              nk === P_COLON ||
+              nk === P_RPAREN ||
+              nk === P_RSQUARE ||
+              nk === P_ELLIPSIS
+            ) {
               braced = true;
             }
             if (nk === P_LBRACE && topPrev >= 0 && (d.kind[topPrev] === K_IDENT || d.kind[topPrev] === P_GREATER)) {
               braced = true;
             }
-            if (nk === K_IDENT && !(prevTok >= 0 && (d.kind[prevTok] === P_SEMI || d.kind[prevTok] === P_RBRACE || d.kind[prevTok] === P_LBRACE))) {
+            if (
+              nk === K_IDENT &&
+              !(
+                prevTok >= 0 &&
+                (d.kind[prevTok] === P_SEMI || d.kind[prevTok] === P_RBRACE || d.kind[prevTok] === P_LBRACE)
+              )
+            ) {
               braced = true;
             }
             if (nk === P_SEMI && stack.length !== 1) {
@@ -2065,7 +2157,16 @@ export class Parser {
         continue;
       }
       // `final` is an identifier to clang-format.
-      if (!(isIdentKind(k) || k === P_COLONCOLON || k === P_HASHHASH || k === KW_ALIGNAS || k === P_LSQUARE || k === KW_ATTRIBUTE)) {
+      if (
+        !(
+          isIdentKind(k) ||
+          k === P_COLONCOLON ||
+          k === P_HASHHASH ||
+          k === KW_ALIGNAS ||
+          k === P_LSQUARE ||
+          k === KW_ATTRIBUTE
+        )
+      ) {
         break;
       }
       const prev = i;
@@ -2159,7 +2260,18 @@ export class Parser {
         }
         continue;
       }
-      if (!(isWordKind(k) || k === P_COLON || k === P_COLONCOLON || k === P_LESS || k === P_GREATER || k === P_COMMA || k === P_QUESTION || k === P_LSQUARE)) {
+      if (
+        !(
+          isWordKind(k) ||
+          k === P_COLON ||
+          k === P_COLONCOLON ||
+          k === P_LESS ||
+          k === P_GREATER ||
+          k === P_COMMA ||
+          k === P_QUESTION ||
+          k === P_LSQUARE
+        )
+      ) {
         break;
       }
       i = this.nextNonComment(i);
@@ -2195,8 +2307,6 @@ export class Parser {
   canStartNewLine(t: i32): boolean {
     return tokenCanStartNewLine(this.d, t);
   }
-
-
 
   /** `template <...>`: its parameters, where `class` names no record. */
   parseTemplateParams(): void {
@@ -2239,7 +2349,12 @@ export class Parser {
       r = d.prv[d.match[r]];
     }
     // (`^void(...) {`: a return type before the parameters.)
-    if (r >= 0 && (d.kind[r] === K_IDENT || isSimpleTypeKind(d.kind[r])) && d.prv[r] >= 0 && d.kind[d.prv[r]] === P_CARET) {
+    if (
+      r >= 0 &&
+      (d.kind[r] === K_IDENT || isSimpleTypeKind(d.kind[r])) &&
+      d.prv[r] >= 0 &&
+      d.kind[d.prv[r]] === P_CARET
+    ) {
       r = d.prv[r];
     }
     if (r < 0 || d.kind[r] !== P_CARET) {
@@ -2251,7 +2366,17 @@ export class Parser {
       return true;
     }
     const pk = d.kind[p];
-    return pk === P_LPAREN || pk === P_COMMA || pk === P_EQUAL || pk === P_LBRACE || pk === P_LSQUARE || pk === P_COLON || pk === P_QUESTION || pk === KW_RETURN || pk === P_SEMI;
+    return (
+      pk === P_LPAREN ||
+      pk === P_COMMA ||
+      pk === P_EQUAL ||
+      pk === P_LBRACE ||
+      pk === P_LSQUARE ||
+      pk === P_COLON ||
+      pk === P_QUESTION ||
+      pk === KW_RETURN ||
+      pk === P_SEMI
+    );
   }
 
   /** Whether the current `{` opens a requires-expression's body. */
@@ -2300,7 +2425,12 @@ export class Parser {
       return false;
     }
     const t = this.pos;
-    if (this.cur() !== K_IDENT && this.cur() !== KW_PUBLIC && this.cur() !== KW_PROTECTED && this.cur() !== KW_PRIVATE) {
+    if (
+      this.cur() !== K_IDENT &&
+      this.cur() !== KW_PUBLIC &&
+      this.cur() !== KW_PROTECTED &&
+      this.cur() !== KW_PRIVATE
+    ) {
       if (this.cur() !== K_STRING && this.cur() !== KW_CLASS) {
         d.objcOther = true;
       }
@@ -2664,7 +2794,18 @@ export class Parser {
         // block, not an Objective-C block literal's.)
         const bp = this.last;
         const bk = bp >= 0 ? d.kind[bp] : P_SEMI;
-        const typed = !(bp < 0 || bk === P_LPAREN || bk === P_COMMA || bk === P_EQUAL || bk === P_LBRACE || bk === P_LSQUARE || bk === P_COLON || bk === P_QUESTION || bk === KW_RETURN || bk === P_SEMI);
+        const typed = !(
+          bp < 0 ||
+          bk === P_LPAREN ||
+          bk === P_COMMA ||
+          bk === P_EQUAL ||
+          bk === P_LBRACE ||
+          bk === P_LSQUARE ||
+          bk === P_COLON ||
+          bk === P_QUESTION ||
+          bk === KW_RETURN ||
+          bk === P_SEMI
+        );
         this.push();
         if (this.cur() === K_IDENT || isSimpleTypeKind(this.cur())) {
           this.push();
@@ -2792,7 +2933,11 @@ export class Parser {
         continue;
       }
       // (After `=` the initializer goes on, whatever line it starts on.)
-      if (k === K_EOF || k === P_RBRACE || (d.nl[this.pos] > 0 && !afterEq && k !== K_IDENT && k !== P_STAR && k !== P_EQUAL)) {
+      if (
+        k === K_EOF ||
+        k === P_RBRACE ||
+        (d.nl[this.pos] > 0 && !afterEq && k !== K_IDENT && k !== P_STAR && k !== P_EQUAL)
+      ) {
         break;
       }
       if (k === P_LBRACE) {
@@ -2993,7 +3138,12 @@ export const tokenCanStartNewLine = (d: Doc, t: i32): boolean => {
 
 /** clang-format's typedef enum macros: NS_ENUM, NS_OPTIONS, CF_ENUM, CF_OPTIONS, CF_CLOSED_ENUM, NS_CLOSED_ENUM. */
 const isNSEnumMacro = (d: Doc, t: i32): boolean =>
-  d.is(t, "NS_ENUM") || d.is(t, "NS_OPTIONS") || d.is(t, "CF_ENUM") || d.is(t, "CF_OPTIONS") || d.is(t, "CF_CLOSED_ENUM") || d.is(t, "NS_CLOSED_ENUM");
+  d.is(t, "NS_ENUM") ||
+  d.is(t, "NS_OPTIONS") ||
+  d.is(t, "CF_ENUM") ||
+  d.is(t, "CF_OPTIONS") ||
+  d.is(t, "CF_CLOSED_ENUM") ||
+  d.is(t, "NS_CLOSED_ENUM");
 
 /** `xs` grown to `n` entries, the new ones -1. */
 const growFill = (xs: i32[], n: i32): i32[] => {

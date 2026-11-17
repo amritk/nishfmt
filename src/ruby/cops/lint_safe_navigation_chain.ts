@@ -70,7 +70,16 @@ export class CopLintSafeNavigationChain {
         continue;
       }
       const m = ssxMeth(src, n);
-      if (ldhNilMethod(m) || m === "to_d" || m === "present?" || m === "blank?" || m === "presence" || m === "try" || m === "try!" || m === "in?") {
+      if (
+        ldhNilMethod(m) ||
+        m === "to_d" ||
+        m === "present?" ||
+        m === "blank?" ||
+        m === "presence" ||
+        m === "try" ||
+        m === "try!" ||
+        m === "in?"
+      ) {
         continue;
       }
       if (m === "+@" || m === "-@") {

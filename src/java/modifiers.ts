@@ -25,7 +25,8 @@ const modifierRank = (inp: GInput, t: i32): i32 => {
   return -1;
 };
 
-const RANK_NAMES: string = "public protected private abstract default static sealed non-sealed final transient volatile synchronized native strictfp";
+const RANK_NAMES: string =
+  "public protected private abstract default static sealed non-sealed final transient volatile synchronized native strictfp";
 
 const rankName = (r: i32): string => {
   let i = 0;

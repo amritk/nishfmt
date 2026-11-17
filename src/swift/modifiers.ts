@@ -76,7 +76,8 @@ export const swIsAclModifierStr = (s: string): boolean =>
   s === "private" || s === "fileprivate" || s === "internal" || s === "package" || s === "public" || s === "open";
 
 /** Token.isModifierKeyword. */
-export const swIsModifierKeyword = (f: SwFormatter, i: i32): boolean => f.has(i) && (f.k(i) === SW_KEYWORD || f.k(i) === SW_IDENT) && swIsModifierStr(f.s(i));
+export const swIsModifierKeyword = (f: SwFormatter, i: i32): boolean =>
+  f.has(i) && (f.k(i) === SW_KEYWORD || f.k(i) === SW_IDENT) && swIsModifierStr(f.s(i));
 
 /** isModifier(at:). */
 export const swIsModifier = (f: SwFormatter, index: i32): boolean => {
@@ -129,7 +130,13 @@ export const swModifiersForDeclaration = (f: SwFormatter, index0: i32): SwModifi
     if (swIsModifier(f, prevIndex) || swIsAttribute(f, prevIndex)) {
       if (k === SW_IDENT) {
         const n = f.indexBefore(SW_T_NON_SPACE_OR_COMMENT_OR_LINEBREAK, prevIndex);
-        if (n >= 0 && (f.kw(n, "case") || f.kw(n, "var") || f.kw(n, "let") || (f.k(n) === SW_OP && (f.a(n) === SW_OP_INFIX || f.a(n) === SW_OP_PREFIX)))) {
+        if (
+          n >= 0 &&
+          (f.kw(n, "case") ||
+            f.kw(n, "var") ||
+            f.kw(n, "let") ||
+            (f.k(n) === SW_OP && (f.a(n) === SW_OP_INFIX || f.a(n) === SW_OP_PREFIX)))
+        ) {
           return out;
         }
       }
@@ -257,4 +264,3 @@ export const swIsDocComment = (f: SwFormatter, i: i32): boolean => {
   }
   return f.s(i + 1).startsWith(prefix);
 };
-

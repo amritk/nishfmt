@@ -34,7 +34,15 @@ import {
 } from "../ast";
 import { RbCop } from "../cop";
 import { RbSource } from "../source";
-import { lbhAncestor, lbhAnyConst, lbhConstName, lbhDefinedModule, lbhParentModuleName, lbhReceiver, lbhSexp } from "./lint_batch_help";
+import {
+  lbhAncestor,
+  lbhAnyConst,
+  lbhConstName,
+  lbhDefinedModule,
+  lbhParentModuleName,
+  lbhReceiver,
+  lbhSexp,
+} from "./lint_batch_help";
 import { ssxAttributeAccessor, ssxDefName, ssxFE, ssxFS, ssxIs, ssxMeth } from "./style_syntax_help";
 
 /** {sym str}: a sym or str node. */
@@ -311,7 +319,18 @@ export class CopLintDuplicateMethods {
     }
     const t = a.type(parent);
     const isCall = t === NT_SEND || t === NT_CSEND;
-    if (!(t === NT_BLOCK || t === NT_NUMBLOCK || t === NT_BEGIN || isCall || t === NT_CASGN || t === NT_IVASGN || t === NT_DEF || t === NT_DEFS)) {
+    if (
+      !(
+        t === NT_BLOCK ||
+        t === NT_NUMBLOCK ||
+        t === NT_BEGIN ||
+        isCall ||
+        t === NT_CASGN ||
+        t === NT_IVASGN ||
+        t === NT_DEF ||
+        t === NT_DEFS
+      )
+    ) {
       return null;
     }
     // scope_receiver: none for a Class.new block under a call; else named_receiver.

@@ -147,7 +147,10 @@ export class CopLintFormatParameterMismatch {
       if (m !== "format" && m !== "sprintf" && m !== "%") {
         continue;
       }
-      if (!this.calledOnString(src, n) || !(this.formatMethod(src, n, "sprintf") || this.formatMethod(src, n, "format") || this.percent(src, n))) {
+      if (
+        !this.calledOnString(src, n) ||
+        !(this.formatMethod(src, n, "sprintf") || this.formatMethod(src, n, "format") || this.percent(src, n))
+      ) {
         continue;
       }
       const fmtCall = this.formatMethod(src, n, "sprintf") || this.formatMethod(src, n, "format");

@@ -122,7 +122,7 @@ const missingSpaceAt = (line: string): i32 => {
 
 export const wrapLineComments = (lines: string[], column0: i32): string[] => {
   const result: string[] = [];
-  for (let line0 of lines) {
+  for (const line0 of lines) {
     let line = line0;
     const k = missingSpaceAt(line);
     if (k >= 0) {

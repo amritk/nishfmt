@@ -4,7 +4,19 @@
 // Ported from RuboCop 1.92.2 (MIT License, Copyright (c) 2012-24 Bozhidar
 // Batsov).
 
-import { F_HEREDOC_END, F_KEYWORD, F_NAME, NT_BEGIN, NT_CLASS, NT_DEF, NT_DEFS, NT_DSTR, NT_MODULE, NT_STR, NT_XSTR } from "../ast";
+import {
+  F_HEREDOC_END,
+  F_KEYWORD,
+  F_NAME,
+  NT_BEGIN,
+  NT_CLASS,
+  NT_DEF,
+  NT_DEFS,
+  NT_DSTR,
+  NT_MODULE,
+  NT_STR,
+  NT_XSTR,
+} from "../ast";
 import { RbCop } from "../cop";
 import { rnE, rnHeredoc, rnS } from "../node";
 import { RbSource } from "../source";

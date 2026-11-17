@@ -5,17 +5,7 @@
 // Developers): attr.rs; and rustc_ast's attr/mod.rs (MIT OR Apache-2.0,
 // Copyright The Rust Project Developers).
 
-import {
-  AT_DOC,
-  AT_INNER,
-  AT_UNSAFE,
-  N_EX_LIT,
-  N_META,
-  N_META_LIT,
-  N_PATH,
-  N_SEG,
-  RsAst,
-} from "./ast";
+import { AT_DOC, AT_INNER, AT_UNSAFE, N_EX_LIT, N_META, N_META_LIT, N_PATH, N_SEG, RsAst } from "./ast";
 import { rsContainsComment, rsRecoverMissingCommentInSpan, rsRewriteDocComment } from "./comment";
 import { RsCtx } from "./context";
 import { rsRewriteLiteral, rsRewriteLiteralTok, rsSpanEndsWithComma } from "./expr";
@@ -434,7 +424,17 @@ export const rsRewriteMetaItem = (ctx: RsCtx, m: i32, shape: RsShape): string | 
     for (let i = 0; i < ast.ln[m]; i++) {
       items.push(ast.kid(m, i));
     }
-    return rsRewriteWithParens(ctx, path, items, OC_META, s, ast.lo[m], ast.hi[m], ctx.cfg.attrFnLikeWidth, hasTrailingComma ? ST_ALWAYS : ST_NEVER);
+    return rsRewriteWithParens(
+      ctx,
+      path,
+      items,
+      OC_META,
+      s,
+      ast.lo[m],
+      ast.hi[m],
+      ctx.cfg.attrFnLikeWidth,
+      hasTrailingComma ? ST_ALWAYS : ST_NEVER,
+    );
   }
   const ls = shape.shrinkLeft(toI32(path.length) + 3);
   if (ls === null) {

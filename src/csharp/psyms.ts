@@ -6,21 +6,11 @@
 // Ported from CSharpier 1.4.0 (MIT License, Copyright (c) 2021 Bela
 // VanderVoort).
 
-
 // Expression tokens.
 
-import {
-  K_ElifDirectiveTrivia,
-  K_ElseDirectiveTrivia,
-  K_EndIfDirectiveTrivia,
-  K_IfDirectiveTrivia,
-} from "./kinds";
-import {
-  CsLexer,
-} from "./lexer";
-import {
-  cswCultureCompare,
-} from "./print";
+import { K_ElifDirectiveTrivia, K_ElseDirectiveTrivia, K_EndIfDirectiveTrivia, K_IfDirectiveTrivia } from "./kinds";
+import { CsLexer } from "./lexer";
+import { cswCultureCompare } from "./print";
 
 const BT_AND: i32 = 0;
 const BT_OR: i32 = 1;
@@ -74,7 +64,8 @@ export class CsSymbolSets {
   }
 }
 
-const csbIsValueChar = (c: i32): boolean => (c >= 97 && c <= 122) || (c >= 65 && c <= 90) || (c >= 48 && c <= 57) || c === 95 || c >= 0x80;
+const csbIsValueChar = (c: i32): boolean =>
+  (c >= 97 && c <= 122) || (c >= 65 && c <= 90) || (c >= 48 && c <= 57) || c === 95 || c >= 0x80;
 
 /** BooleanExpressionParser.Parse of src[a, b); null when it would throw. */
 const csbParse = (src: u8[], a: i32, b: i32): CsBoolExpr | null => {
@@ -326,7 +317,7 @@ export const csSymbolSets = (lx: CsLexer): CsSymbolSets => {
       if (k === K_IfDirectiveTrivia) {
         cur = new CsSymContext(cur);
       }
-      let a = lx.trAux[i];
+      const a = lx.trAux[i];
       let b = lx.trTextEnd[i];
       for (let j = a; j < b; j++) {
         if (toI32(src[j]) === 47) {

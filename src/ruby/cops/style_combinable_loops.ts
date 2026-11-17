@@ -11,7 +11,8 @@ import { rbNodeReceiver } from "./style_float_division";
 import { ssxIs, ssxIsAnyBlock, ssxIsCall, ssxMeth } from "./style_syntax_help";
 
 /** The block's method name ("" when its send is no call). */
-const rbClMethod = (src: RbSource, n: i32): string => (ssxIsCall(src, src.a.kid(n, 0)) ? ssxMeth(src, src.a.kid(n, 0)) : "");
+const rbClMethod = (src: RbSource, n: i32): string =>
+  ssxIsCall(src, src.a.kid(n, 0)) ? ssxMeth(src, src.a.kid(n, 0)) : "";
 
 export class CopStyleCombinableLoops {
   c: RbCop;

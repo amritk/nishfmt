@@ -55,7 +55,15 @@ export const swIsUnsafeExpression = (f: SwFormatter, index: i32): boolean => {
     return false;
   }
   const k = f.k(n);
-  if (k === SW_IDENT || k === SW_NUMBER || (k === SW_OP && f.a(n) === SW_OP_PREFIX) || f.kw(n, "try") || f.kw(n, "await") || f.kw(n, "if") || f.kw(n, "switch")) {
+  if (
+    k === SW_IDENT ||
+    k === SW_NUMBER ||
+    (k === SW_OP && f.a(n) === SW_OP_PREFIX) ||
+    f.kw(n, "try") ||
+    f.kw(n, "await") ||
+    f.kw(n, "if") ||
+    f.kw(n, "switch")
+  ) {
     return true;
   }
   if (f.tok(n, SW_START, "{")) {
@@ -157,7 +165,13 @@ const swIsMemberAccessChain = (f: SwFormatter, lo: i32, hi: i32): boolean => {
 export const swParseExpressionEnd = (f: SwFormatter, start: i32, allowConditional: boolean = false): i32 => {
   const sk = f.k(start);
   const ss = f.s(start);
-  if ((sk === SW_OP && f.a(start) === SW_OP_PREFIX) || ss === "await" || ss === "repeat" || ss === "each" || swIsUnsafeExpression(f, start)) {
+  if (
+    (sk === SW_OP && f.a(start) === SW_OP_PREFIX) ||
+    ss === "await" ||
+    ss === "repeat" ||
+    ss === "each" ||
+    swIsUnsafeExpression(f, start)
+  ) {
     const n = f.indexAfter(SW_T_NON_SPACE_OR_COMMENT_OR_LINEBREAK, start);
     if (n >= 0) {
       const e = swParseExpressionEnd(f, n, allowConditional);
@@ -484,4 +498,3 @@ export const swWrapIfFollowingOpeningBrace = (f: SwFormatter, i: i32): void => {
   f.insertLinebreak(ins);
   f.insertSpace(indent, ins + 1);
 };
-

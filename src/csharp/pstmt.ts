@@ -210,7 +210,8 @@ const cspStatements = (p: CsParser, stopOnSwitchSections: boolean): void => {
   }
 };
 
-const cspPossiblyAttributedStatement = (p: CsParser): i32 => cspStatementCore(p, cspStatementAttributeDeclarations(p), false);
+const cspPossiblyAttributedStatement = (p: CsParser): i32 =>
+  cspStatementCore(p, cspStatementAttributeDeclarations(p), false);
 
 const cspStatementAttributeDeclarations = (p: CsParser): i32 => {
   if (p.k() !== K_OpenBracketToken) {
@@ -225,12 +226,19 @@ const cspStatementAttributeDeclarations = (p: CsParser): i32 => {
   }
   const k = p.k();
   let isCollection =
-    k === K_DotToken || k === K_QuestionToken || k === K_ExclamationToken || k === K_PlusPlusToken || k === K_MinusMinusToken || k === K_MinusGreaterThanToken;
+    k === K_DotToken ||
+    k === K_QuestionToken ||
+    k === K_ExclamationToken ||
+    k === K_PlusPlusToken ||
+    k === K_MinusMinusToken ||
+    k === K_MinusGreaterThanToken;
   isCollection =
     isCollection ||
     cspIsExpectedBinaryOperator(k) ||
     cspIsExpectedAssignmentOperator(k) ||
-    (k === K_IdentifierToken && (p.ck() === K_SwitchKeyword || p.ck() === K_WithKeyword) && p.kindAt(1) === K_OpenBraceToken);
+    (k === K_IdentifierToken &&
+      (p.ck() === K_SwitchKeyword || p.ck() === K_WithKeyword) &&
+      p.kindAt(1) === K_OpenBraceToken);
   if (!p.err && !isCollection && hadBracket && p.k() === K_OpenParenToken) {
     const save = p.err;
     cspTypeOrVoid(p);
@@ -370,7 +378,9 @@ const cspStatementCoreImpl = (p: CsParser, attrs: i32, isGlobal: boolean): i32 =
       break;
     }
     case K_UsingKeyword:
-      return p.kindAt(1) === K_OpenParenToken ? cspUsingStatement(p, attrs, -1) : cspLocalDeclarationStatement(p, attrs);
+      return p.kindAt(1) === K_OpenParenToken
+        ? cspUsingStatement(p, attrs, -1)
+        : cspLocalDeclarationStatement(p, attrs);
     case K_WhileKeyword:
       return cspWhileStatement(p, attrs);
     case K_OpenBraceToken:
@@ -460,7 +470,11 @@ const cspCk = (p: CsParser, i: i32): i32 => (p.kindAt(i) === K_IdentifierToken ?
 
 const cspIsPossibleLocalDeclarationStatement = (p: CsParser): boolean => {
   const tk = p.k();
-  if (tk === K_RefKeyword || cspIsDeclarationModifier(tk) || (csIsPredefinedType(tk) && p.kindAt(1) !== K_DotToken && p.kindAt(1) !== K_OpenParenToken)) {
+  if (
+    tk === K_RefKeyword ||
+    cspIsDeclarationModifier(tk) ||
+    (csIsPredefinedType(tk) && p.kindAt(1) !== K_DotToken && p.kindAt(1) !== K_OpenParenToken)
+  ) {
     return true;
   }
   if (tk === K_UsingKeyword) {
@@ -475,7 +489,8 @@ const cspIsPossibleLocalDeclarationStatement = (p: CsParser): boolean => {
   const ck = cspCk(p, 0);
   const isPossibleModifier =
     cspIsAdditionalLocalFunctionModifier(ck) &&
-    (!(ck === K_AsyncKeyword || ck === K_SafeKeyword || ck === K_ScopedKeyword) || cspShouldContextualKeywordBeTreatedAsModifierStmt(p));
+    (!(ck === K_AsyncKeyword || ck === K_SafeKeyword || ck === K_ScopedKeyword) ||
+      cspShouldContextualKeywordBeTreatedAsModifierStmt(p));
   if (isPossibleModifier) {
     return true;
   }
@@ -536,7 +551,8 @@ const cspIsPossibleTypedIdentifierStart = (p: CsParser, i: i32, allowThisKeyword
   return -1;
 };
 
-export const cspIsPossibleTypedIdentifierStartAt = (p: CsParser, i: i32, allowThisKeyword: boolean): i32 => cspIsPossibleTypedIdentifierStart(p, i, allowThisKeyword);
+export const cspIsPossibleTypedIdentifierStartAt = (p: CsParser, i: i32, allowThisKeyword: boolean): i32 =>
+  cspIsPossibleTypedIdentifierStart(p, i, allowThisKeyword);
 
 const cspIsPossibleFirstTypedIdentifierInLocalDeclarationStatement = (p: CsParser): boolean => {
   const ti = cspIsPossibleTypedIdentifierStart(p, 0, false);
@@ -554,7 +570,13 @@ const cspIsPossibleFirstTypedIdentifierInLocalDeclarationStatement = (p: CsParse
     }
     if (eol && p.kindAt(2) === K_IdentifierToken && p.kindAt(3) === K_IdentifierToken) {
       const k4 = p.kindAt(4);
-      if (k4 !== K_SemicolonToken && k4 !== K_EqualsToken && k4 !== K_CommaToken && k4 !== K_OpenParenToken && k4 !== K_LessThanToken) {
+      if (
+        k4 !== K_SemicolonToken &&
+        k4 !== K_EqualsToken &&
+        k4 !== K_CommaToken &&
+        k4 !== K_OpenParenToken &&
+        k4 !== K_LessThanToken
+      ) {
         return false;
       }
     }
@@ -570,7 +592,12 @@ const cspIsPossibleFirstTypedIdentifierInLocalDeclarationStatement = (p: CsParse
     const ak = p.k();
     r =
       st === ST_GENERIC_TYPE_OR_EXPRESSION &&
-      (cspIsDefiniteStatement(p) || cspIsTypeDeclarationStart(p) || ak === K_PublicKeyword || ak === K_PrivateKeyword || ak === K_ProtectedKeyword || ak === K_InternalKeyword);
+      (cspIsDefiniteStatement(p) ||
+        cspIsTypeDeclarationStart(p) ||
+        ak === K_PublicKeyword ||
+        ak === K_PrivateKeyword ||
+        ak === K_ProtectedKeyword ||
+        ak === K_InternalKeyword);
   } else {
     r = true;
   }
@@ -609,7 +636,11 @@ export const cspLocalDeclarationStatement = (p: CsParser, attrs: i32): i32 => {
   }
   const flags = VF_LOCAL_OR_FIELD | (isConst ? VF_CONST : 0);
   // a local function: ParseVariableDeclarators with allowLocalFunctions
-  if (canParseAsLocalFunction && p.k() === K_IdentifierToken && (p.kindAt(1) === K_OpenParenToken || p.kindAt(1) === K_LessThanToken)) {
+  if (
+    canParseAsLocalFunction &&
+    p.k() === K_IdentifierToken &&
+    (p.kindAt(1) === K_OpenParenToken || p.kindAt(1) === K_LessThanToken)
+  ) {
     const save = p.mark();
     const name = p.eat();
     const lf = cspLocalFunctionBody(p, attrs, mods, scoped, type, name);
@@ -718,7 +749,8 @@ const cspShouldTreatAsLocalModifier = (p: CsParser): boolean => {
 };
 
 /** TryParseLocalFunctionStatementBody (from the parser of fields, for top level `void F()` shapes). */
-export const cspTryLocalFunctionBody = (p: CsParser, type: i32, name: i32): i32 => cspLocalFunctionBody(p, p.list(p.sp()), [], -1, type, name);
+export const cspTryLocalFunctionBody = (p: CsParser, type: i32, name: i32): i32 =>
+  cspLocalFunctionBody(p, p.list(p.sp()), [], -1, type, name);
 
 const cspLocalFunctionBody = (p: CsParser, attrs: i32, mods: i32[], scoped: i32, type: i32, name: i32): i32 => {
   const rp = p.mark();
@@ -735,7 +767,17 @@ const cspLocalFunctionBody = (p: CsParser, attrs: i32, mods: i32[], scoped: i32,
     if (c === K_AsyncKeyword) {
       isAsync = true;
     }
-    if (!(c === K_AsyncKeyword || c === K_UnsafeKeyword || c === K_SafeKeyword || c === K_ReadOnlyKeyword || c === K_VolatileKeyword || c === K_StaticKeyword || c === K_ExternKeyword)) {
+    if (
+      !(
+        c === K_AsyncKeyword ||
+        c === K_UnsafeKeyword ||
+        c === K_SafeKeyword ||
+        c === K_ReadOnlyKeyword ||
+        c === K_VolatileKeyword ||
+        c === K_StaticKeyword ||
+        c === K_ExternKeyword
+      )
+    ) {
       p.fail("bad member flag");
       return -1;
     }
@@ -798,7 +840,8 @@ const cspLocalFunctionBody = (p: CsParser, attrs: i32, mods: i32[], scoped: i32,
 
 const cspArrowExpressionClauseStmt = (p: CsParser): i32 => cspArrowExpressionClause(p);
 
-export const cspExpressionStatement = (p: CsParser, attrs: i32): i32 => cspExpressionStatementWith(p, attrs, cspExpressionCore(p));
+export const cspExpressionStatement = (p: CsParser, attrs: i32): i32 =>
+  cspExpressionStatementWith(p, attrs, cspExpressionCore(p));
 
 const cspExpressionStatementWith = (p: CsParser, attrs: i32, e: i32): i32 => {
   const m = p.sp();
@@ -956,7 +999,8 @@ const cspForStatement = (p: CsParser, attrs: i32): i32 => {
       isDecl = true;
     }
     if (!isDecl) {
-      isDecl = !cspIsQueryExpression(p, true, false) && cspScanType(p, PT_NORMAL) !== ST_NOT_TYPE && cspIsTrueIdentifier(p);
+      isDecl =
+        !cspIsQueryExpression(p, true, false) && cspScanType(p, PT_NORMAL) !== ST_NOT_TYPE && cspIsTrueIdentifier(p);
       p.reset(rp);
     }
   }
@@ -1014,7 +1058,13 @@ const cspForEachStatement = (p: CsParser, attrs: i32, awaitTok: i32): i32 => {
     return -1;
   }
   const vk = p.t.kind[variable];
-  if (!(vk === K_DeclarationExpression || vk === K_TupleExpression || (vk === K_IdentifierName && p.t.tokIs(p.t.s(variable, 0), "_")))) {
+  if (
+    !(
+      vk === K_DeclarationExpression ||
+      vk === K_TupleExpression ||
+      (vk === K_IdentifierName && p.t.tokIs(p.t.s(variable, 0), "_"))
+    )
+  ) {
     p.fail("bad foreach declaration");
     return -1;
   }

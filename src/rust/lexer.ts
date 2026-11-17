@@ -148,8 +148,7 @@ export const KW_GEN: i32 = 68;
 /** Whether keyword id `k` is a strict or reserved keyword (never a plain identifier). */
 export const rsIsReserved = (k: i32): boolean => k > 0 && k < 60;
 
-export const rsIsIdStart = (c: i32): boolean =>
-  (c >= 97 && c <= 122) || (c >= 65 && c <= 90) || c === 95 || c >= 128;
+export const rsIsIdStart = (c: i32): boolean => (c >= 97 && c <= 122) || (c >= 65 && c <= 90) || c === 95 || c >= 128;
 
 export const rsIsIdContinue = (c: i32): boolean =>
   (c >= 97 && c <= 122) || (c >= 65 && c <= 90) || c === 95 || (c >= 48 && c <= 57) || c >= 128;
@@ -987,7 +986,11 @@ export const rsLex = (t: RsTokens): void => {
       sp--;
       const o = stack[sp];
       const ok = t.kind[o];
-      if ((k === T_RPAREN && ok !== T_LPAREN) || (k === T_RBRACE && ok !== T_LBRACE) || (k === T_RBRACKET && ok !== T_LBRACKET)) {
+      if (
+        (k === T_RPAREN && ok !== T_LPAREN) ||
+        (k === T_RBRACE && ok !== T_LBRACE) ||
+        (k === T_RBRACKET && ok !== T_LBRACKET)
+      ) {
         t.failed = true;
         return;
       }

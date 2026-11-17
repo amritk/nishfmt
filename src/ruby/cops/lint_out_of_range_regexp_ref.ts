@@ -5,14 +5,25 @@
 // Ported from RuboCop 1.92.2 (MIT License, Copyright (c) 2012-24 Bozhidar
 // Batsov).
 
-import { NT_CSEND, NT_IN_PATTERN, NT_MATCH_WITH_LVASGN, NT_NTH_REF, NT_REGEXP, NT_SEND, NT_STR, NT_WHEN, V_NIL } from "../ast";
+import {
+  NT_CSEND,
+  NT_IN_PATTERN,
+  NT_MATCH_WITH_LVASGN,
+  NT_NTH_REF,
+  NT_REGEXP,
+  NT_SEND,
+  NT_STR,
+  NT_WHEN,
+  V_NIL,
+} from "../ast";
 import { RbCop } from "../cop";
 import { RbSource } from "../source";
 import { ldhCaptures, ldhInterpolation, ldhType } from "./lint_detect_help";
 import { ssxBasicLiteral, ssxDescendants, ssxInList, ssxMeth } from "./style_syntax_help";
 
 const LOORR_RECEIVER: string = " =~ === match ";
-const LOORR_ARGUMENT: string = " =~ match grep gsub gsub! sub sub! [] slice slice! index rindex scan partition rpartition start_with? end_with? ";
+const LOORR_ARGUMENT: string =
+  " =~ match grep gsub gsub! sub sub! [] slice slice! index rindex scan partition rpartition start_with? end_with? ";
 
 export class CopLintOutOfRangeRegexpRef {
   c: RbCop;

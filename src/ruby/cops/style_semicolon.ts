@@ -3,12 +3,37 @@
 // Ported from RuboCop 1.92.2 (MIT License, Copyright (c) 2012-24 Bozhidar
 // Batsov).
 
-import { F_KEYWORD, F_SELECTOR, NT_BEGIN, NT_CSEND, NT_DSTR, NT_ERANGE, NT_IRANGE, NT_PAIR, NT_SEND, NT_STR, NT_SUPER, NT_XSTR, NT_YIELD, V_NIL } from "../ast";
+import {
+  F_KEYWORD,
+  F_SELECTOR,
+  NT_BEGIN,
+  NT_CSEND,
+  NT_DSTR,
+  NT_ERANGE,
+  NT_IRANGE,
+  NT_PAIR,
+  NT_SEND,
+  NT_STR,
+  NT_SUPER,
+  NT_XSTR,
+  NT_YIELD,
+  V_NIL,
+} from "../ast";
 import { RbCop } from "../cop";
 import { RbRewriter } from "../rewriter";
 import { rnHeredoc } from "../node";
 import { RbSource } from "../source";
-import { TK_tDOT2, TK_tDOT3, TK_tLABEL, TK_tLAMBEG, TK_tLCURLY, TK_tRCURLY, TK_tSEMI, TK_tSTRING_DBEG, TK_tSTRING_DEND } from "../tables";
+import {
+  TK_tDOT2,
+  TK_tDOT3,
+  TK_tLABEL,
+  TK_tLAMBEG,
+  TK_tLCURLY,
+  TK_tRCURLY,
+  TK_tSEMI,
+  TK_tSTRING_DBEG,
+  TK_tSTRING_DEND,
+} from "../tables";
 import { ssxFE } from "./style_syntax_help";
 
 /** The type of tokens[i] with Ruby's negative indexing (-999 for nil). */
@@ -42,7 +67,11 @@ const sbhSemiPosition = (src: RbSource, toks: i32[]): i32 => {
   if (sbhSemiTokType(src, toks, -2) === TK_tRCURLY && sbhSemiTokType(src, toks, -3) === TK_tSEMI) {
     return -3;
   }
-  if (((sbhSemiTokType(src, toks, 1) === TK_tLCURLY || sbhSemiTokType(src, toks, 1) === TK_tLAMBEG) && sbhSemiTokType(src, toks, 2) === TK_tSEMI) || (sbhSemiTokType(src, toks, 1) === TK_tSTRING_DBEG && sbhSemiTokType(src, toks, 2) === TK_tSEMI)) {
+  if (
+    ((sbhSemiTokType(src, toks, 1) === TK_tLCURLY || sbhSemiTokType(src, toks, 1) === TK_tLAMBEG) &&
+      sbhSemiTokType(src, toks, 2) === TK_tSEMI) ||
+    (sbhSemiTokType(src, toks, 1) === TK_tSTRING_DBEG && sbhSemiTokType(src, toks, 2) === TK_tSEMI)
+  ) {
     return 2;
   }
   if (sbhSemiTokType(src, toks, 2) === TK_tLAMBEG && sbhSemiTokType(src, toks, 3) === TK_tSEMI) {

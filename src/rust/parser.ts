@@ -345,7 +345,8 @@ const P_SUM: i32 = 12;
 const P_PRODUCT: i32 = 13;
 const P_CAST: i32 = 14;
 
-const isCompareTok = (k: i32): boolean => k === T_EQEQ || k === T_NE || k === T_LT || k === T_GT || k === T_LE || k === T_GE;
+const isCompareTok = (k: i32): boolean =>
+  k === T_EQEQ || k === T_NE || k === T_LT || k === T_GT || k === T_LE || k === T_GE;
 
 // Path styles.
 const PS_EXPR: i32 = 0;
@@ -594,7 +595,18 @@ export class RsParser {
   // ---------------------------------------------------------------- state
 
   save(): i32[] {
-    return [this.p, this.off, this.sk, this.ph, this.ast.n, this.ast.nk, this.sp, this.failed ? 1 : 0, this.res, this.nInner];
+    return [
+      this.p,
+      this.off,
+      this.sk,
+      this.ph,
+      this.ast.n,
+      this.ast.nk,
+      this.sp,
+      this.failed ? 1 : 0,
+      this.res,
+      this.nInner,
+    ];
   }
 
   restore(s: i32[]): void {
@@ -2613,7 +2625,16 @@ export class RsParser {
       return false;
     }
     const kk = this.laKw(1);
-    return !rsIsReserved(kk) || kk === KW_FOR || kk === KW_SELF_TY || kk === KW_SUPER || kk === KW_CRATE || kk === KW_SELF || kk === KW_CONST || kk === KW_ASYNC;
+    return (
+      !rsIsReserved(kk) ||
+      kk === KW_FOR ||
+      kk === KW_SELF_TY ||
+      kk === KW_SUPER ||
+      kk === KW_CRATE ||
+      kk === KW_SELF ||
+      kk === KW_CONST ||
+      kk === KW_ASYNC
+    );
   }
 
   /** A bare trait object whose first bound is the path type (or parenthesized type) `first`. */
@@ -2824,7 +2845,17 @@ export class RsParser {
 
   isPatTerminator(): boolean {
     const k = this.tk();
-    return k === T_COMMA || k === T_RPAREN || k === T_RBRACKET || k === T_RBRACE || k === T_FATARROW || k === T_OR || k === T_EQ || k === T_COLON || (this.kw() === KW_IF);
+    return (
+      k === T_COMMA ||
+      k === T_RPAREN ||
+      k === T_RBRACKET ||
+      k === T_RBRACE ||
+      k === T_FATARROW ||
+      k === T_OR ||
+      k === T_EQ ||
+      k === T_COLON ||
+      this.kw() === KW_IF
+    );
   }
 
   isRangeOp(): boolean {
@@ -2893,7 +2924,15 @@ export class RsParser {
     if (k === T_DOTDOT) {
       // `..` rest, or `..hi`.
       const k1 = this.la(1);
-      if (k1 === T_COMMA || k1 === T_RPAREN || k1 === T_RBRACKET || k1 === T_RBRACE || k1 === T_OR || k1 === T_FATARROW || k1 === T_EOF) {
+      if (
+        k1 === T_COMMA ||
+        k1 === T_RPAREN ||
+        k1 === T_RBRACKET ||
+        k1 === T_RBRACE ||
+        k1 === T_OR ||
+        k1 === T_FATARROW ||
+        k1 === T_EOF
+      ) {
         pat = this.nd(N_PAT_REST, lo);
         this.bump();
         return this.fin(pat);
@@ -3139,7 +3178,13 @@ export class RsParser {
     if (k === T_AND) return P_BITAND;
     if (k === T_CARET) return P_BITXOR;
     if (k === T_OR) return P_BITOR;
-    if (k === T_LT && this.off < 0 && this.p + 1 < this.end && this.t.kind[this.p + 1] === T_MINUS && this.t.hi[this.p] === this.t.lo[this.p + 1]) {
+    if (
+      k === T_LT &&
+      this.off < 0 &&
+      this.p + 1 < this.end &&
+      this.t.kind[this.p + 1] === T_MINUS &&
+      this.t.hi[this.p] === this.t.lo[this.p + 1]
+    ) {
       // `<-` lexes as one token (the obsolete in-place arrow), not an operator.
       return -1;
     }
@@ -4222,7 +4267,15 @@ export class RsParser {
     if (this.isFnFront()) {
       return true;
     }
-    if (k === KW_EXTERN || k === KW_MOD || k === KW_TRAIT || k === KW_TYPE || k === KW_ENUM || k === KW_STRUCT || k === KW_IMPL) {
+    if (
+      k === KW_EXTERN ||
+      k === KW_MOD ||
+      k === KW_TRAIT ||
+      k === KW_TYPE ||
+      k === KW_ENUM ||
+      k === KW_STRUCT ||
+      k === KW_IMPL
+    ) {
       return true;
     }
     if (k === KW_UNSAFE) {

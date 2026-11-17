@@ -118,7 +118,13 @@ export const mtxDefineMethodName = (src: RbSource, n: i32): string | null => {
     return null;
   }
   const s = a.kid(n, 0);
-  if (!a.isNode(s) || a.type(s) !== NT_SEND || a.kid(s, 0) !== V_NIL || a.text(a.kid(s, 1)) !== "define_method" || a.nKid(s) !== 3) {
+  if (
+    !a.isNode(s) ||
+    a.type(s) !== NT_SEND ||
+    a.kid(s, 0) !== V_NIL ||
+    a.text(a.kid(s, 1)) !== "define_method" ||
+    a.nKid(s) !== 3
+  ) {
     return null;
   }
   const arg = a.kid(s, 2);

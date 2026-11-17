@@ -3,7 +3,20 @@
 // Ported from RuboCop 1.92.2 (MIT License, Copyright (c) 2012-24 Bozhidar
 // Batsov).
 
-import { F_KEYWORD, NT_AND, NT_CSEND, NT_IF, NT_OR, NT_SEND, NT_SUPER, NT_SYM, NT_UNTIL, NT_WHILE, NT_YIELD, V_NIL } from "../ast";
+import {
+  F_KEYWORD,
+  NT_AND,
+  NT_CSEND,
+  NT_IF,
+  NT_OR,
+  NT_SEND,
+  NT_SUPER,
+  NT_SYM,
+  NT_UNTIL,
+  NT_WHILE,
+  NT_YIELD,
+  V_NIL,
+} from "../ast";
 import { RbCop } from "../cop";
 import { RbSource } from "../source";
 import { LalIgnored } from "./layout_align_help";

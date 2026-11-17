@@ -10,7 +10,8 @@ import { RbSource } from "../source";
 import { ssxDefName, ssxFS, ssxIs, ssxMeth } from "./style_syntax_help";
 
 /** (send _ :class), no arguments. */
-const rbCecClassSend = (src: RbSource, n: i32): boolean => ssxIs(src, n, NT_SEND) && src.a.nKid(n) === 2 && ssxMeth(src, n) === "class";
+const rbCecClassSend = (src: RbSource, n: i32): boolean =>
+  ssxIs(src, n, NT_SEND) && src.a.nKid(n) === 2 && ssxMeth(src, n) === "class";
 
 export class CopStyleClassEqualityComparison {
   c: RbCop;

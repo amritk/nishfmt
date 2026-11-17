@@ -21,7 +21,14 @@ const lnmdEvalExec = (src: RbSource, n: i32): boolean => {
     return false;
   }
   const m = ssxMeth(src, s);
-  return m === "instance_eval" || m === "class_eval" || m === "module_eval" || m === "instance_exec" || m === "class_exec" || m === "module_exec";
+  return (
+    m === "instance_eval" ||
+    m === "class_eval" ||
+    m === "module_eval" ||
+    m === "instance_exec" ||
+    m === "class_exec" ||
+    m === "module_exec"
+  );
 };
 
 export class CopLintNestedMethodDefinition {

@@ -80,7 +80,15 @@ export class CopLintSafeNavigationConsistency {
       return true;
     }
     const m = ssxMeth(src, o);
-    return ldhNilMethod(m) || m === "to_d" || m === "present?" || m === "blank?" || m === "presence" || m === "try" || m === "try!";
+    return (
+      ldhNilMethod(m) ||
+      m === "to_d" ||
+      m === "present?" ||
+      m === "blank?" ||
+      m === "presence" ||
+      m === "try" ||
+      m === "try!"
+    );
   }
 
   private group(src: RbSource, g: i32[]): void {
@@ -214,4 +222,3 @@ export class CopLintSafeNavigationConsistency {
     return false;
   }
 }
-

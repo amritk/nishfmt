@@ -4,7 +4,22 @@
 // Ported from RuboCop 1.92.2 (MIT License, Copyright (c) 2012-24 Bozhidar
 // Batsov).
 
-import { NT_ARG, NT_ARGS, NT_ARRAY, NT_BLOCK, NT_CONST, NT_CSEND, NT_HASH, NT_LVAR, NT_MLHS, NT_SEND, NT_SPLAT, V_NIL, VT_SYM, vTag } from "../ast";
+import {
+  NT_ARG,
+  NT_ARGS,
+  NT_ARRAY,
+  NT_BLOCK,
+  NT_CONST,
+  NT_CSEND,
+  NT_HASH,
+  NT_LVAR,
+  NT_MLHS,
+  NT_SEND,
+  NT_SPLAT,
+  V_NIL,
+  VT_SYM,
+  vTag,
+} from "../ast";
 import { RbCop } from "../cop";
 import { RbSource } from "../source";
 import { vfSameNode } from "./lint_variable_force";
@@ -41,7 +56,16 @@ export const rbHtmHashReceiver = (src: RbSource, n: i32): boolean => {
   }
   if (a.type(n) === NT_SEND) {
     const m = ssxMeth(src, n);
-    return m === "to_h" || m === "to_hash" || m === "merge" || m === "merge!" || m === "update" || m === "invert" || m === "except" || m === "tally";
+    return (
+      m === "to_h" ||
+      m === "to_hash" ||
+      m === "merge" ||
+      m === "merge!" ||
+      m === "update" ||
+      m === "invert" ||
+      m === "except" ||
+      m === "tally"
+    );
   }
   if (a.type(n) === NT_BLOCK) {
     const s = a.kid(n, 0);
@@ -69,7 +93,8 @@ export const rbHtmHashReceiver = (src: RbSource, n: i32): boolean => {
 const rbHtmArgName = (src: RbSource, n: i32): string => (ssxIs(src, n, NT_ARG) ? src.a.text(src.a.kid(n, 0)) : "");
 
 /** (lvar name). */
-const rbHtmLvar = (src: RbSource, n: i32, name: string): boolean => ssxIs(src, n, NT_LVAR) && src.a.text(src.a.kid(n, 0)) === name;
+const rbHtmLvar = (src: RbSource, n: i32, name: string): boolean =>
+  ssxIs(src, n, NT_LVAR) && src.a.text(src.a.kid(n, 0)) === name;
 
 /** A matched transformation: the transformed argument name, the transforming and the unchanged body expressions. */
 export class RbHtmMatch {
@@ -129,7 +154,12 @@ const rbHtmEachWithObject = (src: RbSource, blk: i32, keys: boolean): RbHtmMatch
     return null;
   }
   const s = a.kid(blk, 0);
-  if (!ssxIsCall(src, s) || ssxMeth(src, s) !== "each_with_object" || a.nKid(s) !== 3 || !rbHtmEmptyHash(src, a.kid(s, 2))) {
+  if (
+    !ssxIsCall(src, s) ||
+    ssxMeth(src, s) !== "each_with_object" ||
+    a.nKid(s) !== 3 ||
+    !rbHtmEmptyHash(src, a.kid(s, 2))
+  ) {
     return null;
   }
   if (!rbHtmHashReceiver(src, a.kid(s, 0))) {
@@ -150,7 +180,12 @@ const rbHtmEachWithObject = (src: RbSource, blk: i32, keys: boolean): RbHtmMatch
     return null;
   }
   const body = a.kid(blk, 2);
-  if (!ssxIsCall(src, body) || ssxMeth(src, body) !== "[]=" || a.nKid(body) !== 4 || !rbHtmLvar(src, a.kid(body, 0), memo)) {
+  if (
+    !ssxIsCall(src, body) ||
+    ssxMeth(src, body) !== "[]=" ||
+    a.nKid(body) !== 4 ||
+    !rbHtmLvar(src, a.kid(body, 0), memo)
+  ) {
     return null;
   }
   const x = a.kid(body, 2);

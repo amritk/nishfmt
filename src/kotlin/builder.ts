@@ -523,7 +523,10 @@ export class KBuilder {
 
   done(m: i32, type: i32): void {
     // processDone: an empty element of a left-bound type sticks to what precedes it.
-    if ((type === N_CONSTRUCTOR_DELEGATION_CALL || type === N_CONSTRUCTOR_DELEGATION_REFERENCE) && this.isEmptyRange(this.pLex[m], this.cur)) {
+    if (
+      (type === N_CONSTRUCTOR_DELEGATION_CALL || type === N_CONSTRUCTOR_DELEGATION_REFERENCE) &&
+      this.isEmptyRange(this.pLex[m], this.cur)
+    ) {
       this.pBinder[m] = B_DO_NOT_BIND;
     }
     const d = this.newP(P_DONE, this.cur);

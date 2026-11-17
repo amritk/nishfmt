@@ -76,7 +76,13 @@ import {
   rsIsPatKind,
   rsIsTyKind,
 } from "./ast";
-import { rsAttrsContainSkip, rsExprAttrsContainSkip, rsRewriteAttrs, rsRewriteMetaItem, rsRewriteNodeAttrs } from "./attr";
+import {
+  rsAttrsContainSkip,
+  rsExprAttrsContainSkip,
+  rsRewriteAttrs,
+  rsRewriteMetaItem,
+  rsRewriteNodeAttrs,
+} from "./attr";
 import { rsRewriteChain } from "./chains";
 import { rsRewriteClosure } from "./closures";
 import {
@@ -113,8 +119,25 @@ import { OC_EXPR, OC_TY, OC_PAT, rsRewriteWithParens, rsRewriteWithSquareBracket
 import { RsPairParts, SPB_BACK, SPB_FRONT, rsRewriteAllPairs, rsRewritePair } from "./pairs";
 import { rsRewritePat } from "./patterns";
 import { RsShape, rsIndentStr, rsIndentStrNl, rsShapeIndented, rsShapeLegacy } from "./shape";
-import { rsCountNewlines, rsHasByte, rsLines, rsTrim, rsTrimEnd, rsTrimStart, rsWidth, rsWsLenAt, rsWsLenAtBytes } from "./str";
-import { PC_EXPR, rsRewriteGenericParam, rsRewritePath, rsRewritePreciseArg, rsRewriteSegmentParam, rsRewriteTy } from "./types";
+import {
+  rsCountNewlines,
+  rsHasByte,
+  rsLines,
+  rsTrim,
+  rsTrimEnd,
+  rsTrimStart,
+  rsWidth,
+  rsWsLenAt,
+  rsWsLenAtBytes,
+} from "./str";
+import {
+  PC_EXPR,
+  rsRewriteGenericParam,
+  rsRewritePath,
+  rsRewritePreciseArg,
+  rsRewriteSegmentParam,
+  rsRewriteTy,
+} from "./types";
 import { rsExprHasAttrs, rsFirstLineEndsWith, rsIdentStr, rsLastLineExtendable, rsLoWithAttrs } from "./utils";
 import { RsVisitor } from "./visitor";
 
@@ -173,7 +196,8 @@ export const rsSpanLo = (ast: RsAst, n: i32): i32 => rsLoWithAttrs(ast, n);
 export const rsSpanHi = (ast: RsAst, n: i32): i32 => (ast.kind[n] === N_FIELD ? ast.hi[ast.a[n]] : ast.hi[n]);
 
 /** Rewrite for ast::Expr. */
-export const rsRewriteExpr = (ctx: RsCtx, e: i32, shape: RsShape): string | null => rsFormatExpr(ctx, e, EXPR_SUB, shape);
+export const rsRewriteExpr = (ctx: RsCtx, e: i32, shape: RsShape): string | null =>
+  rsFormatExpr(ctx, e, EXPR_SUB, shape);
 
 const unaryOpStr = (op: i32): string => (op === UN_DEREF ? "*" : op === UN_NOT ? "!" : "-");
 
@@ -195,7 +219,17 @@ export const rsFormatExpr = (ctx: RsCtx, e: i32, exprType: i32, shape0: RsShape)
   let rw: string | null = null;
   if (k === N_EX_ARRAY) {
     const items = listOf(ast, e);
-    rw = rsRewriteArray(ctx, "", items, OC_EXPR, ast.lo[e], ast.hi[e], sh, chooseSeparatorTactic(ctx, ast.lo[e], ast.hi[e]), -1);
+    rw = rsRewriteArray(
+      ctx,
+      "",
+      items,
+      OC_EXPR,
+      ast.lo[e],
+      ast.hi[e],
+      sh,
+      chooseSeparatorTactic(ctx, ast.lo[e], ast.hi[e]),
+      -1,
+    );
   } else if (k === N_EX_LIT) {
     rw = rsRewriteLiteral(ctx, ast.d[e], sh);
   } else if (k === N_EX_CALL) {
@@ -351,7 +385,15 @@ export const rsFormatExpr = (ctx: RsCtx, e: i32, exprType: i32, shape0: RsShape)
   if (attrsStr === null) {
     return null;
   }
-  return rsCombineStrsWithMissingComments(ctx, attrsStr, exprStr, ast.hi[attrs[attrs.length - 1]], ast.lo[e], sh, false);
+  return rsCombineStrsWithMissingComments(
+    ctx,
+    attrsStr,
+    exprStr,
+    ast.hi[attrs[attrs.length - 1]],
+    ast.lo[e],
+    sh,
+    false,
+  );
 };
 
 const assignOpStr = (k: i32): string => {
@@ -387,8 +429,17 @@ const semicolonForExpr = (ctx: RsCtx, e: i32): boolean => {
 };
 
 /** rewrite_array. */
-export const rsRewriteArray = (ctx: RsCtx, name: string, items: i32[], oc: i32, lo: i32, hi: i32, shape: RsShape, forceSep: i32, delim: i32): string | null =>
-  rsRewriteWithSquareBrackets(ctx, name, items, oc, shape, lo, hi, forceSep, delim);
+export const rsRewriteArray = (
+  ctx: RsCtx,
+  name: string,
+  items: i32[],
+  oc: i32,
+  lo: i32,
+  hi: i32,
+  shape: RsShape,
+  forceSep: i32,
+  delim: i32,
+): string | null => rsRewriteWithSquareBrackets(ctx, name, items, oc, shape, lo, hi, forceSep, delim);
 
 // ---------------------------------------------------------------- blocks
 
@@ -410,22 +461,37 @@ const blockHasInnerAttrs = (ast: RsAst, b: i32): boolean => {
   return false;
 };
 
-export const rsBlockContainsComment = (ctx: RsCtx, b: i32): boolean => rsContainsComment(ctx.snippet(ctx.ast.lo[b], ctx.ast.hi[b]));
+export const rsBlockContainsComment = (ctx: RsCtx, b: i32): boolean =>
+  rsContainsComment(ctx.snippet(ctx.ast.lo[b], ctx.ast.hi[b]));
 
 /** is_simple_block (attrs: None, or the block's inner attributes when `withAttrs`). */
 export const rsIsSimpleBlock = (ctx: RsCtx, b: i32, withAttrs: boolean): boolean => {
   const ast = ctx.ast;
-  return ast.ln[b] === 1 && ast.kind[ast.kid(b, 0)] === N_STMT_EXPR && !rsBlockContainsComment(ctx, b) && (!withAttrs || ast.atn[b] === 0);
+  return (
+    ast.ln[b] === 1 &&
+    ast.kind[ast.kid(b, 0)] === N_STMT_EXPR &&
+    !rsBlockContainsComment(ctx, b) &&
+    (!withAttrs || ast.atn[b] === 0)
+  );
 };
 
-export const rsIsSimpleBlockStmt = (ctx: RsCtx, b: i32): boolean => ctx.ast.ln[b] <= 1 && !rsBlockContainsComment(ctx, b);
+export const rsIsSimpleBlockStmt = (ctx: RsCtx, b: i32): boolean =>
+  ctx.ast.ln[b] <= 1 && !rsBlockContainsComment(ctx, b);
 
 /** is_empty_block with attrs None. */
-export const rsIsEmptyBlock = (ctx: RsCtx, b: i32): boolean => !blockHasStatements(ctx.ast, b) && !rsBlockContainsComment(ctx, b);
+export const rsIsEmptyBlock = (ctx: RsCtx, b: i32): boolean =>
+  !blockHasStatements(ctx.ast, b) && !rsBlockContainsComment(ctx, b);
 
 const rewriteLabel = (ctx: RsCtx, label: i32): string => (label >= 0 ? ctx.tokStr(label) + ": " : "");
 
-const rewriteEmptyBlock = (ctx: RsCtx, b: i32, withAttrs: boolean, label: i32, prefix: string, shape: RsShape): string | null => {
+const rewriteEmptyBlock = (
+  ctx: RsCtx,
+  b: i32,
+  withAttrs: boolean,
+  label: i32,
+  prefix: string,
+  shape: RsShape,
+): string | null => {
   const ast = ctx.ast;
   if (blockHasStatements(ast, b)) {
     return null;
@@ -471,7 +537,14 @@ const blockPrefix = (ctx: RsCtx, b: i32, shape: RsShape): string | null => {
   return "unsafe ";
 };
 
-const rewriteSingleLineBlock = (ctx: RsCtx, prefix: string, b: i32, withAttrs: boolean, label: i32, shape: RsShape): string | null => {
+const rewriteSingleLineBlock = (
+  ctx: RsCtx,
+  prefix: string,
+  b: i32,
+  withAttrs: boolean,
+  label: i32,
+  shape: RsShape,
+): string | null => {
   const ast = ctx.ast;
   if (!rsIsSimpleBlock(ctx, b, withAttrs)) {
     return null;
@@ -493,7 +566,15 @@ const rewriteSingleLineBlock = (ctx: RsCtx, prefix: string, b: i32, withAttrs: b
 };
 
 /** rewrite_block_with_visitor. */
-export const rsRewriteBlockWithVisitor = (ctx: RsCtx, prefix: string, b: i32, withAttrs: boolean, label: i32, shape: RsShape, hasBraces: boolean): string | null => {
+export const rsRewriteBlockWithVisitor = (
+  ctx: RsCtx,
+  prefix: string,
+  b: i32,
+  withAttrs: boolean,
+  label: i32,
+  shape: RsShape,
+  hasBraces: boolean,
+): string | null => {
   const ast = ctx.ast;
   const eb = rewriteEmptyBlock(ctx, b, withAttrs, label, prefix, shape);
   if (eb !== null) {
@@ -522,13 +603,21 @@ export const rsRewriteBlockWithVisitor = (ctx: RsCtx, prefix: string, b: i32, wi
 };
 
 /** Rewrite for ast::Block (attrs None). */
-export const rsRewriteBlockNode = (ctx: RsCtx, b: i32, shape: RsShape): string | null => rsRewriteBlock(ctx, b, false, -1, shape);
+export const rsRewriteBlockNode = (ctx: RsCtx, b: i32, shape: RsShape): string | null =>
+  rsRewriteBlock(ctx, b, false, -1, shape);
 
 /** rewrite_block. */
 export const rsRewriteBlock = (ctx: RsCtx, b: i32, withAttrs: boolean, label: i32, shape: RsShape): string | null =>
   rewriteBlockInner(ctx, b, withAttrs, label, true, shape);
 
-const rewriteBlockInner = (ctx: RsCtx, b: i32, withAttrs: boolean, label: i32, allowSingleLine: boolean, shape: RsShape): string | null => {
+const rewriteBlockInner = (
+  ctx: RsCtx,
+  b: i32,
+  withAttrs: boolean,
+  label: i32,
+  allowSingleLine: boolean,
+  shape: RsShape,
+): string | null => {
   const prefix = blockPrefix(ctx, b, shape);
   if (prefix === null) {
     return null;
@@ -584,7 +673,11 @@ class ControlFlow {
       return null;
     }
     const elseNode = ast.a[eb];
-    if (!rsIsSimpleBlock(ctx, this.block, false) || !rsIsSimpleBlock(ctx, elseNode, false) || rsHasByte(patExprStr, 10)) {
+    if (
+      !rsIsSimpleBlock(ctx, this.block, false) ||
+      !rsIsSimpleBlock(ctx, elseNode, false) ||
+      rsHasByte(patExprStr, 10)
+    ) {
       return null;
     }
     let nw = width - (toI32(patExprStr.length) + fixed);
@@ -634,7 +727,17 @@ class ControlFlow {
         return null;
       }
       const commentsLo = ctx.spanAfter(ast.hi[this.pat], this.hi, rsTrim(this.connector));
-      return rsRewriteAssignRhsWithComments(ctx, matcher + patStr + this.connector, expr, condShape, RHS_EXPR, RT_DEFAULT, commentsLo, rsLoWithAttrs(ast, expr), true);
+      return rsRewriteAssignRhsWithComments(
+        ctx,
+        matcher + patStr + this.connector,
+        expr,
+        condShape,
+        RHS_EXPR,
+        RT_DEFAULT,
+        commentsLo,
+        rsLoWithAttrs(ast, expr),
+        true,
+      );
     }
     const r = rsRewriteExpr(ctx, expr, condShape);
     if (this.keyword === "if" || r !== null) {
@@ -662,7 +765,7 @@ class ControlFlow {
     }
     const labelString = rewriteLabel(ctx, this.label);
     const lo = this.label >= 0 ? ctx.f.t.hi[this.label] : this.lo;
-    let keyword = this.keyword;
+    const keyword = this.keyword;
     let afterKwd = 0;
     // rustfmt 1.9 finds the whole keyword, `for await` included (a panic when
     // spaced otherwise: the span lookup fails and the file is skipped).
@@ -899,7 +1002,14 @@ const extractComment = (ctx: RsCtx, lo: i32, hi: i32, shape: RsShape): string | 
 };
 
 /** rewrite_else_kw_with_comments over the span [lo, hi) that holds `else`. */
-export const rsRewriteElseKwWithComments = (forceNewlineElse: boolean, isLast: boolean, ctx: RsCtx, lo: i32, hi: i32, shape: RsShape): string => {
+export const rsRewriteElseKwWithComments = (
+  forceNewlineElse: boolean,
+  isLast: boolean,
+  ctx: RsCtx,
+  lo: i32,
+  hi: i32,
+  shape: RsShape,
+): string => {
   const elseLo = ctx.spanBefore(lo, hi, "else");
   const before = extractComment(ctx, lo, elseLo, shape);
   const elseHi = ctx.spanAfter(lo, hi, "else");
@@ -916,7 +1026,8 @@ export const rsRewriteElseKwWithComments = (forceNewlineElse: boolean, isLast: b
 
 /** rewrite_literal for token `tok`. */
 /** rewrite_literal. */
-export const rsRewriteLiteralTok = (ctx: RsCtx, tok: i32, shape: RsShape): string | null => rsWrapStr(ctx.tokStr(tok), ctx.cfg, shape);
+export const rsRewriteLiteralTok = (ctx: RsCtx, tok: i32, shape: RsShape): string | null =>
+  rsWrapStr(ctx.tokStr(tok), ctx.cfg, shape);
 
 /** A literal expression: rewrite_literal, or a raw string kept as written. */
 export const rsRewriteLiteral = (ctx: RsCtx, tok: i32, shape: RsShape): string | null => {
@@ -942,8 +1053,25 @@ const chooseSeparatorTactic = (ctx: RsCtx, lo: i32, hi: i32): i32 => {
 };
 
 /** rewrite_call: args are expr nodes, [lo, hi) the span after the callee. */
-export const rsRewriteCall = (ctx: RsCtx, callee: string, args: i32[], lo: i32, hi: i32, shape: RsShape): string | null =>
-  rsRewriteWithParens(ctx, callee, args, OC_EXPR, shape, lo, hi, ctx.cfg.fnCallWidth, chooseSeparatorTactic(ctx, lo, hi));
+export const rsRewriteCall = (
+  ctx: RsCtx,
+  callee: string,
+  args: i32[],
+  lo: i32,
+  hi: i32,
+  shape: RsShape,
+): string | null =>
+  rsRewriteWithParens(
+    ctx,
+    callee,
+    args,
+    OC_EXPR,
+    shape,
+    lo,
+    hi,
+    ctx.cfg.fnCallWidth,
+    chooseSeparatorTactic(ctx, lo, hi),
+  );
 
 /** is_simple_expr. */
 export const rsIsSimpleExpr = (ast: RsAst, e: i32): boolean => {
@@ -1306,11 +1434,29 @@ const rewriteLet = (ctx: RsCtx, shape: RsShape, pat: i32, expr: i32): string | n
   }
   const result = "let " + patStr + " =";
   const commentsLo = ctx.spanAfter(ast.hi[pat], ast.hi[expr], "=");
-  return rsRewriteAssignRhsWithComments(ctx, result, expr, shape, RHS_EXPR, RT_DEFAULT, commentsLo, rsLoWithAttrs(ast, expr), true);
+  return rsRewriteAssignRhsWithComments(
+    ctx,
+    result,
+    expr,
+    shape,
+    RHS_EXPR,
+    RT_DEFAULT,
+    commentsLo,
+    rsLoWithAttrs(ast, expr),
+    true,
+  );
 };
 
 /** rewrite_tuple over item nodes of category `oc`, span [lo, hi). */
-export const rsRewriteTuple = (ctx: RsCtx, items: i32[], oc: i32, lo: i32, hi: i32, shape: RsShape, isSingleton: boolean): string | null => {
+export const rsRewriteTuple = (
+  ctx: RsCtx,
+  items: i32[],
+  oc: i32,
+  lo: i32,
+  hi: i32,
+  shape: RsShape,
+  isSingleton: boolean,
+): string | null => {
   let force = -1;
   if (ctx.insideMacro) {
     force = rsSpanEndsWithComma(ctx, lo, hi) ? ST_ALWAYS : ST_NEVER;
@@ -1375,13 +1521,27 @@ export const rsRewriteAssignRhs = (ctx: RsCtx, lhs: string, n: i32, kind: i32, s
   rsRewriteAssignRhsWith(ctx, lhs, n, kind, shape, RT_DEFAULT);
 
 /** rewrite_assign_rhs_with. */
-export const rsRewriteAssignRhsWith = (ctx: RsCtx, lhs: string, n: i32, kind: i32, shape: RsShape, tactics: i32): string | null => {
+export const rsRewriteAssignRhsWith = (
+  ctx: RsCtx,
+  lhs: string,
+  n: i32,
+  kind: i32,
+  shape: RsShape,
+  tactics: i32,
+): string | null => {
   const rhs = rewriteAssignRhsExpr(ctx, lhs, n, kind, shape, tactics);
   return rhs === null ? null : lhs + rhs;
 };
 
 /** rewrite_assign_rhs_expr. */
-const rewriteAssignRhsExpr = (ctx: RsCtx, lhs: string, n: i32, kind: i32, shape: RsShape, tactics: i32): string | null => {
+const rewriteAssignRhsExpr = (
+  ctx: RsCtx,
+  lhs: string,
+  n: i32,
+  kind: i32,
+  shape: RsShape,
+  tactics: i32,
+): string | null => {
   const cfg = ctx.cfg;
   let llw = rsLastLineWidth(lhs, cfg.tabSpaces) - (rsHasByte(lhs, 10) ? shape.iw() : 0);
   if (llw < 0) {
@@ -1426,7 +1586,15 @@ export const rsRewriteAssignRhsWithComments = (
   return lhs + rhs;
 };
 
-const chooseRhs = (ctx: RsCtx, n: i32, kind: i32, shape: RsShape, origRhs: string | null, tactics: i32, hasRhsComment: boolean): string | null => {
+const chooseRhs = (
+  ctx: RsCtx,
+  n: i32,
+  kind: i32,
+  shape: RsShape,
+  origRhs: string | null,
+  tactics: i32,
+  hasRhsComment: boolean,
+): string | null => {
   const cfg = ctx.cfg;
   if (origRhs !== null && origRhs.length === 0) {
     return "";
@@ -1472,7 +1640,8 @@ const chooseRhs = (ctx: RsCtx, n: i32, kind: i32, shape: RsShape, origRhs: strin
 };
 
 /** prefer_next_line. */
-export const rsPreferNextLine = (orig: string, next: string, tactics: i32): boolean => preferNextLine(orig, next, tactics);
+export const rsPreferNextLine = (orig: string, next: string, tactics: i32): boolean =>
+  preferNextLine(orig, next, tactics);
 
 const preferNextLine = (orig: string, next: string, tactics: i32): boolean =>
   tactics === RT_FORCE_NEXT_LINE_WITHOUT_INDENT ||
@@ -1584,8 +1753,8 @@ export const stmtSpannedLo = (ast: RsAst, s: i32): i32 => {
   return rsLoWithAttrs(ast, s);
 };
 
-export const rsFormatStmtOfBlock = (ctx: RsCtx, b: i32, shape: RsShape): string | null => rsFormatStmt(ctx, shape, ctx.ast.kid(b, 0), true);
-
+export const rsFormatStmtOfBlock = (ctx: RsCtx, b: i32, shape: RsShape): string | null =>
+  rsFormatStmt(ctx, shape, ctx.ast.kid(b, 0), true);
 
 export const rsIsBlockKind = (ast: RsAst, n: i32): boolean => ast.kind[n] === N_BLOCK;
 export const rsIsExFieldKind = (ast: RsAst, n: i32): boolean => ast.kind[n] === N_EXFIELD;

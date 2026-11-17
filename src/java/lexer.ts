@@ -4,7 +4,16 @@
 // their own toks. Columns follow JavaInput's arithmetic, including its habit
 // of advancing a split operator's later characters by the whole operator.
 
-import { GInput, TF_BLOCK_COMMENT, TF_JAVADOC, TF_LINE_COMMENT, TF_NEWLINE, TF_PARAM_COMMENT, TF_SPACES, TF_TOKEN } from "../gdoc/input";
+import {
+  GInput,
+  TF_BLOCK_COMMENT,
+  TF_JAVADOC,
+  TF_LINE_COMMENT,
+  TF_NEWLINE,
+  TF_PARAM_COMMENT,
+  TF_SPACES,
+  TF_TOKEN,
+} from "../gdoc/input";
 
 // Token kinds (GInput.tKind).
 export const JK_IDENT: i32 = 1;
@@ -16,7 +25,8 @@ export const JK_OP: i32 = 6; // one character of an operator or separator
 export const JK_COMMENT: i32 = 7;
 export const JK_WS: i32 = 8;
 
-const jIsLetter = (c: i32): boolean => (c >= 65 && c <= 90) || (c >= 97 && c <= 122) || c === 95 || c === 36 || c >= 128;
+const jIsLetter = (c: i32): boolean =>
+  (c >= 65 && c <= 90) || (c >= 97 && c <= 122) || c === 95 || c === 36 || c >= 128;
 const jIsDigit = (c: i32): boolean => c >= 48 && c <= 57;
 const jIsIdentChar = (c: i32): boolean => jIsLetter(c) || jIsDigit(c);
 
@@ -111,7 +121,18 @@ const isParamComment = (src: u8[], a: i32, b: i32): boolean => {
   const s0 = i;
   while (i < e) {
     const c = toI32(src[i]);
-    if ((c >= 65 && c <= 90) || (c >= 97 && c <= 122) || jIsDigit(c) || c === 95 || c === 45 || c === 32 || c === 9 || c === 10 || c === 13 || c === 12) {
+    if (
+      (c >= 65 && c <= 90) ||
+      (c >= 97 && c <= 122) ||
+      jIsDigit(c) ||
+      c === 95 ||
+      c === 45 ||
+      c === 32 ||
+      c === 9 ||
+      c === 10 ||
+      c === 13 ||
+      c === 12
+    ) {
       i++;
     } else {
       break;

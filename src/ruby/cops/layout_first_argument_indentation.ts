@@ -8,7 +8,17 @@ import { F_DOT, F_END, F_OPERATOR, NT_CSEND, NT_KWSPLAT, NT_SEND, NT_SPLAT, NT_S
 import { RbCop } from "../cop";
 import { rnE, rnHas, rnS } from "../node";
 import { RbSource } from "../source";
-import { LalAligner, lalArgs, lalBeginsItsLine, lalFirstLine, lalIsStripWs, lalIsWs, lalMethod, lalOperatorMethod, lalParentheses } from "./layout_align_help";
+import {
+  LalAligner,
+  lalArgs,
+  lalBeginsItsLine,
+  lalFirstLine,
+  lalIsStripWs,
+  lalIsWs,
+  lalMethod,
+  lalOperatorMethod,
+  lalParentheses,
+} from "./layout_align_help";
 import { RbLayLines } from "./layout_empty_help";
 
 export class CopLayoutFirstArgumentIndentation {

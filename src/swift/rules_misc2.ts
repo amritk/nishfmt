@@ -8,7 +8,15 @@ import { swStringExcludingLinebreaksAndComments } from "./decl";
 import { swParseExpressionEnd, swParsePropertyDeclaration } from "./expr";
 import { SwFormatter } from "./formatter";
 import { swParseFunctionDeclaration } from "./funcdecl";
-import { swEndOfScope, swIndexOfLastSignificantKeyword, swParseType, swStartOfScope, SW_EX_RETHROWS, SW_EX_THROWS, SW_EX_WHERE } from "./parsing";
+import {
+  swEndOfScope,
+  swIndexOfLastSignificantKeyword,
+  swParseType,
+  swStartOfScope,
+  SW_EX_RETHROWS,
+  SW_EX_THROWS,
+  SW_EX_WHERE,
+} from "./parsing";
 import {
   SW_DELIM,
   SW_END,

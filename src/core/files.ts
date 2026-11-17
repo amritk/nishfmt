@@ -87,7 +87,6 @@ export const walk = (dir: string, out: string[], parent: Ignore, langOf: (name: 
   }
 };
 
-
 /** Writes each line feed of `out` that has no carriage return before it as CRLF. */
 export function toCRLF(out: Out): void {
   let add = 0;

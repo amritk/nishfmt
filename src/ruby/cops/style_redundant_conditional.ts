@@ -10,7 +10,8 @@ import { scnElsif, scnModifier, scnSpaces } from "./style_cond_help";
 import { ssxIs, ssxMeth } from "./style_syntax_help";
 
 /** Node::COMPARISON_OPERATORS. */
-export const srcComparison = (m: string): boolean => m === "==" || m === "===" || m === "!=" || m === "<=" || m === ">=" || m === ">" || m === "<";
+export const srcComparison = (m: string): boolean =>
+  m === "==" || m === "===" || m === "!=" || m === "<=" || m === ">=" || m === ">" || m === "<";
 
 export class CopStyleRedundantConditional {
   c: RbCop;

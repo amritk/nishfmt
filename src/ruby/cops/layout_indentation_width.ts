@@ -152,7 +152,9 @@ export class CopLayoutIndentationWidth {
 
   /** IfNode#unless?. */
   private unless(src: RbSource, n: i32): boolean {
-    return !rnHas(src, n, F_QUESTION) && rnHas(src, n, F_KEYWORD) && rnE(src, n, F_KEYWORD) - rnS(src, n, F_KEYWORD) === 6;
+    return (
+      !rnHas(src, n, F_QUESTION) && rnHas(src, n, F_KEYWORD) && rnE(src, n, F_KEYWORD) - rnS(src, n, F_KEYWORD) === 6
+    );
   }
 
   /** The keyword of an if node is `elsif`. */

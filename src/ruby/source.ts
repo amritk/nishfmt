@@ -92,8 +92,7 @@ export class RbSource {
       return;
     }
     this.sortDone = true;
-    const src = this;
-    const n = toI32(src.tokT.length);
+    const n = toI32(this.tokT.length);
     let idx: i32[] = [];
     for (let i = 0; i < n; i++) {
       idx.push(i);
@@ -113,7 +112,7 @@ export class RbSource {
         let j = mid;
         let k = lo;
         while (i < mid && j < hi) {
-          if (src.tokS[idx[j]] < src.tokS[idx[i]]) {
+          if (this.tokS[idx[j]] < this.tokS[idx[i]]) {
             tmp[k] = idx[j];
             j++;
           } else {
@@ -145,10 +144,10 @@ export class RbSource {
     this.sortE = [];
     for (let i = 0; i < n; i++) {
       const o = idx[i];
-      this.sortT.push(src.tokT[o]);
-      this.sortV.push(src.tokV[o]);
-      this.sortS.push(src.tokS[o]);
-      this.sortE.push(src.tokE[o]);
+      this.sortT.push(this.tokT[o]);
+      this.sortV.push(this.tokV[o]);
+      this.sortS.push(this.tokS[o]);
+      this.sortE.push(this.tokE[o]);
     }
   }
 
@@ -157,16 +156,15 @@ export class RbSource {
       return;
     }
     this.layDone = true;
-    const src = this;
     this.layS = [];
     this.layE = [];
     this.layPhys = 0;
     this.layN = 0;
-    const k = src.n;
+    const k = this.n;
     if (k > 0) {
       this.layS.push(0);
       for (let i = 0; i < k; i++) {
-        if (src.pts[i] === 10) {
+        if (this.pts[i] === 10) {
           this.layE.push(i);
           this.layS.push(i + 1);
         }
@@ -175,10 +173,10 @@ export class RbSource {
     }
     this.layPhys = toI32(this.layS.length);
     this.layN = this.layPhys;
-    const nt = toI32(src.tokS.length);
-    const lastTokLine = nt > 0 ? src.line(src.tokS[nt - 1]) : this.layPhys;
+    const nt = toI32(this.tokS.length);
+    const lastTokLine = nt > 0 ? this.line(this.tokS[nt - 1]) : this.layPhys;
     for (let ix = lastTokLine; ix < this.layPhys; ix++) {
-      if (this.layE[ix] - this.layS[ix] === 7 && src.src(this.layS[ix], this.layE[ix]) === "__END__") {
+      if (this.layE[ix] - this.layS[ix] === 7 && this.src(this.layS[ix], this.layE[ix]) === "__END__") {
         this.layN = ix;
         break;
       }
@@ -415,7 +413,10 @@ export class RbSource {
     for (const raw of rbSplitCopList(d.cops)) {
       if (raw.indexOf("/") < 0 && rbIsDepartment(raw)) {
         for (const n of all) {
-          if (n.startsWith(`${raw}/`) && !(raw === "Lint" && (n === "Lint/RedundantCopDisableDirective" || n === "Lint/Syntax"))) {
+          if (
+            n.startsWith(`${raw}/`) &&
+            !(raw === "Lint" && (n === "Lint/RedundantCopDisableDirective" || n === "Lint/Syntax"))
+          ) {
             out.push(n);
           }
         }
@@ -570,7 +571,8 @@ class RbDirective {
 }
 
 const rbIsWsByte = (c: i32): boolean => c === 32 || c === 9 || c === 10 || c === 11 || c === 12 || c === 13;
-const rbIsWordByte = (c: i32): boolean => (c >= 97 && c <= 122) || (c >= 65 && c <= 90) || (c >= 48 && c <= 57) || c === 95;
+const rbIsWordByte = (c: i32): boolean =>
+  (c >= 97 && c <= 122) || (c >= 65 && c <= 90) || (c >= 48 && c <= 57) || c === 95;
 const rbIsAlpha = (c: i32): boolean => (c >= 97 && c <= 122) || (c >= 65 && c <= 90);
 
 const rbBlankText = (s: string): boolean => {
@@ -597,7 +599,15 @@ const rbStrip = (s: string): string => {
 const rbHasRubocop = (pts: i32[]): boolean => {
   const n = toI32(pts.length);
   for (let i = 0; i + 7 <= n; i++) {
-    if (pts[i] === 114 && pts[i + 1] === 117 && pts[i + 2] === 98 && pts[i + 3] === 111 && pts[i + 4] === 99 && pts[i + 5] === 111 && pts[i + 6] === 112) {
+    if (
+      pts[i] === 114 &&
+      pts[i + 1] === 117 &&
+      pts[i + 2] === 98 &&
+      pts[i + 3] === 111 &&
+      pts[i + 4] === 99 &&
+      pts[i + 5] === 111 &&
+      pts[i + 6] === 112
+    ) {
       return true;
     }
   }
@@ -605,7 +615,15 @@ const rbHasRubocop = (pts: i32[]): boolean => {
 };
 
 const rbIsDepartment = (s: string): boolean =>
-  s === "Bundler" || s === "Gemspec" || s === "Layout" || s === "Lint" || s === "Metrics" || s === "Migration" || s === "Naming" || s === "Security" || s === "Style";
+  s === "Bundler" ||
+  s === "Gemspec" ||
+  s === "Layout" ||
+  s === "Lint" ||
+  s === "Metrics" ||
+  s === "Migration" ||
+  s === "Naming" ||
+  s === "Security" ||
+  s === "Style";
 
 /** Registry.qualified_cop_name: an unqualified name gets its only department. */
 const rbQualify = (name: string, all: string[], index: Map<string, i32>): string => {

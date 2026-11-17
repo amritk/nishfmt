@@ -44,7 +44,8 @@ const swAsciiLowercased = (s: string): string => {
   return parts.join("");
 };
 
-const swIsWordByte = (c: i32): boolean => (c >= 48 && c <= 57) || (c >= 65 && c <= 90) || (c >= 97 && c <= 122) || c === 95;
+const swIsWordByte = (c: i32): boolean =>
+  (c >= 48 && c <= 57) || (c >= 65 && c <= 90) || (c >= 97 && c <= 122) || c === 95;
 
 /** directiveRuleNames(in:) as " a b " (lowercased words); null when a name is not ASCII. */
 const swDirectiveRuleNames = (s: string): string | null => {

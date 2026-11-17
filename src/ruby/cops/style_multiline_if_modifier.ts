@@ -8,7 +8,17 @@ import { RbCop } from "../cop";
 import { RbRewriter } from "../rewriter";
 import { RbSource } from "../source";
 import { LalIgnored } from "./layout_align_help";
-import { scnChomp, scnEachStr, scnHeredoc, scnIfBranch, scnKeyword, scnModifier, scnSpaces, scnWholeE, scnWholeS } from "./style_cond_help";
+import {
+  scnChomp,
+  scnEachStr,
+  scnHeredoc,
+  scnIfBranch,
+  scnKeyword,
+  scnModifier,
+  scnSpaces,
+  scnWholeE,
+  scnWholeS,
+} from "./style_cond_help";
 import { ssxFE, ssxFS, ssxHas, ssxIsSpace } from "./style_syntax_help";
 
 export class CopStyleMultilineIfModifier {

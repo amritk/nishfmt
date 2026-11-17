@@ -6,7 +6,14 @@
 
 import { swCharacterIsUppercase } from "./unicode";
 import { SwFormatter, swIndexBeforeWhere } from "./formatter";
-import { swCurrentScope, swIsAccessorKeyword, swIsAttribute, swIsTypeKeywordStr, swLastSignificantKeyword, SW_EX_WHERE } from "./parsing";
+import {
+  swCurrentScope,
+  swIsAccessorKeyword,
+  swIsAttribute,
+  swIsTypeKeywordStr,
+  swLastSignificantKeyword,
+  SW_EX_WHERE,
+} from "./parsing";
 import {
   SW_DELIM,
   SW_END,
@@ -117,7 +124,11 @@ const swScopeStartBraceColonIf = (f: SwFormatter, i: i32): i32 => {
     return cs;
   }
   if (f.tok(cs, SW_START, "//")) {
-    return swIndexBeforeWhere(f, i, (g, j) => g.tok(j, SW_START, "{") || g.tok(j, SW_START, ":") || g.tok(j, SW_START, "#if"));
+    return swIndexBeforeWhere(
+      f,
+      i,
+      (g, j) => g.tok(j, SW_START, "{") || g.tok(j, SW_START, ":") || g.tok(j, SW_START, "#if"),
+    );
   }
   return -1;
 };
@@ -195,7 +206,13 @@ export const swRuleRedundantLet = (f: SwFormatter): void => {
     }
     const pt = f.indexBefore(SW_T_NON_SPACE_OR_COMMENT_OR_LINEBREAK, prevIndex);
     if (pt >= 0) {
-      if (f.kw(pt, "if") || f.kw(pt, "guard") || f.kw(pt, "while") || f.tok(pt, SW_IDENT, "async") || swIsAttribute(f, pt)) {
+      if (
+        f.kw(pt, "if") ||
+        f.kw(pt, "guard") ||
+        f.kw(pt, "while") ||
+        f.tok(pt, SW_IDENT, "async") ||
+        swIsAttribute(f, pt)
+      ) {
         continue;
       }
       if (f.tok(pt, SW_DELIM, ",")) {

@@ -729,7 +729,12 @@ export class Annot {
             }
             continue;
           }
-          if (nk === P_LPAREN && d.kind[last] !== P_COLONCOLON && d.match[n] > n && d.type[last] !== TT_TEMPLATE_CLOSER) {
+          if (
+            nk === P_LPAREN &&
+            d.kind[last] !== P_COLONCOLON &&
+            d.match[n] > n &&
+            d.type[last] !== TT_TEMPLATE_CLOSER
+          ) {
             // A call: `foo(...)`.
             last = d.match[n];
             continue;
@@ -869,7 +874,12 @@ export class Annot {
       this.parse(precedence + 1);
       const cp = this.currentPrecedence();
       const c = this.cur;
-      if (c < 0 || (this.closesScope(c) && d.match[c] >= 0) || (cp !== -1 && cp < precedence) || (cp === PREC_CONDITIONAL && precedence === PREC_ASSIGNMENT && d.kind[c] === P_COLON)) {
+      if (
+        c < 0 ||
+        (this.closesScope(c) && d.match[c] >= 0) ||
+        (cp !== -1 && cp < precedence) ||
+        (cp === PREC_CONDITIONAL && precedence === PREC_ASSIGNMENT && d.kind[c] === P_COLON)
+      ) {
         break;
       }
       if (this.opensScope(c) || this.rqc[c] === 1) {
@@ -1076,7 +1086,12 @@ export class Annot {
         childMust = this.mustB[d.lFirst[c]] === 1 || d.type[p] === TT_BLOCK_LITERAL_LBRACE;
       }
       late = late | this.lateB[t];
-      if ((this.mustB[t] === 1 && this.lateB[t] === 0) || (d.childHead[p] >= 0 && nch > 1) || childMust || d.multi[t] === 1) {
+      if (
+        (this.mustB[t] === 1 && this.lateB[t] === 0) ||
+        (d.childHead[p] >= 0 && nch > 1) ||
+        childMust ||
+        d.multi[t] === 1
+      ) {
         this.tot[t] = this.tot[p] + lim;
       } else {
         this.tot[t] = this.tot[p] + d.width[t] + childSize + d.spaces[t];
@@ -1136,7 +1151,11 @@ export class Annot {
     const pk = d.kind[prev];
     const pt = d.type[prev];
     let r = 0;
-    if (pc >= 0 && d.kind[pc] === P_LPAREN && !(ck === K_COMMENT || ck === P_LPAREN || d.type[t] === TT_LAMBDA_LSQUARE)) {
+    if (
+      pc >= 0 &&
+      d.kind[pc] === P_LPAREN &&
+      !(ck === K_COMMENT || ck === P_LPAREN || d.type[t] === TT_LAMBDA_LSQUARE)
+    ) {
       const bpc = this.bpcnt[pc];
       if (bpc > 1) {
         r = r | C_NOLB;
@@ -1156,7 +1175,10 @@ export class Annot {
         r = r | C_VP;
       }
     }
-    if (this.opensScope(prev) && (d.type[t] !== TT_LINE_COMMENT || (d.bk[prev] === BK_BRACED_INIT && d.eqList[prev] === 0))) {
+    if (
+      this.opensScope(prev) &&
+      (d.type[t] !== TT_LINE_COMMENT || (d.bk[prev] === BK_BRACED_INIT && d.eqList[prev] === 0))
+    ) {
       r = r | C_ALIGN;
     }
     if (pk === P_COMMA && !this.isTrailingComment(t)) {
@@ -1174,7 +1196,11 @@ export class Annot {
     if (ck !== K_COMMENT && pc >= 0) {
       const ptt = d.type[pc];
       const pkk = d.kind[pc];
-      if ((ptt === TT_BINARY_OPERATOR || pkk === P_COMMA || (ptt === TT_CONDITIONAL_EXPR && pkk === P_COLON)) && ptt !== TT_OVERLOADED_OPERATOR && ptt !== TT_CTOR_INITIALIZER_COMMA) {
+      if (
+        (ptt === TT_BINARY_OPERATOR || pkk === P_COMMA || (ptt === TT_CONDITIONAL_EXPR && pkk === P_COLON)) &&
+        ptt !== TT_OVERLOADED_OPERATOR &&
+        ptt !== TT_CTOR_INITIALIZER_COMMA
+      ) {
         const pr = pkk === P_COMMA ? PREC_COMMA : this.prec(pc);
         if (pr !== PREC_ASSIGNMENT && pr !== 10 && pr !== 11) {
           const bbo = this.mustB[pc] === 1 || pkk === P_LESSLESS || ptt === TT_CONDITIONAL_EXPR;
@@ -1190,13 +1216,25 @@ export class Annot {
     // The last-space rule: the first that applies.
     let ls = 0;
     const pp = d.prv[prev];
-    if (ck !== K_COMMENT && pk === P_LPAREN && pp >= 0 && (d.kind[pp] === KW_FOR || d.kind[pp] === KW_IF || ((d.kind[pp] === KW_CONSTEXPR || d.kind[pp] === K_IDENT) && d.prv[pp] >= 0 && d.kind[d.prv[pp]] === KW_IF))) {
+    if (
+      ck !== K_COMMENT &&
+      pk === P_LPAREN &&
+      pp >= 0 &&
+      (d.kind[pp] === KW_FOR ||
+        d.kind[pp] === KW_IF ||
+        ((d.kind[pp] === KW_CONSTEXPR || d.kind[pp] === K_IDENT) && d.prv[pp] >= 0 && d.kind[d.prv[pp]] === KW_IF))
+    ) {
       ls = 1;
     } else if (ck !== K_COMMENT && ck !== 55 && pk === P_COMMA && pt !== TT_OVERLOADED_OPERATOR) {
       ls = 2;
     } else if (pt === TT_CONDITIONAL_EXPR || pt === TT_CTOR_INITIALIZER_COLON) {
       ls = 2;
-    } else if (pt === TT_BINARY_OPERATOR && ((this.prec(prev) !== PREC_ASSIGNMENT && (pk !== P_LESSLESS || this.opIdx[prev] !== 0 || this.nextOp[prev] >= 0)) || this.sbin[t] === 1)) {
+    } else if (
+      pt === TT_BINARY_OPERATOR &&
+      ((this.prec(prev) !== PREC_ASSIGNMENT &&
+        (pk !== P_LESSLESS || this.opIdx[prev] !== 0 || this.nextOp[prev] >= 0)) ||
+        this.sbin[t] === 1)
+    ) {
       ls = 2;
     } else if (pt === TT_INHERITANCE_COLON) {
       ls = 3;
@@ -1287,7 +1325,10 @@ export class Annot {
       const nn = d.nxt[nnc];
       const fn = nn >= 0 ? this.fkHead[nn] : -1;
       const fc = this.fkHead[t];
-      if ((nk === P_COLON && fn >= 0 && this.fkPrec[fn] === PREC_CONDITIONAL) || (pk === P_COLON && fc >= 0 && this.fkPrec[fc] === PREC_CONDITIONAL)) {
+      if (
+        (nk === P_COLON && fn >= 0 && this.fkPrec[fn] === PREC_CONDITIONAL) ||
+        (pk === P_COLON && fc >= 0 && this.fkPrec[fc] === PREC_CONDITIONAL)
+      ) {
         r = r | N_QCIND;
       }
     }
@@ -1301,7 +1342,16 @@ export class Annot {
       r = r | N_CTORCOL;
     }
     const pnt = pc >= 0 ? d.type[pc] : -1;
-    if ((pc >= 0 && (this.ctd[pc] === 1 || this.crc[pc] === 1 || pnt === TT_ATTRIBUTE_RPAREN || pnt === TT_ATTRIBUTE_SQUARE || pnt === TT_FUNCTION_ANNOTATION_RPAREN)) || nk === KW_OPERATOR || nt === TT_FUNCTION_DECLARATION_NAME) {
+    if (
+      (pc >= 0 &&
+        (this.ctd[pc] === 1 ||
+          this.crc[pc] === 1 ||
+          pnt === TT_ATTRIBUTE_RPAREN ||
+          pnt === TT_ATTRIBUTE_SQUARE ||
+          pnt === TT_FUNCTION_ANNOTATION_RPAREN)) ||
+      nk === KW_OPERATOR ||
+      nt === TT_FUNCTION_DECLARATION_NAME
+    ) {
       r = r | N_MAXLSIND;
     }
     if (nt === TT_ARRAY_SUBSCRIPT_LSQUARE) {
@@ -1341,7 +1391,10 @@ export class Annot {
         m = m | M_LESSLESS;
       }
       const p0 = d.prv[t];
-      if ((tt === TT_BINARY_OPERATOR && k !== P_LESSLESS) || (tt === TT_CONDITIONAL_EXPR && p0 >= 0 && d.type[p0] !== TT_CONDITIONAL_EXPR)) {
+      if (
+        (tt === TT_BINARY_OPERATOR && k !== P_LESSLESS) ||
+        (tt === TT_CONDITIONAL_EXPR && p0 >= 0 && d.type[p0] !== TT_CONDITIONAL_EXPR)
+      ) {
         m = m | M_LOW;
       }
       if (tt === TT_ARRAY_SUBSCRIPT_LSQUARE) {
@@ -1373,13 +1426,24 @@ export class Annot {
       if (tt === TT_LAMBDA_LSQUARE || this.isTrailingReturnArrow(t)) {
         m = m | M_LSSET;
       }
-      if (k !== K_COMMENT && this.crc[t] === 0 && pc >= 0 && (d.kind[pc] === P_LBRACE || d.type[pc] === TT_ARRAY_INITIALIZER_LSQUARE)) {
+      if (
+        k !== K_COMMENT &&
+        this.crc[t] === 0 &&
+        pc >= 0 &&
+        (d.kind[pc] === P_LBRACE || d.type[pc] === TT_ARRAY_INITIALIZER_LSQUARE)
+      ) {
         m = m | M_AFTERBRACE;
       }
       if (pc >= 0) {
         const pt = d.type[pc];
         const pk = d.kind[pc];
-        if (pt === TT_BINARY_OPERATOR || pt === TT_CONDITIONAL_EXPR || pk === P_LPAREN || pk === P_COMMA || pk === P_COLON) {
+        if (
+          pt === TT_BINARY_OPERATOR ||
+          pt === TT_CONDITIONAL_EXPR ||
+          pk === P_LPAREN ||
+          pk === P_COMMA ||
+          pk === P_COLON
+        ) {
           m = m | M_NBIPREV;
           if (!(pk === P_LPAREN && this.pcnt[pc] <= 1)) {
             m = m | M_NBIINL;
@@ -1461,7 +1525,11 @@ export class Annot {
     }
     if (d.lType[l] !== LT_IMPORT) {
       let bcb = -1;
-      if ((lk === P_LBRACE || d.type[left] === TT_ARRAY_INITIALIZER_LSQUARE) && d.bk[left] !== BK_BLOCK && d.match[left] > left) {
+      if (
+        (lk === P_LBRACE || d.type[left] === TT_ARRAY_INITIALIZER_LSQUARE) &&
+        d.bk[left] !== BK_BLOCK &&
+        d.match[left] > left
+      ) {
         bcb = d.prv[d.match[left]];
       } else {
         const m = d.match[t];
@@ -1474,7 +1542,12 @@ export class Annot {
       }
     }
     if (rk === K_COMMENT) {
-      return (d.bk[left] !== BK_BRACED_INIT || d.eqList[left] === 1) && d.type[left] !== TT_CTOR_INITIALIZER_COLON && d.nl[t] > 0 && d.unesc[t] === 1;
+      return (
+        (d.bk[left] !== BK_BRACED_INIT || d.eqList[left] === 1) &&
+        d.type[left] !== TT_CTOR_INITIALIZER_COLON &&
+        d.nl[t] > 0 &&
+        d.unesc[t] === 1
+      );
     }
     if (this.isTrailingComment(left)) {
       return true;
@@ -1589,7 +1662,13 @@ export class Annot {
     if (lt === TT_TEMPLATE_CLOSER || lt === TT_UNARY_OPERATOR || lk === KW_OPERATOR) {
       return false;
     }
-    if (lk === P_EQUAL && rk !== KW_DEFAULT && rk !== KW_DELETE && d.lType[l] === LT_VIRTUAL_FUNCTION_DECL && this.nest[left] === 0) {
+    if (
+      lk === P_EQUAL &&
+      rk !== KW_DEFAULT &&
+      rk !== KW_DELETE &&
+      d.lType[l] === LT_VIRTUAL_FUNCTION_DECL &&
+      this.nest[left] === 0
+    ) {
       return false;
     }
     if (lt === TT_ATTRIBUTE_LPAREN || (lk === P_LPAREN && lt === TT_TYPE_DECLARATION_PAREN)) {
@@ -1631,7 +1710,14 @@ export class Annot {
       return false;
     }
     if (lt === TT_TRAILING_ANNOTATION) {
-      return !(rk === P_LBRACE || rk === P_SEMI || rk === P_EQUAL || rk === P_LPAREN || rk === P_LESS || rk === P_COLONCOLON);
+      return !(
+        rk === P_LBRACE ||
+        rk === P_SEMI ||
+        rk === P_EQUAL ||
+        rk === P_LPAREN ||
+        rk === P_LESS ||
+        rk === P_COLONCOLON
+      );
     }
     if (rk === KW_ATTRIBUTE) {
       return true;
@@ -1699,7 +1785,14 @@ export class Annot {
       if (rt === TT_LAMBDA_LSQUARE && lk === P_EQUAL) {
         return 35;
       }
-      if (!(rt === TT_LAMBDA_LSQUARE || rt === TT_ARRAY_INITIALIZER_LSQUARE || rt === TT_DESIGNATED_INITIALIZER_LSQUARE || rt === TT_ATTRIBUTE_SQUARE)) {
+      if (
+        !(
+          rt === TT_LAMBDA_LSQUARE ||
+          rt === TT_ARRAY_INITIALIZER_LSQUARE ||
+          rt === TT_DESIGNATED_INITIALIZER_LSQUARE ||
+          rt === TT_ATTRIBUTE_SQUARE
+        )
+      ) {
         return 500;
       }
     }
@@ -1769,7 +1862,12 @@ export class Annot {
     }
     if (lk === P_LPAREN) {
       const lp = d.prv[left];
-      if (lp >= 0 && (d.kind[lp] === KW_FOR || d.kind[lp] === KW_IF || (d.kind[lp] === KW_CONSTEXPR && d.prv[lp] >= 0 && d.kind[d.prv[lp]] === KW_IF))) {
+      if (
+        lp >= 0 &&
+        (d.kind[lp] === KW_FOR ||
+          d.kind[lp] === KW_IF ||
+          (d.kind[lp] === KW_CONSTEXPR && d.prv[lp] >= 0 && d.kind[d.prv[lp]] === KW_IF))
+      ) {
         return 1000;
       }
     }

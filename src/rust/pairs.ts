@@ -25,10 +25,20 @@ export class RsPairParts {
 }
 
 /** rewrite_pair. */
-export const rsRewritePair = (ctx: RsCtx, lhs: i32, rhs: i32, pp: RsPairParts, shape: RsShape, sepPlace: i32): string | null => {
+export const rsRewritePair = (
+  ctx: RsCtx,
+  lhs: i32,
+  rhs: i32,
+  pp: RsPairParts,
+  shape: RsShape,
+  sepPlace: i32,
+): string | null => {
   const cfg = ctx.cfg;
   const ts = cfg.tabSpaces;
-  const lhsOverhead = sepPlace === SPB_BACK ? shape.usedWidth() + toI32(pp.prefix.length) + toI32(rsTrimEnd(pp.infix).length) : shape.usedWidth();
+  const lhsOverhead =
+    sepPlace === SPB_BACK
+      ? shape.usedWidth() + toI32(pp.prefix.length) + toI32(rsTrimEnd(pp.infix).length)
+      : shape.usedWidth();
   const lhsShape = shape.withWidth(ctx.budget(lhsOverhead));
   const l = rsRewriteNode(ctx, lhs, lhsShape);
   if (l === null) {
@@ -47,7 +57,8 @@ export const rsRewritePair = (ctx: RsCtx, lhs: i32, rhs: i32, pp: RsPairParts, s
     const ls = rsLines(rhsOrig);
     const allowSameLine = toI32(lhsResult.length) <= ts || (ls.length > 0 && ls[0].endsWith("{"));
     if (!rsHasByte(rhsOrig, 10) || allowSameLine) {
-      const olw = rsLastLineWidth(lhsResult, ts) + toI32(pp.infix.length) + rsFirstLineWidth(rhsOrig) + toI32(pp.suffix.length);
+      const olw =
+        rsLastLineWidth(lhsResult, ts) + toI32(pp.infix.length) + rsFirstLineWidth(rhsOrig) + toI32(pp.suffix.length);
       if (olw <= shape.width) {
         return lhsResult + pp.infix + rhsOrig + pp.suffix;
       }

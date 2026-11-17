@@ -90,7 +90,14 @@ const rmlMlbClosingOwnLine = (src: RbSource, d: i32, line: i32): boolean => {
  * children(node)) and whose raw last child is `rawLast`. `call` marks
  * MultilineMethodCallBraceLayout (single_line_ignoring_receiver?).
  */
-export const rmlBraceLayout = (cop: RbCop, src: RbSource, node: i32, kids: i32[], rawLast: i32, call: boolean): void => {
+export const rmlBraceLayout = (
+  cop: RbCop,
+  src: RbSource,
+  node: i32,
+  kids: i32[],
+  rawLast: i32,
+  call: boolean,
+): void => {
   const a = src.a;
   if (call && rnHas(src, node, F_BEGIN) && rnHas(src, node, F_END)) {
     if (src.line(rnS(src, node, F_BEGIN)) === src.line(rnS(src, node, F_END))) {
@@ -157,7 +164,10 @@ const rmlBraceCorrect = (src: RbSource, k: RbRewriter, node: i32): void => {
         break;
       }
     }
-    if (nested !== V_NIL && (rmlMlbOwnLineComment(src, ci) || !(rmlIsChained(src, nested) || rmlIsArgument(src, nested)))) {
+    if (
+      nested !== V_NIL &&
+      (rmlMlbOwnLineComment(src, ci) || !(rmlIsChained(src, nested) || rmlIsArgument(src, nested)))
+    ) {
       return;
     }
   }

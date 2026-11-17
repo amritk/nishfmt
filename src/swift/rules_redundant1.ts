@@ -8,7 +8,13 @@
 import { SwFormatter, swIndexAfterWhere, swIndexBeforeWhere } from "./formatter";
 import { swParseFunctionDeclaration, swUnescaped } from "./funcdecl";
 import { swHasImport } from "./imports";
-import { swHasModifier, swIsAclModifierStr, swIsModifier, swModifiersForDeclaration, swStartOfModifiers } from "./modifiers";
+import {
+  swHasModifier,
+  swIsAclModifierStr,
+  swIsModifier,
+  swModifiersForDeclaration,
+  swStartOfModifiers,
+} from "./modifiers";
 import {
   swCurrentScope,
   swEndOfScope,
@@ -67,7 +73,10 @@ export const swRuleAssertionFailures = (f: SwFormatter): void => {
         endIndex = e;
       }
     }
-    f.replaceTokens(i, endIndex, [new SwTok(SW_IDENT, isAssert ? "assertionFailure" : "preconditionFailure", 0), new SwTok(SW_START, "(", 0)]);
+    f.replaceTokens(i, endIndex, [
+      new SwTok(SW_IDENT, isAssert ? "assertionFailure" : "preconditionFailure", 0),
+      new SwTok(SW_START, "(", 0),
+    ]);
   }
 };
 
@@ -188,7 +197,13 @@ const swRemoveAttribute = (f: SwFormatter, i: i32): void => {
 };
 
 const swIsObjcImplyingAttribute = (s: string): boolean =>
-  s === "@IBOutlet" || s === "@IBAction" || s === "@IBSegueAction" || s === "@IBDesignable" || s === "@IBInspectable" || s === "@GKInspectable" || s === "@NSManaged";
+  s === "@IBOutlet" ||
+  s === "@IBAction" ||
+  s === "@IBSegueAction" ||
+  s === "@IBDesignable" ||
+  s === "@IBInspectable" ||
+  s === "@GKInspectable" ||
+  s === "@NSManaged";
 
 /** redundantObjc. */
 export const swRuleRedundantObjc = (f: SwFormatter): void => {
@@ -208,7 +223,10 @@ export const swRuleRedundantObjc = (f: SwFormatter): void => {
         break;
       }
       const s = f.s(nextIndex);
-      if (f.k(nextIndex) === SW_KEYWORD && (s === "class" || s === "actor" || s === "enum" || s === "protocol" || s === "struct")) {
+      if (
+        f.k(nextIndex) === SW_KEYWORD &&
+        (s === "class" || s === "actor" || s === "enum" || s === "protocol" || s === "struct")
+      ) {
         skip = true;
         break;
       }
@@ -236,7 +254,10 @@ export const swRuleRedundantObjc = (f: SwFormatter): void => {
     }
     const pa = f.indexBefore(SW_T_NON_SPACE_OR_COMMENT_OR_LINEBREAK, i);
     const na = f.indexAfter(SW_T_NON_SPACE_OR_COMMENT_OR_LINEBREAK, i);
-    if ((pa >= 0 && swIsAttribute(f, pa) && swIsObjcImplyingAttribute(f.s(pa))) || (na >= 0 && swIsAttribute(f, na) && swIsObjcImplyingAttribute(f.s(na)))) {
+    if (
+      (pa >= 0 && swIsAttribute(f, pa) && swIsObjcImplyingAttribute(f.s(pa))) ||
+      (na >= 0 && swIsAttribute(f, na) && swIsObjcImplyingAttribute(f.s(na)))
+    ) {
       swRemoveAttribute(f, i);
       continue;
     }
@@ -279,7 +300,12 @@ const swIsArgumentPosition = (f: SwFormatter, i: i32): boolean => {
 };
 
 /** backticksRequired(forName:at:ignoreLeadingDot:) (swiftVersion undefined, i.e. below 4 and 5). */
-export const swBackticksRequired = (f: SwFormatter, unescaped: string, i: i32, ignoreLeadingDot: boolean = false): boolean => {
+export const swBackticksRequired = (
+  f: SwFormatter,
+  unescaped: string,
+  i: i32,
+  ignoreLeadingDot: boolean = false,
+): boolean => {
   const parsed = swParseIdentifierString(unescaped);
   if (!(parsed === unescaped)) {
     return true;
@@ -288,7 +314,13 @@ export const swBackticksRequired = (f: SwFormatter, unescaped: string, i: i32, i
     if (unescaped === "_" || unescaped === "$") {
       return true;
     }
-    if (unescaped === "self" || unescaped === "super" || unescaped === "nil" || unescaped === "true" || unescaped === "false") {
+    if (
+      unescaped === "self" ||
+      unescaped === "super" ||
+      unescaped === "nil" ||
+      unescaped === "true" ||
+      unescaped === "false"
+    ) {
       if (unescaped === "self") {
         const p = f.indexBefore(SW_T_NON_SPACE_OR_COMMENT_OR_LINEBREAK, i);
         if (p >= 0 && f.ks(p, SW_OP, ".")) {
@@ -379,7 +411,13 @@ const swRedundantBindings = (f: SwFormatter, lo: i32, hi: i32): boolean => {
   for (let j = lo; j < hi; j++) {
     if (f.tok(j, SW_IDENT, "_")) {
       isEmpty = false;
-    } else if (f.k(j) === SW_SPACE || f.k(j) === SW_LINEBREAK || f.tok(j, SW_DELIM, ",") || f.kw(j, "let") || f.kw(j, "var")) {
+    } else if (
+      f.k(j) === SW_SPACE ||
+      f.k(j) === SW_LINEBREAK ||
+      f.tok(j, SW_DELIM, ",") ||
+      f.kw(j, "let") ||
+      f.kw(j, "var")
+    ) {
       // fine
     } else {
       return false;
@@ -403,7 +441,11 @@ export const swRuleRedundantPattern = (f: SwFormatter): void => {
       continue;
     }
     const nt = f.indexAfter(SW_T_NON_SPACE_OR_COMMENT_OR_LINEBREAK, endIndex);
-    if (nt < 0 || !(f.tok(nt, SW_START, ":") || f.op(nt, "=", SW_OP_INFIX)) || !swRedundantBindings(f, i + 1, endIndex)) {
+    if (
+      nt < 0 ||
+      !(f.tok(nt, SW_START, ":") || f.op(nt, "=", SW_OP_INFIX)) ||
+      !swRedundantBindings(f, i + 1, endIndex)
+    ) {
       continue;
     }
     f.removeTokens(i, endIndex + 1);
@@ -569,4 +611,3 @@ export const swRuleRedundantExtensionACL = (f: SwFormatter): void => {
     }
   }
 };
-

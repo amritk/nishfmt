@@ -106,7 +106,8 @@ const swIsTrailingClosureArgument = (f: SwFormatter, closureStartIndex: i32): bo
   return false;
 };
 
-const swIsSpaceOrBreakAt = (f: SwFormatter, i: i32): boolean => f.has(i) && (f.k(i) === SW_SPACE || f.k(i) === SW_LINEBREAK);
+const swIsSpaceOrBreakAt = (f: SwFormatter, i: i32): boolean =>
+  f.has(i) && (f.k(i) === SW_SPACE || f.k(i) === SW_LINEBREAK);
 
 /** redundantClosure. */
 export const swRuleRedundantClosure = (f: SwFormatter): void => {
@@ -155,7 +156,10 @@ export const swRuleRedundantClosure = (f: SwFormatter): void => {
       continue;
     }
     for (let j = closureStartIndex; j <= closureEndIndex; j++) {
-      if ((f.tok(j, SW_IDENT, "fatalError") || f.tok(j, SW_IDENT, "preconditionFailure") || f.kw(j, "throw")) && !swIndexIsWithinNestedClosure(f, j, closureStartIndex)) {
+      if (
+        (f.tok(j, SW_IDENT, "fatalError") || f.tok(j, SW_IDENT, "preconditionFailure") || f.kw(j, "throw")) &&
+        !swIndexIsWithinNestedClosure(f, j, closureStartIndex)
+      ) {
         bad = true;
         break;
       }

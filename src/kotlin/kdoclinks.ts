@@ -169,7 +169,10 @@ class KDocLexer {
         return;
       }
       // A code fence runs to the end of the line.
-      if ((c === 96 && this.at(p + 1) === 96 && this.at(p + 2) === 96) || (c === 126 && this.at(p + 1) === 126 && this.at(p + 2) === 126)) {
+      if (
+        (c === 96 && this.at(p + 1) === 96 && this.at(p + 2) === 96) ||
+        (c === 126 && this.at(p + 1) === 126 && this.at(p + 2) === 126)
+      ) {
         let q = p + 3;
         while (q < this.e && this.at(q) !== 10 && this.at(q) !== 13) {
           q++;
@@ -219,7 +222,10 @@ class KDocLexer {
       return;
     }
     if (s === KS_CODE_BLOCK_LINE_BEGINNING || s === KS_CODE_BLOCK_CONTENTS_BEGINNING) {
-      if ((c === 96 && this.at(p + 1) === 96 && this.at(p + 2) === 96) || (c === 126 && this.at(p + 1) === 126 && this.at(p + 2) === 126)) {
+      if (
+        (c === 96 && this.at(p + 1) === 96 && this.at(p + 2) === 96) ||
+        (c === 126 && this.at(p + 1) === 126 && this.at(p + 2) === 126)
+      ) {
         let q = p + 3;
         while (this.at(q) === 32 || this.at(q) === 9 || this.at(q) === 12) {
           q++;
@@ -266,7 +272,8 @@ const kdWsRun = (lx: KDocLexer, p: i32): i32 => {
 /** UTF-8 sequence length of a lead byte (a lexer step consumes one character). */
 const kdCharLen = (c: i32): i32 => (c < 0xc0 ? 1 : c < 0xe0 ? 2 : c < 0xf0 ? 3 : 4);
 
-const kdIsLetter = (c: i32): boolean => (c >= 65 && c <= 90) || (c >= 97 && c <= 122) || c === 95 || c === 36 || c >= 0xc0;
+const kdIsLetter = (c: i32): boolean =>
+  (c >= 65 && c <= 90) || (c >= 97 && c <= 122) || c === 95 || c === 36 || c >= 0xc0;
 
 const kdIsPart = (c: i32): boolean => kdIsLetter(c) || (c >= 48 && c <= 57) || (c >= 0x80 && c < 0xc0);
 
@@ -334,7 +341,14 @@ const kdTagRequiresReference = (src: u8[], a: i32, b: i32): boolean => {
     const c = toI32(src[i]);
     name = name + String.fromCharCode(c >= 97 && c <= 122 ? c - 32 : c);
   }
-  return name === "THROWS" || name === "EXCEPTION" || name === "PARAM" || name === "SEE" || name === "PROPERTY" || name === "SAMPLE";
+  return (
+    name === "THROWS" ||
+    name === "EXCEPTION" ||
+    name === "PARAM" ||
+    name === "SEE" ||
+    name === "PROPERTY" ||
+    name === "SAMPLE"
+  );
 };
 
 /** Adds the names the KDoc comment src[a, b) links to. */

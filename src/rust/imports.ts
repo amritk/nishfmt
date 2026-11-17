@@ -87,7 +87,15 @@ const segFromName = (name: string, modsep: boolean): RsUseSeg | null => {
 };
 
 /** UseTree::from_ast for N_USE_TREE `a`. */
-const useTreeFromAst = (ctx: RsCtx, a: i32, listItem: RsListItem | null, hasVis: boolean, vis: i32, optLo: i32, attrs: i32[] | null): RsUseTree => {
+const useTreeFromAst = (
+  ctx: RsCtx,
+  a: i32,
+  listItem: RsListItem | null,
+  hasVis: boolean,
+  vis: i32,
+  optLo: i32,
+  attrs: i32[] | null,
+): RsUseTree => {
   const ast = ctx.ast;
   const lo = optLo >= 0 ? optLo : ast.lo[a];
   const r = new RsUseTree(lo, ast.hi[a]);
@@ -267,7 +275,12 @@ const normalizeTree = (t0: RsUseTree): RsUseTree => {
       return t;
     }
   }
-  if (last.k === USK_LIST && last.list.length === 1 && useTreeToString(last.list[0]) !== "self" && !treeHasComment(last.list[0])) {
+  if (
+    last.k === USK_LIST &&
+    last.list.length === 1 &&
+    useTreeToString(last.list[0]) !== "self" &&
+    !treeHasComment(last.list[0])
+  ) {
     for (const s of last.list[0].path) {
       t.path.push(s);
     }

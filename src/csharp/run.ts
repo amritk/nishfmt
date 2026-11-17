@@ -3,38 +3,16 @@
 // After CSharpier 1.4.0 (MIT License, Copyright (c) 2021 Bela VanderVoort):
 // CSharpFormatter.cs, GeneratedCodeUtilities.cs and PrinterOptions.cs.
 
-import {
-  K_MultiLineCommentTrivia,
-  K_SingleLineCommentTrivia,
-} from "./kinds";
-import {
-  Out,
-} from "../core/out";
-import {
-  CsDocs,
-  CsPrinter,
-} from "./doc";
-import {
-  CsLexer,
-} from "./lexer";
-import {
-  CsParser,
-} from "./parser";
-import {
-  cspCompilationUnit,
-} from "./pdecl";
-import {
-  CsPrint,
-} from "./print";
-import {
-  cswNode,
-} from "./pnodes";
-import {
-  csSymbolSets,
-} from "./psyms";
-import {
-  CsTree,
-} from "./tree";
+import { K_MultiLineCommentTrivia, K_SingleLineCommentTrivia } from "./kinds";
+import { Out } from "../core/out";
+import { CsDocs, CsPrinter } from "./doc";
+import { CsLexer } from "./lexer";
+import { CsParser } from "./parser";
+import { cspCompilationUnit } from "./pdecl";
+import { CsPrint } from "./print";
+import { cswNode } from "./pnodes";
+import { csSymbolSets } from "./psyms";
+import { CsTree } from "./tree";
 
 /** One file's CSharp state; a fresh one formats each file, in a region of its own. */
 export class CSharpEngine {
@@ -274,6 +252,5 @@ export const formatCSharp = (e: CSharpEngine, path: string, src: u8[], n: i32, o
   out.range(cur.buf, 0, cur.n);
   return true;
 };
-
 
 export const isCSharpName = (name: string): boolean => name.endsWith(".cs");

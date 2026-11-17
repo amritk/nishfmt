@@ -165,14 +165,18 @@ export class CopLintUselessAssignment {
           const kr = this.c.offense(rs, re);
           if (kr !== null) {
             const p = src.parent(node);
-            const unc = luaSequential(src, f, node) || (p !== V_NIL && (a.type(p) === NT_OR_ASGN || a.type(p) === NT_AND_ASGN));
+            const unc =
+              luaSequential(src, f, node) || (p !== V_NIL && (a.type(p) === NT_OR_ASGN || a.type(p) === NT_AND_ASGN));
             if (!unc) {
               this.autocorrect(src, kr, node, v.name);
             }
             this.c.commit(kr);
           }
           // chained_assignment?
-          if (a.type(node) === NT_LVASGN && (ssxIs(src, a.kid(node, 1), NT_SEND) || ssxIs(src, a.kid(node, 1), NT_LVASGN))) {
+          if (
+            a.type(node) === NT_LVASGN &&
+            (ssxIs(src, a.kid(node, 1), NT_SEND) || ssxIs(src, a.kid(node, 1), NT_LVASGN))
+          ) {
             ign.add(node);
           }
         }

@@ -4,7 +4,20 @@
 // Ported from RuboCop 1.92.2 (MIT License, Copyright (c) 2012-24 Bozhidar
 // Batsov).
 
-import { F_ELSE, F_END, F_KEYWORD, NT_BLOCK, NT_DEF, NT_DEFS, NT_ENSURE, NT_KWBEGIN, NT_NUMBLOCK, NT_RESBODY, NT_RESCUE, V_NIL } from "../ast";
+import {
+  F_ELSE,
+  F_END,
+  F_KEYWORD,
+  NT_BLOCK,
+  NT_DEF,
+  NT_DEFS,
+  NT_ENSURE,
+  NT_KWBEGIN,
+  NT_NUMBLOCK,
+  NT_RESBODY,
+  NT_RESCUE,
+  V_NIL,
+} from "../ast";
 import { RbCop } from "../cop";
 import { rnHas, rnS } from "../node";
 import { RbSource } from "../source";

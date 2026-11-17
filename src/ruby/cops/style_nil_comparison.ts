@@ -3,7 +3,20 @@
 // Ported from RuboCop 1.92.2 (MIT License, Copyright (c) 2012-24 Bozhidar
 // Batsov).
 
-import { F_QUESTION, F_SELECTOR, NT_AND, NT_EFLIPFLOP, NT_ERANGE, NT_IF, NT_IFLIPFLOP, NT_IRANGE, NT_NIL, NT_OR, NT_SEND, V_NIL } from "../ast";
+import {
+  F_QUESTION,
+  F_SELECTOR,
+  NT_AND,
+  NT_EFLIPFLOP,
+  NT_ERANGE,
+  NT_IF,
+  NT_IFLIPFLOP,
+  NT_IRANGE,
+  NT_NIL,
+  NT_OR,
+  NT_SEND,
+  V_NIL,
+} from "../ast";
 import { RbCop } from "../cop";
 import { RbSource } from "../source";
 import { ssxAssignment, ssxFE, ssxFS, ssxHas, ssxIs, ssxMeth, ssxOperatorName } from "./style_syntax_help";

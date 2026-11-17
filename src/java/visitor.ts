@@ -731,8 +731,12 @@ export class JVisitor {
     const simple = this.inp.text(t.name[q]);
     const full = this.qualifiedText(q);
     if (
-      (simple === "NonNull" && (full === "org.jspecify.annotations.NonNull" || full === "org.checkerframework.checker.nullness.qual.NonNull")) ||
-      (simple === "Nullable" && (full === "org.jspecify.annotations.Nullable" || full === "org.checkerframework.checker.nullness.qual.Nullable"))
+      (simple === "NonNull" &&
+        (full === "org.jspecify.annotations.NonNull" ||
+          full === "org.checkerframework.checker.nullness.qual.NonNull")) ||
+      (simple === "Nullable" &&
+        (full === "org.jspecify.annotations.Nullable" ||
+          full === "org.checkerframework.checker.nullness.qual.Nullable"))
     ) {
       this.typeAnnotationSimpleNames.push(simple);
     }
@@ -815,7 +819,10 @@ export class JVisitor {
     }
     g.open(this.plusFour);
     if (this.len(t.b[n]) > 0) {
-      this.typeParametersRest(t.b[n], hasSuperclassType || hasSuperInterfaceTypes || hasPermitsTypes ? this.plusFour : this.ZERO);
+      this.typeParametersRest(
+        t.b[n],
+        hasSuperclassType || hasSuperInterfaceTypes || hasPermitsTypes ? this.plusFour : this.ZERO,
+      );
     }
     if (hasSuperclassType) {
       g.breakToFill(" ");
@@ -1092,7 +1099,12 @@ export class JVisitor {
       for (let j = 0; j < inp.kBeforeN[k]; j++) {
         const tk = inp.refs[inp.kBefore[k] + j];
         const a = inp.tPos[tk];
-        if (inp.tEnd[tk] - a >= 3 && toI32(inp.src[a]) === 47 && toI32(inp.src[a + 1]) === 42 && toI32(inp.src[a + 2]) === 42) {
+        if (
+          inp.tEnd[tk] - a >= 3 &&
+          toI32(inp.src[a]) === 47 &&
+          toI32(inp.src[a + 1]) === 42 &&
+          toI32(inp.src[a + 2]) === 42
+        ) {
           return true;
         }
       }
@@ -1522,37 +1534,35 @@ export class JVisitor {
     g.open(g.ifIndent(breakBeforeName, this.plusFour, this.ZERO));
     g.open(g.ifIndent(breakBeforeType, this.plusFour, this.ZERO));
     g.open(this.ZERO);
-    {
-      if (!isRecordConstructor) {
-        if (this.len(t.d[n]) > 0 || t.e[n] >= 0) {
-          g.breakToFill("");
-          this.visitFormals(t.e[n], this.listItems(t.d[n]));
-        }
-        this.token(")");
+    if (!isRecordConstructor) {
+      if (this.len(t.d[n]) > 0 || t.e[n] >= 0) {
+        g.breakToFill("");
+        this.visitFormals(t.e[n], this.listItems(t.d[n]));
       }
-      if (dims !== null) {
-        this.maybeAddDims(null, dims);
-      }
-      if (this.len(t.f[n]) > 0) {
-        g.breakToFill(" ");
-        g.open(this.plusFour);
-        this.visitThrowsClause(t.f[n]);
-        g.close();
-      }
-      if (t.h[n] >= 0) {
+      this.token(")");
+    }
+    if (dims !== null) {
+      this.maybeAddDims(null, dims);
+    }
+    if (this.len(t.f[n]) > 0) {
+      g.breakToFill(" ");
+      g.open(this.plusFour);
+      this.visitThrowsClause(t.f[n]);
+      g.close();
+    }
+    if (t.h[n] >= 0) {
+      g.space();
+      this.token("default");
+      if (t.kind[t.h[n]] === N_NEW_ARRAY) {
+        g.open(this.minusFour);
         g.space();
-        this.token("default");
-        if (t.kind[t.h[n]] === N_NEW_ARRAY) {
-          g.open(this.minusFour);
-          g.space();
-          this.scan(t.h[n]);
-          g.close();
-        } else {
-          g.open(this.ZERO);
-          g.breakToFill(" ");
-          this.scan(t.h[n]);
-          g.close();
-        }
+        this.scan(t.h[n]);
+        g.close();
+      } else {
+        g.open(this.ZERO);
+        g.breakToFill(" ");
+        this.scan(t.h[n]);
+        g.close();
       }
     }
     g.close();
@@ -1611,7 +1621,20 @@ export class JVisitor {
     g.open(this.ZERO);
     let afterFirstToken = false;
     if (receiver >= 0) {
-      this.declareOne(DK_PARAMETER, HORIZONTAL, t.a[receiver], t.b[receiver], t.name[receiver], "", "", -1, params.length > 0 ? "," : "", t.d[receiver], false, null);
+      this.declareOne(
+        DK_PARAMETER,
+        HORIZONTAL,
+        t.a[receiver],
+        t.b[receiver],
+        t.name[receiver],
+        "",
+        "",
+        -1,
+        params.length > 0 ? "," : "",
+        t.d[receiver],
+        false,
+        null,
+      );
       afterFirstToken = true;
     }
     for (let i = 0; i < toI32(params.length); i++) {
@@ -1703,7 +1726,21 @@ export class JVisitor {
       base = this.extractDims(t.b[n], d0, true);
       dims = d0;
     }
-    this.declareOne(kind, dir, t.a[n], base, t.name[n], "", equals, initializer, trailing, -1, dims !== null, dims, base);
+    this.declareOne(
+      kind,
+      dir,
+      t.a[n],
+      base,
+      t.name[n],
+      "",
+      equals,
+      initializer,
+      trailing,
+      -1,
+      dims !== null,
+      dims,
+      base,
+    );
   }
 
   /**
@@ -1743,40 +1780,34 @@ export class JVisitor {
       const isVar = p0 >= 0 && this.inp.is(p0, "var") && (!this.inp.is(name, "var") || g.peekIsAt(1, "var"));
       const hasType = type >= 0 || isVar;
       g.open(hasType ? this.plusFour : this.ZERO);
-      {
-        g.open(this.ZERO);
-        {
-          g.open(this.ZERO);
-          {
-            this.visitAnnotations(annotations, false, true);
-            if (hasDims && dimBase >= 0) {
-              this.scan(dimBase);
-              const totalDims = dims.size();
-              g.open(this.plusFour);
-              this.maybeAddDims(null, dims);
-              g.close();
-              baseDims = totalDims - dims.size();
-            } else if (isVar) {
-              this.token("var");
-            } else {
-              this.scan(type);
-            }
-          }
-          g.close();
-          if (hasType) {
-            g.breakOp(INDEPENDENT, " ", this.ZERO, typeBreak);
-          }
-          g.open(g.ifIndent(typeBreak, this.plusFour, this.ZERO));
-          if (receiverExpression >= 0) {
-            this.scan(receiverExpression);
-          } else {
-            this.variableName(name);
-          }
-          g.op(op);
-        }
+      g.open(this.ZERO);
+      g.open(this.ZERO);
+      this.visitAnnotations(annotations, false, true);
+      if (hasDims && dimBase >= 0) {
+        this.scan(dimBase);
+        const totalDims = dims.size();
+        g.open(this.plusFour);
         this.maybeAddDims(null, dims);
         g.close();
+        baseDims = totalDims - dims.size();
+      } else if (isVar) {
+        this.token("var");
+      } else {
+        this.scan(type);
       }
+      g.close();
+      if (hasType) {
+        g.breakOp(INDEPENDENT, " ", this.ZERO, typeBreak);
+      }
+      g.open(g.ifIndent(typeBreak, this.plusFour, this.ZERO));
+      if (receiverExpression >= 0) {
+        this.scan(receiverExpression);
+      } else {
+        this.variableName(name);
+      }
+      g.op(op);
+      this.maybeAddDims(null, dims);
+      g.close();
       g.close();
       if (initializer >= 0) {
         g.space();
@@ -2068,7 +2099,12 @@ export class JVisitor {
     }
   }
 
-  private visitStatement(n: i32, collapseEmpty: boolean, allowLeadingBlank: boolean, allowTrailingBlank: boolean): void {
+  private visitStatement(
+    n: i32,
+    collapseEmpty: boolean,
+    allowLeadingBlank: boolean,
+    allowTrailingBlank: boolean,
+  ): void {
     const g = this.g;
     this.sync(n);
     if (this.t.kind[n] === N_BLOCK) {
@@ -2279,7 +2315,20 @@ export class JVisitor {
           g.forcedBreak();
         }
         if (t.kind[r] === N_VARIABLE) {
-          this.declareOne(DK_PARAMETER, this.fieldAnnotationDirection(t.a[r]), t.a[r], t.b[r], t.name[r], "", "=", t.c[r], "", -1, false, null);
+          this.declareOne(
+            DK_PARAMETER,
+            this.fieldAnnotationDirection(t.a[r]),
+            t.a[r],
+            t.b[r],
+            t.name[r],
+            "",
+            "=",
+            t.c[r],
+            "",
+            -1,
+            false,
+            null,
+          );
         } else {
           this.scan(r);
         }
@@ -2892,7 +2941,13 @@ export class JVisitor {
         const c = toI32(src[i]);
         if (c === 37) {
           this.scFormatString = true;
-        } else if (c === 123 && i + 2 < t.end[n] && toI32(src[i + 1]) >= 48 && toI32(src[i + 1]) <= 57 && toI32(src[i + 2]) === 125) {
+        } else if (
+          c === 123 &&
+          i + 2 < t.end[n] &&
+          toI32(src[i + 1]) >= 48 &&
+          toI32(src[i + 1]) <= 57 &&
+          toI32(src[i + 2]) === 125
+        ) {
           this.scFormatString = true;
         }
       }
@@ -3216,7 +3271,12 @@ export class JVisitor {
       return false;
     }
     const name = this.methodName(e);
-    if (t.kind[t.b[e]] !== N_IDENTIFIER || this.inp.width(this.inp.tPos[name], this.inp.tEnd[name]) > 4 || this.len(t.a[e]) > 0 || this.len(t.c[e]) !== 1) {
+    if (
+      t.kind[t.b[e]] !== N_IDENTIFIER ||
+      this.inp.width(this.inp.tPos[name], this.inp.tEnd[name]) > 4 ||
+      this.len(t.a[e]) > 0 ||
+      this.len(t.c[e]) !== 1
+    ) {
       return false;
     }
     g.open(this.ZERO);

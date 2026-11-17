@@ -90,12 +90,14 @@ const PASS_FAIL: i32 = 0;
 const PASS_OK: i32 = 1;
 const PASS_RESTART: i32 = 2;
 
-const isNameByte = (c: i32): boolean => (c >= 48 && c <= 58) || (c >= 65 && c <= 90) || (c >= 97 && c <= 122) || c === 95;
+const isNameByte = (c: i32): boolean =>
+  (c >= 48 && c <= 58) || (c >= 65 && c <= 90) || (c >= 97 && c <= 122) || c === 95;
 
 const isBlankByte = (c: i32): boolean => c === 32 || c === 9 || c === 11 || c === 12 || c === 13;
 
 /** ASCII punctuation, as C's ispunct. */
-const isPunct = (c: i32): boolean => (c >= 33 && c <= 47) || (c >= 58 && c <= 64) || (c >= 91 && c <= 96) || (c >= 123 && c <= 126);
+const isPunct = (c: i32): boolean =>
+  (c >= 33 && c <= 47) || (c >= 58 && c <= 64) || (c >= 91 && c <= 96) || (c >= 123 && c <= 126);
 
 /** Bytes in the UTF-8 sequence led by `c`. */
 const utf8LenOf = (c: i32): i32 => (c < 0xc0 ? 1 : c < 0xe0 ? 2 : c < 0xf0 ? 3 : 4);
@@ -378,12 +380,18 @@ export class Formatter {
     const ext = dot >= 0 ? base.slice(dot) : "";
     this.fileStem = lower(dot > 0 ? base.slice(0, dot) : base);
     this.fileName = lower(base);
-    this.isMainFile = ext === ".c" || ext === ".cc" || ext === ".cpp" || ext === ".c++" || ext === ".cxx" || ext === ".m" || ext === ".mm";
+    this.isMainFile =
+      ext === ".c" ||
+      ext === ".cc" ||
+      ext === ".cpp" ||
+      ext === ".c++" ||
+      ext === ".cxx" ||
+      ext === ".m" ||
+      ext === ".mm";
     // clang-format formats these as Objective-C when they hold any (its
     // guessLanguage); only Objective-C constructs tell the two apart.
     this.d.objcLang = ext === ".h" || ext === "" || ext === ".m" || ext === ".mm";
   }
-
 
   /**
    * Whether header name `quoted` (with its quotes) names this source file's own header, by
@@ -961,7 +969,12 @@ export class Formatter {
       }
     }
     // (Not after a macro body's last line, from outside it.)
-    if (prev >= 0 && this.isAccessKeyword(prev) && !this.isAccessKeyword(l) && !(d.inPP[d.lFirst[prev]] === 1 && d.unesc[f] === 1)) {
+    if (
+      prev >= 0 &&
+      this.isAccessKeyword(prev) &&
+      !this.isAccessKeyword(l) &&
+      !(d.inPP[d.lFirst[prev]] === 1 && d.unesc[f] === 1)
+    ) {
       nl = 1;
     }
     return nl;
@@ -1017,7 +1030,13 @@ export class Formatter {
         const nb = d.lSibling[b];
         const single = !(nb >= 0 && d.ppId[d.lFirst[nb]] === f);
         const last = d.lLast[l];
-        if (single && !(d.kind[last] === K_COMMENT && d.type[last] === TT_LINE_COMMENT) && d.mustBreak[d.lFirst[b]] === 0 && !this.lineOff(l) && !this.lineOff(b)) {
+        if (
+          single &&
+          !(d.kind[last] === K_COMMENT && d.type[last] === TT_LINE_COMMENT) &&
+          d.mustBreak[d.lFirst[b]] === 0 &&
+          !this.lineOff(l) &&
+          !this.lineOff(b)
+        ) {
           an.annotate(l);
           an.annotate(b);
           let limit = d.opts.columnLimit;
@@ -1036,9 +1055,20 @@ export class Formatter {
           // clang-format reads as the rest of the directive.
           // (A body of comments alone is the define line's trailing comment.)
           const bl = d.lLast[b];
-          if (nb >= 0 && d.kind[bl] === K_COMMENT && d.type[bl] === TT_LINE_COMMENT && d.kind[d.lFirst[b]] !== K_COMMENT) {
+          if (
+            nb >= 0 &&
+            d.kind[bl] === K_COMMENT &&
+            d.type[bl] === TT_LINE_COMMENT &&
+            d.kind[d.lFirst[b]] !== K_COMMENT
+          ) {
             const c = d.lFirst[nb];
-            if (c === bl + 1 && d.kind[c] === K_COMMENT && d.type[c] === TT_LINE_COMMENT && d.nl[c] === 1 && this.origColumn(c) >= this.origColumn(bl)) {
+            if (
+              c === bl + 1 &&
+              d.kind[c] === K_COMMENT &&
+              d.type[c] === TT_LINE_COMMENT &&
+              d.nl[c] === 1 &&
+              this.origColumn(c) >= this.origColumn(bl)
+            ) {
               forced = true;
             }
           }
@@ -1060,11 +1090,24 @@ export class Formatter {
     const d = this.d;
     const f = d.lFirst[l];
     const lp = d.nxt[f];
-    if (d.kind[f] !== K_IDENT || lp < 0 || d.kind[lp] !== P_LPAREN || d.lType[l] !== LT_OTHER || d.inPP[f] === 1 || !this.words.allCaps(f)) {
+    if (
+      d.kind[f] !== K_IDENT ||
+      lp < 0 ||
+      d.kind[lp] !== P_LPAREN ||
+      d.lType[l] !== LT_OTHER ||
+      d.inPP[f] === 1 ||
+      !this.words.allCaps(f)
+    ) {
       return;
     }
     const rp = d.match[lp];
-    if (rp < 0 || start + 1 >= this.nem || this.emTok[start] !== f || this.emTok[start + 1] !== lp || this.emCol[start + 1] <= this.emCol[start] + d.width[f]) {
+    if (
+      rp < 0 ||
+      start + 1 >= this.nem ||
+      this.emTok[start] !== f ||
+      this.emTok[start + 1] !== lp ||
+      this.emCol[start + 1] <= this.emCol[start] + d.width[f]
+    ) {
       return;
     }
     let i = start + 1;
@@ -1075,7 +1118,13 @@ export class Formatter {
       i++;
     }
     const n = d.nxt[rp];
-    if (i + 1 >= this.nem || n < 0 || this.emTok[i + 1] !== n || this.emNl[i + 1] === 0 || !this.words.canStartNewLine(n)) {
+    if (
+      i + 1 >= this.nem ||
+      n < 0 ||
+      this.emTok[i + 1] !== n ||
+      this.emNl[i + 1] === 0 ||
+      !this.words.canStartNewLine(n)
+    ) {
       return;
     }
     for (let k = start + 1; k <= i; k++) {
@@ -1099,7 +1148,14 @@ export class Formatter {
       return true;
     }
     if (d.lFirst[l] === d.lLast[l]) {
-      return d.kind[d.lLast[prevL]] === KW_ELSE || pf === KW_IF || pf === KW_ELSE || pf === KW_WHILE || pf === KW_DO || pf === KW_FOR;
+      return (
+        d.kind[d.lLast[prevL]] === KW_ELSE ||
+        pf === KW_IF ||
+        pf === KW_ELSE ||
+        pf === KW_WHILE ||
+        pf === KW_DO ||
+        pf === KW_FOR
+      );
     }
     return false;
   }
@@ -1215,20 +1271,40 @@ export class Formatter {
       // A directive inside the line follows it for clang-format: no merge.
       // (A line with off tokens still merges an empty `{}` after them.)
       const offL = a >= 0 && this.lineOff(l);
-      if (a >= 0 && d.kind[last] === P_LBRACE && d.bk[last] === BK_BLOCK && d.type[last] !== TT_LINE_COMMENT && (!offL || (this.hasOff && this.offTok[last] !== 1 && d.lInvalid[l] === 0 && d.kind[d.lFirst[a]] === P_RBRACE)) && !this.lineOff(a) && !this.hasInnerDirective(l)) {
+      if (
+        a >= 0 &&
+        d.kind[last] === P_LBRACE &&
+        d.bk[last] === BK_BLOCK &&
+        d.type[last] !== TT_LINE_COMMENT &&
+        (!offL ||
+          (this.hasOff && this.offTok[last] !== 1 && d.lInvalid[l] === 0 && d.kind[d.lFirst[a]] === P_RBRACE)) &&
+        !this.lineOff(a) &&
+        !this.hasInnerDirective(l)
+      ) {
         const tt = d.type[last];
         const lineStart = d.lFirst[l];
         const isFunction = tt === TT_FUNCTION_LBRACE;
         const isRecord = tt === TT_CLASS_LBRACE || tt === TT_STRUCT_LBRACE || tt === TT_UNION_LBRACE;
         // (clang-format's startsWithNamespace: any line starting with it.)
-        const isNamespace = tt === TT_NAMESPACE_LBRACE || d.kind[lineStart] === KW_NAMESPACE || (d.kind[lineStart] === KW_INLINE && d.nxt[lineStart] >= 0 && d.kind[d.nxt[lineStart]] === KW_NAMESPACE);
+        const isNamespace =
+          tt === TT_NAMESPACE_LBRACE ||
+          d.kind[lineStart] === KW_NAMESPACE ||
+          (d.kind[lineStart] === KW_INLINE && d.nxt[lineStart] >= 0 && d.kind[d.nxt[lineStart]] === KW_NAMESPACE);
         const isControl = tt === TT_CONTROL_STATEMENT_LBRACE || tt === TT_ELSE_LBRACE;
         const af = d.lFirst[a];
         const emptyBody = d.kind[af] === P_RBRACE && d.lOpen[a] === l;
         const lineIsBlockOnly = lineStart === last;
         // A block opened on a `case`/`default:` line is never merged.
-        const caseLine = d.kind[lineStart] === KW_CASE || (d.kind[lineStart] === KW_DEFAULT && d.nxt[lineStart] >= 0 && d.kind[d.nxt[lineStart]] === P_COLON);
-        if (!isControl && (!lineIsBlockOnly || !this.braceAfterLabelOrControl(l, prevL)) && !caseLine && emptyBody && !this.hasTrailingLineComment(l)) {
+        const caseLine =
+          d.kind[lineStart] === KW_CASE ||
+          (d.kind[lineStart] === KW_DEFAULT && d.nxt[lineStart] >= 0 && d.kind[d.nxt[lineStart]] === P_COLON);
+        if (
+          !isControl &&
+          (!lineIsBlockOnly || !this.braceAfterLabelOrControl(l, prevL)) &&
+          !caseLine &&
+          emptyBody &&
+          !this.hasTrailingLineComment(l)
+        ) {
           // `{}` (and `{};`): always one line.
           let after = d.nxt[af];
           while (after >= 0 && d.kind[after] === K_COMMENT) {
@@ -1252,7 +1328,15 @@ export class Formatter {
           fnc = d.nxt[fnc];
         }
         const fk0 = d.kind[fnc];
-        const ctrlFirst = fk0 === KW_IF || fk0 === KW_ELSE || fk0 === KW_WHILE || fk0 === KW_DO || fk0 === KW_FOR || fk0 === KW_TRY || fk0 === KW_CATCH || fk0 === P_RBRACE;
+        const ctrlFirst =
+          fk0 === KW_IF ||
+          fk0 === KW_ELSE ||
+          fk0 === KW_WHILE ||
+          fk0 === KW_DO ||
+          fk0 === KW_FOR ||
+          fk0 === KW_TRY ||
+          fk0 === KW_CATCH ||
+          fk0 === P_RBRACE;
         if (isFunction && !ctrlFirst && !lineIsBlockOnly && !emptyBody && !isRecord && !isNamespace && !offL) {
           const b = d.lSibling[a];
           if (b >= 0 && !this.lineOff(b) && this.canMergeBody(l, a, b, base)) {
@@ -1265,9 +1349,29 @@ export class Formatter {
         // tryMergeSimpleBlock merges a one-line body when it fits, except a
         // `{` alone after a control statement or `else`.
         const fk = d.kind[fnc];
-        const ctrl = fk === KW_IF || fk === KW_ELSE || fk === KW_WHILE || fk === KW_DO || fk === KW_FOR || fk === KW_TRY || fk === KW_CATCH || fk === P_RBRACE || fk === KW_CASE || fk === KW_DEFAULT || fk === KW_EXTERN;
+        const ctrl =
+          fk === KW_IF ||
+          fk === KW_ELSE ||
+          fk === KW_WHILE ||
+          fk === KW_DO ||
+          fk === KW_FOR ||
+          fk === KW_TRY ||
+          fk === KW_CATCH ||
+          fk === P_RBRACE ||
+          fk === KW_CASE ||
+          fk === KW_DEFAULT ||
+          fk === KW_EXTERN;
         const blockLike = tt === TT_UNKNOWN || (tt === TT_CONTROL_STATEMENT_LBRACE && fk === KW_SWITCH);
-        if (blockLike && !ctrl && !emptyBody && !isFunction && !isRecord && !isNamespace && d.lType[l] !== LT_PREPROCESSOR && !offL) {
+        if (
+          blockLike &&
+          !ctrl &&
+          !emptyBody &&
+          !isFunction &&
+          !isRecord &&
+          !isNamespace &&
+          d.lType[l] !== LT_PREPROCESSOR &&
+          !offL
+        ) {
           const afterCtrl = fk === P_LBRACE && this.braceAfterLabelOrControl(l, prevL);
           const b = d.lSibling[a];
           if (!afterCtrl && b >= 0 && !this.lineOff(b) && this.canMergeBody(l, a, b, base)) {
@@ -1280,21 +1384,51 @@ export class Formatter {
           }
         }
       }
-      if (a >= 0 && d.kind[last] === K_COMMENT && d.type[last] !== TT_LINE_COMMENT && !this.lineOff(l) && !this.lineOff(a) && this.emptyFunctionAfterComment(l, a)) {
+      if (
+        a >= 0 &&
+        d.kind[last] === K_COMMENT &&
+        d.type[last] !== TT_LINE_COMMENT &&
+        !this.lineOff(l) &&
+        !this.lineOff(a) &&
+        this.emptyFunctionAfterComment(l, a)
+      ) {
         // `void f() { /* nothing */ }`: clang-format looks past trailing
         // block comments for a function's `{` and merges its empty body.
         this.joinInto(l, a);
         continue;
       }
-      if (a >= 0 && d.kind[last] === K_COMMENT && d.type[last] !== TT_LINE_COMMENT && !this.lineOff(l) && !this.lineOff(a) && !this.hasInnerDirective(l)) {
+      if (
+        a >= 0 &&
+        d.kind[last] === K_COMMENT &&
+        d.type[last] !== TT_LINE_COMMENT &&
+        !this.lineOff(l) &&
+        !this.lineOff(a) &&
+        !this.hasInnerDirective(l)
+      ) {
         // `int f() { /* c */ return 1; }`: so does it for a one-line body.
         let lnc = last;
         while (lnc >= 0 && d.kind[lnc] === K_COMMENT) {
           lnc = d.prv[lnc];
         }
         const fk1 = d.kind[d.lFirst[l]];
-        const ctrl1 = fk1 === KW_IF || fk1 === KW_ELSE || fk1 === KW_WHILE || fk1 === KW_DO || fk1 === KW_FOR || fk1 === KW_TRY || fk1 === KW_CATCH || fk1 === P_RBRACE;
-        if (lnc >= 0 && lnc !== d.lFirst[l] && d.kind[lnc] === P_LBRACE && d.type[lnc] === TT_FUNCTION_LBRACE && !ctrl1 && !this.hasTrailingLineComment(l) && d.kind[d.lFirst[a]] !== P_RBRACE) {
+        const ctrl1 =
+          fk1 === KW_IF ||
+          fk1 === KW_ELSE ||
+          fk1 === KW_WHILE ||
+          fk1 === KW_DO ||
+          fk1 === KW_FOR ||
+          fk1 === KW_TRY ||
+          fk1 === KW_CATCH ||
+          fk1 === P_RBRACE;
+        if (
+          lnc >= 0 &&
+          lnc !== d.lFirst[l] &&
+          d.kind[lnc] === P_LBRACE &&
+          d.type[lnc] === TT_FUNCTION_LBRACE &&
+          !ctrl1 &&
+          !this.hasTrailingLineComment(l) &&
+          d.kind[d.lFirst[a]] !== P_RBRACE
+        ) {
           const b = d.lSibling[a];
           if (b >= 0 && !this.lineOff(b) && this.canMergeBody(l, a, b, base)) {
             this.joinInto(l, a);
@@ -1333,7 +1467,8 @@ export class Formatter {
       const l = lines[i];
       const f = d.lFirst[l];
       // isInlineDirective, from the line after it that is no directive.
-      const ppLike = d.lType[l] === LT_PREPROCESSOR || d.lType[l] === LT_IMPORT || d.lPP[l] === 1 || d.lInlineCmt[l] === 1;
+      const ppLike =
+        d.lType[l] === LT_PREPROCESSOR || d.lType[l] === LT_IMPORT || d.lPP[l] === 1 || d.lInlineCmt[l] === 1;
       const inlineHere = ppLike && afterNonPP >= 0 && afterNonPP < f;
       if (!ppLike) {
         afterNonPP = f;
@@ -1647,7 +1782,13 @@ export class Formatter {
     limit = limit - tl;
     // A macro going on past the `}` keeps room for its ` \` (limitConsideringMacros).
     const nb = d.lSibling[b];
-    if (d.lPP[b] === 1 && nb >= 0 && d.lPP[nb] === 1 && d.ppId[d.lFirst[nb]] === d.ppId[bf] && d.unesc[d.lFirst[nb]] === 0) {
+    if (
+      d.lPP[b] === 1 &&
+      nb >= 0 &&
+      d.lPP[nb] === 1 &&
+      d.ppId[d.lFirst[nb]] === d.ppId[bf] &&
+      d.unesc[d.lFirst[nb]] === 0
+    ) {
       limit = limit < 2 ? 0 : limit - 2;
     }
     if (an.mustB[d.lFirst[a]] === 1 || an.mustB[bf] === 1) {
@@ -1805,7 +1946,13 @@ export class Formatter {
         }
         inlineLine = inlinePP;
         // A directive inside a statement keeps its own newlines, as any line.
-        const nl = inlinePP ? (d.nl[f] > 2 ? 2 : d.nl[f] < 1 ? 1 : d.nl[f]) : this.newlinesBefore(l, prev, prev < 0, nested);
+        const nl = inlinePP
+          ? d.nl[f] > 2
+            ? 2
+            : d.nl[f] < 1
+              ? 1
+              : d.nl[f]
+          : this.newlinesBefore(l, prev, prev < 0, nested);
         const ind = this.indentOf(l, base);
         this.firstEmitted = true;
         this.ind.fm = this;
@@ -1884,7 +2031,10 @@ export class Formatter {
       h = this.idNext[l];
     } else {
       h = d.lSibling[l];
-      while (h >= 0 && (d.lType[h] === LT_PREPROCESSOR || d.lType[h] === LT_IMPORT || d.lPP[h] === 1 || d.lInlineCmt[h] === 1)) {
+      while (
+        h >= 0 &&
+        (d.lType[h] === LT_PREPROCESSOR || d.lType[h] === LT_IMPORT || d.lPP[h] === 1 || d.lInlineCmt[h] === 1)
+      ) {
         h = d.lSibling[h];
       }
       for (let x = d.lSibling[l]; x >= 0 && x !== h; x = d.lSibling[x]) {
@@ -2001,7 +2151,14 @@ export class Formatter {
     for (let t = d.lFirst[l]; t >= 0; t = d.nxt[t]) {
       let c = d.col[t];
       const p = d.prv[t];
-      if (t !== d.lFirst[l] && d.nl[t] === 0 && d.kind[t] === K_COMMENT && p >= 0 && d.multi[p] === 0 && this.offMarker(t) === 2) {
+      if (
+        t !== d.lFirst[l] &&
+        d.nl[t] === 0 &&
+        d.kind[t] === K_COMMENT &&
+        p >= 0 &&
+        d.multi[p] === 0 &&
+        this.offMarker(t) === 2
+      ) {
         // A trailing `clang-format on` is formatted: one space before it.
         c = d.col[p] + d.width[p] + 1;
       }
@@ -2337,7 +2494,12 @@ export class Formatter {
           unreach.pop();
         }
       }
-      const v = d.inPP[t] === 1 || d.kind[t] === K_EOF || unreach.length === 0 || unreach[unreach.length - 1] === 0 || this.readWithDirective(t);
+      const v =
+        d.inPP[t] === 1 ||
+        d.kind[t] === K_EOF ||
+        unreach.length === 0 ||
+        unreach[unreach.length - 1] === 0 ||
+        this.readWithDirective(t);
       vis[t] = v ? 1 : 0;
       if (!v) {
         all = false;
@@ -2512,7 +2674,11 @@ export class Formatter {
         depth++;
       } else if (k === P_RBRACE) {
         depth--;
-      } else if (depth === 0 && this.sInPP[q] === 0 && (k === P_SEMI || k === KW_IF || k === KW_WHILE || k === KW_FOR || k === KW_SWITCH || k === KW_TRY)) {
+      } else if (
+        depth === 0 &&
+        this.sInPP[q] === 0 &&
+        (k === P_SEMI || k === KW_IF || k === KW_WHILE || k === KW_FOR || k === KW_SWITCH || k === KW_TRY)
+      ) {
         return 1;
       }
     }
@@ -2798,13 +2964,13 @@ export class Formatter {
     if (text.indexOf("include") < 0 && text.indexOf("import") < 0) {
       return false;
     }
-    const anyRaw = text.indexOf("R\"") >= 0;
+    const anyRaw = text.indexOf('R"') >= 0;
     let prev = n >= 3 && toI32(d.src[0]) === 0xef && toI32(d.src[1]) === 0xbb && toI32(d.src[2]) === 0xbf ? 3 : 0;
     let searchFrom = 0;
     let firstBlock = true;
     let mainFound = false;
     let off = false;
-    let rawTerm = ")\"";
+    let rawTerm = ')"';
     while (true) {
       let pos = text.indexOf("\n", searchFrom);
       let lineEnd = pos >= 0 ? pos : n;
@@ -3062,7 +3228,7 @@ export class Formatter {
         j++;
       }
       if (j < e && toI32(src[j]) === 40) {
-        return ")" + String.fromBytes(src, i + 2, j) + "\"";
+        return ")" + String.fromBytes(src, i + 2, j) + '"';
       }
     }
     return "";
@@ -3073,7 +3239,12 @@ export class Formatter {
     if (e - a < 2 || toI32(this.d.src[a]) !== 47) {
       return false;
     }
-    return this.textIs(a, e, "/* clang-format off */") || this.markerAt(a, e, "// clang-format off") || this.textIs(a, e, "/* nishfmt off */") || this.markerAt(a, e, "// nishfmt off");
+    return (
+      this.textIs(a, e, "/* clang-format off */") ||
+      this.markerAt(a, e, "// clang-format off") ||
+      this.textIs(a, e, "/* nishfmt off */") ||
+      this.markerAt(a, e, "// nishfmt off")
+    );
   }
 
   /** Whether trimmed line [a, e) turns formatting back on. */
@@ -3081,7 +3252,12 @@ export class Formatter {
     if (e - a < 2 || toI32(this.d.src[a]) !== 47) {
       return false;
     }
-    return this.textIs(a, e, "/* clang-format on */") || this.markerAt(a, e, "// clang-format on") || this.textIs(a, e, "/* nishfmt on */") || this.markerAt(a, e, "// nishfmt on");
+    return (
+      this.textIs(a, e, "/* clang-format on */") ||
+      this.markerAt(a, e, "// clang-format on") ||
+      this.textIs(a, e, "/* nishfmt on */") ||
+      this.markerAt(a, e, "// nishfmt on")
+    );
   }
 
   /** Whether [a, e) is `m`, or starts with `m` then `:`. */
@@ -3153,8 +3329,6 @@ export class Formatter {
     return -1;
   }
 
-
-
   // ---- Chained conditionals ------------------------------------------------
 
   /**
@@ -3197,7 +3371,9 @@ export class Formatter {
       for (let k = a.fkHead[t]; k >= 0; k = a.fkNext[k]) {
         // Outermost first; the first is the one a chain may continue.
         const p = d.prv[t];
-        const nested = a.fkPrec[k] === PREC_CONDITIONAL && !(first && p >= 0 && d.type[p] === TT_CONDITIONAL_EXPR && d.kind[p] === P_COLON);
+        const nested =
+          a.fkPrec[k] === PREC_CONDITIONAL &&
+          !(first && p >= 0 && d.type[p] === TT_CONDITIONAL_EXPR && d.kind[p] === P_COLON);
         if (nested) {
           cl++;
         }
@@ -3421,47 +3597,117 @@ export class Formatter {
       let joined = false;
       // (Under a directive comment an earlier pass formatted: where that
       // pass left it.)
-      if (t >= 0 && i > 0 && this.isFin(i - 1) && this.emNl[i] === 1 && d.nl[t] === 1 && d.kind[t] === K_COMMENT && d.type[t] === TT_LINE_COMMENT && d.inPP[t] === 0 && !this.verbatimAt(i)) {
+      if (
+        t >= 0 &&
+        i > 0 &&
+        this.isFin(i - 1) &&
+        this.emNl[i] === 1 &&
+        d.nl[t] === 1 &&
+        d.kind[t] === K_COMMENT &&
+        d.type[t] === TT_LINE_COMMENT &&
+        d.inPP[t] === 0 &&
+        !this.verbatimAt(i)
+      ) {
         const pt = this.emTok[i - 1];
-        if (pt >= 0 && d.kind[pt] === K_COMMENT && d.type[pt] === TT_LINE_COMMENT && d.inPP[pt] === 1 && d.prv[pt] >= 0 && this.origColumn(t) >= this.origColumn(pt) && this.finCol[this.map[pt]] >= 0) {
+        if (
+          pt >= 0 &&
+          d.kind[pt] === K_COMMENT &&
+          d.type[pt] === TT_LINE_COMMENT &&
+          d.inPP[pt] === 1 &&
+          d.prv[pt] >= 0 &&
+          this.origColumn(t) >= this.origColumn(pt) &&
+          this.finCol[this.map[pt]] >= 0
+        ) {
           joined = true;
           this.emCol[i] = this.finCol[this.map[pt]];
         }
       }
-      if (!joined && t >= 0 && pi >= 0 && pi === i - 1 && this.emNl[i] === 1 && d.nl[t] === 1 && d.kind[t] === K_COMMENT && d.type[t] === TT_LINE_COMMENT && d.inPP[t] === 0 && !this.verbatimAt(i)) {
+      if (
+        !joined &&
+        t >= 0 &&
+        pi >= 0 &&
+        pi === i - 1 &&
+        this.emNl[i] === 1 &&
+        d.nl[t] === 1 &&
+        d.kind[t] === K_COMMENT &&
+        d.type[t] === TT_LINE_COMMENT &&
+        d.inPP[t] === 0 &&
+        !this.verbatimAt(i)
+      ) {
         const pt = this.emTok[i - 1];
-        if (pt >= 0 && d.kind[pt] === K_COMMENT && d.type[pt] === TT_LINE_COMMENT && (d.inPP[pt] === 1 || prevJoined) && this.origColumn(t) >= this.origColumn(pt)) {
+        if (
+          pt >= 0 &&
+          d.kind[pt] === K_COMMENT &&
+          d.type[pt] === TT_LINE_COMMENT &&
+          (d.inPP[pt] === 1 || prevJoined) &&
+          this.origColumn(t) >= this.origColumn(pt)
+        ) {
           joined = true;
           this.emCol[i] = this.emCol[i - 1];
         }
       }
       prevJoined = joined;
       const cmin = this.emCol[i];
-      let w = t >= 0 ? (d.kind[t] === K_COMMENT && d.multi[t] === 0 ? d.end[t] - d.start[t] : d.width[t]) : this.emWidth(t);
+      let w =
+        t >= 0 ? (d.kind[t] === K_COMMENT && d.multi[t] === 0 ? d.end[t] - d.start[t] : d.width[t]) : this.emWidth(t);
       // (An include line's comment is never split.)
       if (i <= secEnd) {
         // A line of a section reflowed below: the section's widest line.
         w = secW;
-      } else if (t >= 0 && d.kind[t] === K_COMMENT && d.type[t] === TT_LINE_COMMENT && !this.verbatimAt(i) && !(d.ppId[t] >= 0 && d.ppKind[d.ppId[t]] === PP_INCLUDE) && d.opts.reflowComments && i + 1 < n && this.continuesSection(i + 1) && this.sectionOverflows(i, cmin)) {
+      } else if (
+        t >= 0 &&
+        d.kind[t] === K_COMMENT &&
+        d.type[t] === TT_LINE_COMMENT &&
+        !this.verbatimAt(i) &&
+        !(d.ppId[t] >= 0 && d.ppKind[d.ppId[t]] === PP_INCLUDE) &&
+        d.opts.reflowComments &&
+        i + 1 < n &&
+        this.continuesSection(i + 1) &&
+        this.sectionOverflows(i, cmin)
+      ) {
         // A section that must reflow: clang-format reflows it where the line
         // formatter put it, and each of its lines takes part.
         w = this.secW;
         secW = w;
         secEnd = this.secEnd;
-      } else if (t >= 0 && d.kind[t] === K_COMMENT && d.type[t] === TT_LINE_COMMENT && !this.verbatimAt(i) && !(d.ppId[t] >= 0 && d.ppKind[d.ppId[t]] === PP_INCLUDE)) {
+      } else if (
+        t >= 0 &&
+        d.kind[t] === K_COMMENT &&
+        d.type[t] === TT_LINE_COMMENT &&
+        !this.verbatimAt(i) &&
+        !(d.ppId[t] >= 0 && d.ppKind[d.ppId[t]] === PP_INCLUDE)
+      ) {
         w = this.commentPieceMax(t, cmin);
-      } else if (t >= 0 && d.kind[t] === K_COMMENT && d.type[t] === TT_BLOCK_COMMENT && d.multi[t] === 0 && d.inPP[t] === 0 && cmin + d.width[t] > lim && !this.verbatimAt(i)) {
+      } else if (
+        t >= 0 &&
+        d.kind[t] === K_COMMENT &&
+        d.type[t] === TT_BLOCK_COMMENT &&
+        d.multi[t] === 0 &&
+        d.inPP[t] === 0 &&
+        cmin + d.width[t] > lim &&
+        !this.verbatimAt(i)
+      ) {
         // A block comment reflowed to fit: its first line counts.
         this.blockCommentPenalty(t, cmin);
         w = this.bcFirstW;
-      } else if (t >= 0 && d.kind[t] === K_COMMENT && d.type[t] === TT_BLOCK_COMMENT && d.multi[t] === 1 && d.inPP[t] === 1 && !this.verbatimAt(i)) {
+      } else if (
+        t >= 0 &&
+        d.kind[t] === K_COMMENT &&
+        d.type[t] === TT_BLOCK_COMMENT &&
+        d.multi[t] === 1 &&
+        d.inPP[t] === 1 &&
+        !this.verbatimAt(i)
+      ) {
         // Over several lines of a directive: its first line, without the
         // blanks and the backslash that end it.
         let q = d.start[t];
         while (q < d.end[t] && d.at(q) !== 10) {
           q++;
         }
-        while (q > d.start[t] && (d.at(q - 1) === 32 || d.at(q - 1) === 9 || d.at(q - 1) === 13 || d.at(q - 1) === 92)) {
+        while (
+          q > d.start[t] &&
+          (d.at(q - 1) === 32 || d.at(q - 1) === 9 || d.at(q - 1) === 13 || d.at(q - 1) === 92)
+        ) {
           q--;
         }
         w = q - d.start[t];
@@ -3497,7 +3743,14 @@ export class Formatter {
         minCol = 0;
         maxCol = 1 << 30;
         startSeq = i + 1;
-      } else if (breakBeforeNext || newlines > 1 || cmin > maxCol || cmax < minCol || (this.emNl[i] === 1 && pi >= 0 && (!this.isTrailingAt(pi) || this.endsInTokenChange(pi))) || wasAligned) {
+      } else if (
+        breakBeforeNext ||
+        newlines > 1 ||
+        cmin > maxCol ||
+        cmax < minCol ||
+        (this.emNl[i] === 1 && pi >= 0 && (!this.isTrailingAt(pi) || this.endsInTokenChange(pi))) ||
+        wasAligned
+      ) {
         this.alignRun(startSeq, i, minCol);
         minCol = cmin;
         maxCol = cmax;
@@ -3525,7 +3778,13 @@ export class Formatter {
   endsInTokenChange(i: i32): boolean {
     const d = this.d;
     const t = this.emTok[i];
-    if (t < 0 || d.kind[t] !== K_COMMENT || d.type[t] !== TT_LINE_COMMENT || this.verbatimAt(i) || !d.opts.reflowComments) {
+    if (
+      t < 0 ||
+      d.kind[t] !== K_COMMENT ||
+      d.type[t] !== TT_LINE_COMMENT ||
+      this.verbatimAt(i) ||
+      !d.opts.reflowComments
+    ) {
       return false;
     }
     this.lineGeom(t, this.emCol[i]);
@@ -3640,12 +3899,15 @@ export class Formatter {
     const n = this.emTok[i + 1];
     // (A block comment over several lines is trailing by its own line
     // breaks: clang-format re-indents them with changes inside the token.)
-    return this.emNl[i + 1] > 0 || (n >= 0 && this.d.kind[n] === K_EOF) || (t >= 0 && this.d.multi[t] === 1 && this.d.type[t] === TT_BLOCK_COMMENT && !this.verbatimAt(i));
+    return (
+      this.emNl[i + 1] > 0 ||
+      (n >= 0 && this.d.kind[n] === K_EOF) ||
+      (t >= 0 && this.d.multi[t] === 1 && this.d.type[t] === TT_BLOCK_COMMENT && !this.verbatimAt(i))
+    );
   }
 
   /** The column a trailing comment at `i` needs: one past the code before it. */
   minCommentCol(i: i32): i32 {
-
     const p = this.emTok[i - 1];
     return this.emCol[i - 1] + this.emWidth(p) + 1;
   }
@@ -3712,7 +3974,13 @@ export class Formatter {
           out.spaces(c0);
           col = c0;
           // (A block comment over the limit is reflowed there too.)
-          if (t >= 0 && d.kind[t] === K_COMMENT && d.type[t] !== TT_LINE_COMMENT && (d.multi[t] === 1 || c0 + d.width[t] > d.opts.columnLimit - 2) && !this.verbatimAt(i)) {
+          if (
+            t >= 0 &&
+            d.kind[t] === K_COMMENT &&
+            d.type[t] !== TT_LINE_COMMENT &&
+            (d.multi[t] === 1 || c0 + d.width[t] > d.opts.columnLimit - 2) &&
+            !this.verbatimAt(i)
+          ) {
             col = this.writeComment(out, t, col, i);
             continue;
           }
@@ -3822,10 +4090,21 @@ export class Formatter {
       const inInclude = d.ppId[t] >= 0 && d.ppKind[d.ppId[t]] === PP_INCLUDE;
       // (A line comment a backslash spliced over lines is written as it is:
       // clang-format's multiline token.)
-      if (d.kind[t] === K_COMMENT && d.type[t] === TT_LINE_COMMENT && !this.verbatimAt(i) && !inInclude && d.multi[t] === 0) {
+      if (
+        d.kind[t] === K_COMMENT &&
+        d.type[t] === TT_LINE_COMMENT &&
+        !this.verbatimAt(i) &&
+        !inInclude &&
+        d.multi[t] === 0
+      ) {
         // `//x` gets its space, which takes a comment that just fit past the
         // limit: the next run lays the line out with it.
-        if (!this.rerun && d.opts.reflowComments && col + d.width[t] <= d.opts.columnLimit && col + d.width[t] + this.missingCommentSpace(t) > d.opts.columnLimit) {
+        if (
+          !this.rerun &&
+          d.opts.reflowComments &&
+          col + d.width[t] <= d.opts.columnLimit &&
+          col + d.width[t] + this.missingCommentSpace(t) > d.opts.columnLimit
+        ) {
           this.rerun = true;
         }
         const o0 = out.n;
@@ -3947,7 +4226,10 @@ export class Formatter {
       return false;
     }
     const d = this.d;
-    if (d.kind[t] === P_HASH && (d.ppKind[t] === PP_IF || d.ppKind[t] === PP_ELIF || d.ppKind[t] === PP_ELSE || d.ppKind[t] === PP_ENDIF)) {
+    if (
+      d.kind[t] === P_HASH &&
+      (d.ppKind[t] === PP_IF || d.ppKind[t] === PP_ELIF || d.ppKind[t] === PP_ELSE || d.ppKind[t] === PP_ENDIF)
+    ) {
       return false;
     }
     return this.seenBefore[this.map[t]] === 1;
@@ -3969,7 +4251,12 @@ export class Formatter {
   writeComment(out: Out, t: i32, col: i32, i: i32): i32 {
     const d = this.d;
     if (d.type[t] !== TT_LINE_COMMENT) {
-      if (d.opts.reflowComments && d.inPP[t] === 0 && this.offMarker(t) === 0 && (d.multi[t] === 1 || col + d.width[t] + this.unbreakableTail(t) > d.opts.columnLimit)) {
+      if (
+        d.opts.reflowComments &&
+        d.inPP[t] === 0 &&
+        this.offMarker(t) === 0 &&
+        (d.multi[t] === 1 || col + d.width[t] + this.unbreakableTail(t) > d.opts.columnLimit)
+      ) {
         const pre0 = i >= 0 && i < this.nem ? this.emColPre[i] : col;
         if (pre0 < col) {
           // Reflowed where the line formatter put it; trailing comment
@@ -4001,7 +4288,14 @@ export class Formatter {
       // comments were aligned; an include's comment never breaks.)
       const inInclude = d.ppId[t] >= 0 && d.ppKind[d.ppId[t]] === PP_INCLUDE;
       const pre = i >= 0 && i < this.nem ? this.emColPre[i] : col;
-      if (d.opts.reflowComments && d.inPP[t] === 1 && !inInclude && (d.multi[t] === 1 || pre + d.width[t] + this.unbreakableTail(t) > d.opts.columnLimit - 2) && pp >= 0 && this.offMarker(t) === 0) {
+      if (
+        d.opts.reflowComments &&
+        d.inPP[t] === 1 &&
+        !inInclude &&
+        (d.multi[t] === 1 || pre + d.width[t] + this.unbreakableTail(t) > d.opts.columnLimit - 2) &&
+        pp >= 0 &&
+        this.offMarker(t) === 0
+      ) {
         this.bcEsc = this.escStamp[pp] === this.fileStamp ? this.escCol[pp] : d.opts.columnLimit;
         this.bcPP = true;
         if (d.multi[t] === 0) {
@@ -4512,7 +4806,13 @@ export class Formatter {
     const d = this.d;
     const t = this.emTok[i];
     const pt = this.emTok[i - 1];
-    if (pt < 0 || this.emNl[i - 1] !== 0 || d.kind[pt] !== K_COMMENT || d.type[pt] !== TT_LINE_COMMENT || d.prv[t] !== pt) {
+    if (
+      pt < 0 ||
+      this.emNl[i - 1] !== 0 ||
+      d.kind[pt] !== K_COMMENT ||
+      d.type[pt] !== TT_LINE_COMMENT ||
+      d.prv[t] !== pt
+    ) {
       return;
     }
     if (this.emCol[i] === this.emCol[i - 1]) {
@@ -4584,10 +4884,23 @@ export class Formatter {
     const d = this.d;
     const t = this.emTok[j];
     const p = this.emTok[j - 1];
-    if (t < 0 || p < 0 || d.kind[t] !== K_COMMENT || d.type[t] !== TT_LINE_COMMENT || d.kind[p] !== K_COMMENT || d.type[p] !== TT_LINE_COMMENT) {
+    if (
+      t < 0 ||
+      p < 0 ||
+      d.kind[t] !== K_COMMENT ||
+      d.type[t] !== TT_LINE_COMMENT ||
+      d.kind[p] !== K_COMMENT ||
+      d.type[p] !== TT_LINE_COMMENT
+    ) {
       return false;
     }
-    if (this.emNl[j] !== 1 || d.nl[t] !== 1 || this.emCol[j] !== this.emCol[j - 1] || this.verbatimAt(j) || d.multi[t] === 1) {
+    if (
+      this.emNl[j] !== 1 ||
+      d.nl[t] !== 1 ||
+      this.emCol[j] !== this.emCol[j - 1] ||
+      this.verbatimAt(j) ||
+      d.multi[t] === 1
+    ) {
       return false;
     }
     // A comment an earlier #if pass formatted keeps that pass's text: one
@@ -4663,7 +4976,7 @@ export class Formatter {
     let keep = sp - a;
     if (sp < e) {
       const c = d.at(sp);
-      const noSpace = (c < 128 && (c === 92 || isPunct(c) || c === 32 || c === 9)) && !(c === 35);
+      const noSpace = c < 128 && (c === 92 || isPunct(c) || c === 32 || c === 9) && !(c === 35);
       if (spaces < 1 && !noSpace && !this.isPragma(t) && d.opts.reflowComments) {
         extra = 1;
       }
@@ -4824,7 +5137,16 @@ export class Formatter {
     }
     const c0 = d.at(a);
     const c1 = d.at(a + 1);
-    if (c0 === 64 || this.textAt(a, "TODO") || this.textAt(a, "FIXME") || this.textAt(a, "XXX") || this.textAt(a, "-# ") || this.textAt(a, "- ") || this.textAt(a, "+ ") || this.textAt(a, "* ")) {
+    if (
+      c0 === 64 ||
+      this.textAt(a, "TODO") ||
+      this.textAt(a, "FIXME") ||
+      this.textAt(a, "XXX") ||
+      this.textAt(a, "-# ") ||
+      this.textAt(a, "- ") ||
+      this.textAt(a, "+ ") ||
+      this.textAt(a, "* ")
+    ) {
       return false;
     }
     if (this.numberedItem(a, e, true)) {
@@ -5112,7 +5434,14 @@ export class Formatter {
   sectionNext(t: i32): i32 {
     const d = this.d;
     const n = d.nxt[t];
-    if (n < 0 || d.kind[n] !== K_COMMENT || d.type[n] !== TT_LINE_COMMENT || d.nl[n] !== 1 || d.multi[n] === 1 || this.offMarker(n) !== 0) {
+    if (
+      n < 0 ||
+      d.kind[n] !== K_COMMENT ||
+      d.type[n] !== TT_LINE_COMMENT ||
+      d.nl[n] !== 1 ||
+      d.multi[n] === 1 ||
+      this.offMarker(n) !== 0
+    ) {
       return -1;
     }
     // (A comment that does not continue the section ends it.)
@@ -5239,7 +5568,10 @@ export class Formatter {
         const rrem = this.colsAt(this.gA, this.gE, ccsc);
         reflowing = true;
         if (ccsc + rrem > lim) {
-          if (!this.commentSplit(this.gA, this.gE, ccsc, lim) || ccsc + this.colsAt(this.gA, this.gA + this.scSplitA, ccsc) > lim) {
+          if (
+            !this.commentSplit(this.gA, this.gE, ccsc, lim) ||
+            ccsc + this.colsAt(this.gA, this.gA + this.scSplitA, ccsc) > lim
+          ) {
             reflowing = false;
           }
         }
@@ -5272,7 +5604,14 @@ export class Formatter {
     const d = this.d;
     const lim = d.opts.columnLimit;
     const n = d.nxt[t];
-    if (n < 0 || d.kind[n] !== K_COMMENT || d.type[n] !== TT_LINE_COMMENT || d.nl[n] !== 1 || this.isPragma(n) || this.offMarker(n) !== 0) {
+    if (
+      n < 0 ||
+      d.kind[n] !== K_COMMENT ||
+      d.type[n] !== TT_LINE_COMMENT ||
+      d.nl[n] !== 1 ||
+      this.isPragma(n) ||
+      this.offMarker(n) !== 0
+    ) {
       return false;
     }
     if (!this.ind.continuesSection(n, t)) {
@@ -5489,7 +5828,12 @@ export class Formatter {
         // A prefix left without its space (`///@name`) gets one on the next
         // run when the split-off text starts with a letter, which can move
         // the breaks after it: run again.
-        if (!this.rerun && this.scKeep[k] - this.scKnown[k] + this.scExtra[k] === 0 && after < e && this.wantsPrefixSpace(this.emTok[i + k], d.at(after))) {
+        if (
+          !this.rerun &&
+          this.scKeep[k] - this.scKnown[k] + this.scExtra[k] === 0 &&
+          after < e &&
+          this.wantsPrefixSpace(this.emTok[i + k], d.at(after))
+        ) {
           this.rerun = true;
         }
         const pad = 0;
@@ -5681,7 +6025,36 @@ const isTrimByte = (c: i32): boolean => c === 32 || c === 9 || c === 10 || c ===
 
 /** Whether byte `c` may appear in a raw string delimiter (clang-format's RawStringRegex). */
 const isRawDelimByte = (c: i32): boolean =>
-  (c >= 65 && c <= 90) || (c >= 97 && c <= 122) || (c >= 48 && c <= 57) || c === 95 || c === 91 || c === 93 || c === 123 || c === 125 || c === 35 || c === 60 || c === 62 || c === 37 || c === 58 || c === 59 || c === 46 || c === 63 || c === 42 || c === 43 || c === 47 || c === 94 || c === 38 || c === 92 || c === 36 || c === 124 || c === 126 || c === 33 || c === 61 || c === 44 || c === 39 || c === 45;
+  (c >= 65 && c <= 90) ||
+  (c >= 97 && c <= 122) ||
+  (c >= 48 && c <= 57) ||
+  c === 95 ||
+  c === 91 ||
+  c === 93 ||
+  c === 123 ||
+  c === 125 ||
+  c === 35 ||
+  c === 60 ||
+  c === 62 ||
+  c === 37 ||
+  c === 58 ||
+  c === 59 ||
+  c === 46 ||
+  c === 63 ||
+  c === 42 ||
+  c === 43 ||
+  c === 47 ||
+  c === 94 ||
+  c === 38 ||
+  c === 92 ||
+  c === 36 ||
+  c === 124 ||
+  c === 126 ||
+  c === 33 ||
+  c === 61 ||
+  c === 44 ||
+  c === 39 ||
+  c === 45;
 
 /**
  * The LLVM style's IncludeCategories for header name `name` (with its
@@ -5690,10 +6063,16 @@ const isRawDelimByte = (c: i32): boolean =>
  */
 const includeCategoryOf = (name: string): i32 => {
   const s = lower(name);
-  if (s.startsWith("\"llvm/") || s.startsWith("\"llvm-c/") || s.startsWith("\"clang/") || s.startsWith("\"clang-c/")) {
+  if (s.startsWith('"llvm/') || s.startsWith('"llvm-c/') || s.startsWith('"clang/') || s.startsWith('"clang-c/')) {
     return 2;
   }
-  if (s.startsWith("<") || s.startsWith("\"gtest/") || s.startsWith("\"gmock/") || s.startsWith("\"isl/") || s.startsWith("\"json/")) {
+  if (
+    s.startsWith("<") ||
+    s.startsWith('"gtest/') ||
+    s.startsWith('"gmock/') ||
+    s.startsWith('"isl/') ||
+    s.startsWith('"json/')
+  ) {
     return 3;
   }
   return 1;

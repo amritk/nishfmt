@@ -91,7 +91,10 @@ export class CopNamingFileName {
     if (base.endsWith(".gemspec") && base !== ".gemspec") {
       return;
     }
-    if (!nfnHiddenDir(path, bs) && (ssxInList(NFN_CAMEL, base) || (base.endsWith("Fastfile") && !base.startsWith(".")))) {
+    if (
+      !nfnHiddenDir(path, bs) &&
+      (ssxInList(NFN_CAMEL, base) || (base.endsWith("Fastfile") && !base.startsWith(".")))
+    ) {
       return;
     }
     if (nfnGood(base)) {

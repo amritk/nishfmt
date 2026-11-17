@@ -72,7 +72,17 @@ export const rbRecursiveLiteral = (src: RbSource, n: i32, basic: boolean): boole
   const t = a.type(n);
   if (t === NT_SEND) {
     const m = ssxMeth(src, n);
-    const ok = m === "==" || m === "===" || m === "!=" || m === "<=" || m === ">=" || m === ">" || m === "<" || m === "*" || m === "!" || m === "<=>";
+    const ok =
+      m === "==" ||
+      m === "===" ||
+      m === "!=" ||
+      m === "<=" ||
+      m === ">=" ||
+      m === ">" ||
+      m === "<" ||
+      m === "*" ||
+      m === "!" ||
+      m === "<=>";
     if (!ok || !rbRecursiveLiteral(src, a.kid(n, 0), basic)) {
       return false;
     }
@@ -140,7 +150,11 @@ export class CopStyleHashLikeCase {
         }
         const cond = a.kid(w, 0);
         const body = a.kid(w, 1);
-        if (!(ssxIs(src, cond, NT_STR) || ssxIs(src, cond, NT_SYM)) || body === V_NIL || !rbRecursiveBasicLiteral(src, body)) {
+        if (
+          !(ssxIs(src, cond, NT_STR) || ssxIs(src, cond, NT_SYM)) ||
+          body === V_NIL ||
+          !rbRecursiveBasicLiteral(src, body)
+        ) {
           ok = false;
           break;
         }

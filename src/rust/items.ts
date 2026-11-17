@@ -89,7 +89,14 @@ import { OC_FIELD_DEF, OC_GENERIC_PARAM, rsRewriteWithAngleBrackets, rsRewriteWi
 import { rsRewritePat } from "./patterns";
 import { RsShape, rsIndentStr, rsIndentStrNl, rsShapeIndented, rsShapeLegacy } from "./shape";
 import { rsHasByte, rsIndexOfByte, rsIsBlank, rsLines, rsTrim, rsTrimEnd, rsTrimStart, rsWidth } from "./str";
-import { rsRewriteBounds, rsRewriteLifetimeTok, rsRewriteTraitRefTy, rsRewriteTy, rsRewriteWherePred, rsWherePredLo } from "./types";
+import {
+  rsRewriteBounds,
+  rsRewriteLifetimeTok,
+  rsRewriteTraitRefTy,
+  rsRewriteTy,
+  rsRewriteWherePred,
+  rsWherePredLo,
+} from "./types";
 import {
   rsFirstLineContainsSingleLineComment,
   rsFnHeaderStr,
@@ -229,7 +236,10 @@ const sameLineElseKwAndBrace = (ctx: RsCtx, initStr: string, ekLo: i32, ekHi: i3
     return false;
   }
   const rest = last.slice(toI32(indent.length), toI32(last.length));
-  return !(rest.length > 0 && (rest.charCodeAt(0) === 32 || rest.charCodeAt(0) === 9 || rest.charCodeAt(0) === 10 || rest.charCodeAt(0) === 13));
+  return !(
+    rest.length > 0 &&
+    (rest.charCodeAt(0) === 32 || rest.charCodeAt(0) === 9 || rest.charCodeAt(0) === 10 || rest.charCodeAt(0) === 13)
+  );
 };
 
 const allowSingleLineLetElseBlock = (ast: RsAst, result: string, block: i32): boolean => {
@@ -519,7 +529,19 @@ const rewriteFnBase = (ctx: RsCtx, bi: i32, al: i32, item: i32, lo: i32, hi: i32
   const paramsLo = ctx.spanAfter(ast.hi[g], hi, "(");
   const lastTy = np > 0 ? ast.b[ast.kid(decl, np - 1)] : -1;
   const variadic = lastTy >= 0 && ast.kind[lastTy] === 64; // N_TY_CVARARGS
-  const paramStr = rewriteParams(ctx, decl, oneLineBudget, multiLineBudget, bi, al, pbi, pal, paramsLo, paramsEnd, variadic);
+  const paramStr = rewriteParams(
+    ctx,
+    decl,
+    oneLineBudget,
+    multiLineBudget,
+    bi,
+    al,
+    pbi,
+    pal,
+    paramsLo,
+    paramsEnd,
+    variadic,
+  );
   if (paramStr === null) {
     return null;
   }
@@ -588,7 +610,10 @@ const rewriteFnBase = (ctx: RsCtx, bi: i32, al: i32, item: i32, lo: i32, hi: i32
       while (i < toI32(snippet.length) && snippet.charCodeAt(i) === 32) {
         i++;
       }
-      const startsNl = i < toI32(snippet.length) && (snippet.charCodeAt(i) === 10 || (snippet.charCodeAt(i) === 13 && i + 1 < toI32(snippet.length) && snippet.charCodeAt(i + 1) === 10));
+      const startsNl =
+        i < toI32(snippet.length) &&
+        (snippet.charCodeAt(i) === 10 ||
+          (snippet.charCodeAt(i) === 13 && i + 1 < toI32(snippet.length) && snippet.charCodeAt(i + 1) === 10));
       let j = toI32(snippet.length) - 1;
       while (j >= 0 && snippet.charCodeAt(j) === 32) {
         j--;
@@ -617,7 +642,12 @@ const rewriteFnBase = (ctx: RsCtx, bi: i32, al: i32, item: i32, lo: i32, hi: i32
   }
   if (whereStr.length === 0 && ast.a[decl] < 0) {
     // FnRetTy::Default(span): an empty span just after the `)`.
-    const mc = rsRecoverMissingCommentInSpan(ctx.snippet(paramsEnd, hi), shape, cfg, rsLastLineWidth(result, cfg.tabSpaces));
+    const mc = rsRecoverMissingCommentInSpan(
+      ctx.snippet(paramsEnd, hi),
+      shape,
+      cfg,
+      rsLastLineWidth(result, cfg.tabSpaces),
+    );
     if (mc !== null && mc.length !== 0) {
       result = result + mc;
       forceNewlineBrace = true;
@@ -630,7 +660,15 @@ const rewriteFnBase = (ctx: RsCtx, bi: i32, al: i32, item: i32, lo: i32, hi: i32
 };
 
 /** compute_budgets_for_params: [one_line_budget, multi_line_budget, indent.bi, indent.al]. */
-const computeBudgetsForParams = (ctx: RsCtx, result: string, bi: i32, al: i32, retStrLen: i32, fbs: i32, forceVertical: boolean): i32[] => {
+const computeBudgetsForParams = (
+  ctx: RsCtx,
+  result: string,
+  bi: i32,
+  al: i32,
+  retStrLen: i32,
+  fbs: i32,
+  forceVertical: boolean,
+): i32[] => {
   const cfg = ctx.cfg;
   if (!rsHasByte(result, 10) && !forceVertical) {
     const overhead = retStrLen === 0 ? 2 : 3;
@@ -653,7 +691,8 @@ const computeBudgetsForParams = (ctx: RsCtx, result: string, bi: i32, al: i32, r
 /** is_named_param: params of fn pointer types may have no pattern. */
 const isNamedParam = (ast: RsAst, p: i32): boolean => ast.a[p] >= 0 || isSelfParam(ast, p);
 
-const isSelfParam = (ast: RsAst, p: i32): boolean => (ast.fl[p] & (PA_SELF_VALUE | PA_SELF_REF | PA_SELF_EXPLICIT)) !== 0;
+const isSelfParam = (ast: RsAst, p: i32): boolean =>
+  (ast.fl[p] & (PA_SELF_VALUE | PA_SELF_REF | PA_SELF_EXPLICIT)) !== 0;
 
 /** span_lo_for_param. */
 export const rsParamSpanLo = (ast: RsAst, p: i32): i32 => {
@@ -730,7 +769,15 @@ export const rsRewriteParam = (ctx: RsCtx, p: i32, shape: RsShape): string | nul
     if (paramName === null) {
       return null;
     }
-    const result0 = rsCombineStrsWithMissingComments(ctx, paramAttrs, paramName, spLo, spHi, shape, !multiAttrLines && !hasDocs);
+    const result0 = rsCombineStrsWithMissingComments(
+      ctx,
+      paramAttrs,
+      paramName,
+      spLo,
+      spHi,
+      shape,
+      !multiAttrLines && !hasDocs,
+    );
     if (result0 === null) {
       return null;
     }
@@ -780,7 +827,8 @@ export const rsRewriteParam = (ctx: RsCtx, p: i32, shape: RsShape): string | nul
 };
 
 /** The Spanned span of a param: [lo, hi). */
-export const rsParamSpannedLo = (ast: RsAst, p: i32): i32 => (isNamedParam(ast, p) ? rsParamSpanLo(ast, p) : ast.lo[ast.b[p]]);
+export const rsParamSpannedLo = (ast: RsAst, p: i32): i32 =>
+  isNamedParam(ast, p) ? rsParamSpanLo(ast, p) : ast.lo[ast.b[p]];
 
 const rewriteParams = (
   ctx: RsCtx,
@@ -954,7 +1002,16 @@ const BP_AUTO: i32 = 1;
 const BP_FORCE_SAME_LINE: i32 = 2;
 
 /** format_generics; [lo, hi) is the span after the ident. */
-const formatGenerics = (ctx: RsCtx, g: i32, bracePos: i32, bi: i32, al: i32, lo: i32, hi: i32, usedWidth: i32): string | null => {
+const formatGenerics = (
+  ctx: RsCtx,
+  g: i32,
+  bracePos: i32,
+  bi: i32,
+  al: i32,
+  lo: i32,
+  hi: i32,
+  usedWidth: i32,
+): string | null => {
   const ast = ctx.ast;
   const cfg = ctx.cfg;
   const shape = rsShapeLegacy(ctx.budget(usedWidth + bi + al), bi, al);
@@ -1006,7 +1063,16 @@ const formatGenerics = (ctx: RsCtx, g: i32, bracePos: i32, bi: i32, al: i32, lo:
 };
 
 /** format_header. `visLo`/`visHi` is the visibility span. */
-const formatHeader = (ctx: RsCtx, itemName: string, ident: i32, vis: i32, visLo: i32, visHi: i32, bi: i32, al: i32): string => {
+const formatHeader = (
+  ctx: RsCtx,
+  itemName: string,
+  ident: i32,
+  vis: i32,
+  visLo: i32,
+  visHi: i32,
+  bi: i32,
+  al: i32,
+): string => {
   const shape = rsShapeIndented(bi, al, ctx.cfg);
   let result = rsTrim(rsFormatVisibility(ctx, vis));
   const identHi = ctx.f.t.hi[ident];
@@ -1088,7 +1154,16 @@ const formatUnitStruct = (ctx: RsCtx, p: StructParts, bi: i32, al: i32): string 
   let gs = "";
   if (p.generics >= 0) {
     const h = ctx.spanBeforeLast(p.lo, p.hi, ";");
-    const r = formatGenerics(ctx, p.generics, BP_NONE, bi, al, ctx.f.t.hi[p.ident], h, rsLastLineWidth(header, ctx.cfg.tabSpaces));
+    const r = formatGenerics(
+      ctx,
+      p.generics,
+      BP_NONE,
+      bi,
+      al,
+      ctx.f.t.hi[p.ident],
+      h,
+      rsLastLineWidth(header, ctx.cfg.tabSpaces),
+    );
     if (r === null) {
       return null;
     }
@@ -1112,7 +1187,16 @@ const formatStructStruct = (ctx: RsCtx, p: StructParts, bi: i32, al: i32, oneLin
   const nf = ast.ln[p.def];
   let gs = "";
   if (p.generics >= 0) {
-    const r = formatGenerics(ctx, p.generics, nf === 0 ? BP_FORCE_SAME_LINE : BP_AUTO, bi, al, headerHi, bodyLo, rsLastLineWidth(result, cfg.tabSpaces));
+    const r = formatGenerics(
+      ctx,
+      p.generics,
+      nf === 0 ? BP_FORCE_SAME_LINE : BP_AUTO,
+      bi,
+      al,
+      headerHi,
+      bodyLo,
+      rsLastLineWidth(result, cfg.tabSpaces),
+    );
     if (r === null) {
       return null;
     }
@@ -1145,14 +1229,28 @@ const formatStructStruct = (ctx: RsCtx, p: StructParts, bi: i32, al: i32, oneLin
   if (itemsStr === null) {
     return null;
   }
-  if (!rsHasByte(itemsStr, 10) && !rsHasByte(result, 10) && toI32(itemsStr.length) <= olb && !rsLastLineContainsSingleLineComment(itemsStr)) {
+  if (
+    !rsHasByte(itemsStr, 10) &&
+    !rsHasByte(result, 10) &&
+    toI32(itemsStr.length) <= olb &&
+    !rsLastLineContainsSingleLineComment(itemsStr)
+  ) {
     return `${result} ${itemsStr} }`;
   }
   return `${result}\n${rsIndentStr(cfg, bi + cfg.tabSpaces, al)}${itemsStr}\n${rsIndentStr(cfg, bi, al)}}`;
 };
 
 /** format_empty_struct_or_tuple: appends to `result0` and answers it. */
-const formatEmptyStructOrTuple = (ctx: RsCtx, lo: i32, hi: i32, bi: i32, al: i32, result0: string, opener: string, closer: string): string => {
+const formatEmptyStructOrTuple = (
+  ctx: RsCtx,
+  lo: i32,
+  hi: i32,
+  bi: i32,
+  al: i32,
+  result0: string,
+  opener: string,
+  closer: string,
+): string => {
   const cfg = ctx.cfg;
   let result = result0;
   const used = rsLastLineUsedWidth(result, bi + al, cfg.tabSpaces) + 3;
@@ -1182,7 +1280,14 @@ const fieldSpanLo = (ast: RsAst, f: i32): i32 => rsLoWithAttrs(ast, f);
 const fieldSpanHi = (ast: RsAst, f: i32): i32 => ast.hi[ast.a[f]];
 
 /** rewrite_with_alignment for struct fields (struct_field_align_threshold is 0). */
-const rewriteFieldsWithAlignment = (ctx: RsCtx, def: i32, shape: RsShape, lo: i32, hi: i32, oneLineWidth: i32): string | null => {
+const rewriteFieldsWithAlignment = (
+  ctx: RsCtx,
+  def: i32,
+  shape: RsShape,
+  lo: i32,
+  hi: i32,
+  oneLineWidth: i32,
+): string | null => {
   const ast = ctx.ast;
   const n = ast.ln[def];
   const itemShape0 = rsShapeIndented(shape.bi, shape.al, ctx.cfg).subWidth(1);
@@ -1327,7 +1432,11 @@ const formatTupleStruct = (ctx: RsCtx, p: StructParts, bi: i32, al: i32): string
     }
     result = r;
   }
-  if (whereStr.length !== 0 && !rsHasByte(whereStr, 10) && (rsHasByte(result, 10) || bi + toI32(result.length) + toI32(whereStr.length) + 1 > cfg.maxWidth)) {
+  if (
+    whereStr.length !== 0 &&
+    !rsHasByte(whereStr, 10) &&
+    (rsHasByte(result, 10) || bi + toI32(result.length) + toI32(whereStr.length) + 1 > cfg.maxWidth)
+  ) {
     result = result + "\n" + rsIndentStr(cfg, bi, cfg.tabSpaces - 1);
   }
   return result + whereStr;
@@ -1356,7 +1465,16 @@ export const rsVisitEnum = (v: RsVisitor, item: i32): void => {
   }
   const bodyStart = lo + bracePos + 1;
   const nv = ast.ln[item];
-  const gs = formatGenerics(ctx, ast.a[item], nv === 0 ? BP_FORCE_SAME_LINE : BP_AUTO, v.bi, v.al, ctx.f.t.hi[ast.d[item]], bodyStart, rsLastLineWidth(header, ctx.cfg.tabSpaces));
+  const gs = formatGenerics(
+    ctx,
+    ast.a[item],
+    nv === 0 ? BP_FORCE_SAME_LINE : BP_AUTO,
+    v.bi,
+    v.al,
+    ctx.f.t.hi[ast.d[item]],
+    bodyStart,
+    rsLastLineWidth(header, ctx.cfg.tabSpaces),
+  );
   if (gs === null) {
     v.f.broken = true;
     return;
@@ -1542,7 +1660,17 @@ const rewriteStatic = (ctx: RsCtx, item: i32, bi: i32, al: i32): string | null =
     const exprLo = rsLoWithAttrs(ast, expr);
     const lhs = `${prefix}${tyStr} =`;
     const remaining = ctx.budget(bi + 1);
-    const r = rsRewriteAssignRhsWithComments(ctx, lhs, expr, rsShapeLegacy(remaining, bi, 0), RHS_EXPR, RT_DEFAULT, commentsLo, exprLo, true);
+    const r = rsRewriteAssignRhsWithComments(
+      ctx,
+      lhs,
+      expr,
+      rsShapeLegacy(remaining, bi, 0),
+      RHS_EXPR,
+      RT_DEFAULT,
+      commentsLo,
+      exprLo,
+      true,
+    );
     if (r === null) {
       return null;
     }
@@ -1701,24 +1829,48 @@ export const rsFormatImpl = (ctx: RsCtx, item: i32, bi: i32, al: i32): string | 
     return null;
   }
   const openPos = op + 1;
-  if (!rsContainsComment(snippet.slice(openPos, toI32(snippet.length))) && ni === 0 && ast.ln[w] === 1 && !rsHasByte(result, 10)) {
+  if (
+    !rsContainsComment(snippet.slice(openPos, toI32(snippet.length))) &&
+    ni === 0 &&
+    ast.ln[w] === 1 &&
+    !rsHasByte(result, 10)
+  ) {
     option.suppressComma = true;
     option.snuggle = WCS_SPACE;
     option.allowSingleLine = true;
   }
   const whereSpanEnd = ctx.optSpanBefore(ast.hi[selfTy], hi, "{");
-  const whereStr = rewriteWhereClause(ctx, w, rsShapeLegacy(whereBudget, bi, 0), false, "{", whereSpanEnd, ast.hi[selfTy], option);
+  const whereStr = rewriteWhereClause(
+    ctx,
+    w,
+    rsShapeLegacy(whereBudget, bi, 0),
+    false,
+    "{",
+    whereSpanEnd,
+    ast.hi[selfTy],
+    option,
+  );
   if (whereStr === null) {
     return null;
   }
   if (ast.ln[w] === 0 && whereSpanEnd >= 0) {
-    const mc = rsRecoverMissingCommentInSpan(ctx.snippet(ast.hi[selfTy], whereSpanEnd), rsShapeIndented(bi, al, cfg), cfg, rsLastLineWidth(result, cfg.tabSpaces));
+    const mc = rsRecoverMissingCommentInSpan(
+      ctx.snippet(ast.hi[selfTy], whereSpanEnd),
+      rsShapeIndented(bi, al, cfg),
+      cfg,
+      rsLastLineWidth(result, cfg.tabSpaces),
+    );
     if (mc !== null && mc.length !== 0) {
       result = result + mc;
     }
   }
   // is_impl_single_line.
-  if (ni === 0 && !rsHasByte(result, 10) && toI32(result.length) + toI32(whereStr.length) <= cfg.maxWidth && !rsContainsComment(snippet.slice(openPos, toI32(snippet.length)))) {
+  if (
+    ni === 0 &&
+    !rsHasByte(result, 10) &&
+    toI32(result.length) + toI32(whereStr.length) <= cfg.maxWidth &&
+    !rsContainsComment(snippet.slice(openPos, toI32(snippet.length)))
+  ) {
     result = result + whereStr;
     if (rsHasByte(whereStr, 10) && ast.ln[w] === 1) {
       result = result + ",";
@@ -1903,7 +2055,12 @@ export const rsFormatTrait = (ctx: RsCtx, item: i32, bi: i32, al: i32): string |
       const commentHi = ast.ln[g] > 0 ? ast.lo[g] - 1 : bodyLo - 1;
       const commentLo = lo + sl;
       if (commentLo < commentHi) {
-        const mc = rsRecoverMissingCommentInSpan(ctx.snippet(commentLo, commentHi), rsShapeIndented(bi, al, cfg), cfg, rsLastLineWidth(result, cfg.tabSpaces));
+        const mc = rsRecoverMissingCommentInSpan(
+          ctx.snippet(commentLo, commentHi),
+          rsShapeIndented(bi, al, cfg),
+          cfg,
+          rsLastLineWidth(result, cfg.tabSpaces),
+        );
         if (mc !== null && mc.length !== 0) {
           result = result + mc;
         }

@@ -69,7 +69,8 @@ const startsAt = (s: string, p: string, i: i32): boolean => {
   return true;
 };
 
-const isWordChar = (c: i32): boolean => (c >= 65 && c <= 90) || (c >= 97 && c <= 122) || (c >= 48 && c <= 57) || c === 95;
+const isWordChar = (c: i32): boolean =>
+  (c >= 65 && c <= 90) || (c >= 97 && c <= 122) || (c >= 48 && c <= 57) || c === 95;
 
 const jdLower = (c: i32): i32 => (c >= 65 && c <= 90 ? c + 32 : c);
 
@@ -363,7 +364,19 @@ class JdLexer {
       return T_LITERAL;
     }
     if (c === 60) {
-      const kinds: i32[] = [T_P_OPEN, T_P_CLOSE, T_LIST_OPEN, T_LIST_CLOSE, T_LI_OPEN, T_LI_CLOSE, T_BQ_OPEN, T_BQ_CLOSE, T_H_OPEN, T_H_CLOSE, T_BR];
+      const kinds: i32[] = [
+        T_P_OPEN,
+        T_P_CLOSE,
+        T_LIST_OPEN,
+        T_LIST_CLOSE,
+        T_LI_OPEN,
+        T_LI_CLOSE,
+        T_BQ_OPEN,
+        T_BQ_CLOSE,
+        T_H_OPEN,
+        T_H_CLOSE,
+        T_BR,
+      ];
       for (const k of kinds) {
         const e2 = this.tagOf(k);
         if (e2 >= 0) {
@@ -752,7 +765,10 @@ class JdWriter {
     if (this.hasMoeBegin) {
       this.request(RW_NEWLINE);
     }
-    if (this.requested === RW_BLANK_LINE && (this.postWriteModifiedContinuingListCount > 0 || this.continuingFooterTag)) {
+    if (
+      this.requested === RW_BLANK_LINE &&
+      (this.postWriteModifiedContinuingListCount > 0 || this.continuingFooterTag)
+    ) {
       this.requested = RW_NEWLINE;
     }
     if (this.requested === RW_BLANK_LINE) {

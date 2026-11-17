@@ -19,7 +19,8 @@ export const LDH_INF: i32 = 1073741824;
 const ldhIsSpace = (c: i32): boolean => c === 32 || (c >= 9 && c <= 13);
 
 /** Ruby's \w (ASCII). */
-const ldhIsWord = (c: i32): boolean => (c >= 48 && c <= 57) || (c >= 65 && c <= 90) || (c >= 97 && c <= 122) || c === 95;
+const ldhIsWord = (c: i32): boolean =>
+  (c >= 48 && c <= 57) || (c >= 65 && c <= 90) || (c >= 97 && c <= 122) || c === 95;
 
 const ldhIsAlpha = (c: i32): boolean => (c >= 65 && c <= 90) || (c >= 97 && c <= 122);
 
@@ -331,7 +332,13 @@ export class LdhDirective {
 
   /** push?, pop?, disable-next?, next? or enable-next? (CommentConfig#self_closing_directive?). */
   selfClosing(): boolean {
-    return this.mode === "push" || this.mode === "pop" || this.disableNext() || this.mode === "next" || this.mode === "enable-next";
+    return (
+      this.mode === "push" ||
+      this.mode === "pop" ||
+      this.disableNext() ||
+      this.mode === "next" ||
+      this.mode === "enable-next"
+    );
   }
 
   allCops(): boolean {

@@ -99,7 +99,13 @@ export class CopStyleFormatString {
         selector = m;
       } else if (m === "%" && a.isNode(recv) && (a.type(recv) === NT_STR || a.type(recv) === NT_DSTR)) {
         selector = "%";
-      } else if (m === "%" && recv !== V_NIL && k0 === 3 && a.isNode(a.kid(n, 2)) && (a.type(a.kid(n, 2)) === NT_ARRAY || a.type(a.kid(n, 2)) === NT_HASH)) {
+      } else if (
+        m === "%" &&
+        recv !== V_NIL &&
+        k0 === 3 &&
+        a.isNode(a.kid(n, 2)) &&
+        (a.type(a.kid(n, 2)) === NT_ARRAY || a.type(a.kid(n, 2)) === NT_HASH)
+      ) {
         selector = "%";
       }
       if (selector.length === 0 || selector === "format") {
@@ -112,7 +118,12 @@ export class CopStyleFormatString {
         continue;
       }
       // variable_argument?: (send {str dstr} :% !#autocorrectable?)
-      const variable = m === "%" && a.isNode(recv) && (a.type(recv) === NT_STR || a.type(recv) === NT_DSTR) && k0 === 3 && !sbhFsAutocorrectable(src, a.kid(n, 2));
+      const variable =
+        m === "%" &&
+        a.isNode(recv) &&
+        (a.type(recv) === NT_STR || a.type(recv) === NT_DSTR) &&
+        k0 === 3 &&
+        !sbhFsAutocorrectable(src, a.kid(n, 2));
       let within = false;
       for (let i = 0; i < toI32(this.corrS.length); i++) {
         if (this.corrS[i] <= a.exS(n) && a.exE(n) <= this.corrE[i]) {

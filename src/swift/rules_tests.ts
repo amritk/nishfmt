@@ -10,8 +10,27 @@ import { SwFuncDecl, swParseFunctionDeclaration } from "./funcdecl";
 import { swHasImport } from "./imports";
 import { swHasModifier } from "./modifiers";
 import { swBackticksRequired } from "./rules_redundant1";
-import { swEndOfScope, swIsStartOfClosure, swIsUnwrap, swLastSignificantKeyword, swStartOfScope, SW_EX_WHERE } from "./parsing";
-import { SW_IDENT, SW_KEYWORD, SW_LINEBREAK, SW_OP, SW_OP_POSTFIX, SW_SPACE, SW_START, SW_T_NON_SPACE, SW_T_NON_SPACE_OR_COMMENT_OR_LINEBREAK, SwTok, swIsSwiftKeyword } from "./token";
+import {
+  swEndOfScope,
+  swIsStartOfClosure,
+  swIsUnwrap,
+  swLastSignificantKeyword,
+  swStartOfScope,
+  SW_EX_WHERE,
+} from "./parsing";
+import {
+  SW_IDENT,
+  SW_KEYWORD,
+  SW_LINEBREAK,
+  SW_OP,
+  SW_OP_POSTFIX,
+  SW_SPACE,
+  SW_START,
+  SW_T_NON_SPACE,
+  SW_T_NON_SPACE_OR_COMMENT_OR_LINEBREAK,
+  SwTok,
+  swIsSwiftKeyword,
+} from "./token";
 
 export const SW_TEST_NONE: i32 = 0;
 export const SW_TEST_XCTEST: i32 = 1;
@@ -319,7 +338,14 @@ const swAsciiLower = (s: string): string => {
 };
 
 const swIsReservedName = (s: string): boolean =>
-  swIsSwiftKeyword(s) || s === "Any" || s === "Self" || s === "self" || s === "super" || s === "nil" || s === "true" || s === "false";
+  swIsSwiftKeyword(s) ||
+  s === "Any" ||
+  s === "Self" ||
+  s === "self" ||
+  s === "super" ||
+  s === "nil" ||
+  s === "true" ||
+  s === "false";
 
 /** updateDeclarationName(forDeclarationAt:to:) for a `func`. */
 const swUpdateDeclarationName = (f: SwFormatter, keywordIndex: i32, newName0: string): void => {

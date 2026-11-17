@@ -3,7 +3,18 @@
 // Ported from RuboCop 1.92.2 (MIT License, Copyright (c) 2012-24 Bozhidar
 // Batsov).
 
-import { NT_BACK_REF, NT_CVAR, NT_DSTR, NT_DSYM, NT_GVAR, NT_IVAR, NT_LVAR, NT_NTH_REF, NT_REGEXP, NT_XSTR } from "../ast";
+import {
+  NT_BACK_REF,
+  NT_CVAR,
+  NT_DSTR,
+  NT_DSYM,
+  NT_GVAR,
+  NT_IVAR,
+  NT_LVAR,
+  NT_NTH_REF,
+  NT_REGEXP,
+  NT_XSTR,
+} from "../ast";
 import { RbCop } from "../cop";
 import { RbSource } from "../source";
 
@@ -29,7 +40,14 @@ export class CopStyleVariableInterpolation {
           continue;
         }
         const vt = a.type(v);
-        if (vt !== NT_LVAR && vt !== NT_IVAR && vt !== NT_CVAR && vt !== NT_GVAR && vt !== NT_NTH_REF && vt !== NT_BACK_REF) {
+        if (
+          vt !== NT_LVAR &&
+          vt !== NT_IVAR &&
+          vt !== NT_CVAR &&
+          vt !== NT_GVAR &&
+          vt !== NT_NTH_REF &&
+          vt !== NT_BACK_REF
+        ) {
           continue;
         }
         const k = this.c.offense(a.exS(v), a.exE(v));

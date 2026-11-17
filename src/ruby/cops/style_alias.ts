@@ -3,10 +3,34 @@
 // Ported from RuboCop 1.92.2 (MIT License, Copyright (c) 2012-24 Bozhidar
 // Batsov).
 
-import { F_KEYWORD, F_SELECTOR, NT_ALIAS, NT_CLASS, NT_DEF, NT_DEFS, NT_DSYM, NT_GVAR, NT_MODULE, NT_SEND, NT_SYM, V_NIL } from "../ast";
+import {
+  F_KEYWORD,
+  F_SELECTOR,
+  NT_ALIAS,
+  NT_CLASS,
+  NT_DEF,
+  NT_DEFS,
+  NT_DSYM,
+  NT_GVAR,
+  NT_MODULE,
+  NT_SEND,
+  NT_SYM,
+  V_NIL,
+} from "../ast";
 import { RbCop } from "../cop";
 import { RbSource } from "../source";
-import { ssxArgs, ssxArgument, ssxAssignment, ssxCommand, ssxFE, ssxFS, ssxIdentLike, ssxIs, ssxIsAnyBlock, ssxMeth } from "./style_syntax_help";
+import {
+  ssxArgs,
+  ssxArgument,
+  ssxAssignment,
+  ssxCommand,
+  ssxFE,
+  ssxFS,
+  ssxIdentLike,
+  ssxIs,
+  ssxIsAnyBlock,
+  ssxMeth,
+} from "./style_syntax_help";
 
 /** scope_type: 0 lexical, 1 dynamic, 2 instance_eval. */
 const ssxAliasScope = (src: RbSource, n0: i32): i32 => {
@@ -49,7 +73,8 @@ const ssxAliasBarewordSymbol = (src: RbSource, n: i32): boolean => {
 };
 
 /** identifier: `:value` for a bareword symbol, else the source. */
-const ssxAliasIdentifier = (src: RbSource, n: i32): string => (ssxAliasBarewordSymbol(src, n) ? `:${ssxAliasValue(src, n)}` : src.nodeSrc(n));
+const ssxAliasIdentifier = (src: RbSource, n: i32): string =>
+  ssxAliasBarewordSymbol(src, n) ? `:${ssxAliasValue(src, n)}` : src.nodeSrc(n);
 
 export class CopStyleAlias {
   c: RbCop;
@@ -125,7 +150,12 @@ export class CopStyleAlias {
       }
       return;
     }
-    if (ssxAliasBareword(src, nw) || !ssxAliasBarewordSymbol(src, nw) || ssxAliasBareword(src, old) || !ssxAliasBarewordSymbol(src, old)) {
+    if (
+      ssxAliasBareword(src, nw) ||
+      !ssxAliasBarewordSymbol(src, nw) ||
+      ssxAliasBareword(src, old) ||
+      !ssxAliasBarewordSymbol(src, old)
+    ) {
       return;
     }
     const k = this.c.offense(a.exS(nw), a.exE(old));

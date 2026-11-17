@@ -37,7 +37,15 @@ import { RbCop } from "../cop";
 import { LalIgnored } from "./layout_align_help";
 import { RbSource } from "../source";
 import { lbhBasicLiteral, lbhFalsey, lbhLiteral, lbhTruthy, lbhValueUsed } from "./lint_batch_help";
-import { ScnAssoc, scnElseBranch, scnElsif, scnElsifConditional, scnIfBranch, scnRangeWithComments, scnUnless } from "./style_cond_help";
+import {
+  ScnAssoc,
+  scnElseBranch,
+  scnElsif,
+  scnElsifConditional,
+  scnIfBranch,
+  scnRangeWithComments,
+  scnUnless,
+} from "./style_cond_help";
 import { ssxDescendants, ssxFE, ssxFS, ssxHas, ssxIs, ssxMeth } from "./style_syntax_help";
 
 export class CopLintLiteralAsCondition {
@@ -165,7 +173,11 @@ export class CopLintLiteralAsCondition {
       if (at < 0) {
         return;
       }
-      k.replace(a.exS(n), a.exE(n), `${ns.substring(0, at)}${keep}${ns.substring(at + toI32(cs.length), toI32(ns.length))}`);
+      k.replace(
+        a.exS(n),
+        a.exE(n),
+        `${ns.substring(0, at)}${keep}${ns.substring(at + toI32(cs.length), toI32(ns.length))}`,
+      );
       this.c.commit(k);
       return;
     }
@@ -201,7 +213,15 @@ export class CopLintLiteralAsCondition {
       let p = src.parent(ctl);
       while (p !== V_NIL && p !== n) {
         const pt = a.type(p);
-        if (pt === NT_BLOCK || pt === NT_NUMBLOCK || pt === NT_WHILE || pt === NT_UNTIL || pt === NT_WHILE_POST || pt === NT_UNTIL_POST || pt === NT_FOR) {
+        if (
+          pt === NT_BLOCK ||
+          pt === NT_NUMBLOCK ||
+          pt === NT_WHILE ||
+          pt === NT_UNTIL ||
+          pt === NT_WHILE_POST ||
+          pt === NT_UNTIL_POST ||
+          pt === NT_FOR
+        ) {
           shielded = true;
         }
         p = src.parent(p);
@@ -286,7 +306,12 @@ export class CopLintLiteralAsCondition {
     const a = src.a;
     if (ssxIs(src, n, NT_SEND)) {
       // prefix_bang?: negation_method? with the selector `!`.
-      if (a.kid(n, 0) !== V_NIL && ssxMeth(src, n) === "!" && ssxHas(src, n, F_SELECTOR) && src.src(ssxFS(src, n, F_SELECTOR), ssxFE(src, n, F_SELECTOR)) === "!") {
+      if (
+        a.kid(n, 0) !== V_NIL &&
+        ssxMeth(src, n) === "!" &&
+        ssxHas(src, n, F_SELECTOR) &&
+        src.src(ssxFS(src, n, F_SELECTOR), ssxFE(src, n, F_SELECTOR)) === "!"
+      ) {
         this.handleNode(src, a.kid(n, 0));
       }
       return;

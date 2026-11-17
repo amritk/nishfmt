@@ -26,7 +26,10 @@ export class CopLintUriEscapeUnescape {
         continue;
       }
       const m = ssxMeth(src, n);
-      if ((m === "escape" || m === "encode" || m === "unescape" || m === "decode") && ssxGlobalConst(src, a.kid(n, 0), "URI")) {
+      if (
+        (m === "escape" || m === "encode" || m === "unescape" || m === "decode") &&
+        ssxGlobalConst(src, a.kid(n, 0), "URI")
+      ) {
         this.c.offense(a.exS(n), a.exE(n));
       }
     }

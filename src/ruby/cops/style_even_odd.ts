@@ -9,11 +9,17 @@ import { RbSource } from "../source";
 import { ssxIs, ssxMeth, ssxOperatorName } from "./style_syntax_help";
 
 /** (int v) */
-const ssxEoInt = (src: RbSource, n: i32, v: string): boolean => ssxIs(src, n, NT_INT) && src.a.text(src.a.kid(n, 0)) === v;
+const ssxEoInt = (src: RbSource, n: i32, v: string): boolean =>
+  ssxIs(src, n, NT_INT) && src.a.text(src.a.kid(n, 0)) === v;
 
 /** (send $_ :% (int 2)): the base, or V_NIL. */
 const ssxEoMod2 = (src: RbSource, n: i32): i32 => {
-  if (!ssxIs(src, n, NT_SEND) || src.a.nKid(n) !== 3 || ssxMeth(src, n) !== "%" || !ssxEoInt(src, src.a.kid(n, 2), "2")) {
+  if (
+    !ssxIs(src, n, NT_SEND) ||
+    src.a.nKid(n) !== 3 ||
+    ssxMeth(src, n) !== "%" ||
+    !ssxEoInt(src, src.a.kid(n, 2), "2")
+  ) {
     return V_NIL;
   }
   return src.a.kid(n, 0);
@@ -56,7 +62,8 @@ export class CopStyleEvenOdd {
         continue;
       }
       const bm = ssxMeth(src, base);
-      const bs = ssxIs(src, base, NT_SEND) && ssxOperatorName(bm) && bm !== "[]" ? `(${src.nodeSrc(base)})` : src.nodeSrc(base);
+      const bs =
+        ssxIs(src, base, NT_SEND) && ssxOperatorName(bm) && bm !== "[]" ? `(${src.nodeSrc(base)})` : src.nodeSrc(base);
       k.replace(a.exS(n), a.exE(n), `${bs}.${even ? "even" : "odd"}?`);
       this.c.commit(k);
     }

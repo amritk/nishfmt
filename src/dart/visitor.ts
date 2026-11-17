@@ -1193,7 +1193,14 @@ export class DtVisitor {
   }
 
   /** AssignPiece3Dot7. */
-  assign37(left: DtPiece | null, op: DtPiece, right: DtPiece, canBlockSplitLeft: boolean, canBlockSplitRight: boolean, avoidBlockSplitRight: boolean): DtPiece {
+  assign37(
+    left: DtPiece | null,
+    op: DtPiece,
+    right: DtPiece,
+    canBlockSplitLeft: boolean,
+    canBlockSplitRight: boolean,
+    avoidBlockSplitRight: boolean,
+  ): DtPiece {
     const p = this.pf.make(PK_ASSIGN37);
     p.a = left;
     p.b = op;
@@ -1251,7 +1258,12 @@ export class DtVisitor {
       const m = this.f(p, 4);
       return (c !== n && this.isStringLiteralNode(c)) || (m >= 0 && m !== n && this.isStringLiteralNode(m));
     }
-    if (pk === N_VARIABLE_DECLARATION || pk === N_NAMED_ARGUMENT || pk === N_RECORD_LITERAL_NAMED_FIELD || pk === N_EXPRESSION_FUNCTION_BODY) {
+    if (
+      pk === N_VARIABLE_DECLARATION ||
+      pk === N_NAMED_ARGUMENT ||
+      pk === N_RECORD_LITERAL_NAMED_FIELD ||
+      pk === N_EXPRESSION_FUNCTION_BODY
+    ) {
       return false;
     }
     if (pk === N_ASSIGNMENT_EXPRESSION && this.f(p, 2) === n) {
@@ -1701,7 +1713,16 @@ export class DtVisitor {
     this.add(cb.build(this.parentContext === NC_CASCADE_TARGET));
   }
 
-  writeCollection(left: i32, elements: i32, right: i32, cst: i32, targs: i32, style: DtListStyle, splitEagerly: boolean, preserveNewlines: boolean): void {
+  writeCollection(
+    left: i32,
+    elements: i32,
+    right: i32,
+    cst: i32,
+    targs: i32,
+    style: DtListStyle,
+    splitEagerly: boolean,
+    preserveNewlines: boolean,
+  ): void {
     this.modifier(cst);
     this.visit(targs);
     if (!this.canSplit(elements, right)) {
@@ -1754,7 +1775,16 @@ export class DtVisitor {
     return this.endMeta(false);
   }
 
-  writeFor(awaitTok: i32, forTok: i32, lp: i32, parts: i32, rp: i32, body: i32, hasBlockBody: boolean, forceSplitBody: boolean): void {
+  writeFor(
+    awaitTok: i32,
+    forTok: i32,
+    lp: i32,
+    parts: i32,
+    rp: i32,
+    body: i32,
+    hasBlockBody: boolean,
+    forceSplitBody: boolean,
+  ): void {
     this.begin();
     this.modifier(awaitTok);
     this.token(forTok);
@@ -1792,8 +1822,13 @@ export class DtVisitor {
   forPartsPiece(lp: i32, parts: i32, rp: i32): DtPiece {
     const pk = this.kind(parts);
     if (
-      pk === N_FOR_PARTS_WITH_EXPRESSION && this.f(parts, 0) < 0 && !this.cw.hasComments(this.f(parts, 1)) && this.f(parts, 2) < 0 &&
-      !this.cw.hasComments(this.f(parts, 3)) && this.a.len(this.f(parts, 4)) === 0 && !this.cw.hasComments(rp)
+      pk === N_FOR_PARTS_WITH_EXPRESSION &&
+      this.f(parts, 0) < 0 &&
+      !this.cw.hasComments(this.f(parts, 1)) &&
+      this.f(parts, 2) < 0 &&
+      !this.cw.hasComments(this.f(parts, 3)) &&
+      this.a.len(this.f(parts, 4)) === 0 &&
+      !this.cw.hasComments(rp)
     ) {
       this.begin();
       this.token(lp);
@@ -1801,7 +1836,11 @@ export class DtVisitor {
       this.token(this.f(parts, 3));
       this.token(rp);
       return this.end();
-    } else if (pk === N_FOR_PARTS_WITH_EXPRESSION || pk === N_FOR_PARTS_WITH_DECLARATIONS || pk === N_FOR_PARTS_WITH_PATTERN) {
+    } else if (
+      pk === N_FOR_PARTS_WITH_EXPRESSION ||
+      pk === N_FOR_PARTS_WITH_DECLARATIONS ||
+      pk === N_FOR_PARTS_WITH_PATTERN
+    ) {
       const pl = new DtListBuilder(this, new DtListStyle(CM_NONE, 1, false));
       pl.leftBracket(lp);
       const init = this.f(parts, 0);
@@ -1877,10 +1916,28 @@ export class DtVisitor {
     mods.push(this.f(n, 1));
     mods.push(this.f(n, 2));
     mods.push(mutable);
-    this.writeParameter(type, name, this.f(n, 0), mods, fieldKw, period, def >= 0 ? this.f(def, 0) : -1, def >= 0 ? this.f(def, 1) : -1);
+    this.writeParameter(
+      type,
+      name,
+      this.f(n, 0),
+      mods,
+      fieldKw,
+      period,
+      def >= 0 ? this.f(def, 0) : -1,
+      def >= 0 ? this.f(def, 1) : -1,
+    );
   }
 
-  writeFunction(meta: i32, modifiers: i32[], returnType: i32, property: i32, name: i32, tps: i32, params: i32, body: i32): void {
+  writeFunction(
+    meta: i32,
+    modifiers: i32[],
+    returnType: i32,
+    property: i32,
+    name: i32,
+    tps: i32,
+    params: i32,
+    body: i32,
+  ): void {
     const began = this.withMetaBegin(meta);
     if (returnType < 0) {
       for (const k of modifiers) {
@@ -1926,7 +1983,16 @@ export class DtVisitor {
    * writeFunctionType. `parameter` is the formal parameter node for a
    * function-typed formal, or -1 for a GenericFunctionType.
    */
-  writeFunctionType(returnType: i32, fnOrName: i32, tps: i32, params: i32, question: i32, parameter: i32, fieldKw: i32, period: i32): void {
+  writeFunctionType(
+    returnType: i32,
+    fnOrName: i32,
+    tps: i32,
+    params: i32,
+    question: i32,
+    parameter: i32,
+    fieldKw: i32,
+    period: i32,
+  ): void {
     const meta = parameter >= 0 ? this.f(parameter, 0) : 0;
     const began = this.withMetaBegin(meta);
     const mods: i32[] = [];
@@ -1946,7 +2012,16 @@ export class DtVisitor {
   }
 
   /** writeFunctionAndReturnType with writeFunctionType's write(). */
-  writeFunctionAndReturnType(mods: i32[], returnType: i32, fieldKw: i32, period: i32, fnOrName: i32, tps: i32, params: i32, question: i32): void {
+  writeFunctionAndReturnType(
+    mods: i32[],
+    returnType: i32,
+    fieldKw: i32,
+    period: i32,
+    fnOrName: i32,
+    tps: i32,
+    params: i32,
+    question: i32,
+  ): void {
     if (returnType < 0) {
       for (const m of mods) {
         this.modifier(m);
@@ -2200,7 +2275,15 @@ export class DtVisitor {
     this.visit(e);
   }
 
-  writeList(elements: i32, left: i32, right: i32, style: DtListStyle, preserveNewlines: boolean, allowBlockArgument: boolean, blockShaped: boolean): void {
+  writeList(
+    elements: i32,
+    left: i32,
+    right: i32,
+    style: DtListStyle,
+    preserveNewlines: boolean,
+    allowBlockArgument: boolean,
+    blockShaped: boolean,
+  ): void {
     if (!this.canSplit(elements, right)) {
       this.token(left);
       this.token(right);
@@ -2647,7 +2730,12 @@ export class DtVisitor {
       case N_BINARY_EXPRESSION: {
         const op = this.f(n, 1);
         // 3.7 flattens binary operands in assignment contexts.
-        this.writeInfixChain(n, N_BINARY_EXPRESSION, dtPrecedence(this.t.kind[op], this.t.kw[op]), !dtIs37() || this.parentContext !== NC_ASSIGNMENT);
+        this.writeInfixChain(
+          n,
+          N_BINARY_EXPRESSION,
+          dtPrecedence(this.t.kind[op], this.t.kw[op]),
+          !dtIs37() || this.parentContext !== NC_ASSIGNMENT,
+        );
         return;
       }
       case N_BLOCK:
@@ -2904,7 +2992,16 @@ export class DtVisitor {
       case N_REGULAR_FORMAL_PARAMETER: {
         const suffix = this.f(n, 8);
         if (suffix >= 0) {
-          this.writeFunctionType(this.f(n, 4), this.f(n, 7), this.f(suffix, 0), this.f(suffix, 1), this.f(suffix, 2), n, this.f(n, 5), this.f(n, 6));
+          this.writeFunctionType(
+            this.f(n, 4),
+            this.f(n, 7),
+            this.f(suffix, 0),
+            this.f(suffix, 1),
+            this.f(suffix, 2),
+            n,
+            this.f(n, 5),
+            this.f(n, 6),
+          );
         } else {
           this.writeFormalParameter(n, this.f(n, 4), this.f(n, 7), this.f(n, 3), this.f(n, 5), this.f(n, 6));
         }
@@ -2915,19 +3012,46 @@ export class DtVisitor {
         return;
       case N_FOR_ELEMENT: {
         const body = this.f(n, 5);
-        this.writeFor(this.f(n, 0), this.f(n, 1), this.f(n, 2), this.f(n, 3), this.f(n, 4), body, this.spreadCollection(body) >= 0, this.isControlFlowElement(body));
+        this.writeFor(
+          this.f(n, 0),
+          this.f(n, 1),
+          this.f(n, 2),
+          this.f(n, 3),
+          this.f(n, 4),
+          body,
+          this.spreadCollection(body) >= 0,
+          this.isControlFlowElement(body),
+        );
         return;
       }
       case N_FOR_STATEMENT: {
         const body = this.f(n, 5);
-        this.writeFor(this.f(n, 0), this.f(n, 1), this.f(n, 2), this.f(n, 3), this.f(n, 4), body, this.kind(body) === N_BLOCK, false);
+        this.writeFor(
+          this.f(n, 0),
+          this.f(n, 1),
+          this.f(n, 2),
+          this.f(n, 3),
+          this.f(n, 4),
+          body,
+          this.kind(body) === N_BLOCK,
+          false,
+        );
         return;
       }
       case N_FUNCTION_DECLARATION: {
         const fe = this.f(n, 5);
         const mods: i32[] = [];
         mods.push(this.f(n, 1));
-        this.writeFunction(this.f(n, 0), mods, this.f(n, 2), this.f(n, 3), this.f(n, 4), this.f(fe, 0), this.f(fe, 1), this.f(fe, 2));
+        this.writeFunction(
+          this.f(n, 0),
+          mods,
+          this.f(n, 2),
+          this.f(n, 3),
+          this.f(n, 4),
+          this.f(fe, 0),
+          this.f(fe, 1),
+          this.f(fe, 2),
+        );
         return;
       }
       case N_FUNCTION_DECLARATION_STATEMENT:
@@ -3054,15 +3178,38 @@ export class DtVisitor {
       }
       case N_LIST_LITERAL:
       case N_SET_OR_MAP_LITERAL:
-        this.writeCollection(this.f(n, 2), this.f(n, 3), this.f(n, 4), this.f(n, 0), this.f(n, 1), dtStyleDefault(), true, true);
+        this.writeCollection(
+          this.f(n, 2),
+          this.f(n, 3),
+          this.f(n, 4),
+          this.f(n, 0),
+          this.f(n, 1),
+          dtStyleDefault(),
+          true,
+          true,
+        );
         return;
       case N_LIST_PATTERN:
       case N_MAP_PATTERN:
-        this.writeCollection(this.f(n, 1), this.f(n, 2), this.f(n, 3), -1, this.f(n, 0), dtStyleDefault(), false, false);
+        this.writeCollection(
+          this.f(n, 1),
+          this.f(n, 2),
+          this.f(n, 3),
+          -1,
+          this.f(n, 0),
+          dtStyleDefault(),
+          false,
+          false,
+        );
         return;
       case N_LOGICAL_AND_PATTERN: {
         const op = this.f(n, 1);
-        this.writeInfixChain(n, N_LOGICAL_AND_PATTERN, dtPrecedence(this.t.kind[op], K_NONE), !dtIs37() || this.parentContext !== NC_ASSIGNMENT);
+        this.writeInfixChain(
+          n,
+          N_LOGICAL_AND_PATTERN,
+          dtPrecedence(this.t.kind[op], K_NONE),
+          !dtIs37() || this.parentContext !== NC_ASSIGNMENT,
+        );
         return;
       }
       case N_LOGICAL_OR_PATTERN: {
@@ -3099,7 +3246,16 @@ export class DtVisitor {
         mods.push(this.f(n, 1));
         mods.push(this.f(n, 2));
         const op = this.f(n, 5);
-        this.writeFunction(this.f(n, 0), mods, this.f(n, 3), op >= 0 ? op : this.f(n, 4), this.f(n, 6), this.f(n, 7), this.f(n, 8), this.f(n, 9));
+        this.writeFunction(
+          this.f(n, 0),
+          mods,
+          this.f(n, 3),
+          op >= 0 ? op : this.f(n, 4),
+          this.f(n, 6),
+          this.f(n, 7),
+          this.f(n, 8),
+          this.f(n, 9),
+        );
         return;
       }
       case N_METHOD_INVOCATION:
@@ -3624,7 +3780,8 @@ export class DtVisitor {
     const condition = this.end();
     const then = this.f(n, 5);
     const els = this.f(n, 7);
-    const thenPiece = this.kind(then) === N_BLOCK && els >= 0 ? this.forcedBlockPiece(then) : this.nodePiece(then, false, NC_NONE);
+    const thenPiece =
+      this.kind(then) === N_BLOCK && els >= 0 ? this.forcedBlockPiece(then) : this.nodePiece(then, false, NC_NONE);
     piece.list.push(condition);
     piece.list2.push(thenPiece);
     piece.ints.push(this.kind(then) === N_BLOCK ? 1 : 0);
@@ -3779,7 +3936,6 @@ export class DtVisitor {
   }
 }
 
-
 /** ChainBuilder. */
 class DtChainBuilder {
   v: DtVisitor;
@@ -3850,7 +4006,12 @@ class DtChainBuilder {
       inline = false;
     } else {
       const tk = v.kind(v.f(this.root, 0));
-      if (tk === N_CONDITIONAL_EXPRESSION || tk === N_BINARY_EXPRESSION || tk === N_PREFIX_EXPRESSION || tk === N_AWAIT_EXPRESSION) {
+      if (
+        tk === N_CONDITIONAL_EXPRESSION ||
+        tk === N_BINARY_EXPRESSION ||
+        tk === N_PREFIX_EXPRESSION ||
+        tk === N_AWAIT_EXPRESSION
+      ) {
         inline = false;
       }
     }

@@ -40,7 +40,20 @@ import {
 import { RbCop } from "../cop";
 import { RbSource } from "../source";
 import { TK_kRESCUE_MOD } from "../tables";
-import { ssxFE, ssxFS, ssxHas, ssxInPattern, ssxIs, ssxIsCall, ssxIsSpace, ssxLocIs, ssxMeth, ssxOperatorName, ssxRescueModifier, ssxSiblingIndex } from "./style_syntax_help";
+import {
+  ssxFE,
+  ssxFS,
+  ssxHas,
+  ssxInPattern,
+  ssxIs,
+  ssxIsCall,
+  ssxIsSpace,
+  ssxLocIs,
+  ssxMeth,
+  ssxOperatorName,
+  ssxRescueModifier,
+  ssxSiblingIndex,
+} from "./style_syntax_help";
 
 /** arg_to_unparenthesized_call? */
 const ssxLambdaArgToUnparenthesizedCall = (src: RbSource, block: i32): boolean => {
@@ -60,7 +73,8 @@ const ssxLambdaArgToUnparenthesizedCall = (src: RbSource, block: i32): boolean =
 };
 
 /** replace_delimiters?: a do-end lambda literal that is an argument of a call without parentheses. */
-const ssxLambdaReplaceDelimiters = (src: RbSource, block: i32): boolean => !ssxLocIs(src, block, F_END, "}") && ssxLambdaArgToUnparenthesizedCall(src, block);
+const ssxLambdaReplaceDelimiters = (src: RbSource, block: i32): boolean =>
+  !ssxLocIs(src, block, F_END, "}") && ssxLambdaArgToUnparenthesizedCall(src, block);
 
 /** operator_expression? */
 const ssxLambdaOperatorExpression = (src: RbSource, n: i32): boolean => {

@@ -29,7 +29,8 @@ import {
 } from "./token";
 import { swCpAt, swCpIsSpace } from "./tokenizer";
 
-const swIsSpaceOrLinebreakAt = (f: SwFormatter, i: i32): boolean => f.has(i) && (f.k(i) === SW_SPACE || f.k(i) === SW_LINEBREAK);
+const swIsSpaceOrLinebreakAt = (f: SwFormatter, i: i32): boolean =>
+  f.has(i) && (f.k(i) === SW_SPACE || f.k(i) === SW_LINEBREAK);
 
 /** spaceAroundBraces. */
 export const swRuleSpaceAroundBraces = (f: SwFormatter): void => {
@@ -40,7 +41,12 @@ export const swRuleSpaceAroundBraces = (f: SwFormatter): void => {
     const pk = f.k(i - 1);
     const ps = f.s(i - 1);
     const pa = f.a(i - 1);
-    if (pk === SW_SPACE || pk === SW_LINEBREAK || (pk === SW_OP && (pa === SW_OP_PREFIX || pa === SW_OP_INFIX)) || (pk === SW_START && !swIsStringDelimiter(pk, ps))) {
+    if (
+      pk === SW_SPACE ||
+      pk === SW_LINEBREAK ||
+      (pk === SW_OP && (pa === SW_OP_PREFIX || pa === SW_OP_INFIX)) ||
+      (pk === SW_START && !swIsStringDelimiter(pk, ps))
+    ) {
       continue;
     }
     f.insert(SW_SPACE, " ", 0, i);
@@ -78,7 +84,12 @@ export const swRuleSpaceAroundBrackets = (f: SwFormatter): void => {
       continue;
     }
     const k = f.k(i);
-    if (k === SW_IDENT || k === SW_KEYWORD || f.tok(i, SW_START, "{") || (f.tok(i, SW_START, "(") && swIsInClosureArguments(f, i - 1))) {
+    if (
+      k === SW_IDENT ||
+      k === SW_KEYWORD ||
+      f.tok(i, SW_START, "{") ||
+      (f.tok(i, SW_START, "(") && swIsInClosureArguments(f, i - 1))
+    ) {
       f.insert(SW_SPACE, " ", 0, i);
     } else if (k === SW_SPACE) {
       if ((f.tok(i + 1, SW_START, "(") && !swIsInClosureArguments(f, i + 1)) || f.tok(i + 1, SW_START, "[")) {
@@ -135,7 +146,14 @@ export const swRuleSpaceAroundComments = (f: SwFormatter): void => {
     }
     const cs = f.indexAfter(SW_T_NON_SPACE_OR_LINEBREAK, startIndex);
     const ce = f.indexBefore(SW_T_NON_SPACE_OR_LINEBREAK, i);
-    if (cs < 0 || ce < 0 || f.k(cs) !== SW_COMMENT || f.k(ce) !== SW_COMMENT || f.s(cs).startsWith("@") || f.s(ce).endsWith("@")) {
+    if (
+      cs < 0 ||
+      ce < 0 ||
+      f.k(cs) !== SW_COMMENT ||
+      f.k(ce) !== SW_COMMENT ||
+      f.s(cs).startsWith("@") ||
+      f.s(ce).endsWith("@")
+    ) {
       continue;
     }
     if (f.has(i + 1)) {
@@ -179,7 +197,13 @@ const swEndsWithSpace = (s: string): boolean => {
 /** spaceAroundGenerics. */
 export const swRuleSpaceAroundGenerics = (f: SwFormatter): void => {
   for (let i = f.enumStart(); i >= 0; i = f.enumNext()) {
-    if (f.tok(i, SW_START, "<") && f.has(i - 1) && f.k(i - 1) === SW_SPACE && f.has(i - 2) && (f.k(i - 2) === SW_IDENT || f.k(i - 2) === SW_KEYWORD)) {
+    if (
+      f.tok(i, SW_START, "<") &&
+      f.has(i - 1) &&
+      f.k(i - 1) === SW_SPACE &&
+      f.has(i - 2) &&
+      (f.k(i - 2) === SW_IDENT || f.k(i - 2) === SW_KEYWORD)
+    ) {
       f.removeToken(i - 1);
     }
   }
@@ -207,12 +231,24 @@ export const swRuleSpaceInsideBraces = (f: SwFormatter): void => {
 
 const swRemoveInsideSpace = (f: SwFormatter, open: string, close: string): void => {
   for (let i = f.enumStart(); i >= 0; i = f.enumNext()) {
-    if (f.tok(i, SW_START, open) && f.has(i + 1) && f.k(i + 1) === SW_SPACE && f.has(i + 2) && !swKindIsComment(f.k(i + 2), f.s(i + 2))) {
+    if (
+      f.tok(i, SW_START, open) &&
+      f.has(i + 1) &&
+      f.k(i + 1) === SW_SPACE &&
+      f.has(i + 2) &&
+      !swKindIsComment(f.k(i + 2), f.s(i + 2))
+    ) {
       f.removeToken(i + 1);
     }
   }
   for (let i = f.enumStart(); i >= 0; i = f.enumNext()) {
-    if (f.tok(i, SW_END, close) && f.has(i - 1) && f.k(i - 1) === SW_SPACE && f.has(i - 2) && !(swKindIsComment(f.k(i - 2), f.s(i - 2)) || f.k(i - 2) === SW_LINEBREAK)) {
+    if (
+      f.tok(i, SW_END, close) &&
+      f.has(i - 1) &&
+      f.k(i - 1) === SW_SPACE &&
+      f.has(i - 2) &&
+      !(swKindIsComment(f.k(i - 2), f.s(i - 2)) || f.k(i - 2) === SW_LINEBREAK)
+    ) {
       f.removeToken(i - 1);
     }
   }
@@ -236,7 +272,13 @@ export const swRuleSpaceInsideGenerics = (f: SwFormatter): void => {
     }
   }
   for (let i = f.enumStart(); i >= 0; i = f.enumNext()) {
-    if (f.tok(i, SW_END, ">") && f.has(i - 1) && f.k(i - 1) === SW_SPACE && f.has(i - 2) && f.k(i - 2) !== SW_LINEBREAK) {
+    if (
+      f.tok(i, SW_END, ">") &&
+      f.has(i - 1) &&
+      f.k(i - 1) === SW_SPACE &&
+      f.has(i - 2) &&
+      f.k(i - 2) !== SW_LINEBREAK
+    ) {
       f.removeToken(i - 1);
     }
   }
@@ -318,7 +360,16 @@ const swIsBlank = (s: string): boolean => {
       b.push(toU8(s.charCodeAt(i + j)));
     }
     const cp = swCpAt(b, toI32(b.length), 0);
-    if (!(cp === 0xa0 || cp === 0x1680 || (cp >= 0x2000 && cp <= 0x200a) || cp === 0x202f || cp === 0x205f || cp === 0x3000)) {
+    if (
+      !(
+        cp === 0xa0 ||
+        cp === 0x1680 ||
+        (cp >= 0x2000 && cp <= 0x200a) ||
+        cp === 0x202f ||
+        cp === 0x205f ||
+        cp === 0x3000
+      )
+    ) {
       return false;
     }
     i += l;
@@ -349,7 +400,12 @@ export const swRuleSpaceAroundOperators = (f: SwFormatter): void => {
       }
       f.insert(SW_SPACE, " ", 0, i + 1);
     } else if (swIsUnwrap(f, i)) {
-      if (f.has(i - 1) && f.has(i + 1) && !swIsSpaceOrLinebreakAt(f, i + 1) && (f.kw(i - 1, "as") || f.kw(i - 1, "try"))) {
+      if (
+        f.has(i - 1) &&
+        f.has(i + 1) &&
+        !swIsSpaceOrLinebreakAt(f, i + 1) &&
+        (f.kw(i - 1, "as") || f.kw(i - 1, "try"))
+      ) {
         f.insert(SW_SPACE, " ", 0, i + 1);
       }
     } else if (k === SW_OP && s === "::") {
@@ -404,12 +460,19 @@ export const swRuleSpaceAroundOperators = (f: SwFormatter): void => {
       }
     } else if (k === SW_OP && a === SW_OP_PREFIX) {
       const prevIndex = f.indexBefore(SW_T_NON_SPACE, i);
-      if (prevIndex >= 0 && (f.tok(prevIndex, SW_START, "[") || f.tok(prevIndex, SW_START, "(") || f.tok(prevIndex, SW_START, "<"))) {
+      if (
+        prevIndex >= 0 &&
+        (f.tok(prevIndex, SW_START, "[") || f.tok(prevIndex, SW_START, "(") || f.tok(prevIndex, SW_START, "<"))
+      ) {
         f.removeTokens(prevIndex + 1, i);
       } else if (f.has(i - 1) && !swIsSpaceOrLinebreakAt(f, i - 1) && f.k(i - 1) !== SW_OP) {
         f.insert(SW_SPACE, " ", 0, i);
       }
-    } else if ((k === SW_DELIM && (s === ":" || s === "," || s === ";")) || (k === SW_OP && a === SW_OP_POSTFIX) || (k === SW_START && s === ":")) {
+    } else if (
+      (k === SW_DELIM && (s === ":" || s === "," || s === ";")) ||
+      (k === SW_OP && a === SW_OP_POSTFIX) ||
+      (k === SW_START && s === ":")
+    ) {
       if (k === SW_DELIM && s === ":" && f.has(i + 1) && f.k(i + 1) === SW_IDENT && f.tok(i + 2, SW_DELIM, ":")) {
         // It's a selector
         continue;
@@ -427,4 +490,3 @@ export const swRuleSpaceAroundOperators = (f: SwFormatter): void => {
     }
   }
 };
-

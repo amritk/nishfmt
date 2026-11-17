@@ -63,7 +63,9 @@ const swIsOptionalType = (f: SwFormatter, lo: i32, hi: i32): boolean => {
   if (!swIsStartOfClosureType(f, lo)) {
     return true;
   }
-  return f.tok(lo, SW_START, "(") && f.tok(hi, SW_END, ")") && f.indexAfter(SW_T_NON_SPACE_OR_COMMENT_OR_LINEBREAK, hi) === u;
+  return (
+    f.tok(lo, SW_START, "(") && f.tok(hi, SW_END, ")") && f.indexAfter(SW_T_NON_SPACE_OR_COMMENT_OR_LINEBREAK, hi) === u
+  );
 };
 
 /** redundantNilInit. */
@@ -238,7 +240,10 @@ export const swRuleEnumNamespaces = (f: SwFormatter): void => {
     if (d.body.length === 0 || !swHostsOnlyStaticMembers(f, d.body)) {
       continue;
     }
-    if (swRangeContainsTypeInit(f, name, braceIndex + 1, endIndex) || swRangeContainsSelfAssignment(f, braceIndex + 1, endIndex)) {
+    if (
+      swRangeContainsTypeInit(f, name, braceIndex + 1, endIndex) ||
+      swRangeContainsSelfAssignment(f, braceIndex + 1, endIndex)
+    ) {
       continue;
     }
     if (isSwiftTestingFile) {

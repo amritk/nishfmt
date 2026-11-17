@@ -87,7 +87,8 @@ const sbhTuUnneeded = (src: RbSource, node: i32, out: SbhTuRange[]): void => {
         main = new SbhTuRange(a.exS(mlhs), a.exE(mlhs), "_");
       } else {
         const rhs = a.kid(node, 1);
-        const bracketed = ssxLocIs(src, rhs, F_BEGIN, "[") || (ssxHas(src, rhs, F_BEGIN) && src.at(ssxFS(src, rhs, F_BEGIN)) === 37);
+        const bracketed =
+          ssxLocIs(src, rhs, F_BEGIN, "[") || (ssxHas(src, rhs, F_BEGIN) && src.at(ssxFS(src, rhs, F_BEGIN)) === 37);
         main = new SbhTuRange(a.exS(mlhs), a.exS(rhs), a.type(rhs) === NT_ARRAY && !bracketed ? "[" : "");
       }
     } else if (ssxLocIs(src, mlhs, F_END, ")")) {

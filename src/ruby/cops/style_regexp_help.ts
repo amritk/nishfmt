@@ -75,7 +75,20 @@ const rbRxSpace = (c: i32): boolean => c === 32 || (c >= 9 && c <= 13);
 const rbRxNonprint = (c: i32): boolean => (c >= 1 && c <= 31) || c === 127;
 /** meta_char: . \ | { } ( ) [ ] ^ $ ? * + */
 const rbRxMeta = (c: i32): boolean =>
-  c === 46 || c === 92 || c === 124 || c === 123 || c === 125 || c === 40 || c === 41 || c === 91 || c === 93 || c === 94 || c === 36 || c === 63 || c === 42 || c === 43;
+  c === 46 ||
+  c === 92 ||
+  c === 124 ||
+  c === 123 ||
+  c === 125 ||
+  c === 40 ||
+  c === 41 ||
+  c === 91 ||
+  c === 93 ||
+  c === 94 ||
+  c === 36 ||
+  c === 63 ||
+  c === 42 ||
+  c === 43;
 /** Whether `c` is one of the ASCII characters of `chars`. */
 const rbRxIn = (c: i32, chars: string): boolean => c >= 0 && c < 128 && chars.indexOf(String.fromCharCode(c)) >= 0;
 
@@ -817,7 +830,12 @@ export class RbRxScan {
         let e = q + 3;
         while (true) {
           this.emit(RX_ESCAPE, RK_NONE, s, e);
-          if (this.at(e) === 92 && this.at(e + 1) === 120 && rbRxIn(this.at(e + 2), "89ABCDEFabcdef") && rbRxXdigit(this.at(e + 3))) {
+          if (
+            this.at(e) === 92 &&
+            this.at(e + 1) === 120 &&
+            rbRxIn(this.at(e + 2), "89ABCDEFabcdef") &&
+            rbRxXdigit(this.at(e + 3))
+          ) {
             s = e;
             e += 4;
             continue;
@@ -1021,7 +1039,11 @@ export class RbRxScan {
             t = RX_NONPOSIX;
           }
           const name = rbRxStr(this.cs, s, j - 1);
-          if (",alnum,alpha,ascii,blank,cntrl,digit,graph,lower,print,punct,space,upper,word,xdigit,".indexOf(`,${name},`) < 0) {
+          if (
+            ",alnum,alpha,ascii,blank,cntrl,digit,graph,lower,print,punct,space,upper,word,xdigit,".indexOf(
+              `,${name},`,
+            ) < 0
+          ) {
             this.failed = true;
             return;
           }

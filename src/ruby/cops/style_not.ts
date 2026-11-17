@@ -3,7 +3,19 @@
 // Ported from RuboCop 1.92.2 (MIT License, Copyright (c) 2012-24 Bozhidar
 // Batsov).
 
-import { F_QUESTION, F_SELECTOR, NT_AND, NT_EFLIPFLOP, NT_ERANGE, NT_IF, NT_IFLIPFLOP, NT_IRANGE, NT_OR, NT_SEND, V_NIL } from "../ast";
+import {
+  F_QUESTION,
+  F_SELECTOR,
+  NT_AND,
+  NT_EFLIPFLOP,
+  NT_ERANGE,
+  NT_IF,
+  NT_IFLIPFLOP,
+  NT_IRANGE,
+  NT_OR,
+  NT_SEND,
+  V_NIL,
+} from "../ast";
 import { RbCop } from "../cop";
 import { rbSpaceEnd } from "../help";
 import { RbSource } from "../source";
@@ -73,13 +85,22 @@ export class CopStyleNot {
       } else {
         const t = a.type(child);
         let parens = t === NT_AND || t === NT_OR;
-        if (t === NT_SEND && (ssxOperation(src, child, true) || (ssxOperation(src, child, false) && ssxMeth(src, child) === "~"))) {
+        if (
+          t === NT_SEND &&
+          (ssxOperation(src, child, true) || (ssxOperation(src, child, false) && ssxMeth(src, child) === "~"))
+        ) {
           parens = true;
         }
         if (t === NT_IF && ssxHas(src, child, F_QUESTION)) {
           parens = true;
         }
-        if (t === NT_IRANGE || t === NT_ERANGE || t === NT_IFLIPFLOP || t === NT_EFLIPFLOP || ssxAssignment(src, child)) {
+        if (
+          t === NT_IRANGE ||
+          t === NT_ERANGE ||
+          t === NT_IFLIPFLOP ||
+          t === NT_EFLIPFLOP ||
+          ssxAssignment(src, child)
+        ) {
           parens = true;
         }
         if (parens) {

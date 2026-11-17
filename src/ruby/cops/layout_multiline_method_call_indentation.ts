@@ -39,7 +39,17 @@ import {
   rmxPartOfAssignmentRhs,
   rmxWithinNode,
 } from "./layout_multiline_expr_help";
-import { RmlAlignCorr, RmlRange, rmlBeginsItsLine, rmlDescendants, rmlIsBlock, rmlIsCall, rmlReceiver, rmlSingleLine, rmlTernary } from "./layout_multiline_help";
+import {
+  RmlAlignCorr,
+  RmlRange,
+  rmlBeginsItsLine,
+  rmlDescendants,
+  rmlIsBlock,
+  rmlIsCall,
+  rmlReceiver,
+  rmlSingleLine,
+  rmlTernary,
+} from "./layout_multiline_help";
 
 /** The begin of no range. */
 const RMC_NONE_S: i32 = -1;
@@ -296,7 +306,12 @@ export class CopLayoutMultilineMethodCallIndentation {
     const recv = a.kid(n, 0);
     let p = src.parent(recv);
     while (p !== V_NIL) {
-      if (a.type(p) === NT_SEND && rmxOperatorMethod(rnMethod(src, p)) && a.nKid(p) > 2 && rmxWithinNode(src, recv, a.kid(p, 2))) {
+      if (
+        a.type(p) === NT_SEND &&
+        rmxOperatorMethod(rnMethod(src, p)) &&
+        a.nKid(p) > 2 &&
+        rmxWithinNode(src, recv, a.kid(p, 2))
+      ) {
         return a.exS(a.kid(p, 2));
       }
       p = src.parent(p);

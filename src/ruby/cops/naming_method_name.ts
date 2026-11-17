@@ -12,7 +12,8 @@ import { nmhClassEmitter, nmhSnakeCase } from "./naming_help";
 import { ssxDefName, ssxFE, ssxFS, ssxGlobalConst, ssxHas, ssxOperatorName } from "./style_syntax_help";
 
 /** A sym or str node. */
-const nmnSymStr = (src: RbSource, n: i32): boolean => src.a.isNode(n) && (src.a.type(n) === NT_SYM || src.a.type(n) === NT_STR);
+const nmnSymStr = (src: RbSource, n: i32): boolean =>
+  src.a.isNode(n) && (src.a.type(n) === NT_SYM || src.a.type(n) === NT_STR);
 
 /** forbidden_identifier?: without `@` and `$`, `__id__` or `__send__`. */
 const nmnForbidden = (name: string): boolean => {
@@ -92,7 +93,11 @@ export class CopNamingMethodName {
       if (argc === 2 && nmnSymStr(src, first)) {
         this.handleName(src, first, a.text(a.kid(first, 0)));
       }
-    } else if ((m === "attr" || m === "attr_reader" || m === "attr_writer" || m === "attr_accessor") && a.kid(n, 0) === V_NIL && argc > 0) {
+    } else if (
+      (m === "attr" || m === "attr_reader" || m === "attr_writer" || m === "attr_accessor") &&
+      a.kid(n, 0) === V_NIL &&
+      argc > 0
+    ) {
       // handle_attr_accessor
       for (let i = 2; i < a.nKid(n); i++) {
         const x = a.kid(n, i);

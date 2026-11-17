@@ -60,7 +60,8 @@ export class CopStyleRedundantAssignment {
       }
       this.check(src, a.kid(n, k - 1));
     } else if (t === NT_IF) {
-      const modifier = (ssxLocIs(src, n, F_KEYWORD, "if") || ssxLocIs(src, n, F_KEYWORD, "unless")) && !ssxHas(src, n, F_END);
+      const modifier =
+        (ssxLocIs(src, n, F_KEYWORD, "if") || ssxLocIs(src, n, F_KEYWORD, "unless")) && !ssxHas(src, n, F_END);
       if (modifier || ssxHas(src, n, F_QUESTION)) {
         return;
       }

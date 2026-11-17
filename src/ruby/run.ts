@@ -13,7 +13,8 @@ import { RbTeam } from "./team";
 const RB_MAX_ITERATIONS: i32 = 200;
 
 // RuboCop's AllCops Include patterns (config/default.yml).
-const RB_EXTENSIONS: string = ".rb,.arb,.axlsx,.builder,.gemfile,.gemspec,.jb,.jbuilder,.mspec,.opal,.pluginspec,.podspec,.rabl,.rake,.rbw,.ru,.ruby,.schema,.spec,.thor";
+const RB_EXTENSIONS: string =
+  ".rb,.arb,.axlsx,.builder,.gemfile,.gemspec,.jb,.jbuilder,.mspec,.opal,.pluginspec,.podspec,.rabl,.rake,.rbw,.ru,.ruby,.schema,.spec,.thor";
 const RB_BASENAMES: string =
   ".irbrc,.pryrc,.simplecov,buildfile,Appraisals,Berksfile,Brewfile,Buildfile,Capfile,Dangerfile,Deliverfile,Fastfile,Gemfile,Guardfile,Jarfile,Mavenfile,Podfile,Puppetfile,Rakefile,rakefile,Schemafile,Snapfile,Steepfile,Thorfile,Vagrantfile";
 

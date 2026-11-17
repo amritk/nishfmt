@@ -93,7 +93,15 @@ export class CopLayoutSpaceAroundOperators {
         }
       } else if (t === NT_SEND) {
         this.onSend(src, n);
-      } else if (t === NT_LVASGN || t === NT_IVASGN || t === NT_CVASGN || t === NT_GVASGN || t === NT_MASGN || t === NT_OR_ASGN || t === NT_AND_ASGN) {
+      } else if (
+        t === NT_LVASGN ||
+        t === NT_IVASGN ||
+        t === NT_CVASGN ||
+        t === NT_GVASGN ||
+        t === NT_MASGN ||
+        t === NT_OR_ASGN ||
+        t === NT_AND_ASGN
+      ) {
         const rhs = a.kid(n, 1);
         if (rhs !== V_NIL) {
           this.checkOp(src, LSP_OP_ASSIGNMENT, n, F_OPERATOR, rhs);
@@ -133,7 +141,14 @@ export class CopLayoutSpaceAroundOperators {
     const m = rnMethod(src, n);
     // rational_literal?: (send (int _) :/ (rational _))
     const recv = a.kid(n, 0);
-    if (m === "/" && a.nKid(n) === 3 && a.isNode(recv) && a.type(recv) === NT_INT && a.isNode(a.kid(n, 2)) && a.type(a.kid(n, 2)) === NT_RATIONAL) {
+    if (
+      m === "/" &&
+      a.nKid(n) === 3 &&
+      a.isNode(recv) &&
+      a.type(recv) === NT_INT &&
+      a.isNode(a.kid(n, 2)) &&
+      a.type(a.kid(n, 2)) === NT_RATIONAL
+    ) {
       return;
     }
     if (rnHas(src, n, F_OPERATOR)) {
@@ -255,7 +270,12 @@ export class CopLayoutSpaceAroundOperators {
     let count = 0;
     for (let i = 0; i < a.nKid(h); i++) {
       const p = a.kid(h, i);
-      if (a.isNode(p) && a.type(p) === NT_PAIR && rnFieldSrc(src, p, F_OPERATOR) === "=>" && src.column(rnS(src, p, F_OPERATOR)) === col) {
+      if (
+        a.isNode(p) &&
+        a.type(p) === NT_PAIR &&
+        rnFieldSrc(src, p, F_OPERATOR) === "=>" &&
+        src.column(rnS(src, p, F_OPERATOR)) === col
+      ) {
         count++;
       }
     }

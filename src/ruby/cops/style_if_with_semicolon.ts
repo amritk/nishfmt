@@ -31,9 +31,27 @@ import {
 import { RbCop } from "../cop";
 import { RbSource } from "../source";
 import { LalIgnored } from "./layout_align_help";
-import { scnBranches, scnElseBranch, scnIfBranch, scnModifier, scnOperatorKeyword, scnTernary, scnUnless } from "./style_cond_help";
+import {
+  scnBranches,
+  scnElseBranch,
+  scnIfBranch,
+  scnModifier,
+  scnOperatorKeyword,
+  scnTernary,
+  scnUnless,
+} from "./style_cond_help";
 import { stpPrefixNot } from "./style_ternary_parentheses";
-import { ssxAssignment, ssxFE, ssxFS, ssxIs, ssxIsCall, ssxLocIs, ssxMeth, ssxOperatorName, ssxParenthesized } from "./style_syntax_help";
+import {
+  ssxAssignment,
+  ssxFE,
+  ssxFS,
+  ssxIs,
+  ssxIsCall,
+  ssxLocIs,
+  ssxMeth,
+  ssxOperatorName,
+  ssxParenthesized,
+} from "./style_syntax_help";
 
 /** require_argument_parentheses? */
 const siwsRequireArgParens = (src: RbSource, n: i32): boolean => {
@@ -94,7 +112,8 @@ const siwsBuild = (src: RbSource, n: i32): string => {
 };
 
 /** ternary_operand. */
-const siwsOperand = (src: RbSource, n: i32): string => (siwsLowerPrecedence(src, n) ? `(${src.nodeSrc(n)})` : siwsBuild(src, n));
+const siwsOperand = (src: RbSource, n: i32): string =>
+  siwsLowerPrecedence(src, n) ? `(${src.nodeSrc(n)})` : siwsBuild(src, n);
 
 /** build_else_branch. */
 const siwsElse = (src: RbSource, n: i32): string => {
@@ -177,7 +196,9 @@ export class CopStyleIfWithSemicolon {
     const eb = scnElseBranch(src, n);
     const ib = scnIfBranch(src, n);
     if (ssxIs(src, eb, NT_IF)) {
-      return siwsChop(`if ${src.nodeSrc(a.kid(n, 0))}\n  ${ib === V_NIL ? "" : src.nodeSrc(ib)}\n${siwsChop(siwsElse(src, eb))}\nend\n`);
+      return siwsChop(
+        `if ${src.nodeSrc(a.kid(n, 0))}\n  ${ib === V_NIL ? "" : src.nodeSrc(ib)}\n${siwsChop(siwsElse(src, eb))}\nend\n`,
+      );
     }
     let thenCode = ib === V_NIL ? "nil" : siwsOperand(src, ib);
     let elseCode = eb === V_NIL ? "nil" : siwsOperand(src, eb);

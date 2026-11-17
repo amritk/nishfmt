@@ -48,7 +48,8 @@ export const SW_SCOPE_TUPLE: i32 = 9;
 export const SW_SCOPE_TUPLE_TYPE: i32 = 10;
 export const SW_SCOPE_THROWS_TYPE: i32 = 11;
 
-export const swScopeTypeIsType = (t: i32): boolean => t === SW_SCOPE_ARRAY_TYPE || t === SW_SCOPE_DICTIONARY_TYPE || t === SW_SCOPE_TUPLE_TYPE;
+export const swScopeTypeIsType = (t: i32): boolean =>
+  t === SW_SCOPE_ARRAY_TYPE || t === SW_SCOPE_DICTIONARY_TYPE || t === SW_SCOPE_TUPLE_TYPE;
 
 /** scopeType(at:), SW_SCOPE_NONE for nil. */
 export const swScopeType = (f: SwFormatter, index: i32): i32 => {
@@ -78,7 +79,8 @@ export const swScopeType = (f: SwFormatter, index: i32): i32 => {
   const nextIsDot = nextIndex >= 0 && f.ks(nextIndex, SW_OP, ".");
   if (
     nextIsDot &&
-    (swNextIs(f, SW_T_NON_SPACE_OR_COMMENT_OR_LINEBREAK, nextIndex, SW_IDENT, "self") || swNextIs(f, SW_T_NON_SPACE_OR_COMMENT_OR_LINEBREAK, nextIndex, SW_IDENT, "init"))
+    (swNextIs(f, SW_T_NON_SPACE_OR_COMMENT_OR_LINEBREAK, nextIndex, SW_IDENT, "self") ||
+      swNextIs(f, SW_T_NON_SPACE_OR_COMMENT_OR_LINEBREAK, nextIndex, SW_IDENT, "init"))
   ) {
     isType = true;
   } else if (swNextIs(f, SW_T_NON_SPACE_OR_COMMENT, endIndex, SW_START, "(")) {
@@ -155,7 +157,12 @@ export const swIsTypePosition = (f: SwFormatter, index: i32): boolean => {
   if (prevIndex < 0) {
     return false;
   }
-  if (f.op(prevIndex, "->", SW_OP_INFIX) || f.tok(prevIndex, SW_START, "<") || f.kw(prevIndex, "is") || f.kw(prevIndex, "as")) {
+  if (
+    f.op(prevIndex, "->", SW_OP_INFIX) ||
+    f.tok(prevIndex, SW_START, "<") ||
+    f.kw(prevIndex, "is") ||
+    f.kw(prevIndex, "as")
+  ) {
     return true;
   }
   if (f.tok(prevIndex, SW_DELIM, ":") || f.tok(prevIndex, SW_DELIM, ",")) {
@@ -203,7 +210,10 @@ export const swIsParameterList = (f: SwFormatter, i: i32): boolean => {
     return false;
   }
   const funcIndex = f.indexBefore(SW_T_KEYWORD_OR_ATTRIBUTE, i);
-  if (funcIndex >= 0 && (f.kw(funcIndex, "func") || f.kw(funcIndex, "init") || f.kw(funcIndex, "subscript") || f.kw(funcIndex, "macro"))) {
+  if (
+    funcIndex >= 0 &&
+    (f.kw(funcIndex, "func") || f.kw(funcIndex, "init") || f.kw(funcIndex, "subscript") || f.kw(funcIndex, "macro"))
+  ) {
     if (f.lastIndexOfIn(SW_END, "}", 0, funcIndex, i) < 0) {
       return true;
     }
@@ -245,7 +255,14 @@ export const swShouldInsertSpaceAfterToken = (f: SwFormatter, index: i32): i32 =
       }
       return SW_SPACE_NO;
     }
-    if (s === "private" || s === "fileprivate" || s === "internal" || s === "init" || s === "subscript" || s === "throws") {
+    if (
+      s === "private" ||
+      s === "fileprivate" ||
+      s === "internal" ||
+      s === "init" ||
+      s === "subscript" ||
+      s === "throws"
+    ) {
       return SW_SPACE_NO;
     }
     if (s === "await") {
@@ -263,7 +280,9 @@ export const swShouldInsertSpaceAfterToken = (f: SwFormatter, index: i32): i32 =
     if (s === "unsafe") {
       return SW_SPACE_YES;
     }
-    return swIsKeywordInTypeContext(s) && !f.ks(index - 1, SW_OP, ".") && swIsTypePosition(f, index) ? SW_SPACE_YES : SW_SPACE_NO;
+    return swIsKeywordInTypeContext(s) && !f.ks(index - 1, SW_OP, ".") && swIsTypePosition(f, index)
+      ? SW_SPACE_YES
+      : SW_SPACE_NO;
   }
   if (k === SW_END && s === "]") {
     return swIsInClosureArguments(f, index) ? SW_SPACE_YES : SW_SPACE_NO;

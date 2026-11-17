@@ -232,7 +232,12 @@ export class Classifier {
         continue;
       }
       const lb = d.nxt[t];
-      if (lb < 0 || d.kind[lb] !== P_LSQUARE || d.type[lb] === TT_LAMBDA_LSQUARE || d.type[lb] === TT_ATTRIBUTE_SQUARE) {
+      if (
+        lb < 0 ||
+        d.kind[lb] !== P_LSQUARE ||
+        d.type[lb] === TT_LAMBDA_LSQUARE ||
+        d.type[lb] === TT_ATTRIBUTE_SQUARE
+      ) {
         continue;
       }
       const rb = d.match[lb];
@@ -330,7 +335,11 @@ export class Classifier {
           // opens nothing; one whose angle fails to close is an operator too.
           const p = this.prev(t);
           const pk = p >= 0 ? this.k(p) : -1;
-          const binary = p >= 0 && (this.isLit(p) || pk === P_RBRACE || (pk === P_RPAREN && !(d.match[p] >= 0 && this.ty(d.match[p]) === TT_OVERLOADED_OPERATOR_LPAREN)));
+          const binary =
+            p >= 0 &&
+            (this.isLit(p) ||
+              pk === P_RBRACE ||
+              (pk === P_RPAREN && !(d.match[p] >= 0 && this.ty(d.match[p]) === TT_OVERLOADED_OPERATOR_LPAREN)));
           if (!binary) {
             const c = this.findCloser(t, false, true);
             if (c >= 0) {
@@ -346,10 +355,20 @@ export class Classifier {
           return -1;
         }
         // (clang-format does not bail out on a line starting with `template`.)
-        if (inExpr && d.kind[this.first] !== KW_TEMPLATE && (k === P_AMPAMP || k === P_PIPEPIPE || k === P_QUESTION || k === P_COLON)) {
+        if (
+          inExpr &&
+          d.kind[this.first] !== KW_TEMPLATE &&
+          (k === P_AMPAMP || k === P_PIPEPIPE || k === P_QUESTION || k === P_COLON)
+        ) {
           // An `&&` right before `>`, `,` or `...` is a reference type, not a binary operator.
           const n = d.nxt[t];
-          if (!(k === P_AMPAMP && n >= 0 && (d.kind[n] === P_GREATER || d.kind[n] === P_COMMA || d.kind[n] === P_ELLIPSIS))) {
+          if (
+            !(
+              k === P_AMPAMP &&
+              n >= 0 &&
+              (d.kind[n] === P_GREATER || d.kind[n] === P_COMMA || d.kind[n] === P_ELLIPSIS)
+            )
+          ) {
             return -1;
           }
         }
@@ -375,7 +394,13 @@ export class Classifier {
     }
     const pk = this.k(p);
     const pt = this.ty(p);
-    if (pt === TT_CONDITIONAL_EXPR || pt === TT_CAST_RPAREN || pt === TT_UNARY_OPERATOR || pt === TT_BINARY_OPERATOR || pt === TT_TEMPLATE_OPENER) {
+    if (
+      pt === TT_CONDITIONAL_EXPR ||
+      pt === TT_CAST_RPAREN ||
+      pt === TT_UNARY_OPERATOR ||
+      pt === TT_BINARY_OPERATOR ||
+      pt === TT_TEMPLATE_OPENER
+    ) {
       return true;
     }
     switch (pk) {
@@ -537,7 +562,16 @@ export class Classifier {
           if (isWordKind(this.k(i))) {
             const rp = d.prv[i];
             const rk = rp >= 0 ? this.k(rp) : -1;
-            if (!(rk === P_COLONCOLON || rk === P_AMPAMP || rk === P_PIPEPIPE || rk === P_EXCLAIM || rk === KW_REQUIRES || rk === P_EQUAL)) {
+            if (
+              !(
+                rk === P_COLONCOLON ||
+                rk === P_AMPAMP ||
+                rk === P_PIPEPIPE ||
+                rk === P_EXCLAIM ||
+                rk === KW_REQUIRES ||
+                rk === P_EQUAL
+              )
+            ) {
               break;
             }
           }
@@ -573,7 +607,17 @@ export class Classifier {
     if (inTmpl && nk === KW_NOEXCEPT) {
       return TT_BINARY_OPERATOR;
     }
-    if (nk === P_ARROW || nk === P_EQUAL || nk === P_COMMA || nk === P_RPAREN || (nk === KW_NOEXCEPT && !inExpr) || nk === KW_CONST || nk === KW_VOLATILE || (nk === P_LBRACE && this.next(n) < 0) || (nk === KW_REQUIRES && requiresIsClause(this.d, n))) {
+    if (
+      nk === P_ARROW ||
+      nk === P_EQUAL ||
+      nk === P_COMMA ||
+      nk === P_RPAREN ||
+      (nk === KW_NOEXCEPT && !inExpr) ||
+      nk === KW_CONST ||
+      nk === KW_VOLATILE ||
+      (nk === P_LBRACE && this.next(n) < 0) ||
+      (nk === KW_REQUIRES && requiresIsClause(this.d, n))
+    ) {
       return TT_POINTER_OR_REFERENCE;
     }
     const pk = this.k(p);
@@ -608,7 +652,19 @@ export class Classifier {
     }
     if (q >= 0) {
       const qk = this.k(q);
-      if (this.isLit(q) || qk === KW_TRUE || qk === KW_FALSE || qk === P_PLUS || qk === P_MINUS || qk === P_EXCLAIM || qk === P_TILDE || qk === P_PLUSPLUS || qk === P_MINUSMINUS || qk === KW_SIZEOF || qk === KW_ALIGNOF) {
+      if (
+        this.isLit(q) ||
+        qk === KW_TRUE ||
+        qk === KW_FALSE ||
+        qk === P_PLUS ||
+        qk === P_MINUS ||
+        qk === P_EXCLAIM ||
+        qk === P_TILDE ||
+        qk === P_PLUSPLUS ||
+        qk === P_MINUSMINUS ||
+        qk === KW_SIZEOF ||
+        qk === KW_ALIGNOF
+      ) {
         return TT_BINARY_OPERATOR;
       }
     }
@@ -686,7 +742,22 @@ export class Classifier {
       return 0;
     }
     // (A `<` is a binary operator to clang-format until its `>` is found.)
-    if (pk === KW_GENERIC || pk === KW_IF || (pk === KW_CONSTEXPR && this.k(this.prev(p)) === KW_IF) || pk === KW_WHILE || pk === KW_SWITCH || pk === KW_STATIC_ASSERT || pk === KW_NOEXCEPT || pk === P_LPAREN || pk === P_COMMA || this.ty(p) === TT_BINARY_OPERATOR || pk === P_LESS || pk === KW_DECLTYPE || pk === KW_TYPEOF || pk === KW_RETURN) {
+    if (
+      pk === KW_GENERIC ||
+      pk === KW_IF ||
+      (pk === KW_CONSTEXPR && this.k(this.prev(p)) === KW_IF) ||
+      pk === KW_WHILE ||
+      pk === KW_SWITCH ||
+      pk === KW_STATIC_ASSERT ||
+      pk === KW_NOEXCEPT ||
+      pk === P_LPAREN ||
+      pk === P_COMMA ||
+      this.ty(p) === TT_BINARY_OPERATOR ||
+      pk === P_LESS ||
+      pk === KW_DECLTYPE ||
+      pk === KW_TYPEOF ||
+      pk === KW_RETURN
+    ) {
       return 1;
     }
     // A lambda's parameter list (past any `<...>`).
@@ -724,7 +795,15 @@ export class Classifier {
     this.lineHasStarSquare = false;
     const lt = d.lType[l];
     const pk = d.ppKind[this.first];
-    if (lt === LT_IMPORT || (lt === LT_PREPROCESSOR && pk !== PP_DEFINE && pk !== PP_IF && pk !== PP_ELIF && pk !== PP_PRAGMA && pk !== PP_OTHER)) {
+    if (
+      lt === LT_IMPORT ||
+      (lt === LT_PREPROCESSOR &&
+        pk !== PP_DEFINE &&
+        pk !== PP_IF &&
+        pk !== PP_ELIF &&
+        pk !== PP_PRAGMA &&
+        pk !== PP_OTHER)
+    ) {
       for (let t = this.first; t >= 0; t = d.nxt[t]) {
         d.nest[t] = 0;
         if (d.kind[t] === K_COMMENT) {
@@ -769,7 +848,10 @@ export class Classifier {
       }
       if (d.final[t] === 0) {
         // A stray character (`\`, a backtick) is an implicit string literal.
-        d.type[t] = implicitOk && (k0 === K_UNKNOWN || k0 === P_BACKSLASH || afterHeader) && k0 !== K_COMMENT ? TT_IMPLICIT_STRING_LITERAL : TT_UNKNOWN;
+        d.type[t] =
+          implicitOk && (k0 === K_UNKNOWN || k0 === P_BACKSLASH || afterHeader) && k0 !== K_COMMENT
+            ? TT_IMPLICIT_STRING_LITERAL
+            : TT_UNKNOWN;
       }
       // clang-format's parseHasInclude: every token after the header's `<`
       // but comments is an implicit string literal.
@@ -825,7 +907,14 @@ export class Classifier {
         const p = this.prev(t);
         const pp = p >= 0 ? this.prev(p) : -1;
         const n = d.nxt[t];
-        if (pp >= 0 && this.k(pp) === K_IDENT && this.isPtrKind(p) && this.ty(p) === TT_POINTER_OR_REFERENCE && n >= 0 && this.k(n) !== P_EQUAL) {
+        if (
+          pp >= 0 &&
+          this.k(pp) === K_IDENT &&
+          this.isPtrKind(p) &&
+          this.ty(p) === TT_POINTER_OR_REFERENCE &&
+          n >= 0 &&
+          this.k(n) !== P_EQUAL
+        ) {
           d.type[p] = TT_BINARY_OPERATOR;
           this.lfd[dep] = 0;
         }
@@ -841,7 +930,8 @@ export class Classifier {
           const ptk = this.k(pt);
           if (ptk === KW_CONST || ptk === KW_AUTO || isSimpleTypeKind(ptk)) {
             const n = d.nxt[t];
-            const fnTypeParen = k === P_LPAREN && n >= 0 && (this.k(n) === P_STAR || this.k(n) === P_AMP || this.k(n) === P_CARET);
+            const fnTypeParen =
+              k === P_LPAREN && n >= 0 && (this.k(n) === P_STAR || this.k(n) === P_AMP || this.k(n) === P_CARET);
             if (!(k === P_LBRACE || (k === P_LPAREN && !fnTypeParen))) {
               this.expr[dep] = 0;
             }
@@ -850,7 +940,10 @@ export class Classifier {
       }
       if (binPrecedence(k) === PREC_ASSIGNMENT && !lineIsUsing && fk !== KW_RETURN) {
         const p = this.prev(t);
-        if (!(lineIsTemplate && (dep > 0 ? !this.templateParamDefault(t, dep) : this.templateDeclKeyword())) && !(p >= 0 && (this.k(p) === P_LSQUARE || this.k(p) === KW_OPERATOR))) {
+        if (
+          !(lineIsTemplate && (dep > 0 ? !this.templateParamDefault(t, dep) : this.templateDeclKeyword())) &&
+          !(p >= 0 && (this.k(p) === P_LSQUARE || this.k(p) === KW_OPERATOR))
+        ) {
           this.expr[dep] = 1;
           this.asg[dep] = 1;
           // What precedes an initializer is a declarator: `T *x = ...`.
@@ -866,7 +959,12 @@ export class Classifier {
               if (ok === P_LPAREN || ok === P_LSQUARE || ok === P_LBRACE || this.ty(q) === TT_TEMPLATE_OPENER) {
                 break;
               }
-              if ((this.ty(q) === TT_BINARY_OPERATOR || this.ty(q) === TT_UNARY_OPERATOR) && this.isPtrKind(q) && d.prv[q] >= 0 && this.k(d.prv[q]) !== P_EQUAL) {
+              if (
+                (this.ty(q) === TT_BINARY_OPERATOR || this.ty(q) === TT_UNARY_OPERATOR) &&
+                this.isPtrKind(q) &&
+                d.prv[q] >= 0 &&
+                this.k(d.prv[q]) !== P_EQUAL
+              ) {
                 d.type[q] = TT_POINTER_OR_REFERENCE;
               }
               q = d.prv[q];
@@ -886,9 +984,22 @@ export class Classifier {
               this.set(n, TT_ATTRIBUTE_SQUARE);
             } else if (p >= 0 && this.ty(p) === TT_ATTRIBUTE_SQUARE && this.k(p) === P_LSQUARE) {
               // inner of `[[`
-            } else if (dep > 0 && this.k(this.open[dep]) === P_LBRACE && p >= 0 && (this.k(p) === P_LBRACE || this.k(p) === P_COMMA)) {
+            } else if (
+              dep > 0 &&
+              this.k(this.open[dep]) === P_LBRACE &&
+              p >= 0 &&
+              (this.k(p) === P_LBRACE || this.k(p) === P_COMMA)
+            ) {
               this.set(t, TT_DESIGNATED_INITIALIZER_LSQUARE);
-            } else if (p >= 0 && (this.k(p) === KW_AUTO || ((this.k(p) === KW_CONST || this.k(p) === KW_VOLATILE || this.k(p) === P_AMP || this.k(p) === P_AMPAMP) && autoBeforeQualifiers(d, p)))) {
+            } else if (
+              p >= 0 &&
+              (this.k(p) === KW_AUTO ||
+                ((this.k(p) === KW_CONST ||
+                  this.k(p) === KW_VOLATILE ||
+                  this.k(p) === P_AMP ||
+                  this.k(p) === P_AMPAMP) &&
+                  autoBeforeQualifiers(d, p)))
+            ) {
               // A structured binding: no subscript (it binds as any bracket).
             } else if (this.lineStartsWithAsm()) {
               // clang-format's InsideInlineASM: an operand's symbolic name.
@@ -903,7 +1014,20 @@ export class Classifier {
             } else if (this.startsObjCExpr(t, p, dep)) {
               // An Objective-C message to clang-format (or, with `(` after
               // the `]` or one token inside, nothing): no subscript.
-            } else if (n >= 0 && this.k(n) === P_RSQUARE && p >= 0 && (this.ty(p) === TT_BINARY_OPERATOR || this.k(p) === P_AT || this.k(p) === P_COMMA || this.k(p) === P_LPAREN || this.k(p) === P_LSQUARE || this.k(p) === P_QUESTION || this.k(p) === P_COLON || this.k(p) === KW_RETURN || this.k(p) === KW_DEFAULT)) {
+            } else if (
+              n >= 0 &&
+              this.k(n) === P_RSQUARE &&
+              p >= 0 &&
+              (this.ty(p) === TT_BINARY_OPERATOR ||
+                this.k(p) === P_AT ||
+                this.k(p) === P_COMMA ||
+                this.k(p) === P_LPAREN ||
+                this.k(p) === P_LSQUARE ||
+                this.k(p) === P_QUESTION ||
+                this.k(p) === P_COLON ||
+                this.k(p) === KW_RETURN ||
+                this.k(p) === KW_DEFAULT)
+            ) {
               // `f([](...) ...)` with no lambda body (in a macro): an empty
               // container literal to clang-format's parseSquare.
               this.set(t, TT_ARRAY_INITIALIZER_LSQUARE);
@@ -951,7 +1075,11 @@ export class Classifier {
           while (dd > 0) {
             const o = this.open[dd];
             const ok = this.k(o);
-            if ((k === P_RPAREN && ok === P_LPAREN) || (k === P_RSQUARE && ok === P_LSQUARE) || (k === P_RBRACE && ok === P_LBRACE)) {
+            if (
+              (k === P_RPAREN && ok === P_LPAREN) ||
+              (k === P_RSQUARE && ok === P_LSQUARE) ||
+              (k === P_RBRACE && ok === P_LBRACE)
+            ) {
               break;
             }
             dd--;
@@ -981,7 +1109,18 @@ export class Classifier {
                 this.set(t, TT_ATTRIBUTE_RPAREN);
               }
               // `decltype(...)` and `typeof(...)` name a type: not a parameter list.
-              if (this.depth === 0 && d.lMustDecl[l] === 1 && this.expr[0] === 0 && !(op >= 0 && (this.k(op) === KW_ATTRIBUTE || this.k(op) === KW_REQUIRES || this.k(op) === KW_DECLTYPE || this.k(op) === KW_TYPEOF))) {
+              if (
+                this.depth === 0 &&
+                d.lMustDecl[l] === 1 &&
+                this.expr[0] === 0 &&
+                !(
+                  op >= 0 &&
+                  (this.k(op) === KW_ATTRIBUTE ||
+                    this.k(op) === KW_REQUIRES ||
+                    this.k(op) === KW_DECLTYPE ||
+                    this.k(op) === KW_TYPEOF)
+                )
+              ) {
                 sawFnParams = true;
                 d.lMightFn[l] = 1;
               }
@@ -1007,9 +1146,22 @@ export class Classifier {
           // only checks the token before when there is one).
           if (p >= 0 || t === this.first) {
             const pk = p >= 0 ? this.k(p) : 0;
-            const okPrev = p < 0 || !(this.isLit(p) || pk === P_RBRACE || (pk === P_RPAREN && dep > 0 && !(d.match[p] >= 0 && this.ty(d.match[p]) === TT_OVERLOADED_OPERATOR_LPAREN)) || (pk === KW_OPERATOR));
+            const okPrev =
+              p < 0 ||
+              !(
+                this.isLit(p) ||
+                pk === P_RBRACE ||
+                (pk === P_RPAREN &&
+                  dep > 0 &&
+                  !(d.match[p] >= 0 && this.ty(d.match[p]) === TT_OVERLOADED_OPERATOR_LPAREN)) ||
+                pk === KW_OPERATOR
+              );
             if (okPrev) {
-              const c = this.findCloser(t, this.expr[dep] === 1, dep > 0 && this.ty(this.open[dep]) === TT_TEMPLATE_OPENER);
+              const c = this.findCloser(
+                t,
+                this.expr[dep] === 1,
+                dep > 0 && this.ty(this.open[dep]) === TT_TEMPLATE_OPENER,
+              );
               if (c >= 0) {
                 isTmpl = true;
                 this.set(t, TT_TEMPLATE_OPENER);
@@ -1078,7 +1230,11 @@ export class Classifier {
         case P_PLUSPLUS:
         case P_MINUSMINUS: {
           const p = this.prev(t);
-          if (p >= 0 && (this.k(p) === P_RPAREN || this.k(p) === P_RSQUARE || isIdentKind(this.k(p))) && this.ty(p) !== TT_CAST_RPAREN) {
+          if (
+            p >= 0 &&
+            (this.k(p) === P_RPAREN || this.k(p) === P_RSQUARE || isIdentKind(this.k(p))) &&
+            this.ty(p) !== TT_CAST_RPAREN
+          ) {
             this.set(t, TT_TRAILING_UNARY_OPERATOR);
           } else {
             this.set(t, TT_UNARY_OPERATOR);
@@ -1101,7 +1257,10 @@ export class Classifier {
           this.expr[dep] = 1;
           break;
         case P_COLON:
-          if (objcMethod || (dep > 0 && this.k(this.open[dep]) === P_LSQUARE && this.ty(this.open[dep]) === TT_OBJC_METHOD_EXPR)) {
+          if (
+            objcMethod ||
+            (dep > 0 && this.k(this.open[dep]) === P_LSQUARE && this.ty(this.open[dep]) === TT_OBJC_METHOD_EXPR)
+          ) {
             // clang-format: every `:` of a method declaration ends a
             // selector part, and the word before it is that part.
             d.type[t] = TT_OBJC_METHOD_EXPR;
@@ -1123,7 +1282,12 @@ export class Classifier {
             this.expr[dep] = 0;
           }
           // A foreach macro's arguments after the first are expressions.
-          if (dep > 0 && this.k(this.open[dep]) === P_LPAREN && this.prev(this.open[dep]) >= 0 && isForEachMacro(d, this.prev(this.open[dep]))) {
+          if (
+            dep > 0 &&
+            this.k(this.open[dep]) === P_LPAREN &&
+            this.prev(this.open[dep]) >= 0 &&
+            isForEachMacro(d, this.prev(this.open[dep]))
+          ) {
             this.expr[dep] = 1;
           }
           break;
@@ -1173,7 +1337,13 @@ export class Classifier {
       // The first selector part, right after the return type.
       if (objcMethod && isWordKind(k)) {
         const p = this.prev(t);
-        if (p >= 0 && this.k(p) === P_RPAREN && this.ty(p) === TT_CAST_RPAREN && d.match[p] >= 0 && this.prev(d.match[p]) === this.first) {
+        if (
+          p >= 0 &&
+          this.k(p) === P_RPAREN &&
+          this.ty(p) === TT_CAST_RPAREN &&
+          d.match[p] >= 0 &&
+          this.prev(d.match[p]) === this.first
+        ) {
           d.type[t] = TT_SELECTOR_NAME;
         }
       }
@@ -1181,7 +1351,13 @@ export class Classifier {
       if (isIdentKind(k) && this.ty(t) === TT_UNKNOWN && this.isStartOfName(t) && !(sawFnParams && d.nest[t] === 0)) {
         this.set(t, TT_START_OF_NAME);
       }
-      if (sawFnParams && d.nest[t] === 0 && this.ty(t) === TT_UNKNOWN && (isIdentKind(k) || k === KW_CONST || k === KW_NOEXCEPT) && !this.afterEqualOrCtorInit(t)) {
+      if (
+        sawFnParams &&
+        d.nest[t] === 0 &&
+        this.ty(t) === TT_UNKNOWN &&
+        (isIdentKind(k) || k === KW_CONST || k === KW_NOEXCEPT) &&
+        !this.afterEqualOrCtorInit(t)
+      ) {
         this.set(t, TT_TRAILING_ANNOTATION);
       }
       if (k === P_RPAREN && this.ty(t) === TT_UNKNOWN && this.endsCast(t)) {
@@ -1192,7 +1368,17 @@ export class Classifier {
       }
       if (k === P_ARROW && this.ty(t) === TT_UNKNOWN) {
         const p = this.prev(t);
-        if (p >= 0 && (this.k(p) === KW_NOEXCEPT || this.k(p) === P_RBRACE || (autoFound && d.lMightFn[l] === 1 && d.nest[t] === 0 && this.k(p) !== K_IDENT && this.k(p) !== KW_OPERATOR) || this.isDeductionGuide(t))) {
+        if (
+          p >= 0 &&
+          (this.k(p) === KW_NOEXCEPT ||
+            this.k(p) === P_RBRACE ||
+            (autoFound &&
+              d.lMightFn[l] === 1 &&
+              d.nest[t] === 0 &&
+              this.k(p) !== K_IDENT &&
+              this.k(p) !== KW_OPERATOR) ||
+            this.isDeductionGuide(t))
+        ) {
           this.set(t, TT_TRAILING_RETURN_ARROW);
         }
       }
@@ -1242,7 +1428,7 @@ export class Classifier {
       }
       if (d.kind[t] === P_RBRACE && d.match[t] >= 0) {
         const o = d.match[t];
-        let p = d.prv[t];
+        const p = d.prv[t];
         if (p !== o && (d.kind[p] === P_COMMA || (d.kind[p] === K_COMMENT && isTrailingComment(d, p)))) {
           d.mustBreak[t] = 1;
           if (d.bk[o] !== BK_BLOCK || d.type[o] === 18) {
@@ -1293,7 +1479,7 @@ export class Classifier {
     if (name < 0) {
       return false;
     }
-    let p = d.prv[t];
+    const p = d.prv[t];
     const n = d.nxt[name];
     if (n >= 0 && d.kind[n] === P_LPAREN && d.ws[n] === 0 && d.match[n] > n) {
       return p === d.match[n];
@@ -1416,9 +1602,14 @@ export class Classifier {
           // `operator*` vs `operator Foo*`.
           const p = this.prev(n);
           this.set(n, p === t ? TT_OVERLOADED_OPERATOR : TT_POINTER_OR_REFERENCE);
-        } else if (nk !== P_LESS && nk !== P_GREATER || this.prev(n) === t) {
+        } else if ((nk !== P_LESS && nk !== P_GREATER) || this.prev(n) === t) {
           this.set(n, TT_OVERLOADED_OPERATOR);
-        } else if (nk === P_GREATER && d.ws[n] === 0 && this.k(this.prev(n)) === P_GREATER && this.ty(this.prev(n)) === TT_OVERLOADED_OPERATOR) {
+        } else if (
+          nk === P_GREATER &&
+          d.ws[n] === 0 &&
+          this.k(this.prev(n)) === P_GREATER &&
+          this.ty(this.prev(n)) === TT_OVERLOADED_OPERATOR
+        ) {
           // `operator>>`: the lexer splits `>>` into two `>`.
           this.set(n, TT_OVERLOADED_OPERATOR);
         }
@@ -1455,7 +1646,12 @@ export class Classifier {
       return;
     }
     // `_Generic(x, int: a, ...)`: an association's colon.
-    if (dep >= 1 && this.k(this.open[dep]) === P_LPAREN && this.prev(this.open[dep]) >= 0 && this.k(this.prev(this.open[dep])) === KW_GENERIC) {
+    if (
+      dep >= 1 &&
+      this.k(this.open[dep]) === P_LPAREN &&
+      this.prev(this.open[dep]) >= 0 &&
+      this.k(this.prev(this.open[dep])) === KW_GENERIC
+    ) {
       this.set(t, TT_GENERIC_SELECTION_COLON);
       return;
     }
@@ -1492,7 +1688,15 @@ export class Classifier {
       return;
     }
     const fk = this.k(this.first);
-    if (fk === KW_ENUM || fk === KW_CASE || fk === KW_DEFAULT || fk === KW_PUBLIC || fk === KW_PRIVATE || fk === KW_PROTECTED || isQtWord(d, this.first, true)) {
+    if (
+      fk === KW_ENUM ||
+      fk === KW_CASE ||
+      fk === KW_DEFAULT ||
+      fk === KW_PUBLIC ||
+      fk === KW_PRIVATE ||
+      fk === KW_PROTECTED ||
+      isQtWord(d, this.first, true)
+    ) {
       return;
     }
     const p = this.prev(t);
@@ -1581,7 +1785,15 @@ export class Classifier {
     }
     const pk = this.k(p);
     const pt = this.ty(p);
-    if (pk === P_COLON || pk === P_LSQUARE || pk === P_LPAREN || pk === KW_RETURN || pk === KW_THROW || pt === TT_UNARY_OPERATOR || pt === TT_CAST_RPAREN) {
+    if (
+      pk === P_COLON ||
+      pk === P_LSQUARE ||
+      pk === P_LPAREN ||
+      pk === KW_RETURN ||
+      pk === KW_THROW ||
+      pt === TT_UNARY_OPERATOR ||
+      pt === TT_CAST_RPAREN
+    ) {
       return true;
     }
     // (After a template's `>`, an array type's brackets.)
@@ -1678,7 +1890,12 @@ export class Classifier {
       if (isWordKind(lk) && !(lk === KW_RETURN || lk === KW_CASE || lk === KW_DELETE || lk === KW_THROW)) {
         return false;
       }
-      if (lk === P_RSQUARE || this.ty(lop) === TT_OVERLOADED_OPERATOR || this.ty(lop) === TT_TEMPLATE_CLOSER || lk === P_ELLIPSIS) {
+      if (
+        lk === P_RSQUARE ||
+        this.ty(lop) === TT_OVERLOADED_OPERATOR ||
+        this.ty(lop) === TT_TEMPLATE_CLOSER ||
+        lk === P_ELLIPSIS
+      ) {
         return false;
       }
     }
@@ -1686,7 +1903,16 @@ export class Classifier {
     if (nk === P_QUESTION || nk === P_AMPAMP) {
       return false;
     }
-    if (nk === KW_NOEXCEPT || nk === KW_VOLATILE || nk === KW_CONST || nk === KW_REQUIRES || nk === KW_THROW || nk === P_ARROW || nk === CW_OVERRIDE || nk === CW_FINAL) {
+    if (
+      nk === KW_NOEXCEPT ||
+      nk === KW_VOLATILE ||
+      nk === KW_CONST ||
+      nk === KW_REQUIRES ||
+      nk === KW_THROW ||
+      nk === P_ARROW ||
+      nk === CW_OVERRIDE ||
+      nk === CW_FINAL
+    ) {
       return false;
     }
     if (nk === P_LSQUARE && d.nxt[n] >= 0 && this.k(d.nxt[n]) === P_LSQUARE) {
@@ -1696,7 +1922,8 @@ export class Classifier {
       return true;
     }
     const tp = d.prv[t];
-    const parensAreType = this.ty(tp) === TT_TEMPLATE_CLOSER || isSimpleTypeKind(this.k(tp)) || this.qualifiedPointer(tp);
+    const parensAreType =
+      this.ty(tp) === TT_TEMPLATE_CLOSER || isSimpleTypeKind(this.k(tp)) || this.qualifiedPointer(tp);
     const couldEndDecl = nk === P_EQUAL || nk === P_SEMI || nk === P_LBRACE || nk === P_GREATER;
     if (parensAreType && !couldEndDecl) {
       return true;
@@ -1721,7 +1948,15 @@ export class Classifier {
       return false;
     }
     const ampOrStar = nk === P_AMP || nk === P_STAR;
-    const unary = nk === P_PLUS || nk === P_PLUSPLUS || nk === P_MINUS || nk === P_MINUSMINUS || nk === P_EXCLAIM || nk === P_TILDE || nk === KW_SIZEOF || nk === KW_ALIGNOF;
+    const unary =
+      nk === P_PLUS ||
+      nk === P_PLUSPLUS ||
+      nk === P_MINUS ||
+      nk === P_MINUSMINUS ||
+      nk === P_EXCLAIM ||
+      nk === P_TILDE ||
+      nk === KW_SIZEOF ||
+      nk === KW_ALIGNOF;
     const nnk = this.k(nn);
     if (!(unary || ampOrStar) || nk === P_PLUS || !(isIdentKind(nnk) || nnk === K_NUMBER)) {
       return false;
@@ -1758,7 +1993,15 @@ export class Classifier {
         t = this.prev(this.d.match[t]);
         continue;
       }
-      if (k === KW_CONST || k === KW_VOLATILE || (k === K_IDENT && (this.d.is(t, "restrict") || this.d.is(t, "__restrict") || this.d.is(t, "_Nonnull") || this.d.is(t, "_Nullable")))) {
+      if (
+        k === KW_CONST ||
+        k === KW_VOLATILE ||
+        (k === K_IDENT &&
+          (this.d.is(t, "restrict") ||
+            this.d.is(t, "__restrict") ||
+            this.d.is(t, "_Nonnull") ||
+            this.d.is(t, "_Nullable")))
+      ) {
         t = this.prev(t);
         continue;
       }
@@ -1782,7 +2025,18 @@ export class Classifier {
         continue;
       }
       const nk = d.kind[n];
-      if (binPrecedence(nk) > PREC_COMMA || nk === P_SEMI || nk === P_COLON || nk === P_LBRACE || nk === P_COMMA || nk === P_PERIOD || nk === P_ARROW || nk === P_COLONCOLON || nk === KW_NOEXCEPT || nk === P_CARET) {
+      if (
+        binPrecedence(nk) > PREC_COMMA ||
+        nk === P_SEMI ||
+        nk === P_COLON ||
+        nk === P_LBRACE ||
+        nk === P_COMMA ||
+        nk === P_PERIOD ||
+        nk === P_ARROW ||
+        nk === P_COLONCOLON ||
+        nk === KW_NOEXCEPT ||
+        nk === P_CARET
+      ) {
         continue;
       }
       const b = d.prv[d.match[t]];
@@ -1790,7 +2044,15 @@ export class Classifier {
         continue;
       }
       const bp = d.prv[b];
-      if (bp >= 0 && !(this.ty(bp) === TT_TEMPLATE_CLOSER && d.match[bp] >= 0 && d.prv[d.match[bp]] >= 0 && d.kind[d.prv[d.match[bp]]] === KW_TEMPLATE)) {
+      if (
+        bp >= 0 &&
+        !(
+          this.ty(bp) === TT_TEMPLATE_CLOSER &&
+          d.match[bp] >= 0 &&
+          d.prv[d.match[bp]] >= 0 &&
+          d.kind[d.prv[d.match[bp]]] === KW_TEMPLATE
+        )
+      ) {
         continue;
       }
       this.set(t, TT_FUNCTION_ANNOTATION_RPAREN);
@@ -1812,7 +2074,13 @@ export class Classifier {
         seenName = true;
       }
       const p = d.prv[t];
-      if (d.kind[p] === P_RSQUARE && this.ty(p) === TT_ATTRIBUTE_SQUARE && d.match[p] >= 0 && d.nxt[d.match[p]] >= 0 && d.kind[d.nxt[d.match[p]]] === P_LSQUARE) {
+      if (
+        d.kind[p] === P_RSQUARE &&
+        this.ty(p) === TT_ATTRIBUTE_SQUARE &&
+        d.match[p] >= 0 &&
+        d.nxt[d.match[p]] >= 0 &&
+        d.kind[d.nxt[d.match[p]]] === P_LSQUARE
+      ) {
         after = t;
       }
       if (ty === TT_CTOR_DTOR_DECL_NAME || ty === TT_FUNCTION_DECLARATION_NAME) {
@@ -1882,7 +2150,10 @@ export class Classifier {
   markReturnArrow(t: i32): void {
     const d = this.d;
     let p = d.nxt[t];
-    while (p >= 0 && !(this.k(p) === P_LPAREN && (this.ty(p) === TT_OVERLOADED_OPERATOR_LPAREN || this.k(t) !== KW_OPERATOR))) {
+    while (
+      p >= 0 &&
+      !(this.k(p) === P_LPAREN && (this.ty(p) === TT_OVERLOADED_OPERATOR_LPAREN || this.k(t) !== KW_OPERATOR))
+    ) {
       if (this.ty(p) === TT_TEMPLATE_OPENER && d.match[p] >= 0) {
         p = d.match[p];
       }
@@ -1932,7 +2203,15 @@ export class Classifier {
     let t = this.first;
     while (t >= 0) {
       const k = this.k(t);
-      if (k === K_COMMENT || k === KW_FRIEND || k === KW_INLINE || k === KW_VIRTUAL || k === KW_CONSTEXPR || k === KW_CONSTEVAL || k === KW_EXPLICIT) {
+      if (
+        k === K_COMMENT ||
+        k === KW_FRIEND ||
+        k === KW_INLINE ||
+        k === KW_VIRTUAL ||
+        k === KW_CONSTEXPR ||
+        k === KW_CONSTEVAL ||
+        k === KW_EXPLICIT
+      ) {
         t = d.nxt[t];
         continue;
       }
@@ -2038,7 +2317,16 @@ export class Classifier {
         return n;
       }
       // (clang-format's operator walk types these as overloaded operators.)
-      if (tt === TT_OVERLOADED_OPERATOR || tt === TT_UNARY_OPERATOR || tt === TT_BINARY_OPERATOR || k === P_COMMA || k === P_STAR || k === P_ARROW || k === P_AMP || k === P_AMPAMP) {
+      if (
+        tt === TT_OVERLOADED_OPERATOR ||
+        tt === TT_UNARY_OPERATOR ||
+        tt === TT_BINARY_OPERATOR ||
+        k === P_COMMA ||
+        k === P_STAR ||
+        k === P_ARROW ||
+        k === P_AMP ||
+        k === P_AMPAMP
+      ) {
         continue;
       }
       const nn = d.nxt[n];
@@ -2152,7 +2440,13 @@ export class Classifier {
         q = d.match[q];
         continue;
       }
-      if (this.k(q) === KW_CONST || isSimpleTypeKind(this.k(q)) || this.ty(q) === TT_POINTER_OR_REFERENCE || this.ty(q) === TT_START_OF_NAME || this.k(q) === P_ELLIPSIS) {
+      if (
+        this.k(q) === KW_CONST ||
+        isSimpleTypeKind(this.k(q)) ||
+        this.ty(q) === TT_POINTER_OR_REFERENCE ||
+        this.ty(q) === TT_START_OF_NAME ||
+        this.k(q) === P_ELLIPSIS
+      ) {
         return true;
       }
       if (this.k(q) === P_LBRACE || isLiteralKind(this.k(q))) {
@@ -2204,7 +2498,15 @@ const ppSpace = (d: Doc, l: i32, r: i32): boolean => {
     }
     return spaceBeforeCode(d, l, r);
   }
-  if (pk === PP_IF || pk === PP_ELIF || pk === PP_PRAGMA || pk === PP_OTHER || pk === PP_ELSE || pk === PP_ENDIF || pk === PP_ERROR) {
+  if (
+    pk === PP_IF ||
+    pk === PP_ELIF ||
+    pk === PP_PRAGMA ||
+    pk === PP_OTHER ||
+    pk === PP_ELSE ||
+    pk === PP_ENDIF ||
+    pk === PP_ERROR
+  ) {
     // Directive lines are formatted as code (implicit string literals keep
     // their own whitespace, see the formatter).
     return spaceBeforeCode(d, l, r);
@@ -2280,14 +2582,26 @@ const spaceBeforeCode = (d: Doc, l: i32, r: i32): boolean => {
     return false;
   }
   // `Args &&...a`: nothing after a pack's `...` that follows `&`, `&&` or `*`.
-  if (lk === P_ELLIPSIS && d.prv[left] >= 0 && (d.kind[d.prv[left]] === P_STAR || d.kind[d.prv[left]] === P_AMP || d.kind[d.prv[left]] === P_AMPAMP) && rt !== TT_LINE_COMMENT && rt !== TT_BINARY_OPERATOR) {
+  if (
+    lk === P_ELLIPSIS &&
+    d.prv[left] >= 0 &&
+    (d.kind[d.prv[left]] === P_STAR || d.kind[d.prv[left]] === P_AMP || d.kind[d.prv[left]] === P_AMPAMP) &&
+    rt !== TT_LINE_COMMENT &&
+    rt !== TT_BINARY_OPERATOR
+  ) {
     return false;
   }
   if (rk === K_COMMENT) {
     if (rt === TT_LINE_COMMENT) {
       return !(d.bk[left] === BK_BRACED_INIT && d.eqList[left] === 0 && (lk === P_LBRACE || lk === P_LPAREN));
     }
-    if (lk === P_LPAREN || lk === P_LSQUARE || lt === TT_TEMPLATE_OPENER || (lk === P_LBRACE && d.bk[left] !== BK_BLOCK) || lk === KW_OPERATOR) {
+    if (
+      lk === P_LPAREN ||
+      lk === P_LSQUARE ||
+      lt === TT_TEMPLATE_OPENER ||
+      (lk === P_LBRACE && d.bk[left] !== BK_BLOCK) ||
+      lk === KW_OPERATOR
+    ) {
       return false;
     }
     // A unary operator hugs a block comment (`-/*c*/ 1`), but `*`.
@@ -2302,7 +2616,15 @@ const spaceBeforeCode = (d: Doc, l: i32, r: i32): boolean => {
     return true;
   }
   // (A `*` or `&` before it is a pointer for clang-format, whatever we call it.)
-  if (rt === TT_FUNCTION_TYPE_LPAREN && lk !== P_LPAREN && lt !== TT_POINTER_OR_REFERENCE && lt !== TT_CAST_RPAREN && lk !== P_STAR && lk !== P_AMP && lk !== P_AMPAMP) {
+  if (
+    rt === TT_FUNCTION_TYPE_LPAREN &&
+    lk !== P_LPAREN &&
+    lt !== TT_POINTER_OR_REFERENCE &&
+    lt !== TT_CAST_RPAREN &&
+    lk !== P_STAR &&
+    lk !== P_AMP &&
+    lk !== P_AMPAMP
+  ) {
     return true;
   }
   if (lk === P_STAR && rk === K_COMMENT) {
@@ -2317,7 +2639,12 @@ const spaceBeforeCode = (d: Doc, l: i32, r: i32): boolean => {
   if (rk === P_PERIOD && lk === K_NUMBER) {
     return true;
   }
-  if (rt === TT_TRAILING_RETURN_ARROW || lt === TT_TRAILING_RETURN_ARROW || rt === TT_LAMBDA_ARROW || lt === TT_LAMBDA_ARROW) {
+  if (
+    rt === TT_TRAILING_RETURN_ARROW ||
+    lt === TT_TRAILING_RETURN_ARROW ||
+    rt === TT_LAMBDA_ARROW ||
+    lt === TT_LAMBDA_ARROW
+  ) {
     return true;
   }
   if (lk === P_COMMA && rt !== TT_OVERLOADED_OPERATOR_LPAREN) {
@@ -2326,7 +2653,12 @@ const spaceBeforeCode = (d: Doc, l: i32, r: i32): boolean => {
   if (rk === P_COMMA || rk === P_SEMI) {
     return lk === P_SEMI && rk === P_SEMI ? false : false;
   }
-  if (rt === TT_CTOR_INITIALIZER_COLON || rt === TT_RANGE_BASED_FOR_LOOP_COLON || rt === TT_INHERITANCE_COLON || lt === TT_BIT_FIELD_COLON) {
+  if (
+    rt === TT_CTOR_INITIALIZER_COLON ||
+    rt === TT_RANGE_BASED_FOR_LOOP_COLON ||
+    rt === TT_INHERITANCE_COLON ||
+    lt === TT_BIT_FIELD_COLON
+  ) {
     return true;
   }
   if (rk === P_COLON) {
@@ -2345,7 +2677,10 @@ const spaceBeforeCode = (d: Doc, l: i32, r: i32): boolean => {
     }
     return true;
   }
-  if (((lk === P_MINUS || lk === P_MINUSMINUS) && (rk === P_MINUS || rk === P_MINUSMINUS)) || ((lk === P_PLUS || lk === P_PLUSPLUS) && (rk === P_PLUS || rk === P_PLUSPLUS))) {
+  if (
+    ((lk === P_MINUS || lk === P_MINUSMINUS) && (rk === P_MINUS || rk === P_MINUSMINUS)) ||
+    ((lk === P_PLUS || lk === P_PLUSPLUS) && (rk === P_PLUS || rk === P_PLUSPLUS))
+  ) {
     return true;
   }
   if (lt === TT_UNARY_OPERATOR) {
@@ -2362,7 +2697,16 @@ const spaceBeforeCode = (d: Doc, l: i32, r: i32): boolean => {
     // `X<T> > y`: a comparison after a template closer keeps its space.
     return lt === TT_TEMPLATE_CLOSER && rt !== TT_TEMPLATE_CLOSER;
   }
-  if (rk === P_ARROW || rk === P_ARROWSTAR || rk === P_PERIODSTAR || lk === P_ARROW || lk === P_PERIOD || lk === P_ARROWSTAR || lk === P_PERIODSTAR || (rk === P_PERIOD && rt !== TT_DESIGNATED_INITIALIZER_PERIOD)) {
+  if (
+    rk === P_ARROW ||
+    rk === P_ARROWSTAR ||
+    rk === P_PERIODSTAR ||
+    lk === P_ARROW ||
+    lk === P_PERIOD ||
+    lk === P_ARROWSTAR ||
+    lk === P_PERIODSTAR ||
+    (rk === P_PERIOD && rt !== TT_DESIGNATED_INITIALIZER_PERIOD)
+  ) {
     return false;
   }
   if (rk === P_COLONCOLON) {
@@ -2373,7 +2717,14 @@ const spaceBeforeCode = (d: Doc, l: i32, r: i32): boolean => {
     if (lk === K_COMMENT) {
       return !(d.at(d.end[left] - 3) === 61);
     }
-    if (lk === P_LBRACE || lk === P_LPAREN || lk === P_RPAREN || lk === P_LSQUARE || lt === TT_TEMPLATE_OPENER || lt === TT_TEMPLATE_CLOSER) {
+    if (
+      lk === P_LBRACE ||
+      lk === P_LPAREN ||
+      lk === P_RPAREN ||
+      lk === P_LSQUARE ||
+      lt === TT_TEMPLATE_OPENER ||
+      lt === TT_TEMPLATE_CLOSER
+    ) {
       return false;
     }
     return true;
@@ -2381,7 +2732,10 @@ const spaceBeforeCode = (d: Doc, l: i32, r: i32): boolean => {
   if ((lt === TT_TEMPLATE_OPENER) !== (rt === TT_TEMPLATE_CLOSER)) {
     return false;
   }
-  if ((rt === TT_BINARY_OPERATOR && lk !== P_LPAREN) || ((lt === TT_BINARY_OPERATOR || lt === TT_CONDITIONAL_EXPR) && rk !== P_RPAREN)) {
+  if (
+    (rt === TT_BINARY_OPERATOR && lk !== P_LPAREN) ||
+    ((lt === TT_BINARY_OPERATOR || lt === TT_CONDITIONAL_EXPR) && rk !== P_RPAREN)
+  ) {
     return true;
   }
   if (rt === TT_TRAILING_UNARY_OPERATOR) {
@@ -2404,7 +2758,10 @@ const spaceBeforeCode = (d: Doc, l: i32, r: i32): boolean => {
   if (lk === P_HASHHASH || lk === P_HASH) {
     return rk === P_HASH;
   }
-  if ((lk === P_LPAREN && rk === P_RPAREN) || (lk === P_LBRACE && d.bk[left] !== BK_BLOCK && rk === P_RBRACE && d.bk[r] !== BK_BLOCK)) {
+  if (
+    (lk === P_LPAREN && rk === P_RPAREN) ||
+    (lk === P_LBRACE && d.bk[left] !== BK_BLOCK && rk === P_RBRACE && d.bk[r] !== BK_BLOCK)
+  ) {
     return false;
   }
   if (lk === KW_AUTO && (rt === TT_LAMBDA_LBRACE || rt === TT_FUNCTION_LBRACE)) {
@@ -2476,11 +2833,23 @@ const spaceBeforeCode = (d: Doc, l: i32, r: i32): boolean => {
   if (rk === P_RSQUARE) {
     return d.match[r] >= 0 && d.type[d.match[r]] === TT_ARRAY_INITIALIZER_LSQUARE;
   }
-  if (rk === P_LSQUARE && (lk === KW_AUTO || ((lk === KW_CONST || lk === KW_VOLATILE) && autoBeforeQualifiers(d, left)))) {
+  if (
+    rk === P_LSQUARE &&
+    (lk === KW_AUTO || ((lk === KW_CONST || lk === KW_VOLATILE) && autoBeforeQualifiers(d, left)))
+  ) {
     // A structured binding: `auto [a, b]`, `auto const [a, b]`.
     return true;
   }
-  if (rk === P_LSQUARE && !(rt === TT_LAMBDA_LSQUARE || rt === TT_DESIGNATED_INITIALIZER_LSQUARE || rt === TT_ATTRIBUTE_SQUARE || rt === TT_OBJC_METHOD_EXPR) && lk !== K_NUMBER) {
+  if (
+    rk === P_LSQUARE &&
+    !(
+      rt === TT_LAMBDA_LSQUARE ||
+      rt === TT_DESIGNATED_INITIALIZER_LSQUARE ||
+      rt === TT_ATTRIBUTE_SQUARE ||
+      rt === TT_OBJC_METHOD_EXPR
+    ) &&
+    lk !== K_NUMBER
+  ) {
     return false;
   }
   if (lk === P_LBRACE && rk === P_RBRACE) {
@@ -2491,7 +2860,10 @@ const spaceBeforeCode = (d: Doc, l: i32, r: i32): boolean => {
     // operator's name, so it never pairs with its `{`.
     return true;
   }
-  if ((lk === P_LBRACE && d.bk[left] !== BK_BLOCK) || (rk === P_RBRACE && d.match[r] >= 0 && d.bk[d.match[r]] !== BK_BLOCK)) {
+  if (
+    (lk === P_LBRACE && d.bk[left] !== BK_BLOCK) ||
+    (rk === P_RBRACE && d.match[r] >= 0 && d.bk[d.match[r]] !== BK_BLOCK)
+  ) {
     return false;
   }
   if (lt === TT_BLOCK_COMMENT) {
@@ -2507,7 +2879,17 @@ const spaceBeforeCode = (d: Doc, l: i32, r: i32): boolean => {
     if (lk === P_SEMI) {
       return true;
     }
-    if (lk === KW_FOR || lk === KW_WHILE || lk === KW_SWITCH || lk === KW_CASE || lk === KW_CATCH || isForEachMacro(d, left) || ((lk === KW_IF || ((lk === KW_CONSTEXPR || lk === K_IDENT) && d.prv[left] >= 0 && d.kind[d.prv[left]] === KW_IF)) && d.lType[l] !== LT_PREPROCESSOR)) {
+    if (
+      lk === KW_FOR ||
+      lk === KW_WHILE ||
+      lk === KW_SWITCH ||
+      lk === KW_CASE ||
+      lk === KW_CATCH ||
+      isForEachMacro(d, left) ||
+      ((lk === KW_IF ||
+        ((lk === KW_CONSTEXPR || lk === K_IDENT) && d.prv[left] >= 0 && d.kind[d.prv[left]] === KW_IF)) &&
+        d.lType[l] !== LT_PREPROCESSOR)
+    ) {
       return true;
     }
     if (rt === TT_OVERLOADED_OPERATOR_LPAREN) {
@@ -2517,7 +2899,12 @@ const spaceBeforeCode = (d: Doc, l: i32, r: i32): boolean => {
       return true;
     }
     // `delete[] (p)`
-    if (lk === P_RSQUARE && d.match[left] >= 0 && d.prv[d.match[left]] >= 0 && d.kind[d.prv[d.match[left]]] === KW_DELETE) {
+    if (
+      lk === P_RSQUARE &&
+      d.match[left] >= 0 &&
+      d.prv[d.match[left]] >= 0 &&
+      d.kind[d.prv[d.match[left]]] === KW_DELETE
+    ) {
       return true;
     }
     return false;
@@ -2527,7 +2914,18 @@ const spaceBeforeCode = (d: Doc, l: i32, r: i32): boolean => {
   }
   // (A name or a simple type: other keywords keep the space, `noexcept {}`,
   // and so does `_asm`, a keyword for clang-format.)
-  if (((lk === K_IDENT && !(d.at(d.start[left]) === 95 && (d.is(left, "_asm") || d.is(left, "__asm") || d.is(left, "__asm__")))) || lk >= CW_OVERRIDE || isSimpleTypeKind(lk) || lk === P_GREATER || lk === P_RSQUARE || lk === P_RPAREN) && rk === P_LBRACE && d.bk[r] !== BK_BLOCK && d.nxt[r] >= 0) {
+  if (
+    ((lk === K_IDENT &&
+      !(d.at(d.start[left]) === 95 && (d.is(left, "_asm") || d.is(left, "__asm") || d.is(left, "__asm__")))) ||
+      lk >= CW_OVERRIDE ||
+      isSimpleTypeKind(lk) ||
+      lk === P_GREATER ||
+      lk === P_RSQUARE ||
+      lk === P_RPAREN) &&
+    rk === P_LBRACE &&
+    d.bk[r] !== BK_BLOCK &&
+    d.nxt[r] >= 0
+  ) {
     return false;
   }
   if (lk === P_PERIOD || rk === P_PERIOD) {
@@ -2540,7 +2938,19 @@ const spaceBeforeCode = (d: Doc, l: i32, r: i32): boolean => {
 };
 
 // Kinds kept for the rules above that read them only in some branches.
-export const CLASSIFY_KINDS: i32 = KW_STATIC + KW_STRUCT + KW_UNION + KW_CLASS + KW_ALIGNAS + TT_FUNCTION_DECLARATION_NAME + TT_CTOR_DTOR_DECL_NAME + TT_START_OF_NAME + TT_LAMBDA_LBRACE + KW_THIS + TT_TRAILING_ANNOTATION + P_LPAREN;
+export const CLASSIFY_KINDS: i32 =
+  KW_STATIC +
+  KW_STRUCT +
+  KW_UNION +
+  KW_CLASS +
+  KW_ALIGNAS +
+  TT_FUNCTION_DECLARATION_NAME +
+  TT_CTOR_DTOR_DECL_NAME +
+  TT_START_OF_NAME +
+  TT_LAMBDA_LBRACE +
+  KW_THIS +
+  TT_TRAILING_ANNOTATION +
+  P_LPAREN;
 
 /** The token before `t`, comments skipped, or -1. */
 const prevCode = (d: Doc, t: i32): i32 => {
@@ -2648,7 +3058,14 @@ export const requiresExprBrace = (d: Doc, lb: i32): boolean => {
 /** Whether `auto` comes before token `t` past `const`, `volatile`, `&` and `&&` (a structured binding's specifiers). */
 const autoBeforeQualifiers = (d: Doc, t: i32): boolean => {
   let q = t;
-  while (q >= 0 && (d.kind[q] === KW_CONST || d.kind[q] === KW_VOLATILE || d.kind[q] === P_AMP || d.kind[q] === P_AMPAMP || d.kind[q] === K_COMMENT)) {
+  while (
+    q >= 0 &&
+    (d.kind[q] === KW_CONST ||
+      d.kind[q] === KW_VOLATILE ||
+      d.kind[q] === P_AMP ||
+      d.kind[q] === P_AMPAMP ||
+      d.kind[q] === K_COMMENT)
+  ) {
     q = d.prv[q];
   }
   return q >= 0 && d.kind[q] === KW_AUTO;
@@ -2736,7 +3153,16 @@ export const isReservedKeyword = (d: Doc, t: i32): boolean => {
 
 /** Whether identifier `t` is a string literal prefix (`L`, `u`, `U`, `u8`, and their `R` forms). */
 const isStringPrefix = (d: Doc, t: i32): boolean => {
-  return d.is(t, "L") || d.is(t, "u") || d.is(t, "U") || d.is(t, "u8") || d.is(t, "LR") || d.is(t, "uR") || d.is(t, "UR") || d.is(t, "u8R");
+  return (
+    d.is(t, "L") ||
+    d.is(t, "u") ||
+    d.is(t, "U") ||
+    d.is(t, "u8") ||
+    d.is(t, "LR") ||
+    d.is(t, "uR") ||
+    d.is(t, "UR") ||
+    d.is(t, "u8R")
+  );
 };
 
 /** Whether line `l` starts with `@property` (clang-format's LT_ObjCProperty). */

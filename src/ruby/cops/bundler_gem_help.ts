@@ -51,7 +51,8 @@ export const rbGemfileIncluded = (path: string): boolean => {
 };
 
 /** The Gemspec cops' Include: a `*.gemspec` in any directory. */
-export const rbGemspecIncluded = (path: string): boolean => !rbGemHiddenDir(path) && rbGemBase(path).endsWith(".gemspec");
+export const rbGemspecIncluded = (path: string): boolean =>
+  !rbGemHiddenDir(path) && rbGemBase(path).endsWith(".gemspec");
 
 /** OrderedGemNode#gem_canonical_name: without `-` and `_`, downcased. */
 const rbGemCanonical = (name: string): string => {
@@ -84,7 +85,8 @@ const rbGemLess = (x: string, y: string): boolean => {
 export const rbGemOutOfOrder = (a: string, b: string): boolean => rbGemLess(rbGemCanonical(a), rbGemCanonical(b));
 
 /** OrderedGemNode#consecutive_lines? (comments separate groups). */
-export const rbGemConsecutive = (src: RbSource, prev: i32, cur: i32): boolean => src.line(src.a.exE(prev)) === src.line(src.a.exS(cur)) - 1;
+export const rbGemConsecutive = (src: RbSource, prev: i32, cur: i32): boolean =>
+  src.line(src.a.exE(prev)) === src.line(src.a.exS(cur)) - 1;
 
 /** OrderedGemNode#gem_name: the first argument's string (the patterns make it a str). */
 export const rbGemName = (src: RbSource, n: i32): string => src.a.text(src.a.kid(src.a.kid(n, 2), 0));

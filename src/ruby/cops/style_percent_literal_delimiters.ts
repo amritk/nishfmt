@@ -7,7 +7,14 @@ import { F_BEGIN, F_END, NT_ARRAY, NT_DSTR, NT_REGEXP, NT_STR, NT_SYM, NT_XSTR, 
 import { RbCop } from "../cop";
 import { rnE, rnS } from "../node";
 import { RbSource } from "../source";
-import { rbLitBeginLast, rbLitContainsAny, rbLitIsPercent, rbLitMatchpairs, rbLitPctType, rbLitPreferred } from "./lit_help";
+import {
+  rbLitBeginLast,
+  rbLitContainsAny,
+  rbLitIsPercent,
+  rbLitMatchpairs,
+  rbLitPctType,
+  rbLitPreferred,
+} from "./lit_help";
 
 /** contains_delimiter?: a child string (a value, or a str/sym child's source) holds one of `ds`. */
 const rbPldContainsDelimiter = (src: RbSource, n: i32, ds: string[]): boolean => {

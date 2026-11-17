@@ -29,7 +29,11 @@ export class CopStyleAttr {
       }
       if (cn !== V_NIL) {
         const bs = a.kid(cn, 0);
-        const classEval = a.type(cn) === NT_BLOCK && ssxIs(src, bs, NT_SEND) && a.nKid(bs) === 2 && (ssxMeth(src, bs) === "class_eval" || ssxMeth(src, bs) === "module_eval");
+        const classEval =
+          a.type(cn) === NT_BLOCK &&
+          ssxIs(src, bs, NT_SEND) &&
+          a.nKid(bs) === 2 &&
+          (ssxMeth(src, bs) === "class_eval" || ssxMeth(src, bs) === "module_eval");
         if (a.type(cn) !== NT_CLASS && !classEval) {
           continue;
         }

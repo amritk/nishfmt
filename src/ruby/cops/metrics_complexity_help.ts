@@ -211,7 +211,13 @@ export const mcxComplexity = (src: RbSource, body: i32, perceived: boolean): i32
 
 /** Whether a node responds to setter_method? (includes MethodDispatchNode). */
 const mcxDispatch = (t: i32): boolean =>
-  t === NT_SEND || t === NT_CSEND || t === NT_SUPER || t === NT_ZSUPER || t === NT_YIELD || t === NT_DEFINED_P || t === NT_LAMBDA;
+  t === NT_SEND ||
+  t === NT_CSEND ||
+  t === NT_SUPER ||
+  t === NT_ZSUPER ||
+  t === NT_YIELD ||
+  t === NT_DEFINED_P ||
+  t === NT_LAMBDA;
 
 /** Node#argument_type? */
 const mcxArgType = (t: i32): boolean =>

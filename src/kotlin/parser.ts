@@ -541,8 +541,14 @@ export class KParser {
       T_PACKAGE_KEYWORD,
     ]);
     this.TOP_LEVEL_DECLARATION_FIRST_SEMICOLON_SET = tsOr(this.TOP_LEVEL_DECLARATION_FIRST, tsNew([T_SEMICOLON]));
-    this.LT_EQ_SEMICOLON_TOP_LEVEL_DECLARATION_FIRST_SET = tsOr(tsNew([T_LT, T_EQ, T_SEMICOLON]), this.TOP_LEVEL_DECLARATION_FIRST);
-    this.DECLARATION_FIRST = tsOr(this.TOP_LEVEL_DECLARATION_FIRST, tsNew([T_INIT_KEYWORD, T_GET_KEYWORD, T_SET_KEYWORD, T_CONSTRUCTOR_KEYWORD]));
+    this.LT_EQ_SEMICOLON_TOP_LEVEL_DECLARATION_FIRST_SET = tsOr(
+      tsNew([T_LT, T_EQ, T_SEMICOLON]),
+      this.TOP_LEVEL_DECLARATION_FIRST,
+    );
+    this.DECLARATION_FIRST = tsOr(
+      this.TOP_LEVEL_DECLARATION_FIRST,
+      tsNew([T_INIT_KEYWORD, T_GET_KEYWORD, T_SET_KEYWORD, T_CONSTRUCTOR_KEYWORD]),
+    );
     this.CLASS_NAME_RECOVERY_SET = tsOr(tsNew([T_LT, T_LPAR, T_COLON, T_LBRACE]), this.TOP_LEVEL_DECLARATION_FIRST);
     this.TYPE_PARAMETER_GT_RECOVERY_SET = tsNew([T_WHERE_KEYWORD, T_LPAR, T_COLON, T_LBRACE, T_GT]);
     this.PARAMETER_NAME_RECOVERY_SET = tsNew([T_COLON, T_EQ, T_COMMA, T_RPAR, T_VAL_KEYWORD, T_VAR_KEYWORD]);
@@ -550,10 +556,19 @@ export class KParser {
     this.IMPORT_RECOVERY_SET = tsNew([T_AS_KEYWORD, T_DOT, T_EOL_OR_SEMICOLON]);
     this.TYPE_REF_FIRST = tsNew([T_LBRACKET, T_IDENTIFIER, T_LPAR, T_HASH, T_DYNAMIC_KEYWORD]);
     this.LBRACE_RBRACE_TYPE_REF_FIRST_SET = tsOr(tsNew([T_LBRACE, T_RBRACE]), this.TYPE_REF_FIRST);
-    this.COLON_COMMA_LBRACE_RBRACE_TYPE_REF_FIRST_SET = tsOr(tsNew([T_COLON, T_COMMA, T_LBRACE, T_RBRACE]), this.TYPE_REF_FIRST);
+    this.COLON_COMMA_LBRACE_RBRACE_TYPE_REF_FIRST_SET = tsOr(
+      tsNew([T_COLON, T_COMMA, T_LBRACE, T_RBRACE]),
+      this.TYPE_REF_FIRST,
+    );
     this.RECEIVER_TYPE_TERMINATORS = tsNew([T_DOT, T_SAFE_ACCESS]);
-    this.VALUE_PARAMETER_FIRST = tsOr(tsNew([T_IDENTIFIER, T_LBRACKET, T_VAL_KEYWORD, T_VAR_KEYWORD]), tsAndNot(this.MODIFIER_KEYWORDS, tsNew([T_FUN_KEYWORD])));
-    this.LAMBDA_VALUE_PARAMETER_FIRST = tsOr(tsNew([T_IDENTIFIER, T_LBRACKET]), tsAndNot(this.MODIFIER_KEYWORDS, tsNew([T_FUN_KEYWORD])));
+    this.VALUE_PARAMETER_FIRST = tsOr(
+      tsNew([T_IDENTIFIER, T_LBRACKET, T_VAL_KEYWORD, T_VAR_KEYWORD]),
+      tsAndNot(this.MODIFIER_KEYWORDS, tsNew([T_FUN_KEYWORD])),
+    );
+    this.LAMBDA_VALUE_PARAMETER_FIRST = tsOr(
+      tsNew([T_IDENTIFIER, T_LBRACKET]),
+      tsAndNot(this.MODIFIER_KEYWORDS, tsNew([T_FUN_KEYWORD])),
+    );
     this.SOFT_KEYWORDS_AT_MEMBER_START = tsNew([T_CONSTRUCTOR_KEYWORD, T_INIT_KEYWORD]);
     this.ANNOTATION_TARGETS = tsNew([
       T_ALL_KEYWORD,
@@ -574,25 +589,56 @@ export class KParser {
     this.LBRACE_RBRACE_SET = tsNew([T_LBRACE, T_RBRACE]);
     this.COMMA_SEMICOLON_RBRACE_SET = tsNew([T_COMMA, T_SEMICOLON, T_RBRACE]);
     this.VALUE_ARGS_RECOVERY_SET = tsNew([T_LBRACE, T_SEMICOLON, T_RPAR, T_EOL_OR_SEMICOLON, T_RBRACE]);
-    this.PROPERTY_NAME_FOLLOW_SET = tsNew([T_COLON, T_EQ, T_LBRACE, T_RBRACE, T_SEMICOLON, T_VAL_KEYWORD, T_VAR_KEYWORD, T_FUN_KEYWORD, T_CLASS_KEYWORD]);
+    this.PROPERTY_NAME_FOLLOW_SET = tsNew([
+      T_COLON,
+      T_EQ,
+      T_LBRACE,
+      T_RBRACE,
+      T_SEMICOLON,
+      T_VAL_KEYWORD,
+      T_VAR_KEYWORD,
+      T_FUN_KEYWORD,
+      T_CLASS_KEYWORD,
+    ]);
     this.VAL_VAR = tsNew([T_VAL_KEYWORD, T_VAR_KEYWORD]);
     this.DESTRUCTURING_PROPERTY_NAME_FOLLOW_SET = tsAndNot(this.PROPERTY_NAME_FOLLOW_SET, this.VAL_VAR);
-    this.PROPERTY_NAME_FOLLOW_MULTI_DECLARATION_RECOVERY_SET = tsOr(this.PROPERTY_NAME_FOLLOW_SET, this.PARAMETER_NAME_RECOVERY_SET);
-    this.PROPERTY_NAME_FOLLOW_FUNCTION_OR_PROPERTY_RECOVERY_SET = tsOr(tsOr(this.PROPERTY_NAME_FOLLOW_SET, this.LBRACE_RBRACE_SET), this.TOP_LEVEL_DECLARATION_FIRST);
+    this.PROPERTY_NAME_FOLLOW_MULTI_DECLARATION_RECOVERY_SET = tsOr(
+      this.PROPERTY_NAME_FOLLOW_SET,
+      this.PARAMETER_NAME_RECOVERY_SET,
+    );
+    this.PROPERTY_NAME_FOLLOW_FUNCTION_OR_PROPERTY_RECOVERY_SET = tsOr(
+      tsOr(this.PROPERTY_NAME_FOLLOW_SET, this.LBRACE_RBRACE_SET),
+      this.TOP_LEVEL_DECLARATION_FIRST,
+    );
     this.IDENTIFIER_EQ_COLON_SEMICOLON_SET = tsNew([T_IDENTIFIER, T_EQ, T_COLON, T_SEMICOLON]);
     this.COMMA_RPAR_COLON_EQ_SET = tsNew([T_COMMA, T_RPAR, T_COLON, T_EQ]);
-    this.ACCESSOR_FIRST_OR_PROPERTY_END = tsOr(this.MODIFIER_KEYWORDS, tsNew([T_AT, T_GET_KEYWORD, T_SET_KEYWORD, T_FIELD_KEYWORD, T_EOL_OR_SEMICOLON, T_RBRACE]));
+    this.ACCESSOR_FIRST_OR_PROPERTY_END = tsOr(
+      this.MODIFIER_KEYWORDS,
+      tsNew([T_AT, T_GET_KEYWORD, T_SET_KEYWORD, T_FIELD_KEYWORD, T_EOL_OR_SEMICOLON, T_RBRACE]),
+    );
     this.RPAR_IDENTIFIER_COLON_LBRACE_EQ_SET = tsNew([T_RPAR, T_IDENTIFIER, T_COLON, T_LBRACE, T_EQ]);
     this.COMMA_COLON_RPAR_SET = tsNew([T_COMMA, T_COLON, T_RPAR]);
     this.RPAR_COLON_LBRACE_EQ_SET = tsNew([T_RPAR, T_COLON, T_LBRACE, T_EQ]);
     this.LBRACKET_LBRACE_RBRACE_LPAR_SET = tsNew([T_LBRACKET, T_LBRACE, T_RBRACE, T_LPAR]);
     this.FUNCTION_NAME_FOLLOW_SET = tsNew([T_LT, T_LPAR, T_RPAR, T_COLON, T_EQ]);
-    this.FUNCTION_NAME_RECOVERY_SET = tsOr(tsOr(tsNew([T_LT, T_LPAR, T_RPAR, T_COLON, T_EQ]), this.LBRACE_RBRACE_SET), this.TOP_LEVEL_DECLARATION_FIRST);
+    this.FUNCTION_NAME_RECOVERY_SET = tsOr(
+      tsOr(tsNew([T_LT, T_LPAR, T_RPAR, T_COLON, T_EQ]), this.LBRACE_RBRACE_SET),
+      this.TOP_LEVEL_DECLARATION_FIRST,
+    );
     this.VALUE_PARAMETERS_FOLLOW_SET = tsNew([T_EQ, T_LBRACE, T_RBRACE, T_SEMICOLON, T_RPAR]);
-    this.CONTEXT_PARAMETERS_FOLLOW_SET = tsNew([T_CLASS_KEYWORD, T_OBJECT_KEYWORD, T_FUN_KEYWORD, T_VAL_KEYWORD, T_VAR_KEYWORD]);
+    this.CONTEXT_PARAMETERS_FOLLOW_SET = tsNew([
+      T_CLASS_KEYWORD,
+      T_OBJECT_KEYWORD,
+      T_FUN_KEYWORD,
+      T_VAL_KEYWORD,
+      T_VAR_KEYWORD,
+    ]);
     this.LPAR_VALUE_PARAMETERS_FOLLOW_SET = tsOr(tsNew([T_LPAR]), this.VALUE_PARAMETERS_FOLLOW_SET);
     this.LPAR_LBRACE_COLON_CONSTRUCTOR_KEYWORD_SET = tsNew([T_LPAR, T_LBRACE, T_COLON, T_CONSTRUCTOR_KEYWORD]);
-    this.definitelyOutOfReceiverSet = tsOr(tsNew([T_EQ, T_COLON, T_LBRACE, T_RBRACE, T_BY_KEYWORD]), this.TOP_LEVEL_DECLARATION_FIRST);
+    this.definitelyOutOfReceiverSet = tsOr(
+      tsNew([T_EQ, T_COLON, T_LBRACE, T_RBRACE, T_BY_KEYWORD]),
+      this.TOP_LEVEL_DECLARATION_FIRST,
+    );
     this.EOL_OR_SEMICOLON_RBRACE_SET = tsNew([T_EOL_OR_SEMICOLON, T_RBRACE]);
     this.CLASS_INTERFACE_SET = tsNew([T_CLASS_KEYWORD, T_INTERFACE_KEYWORD]);
     this.NO_MODIFIER_BEFORE_FOR_VALUE_PARAMETER = tsNew([T_COMMA, T_COLON, T_EQ, T_RPAR]);
@@ -633,15 +679,40 @@ export class KParser {
       T_LBRACKET,
     ]);
     this.EXPRESSION_FOLLOW = tsNew([T_EOL_OR_SEMICOLON, T_ARROW, T_COMMA, T_RBRACE, T_RPAR, T_RBRACKET]);
-    this.USER_TYPE_NAME_RECOVERY_SET = tsOr(tsOr(this.EXPRESSION_FIRST, this.EXPRESSION_FOLLOW), this.DECLARATION_FIRST);
+    this.USER_TYPE_NAME_RECOVERY_SET = tsOr(
+      tsOr(this.EXPRESSION_FIRST, this.EXPRESSION_FOLLOW),
+      this.DECLARATION_FIRST,
+    );
     this.TYPE_MODIFIER_KEYWORDS = tsNew([T_SUSPEND_KEYWORD]);
     this.TYPE_ARGUMENT_MODIFIER_KEYWORDS = tsNew([T_IN_KEYWORD, T_OUT_KEYWORD]);
     this.RESERVED_VALUE_PARAMETER_MODIFIER_KEYWORDS = tsNew([T_OUT_KEYWORD, T_VARARG_KEYWORD]);
-    this.TYPE_RECOVERY = tsOr(this.TOP_LEVEL_DECLARATION_FIRST, tsNew([T_EQ, T_COMMA, T_GT, T_RBRACKET, T_DOT, T_RPAR, T_RBRACE, T_LBRACE, T_SEMICOLON]));
-    this.WHEN_CONDITION_RECOVERY_SET = tsNew([T_RBRACE, T_IN_KEYWORD, T_NOT_IN, T_IS_KEYWORD, T_NOT_IS, T_ELSE_KEYWORD]);
-    this.WHEN_CONDITION_RECOVERY_SET_WITH_ARROW = tsNew([T_RBRACE, T_IN_KEYWORD, T_NOT_IN, T_IS_KEYWORD, T_NOT_IS, T_ELSE_KEYWORD, T_ARROW, T_DOT]);
+    this.TYPE_RECOVERY = tsOr(
+      this.TOP_LEVEL_DECLARATION_FIRST,
+      tsNew([T_EQ, T_COMMA, T_GT, T_RBRACKET, T_DOT, T_RPAR, T_RBRACE, T_LBRACE, T_SEMICOLON]),
+    );
+    this.WHEN_CONDITION_RECOVERY_SET = tsNew([
+      T_RBRACE,
+      T_IN_KEYWORD,
+      T_NOT_IN,
+      T_IS_KEYWORD,
+      T_NOT_IS,
+      T_ELSE_KEYWORD,
+    ]);
+    this.WHEN_CONDITION_RECOVERY_SET_WITH_ARROW = tsNew([
+      T_RBRACE,
+      T_IN_KEYWORD,
+      T_NOT_IN,
+      T_IS_KEYWORD,
+      T_NOT_IS,
+      T_ELSE_KEYWORD,
+      T_ARROW,
+      T_DOT,
+    ]);
     this.TOKEN_SET_TO_FOLLOW_AFTER_DESTRUCTURING_DECLARATION_IN_LAMBDA = tsNew([T_ARROW, T_COMMA, T_COLON]);
-    this.TOKEN_SET_TO_FOLLOW_AFTER_DESTRUCTURING_DECLARATION_IN_LAMBDA_RECOVERY = tsOr(this.TOKEN_SET_TO_FOLLOW_AFTER_DESTRUCTURING_DECLARATION_IN_LAMBDA, this.PARAMETER_NAME_RECOVERY_SET);
+    this.TOKEN_SET_TO_FOLLOW_AFTER_DESTRUCTURING_DECLARATION_IN_LAMBDA_RECOVERY = tsOr(
+      this.TOKEN_SET_TO_FOLLOW_AFTER_DESTRUCTURING_DECLARATION_IN_LAMBDA,
+      this.PARAMETER_NAME_RECOVERY_SET,
+    );
     this.EQ_RPAR_SET = tsNew([T_EQ, T_RPAR]);
     this.ARROW_SET = tsNew([T_ARROW]);
     this.ARROW_COMMA_SET = tsNew([T_ARROW, T_COMMA]);
@@ -718,11 +789,33 @@ export class KParser {
       T_COLON,
     ]);
     this.STATEMENT_FIRST = tsOr(
-      tsOr(this.EXPRESSION_FIRST, tsNew([T_FUN_KEYWORD, T_VAL_KEYWORD, T_VAR_KEYWORD, T_INTERFACE_KEYWORD, T_CLASS_KEYWORD, T_TYPE_ALIAS_KEYWORD])),
+      tsOr(
+        this.EXPRESSION_FIRST,
+        tsNew([
+          T_FUN_KEYWORD,
+          T_VAL_KEYWORD,
+          T_VAR_KEYWORD,
+          T_INTERFACE_KEYWORD,
+          T_CLASS_KEYWORD,
+          T_TYPE_ALIAS_KEYWORD,
+        ]),
+      ),
       this.MODIFIER_KEYWORDS,
     );
-    this.STATEMENT_NEW_LINE_QUICK_RECOVERY_SET = tsOr(tsAnd(this.STATEMENT_FIRST, tsAndNot(this.KEYWORDS, tsNew([T_IN_KEYWORD]))), tsNew([T_EOL_OR_SEMICOLON]));
-    this.ALLOW_NEWLINE_OPERATIONS = tsNew([T_DOT, T_SAFE_ACCESS, T_COLON, T_AS_KEYWORD, T_AS_SAFE, T_ELVIS, T_ANDAND, T_OROR]);
+    this.STATEMENT_NEW_LINE_QUICK_RECOVERY_SET = tsOr(
+      tsAnd(this.STATEMENT_FIRST, tsAndNot(this.KEYWORDS, tsNew([T_IN_KEYWORD]))),
+      tsNew([T_EOL_OR_SEMICOLON]),
+    );
+    this.ALLOW_NEWLINE_OPERATIONS = tsNew([
+      T_DOT,
+      T_SAFE_ACCESS,
+      T_COLON,
+      T_AS_KEYWORD,
+      T_AS_SAFE,
+      T_ELVIS,
+      T_ANDAND,
+      T_OROR,
+    ]);
     this.PREFIX_OPERATIONS = tsNew([T_MINUS, T_PLUS, T_MINUSMINUS, T_PLUSPLUS, T_EXCL]);
     this.POSTFIX_OPERATIONS = tsNew([T_PLUSPLUS, T_MINUSMINUS, T_EXCLEXCL, T_DOT, T_SAFE_ACCESS]);
     this.EXPECTING_ELEMENT_RECOVERY = tsOr(this.EXPRESSION_FOLLOW, tsNew([T_LONG_TEMPLATE_ENTRY_END]));
@@ -943,7 +1036,11 @@ export class KParser {
 
   closeDeclarationWithCommentBinders(m: i32, type: i32, precedingNonDocComments: boolean): void {
     this.b.done(m, type);
-    this.b.setBinders(m, precedingNonDocComments ? B_PRECEDING_COMMENTS : B_PRECEDING_DOC_COMMENTS, B_TRAILING_COMMENTS);
+    this.b.setBinders(
+      m,
+      precedingNonDocComments ? B_PRECEDING_COMMENTS : B_PRECEDING_DOC_COMMENTS,
+      B_TRAILING_COMMENTS,
+    );
   }
 
   disableNewlines(): void {
@@ -1184,7 +1281,13 @@ export class KParser {
   }
 
   private parseFunctionTypeValueParameterModifierList(): void {
-    this.doParseModifierList(null, this.RESERVED_VALUE_PARAMETER_MODIFIER_KEYWORDS, APM_NO_ANNOTATIONS_NO_CONTEXT, this.NO_MODIFIER_BEFORE_FOR_VALUE_PARAMETER, false);
+    this.doParseModifierList(
+      null,
+      this.RESERVED_VALUE_PARAMETER_MODIFIER_KEYWORDS,
+      APM_NO_ANNOTATIONS_NO_CONTEXT,
+      this.NO_MODIFIER_BEFORE_FOR_VALUE_PARAMETER,
+      false,
+    );
   }
 
   private parseTypeModifierList(): void {
@@ -1192,10 +1295,22 @@ export class KParser {
   }
 
   private parseTypeArgumentModifierList(): void {
-    this.doParseModifierList(null, this.TYPE_ARGUMENT_MODIFIER_KEYWORDS, APM_NO_ANNOTATIONS_NO_CONTEXT, this.COMMA_COLON_GT_SET, false);
+    this.doParseModifierList(
+      null,
+      this.TYPE_ARGUMENT_MODIFIER_KEYWORDS,
+      APM_NO_ANNOTATIONS_NO_CONTEXT,
+      this.COMMA_COLON_GT_SET,
+      false,
+    );
   }
 
-  private doParseModifierListBody(detector: ModDetector | null, modifierKeywords: i32[], mode: i32, noModifiersBefore: i32[], localDeclaration: boolean): boolean {
+  private doParseModifierListBody(
+    detector: ModDetector | null,
+    modifierKeywords: i32[],
+    mode: i32,
+    noModifiersBefore: i32[],
+    localDeclaration: boolean,
+  ): boolean {
     let empty = true;
     while (!this.eof()) {
       if (this.at(T_AT) && apmAllowAnnotations(mode)) {
@@ -1228,7 +1343,13 @@ export class KParser {
     return empty;
   }
 
-  private doParseModifierList(detector: ModDetector | null, modifierKeywords: i32[], mode: i32, noModifiersBefore: i32[], localDeclaration: boolean): boolean {
+  private doParseModifierList(
+    detector: ModDetector | null,
+    modifierKeywords: i32[],
+    mode: i32,
+    noModifiersBefore: i32[],
+    localDeclaration: boolean,
+  ): boolean {
     const list = this.mark();
     const empty = this.doParseModifierListBody(detector, modifierKeywords, mode, noModifiersBefore, localDeclaration);
     if (empty) {
@@ -1377,7 +1498,10 @@ export class KParser {
       return true;
     }
     const targetKeyword = this.atSet(this.ANNOTATION_TARGETS) ? this.b.tt() : -1;
-    if (mode === APM_FILE_WHEN_PACKAGE_OMITTED && !(targetKeyword === T_FILE_KEYWORD && this.lookahead(1) === T_COLON)) {
+    if (
+      mode === APM_FILE_WHEN_PACKAGE_OMITTED &&
+      !(targetKeyword === T_FILE_KEYWORD && this.lookahead(1) === T_COLON)
+    ) {
       return false;
     }
     if (this.lookahead(1) === T_COLON && targetKeyword < 0 && this.at(T_IDENTIFIER)) {
@@ -1422,7 +1546,11 @@ export class KParser {
     this.b.done(typeReference, N_TYPE_REFERENCE);
     this.b.done(reference, N_CONSTRUCTOR_CALLEE);
     this.parseTypeArgumentList();
-    if (this.at(T_LPAR) && !tsHas(this.VAL_VAR, this.lookahead(1)) && !(isWsOrComment(this.b.rawLookup(-1)) && apmWithWs(mode))) {
+    if (
+      this.at(T_LPAR) &&
+      !tsHas(this.VAL_VAR, this.lookahead(1)) &&
+      !(isWsOrComment(this.b.rawLookup(-1)) && apmWithWs(mode))
+    ) {
       this.parseValueArgumentList();
       if (apmTypeContext(mode) && (this.getLastToken() !== T_RPAR || this.at(T_ARROW))) {
         this.b.done(annotation, N_ANNOTATION_ENTRY);
@@ -1435,7 +1563,13 @@ export class KParser {
 
   // ---- Classes ---------------------------------------------------------------
 
-  private parseClassOrObject(object: boolean, nameParsingMode: i32, optionalBody: boolean, enumClass: boolean, expectKindKeyword: boolean): i32 {
+  private parseClassOrObject(
+    object: boolean,
+    nameParsingMode: i32,
+    optionalBody: boolean,
+    enumClass: boolean,
+    expectKindKeyword: boolean,
+  ): i32 {
     if (expectKindKeyword) {
       this.advance();
     } else {
@@ -1618,7 +1752,11 @@ export class KParser {
   }
 
   private parseMemberDeclarationRest(detector: ModDetector): i32 {
-    let declType = this.parseCommonDeclaration(detector, detector.companionDetected ? NPM_ALLOWED : NPM_REQUIRED, DPM_MEMBER_OR_TOPLEVEL);
+    let declType = this.parseCommonDeclaration(
+      detector,
+      detector.companionDetected ? NPM_ALLOWED : NPM_REQUIRED,
+      DPM_MEMBER_OR_TOPLEVEL,
+    );
     if (declType >= 0) {
       return declType;
     }
@@ -1726,7 +1864,12 @@ export class KParser {
       );
       this.errorIf(multiDecl, mode === DPM_MEMBER_OR_TOPLEVEL);
     } else {
-      this.parseFunctionOrPropertyName(receiverTypeDeclared, this.PROPERTY_NAME_FOLLOW_SET, this.PROPERTY_NAME_FOLLOW_FUNCTION_OR_PROPERTY_RECOVERY_SET, true);
+      this.parseFunctionOrPropertyName(
+        receiverTypeDeclared,
+        this.PROPERTY_NAME_FOLLOW_SET,
+        this.PROPERTY_NAME_FOLLOW_FUNCTION_OR_PROPERTY_RECOVERY_SET,
+        true,
+      );
     }
     this.b.restoreJoiningComplexTokensState();
     let noTypeReference = true;
@@ -1933,7 +2076,12 @@ export class KParser {
       this.b.restoreJoiningComplexTokensState();
       return -1;
     }
-    this.parseFunctionOrPropertyName(receiverFound, this.FUNCTION_NAME_FOLLOW_SET, this.FUNCTION_NAME_RECOVERY_SET, false);
+    this.parseFunctionOrPropertyName(
+      receiverFound,
+      this.FUNCTION_NAME_FOLLOW_SET,
+      this.FUNCTION_NAME_RECOVERY_SET,
+      false,
+    );
     this.b.restoreJoiningComplexTokensState();
     if (this.at(T_LT)) {
       const err = this.mark();
@@ -2075,7 +2223,12 @@ export class KParser {
     return last;
   }
 
-  private parseFunctionOrPropertyName(receiverFound: boolean, nameFollow: i32[], recoverySet: i32[], nameRequired: boolean): void {
+  private parseFunctionOrPropertyName(
+    receiverFound: boolean,
+    nameFollow: i32[],
+    recoverySet: i32[],
+    nameRequired: boolean,
+  ): void {
     if (!nameRequired && this.atSet(nameFollow)) {
       return;
     }
@@ -2381,7 +2534,12 @@ export class KParser {
   }
 
   private recoverOnParenthesizedWordForPlatformTypes(offset: i32, word: string, consume: boolean): boolean {
-    if (this.lookahead(offset) === T_LPAR && this.lookahead(offset + 1) === T_IDENTIFIER && this.lookahead(offset + 2) === T_RPAR && this.lookahead(offset + 3) === T_IDENTIFIER) {
+    if (
+      this.lookahead(offset) === T_LPAR &&
+      this.lookahead(offset + 1) === T_IDENTIFIER &&
+      this.lookahead(offset + 2) === T_RPAR &&
+      this.lookahead(offset + 3) === T_IDENTIFIER
+    ) {
       const err = this.mark();
       this.advanceN(offset);
       this.advance();
@@ -2471,7 +2629,13 @@ export class KParser {
    * parameter or type (inFunctionType = a), 1 a value parameter list entry
    * (isFunctionTypeContents = a, typeRequired = c).
    */
-  private valueParameterLoop(inFunctionTypeContext: boolean, recoverySet: i32[], which: i32, a: boolean, c: boolean): boolean {
+  private valueParameterLoop(
+    inFunctionTypeContext: boolean,
+    recoverySet: i32[],
+    which: i32,
+    a: boolean,
+    c: boolean,
+  ): boolean {
     this.advance();
     let noError = true;
     if (!this.at(T_RPAR) && !this.atSet(recoverySet)) {
@@ -2750,7 +2914,9 @@ export class KParser {
 
   private parsePostfixExpression(): void {
     let expression = this.mark();
-    let firstExpressionParsed = this.at(T_COLONCOLON) ? this.parseDoubleColonSuffix(this.mark()) : this.parseAtomicExpression();
+    let firstExpressionParsed = this.at(T_COLONCOLON)
+      ? this.parseDoubleColonSuffix(this.mark())
+      : this.parseAtomicExpression();
     while (true) {
       if (this.interruptedWithNewLine()) {
         break;
@@ -3247,7 +3413,11 @@ export class KParser {
     this.parseModifierList(detector, this.EMPTY, true);
     const declType = this.parseLocalDeclarationRest(detector, rollbackIfDefinitelyNotExpression, isScriptTopLevel);
     if (declType >= 0) {
-      this.closeDeclarationWithCommentBinders(decl, declType, declType !== N_PROPERTY && declType !== N_DESTRUCTURING_DECLARATION);
+      this.closeDeclarationWithCommentBinders(
+        decl,
+        declType,
+        declType !== N_PROPERTY && declType !== N_DESTRUCTURING_DECLARATION,
+      );
       return true;
     }
     this.b.rollbackTo(decl);
@@ -3408,7 +3578,11 @@ export class KParser {
     this.parseExpression();
   }
 
-  private parseLocalDeclarationRest(detector: ModDetector, failIfDefinitelyNotExpression: boolean, isScriptTopLevel: boolean): i32 {
+  private parseLocalDeclarationRest(
+    detector: ModDetector,
+    failIfDefinitelyNotExpression: boolean,
+    isScriptTopLevel: boolean,
+  ): i32 {
     const keywordToken = this.tt();
     if (failIfDefinitelyNotExpression) {
       if (keywordToken !== T_FUN_KEYWORD) {
@@ -3460,7 +3634,11 @@ export class KParser {
         }
         if (this.at(T_LPAR) || this.at(T_LBRACKET)) {
           const destructuringDeclaration = this.mark();
-          this.parseMultiDeclarationEntry(this.IN_KEYWORD_L_BRACE_SET, this.IN_KEYWORD_L_BRACE_RECOVERY_SET, this.lookahead(1) === T_VAL_KEYWORD ? MDM_FULL_VAL_ONLY : MDM_SHORT);
+          this.parseMultiDeclarationEntry(
+            this.IN_KEYWORD_L_BRACE_SET,
+            this.IN_KEYWORD_L_BRACE_RECOVERY_SET,
+            this.lookahead(1) === T_VAL_KEYWORD ? MDM_FULL_VAL_ONLY : MDM_SHORT,
+          );
           this.b.done(destructuringDeclaration, N_DESTRUCTURING_DECLARATION);
         } else {
           this.expectRec(T_IDENTIFIER, this.COLON_IN_KEYWORD_SET);

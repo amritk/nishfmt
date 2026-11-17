@@ -60,7 +60,17 @@ import { labaLambdaOrProc } from "./lint_ambiguous_block_association";
 import { lpgeAssignmentMethod } from "./lint_parentheses_as_grouped_expression";
 import { vfSameNode } from "./lint_variable_force";
 import { rnHeredoc } from "../node";
-import { ssxDefName, ssxFE, ssxFS, ssxHas, ssxInList, ssxIs, ssxIsAnyBlock, ssxIsCall, ssxMeth } from "./style_syntax_help";
+import {
+  ssxDefName,
+  ssxFE,
+  ssxFS,
+  ssxHas,
+  ssxInList,
+  ssxIs,
+  ssxIsAnyBlock,
+  ssxIsCall,
+  ssxMeth,
+} from "./style_syntax_help";
 
 /** Node#literal?. */
 const lvoLiteral = (t: i32): boolean =>
@@ -195,7 +205,8 @@ export class CopLintVoid {
     }
     let m = a.nKid(n);
     const q = src.parent(n);
-    const setter = q !== V_NIL && (a.type(q) === NT_DEF || a.type(q) === NT_DEFS) && lpgeAssignmentMethod(ssxDefName(src, q));
+    const setter =
+      q !== V_NIL && (a.type(q) === NT_DEF || a.type(q) === NT_DEFS) && lpgeAssignmentMethod(ssxDefName(src, q));
     if (m > 0 && (!this.inVoidContext(src, n) || each || setter)) {
       m--;
     }
@@ -214,7 +225,10 @@ export class CopLintVoid {
     const t = a.type(e);
     if (t === NT_IF) {
       // IfNode#body (if_branch)
-      const unless = ssxHas(src, e, F_KEYWORD) && ssxFE(src, e, F_KEYWORD) - ssxFS(src, e, F_KEYWORD) === 6 && !ssxHas(src, e, F_QUESTION);
+      const unless =
+        ssxHas(src, e, F_KEYWORD) &&
+        ssxFE(src, e, F_KEYWORD) - ssxFS(src, e, F_KEYWORD) === 6 &&
+        !ssxHas(src, e, F_QUESTION);
       const body = unless ? a.kid(e, 2) : a.kid(e, 1);
       if (body !== V_NIL) {
         this.checkNodes(src, body);
@@ -274,7 +288,13 @@ export class CopLintVoid {
     const t = a.type(n);
     const p = src.parent(n);
     const pt = p === V_NIL ? -1 : a.type(p);
-    let skip = (t === NT_CONST && !lvoSpecialKeyword(src, n)) || pt === NT_IF || pt === NT_CASE || pt === NT_WHEN || pt === NT_CASE_MATCH || pt === NT_IN_PATTERN;
+    let skip =
+      (t === NT_CONST && !lvoSpecialKeyword(src, n)) ||
+      pt === NT_IF ||
+      pt === NT_CASE ||
+      pt === NT_WHEN ||
+      pt === NT_CASE_MATCH ||
+      pt === NT_IN_PATTERN;
     if (!skip) {
       let d = p;
       while (d !== V_NIL) {

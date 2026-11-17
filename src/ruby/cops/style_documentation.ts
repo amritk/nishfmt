@@ -225,7 +225,11 @@ export class CopStyleDocumentation {
     }
     const m = ssxMeth(src, n);
     const arg = a.kid(n, 2);
-    return (m === "public_constant" || m === "private_constant") && (ssxIs(src, arg, NT_SYM) || ssxIs(src, arg, NT_STR)) && a.nKid(arg) === 1;
+    return (
+      (m === "public_constant" || m === "private_constant") &&
+      (ssxIs(src, arg, NT_SYM) || ssxIs(src, arg, NT_STR)) &&
+      a.nKid(arg) === 1
+    );
   }
 
   /** namespace?. */
@@ -317,7 +321,10 @@ export class CopStyleDocumentation {
         const cs = this.as.of(first);
         if (cs.length > 0) {
           const ci = cs[0];
-          if (src.line(src.commS[ci]) === src.line(a.exS(n)) && rbDocNodocText(src.src(src.commS[ci], src.commE[ci]), all)) {
+          if (
+            src.line(src.commS[ci]) === src.line(a.exS(n)) &&
+            rbDocNodocText(src.src(src.commS[ci], src.commE[ci]), all)
+          ) {
             return true;
           }
         }

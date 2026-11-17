@@ -3,7 +3,19 @@
 // Ported from RuboCop 1.92.2 (MIT License, Copyright (c) 2012-24 Bozhidar
 // Batsov).
 
-import { F_DOT, F_DOUBLE_COLON, F_NAME, F_SELECTOR, NT_CONST, NT_CVAR, NT_GVAR, NT_IVAR, NT_LVAR, NT_SEND, NT_STR } from "../ast";
+import {
+  F_DOT,
+  F_DOUBLE_COLON,
+  F_NAME,
+  F_SELECTOR,
+  NT_CONST,
+  NT_CVAR,
+  NT_GVAR,
+  NT_IVAR,
+  NT_LVAR,
+  NT_SEND,
+  NT_STR,
+} from "../ast";
 import { RbCop } from "../cop";
 import { RbSource } from "../source";
 import { ssxFE, ssxFS, ssxGlobalConst, ssxIs, ssxIsCall, ssxMeth } from "./style_syntax_help";
@@ -98,7 +110,11 @@ export class CopLintDeprecatedOpenSSLConstant {
       }
       k.remove(ssxFS(src, r, F_DOUBLE_COLON), ssxFE(src, r, F_DOUBLE_COLON));
       k.remove(ssxFS(src, r, F_NAME), ssxFE(src, r, F_NAME));
-      k.replace(ssxFE(src, n, F_DOT), a.exE(n), `${src.src(ssxFS(src, n, F_SELECTOR), ssxFE(src, n, F_SELECTOR))}(${repl})`);
+      k.replace(
+        ssxFE(src, n, F_DOT),
+        a.exE(n),
+        `${src.src(ssxFS(src, n, F_SELECTOR), ssxFE(src, n, F_SELECTOR))}(${repl})`,
+      );
       this.c.commit(k);
     }
   }

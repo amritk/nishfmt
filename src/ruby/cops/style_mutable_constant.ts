@@ -4,7 +4,21 @@
 // Ported from RuboCop 1.92.2 (MIT License, Copyright (c) 2012-24 Bozhidar
 // Batsov).
 
-import { M_HEREDOC, NT_ARRAY, NT_BEGIN, NT_CASGN, NT_CVAR, NT_DSTR, NT_GVAR, NT_HASH, NT_IVAR, NT_OR_ASGN, NT_STR, NT_XSTR, V_NIL } from "../ast";
+import {
+  M_HEREDOC,
+  NT_ARRAY,
+  NT_BEGIN,
+  NT_CASGN,
+  NT_CVAR,
+  NT_DSTR,
+  NT_GVAR,
+  NT_HASH,
+  NT_IVAR,
+  NT_OR_ASGN,
+  NT_STR,
+  NT_XSTR,
+  V_NIL,
+} from "../ast";
 import { RbCop } from "../cop";
 import { RbSource } from "../source";
 import { rbLitChars } from "./lit_help";

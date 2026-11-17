@@ -3487,7 +3487,7 @@ export const csKindText = (k: i32): string => {
     case K_SemicolonToken:
       return ";";
     case K_DoubleQuoteToken:
-      return "\"";
+      return '"';
     case K_SingleQuoteToken:
       return "'";
     case K_LessThanToken:
@@ -3867,11 +3867,11 @@ export const csKindText = (k: i32): string => {
     case K_ReferenceKeyword:
       return "r";
     case K_InterpolatedStringStartToken:
-      return "$\"";
+      return '$"';
     case K_InterpolatedStringEndToken:
-      return "\"";
+      return '"';
     case K_InterpolatedVerbatimStringStartToken:
-      return "$@\"";
+      return '$@"';
     case K_LoadKeyword:
       return "load";
     case K_NullableKeyword:
@@ -4188,279 +4188,736 @@ export const csKeyword = (s: u8[], a: i32, n: i32): i32 => {
       return 0;
     case 6:
       if (c0 === 97) {
-        if (toI32(s[a + 1]) === 108 && toI32(s[a + 2]) === 108 && toI32(s[a + 3]) === 111 && toI32(s[a + 4]) === 119 && toI32(s[a + 5]) === 115) {
+        if (
+          toI32(s[a + 1]) === 108 &&
+          toI32(s[a + 2]) === 108 &&
+          toI32(s[a + 3]) === 111 &&
+          toI32(s[a + 4]) === 119 &&
+          toI32(s[a + 5]) === 115
+        ) {
           return -K_AllowsKeyword;
         }
       }
       if (c0 === 99) {
-        if (toI32(s[a + 1]) === 108 && toI32(s[a + 2]) === 111 && toI32(s[a + 3]) === 115 && toI32(s[a + 4]) === 101 && toI32(s[a + 5]) === 100) {
+        if (
+          toI32(s[a + 1]) === 108 &&
+          toI32(s[a + 2]) === 111 &&
+          toI32(s[a + 3]) === 115 &&
+          toI32(s[a + 4]) === 101 &&
+          toI32(s[a + 5]) === 100
+        ) {
           return -K_ClosedKeyword;
         }
       }
       if (c0 === 100) {
-        if (toI32(s[a + 1]) === 111 && toI32(s[a + 2]) === 117 && toI32(s[a + 3]) === 98 && toI32(s[a + 4]) === 108 && toI32(s[a + 5]) === 101) {
+        if (
+          toI32(s[a + 1]) === 111 &&
+          toI32(s[a + 2]) === 117 &&
+          toI32(s[a + 3]) === 98 &&
+          toI32(s[a + 4]) === 108 &&
+          toI32(s[a + 5]) === 101
+        ) {
           return K_DoubleKeyword;
         }
       }
       if (c0 === 101) {
-        if (toI32(s[a + 1]) === 113 && toI32(s[a + 2]) === 117 && toI32(s[a + 3]) === 97 && toI32(s[a + 4]) === 108 && toI32(s[a + 5]) === 115) {
+        if (
+          toI32(s[a + 1]) === 113 &&
+          toI32(s[a + 2]) === 117 &&
+          toI32(s[a + 3]) === 97 &&
+          toI32(s[a + 4]) === 108 &&
+          toI32(s[a + 5]) === 115
+        ) {
           return -K_EqualsKeyword;
         }
-        if (toI32(s[a + 1]) === 120 && toI32(s[a + 2]) === 116 && toI32(s[a + 3]) === 101 && toI32(s[a + 4]) === 114 && toI32(s[a + 5]) === 110) {
+        if (
+          toI32(s[a + 1]) === 120 &&
+          toI32(s[a + 2]) === 116 &&
+          toI32(s[a + 3]) === 101 &&
+          toI32(s[a + 4]) === 114 &&
+          toI32(s[a + 5]) === 110
+        ) {
           return K_ExternKeyword;
         }
       }
       if (c0 === 103) {
-        if (toI32(s[a + 1]) === 108 && toI32(s[a + 2]) === 111 && toI32(s[a + 3]) === 98 && toI32(s[a + 4]) === 97 && toI32(s[a + 5]) === 108) {
+        if (
+          toI32(s[a + 1]) === 108 &&
+          toI32(s[a + 2]) === 111 &&
+          toI32(s[a + 3]) === 98 &&
+          toI32(s[a + 4]) === 97 &&
+          toI32(s[a + 5]) === 108
+        ) {
           return -K_GlobalKeyword;
         }
       }
       if (c0 === 109) {
-        if (toI32(s[a + 1]) === 101 && toI32(s[a + 2]) === 116 && toI32(s[a + 3]) === 104 && toI32(s[a + 4]) === 111 && toI32(s[a + 5]) === 100) {
+        if (
+          toI32(s[a + 1]) === 101 &&
+          toI32(s[a + 2]) === 116 &&
+          toI32(s[a + 3]) === 104 &&
+          toI32(s[a + 4]) === 111 &&
+          toI32(s[a + 5]) === 100
+        ) {
           return -K_MethodKeyword;
         }
-        if (toI32(s[a + 1]) === 111 && toI32(s[a + 2]) === 100 && toI32(s[a + 3]) === 117 && toI32(s[a + 4]) === 108 && toI32(s[a + 5]) === 101) {
+        if (
+          toI32(s[a + 1]) === 111 &&
+          toI32(s[a + 2]) === 100 &&
+          toI32(s[a + 3]) === 117 &&
+          toI32(s[a + 4]) === 108 &&
+          toI32(s[a + 5]) === 101
+        ) {
           return -K_ModuleKeyword;
         }
       }
       if (c0 === 110) {
-        if (toI32(s[a + 1]) === 97 && toI32(s[a + 2]) === 109 && toI32(s[a + 3]) === 101 && toI32(s[a + 4]) === 111 && toI32(s[a + 5]) === 102) {
+        if (
+          toI32(s[a + 1]) === 97 &&
+          toI32(s[a + 2]) === 109 &&
+          toI32(s[a + 3]) === 101 &&
+          toI32(s[a + 4]) === 111 &&
+          toI32(s[a + 5]) === 102
+        ) {
           return -K_NameOfKeyword;
         }
       }
       if (c0 === 111) {
-        if (toI32(s[a + 1]) === 98 && toI32(s[a + 2]) === 106 && toI32(s[a + 3]) === 101 && toI32(s[a + 4]) === 99 && toI32(s[a + 5]) === 116) {
+        if (
+          toI32(s[a + 1]) === 98 &&
+          toI32(s[a + 2]) === 106 &&
+          toI32(s[a + 3]) === 101 &&
+          toI32(s[a + 4]) === 99 &&
+          toI32(s[a + 5]) === 116
+        ) {
           return K_ObjectKeyword;
         }
       }
       if (c0 === 112) {
-        if (toI32(s[a + 1]) === 97 && toI32(s[a + 2]) === 114 && toI32(s[a + 3]) === 97 && toI32(s[a + 4]) === 109 && toI32(s[a + 5]) === 115) {
+        if (
+          toI32(s[a + 1]) === 97 &&
+          toI32(s[a + 2]) === 114 &&
+          toI32(s[a + 3]) === 97 &&
+          toI32(s[a + 4]) === 109 &&
+          toI32(s[a + 5]) === 115
+        ) {
           return K_ParamsKeyword;
         }
-        if (toI32(s[a + 1]) === 117 && toI32(s[a + 2]) === 98 && toI32(s[a + 3]) === 108 && toI32(s[a + 4]) === 105 && toI32(s[a + 5]) === 99) {
+        if (
+          toI32(s[a + 1]) === 117 &&
+          toI32(s[a + 2]) === 98 &&
+          toI32(s[a + 3]) === 108 &&
+          toI32(s[a + 4]) === 105 &&
+          toI32(s[a + 5]) === 99
+        ) {
           return K_PublicKeyword;
         }
       }
       if (c0 === 114) {
-        if (toI32(s[a + 1]) === 101 && toI32(s[a + 2]) === 99 && toI32(s[a + 3]) === 111 && toI32(s[a + 4]) === 114 && toI32(s[a + 5]) === 100) {
+        if (
+          toI32(s[a + 1]) === 101 &&
+          toI32(s[a + 2]) === 99 &&
+          toI32(s[a + 3]) === 111 &&
+          toI32(s[a + 4]) === 114 &&
+          toI32(s[a + 5]) === 100
+        ) {
           return -K_RecordKeyword;
         }
-        if (toI32(s[a + 1]) === 101 && toI32(s[a + 2]) === 109 && toI32(s[a + 3]) === 111 && toI32(s[a + 4]) === 118 && toI32(s[a + 5]) === 101) {
+        if (
+          toI32(s[a + 1]) === 101 &&
+          toI32(s[a + 2]) === 109 &&
+          toI32(s[a + 3]) === 111 &&
+          toI32(s[a + 4]) === 118 &&
+          toI32(s[a + 5]) === 101
+        ) {
           return -K_RemoveKeyword;
         }
-        if (toI32(s[a + 1]) === 101 && toI32(s[a + 2]) === 116 && toI32(s[a + 3]) === 117 && toI32(s[a + 4]) === 114 && toI32(s[a + 5]) === 110) {
+        if (
+          toI32(s[a + 1]) === 101 &&
+          toI32(s[a + 2]) === 116 &&
+          toI32(s[a + 3]) === 117 &&
+          toI32(s[a + 4]) === 114 &&
+          toI32(s[a + 5]) === 110
+        ) {
           return K_ReturnKeyword;
         }
       }
       if (c0 === 115) {
-        if (toI32(s[a + 1]) === 99 && toI32(s[a + 2]) === 111 && toI32(s[a + 3]) === 112 && toI32(s[a + 4]) === 101 && toI32(s[a + 5]) === 100) {
+        if (
+          toI32(s[a + 1]) === 99 &&
+          toI32(s[a + 2]) === 111 &&
+          toI32(s[a + 3]) === 112 &&
+          toI32(s[a + 4]) === 101 &&
+          toI32(s[a + 5]) === 100
+        ) {
           return -K_ScopedKeyword;
         }
-        if (toI32(s[a + 1]) === 101 && toI32(s[a + 2]) === 97 && toI32(s[a + 3]) === 108 && toI32(s[a + 4]) === 101 && toI32(s[a + 5]) === 100) {
+        if (
+          toI32(s[a + 1]) === 101 &&
+          toI32(s[a + 2]) === 97 &&
+          toI32(s[a + 3]) === 108 &&
+          toI32(s[a + 4]) === 101 &&
+          toI32(s[a + 5]) === 100
+        ) {
           return K_SealedKeyword;
         }
-        if (toI32(s[a + 1]) === 101 && toI32(s[a + 2]) === 108 && toI32(s[a + 3]) === 101 && toI32(s[a + 4]) === 99 && toI32(s[a + 5]) === 116) {
+        if (
+          toI32(s[a + 1]) === 101 &&
+          toI32(s[a + 2]) === 108 &&
+          toI32(s[a + 3]) === 101 &&
+          toI32(s[a + 4]) === 99 &&
+          toI32(s[a + 5]) === 116
+        ) {
           return -K_SelectKeyword;
         }
-        if (toI32(s[a + 1]) === 105 && toI32(s[a + 2]) === 122 && toI32(s[a + 3]) === 101 && toI32(s[a + 4]) === 111 && toI32(s[a + 5]) === 102) {
+        if (
+          toI32(s[a + 1]) === 105 &&
+          toI32(s[a + 2]) === 122 &&
+          toI32(s[a + 3]) === 101 &&
+          toI32(s[a + 4]) === 111 &&
+          toI32(s[a + 5]) === 102
+        ) {
           return K_SizeOfKeyword;
         }
-        if (toI32(s[a + 1]) === 116 && toI32(s[a + 2]) === 97 && toI32(s[a + 3]) === 116 && toI32(s[a + 4]) === 105 && toI32(s[a + 5]) === 99) {
+        if (
+          toI32(s[a + 1]) === 116 &&
+          toI32(s[a + 2]) === 97 &&
+          toI32(s[a + 3]) === 116 &&
+          toI32(s[a + 4]) === 105 &&
+          toI32(s[a + 5]) === 99
+        ) {
           return K_StaticKeyword;
         }
-        if (toI32(s[a + 1]) === 116 && toI32(s[a + 2]) === 114 && toI32(s[a + 3]) === 105 && toI32(s[a + 4]) === 110 && toI32(s[a + 5]) === 103) {
+        if (
+          toI32(s[a + 1]) === 116 &&
+          toI32(s[a + 2]) === 114 &&
+          toI32(s[a + 3]) === 105 &&
+          toI32(s[a + 4]) === 110 &&
+          toI32(s[a + 5]) === 103
+        ) {
           return K_StringKeyword;
         }
-        if (toI32(s[a + 1]) === 116 && toI32(s[a + 2]) === 114 && toI32(s[a + 3]) === 117 && toI32(s[a + 4]) === 99 && toI32(s[a + 5]) === 116) {
+        if (
+          toI32(s[a + 1]) === 116 &&
+          toI32(s[a + 2]) === 114 &&
+          toI32(s[a + 3]) === 117 &&
+          toI32(s[a + 4]) === 99 &&
+          toI32(s[a + 5]) === 116
+        ) {
           return K_StructKeyword;
         }
-        if (toI32(s[a + 1]) === 119 && toI32(s[a + 2]) === 105 && toI32(s[a + 3]) === 116 && toI32(s[a + 4]) === 99 && toI32(s[a + 5]) === 104) {
+        if (
+          toI32(s[a + 1]) === 119 &&
+          toI32(s[a + 2]) === 105 &&
+          toI32(s[a + 3]) === 116 &&
+          toI32(s[a + 4]) === 99 &&
+          toI32(s[a + 5]) === 104
+        ) {
           return K_SwitchKeyword;
         }
       }
       if (c0 === 116) {
-        if (toI32(s[a + 1]) === 121 && toI32(s[a + 2]) === 112 && toI32(s[a + 3]) === 101 && toI32(s[a + 4]) === 111 && toI32(s[a + 5]) === 102) {
+        if (
+          toI32(s[a + 1]) === 121 &&
+          toI32(s[a + 2]) === 112 &&
+          toI32(s[a + 3]) === 101 &&
+          toI32(s[a + 4]) === 111 &&
+          toI32(s[a + 5]) === 102
+        ) {
           return K_TypeOfKeyword;
         }
       }
       if (c0 === 117) {
-        if (toI32(s[a + 1]) === 110 && toI32(s[a + 2]) === 115 && toI32(s[a + 3]) === 97 && toI32(s[a + 4]) === 102 && toI32(s[a + 5]) === 101) {
+        if (
+          toI32(s[a + 1]) === 110 &&
+          toI32(s[a + 2]) === 115 &&
+          toI32(s[a + 3]) === 97 &&
+          toI32(s[a + 4]) === 102 &&
+          toI32(s[a + 5]) === 101
+        ) {
           return K_UnsafeKeyword;
         }
-        if (toI32(s[a + 1]) === 115 && toI32(s[a + 2]) === 104 && toI32(s[a + 3]) === 111 && toI32(s[a + 4]) === 114 && toI32(s[a + 5]) === 116) {
+        if (
+          toI32(s[a + 1]) === 115 &&
+          toI32(s[a + 2]) === 104 &&
+          toI32(s[a + 3]) === 111 &&
+          toI32(s[a + 4]) === 114 &&
+          toI32(s[a + 5]) === 116
+        ) {
           return K_UShortKeyword;
         }
       }
       return 0;
     case 7:
       if (c0 === 99) {
-        if (toI32(s[a + 1]) === 104 && toI32(s[a + 2]) === 101 && toI32(s[a + 3]) === 99 && toI32(s[a + 4]) === 107 && toI32(s[a + 5]) === 101 && toI32(s[a + 6]) === 100) {
+        if (
+          toI32(s[a + 1]) === 104 &&
+          toI32(s[a + 2]) === 101 &&
+          toI32(s[a + 3]) === 99 &&
+          toI32(s[a + 4]) === 107 &&
+          toI32(s[a + 5]) === 101 &&
+          toI32(s[a + 6]) === 100
+        ) {
           return K_CheckedKeyword;
         }
       }
       if (c0 === 100) {
-        if (toI32(s[a + 1]) === 101 && toI32(s[a + 2]) === 99 && toI32(s[a + 3]) === 105 && toI32(s[a + 4]) === 109 && toI32(s[a + 5]) === 97 && toI32(s[a + 6]) === 108) {
+        if (
+          toI32(s[a + 1]) === 101 &&
+          toI32(s[a + 2]) === 99 &&
+          toI32(s[a + 3]) === 105 &&
+          toI32(s[a + 4]) === 109 &&
+          toI32(s[a + 5]) === 97 &&
+          toI32(s[a + 6]) === 108
+        ) {
           return K_DecimalKeyword;
         }
-        if (toI32(s[a + 1]) === 101 && toI32(s[a + 2]) === 102 && toI32(s[a + 3]) === 97 && toI32(s[a + 4]) === 117 && toI32(s[a + 5]) === 108 && toI32(s[a + 6]) === 116) {
+        if (
+          toI32(s[a + 1]) === 101 &&
+          toI32(s[a + 2]) === 102 &&
+          toI32(s[a + 3]) === 97 &&
+          toI32(s[a + 4]) === 117 &&
+          toI32(s[a + 5]) === 108 &&
+          toI32(s[a + 6]) === 116
+        ) {
           return K_DefaultKeyword;
         }
       }
       if (c0 === 102) {
-        if (toI32(s[a + 1]) === 105 && toI32(s[a + 2]) === 110 && toI32(s[a + 3]) === 97 && toI32(s[a + 4]) === 108 && toI32(s[a + 5]) === 108 && toI32(s[a + 6]) === 121) {
+        if (
+          toI32(s[a + 1]) === 105 &&
+          toI32(s[a + 2]) === 110 &&
+          toI32(s[a + 3]) === 97 &&
+          toI32(s[a + 4]) === 108 &&
+          toI32(s[a + 5]) === 108 &&
+          toI32(s[a + 6]) === 121
+        ) {
           return K_FinallyKeyword;
         }
-        if (toI32(s[a + 1]) === 111 && toI32(s[a + 2]) === 114 && toI32(s[a + 3]) === 101 && toI32(s[a + 4]) === 97 && toI32(s[a + 5]) === 99 && toI32(s[a + 6]) === 104) {
+        if (
+          toI32(s[a + 1]) === 111 &&
+          toI32(s[a + 2]) === 114 &&
+          toI32(s[a + 3]) === 101 &&
+          toI32(s[a + 4]) === 97 &&
+          toI32(s[a + 5]) === 99 &&
+          toI32(s[a + 6]) === 104
+        ) {
           return K_ForEachKeyword;
         }
       }
       if (c0 === 109) {
-        if (toI32(s[a + 1]) === 97 && toI32(s[a + 2]) === 110 && toI32(s[a + 3]) === 97 && toI32(s[a + 4]) === 103 && toI32(s[a + 5]) === 101 && toI32(s[a + 6]) === 100) {
+        if (
+          toI32(s[a + 1]) === 97 &&
+          toI32(s[a + 2]) === 110 &&
+          toI32(s[a + 3]) === 97 &&
+          toI32(s[a + 4]) === 103 &&
+          toI32(s[a + 5]) === 101 &&
+          toI32(s[a + 6]) === 100
+        ) {
           return -K_ManagedKeyword;
         }
       }
       if (c0 === 111) {
-        if (toI32(s[a + 1]) === 114 && toI32(s[a + 2]) === 100 && toI32(s[a + 3]) === 101 && toI32(s[a + 4]) === 114 && toI32(s[a + 5]) === 98 && toI32(s[a + 6]) === 121) {
+        if (
+          toI32(s[a + 1]) === 114 &&
+          toI32(s[a + 2]) === 100 &&
+          toI32(s[a + 3]) === 101 &&
+          toI32(s[a + 4]) === 114 &&
+          toI32(s[a + 5]) === 98 &&
+          toI32(s[a + 6]) === 121
+        ) {
           return -K_OrderByKeyword;
         }
       }
       if (c0 === 112) {
-        if (toI32(s[a + 1]) === 97 && toI32(s[a + 2]) === 114 && toI32(s[a + 3]) === 116 && toI32(s[a + 4]) === 105 && toI32(s[a + 5]) === 97 && toI32(s[a + 6]) === 108) {
+        if (
+          toI32(s[a + 1]) === 97 &&
+          toI32(s[a + 2]) === 114 &&
+          toI32(s[a + 3]) === 116 &&
+          toI32(s[a + 4]) === 105 &&
+          toI32(s[a + 5]) === 97 &&
+          toI32(s[a + 6]) === 108
+        ) {
           return -K_PartialKeyword;
         }
-        if (toI32(s[a + 1]) === 114 && toI32(s[a + 2]) === 105 && toI32(s[a + 3]) === 118 && toI32(s[a + 4]) === 97 && toI32(s[a + 5]) === 116 && toI32(s[a + 6]) === 101) {
+        if (
+          toI32(s[a + 1]) === 114 &&
+          toI32(s[a + 2]) === 105 &&
+          toI32(s[a + 3]) === 118 &&
+          toI32(s[a + 4]) === 97 &&
+          toI32(s[a + 5]) === 116 &&
+          toI32(s[a + 6]) === 101
+        ) {
           return K_PrivateKeyword;
         }
       }
       if (c0 === 116) {
-        if (toI32(s[a + 1]) === 121 && toI32(s[a + 2]) === 112 && toI32(s[a + 3]) === 101 && toI32(s[a + 4]) === 118 && toI32(s[a + 5]) === 97 && toI32(s[a + 6]) === 114) {
+        if (
+          toI32(s[a + 1]) === 121 &&
+          toI32(s[a + 2]) === 112 &&
+          toI32(s[a + 3]) === 101 &&
+          toI32(s[a + 4]) === 118 &&
+          toI32(s[a + 5]) === 97 &&
+          toI32(s[a + 6]) === 114
+        ) {
           return -K_TypeVarKeyword;
         }
       }
       if (c0 === 118) {
-        if (toI32(s[a + 1]) === 105 && toI32(s[a + 2]) === 114 && toI32(s[a + 3]) === 116 && toI32(s[a + 4]) === 117 && toI32(s[a + 5]) === 97 && toI32(s[a + 6]) === 108) {
+        if (
+          toI32(s[a + 1]) === 105 &&
+          toI32(s[a + 2]) === 114 &&
+          toI32(s[a + 3]) === 116 &&
+          toI32(s[a + 4]) === 117 &&
+          toI32(s[a + 5]) === 97 &&
+          toI32(s[a + 6]) === 108
+        ) {
           return K_VirtualKeyword;
         }
       }
       return 0;
     case 8:
       if (c0 === 97) {
-        if (toI32(s[a + 1]) === 98 && toI32(s[a + 2]) === 115 && toI32(s[a + 3]) === 116 && toI32(s[a + 4]) === 114 && toI32(s[a + 5]) === 97 && toI32(s[a + 6]) === 99 && toI32(s[a + 7]) === 116) {
+        if (
+          toI32(s[a + 1]) === 98 &&
+          toI32(s[a + 2]) === 115 &&
+          toI32(s[a + 3]) === 116 &&
+          toI32(s[a + 4]) === 114 &&
+          toI32(s[a + 5]) === 97 &&
+          toI32(s[a + 6]) === 99 &&
+          toI32(s[a + 7]) === 116
+        ) {
           return K_AbstractKeyword;
         }
-        if (toI32(s[a + 1]) === 115 && toI32(s[a + 2]) === 115 && toI32(s[a + 3]) === 101 && toI32(s[a + 4]) === 109 && toI32(s[a + 5]) === 98 && toI32(s[a + 6]) === 108 && toI32(s[a + 7]) === 121) {
+        if (
+          toI32(s[a + 1]) === 115 &&
+          toI32(s[a + 2]) === 115 &&
+          toI32(s[a + 3]) === 101 &&
+          toI32(s[a + 4]) === 109 &&
+          toI32(s[a + 5]) === 98 &&
+          toI32(s[a + 6]) === 108 &&
+          toI32(s[a + 7]) === 121
+        ) {
           return -K_AssemblyKeyword;
         }
       }
       if (c0 === 99) {
-        if (toI32(s[a + 1]) === 111 && toI32(s[a + 2]) === 110 && toI32(s[a + 3]) === 116 && toI32(s[a + 4]) === 105 && toI32(s[a + 5]) === 110 && toI32(s[a + 6]) === 117 && toI32(s[a + 7]) === 101) {
+        if (
+          toI32(s[a + 1]) === 111 &&
+          toI32(s[a + 2]) === 110 &&
+          toI32(s[a + 3]) === 116 &&
+          toI32(s[a + 4]) === 105 &&
+          toI32(s[a + 5]) === 110 &&
+          toI32(s[a + 6]) === 117 &&
+          toI32(s[a + 7]) === 101
+        ) {
           return K_ContinueKeyword;
         }
       }
       if (c0 === 100) {
-        if (toI32(s[a + 1]) === 101 && toI32(s[a + 2]) === 108 && toI32(s[a + 3]) === 101 && toI32(s[a + 4]) === 103 && toI32(s[a + 5]) === 97 && toI32(s[a + 6]) === 116 && toI32(s[a + 7]) === 101) {
+        if (
+          toI32(s[a + 1]) === 101 &&
+          toI32(s[a + 2]) === 108 &&
+          toI32(s[a + 3]) === 101 &&
+          toI32(s[a + 4]) === 103 &&
+          toI32(s[a + 5]) === 97 &&
+          toI32(s[a + 6]) === 116 &&
+          toI32(s[a + 7]) === 101
+        ) {
           return K_DelegateKeyword;
         }
       }
       if (c0 === 101) {
-        if (toI32(s[a + 1]) === 120 && toI32(s[a + 2]) === 112 && toI32(s[a + 3]) === 108 && toI32(s[a + 4]) === 105 && toI32(s[a + 5]) === 99 && toI32(s[a + 6]) === 105 && toI32(s[a + 7]) === 116) {
+        if (
+          toI32(s[a + 1]) === 120 &&
+          toI32(s[a + 2]) === 112 &&
+          toI32(s[a + 3]) === 108 &&
+          toI32(s[a + 4]) === 105 &&
+          toI32(s[a + 5]) === 99 &&
+          toI32(s[a + 6]) === 105 &&
+          toI32(s[a + 7]) === 116
+        ) {
           return K_ExplicitKeyword;
         }
       }
       if (c0 === 105) {
-        if (toI32(s[a + 1]) === 109 && toI32(s[a + 2]) === 112 && toI32(s[a + 3]) === 108 && toI32(s[a + 4]) === 105 && toI32(s[a + 5]) === 99 && toI32(s[a + 6]) === 105 && toI32(s[a + 7]) === 116) {
+        if (
+          toI32(s[a + 1]) === 109 &&
+          toI32(s[a + 2]) === 112 &&
+          toI32(s[a + 3]) === 108 &&
+          toI32(s[a + 4]) === 105 &&
+          toI32(s[a + 5]) === 99 &&
+          toI32(s[a + 6]) === 105 &&
+          toI32(s[a + 7]) === 116
+        ) {
           return K_ImplicitKeyword;
         }
-        if (toI32(s[a + 1]) === 110 && toI32(s[a + 2]) === 116 && toI32(s[a + 3]) === 101 && toI32(s[a + 4]) === 114 && toI32(s[a + 5]) === 110 && toI32(s[a + 6]) === 97 && toI32(s[a + 7]) === 108) {
+        if (
+          toI32(s[a + 1]) === 110 &&
+          toI32(s[a + 2]) === 116 &&
+          toI32(s[a + 3]) === 101 &&
+          toI32(s[a + 4]) === 114 &&
+          toI32(s[a + 5]) === 110 &&
+          toI32(s[a + 6]) === 97 &&
+          toI32(s[a + 7]) === 108
+        ) {
           return K_InternalKeyword;
         }
       }
       if (c0 === 111) {
-        if (toI32(s[a + 1]) === 112 && toI32(s[a + 2]) === 101 && toI32(s[a + 3]) === 114 && toI32(s[a + 4]) === 97 && toI32(s[a + 5]) === 116 && toI32(s[a + 6]) === 111 && toI32(s[a + 7]) === 114) {
+        if (
+          toI32(s[a + 1]) === 112 &&
+          toI32(s[a + 2]) === 101 &&
+          toI32(s[a + 3]) === 114 &&
+          toI32(s[a + 4]) === 97 &&
+          toI32(s[a + 5]) === 116 &&
+          toI32(s[a + 6]) === 111 &&
+          toI32(s[a + 7]) === 114
+        ) {
           return K_OperatorKeyword;
         }
-        if (toI32(s[a + 1]) === 118 && toI32(s[a + 2]) === 101 && toI32(s[a + 3]) === 114 && toI32(s[a + 4]) === 114 && toI32(s[a + 5]) === 105 && toI32(s[a + 6]) === 100 && toI32(s[a + 7]) === 101) {
+        if (
+          toI32(s[a + 1]) === 118 &&
+          toI32(s[a + 2]) === 101 &&
+          toI32(s[a + 3]) === 114 &&
+          toI32(s[a + 4]) === 114 &&
+          toI32(s[a + 5]) === 105 &&
+          toI32(s[a + 6]) === 100 &&
+          toI32(s[a + 7]) === 101
+        ) {
           return K_OverrideKeyword;
         }
       }
       if (c0 === 112) {
-        if (toI32(s[a + 1]) === 114 && toI32(s[a + 2]) === 111 && toI32(s[a + 3]) === 112 && toI32(s[a + 4]) === 101 && toI32(s[a + 5]) === 114 && toI32(s[a + 6]) === 116 && toI32(s[a + 7]) === 121) {
+        if (
+          toI32(s[a + 1]) === 114 &&
+          toI32(s[a + 2]) === 111 &&
+          toI32(s[a + 3]) === 112 &&
+          toI32(s[a + 4]) === 101 &&
+          toI32(s[a + 5]) === 114 &&
+          toI32(s[a + 6]) === 116 &&
+          toI32(s[a + 7]) === 121
+        ) {
           return -K_PropertyKeyword;
         }
       }
       if (c0 === 114) {
-        if (toI32(s[a + 1]) === 101 && toI32(s[a + 2]) === 97 && toI32(s[a + 3]) === 100 && toI32(s[a + 4]) === 111 && toI32(s[a + 5]) === 110 && toI32(s[a + 6]) === 108 && toI32(s[a + 7]) === 121) {
+        if (
+          toI32(s[a + 1]) === 101 &&
+          toI32(s[a + 2]) === 97 &&
+          toI32(s[a + 3]) === 100 &&
+          toI32(s[a + 4]) === 111 &&
+          toI32(s[a + 5]) === 110 &&
+          toI32(s[a + 6]) === 108 &&
+          toI32(s[a + 7]) === 121
+        ) {
           return K_ReadOnlyKeyword;
         }
-        if (toI32(s[a + 1]) === 101 && toI32(s[a + 2]) === 113 && toI32(s[a + 3]) === 117 && toI32(s[a + 4]) === 105 && toI32(s[a + 5]) === 114 && toI32(s[a + 6]) === 101 && toI32(s[a + 7]) === 100) {
+        if (
+          toI32(s[a + 1]) === 101 &&
+          toI32(s[a + 2]) === 113 &&
+          toI32(s[a + 3]) === 117 &&
+          toI32(s[a + 4]) === 105 &&
+          toI32(s[a + 5]) === 114 &&
+          toI32(s[a + 6]) === 101 &&
+          toI32(s[a + 7]) === 100
+        ) {
           return -K_RequiredKeyword;
         }
       }
       if (c0 === 118) {
-        if (toI32(s[a + 1]) === 111 && toI32(s[a + 2]) === 108 && toI32(s[a + 3]) === 97 && toI32(s[a + 4]) === 116 && toI32(s[a + 5]) === 105 && toI32(s[a + 6]) === 108 && toI32(s[a + 7]) === 101) {
+        if (
+          toI32(s[a + 1]) === 111 &&
+          toI32(s[a + 2]) === 108 &&
+          toI32(s[a + 3]) === 97 &&
+          toI32(s[a + 4]) === 116 &&
+          toI32(s[a + 5]) === 105 &&
+          toI32(s[a + 6]) === 108 &&
+          toI32(s[a + 7]) === 101
+        ) {
           return K_VolatileKeyword;
         }
       }
       return 0;
     case 9:
       if (c0 === 95) {
-        if (toI32(s[a + 1]) === 95 && toI32(s[a + 2]) === 97 && toI32(s[a + 3]) === 114 && toI32(s[a + 4]) === 103 && toI32(s[a + 5]) === 108 && toI32(s[a + 6]) === 105 && toI32(s[a + 7]) === 115 && toI32(s[a + 8]) === 116) {
+        if (
+          toI32(s[a + 1]) === 95 &&
+          toI32(s[a + 2]) === 97 &&
+          toI32(s[a + 3]) === 114 &&
+          toI32(s[a + 4]) === 103 &&
+          toI32(s[a + 5]) === 108 &&
+          toI32(s[a + 6]) === 105 &&
+          toI32(s[a + 7]) === 115 &&
+          toI32(s[a + 8]) === 116
+        ) {
           return K_ArgListKeyword;
         }
-        if (toI32(s[a + 1]) === 95 && toI32(s[a + 2]) === 109 && toI32(s[a + 3]) === 97 && toI32(s[a + 4]) === 107 && toI32(s[a + 5]) === 101 && toI32(s[a + 6]) === 114 && toI32(s[a + 7]) === 101 && toI32(s[a + 8]) === 102) {
+        if (
+          toI32(s[a + 1]) === 95 &&
+          toI32(s[a + 2]) === 109 &&
+          toI32(s[a + 3]) === 97 &&
+          toI32(s[a + 4]) === 107 &&
+          toI32(s[a + 5]) === 101 &&
+          toI32(s[a + 6]) === 114 &&
+          toI32(s[a + 7]) === 101 &&
+          toI32(s[a + 8]) === 102
+        ) {
           return K_MakeRefKeyword;
         }
-        if (toI32(s[a + 1]) === 95 && toI32(s[a + 2]) === 114 && toI32(s[a + 3]) === 101 && toI32(s[a + 4]) === 102 && toI32(s[a + 5]) === 116 && toI32(s[a + 6]) === 121 && toI32(s[a + 7]) === 112 && toI32(s[a + 8]) === 101) {
+        if (
+          toI32(s[a + 1]) === 95 &&
+          toI32(s[a + 2]) === 114 &&
+          toI32(s[a + 3]) === 101 &&
+          toI32(s[a + 4]) === 102 &&
+          toI32(s[a + 5]) === 116 &&
+          toI32(s[a + 6]) === 121 &&
+          toI32(s[a + 7]) === 112 &&
+          toI32(s[a + 8]) === 101
+        ) {
           return K_RefTypeKeyword;
         }
       }
       if (c0 === 97) {
-        if (toI32(s[a + 1]) === 115 && toI32(s[a + 2]) === 99 && toI32(s[a + 3]) === 101 && toI32(s[a + 4]) === 110 && toI32(s[a + 5]) === 100 && toI32(s[a + 6]) === 105 && toI32(s[a + 7]) === 110 && toI32(s[a + 8]) === 103) {
+        if (
+          toI32(s[a + 1]) === 115 &&
+          toI32(s[a + 2]) === 99 &&
+          toI32(s[a + 3]) === 101 &&
+          toI32(s[a + 4]) === 110 &&
+          toI32(s[a + 5]) === 100 &&
+          toI32(s[a + 6]) === 105 &&
+          toI32(s[a + 7]) === 110 &&
+          toI32(s[a + 8]) === 103
+        ) {
           return -K_AscendingKeyword;
         }
       }
       if (c0 === 101) {
-        if (toI32(s[a + 1]) === 120 && toI32(s[a + 2]) === 116 && toI32(s[a + 3]) === 101 && toI32(s[a + 4]) === 110 && toI32(s[a + 5]) === 115 && toI32(s[a + 6]) === 105 && toI32(s[a + 7]) === 111 && toI32(s[a + 8]) === 110) {
+        if (
+          toI32(s[a + 1]) === 120 &&
+          toI32(s[a + 2]) === 116 &&
+          toI32(s[a + 3]) === 101 &&
+          toI32(s[a + 4]) === 110 &&
+          toI32(s[a + 5]) === 115 &&
+          toI32(s[a + 6]) === 105 &&
+          toI32(s[a + 7]) === 111 &&
+          toI32(s[a + 8]) === 110
+        ) {
           return -K_ExtensionKeyword;
         }
       }
       if (c0 === 105) {
-        if (toI32(s[a + 1]) === 110 && toI32(s[a + 2]) === 116 && toI32(s[a + 3]) === 101 && toI32(s[a + 4]) === 114 && toI32(s[a + 5]) === 102 && toI32(s[a + 6]) === 97 && toI32(s[a + 7]) === 99 && toI32(s[a + 8]) === 101) {
+        if (
+          toI32(s[a + 1]) === 110 &&
+          toI32(s[a + 2]) === 116 &&
+          toI32(s[a + 3]) === 101 &&
+          toI32(s[a + 4]) === 114 &&
+          toI32(s[a + 5]) === 102 &&
+          toI32(s[a + 6]) === 97 &&
+          toI32(s[a + 7]) === 99 &&
+          toI32(s[a + 8]) === 101
+        ) {
           return K_InterfaceKeyword;
         }
       }
       if (c0 === 110) {
-        if (toI32(s[a + 1]) === 97 && toI32(s[a + 2]) === 109 && toI32(s[a + 3]) === 101 && toI32(s[a + 4]) === 115 && toI32(s[a + 5]) === 112 && toI32(s[a + 6]) === 97 && toI32(s[a + 7]) === 99 && toI32(s[a + 8]) === 101) {
+        if (
+          toI32(s[a + 1]) === 97 &&
+          toI32(s[a + 2]) === 109 &&
+          toI32(s[a + 3]) === 101 &&
+          toI32(s[a + 4]) === 115 &&
+          toI32(s[a + 5]) === 112 &&
+          toI32(s[a + 6]) === 97 &&
+          toI32(s[a + 7]) === 99 &&
+          toI32(s[a + 8]) === 101
+        ) {
           return K_NamespaceKeyword;
         }
       }
       if (c0 === 112) {
-        if (toI32(s[a + 1]) === 114 && toI32(s[a + 2]) === 111 && toI32(s[a + 3]) === 116 && toI32(s[a + 4]) === 101 && toI32(s[a + 5]) === 99 && toI32(s[a + 6]) === 116 && toI32(s[a + 7]) === 101 && toI32(s[a + 8]) === 100) {
+        if (
+          toI32(s[a + 1]) === 114 &&
+          toI32(s[a + 2]) === 111 &&
+          toI32(s[a + 3]) === 116 &&
+          toI32(s[a + 4]) === 101 &&
+          toI32(s[a + 5]) === 99 &&
+          toI32(s[a + 6]) === 116 &&
+          toI32(s[a + 7]) === 101 &&
+          toI32(s[a + 8]) === 100
+        ) {
           return K_ProtectedKeyword;
         }
       }
       if (c0 === 117) {
-        if (toI32(s[a + 1]) === 110 && toI32(s[a + 2]) === 99 && toI32(s[a + 3]) === 104 && toI32(s[a + 4]) === 101 && toI32(s[a + 5]) === 99 && toI32(s[a + 6]) === 107 && toI32(s[a + 7]) === 101 && toI32(s[a + 8]) === 100) {
+        if (
+          toI32(s[a + 1]) === 110 &&
+          toI32(s[a + 2]) === 99 &&
+          toI32(s[a + 3]) === 104 &&
+          toI32(s[a + 4]) === 101 &&
+          toI32(s[a + 5]) === 99 &&
+          toI32(s[a + 6]) === 107 &&
+          toI32(s[a + 7]) === 101 &&
+          toI32(s[a + 8]) === 100
+        ) {
           return K_UncheckedKeyword;
         }
-        if (toI32(s[a + 1]) === 110 && toI32(s[a + 2]) === 109 && toI32(s[a + 3]) === 97 && toI32(s[a + 4]) === 110 && toI32(s[a + 5]) === 97 && toI32(s[a + 6]) === 103 && toI32(s[a + 7]) === 101 && toI32(s[a + 8]) === 100) {
+        if (
+          toI32(s[a + 1]) === 110 &&
+          toI32(s[a + 2]) === 109 &&
+          toI32(s[a + 3]) === 97 &&
+          toI32(s[a + 4]) === 110 &&
+          toI32(s[a + 5]) === 97 &&
+          toI32(s[a + 6]) === 103 &&
+          toI32(s[a + 7]) === 101 &&
+          toI32(s[a + 8]) === 100
+        ) {
           return -K_UnmanagedKeyword;
         }
       }
       return 0;
     case 10:
       if (c0 === 95) {
-        if (toI32(s[a + 1]) === 95 && toI32(s[a + 2]) === 114 && toI32(s[a + 3]) === 101 && toI32(s[a + 4]) === 102 && toI32(s[a + 5]) === 118 && toI32(s[a + 6]) === 97 && toI32(s[a + 7]) === 108 && toI32(s[a + 8]) === 117 && toI32(s[a + 9]) === 101) {
+        if (
+          toI32(s[a + 1]) === 95 &&
+          toI32(s[a + 2]) === 114 &&
+          toI32(s[a + 3]) === 101 &&
+          toI32(s[a + 4]) === 102 &&
+          toI32(s[a + 5]) === 118 &&
+          toI32(s[a + 6]) === 97 &&
+          toI32(s[a + 7]) === 108 &&
+          toI32(s[a + 8]) === 117 &&
+          toI32(s[a + 9]) === 101
+        ) {
           return K_RefValueKeyword;
         }
       }
       if (c0 === 100) {
-        if (toI32(s[a + 1]) === 101 && toI32(s[a + 2]) === 115 && toI32(s[a + 3]) === 99 && toI32(s[a + 4]) === 101 && toI32(s[a + 5]) === 110 && toI32(s[a + 6]) === 100 && toI32(s[a + 7]) === 105 && toI32(s[a + 8]) === 110 && toI32(s[a + 9]) === 103) {
+        if (
+          toI32(s[a + 1]) === 101 &&
+          toI32(s[a + 2]) === 115 &&
+          toI32(s[a + 3]) === 99 &&
+          toI32(s[a + 4]) === 101 &&
+          toI32(s[a + 5]) === 110 &&
+          toI32(s[a + 6]) === 100 &&
+          toI32(s[a + 7]) === 105 &&
+          toI32(s[a + 8]) === 110 &&
+          toI32(s[a + 9]) === 103
+        ) {
           return -K_DescendingKeyword;
         }
       }
       if (c0 === 115) {
-        if (toI32(s[a + 1]) === 116 && toI32(s[a + 2]) === 97 && toI32(s[a + 3]) === 99 && toI32(s[a + 4]) === 107 && toI32(s[a + 5]) === 97 && toI32(s[a + 6]) === 108 && toI32(s[a + 7]) === 108 && toI32(s[a + 8]) === 111 && toI32(s[a + 9]) === 99) {
+        if (
+          toI32(s[a + 1]) === 116 &&
+          toI32(s[a + 2]) === 97 &&
+          toI32(s[a + 3]) === 99 &&
+          toI32(s[a + 4]) === 107 &&
+          toI32(s[a + 5]) === 97 &&
+          toI32(s[a + 6]) === 108 &&
+          toI32(s[a + 7]) === 108 &&
+          toI32(s[a + 8]) === 111 &&
+          toI32(s[a + 9]) === 99
+        ) {
           return K_StackAllocKeyword;
         }
       }

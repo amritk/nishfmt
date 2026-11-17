@@ -17,7 +17,14 @@ import {
   rmxOperatorMethod,
   rmxPartOfAssignmentRhs,
 } from "./layout_multiline_expr_help";
-import { RmlAlignCorr, rmlBeginsItsLine, rmlDefModifier, rmlExtractRhs, rmlFirstArg, rmlIsCall } from "./layout_multiline_help";
+import {
+  RmlAlignCorr,
+  rmlBeginsItsLine,
+  rmlDefModifier,
+  rmlExtractRhs,
+  rmlFirstArg,
+  rmlIsCall,
+} from "./layout_multiline_help";
 
 export class CopLayoutMultilineOperationIndentation {
   c: RbCop;
@@ -72,7 +79,9 @@ export class CopLayoutMultilineOperationIndentation {
     if (!rmlBeginsItsLine(src, rs) || rmxNotForThisCop(src, n)) {
       return;
     }
-    const col = this.shouldAlign(src, n, rs, re) ? src.column(src.a.exS(n)) : rmxIndentation(src, lhs) + rmxCorrectIndentation(src, n);
+    const col = this.shouldAlign(src, n, rs, re)
+      ? src.column(src.a.exS(n))
+      : rmxIndentation(src, lhs) + rmxCorrectIndentation(src, n);
     const delta = col - src.column(rs);
     if (delta === 0) {
       return;

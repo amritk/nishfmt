@@ -197,7 +197,15 @@ export const rmxPartOfAssignmentRhs = (src: RbSource, n: i32, cs: i32, ce: i32):
   while (p !== V_NIL) {
     const t = a.type(p);
     // disqualified_rhs?
-    if (t === NT_IF || t === NT_WHILE || t === NT_UNTIL || t === NT_FOR || t === NT_RETURN || t === NT_ARRAY || t === NT_KWBEGIN) {
+    if (
+      t === NT_IF ||
+      t === NT_WHILE ||
+      t === NT_UNTIL ||
+      t === NT_FOR ||
+      t === NT_RETURN ||
+      t === NT_ARRAY ||
+      t === NT_KWBEGIN
+    ) {
       return V_NIL;
     }
     if (t === NT_BLOCK) {

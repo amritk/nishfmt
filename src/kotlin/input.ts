@@ -99,7 +99,13 @@ const kAddComment = (inp: GInput, tr: KTree, node: i32): void => {
     // A block comment alone in a lambda's body is a token, so the visitor
     // can place it.
     const p = tr.parent[node];
-    if (p >= 0 && tr.type[p] === N_BLOCK && tr.parent[p] >= 0 && tr.type[tr.parent[p]] === N_FUNCTION_LITERAL && !kHasPsiChildren(tr, p)) {
+    if (
+      p >= 0 &&
+      tr.type[p] === N_BLOCK &&
+      tr.parent[p] >= 0 &&
+      tr.type[tr.parent[p]] === N_FUNCTION_LITERAL &&
+      !kHasPsiChildren(tr, p)
+    ) {
       f = TF_TOKEN;
     }
   }
@@ -125,7 +131,14 @@ const kIsParamComment = (src: u8[], a: i32, b: i32): boolean => {
   let names = 0;
   while (i < e) {
     const c = toI32(src[i]);
-    if ((c >= 65 && c <= 90) || (c >= 97 && c <= 122) || (c >= 48 && c <= 57) || c === 95 || c === 45 || kIsJavaSpace(c)) {
+    if (
+      (c >= 65 && c <= 90) ||
+      (c >= 97 && c <= 122) ||
+      (c >= 48 && c <= 57) ||
+      c === 95 ||
+      c === 45 ||
+      kIsJavaSpace(c)
+    ) {
       names++;
       i++;
     } else {

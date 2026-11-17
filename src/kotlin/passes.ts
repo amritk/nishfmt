@@ -544,7 +544,11 @@ export class KPasses {
     }
     const prev = this.prevConcrete(s);
     if (pt === N_CLASS_BODY) {
-      if (prev >= 0 && t.type[prev] === N_OBJECT_DECLARATION && this.child(this.child(prev, N_MODIFIER_LIST), T_COMPANION_KEYWORD) >= 0) {
+      if (
+        prev >= 0 &&
+        t.type[prev] === N_OBJECT_DECLARATION &&
+        this.child(this.child(prev, N_MODIFIER_LIST), T_COMPANION_KEYWORD) >= 0
+      ) {
         if (this.child(prev, T_IDENTIFIER) < 0) {
           const nx = this.nextConcrete(s);
           const isLast = nx < 0 || t.type[nx] === T_RBRACE;
@@ -612,7 +616,11 @@ export class KPasses {
 
   isEnumBody(body: i32): boolean {
     const clazz = this.t.parent[body];
-    return clazz >= 0 && this.t.type[clazz] === N_CLASS && this.child(this.child(clazz, N_MODIFIER_LIST), T_ENUM_KEYWORD) >= 0;
+    return (
+      clazz >= 0 &&
+      this.t.type[clazz] === N_CLASS &&
+      this.child(this.child(clazz, N_MODIFIER_LIST), T_ENUM_KEYWORD) >= 0
+    );
   }
 
   lastEnumEntry(body: i32): i32 {
@@ -766,7 +774,17 @@ export class KPasses {
    * through the tree of the text it came from; answers -1 when a position
    * does not map (the caller reparses), else 1 when commas went in, 0 when not.
    */
-  addTrailingCommasMapped(root: i32, buf: u8[], n: i32, inStart: i32[], inEnd: i32[], outStart: i32[], outEnd: i32[], count: i32, out: Out): i32 {
+  addTrailingCommasMapped(
+    root: i32,
+    buf: u8[],
+    n: i32,
+    inStart: i32[],
+    inEnd: i32[],
+    outStart: i32[],
+    outEnd: i32[],
+    count: i32,
+    out: Out,
+  ): i32 {
     this.mCount = count;
     this.mapped = true;
     this.mapFailed = false;
@@ -847,14 +865,31 @@ export class KPasses {
     let last = -1;
     let count = 0;
     let hasComma = false;
-    if (ty === N_VALUE_ARGUMENT_LIST || ty === N_VALUE_PARAMETER_LIST || ty === N_TYPE_ARGUMENT_LIST || ty === N_TYPE_PARAMETER_LIST) {
+    if (
+      ty === N_VALUE_ARGUMENT_LIST ||
+      ty === N_VALUE_PARAMETER_LIST ||
+      ty === N_TYPE_ARGUMENT_LIST ||
+      ty === N_TYPE_PARAMETER_LIST
+    ) {
       if (ty === N_VALUE_PARAMETER_LIST) {
         const p = t.parent[n];
-        if (p >= 0 && t.type[p] === N_FUNCTION_LITERAL && t.parent[p] >= 0 && t.type[t.parent[p]] === N_LAMBDA_EXPRESSION) {
+        if (
+          p >= 0 &&
+          t.type[p] === N_FUNCTION_LITERAL &&
+          t.parent[p] >= 0 &&
+          t.type[t.parent[p]] === N_LAMBDA_EXPRESSION
+        ) {
           return;
         }
       }
-      const item = ty === N_VALUE_ARGUMENT_LIST ? N_VALUE_ARGUMENT : ty === N_VALUE_PARAMETER_LIST ? N_VALUE_PARAMETER : ty === N_TYPE_ARGUMENT_LIST ? N_TYPE_PROJECTION : N_TYPE_PARAMETER;
+      const item =
+        ty === N_VALUE_ARGUMENT_LIST
+          ? N_VALUE_ARGUMENT
+          : ty === N_VALUE_PARAMETER_LIST
+            ? N_VALUE_PARAMETER
+            : ty === N_TYPE_ARGUMENT_LIST
+              ? N_TYPE_PROJECTION
+              : N_TYPE_PARAMETER;
       for (let c = t.first[n]; c >= 0; c = t.next[c]) {
         if (t.type[c] === item) {
           last = c;
@@ -972,7 +1007,6 @@ const kpIsOperatorName = (s: string): boolean =>
   s === "provideDelegate" ||
   s === "assign";
 
-
 /** `component\d+`. */
 const kpIsComponentN = (s: string): boolean => {
   if (!s.startsWith("component") || s.length <= 9) {
@@ -1049,4 +1083,3 @@ const kpSameBytes = (a: u8[], b: u8[], n: i32): boolean => {
   }
   return true;
 };
-

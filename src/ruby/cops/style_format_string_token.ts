@@ -423,7 +423,11 @@ export class CopStyleFormatStringToken {
       if (ctx && sq.nameS >= 0) {
         const type = styles[i] === "template" ? "s" : mt.text(sq.typeS, sq.typeS + 1);
         const flags = `${mt.text(sq.flagsS, sq.flagsE)}${mt.text(sq.moreS, sq.moreE)}`;
-        k.replace(ts, te, `%<${mt.text(sq.nameS, sq.nameE)}>${flags}${mt.text(sq.widthS, sq.widthE)}${mt.text(sq.precS, sq.precE)}${type}`);
+        k.replace(
+          ts,
+          te,
+          `%<${mt.text(sq.nameS, sq.nameE)}>${flags}${mt.text(sq.widthS, sq.widthE)}${mt.text(sq.precS, sq.precE)}${type}`,
+        );
       }
       this.c.commit(k);
     }

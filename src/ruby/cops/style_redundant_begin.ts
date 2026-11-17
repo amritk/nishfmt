@@ -42,7 +42,19 @@ import { RbRewriter } from "../rewriter";
 import { RbSource } from "../source";
 import { sbhSlmAssignment } from "./style_single_line_methods";
 import { sbhLambdaLiteral, sbhMethodName } from "./style_body_help";
-import { ssxCharLen, ssxDescendants, ssxFE, ssxFS, ssxHas, ssxIsSpace, ssxLocIs, ssxMultiline, ssxSingleLine, ssxWholeLinesE, ssxWholeLinesS } from "./style_syntax_help";
+import {
+  ssxCharLen,
+  ssxDescendants,
+  ssxFE,
+  ssxFS,
+  ssxHas,
+  ssxIsSpace,
+  ssxLocIs,
+  ssxMultiline,
+  ssxSingleLine,
+  ssxWholeLinesE,
+  ssxWholeLinesS,
+} from "./style_syntax_help";
 
 const sbhRbIs = (src: RbSource, n: i32, t: i32): boolean => src.a.isNode(n) && src.a.type(n) === t;
 

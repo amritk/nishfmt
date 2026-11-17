@@ -3,7 +3,24 @@
 // Ported from RuboCop 1.92.2 (MIT License, Copyright (c) 2012-24 Bozhidar
 // Batsov).
 
-import { F_BEGIN, F_KEYWORD, NT_AND, NT_BREAK, NT_CASE, NT_CSEND, NT_ERANGE, NT_IF, NT_IRANGE, NT_NEXT, NT_OR, NT_RETURN, NT_SEND, NT_SUPER, NT_YIELD, V_NIL } from "../ast";
+import {
+  F_BEGIN,
+  F_KEYWORD,
+  NT_AND,
+  NT_BREAK,
+  NT_CASE,
+  NT_CSEND,
+  NT_ERANGE,
+  NT_IF,
+  NT_IRANGE,
+  NT_NEXT,
+  NT_OR,
+  NT_RETURN,
+  NT_SEND,
+  NT_SUPER,
+  NT_YIELD,
+  V_NIL,
+} from "../ast";
 import { RbCop } from "../cop";
 import { RbSource } from "../source";
 import { scnCommentsInLines, scnSpaces, scnThen } from "./style_cond_help";
@@ -26,7 +43,15 @@ export class CopStyleEmptyCaseCondition {
       const p = src.parent(n);
       if (p !== V_NIL) {
         const pt = a.type(p);
-        if (pt === NT_RETURN || pt === NT_BREAK || pt === NT_NEXT || pt === NT_SEND || pt === NT_CSEND || pt === NT_YIELD || pt === NT_SUPER) {
+        if (
+          pt === NT_RETURN ||
+          pt === NT_BREAK ||
+          pt === NT_NEXT ||
+          pt === NT_SEND ||
+          pt === NT_CSEND ||
+          pt === NT_YIELD ||
+          pt === NT_SUPER
+        ) {
           continue;
         }
       }
@@ -88,7 +113,14 @@ export class CopStyleEmptyCaseCondition {
           for (let i = 0; i < nc; i++) {
             const c = a.kid(w, i);
             const t = a.type(c);
-            if (ssxAssignment(src, c) || t === NT_IF || t === NT_AND || t === NT_OR || t === NT_IRANGE || t === NT_ERANGE) {
+            if (
+              ssxAssignment(src, c) ||
+              t === NT_IF ||
+              t === NT_AND ||
+              t === NT_OR ||
+              t === NT_IRANGE ||
+              t === NT_ERANGE
+            ) {
               cp.push(`(${src.nodeSrc(c)})`);
             } else {
               cp.push(src.nodeSrc(c));

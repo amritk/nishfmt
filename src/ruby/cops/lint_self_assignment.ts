@@ -91,7 +91,9 @@ const lsaRhsMatches = (src: RbSource, rhs: i32, lhs: i32): boolean => {
 
 /** The same constant: namespace == namespace and the same short name. */
 const lsaSameConst = (src: RbSource, lhs: i32, rhs: i32): boolean =>
-  ldhType(src, rhs) === NT_CONST && lsaEq(src, src.a.kid(lhs, 0), src.a.kid(rhs, 0)) && src.a.text(src.a.kid(lhs, 1)) === src.a.text(src.a.kid(rhs, 1));
+  ldhType(src, rhs) === NT_CONST &&
+  lsaEq(src, src.a.kid(lhs, 0), src.a.kid(rhs, 0)) &&
+  src.a.text(src.a.kid(lhs, 1)) === src.a.text(src.a.kid(rhs, 1));
 
 export class CopLintSelfAssignment {
   c: RbCop;
@@ -163,7 +165,13 @@ export class CopLintSelfAssignment {
         return false;
       }
       const v = a.kid(n, -1);
-      return ssxIsCall(src, v) && ssxMeth(src, v) === "[]" && lsaEq(src, a.kid(n, 0), a.kid(v, 0)) && lsaNoCalls(src, n, k - 1) && lsaArgsEq(src, n, k - 1, v);
+      return (
+        ssxIsCall(src, v) &&
+        ssxMeth(src, v) === "[]" &&
+        lsaEq(src, a.kid(n, 0), a.kid(v, 0)) &&
+        lsaNoCalls(src, n, k - 1) &&
+        lsaArgsEq(src, n, k - 1, v)
+      );
     }
     if (!ldhAssignmentMethod(m) || k !== 3) {
       return false;

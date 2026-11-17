@@ -44,11 +44,34 @@ import { RbCop } from "../cop";
 import { RbRewriter } from "../rewriter";
 import { RbSource } from "../source";
 import { lalBinaryOperation } from "./layout_align_help";
-import { scnBasicConditional, scnCommentsInLines, scnElse, scnElseBranch, scnElsif, scnElsifConditional, scnIfBranch, scnIfKw, scnModifier, scnTernary } from "./style_cond_help";
+import {
+  scnBasicConditional,
+  scnCommentsInLines,
+  scnElse,
+  scnElseBranch,
+  scnElsif,
+  scnElsifConditional,
+  scnIfBranch,
+  scnIfKw,
+  scnModifier,
+  scnTernary,
+} from "./style_cond_help";
 import { smtAssignmentMethod } from "./style_multiline_ternary_operator";
 import { scnAstEqual } from "./style_cond_reparse";
 import { stpPrefixNot, stpSemanticOperator } from "./style_ternary_parentheses";
-import { ssxBeginIs, ssxDescendants, ssxDot, ssxFE, ssxFS, ssxHas, ssxIs, ssxIsCall, ssxMeth, ssxOperatorName, ssxParenthesized } from "./style_syntax_help";
+import {
+  ssxBeginIs,
+  ssxDescendants,
+  ssxDot,
+  ssxFE,
+  ssxFS,
+  ssxHas,
+  ssxIs,
+  ssxIsCall,
+  ssxMeth,
+  ssxOperatorName,
+  ssxParenthesized,
+} from "./style_syntax_help";
 
 /** Whether a node type has its own RuboCop::AST::Node subclass (Builder::NODE_MAP). */
 const srdTyped = (src: RbSource, n: i32): boolean => {
@@ -242,7 +265,12 @@ export class CopStyleRedundantCondition {
     }
     if (this.branchesHaveMethod(src, n)) {
       const fb = scnIfBranch(src, n);
-      return ssxIsCall(src, ib) && scnAstEqual(a, cond, a, a.kid(ib, 2), false) && !(ssxIs(src, ib, NT_SEND) && ssxMeth(src, ib) === "[]") && fb !== V_NIL;
+      return (
+        ssxIsCall(src, ib) &&
+        scnAstEqual(a, cond, a, a.kid(ib, 2), false) &&
+        !(ssxIs(src, ib, NT_SEND) && ssxMeth(src, ib) === "[]") &&
+        fb !== V_NIL
+      );
     }
     return false;
   }
@@ -295,7 +323,13 @@ export class CopStyleRedundantCondition {
     }
     const arg = a.kid(n, 2);
     const t = a.type(arg);
-    if (t === NT_SPLAT || t === NT_BLOCK_PASS || t === NT_FORWARDED_RESTARG || t === NT_FORWARDED_KWRESTARG || t === NT_FORWARDED_ARGS) {
+    if (
+      t === NT_SPLAT ||
+      t === NT_BLOCK_PASS ||
+      t === NT_FORWARDED_RESTARG ||
+      t === NT_FORWARDED_KWRESTARG ||
+      t === NT_FORWARDED_ARGS
+    ) {
       return false;
     }
     if (t === NT_HASH) {
@@ -392,7 +426,13 @@ export class CopStyleRedundantCondition {
       es = this.wrapped(src, a.kid(eb, 2));
     } else if (this.requireParens(src, eb)) {
       es = `(${src.nodeSrc(eb)})`;
-    } else if (ssxIs(src, eb, NT_SEND) && a.nKid(eb) > 2 && !ssxParenthesized(src, eb) && !ssxOperatorName(ssxMeth(src, eb)) && !smtAssignmentMethod(ssxMeth(src, eb))) {
+    } else if (
+      ssxIs(src, eb, NT_SEND) &&
+      a.nKid(eb) > 2 &&
+      !ssxParenthesized(src, eb) &&
+      !ssxOperatorName(ssxMeth(src, eb)) &&
+      !smtAssignmentMethod(ssxMeth(src, eb))
+    ) {
       const args: string[] = [];
       for (let i = 2; i < a.nKid(eb); i++) {
         args.push(src.nodeSrc(a.kid(eb, i)));

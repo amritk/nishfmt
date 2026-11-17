@@ -9,7 +9,8 @@ import { RbSource } from "../source";
 import { ssxIs, ssxMeth } from "./style_syntax_help";
 
 /** (send _ :object_id). */
-const licObjectId = (src: RbSource, n: i32): boolean => ssxIs(src, n, NT_SEND) && ssxMeth(src, n) === "object_id" && src.a.nKid(n) === 2;
+const licObjectId = (src: RbSource, n: i32): boolean =>
+  ssxIs(src, n, NT_SEND) && ssxMeth(src, n) === "object_id" && src.a.nKid(n) === 2;
 
 export class CopLintIdentityComparison {
   c: RbCop;

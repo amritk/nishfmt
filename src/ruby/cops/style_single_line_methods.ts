@@ -51,7 +51,15 @@ import { RbRewriter } from "../rewriter";
 import { RbSource } from "../source";
 import { rbLayCommentAtLine } from "./layout_empty_help";
 import { rmlAsgnType, rmlSpaces } from "./layout_multiline_help";
-import { sbhAssignmentMethod, sbhCallArgs, sbhComparisonName, sbhLambdaLiteral, sbhMethodName, sbhOperatorMethod, sbhResbodies } from "./style_body_help";
+import {
+  sbhAssignmentMethod,
+  sbhCallArgs,
+  sbhComparisonName,
+  sbhLambdaLiteral,
+  sbhMethodName,
+  sbhOperatorMethod,
+  sbhResbodies,
+} from "./style_body_help";
 import {
   ssxDefArgs,
   ssxDefBody,
@@ -159,10 +167,17 @@ const sbhSlmEndlessBody = (src: RbSource, body: i32): boolean => {
   if (t === NT_MATCH_PATTERN || t === NT_MATCH_PATTERN_P || t === NT_WHILE_POST || t === NT_UNTIL_POST) {
     return false;
   }
-  if ((t === NT_AND || t === NT_OR) && (ssxLocIs(src, body, F_OPERATOR, "and") || ssxLocIs(src, body, F_OPERATOR, "or"))) {
+  if (
+    (t === NT_AND || t === NT_OR) &&
+    (ssxLocIs(src, body, F_OPERATOR, "and") || ssxLocIs(src, body, F_OPERATOR, "or"))
+  ) {
     return false;
   }
-  if (t === NT_IF && !ssxHas(src, body, F_END) && (ssxLocIs(src, body, F_KEYWORD, "if") || ssxLocIs(src, body, F_KEYWORD, "unless"))) {
+  if (
+    t === NT_IF &&
+    !ssxHas(src, body, F_END) &&
+    (ssxLocIs(src, body, F_KEYWORD, "if") || ssxLocIs(src, body, F_KEYWORD, "unless"))
+  ) {
     return false;
   }
   if ((t === NT_WHILE || t === NT_UNTIL) && !ssxHas(src, body, F_END)) {
@@ -184,7 +199,12 @@ const sbhSlmEndlessBody = (src: RbSource, body: i32): boolean => {
   if (sbhSlmAssignment(src, body)) {
     // multiple_values?: an array without brackets.
     const v = sbhSlmAssignedValue(src, body);
-    if (a.isNode(v) && a.type(v) === NT_ARRAY && !ssxLocIs(src, v, F_BEGIN, "[") && !(ssxHas(src, v, F_BEGIN) && src.at(ssxFS(src, v, F_BEGIN)) === 37)) {
+    if (
+      a.isNode(v) &&
+      a.type(v) === NT_ARRAY &&
+      !ssxLocIs(src, v, F_BEGIN, "[") &&
+      !(ssxHas(src, v, F_BEGIN) && src.at(ssxFS(src, v, F_BEGIN)) === 37)
+    ) {
       return false;
     }
   }
@@ -203,7 +223,13 @@ const sbhSlmEndlessBody = (src: RbSource, body: i32): boolean => {
       }
     }
   }
-  if (t === NT_SEND && a.kid(body, 0) !== V_NIL && sbhMethodName(src, body) === "!" && ssxLocIs(src, body, F_SELECTOR, "!") && sbhSlmCommandCall(src, a.kid(body, 0))) {
+  if (
+    t === NT_SEND &&
+    a.kid(body, 0) !== V_NIL &&
+    sbhMethodName(src, body) === "!" &&
+    ssxLocIs(src, body, F_SELECTOR, "!") &&
+    sbhSlmCommandCall(src, a.kid(body, 0))
+  ) {
     return false;
   }
   for (const b of sbhSlmBlocks(src, body)) {

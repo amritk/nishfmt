@@ -90,7 +90,14 @@ const swCopyNames = (a: string[]): string[] => {
 };
 
 /** removeUsed(from:with:locals:in:); false after a fatal error. */
-export const swRemoveUsed = (f: SwFormatter, names: string[], data: i32[], locals: string[], lo: i32, hi: i32): boolean => {
+export const swRemoveUsed = (
+  f: SwFormatter,
+  names: string[],
+  data: i32[],
+  locals: string[],
+  lo: i32,
+  hi: i32,
+): boolean => {
   const st = new SwRUState();
   st.locals = swCopyNames(locals);
   let i = lo;
@@ -179,7 +186,12 @@ export const swRemoveUsed = (f: SwFormatter, names: string[], data: i32[], local
         return false;
       }
       i = e - 1;
-    } else if (f.op(i, "=", SW_OP_INFIX) || (k === SW_DELIM && s === ":") || (k === SW_START && s === ":") || (k === SW_KEYWORD && (s === "in" || s === "where"))) {
+    } else if (
+      f.op(i, "=", SW_OP_INFIX) ||
+      (k === SW_DELIM && s === ":") ||
+      (k === SW_START && s === ":") ||
+      (k === SW_KEYWORD && (s === "in" || s === "where"))
+    ) {
       st.wasDeclaration = st.isDeclaration;
       st.isDeclaration = false;
     } else if (k === SW_DELIM && s === ",") {
@@ -452,7 +464,12 @@ const swUnusedClosureArguments = (f: SwFormatter): boolean => {
         let ok = stack.length < 3;
         if (ok) {
           const pt = f.indexBefore(SW_T_NON_SPACE_OR_COMMENT_OR_LINEBREAK, index);
-          ok = pt >= 0 && (f.tok(pt, SW_DELIM, ",") || f.tok(pt, SW_START, "(") || f.tok(pt, SW_START, "{") || f.tok(pt, SW_END, "]"));
+          ok =
+            pt >= 0 &&
+            (f.tok(pt, SW_DELIM, ",") ||
+              f.tok(pt, SW_START, "(") ||
+              f.tok(pt, SW_START, "{") ||
+              f.tok(pt, SW_END, "]"));
         }
         if (ok) {
           const ss = f.indexBefore(SW_T_START_OF_SCOPE, index);

@@ -1,0 +1,47 @@
+{
+  "$schema": "https://biomejs.dev/schemas/1.8.3/schema.json",
+  "files": {
+    "maxSize": 4194304,
+    "ignore": [".nish/**", "dist/**", "build/**", "node_modules/**", "tests/cases/**", "bench/work/**"]
+  },
+  "organizeImports": {
+    "enabled": false
+  },
+  "linter": {
+    "enabled": true,
+    "rules": {
+      "recommended": true,
+      "correctness": {
+        "noUnusedVariables": "warn",
+        "noConstantCondition": "off",
+        "noUnnecessaryContinue": "off"
+      },
+      "complexity": {
+        "useOptionalChain": "off",
+        "noUselessConstructor": "off",
+        "noUselessTernary": "warn"
+      },
+      "style": {
+        "noInferrableTypes": "off",
+        "useImportType": "off",
+        "useNumberNamespace": "off",
+        "noParameterAssign": "off",
+        "noNonNullAssertion": "off",
+        "useConst": "error",
+        "noVar": "error",
+        "useTemplate": "off",
+        "noUselessElse": "off"
+      },
+      "suspicious": {
+        "noShadowRestrictedNames": "warn",
+        "noAssignInExpressions": "warn"
+      }
+    }
+  },
+  "formatter": {
+    "enabled": true,
+    "indentStyle": "space",
+    "indentWidth": 2,
+    "lineWidth": 120
+  }
+}

@@ -180,7 +180,6 @@ const isIdentChar = (c: i32): boolean =>
 
 const isDigit = (c: i32): boolean => c >= 48 && c <= 57;
 
-
 /** Whether the `n` bytes of `d.src` at `a` spell `s`. */
 const wordIs = (src: u8[], a: i32, n: i32, s: string): boolean => {
   if (n !== toI32(s.length)) {
@@ -202,7 +201,12 @@ const isMsKeyword = (src: u8[], a: i32, n: i32): boolean => {
     case 6:
       return wordIs(src, a, n, "__sptr") || wordIs(src, a, n, "__uptr");
     case 7:
-      return wordIs(src, a, n, "__cdecl") || wordIs(src, a, n, "__ptr32") || wordIs(src, a, n, "__ptr64") || wordIs(src, a, n, "__super");
+      return (
+        wordIs(src, a, n, "__cdecl") ||
+        wordIs(src, a, n, "__ptr32") ||
+        wordIs(src, a, n, "__ptr64") ||
+        wordIs(src, a, n, "__super")
+      );
     case 8:
       return wordIs(src, a, n, "__inline");
     case 9:
@@ -280,7 +284,11 @@ export const wordKind = (src: u8[], a: i32, n: i32): i32 => {
     if (wordIs(src, a, n, "__except") || wordIs(src, a, n, "__finally")) return KW_CATCH;
   }
   // `_asm`, `__asm` and `__asm__` are spellings of `asm`.
-  if (c === 95 && (n === 4 || n === 5 || n === 7) && (wordIs(src, a, n, "_asm") || wordIs(src, a, n, "__asm") || wordIs(src, a, n, "__asm__"))) {
+  if (
+    c === 95 &&
+    (n === 4 || n === 5 || n === 7) &&
+    (wordIs(src, a, n, "_asm") || wordIs(src, a, n, "__asm") || wordIs(src, a, n, "__asm__"))
+  ) {
     return KW_ASM;
   }
   // Keywords clang-format's lexer knows (it turns on Microsoft extensions).
@@ -558,7 +566,10 @@ const stringPrefix = (src: u8[], a: i32, b: i32): i32 => {
  */
 /** Whether the document starts with a UTF-8 byte order mark. */
 export const hasBom = (d: Doc): boolean =>
-  d.n >= 3 && toI32(uncheckedGet(d.src, 0)) === 0xef && toI32(uncheckedGet(d.src, 1)) === 0xbb && toI32(uncheckedGet(d.src, 2)) === 0xbf;
+  d.n >= 3 &&
+  toI32(uncheckedGet(d.src, 0)) === 0xef &&
+  toI32(uncheckedGet(d.src, 1)) === 0xbb &&
+  toI32(uncheckedGet(d.src, 2)) === 0xbf;
 
 /**
  * The display column of byte `a` on the line starting at `ls`: tabs reach the
@@ -1114,7 +1125,7 @@ export const lex = (d: Doc): boolean => {
     }
     if (inPP) {
       const a0 = uncheckedGet(d.start, t);
-      if ((wordIs(src, a0, i - a0, "__has_include") || wordIs(src, a0, i - a0, "__has_include_next"))) {
+      if (wordIs(src, a0, i - a0, "__has_include") || wordIs(src, a0, i - a0, "__has_include_next")) {
         hasInclude = 1;
       } else if (hasInclude === 1 && k === P_LPAREN) {
         hasInclude = 2;

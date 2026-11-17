@@ -100,7 +100,12 @@ export class CopStyleSymbolProc {
       const lv = a.text(a.kid(a.kid(body, 0), 0));
       const args = a.kid(n, 1);
       if (blk) {
-        if (!ssxIs(src, args, NT_ARGS) || a.nKid(args) !== 1 || !ssxIs(src, a.kid(args, 0), NT_ARG) || a.text(a.kid(a.kid(args, 0), 0)) !== lv) {
+        if (
+          !ssxIs(src, args, NT_ARGS) ||
+          a.nKid(args) !== 1 ||
+          !ssxIs(src, a.kid(args, 0), NT_ARG) ||
+          a.text(a.kid(a.kid(args, 0), 0)) !== lv
+        ) {
           continue;
         }
       } else if (a.text(args) !== "1" || lv !== "_1") {

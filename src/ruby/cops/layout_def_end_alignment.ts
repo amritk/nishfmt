@@ -7,7 +7,14 @@ import { F_END, F_KEYWORD, NT_SEND, V_NIL } from "../ast";
 import { RbCop } from "../cop";
 import { rnE, rnHas, rnS } from "../node";
 import { RbSource } from "../source";
-import { rmlAlignEnd, rmlColumnOffset, rmlDefModifier, rmlDescendants, rmlIsDef, rmlSingleLine } from "./layout_multiline_help";
+import {
+  rmlAlignEnd,
+  rmlColumnOffset,
+  rmlDefModifier,
+  rmlDescendants,
+  rmlIsDef,
+  rmlSingleLine,
+} from "./layout_multiline_help";
 import { LspIgnored } from "./layout_space_help";
 
 export class CopLayoutDefEndAlignment {

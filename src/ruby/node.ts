@@ -62,7 +62,6 @@ export const rnHasAncestor = (src: RbSource, n: i32, t: i32): boolean => {
   return false;
 };
 
-
 // ---- Sends --------------------------------------------------------------------
 
 /** The receiver of a send/csend (or V_NIL). */

@@ -35,7 +35,13 @@ import {
 import { rsRewriteNodeAttrs } from "./attr";
 import { rsCombineStrsWithMissingComments } from "./comment";
 import { RsCtx } from "./context";
-import { rsCanBeOverflowedExpr, rsRewriteExpr, rsRewriteNode, rsRewriteUnaryPrefix, rsRewriteUnarySuffix } from "./expr";
+import {
+  rsCanBeOverflowedExpr,
+  rsRewriteExpr,
+  rsRewriteNode,
+  rsRewriteUnaryPrefix,
+  rsRewriteUnarySuffix,
+} from "./expr";
 import {
   DLT_MIXED,
   LT_HORIZONTAL_VERTICAL,
@@ -95,7 +101,8 @@ const isShortPatternInner = (ast: RsAst, p: i32): boolean => {
   return false;
 };
 
-const isShortPattern = (ast: RsAst, p: i32, s: string): boolean => toI32(s.length) <= 20 && !rsHasByte(s, 10) && isShortPatternInner(ast, p);
+const isShortPattern = (ast: RsAst, p: i32, s: string): boolean =>
+  toI32(s.length) <= 20 && !rsHasByte(s, 10) && isShortPatternInner(ast, p);
 
 /** Rewrite for ast::Pat. */
 export const rsRewritePat = (ctx: RsCtx, p: i32, shape: RsShape): string | null => {
@@ -225,7 +232,8 @@ const rewriteIdentPat = (ctx: RsCtx, p: i32, shape: RsShape): string | null => {
   const sub = ast.a[p];
   let subPat = "";
   if (sub >= 0) {
-    const width = shape.width - (toI32(mutPrefix.length) + toI32(refKw.length) + toI32(mutInfix.length) + toI32(idStr.length) + 2);
+    const width =
+      shape.width - (toI32(mutPrefix.length) + toI32(refKw.length) + toI32(mutInfix.length) + toI32(idStr.length) + 2);
     if (width < 0) {
       return null;
     }
@@ -419,9 +427,20 @@ const rewriteTuplePat = (ctx: RsCtx, p: i32, pathStr: string, hasPath: boolean, 
   }
   const isLastDotdot = ast.kind[items[n - 1]] === N_PAT_REST;
   const addComma = !hasPath && n === 1 && !isLastDotdot;
-  return rsRewriteWithParens(ctx, pathStr, items, OC_TUPLE_PAT, shape, ast.lo[p], ast.hi[p], ctx.cfg.maxWidth, addComma ? ST_ALWAYS : -1);
+  return rsRewriteWithParens(
+    ctx,
+    pathStr,
+    items,
+    OC_TUPLE_PAT,
+    shape,
+    ast.lo[p],
+    ast.hi[p],
+    ctx.cfg.maxWidth,
+    addComma ? ST_ALWAYS : -1,
+  );
 };
 
-export const rsPatIsLitNeg = (ast: RsAst, e: i32): boolean => ast.kind[e] === N_EX_UNARY && ast.kind[ast.a[e]] === N_EX_LIT;
+export const rsPatIsLitNeg = (ast: RsAst, e: i32): boolean =>
+  ast.kind[e] === N_EX_UNARY && ast.kind[ast.a[e]] === N_EX_LIT;
 export const rsPatRewriteNode = (ctx: RsCtx, n: i32, shape: RsShape): string | null => rsRewriteNode(ctx, n, shape);
 export const rsPatLoWithAttrs = (ast: RsAst, n: i32): i32 => rsLoWithAttrs(ast, n);

@@ -442,7 +442,9 @@ export class GEngine {
       this.addOp(K_TOKEN, this.tokenI, 1, plusIndentCommentsBefore, -1);
       this.tokenI = this.tokenI + 1;
     } else {
-      this.fail(`expected token '${p >= 0 ? inp.text(p) : "EOF"}'; generated ${String.fromBytes(inp.src, a, b)} instead`);
+      this.fail(
+        `expected token '${p >= 0 ? inp.text(p) : "EOF"}'; generated ${String.fromBytes(inp.src, a, b)} instead`,
+      );
     }
   }
 
@@ -806,7 +808,8 @@ export class GEngine {
             if ((f & TF_JAVADOC) !== 0) {
               this.extraForced(j, 0);
             }
-            allowBlankAfterLastComment = (f & TF_LINE_COMMENT) !== 0 || ((f & TF_BLOCK_COMMENT) !== 0 && (f & TF_JAVADOC) === 0);
+            allowBlankAfterLastComment =
+              (f & TF_LINE_COMMENT) !== 0 || ((f & TF_BLOCK_COMMENT) !== 0 && (f & TF_JAVADOC) === 0);
           }
         }
         if (allowBlankAfterLastComment && newlines > 1) {
@@ -890,7 +893,10 @@ export class GEngine {
         break;
       }
       const kind = this.oKind[i];
-      if (afterForcedBreak && (kind === K_SPACE || (kind === K_BREAK && this.evalIndentConstOrZero(this.oC[i]) && this.oB[i] === 1))) {
+      if (
+        afterForcedBreak &&
+        (kind === K_SPACE || (kind === K_BREAK && this.evalIndentConstOrZero(this.oC[i]) && this.oB[i] === 1))
+      ) {
         continue;
       }
       this.pushFin(kind, this.oA[i], this.oB[i], this.oC[i], this.oD[i]);
@@ -1353,13 +1359,14 @@ export class GEngine {
       }
       const isComment = b - a >= 2 && toI32(buf[a]) === 47 && (toI32(buf[a + 1]) === 47 || toI32(buf[a + 1]) === 42);
       const w = this.wanted(this.lastK);
-      if ((sawNewlines && isComment) || (w === 1 || (w === -1 && sawNewlines))) {
+      if ((sawNewlines && isComment) || w === 1 || (w === -1 && sawNewlines)) {
         this.newlinesPending = this.newlinesPending + 1;
       }
     }
     const len = b - a;
     const isNewline =
-      (len === 1 && (toI32(buf[a]) === 10 || toI32(buf[a]) === 13)) || (len === 2 && toI32(buf[a]) === 13 && toI32(buf[a + 1]) === 10);
+      (len === 1 && (toI32(buf[a]) === 10 || toI32(buf[a]) === 13)) ||
+      (len === 2 && toI32(buf[a]) === 13 && toI32(buf[a + 1]) === 10);
     if (isNewline) {
       if (this.newlinesPending === 0) {
         this.newlinesPending = 1;
@@ -1505,6 +1512,7 @@ export const reformatParameterComment = (inp: GInput, t: i32): string | null => 
 const gIsWs = (c: i32): boolean => c === 32 || c === 9 || c === 10 || c === 13 || c === 12 || c === 11;
 
 /** Character.isJavaIdentifierStart for ASCII; any non-ASCII byte counts. */
-export const gIsIdentStart = (c: i32): boolean => (c >= 65 && c <= 90) || (c >= 97 && c <= 122) || c === 95 || c === 36 || c >= 128;
+export const gIsIdentStart = (c: i32): boolean =>
+  (c >= 65 && c <= 90) || (c >= 97 && c <= 122) || c === 95 || c === 36 || c >= 128;
 
 export const gIsIdentPart = (c: i32): boolean => gIsIdentStart(c) || (c >= 48 && c <= 57);

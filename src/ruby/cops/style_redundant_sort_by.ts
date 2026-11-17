@@ -34,7 +34,12 @@ export class CopStyleRedundantSortBy {
       const v = ssxSymText(src, a.kid(body, 0));
       if (t === NT_BLOCK) {
         const args = a.kid(n, 1);
-        if (!ssxIs(src, args, NT_ARGS) || a.nKid(args) !== 1 || !ssxIs(src, a.kid(args, 0), NT_ARG) || a.nKid(a.kid(args, 0)) !== 1) {
+        if (
+          !ssxIs(src, args, NT_ARGS) ||
+          a.nKid(args) !== 1 ||
+          !ssxIs(src, a.kid(args, 0), NT_ARG) ||
+          a.nKid(a.kid(args, 0)) !== 1
+        ) {
           continue;
         }
         if (ssxSymText(src, a.kid(a.kid(args, 0), 0)) !== v) {

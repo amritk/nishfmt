@@ -3,7 +3,18 @@
 // Ported from RuboCop 1.92.2 (MIT License, Copyright (c) 2012-24 Bozhidar
 // Batsov).
 
-import { F_OPERATOR, NT_CVAR, NT_CVASGN, NT_GVAR, NT_GVASGN, NT_IVAR, NT_IVASGN, NT_LVAR, NT_LVASGN, V_NIL } from "../ast";
+import {
+  F_OPERATOR,
+  NT_CVAR,
+  NT_CVASGN,
+  NT_GVAR,
+  NT_GVASGN,
+  NT_IVAR,
+  NT_IVASGN,
+  NT_LVAR,
+  NT_LVASGN,
+  V_NIL,
+} from "../ast";
 import { RbCop } from "../cop";
 import { RbSource } from "../source";
 import { vfSameNode } from "./lint_variable_force";
@@ -48,7 +59,11 @@ export class CopStyleRedundantSelfAssignment {
         if (rhs === V_NIL || !(ssxIsAnyBlock(src, rhs) || ssxIsCall(src, rhs))) {
           continue;
         }
-        const m = ssxIsCall(src, rhs) ? ssxMeth(src, rhs) : ssxIsCall(src, a.kid(rhs, 0)) ? ssxMeth(src, a.kid(rhs, 0)) : "";
+        const m = ssxIsCall(src, rhs)
+          ? ssxMeth(src, rhs)
+          : ssxIsCall(src, a.kid(rhs, 0))
+            ? ssxMeth(src, a.kid(rhs, 0))
+            : "";
         if (!ssxInList(RB_RSA_METHODS, m)) {
           continue;
         }
@@ -74,7 +89,12 @@ export class CopStyleRedundantSelfAssignment {
         continue;
       }
       const inner = a.kid(arg, 0);
-      if (!ssxIsCall(src, inner) || a.nKid(inner) !== 2 || ssxMeth(src, inner) !== name || !vfSameNode(src, a.kid(inner, 0), recv)) {
+      if (
+        !ssxIsCall(src, inner) ||
+        a.nKid(inner) !== 2 ||
+        ssxMeth(src, inner) !== name ||
+        !vfSameNode(src, a.kid(inner, 0), recv)
+      ) {
         continue;
       }
       this.c.offense(ssxFS(src, n, F_OPERATOR), ssxFE(src, n, F_OPERATOR));

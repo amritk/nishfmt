@@ -20,7 +20,13 @@ export class CopStyleArrayJoin {
     const a = src.a;
     for (const n of src.pre) {
       // (send $array :* $str)
-      if (a.type(n) !== NT_SEND || a.nKid(n) !== 3 || ssxMeth(src, n) !== "*" || !ssxIs(src, a.kid(n, 0), NT_ARRAY) || !ssxIs(src, a.kid(n, 2), NT_STR)) {
+      if (
+        a.type(n) !== NT_SEND ||
+        a.nKid(n) !== 3 ||
+        ssxMeth(src, n) !== "*" ||
+        !ssxIs(src, a.kid(n, 0), NT_ARRAY) ||
+        !ssxIs(src, a.kid(n, 2), NT_STR)
+      ) {
         continue;
       }
       const k = this.c.offense(ssxFS(src, n, F_SELECTOR), ssxFE(src, n, F_SELECTOR));

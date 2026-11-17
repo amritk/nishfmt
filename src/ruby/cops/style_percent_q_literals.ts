@@ -35,7 +35,12 @@ export class CopStylePercentQLiterals {
         pts.push(i === s + 1 ? 113 : src.at(i));
       }
       const re = new RbSource(pts, src.p.st.path);
-      if (!re.valid || re.root === V_NIL || re.a.type(re.root) !== NT_STR || re.a.text(re.a.kid(re.root, 0)) !== a.text(a.kid(n, 0))) {
+      if (
+        !re.valid ||
+        re.root === V_NIL ||
+        re.a.type(re.root) !== NT_STR ||
+        re.a.text(re.a.kid(re.root, 0)) !== a.text(a.kid(n, 0))
+      ) {
         continue;
       }
       const k = this.c.offense(rnS(src, n, F_BEGIN), rnE(src, n, F_BEGIN));

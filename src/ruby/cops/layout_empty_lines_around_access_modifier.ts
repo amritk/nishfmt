@@ -3,7 +3,20 @@
 // Ported from RuboCop 1.92.2 (MIT License, Copyright (c) 2012-24 Bozhidar
 // Batsov).
 
-import { NT_BEGIN, NT_BLOCK, NT_CBASE, NT_CLASS, NT_CONST, NT_IF, NT_KWBEGIN, NT_MODULE, NT_NUMBLOCK, NT_SCLASS, NT_SEND, V_NIL } from "../ast";
+import {
+  NT_BEGIN,
+  NT_BLOCK,
+  NT_CBASE,
+  NT_CLASS,
+  NT_CONST,
+  NT_IF,
+  NT_KWBEGIN,
+  NT_MODULE,
+  NT_NUMBLOCK,
+  NT_SCLASS,
+  NT_SEND,
+  V_NIL,
+} from "../ast";
 import { RbCop } from "../cop";
 import { RbSource } from "../source";
 import { RbLayLines } from "./layout_empty_help";
@@ -31,7 +44,10 @@ const rbAccModCtorSend = (src: RbSource, n: i32): boolean => {
   }
   const m = a.text(a.kid(n, 1));
   const r = a.kid(n, 0);
-  return (m === "new" && rbAccModGlobalConst(src, r, "Class,Module,Struct")) || (m === "define" && rbAccModGlobalConst(src, r, "Data"));
+  return (
+    (m === "new" && rbAccModGlobalConst(src, r, "Class,Module,Struct")) ||
+    (m === "define" && rbAccModGlobalConst(src, r, "Data"))
+  );
 };
 
 /** MethodDispatchNode#in_macro_scope?. */

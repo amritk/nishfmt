@@ -38,7 +38,17 @@ export const secRecursiveLiteral = (src: RbSource, n: i32): boolean => {
   const t = a.type(n);
   if (t === NT_SEND) {
     const m = a.text(a.kid(n, 1));
-    const ops = m === "==" || m === "===" || m === "!=" || m === "<=" || m === ">=" || m === ">" || m === "<" || m === "*" || m === "!" || m === "<=>";
+    const ops =
+      m === "==" ||
+      m === "===" ||
+      m === "!=" ||
+      m === "<=" ||
+      m === ">=" ||
+      m === ">" ||
+      m === "<" ||
+      m === "*" ||
+      m === "!" ||
+      m === "<=>";
     if (!ops || !secRecursiveLiteral(src, a.kid(n, 0))) {
       return false;
     }
@@ -99,7 +109,12 @@ export class CopSecurityEval {
       }
       // {nil? (send nil? :binding) (const {cbase nil?} :Kernel)}
       const r = a.kid(n, 0);
-      const binding = a.isNode(r) && a.type(r) === NT_SEND && a.kid(r, 0) === V_NIL && a.nKid(r) === 2 && a.text(a.kid(r, 1)) === "binding";
+      const binding =
+        a.isNode(r) &&
+        a.type(r) === NT_SEND &&
+        a.kid(r, 0) === V_NIL &&
+        a.nKid(r) === 2 &&
+        a.text(a.kid(r, 1)) === "binding";
       if (r !== V_NIL && !binding && !secConstCall(src, n, "Kernel")) {
         continue;
       }

@@ -3,16 +3,51 @@
 // Ported from RuboCop 1.92.2 (MIT License, Copyright (c) 2012-24 Bozhidar
 // Batsov).
 
-import { F_END, F_KEYWORD, F_OPERATOR, F_SELECTOR, NT_AND, NT_CVASGN, NT_GVASGN, NT_IF, NT_IVASGN, NT_LVASGN, NT_OR, V_NIL } from "../ast";
+import {
+  F_END,
+  F_KEYWORD,
+  F_OPERATOR,
+  F_SELECTOR,
+  NT_AND,
+  NT_CVASGN,
+  NT_GVASGN,
+  NT_IF,
+  NT_IVASGN,
+  NT_LVASGN,
+  NT_OR,
+  V_NIL,
+} from "../ast";
 import { RbCop } from "../cop";
 import { rbSpaceBegin, rbSpaceEnd } from "../help";
 import { RbRewriter } from "../rewriter";
 import { RbSource } from "../source";
-import { ScnAssoc, scnElse, scnElsif, scnIfBranch, scnIfKw, scnModifier, scnTernary, scnUnless, scnWholeE, scnWholeS } from "./style_cond_help";
+import {
+  ScnAssoc,
+  scnElse,
+  scnElsif,
+  scnIfBranch,
+  scnIfKw,
+  scnModifier,
+  scnTernary,
+  scnUnless,
+  scnWholeE,
+  scnWholeS,
+} from "./style_cond_help";
 import { scnCorrectionParses } from "./style_cond_reparse";
 import { srcComparison } from "./style_redundant_conditional";
 import { stpPrefixNot } from "./style_ternary_parentheses";
-import { ssxAssignment, ssxDescendants, ssxFE, ssxFS, ssxIs, ssxIsAnyBlock, ssxIsCall, ssxMeth, ssxOperatorName, ssxParenthesized } from "./style_syntax_help";
+import {
+  ssxAssignment,
+  ssxDescendants,
+  ssxFE,
+  ssxFS,
+  ssxIs,
+  ssxIsAnyBlock,
+  ssxIsCall,
+  ssxMeth,
+  ssxOperatorName,
+  ssxParenthesized,
+} from "./style_syntax_help";
 
 export class CopStyleSoleNestedConditional {
   c: RbCop;
@@ -172,7 +207,13 @@ export class CopStyleSoleNestedConditional {
     if (!this.needParens(src, chk)) {
       return src.nodeSrc(c);
     }
-    if (ssxIsCall(src, c) && a.nKid(c) > 2 && !ssxParenthesized(src, c) && !srcComparison(ssxMeth(src, c)) && !ssxOperatorName(ssxMeth(src, c))) {
+    if (
+      ssxIsCall(src, c) &&
+      a.nKid(c) > 2 &&
+      !ssxParenthesized(src, c) &&
+      !srcComparison(ssxMeth(src, c)) &&
+      !ssxOperatorName(ssxMeth(src, c))
+    ) {
       return `${src.src(a.exS(c), ssxFE(src, c, F_SELECTOR))}(${src.src(a.exS(a.kid(c, 2)), a.exE(c))})`;
     }
     if (ssxIs(src, c, NT_AND)) {

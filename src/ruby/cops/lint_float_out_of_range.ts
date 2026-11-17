@@ -57,7 +57,7 @@ export const lforFloatClass = (s: string): i32 => {
       i++;
       continue;
     }
-    const isDigit = (c >= 48 && c <= 57) || (hex && ((c | 32) >= 97 && (c | 32) <= 102));
+    const isDigit = (c >= 48 && c <= 57) || (hex && (c | 32) >= 97 && (c | 32) <= 102);
     if (!isDigit) {
       break;
     }

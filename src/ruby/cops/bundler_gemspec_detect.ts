@@ -172,7 +172,13 @@ export class CopBundlerDuplicatedGem {
     const groups: i32[][] = [];
     for (const n of bgdAll(src)) {
       // (send nil? :gem str ...)
-      if (a.type(n) !== NT_SEND || a.kid(n, 0) !== V_NIL || a.text(a.kid(n, 1)) !== "gem" || a.nKid(n) < 3 || a.type(a.kid(n, 2)) !== NT_STR) {
+      if (
+        a.type(n) !== NT_SEND ||
+        a.kid(n, 0) !== V_NIL ||
+        a.text(a.kid(n, 1)) !== "gem" ||
+        a.nKid(n) < 3 ||
+        a.type(a.kid(n, 2)) !== NT_STR
+      ) {
         continue;
       }
       const g = bgdGroupOf(src, groups, n);
@@ -215,7 +221,9 @@ const bgdValueOrSource = (src: RbSource, n: i32): string => {
         continue;
       }
       const kt = a.type(k);
-      out.push(kt === NT_STR || kt === NT_SYM || kt === NT_DSTR || kt === NT_INT ? bgdValueOrSource(src, k) : src.nodeSrc(k));
+      out.push(
+        kt === NT_STR || kt === NT_SYM || kt === NT_DSTR || kt === NT_INT ? bgdValueOrSource(src, k) : src.nodeSrc(k),
+      );
     }
     return out.join("");
   }
@@ -340,7 +348,12 @@ const bgdSpecVar = (src: RbSource, n: i32): string | null => {
     return null;
   }
   const r = a.kid(s, 0);
-  if (!a.isNode(r) || a.type(r) !== NT_CONST || a.text(a.kid(r, 1)) !== "Specification" || !ssxGlobalConst(src, a.kid(r, 0), "Gem")) {
+  if (
+    !a.isNode(r) ||
+    a.type(r) !== NT_CONST ||
+    a.text(a.kid(r, 1)) !== "Specification" ||
+    !ssxGlobalConst(src, a.kid(r, 0), "Gem")
+  ) {
     return null;
   }
   if (!a.isNode(args) || a.type(args) !== NT_ARGS || a.nKid(args) !== 1) {

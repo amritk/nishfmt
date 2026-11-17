@@ -44,7 +44,8 @@ const nppExpected = (name: string, prefix: string): string => {
 const nppAllowed = (name: string, prefix: string): boolean => {
   const k = toI32(prefix.length);
   // /^prefix[^0-9]/ (at the start, given start_with?)
-  const matches = name.startsWith(prefix) && toI32(name.length) > k && !(name.charCodeAt(k) >= 48 && name.charCodeAt(k) <= 57);
+  const matches =
+    name.startsWith(prefix) && toI32(name.length) > k && !(name.charCodeAt(k) >= 48 && name.charCodeAt(k) <= 57);
   return !matches || name === nppExpected(name, prefix) || name.endsWith("=") || name === "is_a?";
 };
 
@@ -77,7 +78,11 @@ export class CopNamingPredicatePrefix {
       } else if (t === NT_SEND && a.kid(n, 0) === V_NIL && a.nKid(n) >= 3) {
         const m = a.text(a.kid(n, 1));
         const first = a.kid(n, 2);
-        if ((m !== "define_method" && m !== "define_singleton_method") || !a.isNode(first) || a.type(first) !== NT_SYM) {
+        if (
+          (m !== "define_method" && m !== "define_singleton_method") ||
+          !a.isNode(first) ||
+          a.type(first) !== NT_SYM
+        ) {
           continue;
         }
         const name = a.text(a.kid(first, 0));

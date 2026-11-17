@@ -112,7 +112,12 @@ export class CopLayoutSpaceAroundKeyword {
         this.checkLoc(src, n, F_ELSE, LSP_KW_DO);
       } else if (t === NT_SEND) {
         // prefix_not?
-        if (a.kid(n, 0) !== V_NIL && rnMethod(src, n) === "!" && rnHas(src, n, F_SELECTOR) && rnFieldSrc(src, n, F_SELECTOR) === "not") {
+        if (
+          a.kid(n, 0) !== V_NIL &&
+          rnMethod(src, n) === "!" &&
+          rnHas(src, n, F_SELECTOR) &&
+          rnFieldSrc(src, n, F_SELECTOR) === "not"
+        ) {
           this.checkLoc(src, n, F_SELECTOR, LSP_KW_DO);
         }
       } else if (t === NT_UNTIL || t === NT_WHILE) {
@@ -196,7 +201,16 @@ export class CopLayoutSpaceAroundKeyword {
     if ((kw === "super" || kw === "yield") && c === 91) {
       return false;
     }
-    if (c === 40 && (kw === "break" || kw === "defined?" || kw === "next" || kw === "not" || kw === "rescue" || kw === "super" || kw === "yield")) {
+    if (
+      c === 40 &&
+      (kw === "break" ||
+        kw === "defined?" ||
+        kw === "next" ||
+        kw === "not" ||
+        kw === "rescue" ||
+        kw === "super" ||
+        kw === "yield")
+    ) {
       return false;
     }
     if (c === 38 && src.at(e + 1) === 46) {

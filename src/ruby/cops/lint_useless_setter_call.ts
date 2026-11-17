@@ -140,7 +140,11 @@ export class CopLintUselessSetterCall {
       }
       const last = ldhType(src, body) === NT_BEGIN ? a.kid(body, -1) : body;
       // [(send (lvar _) ...) setter_method?]
-      if (ldhType(src, last) !== NT_SEND || ldhType(src, a.kid(last, 0)) !== NT_LVAR || !ssxHas(src, last, F_OPERATOR)) {
+      if (
+        ldhType(src, last) !== NT_SEND ||
+        ldhType(src, a.kid(last, 0)) !== NT_LVAR ||
+        !ssxHas(src, last, F_OPERATOR)
+      ) {
         continue;
       }
       const recv = a.kid(last, 0);

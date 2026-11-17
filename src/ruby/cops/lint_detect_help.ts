@@ -179,7 +179,8 @@ export const ldhIsSend = (src: RbSource, n: i32): boolean => ldhType(src, n) ===
 export const ldhIsCsend = (src: RbSource, n: i32): boolean => ldhType(src, n) === NT_CSEND;
 
 /** The comparison operators (Node::COMPARISON_OPERATORS). */
-export const ldhComparison = (m: string): boolean => m === "==" || m === "===" || m === "!=" || m === "<=" || m === ">=" || m === ">" || m === "<";
+export const ldhComparison = (m: string): boolean =>
+  m === "==" || m === "===" || m === "!=" || m === "<=" || m === ">=" || m === ">" || m === "<";
 
 /** MethodIdentifierPredicates#assignment_method?: not a comparison, ends with `=`. */
 export const ldhAssignmentMethod = (m: string): boolean => !ldhComparison(m) && m.endsWith("=");

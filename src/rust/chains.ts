@@ -4,8 +4,27 @@
 // Ported from rustfmt 1.9.0 (MIT OR Apache-2.0, Copyright The Rust Project
 // Developers): chains.rs.
 
-import { N_CONSTRAINT, N_EX_AWAIT, N_EX_CLOSURE, N_EX_FIELD, N_EX_LIT, N_EX_METHOD, N_EX_RANGE, N_EX_TRY, RANGE_CLOSED, RsAst } from "./ast";
-import { K_NORMAL, rsCharClasses, rsFilteredStrFits, rsFirstLineWidth, rsLastLineWidth, rsRewriteComment, rsWrapStr } from "./comment";
+import {
+  N_CONSTRAINT,
+  N_EX_AWAIT,
+  N_EX_CLOSURE,
+  N_EX_FIELD,
+  N_EX_LIT,
+  N_EX_METHOD,
+  N_EX_RANGE,
+  N_EX_TRY,
+  RANGE_CLOSED,
+  RsAst,
+} from "./ast";
+import {
+  K_NORMAL,
+  rsCharClasses,
+  rsFilteredStrFits,
+  rsFirstLineWidth,
+  rsLastLineWidth,
+  rsRewriteComment,
+  rsWrapStr,
+} from "./comment";
 import { RsCtx } from "./context";
 import { rsLitEndsInDot, rsRewriteCall, rsRewriteExpr, rsRewriteNode, rsRewriteParen } from "./expr";
 import { RsListItem, rsExtractPreComment } from "./lists";
@@ -392,7 +411,8 @@ export const rsRewriteChain = (ctx: RsCtx, e: i32, shape: RsShape): string | nul
   return rewriteChainBlock(ctx, chain, shape);
 };
 
-const isBlockLikeItem = (ctx: RsCtx, it: ChainItem, reps: string): boolean => it.kind === CI_PARENT && rsIsBlockExpr(ctx, it.expr, reps);
+const isBlockLikeItem = (ctx: RsCtx, it: ChainItem, reps: string): boolean =>
+  it.kind === CI_PARENT && rsIsBlockExpr(ctx, it.expr, reps);
 
 const rewriteChainBlock = (ctx: RsCtx, chain: Chain, shape: RsShape): string | null => {
   const cfg = ctx.cfg;
@@ -461,7 +481,8 @@ const rewriteChainBlock = (ctx: RsCtx, chain: Chain, shape: RsShape): string | n
     }
   }
   almostTotal += last.tries;
-  let olb = (childCount === 1 ? shape.width : shape.width < cfg.chainWidth ? shape.width : cfg.chainWidth) - almostTotal;
+  let olb =
+    (childCount === 1 ? shape.width : shape.width < cfg.chainWidth ? shape.width : cfg.chainWidth) - almostTotal;
   if (olb < 0) {
     olb = 0;
   }

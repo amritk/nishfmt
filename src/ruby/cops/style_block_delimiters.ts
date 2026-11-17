@@ -75,7 +75,8 @@ const sbhBdGetBlocks = (src: RbSource, n: i32, out: i32[]): void => {
 };
 
 /** BlockNode#single_line?: its opening and closing on one line. */
-const sbhBdSingleLine = (src: RbSource, n: i32): boolean => src.line(ssxFS(src, n, F_BEGIN)) === src.line(ssxFS(src, n, F_END));
+const sbhBdSingleLine = (src: RbSource, n: i32): boolean =>
+  src.line(ssxFS(src, n, F_BEGIN)) === src.line(ssxFS(src, n, F_END));
 
 /** modifier_rescue? */
 const sbhBdModifierRescue = (src: RbSource, n: i32): boolean => {

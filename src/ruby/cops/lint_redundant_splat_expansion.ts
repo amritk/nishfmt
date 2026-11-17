@@ -29,13 +29,16 @@ import { RbSource } from "../source";
 import { ssxFE, ssxFS, ssxGlobalConst, ssxHas, ssxIs, ssxIsCall, ssxMeth } from "./style_syntax_help";
 
 /** (send (const {nil? cbase} :Array) :new ...). */
-const lrseArrayNewSend = (src: RbSource, n: i32): boolean => ssxIs(src, n, NT_SEND) && ssxMeth(src, n) === "new" && ssxGlobalConst(src, src.a.kid(n, 0), "Array");
+const lrseArrayNewSend = (src: RbSource, n: i32): boolean =>
+  ssxIs(src, n, NT_SEND) && ssxMeth(src, n) === "new" && ssxGlobalConst(src, src.a.kid(n, 0), "Array");
 
 /** array_new?: the send, or a block on it. */
-const lrseArrayNew = (src: RbSource, n: i32): boolean => lrseArrayNewSend(src, n) || (ssxIs(src, n, NT_BLOCK) && lrseArrayNewSend(src, src.a.kid(n, 0)));
+const lrseArrayNew = (src: RbSource, n: i32): boolean =>
+  lrseArrayNewSend(src, n) || (ssxIs(src, n, NT_BLOCK) && lrseArrayNewSend(src, src.a.kid(n, 0)));
 
 /** The array literal's opening (loc.begin source), or "". */
-const lrseBegin = (src: RbSource, n: i32): string => (ssxHas(src, n, F_BEGIN) ? src.src(ssxFS(src, n, F_BEGIN), ssxFE(src, n, F_BEGIN)) : "");
+const lrseBegin = (src: RbSource, n: i32): string =>
+  ssxHas(src, n, F_BEGIN) ? src.src(ssxFS(src, n, F_BEGIN), ssxFE(src, n, F_BEGIN)) : "";
 
 export class CopLintRedundantSplatExpansion {
   c: RbCop;

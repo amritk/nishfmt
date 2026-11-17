@@ -4,7 +4,15 @@
 // Ported from RuboCop 1.92.2 (MIT License, Copyright (c) 2012-24 Bozhidar
 // Batsov).
 
-import { NT_FORWARDED_ARGS, NT_FORWARDED_KWRESTARG, NT_FORWARDED_RESTARG, NT_HASH, NT_SEND, NT_SPLAT, V_NIL } from "../ast";
+import {
+  NT_FORWARDED_ARGS,
+  NT_FORWARDED_KWRESTARG,
+  NT_FORWARDED_RESTARG,
+  NT_HASH,
+  NT_SEND,
+  NT_SPLAT,
+  V_NIL,
+} from "../ast";
 import { RbCop } from "../cop";
 import { RbSource } from "../source";
 import { ssxIs, ssxMeth } from "./style_syntax_help";
@@ -41,7 +49,13 @@ export class CopStyleRaiseArgs {
       }
       if (k === 1) {
         const t = a.type(a.kid(x, 2));
-        if (t === NT_HASH || t === NT_FORWARDED_RESTARG || t === NT_SPLAT || t === NT_FORWARDED_KWRESTARG || t === NT_FORWARDED_ARGS) {
+        if (
+          t === NT_HASH ||
+          t === NT_FORWARDED_RESTARG ||
+          t === NT_SPLAT ||
+          t === NT_FORWARDED_KWRESTARG ||
+          t === NT_FORWARDED_ARGS
+        ) {
           continue;
         }
       }

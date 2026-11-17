@@ -723,7 +723,10 @@ export class Indenter {
       }
       if (a.closesScope(n)) {
         const nm = d.match[n];
-        if (nm >= 0 && (d.kind[nm] === P_LBRACE || d.type[nm] === TT_ARRAY_INITIALIZER_LSQUARE || d.kind[nm] === P_LESS)) {
+        if (
+          nm >= 0 &&
+          (d.kind[nm] === P_LBRACE || d.type[nm] === TT_ARRAY_INITIALIZER_LSQUARE || d.kind[nm] === P_LESS)
+        ) {
           while (r >= 0 && uncheckedGet(this.rec, r * RS + RF + R_TOK) !== nm) {
             r = uncheckedGet(this.rec, r * RS + RP);
           }
@@ -807,22 +810,38 @@ export class Indenter {
     if (this.topHas(F_ICC) && ct === TT_CONDITIONAL_EXPR && ck === P_COLON) {
       return true;
     }
-    if (ct === TT_CTOR_INITIALIZER_COLON && (this.col + a.tot[this.lineLast] - a.tot[prev] > this.lim || this.topHas(F_BBP)) && (!a.isTrailingComment(cur) || d.nl[cur] > 0)) {
+    if (
+      ct === TT_CTOR_INITIALIZER_COLON &&
+      (this.col + a.tot[this.lineLast] - a.tot[prev] > this.lim || this.topHas(F_BBP)) &&
+      (!a.isTrailingComment(cur) || d.nl[cur] > 0)
+    ) {
       return true;
     }
     // An Objective-C method declaration: a `:` after no selector part, and
     // every selector part once one broke before a parameter.
-    if (ct === TT_OBJC_METHOD_EXPR && pt !== TT_SELECTOR_NAME && d.type[d.lFirst[this.line]] === TT_OBJC_METHOD_SPECIFIER) {
+    if (
+      ct === TT_OBJC_METHOD_EXPR &&
+      pt !== TT_SELECTOR_NAME &&
+      d.type[d.lFirst[this.line]] === TT_OBJC_METHOD_SPECIFIER
+    ) {
       return true;
     }
     if (ct === TT_SELECTOR_NAME && pk !== P_AT && this.topHas(F_OSNF) && this.topHas(F_BBP)) {
       return true;
     }
     const nlc = this.newLineColumn();
-    if (a.isMemberAccess(cur) && this.col + this.lengthToNextOperator(cur) > d.opts.columnLimit && (this.col > nlc || a.nest[cur] < this.sol)) {
+    if (
+      a.isMemberAccess(cur) &&
+      this.col + this.lengthToNextOperator(cur) > d.opts.columnLimit &&
+      (this.col > nlc || a.nest[cur] < this.sol)
+    ) {
       return true;
     }
-    if (this.startsBuilderSegment(cur) && (this.top(R_CC) !== 0 || this.topHas(F_BBP)) && !(this.closesScopeAfterBlock(prev) && this.col <= nlc)) {
+    if (
+      this.startsBuilderSegment(cur) &&
+      (this.top(R_CC) !== 0 || this.topHas(F_BBP)) &&
+      !(this.closesScopeAfterBlock(prev) && this.col <= nlc)
+    ) {
       return true;
     }
     if (a.ctd[prev] === 1 && this.topHas(F_BBP) && a.canB[cur] === 1) {
@@ -838,7 +857,10 @@ export class Indenter {
         if (lhs >= 0 && a.ebin[lhs] === 1) {
           return true;
         }
-        const isCmp = (pp === PREC_RELATIONAL || pp === PREC_EQUALITY || pp === PREC_SPACESHIP) && lhs >= 0 && d.type[lhs] !== TT_BINARY_OPERATOR;
+        const isCmp =
+          (pp === PREC_RELATIONAL || pp === PREC_EQUALITY || pp === PREC_SPACESHIP) &&
+          lhs >= 0 &&
+          d.type[lhs] !== TT_BINARY_OPERATOR;
         if (!isCmp) {
           return true;
         }
@@ -857,7 +879,12 @@ export class Indenter {
         return true;
       }
     }
-    if (ct === TT_FUNCTION_DECLARATION_NAME && pk !== KW_TEMPLATE && d.lRetWrap[this.line] === 0 && this.topHas(F_BBP)) {
+    if (
+      ct === TT_FUNCTION_DECLARATION_NAME &&
+      pk !== KW_TEMPLATE &&
+      d.lRetWrap[this.line] === 0 &&
+      this.topHas(F_BBP)
+    ) {
       return true;
     }
     if (pk === P_LBRACE && d.bk[prev] === BK_BLOCK && ck !== P_RBRACE && ck !== K_COMMENT) {
@@ -876,7 +903,14 @@ export class Indenter {
   endsLine(t: i32): boolean {
     const d = this.d;
     const k = d.kind[t];
-    if (k === K_IDENT && d.len(t) === 4 && d.at(d.start[t]) === 101 && d.at(d.start[t] + 1) === 110 && d.at(d.start[t] + 2) === 100 && d.at(d.start[t] + 3) === 108) {
+    if (
+      k === K_IDENT &&
+      d.len(t) === 4 &&
+      d.at(d.start[t]) === 101 &&
+      d.at(d.start[t] + 1) === 110 &&
+      d.at(d.start[t] + 2) === 100 &&
+      d.at(d.start[t] + 3) === 108
+    ) {
       return true;
     }
     if (k === K_STRING || k === K_CHAR || k === K_NUMBER) {
@@ -1174,7 +1208,11 @@ export class Indenter {
     }
     this.setTopFlag(F_CLB, true);
     pen = pen + toI64(a.pen[cur]);
-    if (d.kind[nnc] === P_LESSLESS && this.top(R_FLL) === 0 && (this.col <= d.opts.columnLimit / 3 || this.topHas(F_BBP))) {
+    if (
+      d.kind[nnc] === P_LESSLESS &&
+      this.top(R_FLL) === 0 &&
+      (this.col <= d.opts.columnLimit / 3 || this.topHas(F_BBP))
+    ) {
       pen = pen + toI64(PEN_FIRST_LESSLESS);
     }
     this.col = this.newLineColumn();
@@ -1206,7 +1244,10 @@ export class Indenter {
     }
     const pnk = pnc >= 0 ? d.kind[pnc] : -1;
     const pnt = pnc >= 0 ? d.type[pnc] : -1;
-    if ((pnc >= 0 && (pnk === P_COMMA || pnk === P_SEMI) && !this.topHas(F_AVOID)) || d.type[prev] === TT_BINARY_OPERATOR) {
+    if (
+      (pnc >= 0 && (pnk === P_COMMA || pnk === P_SEMI) && !this.topHas(F_AVOID)) ||
+      d.type[prev] === TT_BINARY_OPERATOR
+    ) {
       this.setTopFlag(F_BBP, false);
     }
     if (pnc >= 0 && (pnt === TT_TEMPLATE_CLOSER || a.crc[pnc] === 1) && a.nest[cur] === 0) {
@@ -1389,7 +1430,12 @@ export class Indenter {
     let skipFirst = false;
     if (prev >= 0) {
       const pk = d.kind[prev];
-      skipFirst = a.opensScope(prev) || pk === P_SEMI || pk === KW_RETURN || a.rqc[prev] === 1 || a.prec(prev) === PREC_ASSIGNMENT;
+      skipFirst =
+        a.opensScope(prev) ||
+        pk === P_SEMI ||
+        pk === KW_RETURN ||
+        a.rqc[prev] === 1 ||
+        a.prec(prev) === PREC_ASSIGNMENT;
     }
     const trailing = a.isTrailingComment(cur);
     let first = true;
@@ -1427,7 +1473,14 @@ export class Indenter {
           this.setTop(R_IND, topLs);
         }
       }
-      if ((this.unindentNext(cur) || (prev >= 0 && p === PREC_CONDITIONAL && d.kind[prev] === P_QUESTION && d.type[prev] === TT_CONDITIONAL_EXPR)) && !newline) {
+      if (
+        (this.unindentNext(cur) ||
+          (prev >= 0 &&
+            p === PREC_CONDITIONAL &&
+            d.kind[prev] === P_QUESTION &&
+            d.type[prev] === TT_CONDITIONAL_EXPR)) &&
+        !newline
+      ) {
         fl = fl | F_ALIGNED;
       }
       if (p > PREC_UNKNOWN && this.col > this.top(R_LS)) {
@@ -1436,7 +1489,14 @@ export class Indenter {
       if (p !== PREC_CONDITIONAL && d.type[cur] !== TT_UNARY_OPERATOR) {
         this.setTop(R_SOFC, this.col);
       }
-      if (p === PREC_CONDITIONAL && prev >= 0 && d.kind[prev] === P_COLON && d.type[prev] === TT_CONDITIONAL_EXPR && first && !topIwc) {
+      if (
+        p === PREC_CONDITIONAL &&
+        prev >= 0 &&
+        d.kind[prev] === P_COLON &&
+        d.type[prev] === TT_CONDITIONAL_EXPR &&
+        first &&
+        !topIwc
+      ) {
         fl = fl | F_ICC;
       } else if (p === PREC_CONDITIONAL || (!skipFirst && p > PREC_ASSIGNMENT && !trailing)) {
         this.setTop(R_IND, this.top(R_IND) + d.opts.continuationIndent);
@@ -1500,7 +1560,10 @@ export class Indenter {
       }
       const nn = a.nextNonComment(cur);
       const endsInComma = m >= 0 && d.kind[d.prv[m]] === P_COMMA;
-      avoid = endsInComma || (nn >= 0 && (d.type[nn] === TT_DESIGNATED_INITIALIZER_PERIOD || d.type[nn] === TT_DESIGNATED_INITIALIZER_LSQUARE));
+      avoid =
+        endsInComma ||
+        (nn >= 0 &&
+          (d.type[nn] === TT_DESIGNATED_INITIALIZER_PERIOD || d.type[nn] === TT_DESIGNATED_INITIALIZER_LSQUARE));
       bbp = endsInComma;
       if (a.pcnt[cur] > 1 && this.col + 1 > nbi) {
         nbi = this.col + 1;
@@ -1522,7 +1585,10 @@ export class Indenter {
         }
       }
     }
-    const noLB = d.childHead[cur] < 0 && d.type[cur] !== TT_ARRAY_INITIALIZER_LSQUARE && (this.topHas(F_NOLB) || this.topHas(F_NOLBOP) || (d.type[cur] === TT_TEMPLATE_OPENER && this.topHas(F_CUB)));
+    const noLB =
+      d.childHead[cur] < 0 &&
+      d.type[cur] !== TT_ARRAY_INITIALIZER_LSQUARE &&
+      (this.topHas(F_NOLB) || this.topHas(F_NOLBOP) || (d.type[cur] === TT_TEMPLATE_OPENER && this.topHas(F_CUB)));
     this.push(cur, newIndent, ls, avoid, noLB);
     this.setTop(R_NBI, nbi);
     this.setTopFlag(F_BBP, bbp);
@@ -1551,7 +1617,13 @@ export class Indenter {
       return;
     }
     const ck = d.kind[cur];
-    if (this.sp > 1 && (ck === P_RPAREN || ck === P_RSQUARE || (ck === P_RBRACE && cur !== d.lFirst[this.line]) || d.type[cur] === TT_TEMPLATE_CLOSER)) {
+    if (
+      this.sp > 1 &&
+      (ck === P_RPAREN ||
+        ck === P_RSQUARE ||
+        (ck === P_RBRACE && cur !== d.lFirst[this.line]) ||
+        d.type[cur] === TT_TEMPLATE_CLOSER)
+    ) {
       this.pop();
     }
     if (ck === P_RSQUARE) {
@@ -1574,14 +1646,31 @@ export class Indenter {
       if (used > this.lim) {
         pen = pen + PEN_EXCESS * toI64(used - this.lim);
       }
-    } else if (d.lType[this.line] !== LT_IMPORT && allowBreak && d.kind[cur] === K_STRING && d.lType[this.line] !== LT_PREPROCESSOR) {
+    } else if (
+      d.lType[this.line] !== LT_IMPORT &&
+      allowBreak &&
+      d.kind[cur] === K_STRING &&
+      d.lType[this.line] !== LT_PREPROCESSOR
+    ) {
       pen = pen + this.breakString(cur);
     }
     const fmc = this.fm;
-    if (d.kind[cur] === K_COMMENT && d.type[cur] === TT_LINE_COMMENT && fmc !== null && d.lType[this.line] !== LT_IMPORT) {
+    if (
+      d.kind[cur] === K_COMMENT &&
+      d.type[cur] === TT_LINE_COMMENT &&
+      fmc !== null &&
+      d.lType[this.line] !== LT_IMPORT
+    ) {
       // A line comment is split to fit, as clang-format's breakProtrudingToken.
       pen = pen + fmc.commentPenalty(cur, this.col - d.width[cur]);
-    } else if (d.kind[cur] === K_COMMENT && d.type[cur] === TT_BLOCK_COMMENT && fmc !== null && (this.col > this.lim || d.multi[cur] === 1 || (this.col + a.tot[this.lineLast] - a.tot[cur] > this.lim && this.col + fmc.unbreakableTail(cur) > this.lim))) {
+    } else if (
+      d.kind[cur] === K_COMMENT &&
+      d.type[cur] === TT_BLOCK_COMMENT &&
+      fmc !== null &&
+      (this.col > this.lim ||
+        d.multi[cur] === 1 ||
+        (this.col + a.tot[this.lineLast] - a.tot[cur] > this.lim && this.col + fmc.unbreakableTail(cur) > this.lim))
+    ) {
       // So is a block comment, reflowed; one whose blanks were squeezed to
       // fit ends that much sooner.
       pen = pen + fmc.blockCommentPenalty(cur, this.col - d.width[cur]);
@@ -1594,7 +1683,13 @@ export class Indenter {
     // Line comments continuing this one's section go under it, each on its own line.
     if (d.kind[cur] === K_COMMENT && d.type[cur] === TT_LINE_COMMENT) {
       const startCol = this.col - d.width[cur];
-      while (this.next >= 0 && d.kind[this.next] === K_COMMENT && d.type[this.next] === TT_LINE_COMMENT && d.nl[this.next] === 1 && this.continuesSection(this.next, d.prv[this.next])) {
+      while (
+        this.next >= 0 &&
+        d.kind[this.next] === K_COMMENT &&
+        d.type[this.next] === TT_LINE_COMMENT &&
+        d.nl[this.next] === 1 &&
+        this.continuesSection(this.next, d.prv[this.next])
+      ) {
         const fm = this.fm;
         if (!this.dry && fm !== null) {
           fm.emit(this.next, 1, startCol);
@@ -1834,7 +1929,11 @@ export class Indenter {
     if (a.rlFmtN[r] <= 1 || this.next < 0) {
       return 0;
     }
-    if (!(d.kind[lb] === P_LBRACE || d.type[lb] === TT_ARRAY_INITIALIZER_LSQUARE) || d.bk[lb] === BK_BLOCK || (d.nxt[lb] >= 0 && d.type[d.nxt[lb]] === TT_DESIGNATED_INITIALIZER_PERIOD)) {
+    if (
+      !(d.kind[lb] === P_LBRACE || d.type[lb] === TT_ARRAY_INITIALIZER_LSQUARE) ||
+      d.bk[lb] === BK_BLOCK ||
+      (d.nxt[lb] >= 0 && d.type[d.nxt[lb]] === TT_DESIGNATED_INITIALIZER_PERIOD)
+    ) {
       return 0;
     }
     const remaining = d.opts.columnLimit - this.col + d.width[cur];
@@ -1918,7 +2017,12 @@ export class Indenter {
     }
     const cf = d.lFirst[c0];
     // A block literal's body never shares its line (AllowShortBlocksOnASingleLine: Never).
-    if (a.mustB[cf] === 1 || d.kind[prev] === K_COMMENT || d.childCount[prev] > 1 || d.type[prev] === TT_BLOCK_LITERAL_LBRACE) {
+    if (
+      a.mustB[cf] === 1 ||
+      d.kind[prev] === K_COMMENT ||
+      d.childCount[prev] > 1 ||
+      d.type[prev] === TT_BLOCK_LITERAL_LBRACE
+    ) {
       return -1;
     }
     const cl = d.lLast[c0];
@@ -2047,7 +2151,18 @@ export class Indenter {
         return false;
       }
       this.hlen = this.hlen + 1;
-      this.mix(d.kind[t] | (d.type[t] << 8) | (d.bk[t] << 16) | (d.multi[t] << 18) | (a.mustB[t] << 19) | (d.spaces[t] << 20) | (d.unesc[t] << 21) | (d.inPP[t] << 23) | (d.mustBreak[t] << 24) | (d.dec[t] << 25));
+      this.mix(
+        d.kind[t] |
+          (d.type[t] << 8) |
+          (d.bk[t] << 16) |
+          (d.multi[t] << 18) |
+          (a.mustB[t] << 19) |
+          (d.spaces[t] << 20) |
+          (d.unesc[t] << 21) |
+          (d.inPP[t] << 23) |
+          (d.mustBreak[t] << 24) |
+          (d.dec[t] << 25),
+      );
       this.mix(d.width[t] | ((d.nl[t] > 2 ? 2 : d.nl[t]) << 16));
       if (d.anyImplicit && d.type[t] === TT_IMPLICIT_STRING_LITERAL && t !== f) {
         this.mix(implicitColumn(d, t, 0));
@@ -2077,7 +2192,7 @@ export class Indenter {
 
   /** The content cache slot for the current hash (found or free); -1 when the probe runs out. */
   ccSlot(len: i32): i32 {
-    let i = this.hh1 & (CC_SIZE - 1);
+    const i = this.hh1 & (CC_SIZE - 1);
     for (let k = 0; k < 32; k++) {
       const s = (i + k) & (CC_SIZE - 1);
       if (this.ccLen[s] === 0) {
@@ -2236,13 +2351,17 @@ export class Indenter {
   dump(l: i32, fits: boolean): void {
     const d = this.d;
     const a = this.a;
-    console.error(`line ${l} level ${d.lLevel[l]} type ${d.lType[l]} fn ${d.lMightFn[l]} decl ${d.lMustDecl[l]} fits ${fits}`);
+    console.error(
+      `line ${l} level ${d.lLevel[l]} type ${d.lType[l]} fn ${d.lMightFn[l]} decl ${d.lMustDecl[l]} fits ${fits}`,
+    );
     for (let t = d.lFirst[l]; t >= 0; t = d.nxt[t]) {
       let fk = "";
       for (let n = a.fkHead[t]; n >= 0; n = a.fkNext[n]) {
         fk = fk + `${a.fkPrec[n]} `;
       }
-      console.error(`  ${d.text(t)}  tt=${d.type[t]} nest=${a.nest[t]} bind=${a.bind[t]} can=${a.canB[t]} must=${a.mustB[t]} pen=${a.pen[t]} tot=${a.tot[t]} sp=${d.spaces[t]} fk=[${fk}] fr=${a.fakeR[t]} pc=${a.pcnt[t]} ch=${d.childHead[t]}`);
+      console.error(
+        `  ${d.text(t)}  tt=${d.type[t]} nest=${a.nest[t]} bind=${a.bind[t]} can=${a.canB[t]} must=${a.mustB[t]} pen=${a.pen[t]} tot=${a.tot[t]} sp=${d.spaces[t]} fk=[${fk}] fr=${a.fakeR[t]} pc=${a.pcnt[t]} ch=${d.childHead[t]}`,
+      );
       if (t === d.lLast[l]) {
         break;
       }
@@ -2708,7 +2827,9 @@ export class Indenter {
     }
     this.stSearches = this.stSearches + 1;
     if (this.debug) {
-      console.error(`search depth=${this.depth} line=${this.line} nodes=${this.nn - nodeBase} pen=${pen} ind=${this.firstIndent} first=${this.d.text(this.d.lFirst[this.line])}`);
+      console.error(
+        `search depth=${this.depth} line=${this.line} nodes=${this.nn - nodeBase} pen=${pen} ind=${this.firstIndent} first=${this.d.text(this.d.lFirst[this.line])}`,
+      );
     }
     this.stNodes = this.stNodes + toI64(this.nn - nodeBase);
     let result: i64 = 0;
@@ -2821,7 +2942,6 @@ export class Indenter {
     }
   }
 
-
   /** Re-runs the decisions of path bits [off, off + n) for real (emitting). */
   replayBits(off: i32, n: i32): void {
     this.dry = false;
@@ -2848,7 +2968,6 @@ export class Indenter {
       this.addToken(nl, 0);
     }
   }
-
 }
 
 export const INDENTER_KINDS: i32 = KW_WHILE + KW_SWITCH + KW_CONCEPT + KW_FOR + TT_CAST_RPAREN + P_RSQUARE + K_IDENT;

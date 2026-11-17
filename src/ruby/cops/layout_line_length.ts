@@ -227,7 +227,17 @@ const rbLlHex = (c: i32): boolean => rbLlDigit(c) || (c >= 65 && c <= 70) || (c 
 
 /** [\-_.!~*'()a-zA-Z\d] (RFC 2396 unreserved). */
 const rbLlUnreserved = (c: i32): boolean =>
-  rbLlAlpha(c) || rbLlDigit(c) || c === 45 || c === 95 || c === 46 || c === 33 || c === 126 || c === 42 || c === 39 || c === 40 || c === 41;
+  rbLlAlpha(c) ||
+  rbLlDigit(c) ||
+  c === 45 ||
+  c === 95 ||
+  c === 46 ||
+  c === 33 ||
+  c === 126 ||
+  c === 42 ||
+  c === 39 ||
+  c === 40 ||
+  c === 41;
 
 /** Whether `chars` holds code point `c`. */
 const rbLlIn = (chars: string, c: i32): boolean => {
@@ -317,7 +327,10 @@ const rbLlIpv4 = (src: RbSource, s: i32, e: i32, strict: boolean): boolean => {
       if (m > 1 && src.pts[q] === 48) {
         return false;
       }
-      const v = (src.pts[q] - 48) * (m === 3 ? 100 : m === 2 ? 10 : 1) + (m >= 2 ? (src.pts[q + 1] - 48) * (m === 3 ? 10 : 1) : 0) + (m === 3 ? src.pts[q + 2] - 48 : 0);
+      const v =
+        (src.pts[q] - 48) * (m === 3 ? 100 : m === 2 ? 10 : 1) +
+        (m >= 2 ? (src.pts[q + 1] - 48) * (m === 3 ? 10 : 1) : 0) +
+        (m === 3 ? src.pts[q + 2] - 48 : 0);
       if (v > 255) {
         return false;
       }

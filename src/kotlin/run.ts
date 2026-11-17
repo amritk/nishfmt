@@ -26,7 +26,9 @@ const KPROF = new BigInt64Array(16);
 /** Prints the phase times FFKPROF collected. */
 export const kprofPrint = (): void => {
   const m = toI64(1000000);
-  console.error(`kotlin: parse ${KPROF[1] / m} (${KPROF[7]} parses) passes ${KPROF[2] / m} tokenize ${KPROF[3] / m} visit ${KPROF[4] / m} layout ${KPROF[5] / m} after ${KPROF[6] / m} ms; lex ${KPROF[8] / m} parser ${KPROF[9] / m} build ${KPROF[10] / m}; reparses: steps ${KPROF[11]} commas-mapped ${KPROF[12] / m} ms; trim ${KPROF[13]} markers ${KPROF[14]} nodes ${KPROF[15]}`);
+  console.error(
+    `kotlin: parse ${KPROF[1] / m} (${KPROF[7]} parses) passes ${KPROF[2] / m} tokenize ${KPROF[3] / m} visit ${KPROF[4] / m} layout ${KPROF[5] / m} after ${KPROF[6] / m} ms; lex ${KPROF[8] / m} parser ${KPROF[9] / m} build ${KPROF[10] / m}; reparses: steps ${KPROF[11]} commas-mapped ${KPROF[12] / m} ms; trim ${KPROF[13]} markers ${KPROF[14]} nodes ${KPROF[15]}`,
+  );
 };
 
 /** One worker's reusable Kotlin state. */
@@ -256,7 +258,8 @@ const formatKotlin0 = (e: KotlinEngine, path: string, src0: u8[], n0: i32, out: 
     ps.reset(e.cur, e.curN);
     const b2 = e.buf2;
     const ts = e.prof ? monotonicNanos() : toI64(0);
-    const changed = step === 0 ? ps.sortImports(0, b2) : step === 1 ? ps.dropRedundant(0, b2) : ps.addTrailingCommas(0, b2);
+    const changed =
+      step === 0 ? ps.sortImports(0, b2) : step === 1 ? ps.dropRedundant(0, b2) : ps.addTrailingCommas(0, b2);
     if (e.prof) {
       e.profT[2] = e.profT[2] + (monotonicNanos() - ts);
     }

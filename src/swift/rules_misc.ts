@@ -42,7 +42,9 @@ const swStripSlashSpace = (s: string): string => {
   while (i < n) {
     const c = swCpAt(b, n, i);
     // \s: space, tab, linebreaks and Unicode whitespace
-    if (!(swCpIsSpace(c) || c === 10 || c === 13 || c === 11 || c === 12 || c === 0x85 || c === 0x2028 || c === 0x2029)) {
+    if (
+      !(swCpIsSpace(c) || c === 10 || c === 13 || c === 11 || c === 12 || c === 0x85 || c === 0x2028 || c === 0x2029)
+    ) {
       break;
     }
     i += c < 0x80 ? 1 : c < 0x800 ? 2 : c < 0x10000 ? 3 : 4;
@@ -147,7 +149,10 @@ export const swRuleSemicolons = (f: SwFormatter): void => {
       const cs = swCurrentScope(f, i);
       if (f.kw(prevTokenIndex, "return") || (cs >= 0 && f.tok(cs, SW_START, "("))) {
         // Not safe to remove or replace
-      } else if (f.k(prevTokenIndex) === SW_IDENT && f.lastIs(SW_T_NON_SPACE_OR_COMMENT_OR_LINEBREAK, prevTokenIndex, SW_KEYWORD, "var")) {
+      } else if (
+        f.k(prevTokenIndex) === SW_IDENT &&
+        f.lastIs(SW_T_NON_SPACE_OR_COMMENT_OR_LINEBREAK, prevTokenIndex, SW_KEYWORD, "var")
+      ) {
         // Not safe to remove or replace
       } else {
         const m = f.indexAfter(SW_T_NON_SPACE_OR_COMMENT, i);
@@ -194,4 +199,3 @@ export const swRuleBlankLinesBetweenChainedFunctions = (f: SwFormatter): void =>
     f.removeTokens(endOfLine + 1, startOfLine);
   }
 };
-

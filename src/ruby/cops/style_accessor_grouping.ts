@@ -7,10 +7,19 @@ import { NT_BLOCK, NT_CASGN, NT_CLASS, NT_DEF, NT_MODULE, NT_SCLASS, NT_SEND, V_
 import { RbCop } from "../cop";
 import { rbSpaceBegin } from "../help";
 import { RbSource } from "../source";
-import { ssxAccessModifier, ssxAttributeAccessor, ssxCommentLine, ssxIs, ssxLineAt, ssxMeth, ssxSiblingIndex } from "./style_syntax_help";
+import {
+  ssxAccessModifier,
+  ssxAttributeAccessor,
+  ssxCommentLine,
+  ssxIs,
+  ssxLineAt,
+  ssxMeth,
+  ssxSiblingIndex,
+} from "./style_syntax_help";
 
 /** previous_line_comment? */
-const ssxAgPrevLineComment = (src: RbSource, n: i32): boolean => ssxCommentLine(ssxLineAt(src, src.line(src.a.exS(n)) - 2));
+const ssxAgPrevLineComment = (src: RbSource, n: i32): boolean =>
+  ssxCommentLine(ssxLineAt(src, src.line(src.a.exS(n)) - 2));
 
 /** groupable_accessor? */
 const ssxAgGroupable = (src: RbSource, n: i32): boolean => {
@@ -42,7 +51,9 @@ const ssxAgGroupable = (src: RbSource, n: i32): boolean => {
       return false;
     }
   }
-  return ssxAttributeAccessor(src, prev) || ssxAccessModifier(src, prev) || src.line(a.exS(n)) - src.line(a.exE(prev)) > 1;
+  return (
+    ssxAttributeAccessor(src, prev) || ssxAccessModifier(src, prev) || src.line(a.exS(n)) - src.line(a.exE(prev)) > 1
+  );
 };
 
 /** node_visibility for a send: the nearest bare `private`/`protected`/`public` before it. */

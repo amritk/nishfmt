@@ -7,7 +7,16 @@
 // Developers): macros.rs, header.rs, parse/macros/mod.rs,
 // parse/macros/lazy_static.rs.
 
-import { IT_MACRO_RULES, N_MACRO_ARGS, N_MACRO_KW, RsAst, rsIsExprKind, rsIsItemKind, rsIsPatKind, rsIsTyKind } from "./ast";
+import {
+  IT_MACRO_RULES,
+  N_MACRO_ARGS,
+  N_MACRO_KW,
+  RsAst,
+  rsIsExprKind,
+  rsIsItemKind,
+  rsIsPatKind,
+  rsIsTyKind,
+} from "./ast";
 import {
   rsCombineStrsWithMissingComments,
   rsContainsComment,
@@ -127,7 +136,8 @@ const rewriteItemAsArg = (ctx: RsCtx, item: i32, shape: RsShape): string | null 
 
 const rsItemSpanLo = (ast: RsAst, item: i32): i32 => (ast.atn[item] > 0 ? ast.lo[ast.attr(item, 0)] : ast.lo[item]);
 
-const isDocTok = (k: i32): boolean => k === T_DOC_LINE_OUTER || k === T_DOC_LINE_INNER || k === T_DOC_BLOCK_OUTER || k === T_DOC_BLOCK_INNER;
+const isDocTok = (k: i32): boolean =>
+  k === T_DOC_LINE_OUTER || k === T_DOC_LINE_INNER || k === T_DOC_BLOCK_OUTER || k === T_DOC_BLOCK_INNER;
 
 /** parse_macro_args over the tokens of N_TTS `tts`: an N_MACRO_ARGS node (cached on the mac's `c`). */
 const parseMacroArgs = (ctx: RsCtx, mac: i32, style: i32, forcedBracket: boolean): i32 => {
@@ -347,7 +357,17 @@ const rewriteMacroInner = (ctx: RsCtx, mac: i32, shape: RsShape, pos: i32, isNes
     if (vecWithSemi) {
       return handleVecSemi(ctx, shape, args, name, style, lo, hi);
     }
-    const r = rsRewriteWithParens(ctx, name, args, OC_MACRO_ARG, shape, lo, hi, cfg.fnCallWidth, trailingComma ? ST_ALWAYS : ST_NEVER);
+    const r = rsRewriteWithParens(
+      ctx,
+      name,
+      args,
+      OC_MACRO_ARG,
+      shape,
+      lo,
+      hi,
+      cfg.fnCallWidth,
+      trailingComma ? ST_ALWAYS : ST_NEVER,
+    );
     if (r === null) {
       return null;
     }
@@ -377,7 +397,15 @@ const rewriteMacroInner = (ctx: RsCtx, mac: i32, shape: RsShape, pos: i32, isNes
   return body !== null ? `${name} ${body}` : `${name} ${snippet}`;
 };
 
-const handleVecSemi = (ctx: RsCtx, shape: RsShape, args: i32[], name: string, style: i32, lo: i32, hi: i32): string | null => {
+const handleVecSemi = (
+  ctx: RsCtx,
+  shape: RsShape,
+  args: i32[],
+  name: string,
+  style: i32,
+  lo: i32,
+  hi: i32,
+): string | null => {
   const cfg = ctx.cfg;
   const left = style === DS_PAREN ? "(" : "[";
   const right = style === DS_PAREN ? ")" : "]";
@@ -404,7 +432,17 @@ const handleVecSemi = (ctx: RsCtx, shape: RsShape, args: i32[], name: string, st
   return `${name}${left}${ni}${l};${ni}${r}${rsIndentStrNl(cfg, shape.bi, shape.al)}${right}`;
 };
 
-const rewriteMacroWithItems = (ctx: RsCtx, items: i32[], name: string, shape: RsShape, style: i32, originalStyle: i32, pos: i32, lo: i32, hi: i32): string | null => {
+const rewriteMacroWithItems = (
+  ctx: RsCtx,
+  items: i32[],
+  name: string,
+  shape: RsShape,
+  style: i32,
+  originalStyle: i32,
+  pos: i32,
+  lo: i32,
+  hi: i32,
+): string | null => {
   const cfg = ctx.cfg;
   const opener = style === DS_PAREN ? "(" : style === DS_BRACKET ? "[" : " {";
   const closer = style === DS_PAREN ? ")" : style === DS_BRACKET ? "]" : "}";

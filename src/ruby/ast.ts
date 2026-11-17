@@ -46,7 +46,8 @@ export const F_QUESTION: i32 = 16;
 export const F_SELECTOR: i32 = 17;
 export const NF: i32 = 18;
 
-const FIELD_NAMES: string = "expression,argument,assignment,assoc,begin,colon,dot,double_colon,else,end,heredoc_body,heredoc_end,in,keyword,name,operator,question,selector";
+const FIELD_NAMES: string =
+  "expression,argument,assignment,assoc,begin,colon,dot,double_colon,else,end,heredoc_body,heredoc_end,in,keyword,name,operator,question,selector";
 
 // Source map classes.
 export const M_MAP: i32 = 0;
@@ -344,7 +345,11 @@ export class RbAst {
 
   /** Node#updated: a new node, sharing what is not given (-1 type, V_NIL kids, -2 map). */
   updated(n: i32, type: i32, kids: i32, map: i32): i32 {
-    return this.node(type < 0 ? this.type(n) : type, kids === V_NIL ? this.copyList(this.kids(n)) : kids, map === -2 ? this.map(n) : map);
+    return this.node(
+      type < 0 ? this.type(n) : type,
+      kids === V_NIL ? this.copyList(this.kids(n)) : kids,
+      map === -2 ? this.map(n) : map,
+    );
   }
 
   copyList(l: i32): i32 {
@@ -512,7 +517,11 @@ export const rbInspectStr = (s: string): string => {
       out = `${out}\\a`;
     } else if (c === 27) {
       out = `${out}\\e`;
-    } else if (c === 35 && i + 1 < k && (s.charCodeAt(i + 1) === 123 || s.charCodeAt(i + 1) === 36 || s.charCodeAt(i + 1) === 64)) {
+    } else if (
+      c === 35 &&
+      i + 1 < k &&
+      (s.charCodeAt(i + 1) === 123 || s.charCodeAt(i + 1) === 36 || s.charCodeAt(i + 1) === 64)
+    ) {
       out = `${out}\\#`;
     } else if (c < 32 || c === 127) {
       out = `${out}\\u00${rbHex2(c)}`;

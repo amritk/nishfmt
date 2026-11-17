@@ -148,7 +148,15 @@ export class CopStyleHashEachMethods {
     const pre = a.kid(send, 0);
     if (pre !== V_NIL && (ssxIsCall(src, pre) || ssxIsAnyBlock(src, pre))) {
       const m = rbHemMethodName(src, pre);
-      if (m === "assoc" || m === "chunk" || m === "flatten" || m === "rassoc" || m === "sort" || m === "sort_by" || m === "to_a") {
+      if (
+        m === "assoc" ||
+        m === "chunk" ||
+        m === "flatten" ||
+        m === "rassoc" ||
+        m === "sort" ||
+        m === "sort_by" ||
+        m === "to_a"
+      ) {
         return;
       }
     }

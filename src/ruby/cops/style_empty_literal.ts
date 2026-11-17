@@ -14,7 +14,9 @@ const ssxElConstCall = (src: RbSource, n: i32, c: string, m: string): boolean =>
 
 /** {(block (send (const C) :new) args _) (numblock (send (const C) :new) ...)} */
 const ssxElWithBlock = (src: RbSource, p: i32, c: string): boolean =>
-  p !== V_NIL && (src.a.type(p) === NT_BLOCK || src.a.type(p) === NT_NUMBLOCK) && ssxElConstCall(src, src.a.kid(p, 0), c, "new");
+  p !== V_NIL &&
+  (src.a.type(p) === NT_BLOCK || src.a.type(p) === NT_NUMBLOCK) &&
+  ssxElConstCall(src, src.a.kid(p, 0), c, "new");
 
 /** `C.new`, `C.new([])` (Array only) not given a block, `C[]` or `C([])`. */
 const ssxElOffense = (src: RbSource, n: i32, c: string): boolean => {
@@ -242,7 +244,8 @@ export class CopStyleEmptyLiteral {
         if (p !== V_NIL) {
           const pt = a.type(p);
           const first = pt === NT_SEND ? a.kid(p, 2) : a.kid(p, 0);
-          unpar = (pt === NT_SEND || pt === NT_SUPER || pt === NT_ZSUPER) && first === n && !ssxLocIs(src, p, F_END, ")");
+          unpar =
+            (pt === NT_SEND || pt === NT_SUPER || pt === NT_ZSUPER) && first === n && !ssxLocIs(src, p, F_END, ")");
         }
         if (unpar) {
           const from = ssxElArg0(src, p);

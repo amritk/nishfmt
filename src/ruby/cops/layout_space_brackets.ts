@@ -6,7 +6,20 @@
 // Ported from RuboCop 1.92.2 (MIT License, Copyright (c) 2012-24 Bozhidar
 // Batsov).
 
-import { F_BEGIN, F_SELECTOR, NT_ARRAY, NT_ARRAY_PATTERN, NT_BEGIN, NT_CONST_PATTERN, NT_DSTR, NT_DSYM, NT_REGEXP, NT_SEND, NT_XSTR, V_NIL } from "../ast";
+import {
+  F_BEGIN,
+  F_SELECTOR,
+  NT_ARRAY,
+  NT_ARRAY_PATTERN,
+  NT_BEGIN,
+  NT_CONST_PATTERN,
+  NT_DSTR,
+  NT_DSYM,
+  NT_REGEXP,
+  NT_SEND,
+  NT_XSTR,
+  V_NIL,
+} from "../ast";
 import { RbCop } from "../cop";
 import { rnFieldSrc, rnHas, rnMethod, rnS } from "../node";
 import { RbSource, TK_COMMENT } from "../source";

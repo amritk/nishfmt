@@ -4,7 +4,18 @@
 // Ported from RuboCop 1.92.2 (MIT License, Copyright (c) 2012-24 Bozhidar
 // Batsov).
 
-import { NT_ARGS, NT_BLOCK, NT_BLOCKARG, NT_CSEND, NT_DEF, NT_DEFS, NT_NUMBLOCK, NT_OPTARG, NT_SEND, V_NIL } from "../ast";
+import {
+  NT_ARGS,
+  NT_BLOCK,
+  NT_BLOCKARG,
+  NT_CSEND,
+  NT_DEF,
+  NT_DEFS,
+  NT_NUMBLOCK,
+  NT_OPTARG,
+  NT_SEND,
+  V_NIL,
+} from "../ast";
 import { RbCop } from "../cop";
 import { RbSource } from "../source";
 import { ssxGlobalConst } from "./style_syntax_help";
@@ -61,7 +72,10 @@ const mplLambdaOrProc = (src: RbSource, n: i32): boolean => {
   if (t !== NT_BLOCK) {
     return false;
   }
-  return (r === V_NIL && m === "proc" && a.nKid(s) === 2) || (m === "new" && a.nKid(s) === 2 && ssxGlobalConst(src, r, "Proc"));
+  return (
+    (r === V_NIL && m === "proc" && a.nKid(s) === 2) ||
+    (m === "new" && a.nKid(s) === 2 && ssxGlobalConst(src, r, "Proc"))
+  );
 };
 
 export class CopMetricsParameterLists {

@@ -20,7 +20,12 @@ export class CopStyleWhenThen {
     this.c.begin(src);
     const a = src.a;
     for (const n of src.pre) {
-      if (a.type(n) !== NT_WHEN || src.line(a.exS(n)) !== src.line(a.exE(n)) || scnThen(src, n) || a.kid(n, -1) === V_NIL) {
+      if (
+        a.type(n) !== NT_WHEN ||
+        src.line(a.exS(n)) !== src.line(a.exE(n)) ||
+        scnThen(src, n) ||
+        a.kid(n, -1) === V_NIL
+      ) {
         continue;
       }
       if (!ssxHas(src, n, F_BEGIN)) {

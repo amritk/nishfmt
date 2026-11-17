@@ -3,7 +3,18 @@
 // Ported from RuboCop 1.92.2 (MIT License, Copyright (c) 2012-24 Bozhidar
 // Batsov).
 
-import { NT_BREAK, NT_CSEND, NT_DEFINED_P, NT_IF, NT_NEXT, NT_RETURN, NT_SEND, NT_SUPER, NT_YIELD, V_NIL } from "../ast";
+import {
+  NT_BREAK,
+  NT_CSEND,
+  NT_DEFINED_P,
+  NT_IF,
+  NT_NEXT,
+  NT_RETURN,
+  NT_SEND,
+  NT_SUPER,
+  NT_YIELD,
+  V_NIL,
+} from "../ast";
 import { RbCop } from "../cop";
 import { RbSource } from "../source";
 import { LalIgnored } from "./layout_align_help";

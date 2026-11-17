@@ -1465,7 +1465,12 @@ export class RbParser {
   }
 
   r9(v: i32[]): i32 {
-    return this.b.preexe(this.va(v, 0), this.a.at(this.va(v, 1), 0), this.a.at(this.va(v, 1), 1), this.a.at(this.va(v, 1), 2));
+    return this.b.preexe(
+      this.va(v, 0),
+      this.a.at(this.va(v, 1), 0),
+      this.a.at(this.va(v, 1), 1),
+      this.a.at(this.va(v, 1), 2),
+    );
   }
 
   r10(v: i32[]): i32 {
@@ -1483,7 +1488,7 @@ export class RbParser {
     else_ = this.a.at(this.va(v, 2), 1);
     ensure_t = this.a.at(this.va(v, 3), 0);
     ensure_ = this.a.at(this.va(v, 3), 1);
-    if (((this.a.len(rescue_bodies) === 0) && !(else_t === V_NIL))) {
+    if (this.a.len(rescue_bodies) === 0 && !(else_t === V_NIL)) {
       return this.fail();
     }
     return this.b.beginBody(this.va(v, 0), rescue_bodies, else_t, else_, ensure_t, ensure_);
@@ -1593,15 +1598,27 @@ export class RbParser {
   }
 
   r39(v: i32[]): i32 {
-    return this.b.opAssign(this.b.index(this.va(v, 0), this.va(v, 1), this.va(v, 2), this.va(v, 3)), this.va(v, 4), this.va(v, 5));
+    return this.b.opAssign(
+      this.b.index(this.va(v, 0), this.va(v, 1), this.va(v, 2), this.va(v, 3)),
+      this.va(v, 4),
+      this.va(v, 5),
+    );
   }
 
   r40(v: i32[]): i32 {
-    return this.b.opAssign(this.b.callMethod(this.va(v, 0), this.va(v, 1), this.va(v, 2)), this.va(v, 3), this.va(v, 4));
+    return this.b.opAssign(
+      this.b.callMethod(this.va(v, 0), this.va(v, 1), this.va(v, 2)),
+      this.va(v, 3),
+      this.va(v, 4),
+    );
   }
 
   r41(v: i32[]): i32 {
-    return this.b.opAssign(this.b.callMethod(this.va(v, 0), this.va(v, 1), this.va(v, 2)), this.va(v, 3), this.va(v, 4));
+    return this.b.opAssign(
+      this.b.callMethod(this.va(v, 0), this.va(v, 1), this.va(v, 2)),
+      this.va(v, 3),
+      this.va(v, 4),
+    );
   }
 
   r42(v: i32[]): i32 {
@@ -1611,7 +1628,11 @@ export class RbParser {
   }
 
   r43(v: i32[]): i32 {
-    return this.b.opAssign(this.b.callMethod(this.va(v, 0), this.va(v, 1), this.va(v, 2)), this.va(v, 3), this.va(v, 4));
+    return this.b.opAssign(
+      this.b.callMethod(this.va(v, 0), this.va(v, 1), this.va(v, 2)),
+      this.va(v, 3),
+      this.va(v, 4),
+    );
   }
 
   r44(v: i32[]): i32 {
@@ -2030,19 +2051,35 @@ export class RbParser {
   }
 
   r213(v: i32[]): i32 {
-    return this.b.opAssign(this.b.index(this.va(v, 0), this.va(v, 1), this.va(v, 2), this.va(v, 3)), this.va(v, 4), this.va(v, 5));
+    return this.b.opAssign(
+      this.b.index(this.va(v, 0), this.va(v, 1), this.va(v, 2), this.va(v, 3)),
+      this.va(v, 4),
+      this.va(v, 5),
+    );
   }
 
   r214(v: i32[]): i32 {
-    return this.b.opAssign(this.b.callMethod(this.va(v, 0), this.va(v, 1), this.va(v, 2)), this.va(v, 3), this.va(v, 4));
+    return this.b.opAssign(
+      this.b.callMethod(this.va(v, 0), this.va(v, 1), this.va(v, 2)),
+      this.va(v, 3),
+      this.va(v, 4),
+    );
   }
 
   r215(v: i32[]): i32 {
-    return this.b.opAssign(this.b.callMethod(this.va(v, 0), this.va(v, 1), this.va(v, 2)), this.va(v, 3), this.va(v, 4));
+    return this.b.opAssign(
+      this.b.callMethod(this.va(v, 0), this.va(v, 1), this.va(v, 2)),
+      this.va(v, 3),
+      this.va(v, 4),
+    );
   }
 
   r216(v: i32[]): i32 {
-    return this.b.opAssign(this.b.callMethod(this.va(v, 0), this.va(v, 1), this.va(v, 2)), this.va(v, 3), this.va(v, 4));
+    return this.b.opAssign(
+      this.b.callMethod(this.va(v, 0), this.va(v, 1), this.va(v, 2)),
+      this.va(v, 3),
+      this.va(v, 4),
+    );
   }
 
   r217(v: i32[]): i32 {
@@ -2271,14 +2308,14 @@ export class RbParser {
   }
 
   r274(v: i32[]): i32 {
-    if (!(this.declaredForwardArgsP())) {
+    if (!this.declaredForwardArgsP()) {
       return this.fail();
     }
     return this.ls([this.va(v, 0), this.ls([this.va(v, 1), this.b.forwardedArgs(this.va(v, 3))], 1), this.va(v, 4)], 0);
   }
 
   r275(v: i32[]): i32 {
-    if (!(this.declaredForwardArgsP())) {
+    if (!this.declaredForwardArgsP()) {
       return this.fail();
     }
     return this.ls([this.va(v, 0), this.ls([this.b.forwardedArgs(this.va(v, 1))], 0), this.va(v, 2)], 0);
@@ -2333,7 +2370,7 @@ export class RbParser {
     let lookahead: boolean = false;
     let top: boolean = false;
     last_token = this.lastTok;
-    lookahead = ((last_token === TK_tLBRACK) || (last_token === TK_tLPAREN_ARG));
+    lookahead = last_token === TK_tLBRACK || last_token === TK_tLPAREN_ARG;
     if (lookahead) {
       top = this.lx.cmdarg.pop();
       this.lx.cmdarg.push(true);
@@ -2349,7 +2386,7 @@ export class RbParser {
     let lookahead: boolean = false;
     let top: boolean = false;
     last_token = this.lastTok;
-    lookahead = (last_token === TK_tLBRACE_ARG);
+    lookahead = last_token === TK_tLBRACE_ARG;
     if (lookahead) {
       top = this.lx.cmdarg.pop();
       this.lx.cmdarg.pop();
@@ -2368,7 +2405,12 @@ export class RbParser {
     if (!this.declaredAnonymousBlockargP()) {
       return this.fail();
     }
-    if ((((this.ctx.inDynamicBlock() && this.ctx.in_def) && this.declaredAnonymousBlockargInCurrentScpeP()) && this.parentHasAnonymousBlockargP())) {
+    if (
+      this.ctx.inDynamicBlock() &&
+      this.ctx.in_def &&
+      this.declaredAnonymousBlockargInCurrentScpeP() &&
+      this.parentHasAnonymousBlockargP()
+    ) {
       return this.fail();
     }
     return this.b.blockPass(this.va(v, 0), V_NIL);
@@ -2402,7 +2444,12 @@ export class RbParser {
     if (!this.declaredAnonymousRestargP()) {
       return this.fail();
     }
-    if ((((this.ctx.inDynamicBlock() && this.ctx.in_def) && this.declaredAnonymousRestargInCurrentScopeP()) && this.parentHasAnonymousRestargP())) {
+    if (
+      this.ctx.inDynamicBlock() &&
+      this.ctx.in_def &&
+      this.declaredAnonymousRestargInCurrentScopeP() &&
+      this.parentHasAnonymousRestargP()
+    ) {
       return this.fail();
     }
     return this.ls([this.b.forwardedRestarg(this.va(v, 0))], 0);
@@ -2539,11 +2586,25 @@ export class RbParser {
   }
 
   r338(v: i32[]): i32 {
-    return this.b.loop(NT_WHILE, this.va(v, 0), this.a.at(this.va(v, 1), 0), this.a.at(this.va(v, 1), 1), this.va(v, 2), this.va(v, 3));
+    return this.b.loop(
+      NT_WHILE,
+      this.va(v, 0),
+      this.a.at(this.va(v, 1), 0),
+      this.a.at(this.va(v, 1), 1),
+      this.va(v, 2),
+      this.va(v, 3),
+    );
   }
 
   r339(v: i32[]): i32 {
-    return this.b.loop(NT_UNTIL, this.va(v, 0), this.a.at(this.va(v, 1), 0), this.a.at(this.va(v, 1), 1), this.va(v, 2), this.va(v, 3));
+    return this.b.loop(
+      NT_UNTIL,
+      this.va(v, 0),
+      this.a.at(this.va(v, 1), 0),
+      this.a.at(this.va(v, 1), 1),
+      this.va(v, 2),
+      this.va(v, 3),
+    );
   }
 
   r340(v: i32[]): i32 {
@@ -2583,7 +2644,15 @@ export class RbParser {
   }
 
   r343(v: i32[]): i32 {
-    return this.b.for_(this.va(v, 0), this.va(v, 1), this.va(v, 2), this.a.at(this.va(v, 3), 0), this.a.at(this.va(v, 3), 1), this.va(v, 4), this.va(v, 5));
+    return this.b.for_(
+      this.va(v, 0),
+      this.va(v, 1),
+      this.va(v, 2),
+      this.a.at(this.va(v, 3), 0),
+      this.a.at(this.va(v, 3), 1),
+      this.va(v, 4),
+      this.va(v, 5),
+    );
   }
 
   r344(v: i32[]): i32 {
@@ -2722,7 +2791,7 @@ export class RbParser {
   }
 
   r360(v: i32[]): i32 {
-    if (((this.ctx.in_class && !this.ctx.in_def) && !(this.ctx.in_block || this.ctx.in_lambda))) {
+    if (this.ctx.in_class && !this.ctx.in_def && !(this.ctx.in_block || this.ctx.in_lambda)) {
       return this.fail();
     }
     return v.length > 0 ? v[0] : V_NIL;
@@ -2737,7 +2806,13 @@ export class RbParser {
     let else_: i32 = V_NIL;
     else_t = this.a.at(this.va(v, 4), 0);
     else_ = this.a.at(this.va(v, 4), 1);
-    return this.ls([this.va(v, 0), this.b.condition(this.va(v, 0), this.va(v, 1), this.va(v, 2), this.va(v, 3), else_t, else_, V_NIL)], 0);
+    return this.ls(
+      [
+        this.va(v, 0),
+        this.b.condition(this.va(v, 0), this.va(v, 1), this.va(v, 2), this.va(v, 3), else_t, else_, V_NIL),
+      ],
+      0,
+    );
   }
 
   r369(v: i32[]): i32 {
@@ -2822,7 +2897,10 @@ export class RbParser {
   }
 
   r395(v: i32[]): i32 {
-    return this.a.append(this.a.append(this.a.append(this.a.append(this.va(v, 0), this.va(v, 2)), this.va(v, 4)), this.va(v, 6)), this.va(v, 7));
+    return this.a.append(
+      this.a.append(this.a.append(this.a.append(this.va(v, 0), this.va(v, 2)), this.va(v, 4)), this.va(v, 6)),
+      this.va(v, 7),
+    );
   }
 
   r396(v: i32[]): i32 {
@@ -2843,7 +2921,7 @@ export class RbParser {
 
   r401(v: i32[]): i32 {
     let result = v.length > 0 ? v[0] : V_NIL;
-    if (((this.a.len(this.va(v, 1)) === 0) && (this.a.len(this.va(v, 0)) === 1))) {
+    if (this.a.len(this.va(v, 1)) === 0 && this.a.len(this.va(v, 0)) === 1) {
       result = this.ls([this.b.procarg0(this.a.at(this.va(v, 0), 0))], 0);
     } else {
       result = this.a.append(this.va(v, 0), this.va(v, 1));
@@ -2940,7 +3018,7 @@ export class RbParser {
     let body: i32 = V_NIL;
     let end_t: i32 = V_NIL;
     lambda_call = this.b.callLambda(this.va(v, 0));
-    args = (this.st.hasNumparams() ? this.b.numargs(this.st.npTop()) : this.va(v, 2));
+    args = this.st.hasNumparams() ? this.b.numargs(this.st.npTop()) : this.va(v, 2);
     begin_t = this.a.at(this.va(v, 4), 0);
     body = this.a.at(this.va(v, 4), 1);
     end_t = this.a.at(this.va(v, 4), 2);
@@ -2959,7 +3037,7 @@ export class RbParser {
 
   r423(v: i32[]): i32 {
     this.ctx.in_argdef = false;
-    if ((this.a.len(this.va(v, 0)) > 0)) {
+    if (this.a.len(this.va(v, 0)) > 0) {
       this.st.setOrdinaryParams();
     }
     return this.b.args(V_NIL, this.va(v, 0), V_NIL);
@@ -3161,7 +3239,7 @@ export class RbParser {
   r448(v: i32[]): i32 {
     let result = v.length > 0 ? v[0] : V_NIL;
     let args: i32 = V_NIL;
-    args = (this.st.hasNumparams() ? this.b.numargs(this.st.npTop()) : this.va(v, 1));
+    args = this.st.hasNumparams() ? this.b.numargs(this.st.npTop()) : this.va(v, 1);
     result = this.ls([args, this.va(v, 2)], 0);
     this.st.npPop();
     this.unextend();
@@ -3182,7 +3260,7 @@ export class RbParser {
   r451(v: i32[]): i32 {
     let result = v.length > 0 ? v[0] : V_NIL;
     let args: i32 = V_NIL;
-    args = (this.st.hasNumparams() ? this.b.numargs(this.st.npTop()) : this.va(v, 2));
+    args = this.st.hasNumparams() ? this.b.numargs(this.st.npTop()) : this.va(v, 2);
     result = this.ls([args, this.va(v, 3)], 0);
     this.st.npPop();
     this.unextend();
@@ -3225,7 +3303,19 @@ export class RbParser {
   }
 
   r459(v: i32[]): i32 {
-    return this.ls([this.b.inPattern(this.va(v, 0), this.a.at(this.va(v, 4), 0), this.a.at(this.va(v, 4), 1), this.va(v, 5), this.va(v, 7)), this.va(v, 8)], 2);
+    return this.ls(
+      [
+        this.b.inPattern(
+          this.va(v, 0),
+          this.a.at(this.va(v, 4), 0),
+          this.a.at(this.va(v, 4), 1),
+          this.va(v, 5),
+          this.va(v, 7),
+        ),
+        this.va(v, 8),
+      ],
+      2,
+    );
   }
 
   r460(v: i32[]): i32 {
@@ -3535,7 +3625,7 @@ export class RbParser {
     let lvar: i32 = V_NIL;
     name = this.a.tokValue(this.va(v, 1));
     lvar = this.b.accessible(this.b.ident(this.va(v, 1)));
-    if (!(this.env.declared(name))) {
+    if (!this.env.declared(name)) {
       return this.fail();
     }
     return this.b.pin(this.va(v, 0), lvar);
@@ -3574,7 +3664,10 @@ export class RbParser {
     if (this.truthy(this.va(v, 1))) {
       exc_list = this.b.array(V_NIL, this.va(v, 1), V_NIL);
     }
-    return this.ls([this.b.rescueBody(this.va(v, 0), exc_list, assoc_t, exc_var, this.va(v, 3), this.va(v, 4)), this.va(v, 5)], 2);
+    return this.ls(
+      [this.b.rescueBody(this.va(v, 0), exc_list, assoc_t, exc_var, this.va(v, 3), this.va(v, 4)), this.va(v, 5)],
+      2,
+    );
   }
 
   r555(v: i32[]): i32 {
@@ -3924,7 +4017,10 @@ export class RbParser {
   }
 
   r648(v: i32[]): i32 {
-    return this.a.append(this.a.append(this.a.append(this.a.append(this.va(v, 0), this.va(v, 2)), this.va(v, 4)), this.va(v, 6)), this.va(v, 7));
+    return this.a.append(
+      this.a.append(this.a.append(this.a.append(this.va(v, 0), this.va(v, 2)), this.va(v, 4)), this.va(v, 6)),
+      this.va(v, 7),
+    );
   }
 
   r649(v: i32[]): i32 {
@@ -4184,7 +4280,12 @@ export class RbParser {
     if (!this.declaredAnonymousKwrestargP()) {
       return this.fail();
     }
-    if ((((this.ctx.inDynamicBlock() && this.ctx.in_def) && this.declaredAnonymousKwrestargInCurrentScopeP()) && this.parentHasAnonymousKwrestargP())) {
+    if (
+      this.ctx.inDynamicBlock() &&
+      this.ctx.in_def &&
+      this.declaredAnonymousKwrestargInCurrentScopeP() &&
+      this.parentHasAnonymousKwrestargP()
+    ) {
       return this.fail();
     }
     return this.b.forwardedKwrestarg(this.va(v, 0));

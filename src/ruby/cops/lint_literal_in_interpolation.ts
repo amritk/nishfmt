@@ -83,7 +83,15 @@ const lliAllSpace = (s: string): boolean => {
       cp = (cp << 6) | (s.charCodeAt(i + j) & 0x3f);
     }
     const sp =
-      cp === 0x85 || cp === 0xa0 || cp === 0x1680 || (cp >= 0x2000 && cp <= 0x200a) || cp === 0x2028 || cp === 0x2029 || cp === 0x202f || cp === 0x205f || cp === 0x3000;
+      cp === 0x85 ||
+      cp === 0xa0 ||
+      cp === 0x1680 ||
+      (cp >= 0x2000 && cp <= 0x200a) ||
+      cp === 0x2028 ||
+      cp === 0x2029 ||
+      cp === 0x202f ||
+      cp === 0x205f ||
+      cp === 0x3000;
     if (!sp) {
       return false;
     }
@@ -198,7 +206,7 @@ export const lliFloatText = (t: string): string => {
   while (lead < toI32(ds.length) && ds.charCodeAt(lead) === 48) {
     lead++;
   }
-  let decpt = point - lead + exp;
+  const decpt = point - lead + exp;
   ds = ds.substring(lead, toI32(ds.length));
   let tail = toI32(ds.length);
   while (tail > 0 && ds.charCodeAt(tail - 1) === 48) {
@@ -430,7 +438,11 @@ export class CopLintLiteralInInterpolation {
     // starts_interpolation_after_hash_sign?
     const nx = src.at(a.exE(b));
     const fst = v.length > 0 ? v.charCodeAt(0) : nx;
-    if ((fst === 123 || fst === 64 || fst === 36) && src.at(a.exS(b) - 1) === 35 && this.unescapedHashBefore(src, a.exS(b))) {
+    if (
+      (fst === 123 || fst === 64 || fst === 36) &&
+      src.at(a.exS(b) - 1) === 35 &&
+      this.unescapedHashBefore(src, a.exS(b))
+    ) {
       return null;
     }
     // escape_trailing_hash_sign

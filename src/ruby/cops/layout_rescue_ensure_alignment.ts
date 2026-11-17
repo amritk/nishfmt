@@ -28,7 +28,14 @@ import { RbCop } from "../cop";
 import { rnE, rnHas, rnMethod, rnS } from "../node";
 import { RbSource } from "../source";
 import { TK_kRESCUE_MOD } from "../tables";
-import { rmlAccessModifier, rmlBlankRange, rmlIsAssignment, rmlIsBlock, rmlSpaces, rmlStartLineRange } from "./layout_multiline_help";
+import {
+  rmlAccessModifier,
+  rmlBlankRange,
+  rmlIsAssignment,
+  rmlIsBlock,
+  rmlSpaces,
+  rmlStartLineRange,
+} from "./layout_multiline_help";
 
 /** RescueEnsureAlignment#access_modifier? */
 const rmlReaAccessModifier = (src: RbSource, n: i32): boolean => {

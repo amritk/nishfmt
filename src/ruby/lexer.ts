@@ -374,7 +374,16 @@ export class RbLiteral {
   buffer_e: i32 = -1;
   saved_herebody_s: i32 = -1;
 
-  constructor(lexer: RbLexer, strType: string, delimiter: string, strS: i32, heredocE: i32, indent: boolean, dedentBody: boolean, labelAllowed: boolean) {
+  constructor(
+    lexer: RbLexer,
+    strType: string,
+    delimiter: string,
+    strS: i32,
+    heredocE: i32,
+    indent: boolean,
+    dedentBody: boolean,
+    labelAllowed: boolean,
+  ) {
     this.lexer = lexer;
     const tt = rbLiteralType(strType);
     if (tt < 0) {
@@ -436,7 +445,15 @@ export class RbLiteral {
   }
 
   munge_escape(character: string): boolean {
-    if (this.words() && (character === " " || character === "\t" || character === "\u000b" || character === "\r" || character === "\u000c" || character === "\n")) {
+    if (
+      this.words() &&
+      (character === " " ||
+        character === "\t" ||
+        character === "\u000b" ||
+        character === "\r" ||
+        character === "\u000c" ||
+        character === "\n")
+    ) {
       return true;
     }
     return character === "\\" || (this.hasStartDelim && character === this.start_delim) || character === this.end_delim;
@@ -453,7 +470,13 @@ export class RbLiteral {
       if (this.words()) {
         this.extend_space(ts, ts);
       }
-      if (lookahead.length > 0 && this.label_allowed && lookahead.charCodeAt(0) === 58 && !(lookahead.length > 1 && lookahead.charCodeAt(1) === 58) && this.start_tok === TK_tSTRING_BEG) {
+      if (
+        lookahead.length > 0 &&
+        this.label_allowed &&
+        lookahead.charCodeAt(0) === 58 &&
+        !(lookahead.length > 1 && lookahead.charCodeAt(1) === 58) &&
+        this.start_tok === TK_tSTRING_BEG
+      ) {
         this.flush_string();
         this.lexer.emit4(TK_tLABEL_END, this.end_delim, ts, te + 1);
         return TK_tLABEL_END;
@@ -683,7 +706,15 @@ export class RbStrings {
     this.pushLiteralFull(strType, delimiter, strS, -1, false, false, false);
   }
 
-  pushLiteralFull(strType: string, delimiter: string, strS: i32, heredocE: i32, indent: boolean, dedentBody: boolean, labelAllowed: boolean = false): void {
+  pushLiteralFull(
+    strType: string,
+    delimiter: string,
+    strS: i32,
+    heredocE: i32,
+    indent: boolean,
+    dedentBody: boolean,
+    labelAllowed: boolean = false,
+  ): void {
     const lit = new RbLiteral(this.lexer, strType, delimiter, strS, heredocE, indent, dedentBody, labelAllowed);
     this.literals.push(lit);
     this.cs = this.nextStateFor(lit);
@@ -975,7 +1006,8 @@ export class RbStrings {
     const pe = toI32(this.pts.length) + 2;
     const eof = pe;
     const pts = this.pts;
-    let current_literal: RbLiteral = this.literals.length > 0 ? this.lit() : new RbLiteral(this.lexer, "'", "'", 0, -1, false, false, false);
+    let current_literal: RbLiteral =
+      this.literals.length > 0 ? this.lit() : new RbLiteral(this.lexer, "'", "'", 0, -1, false, false, false);
     let string = "";
     let lookahead = "";
     let token = -1;
@@ -1040,1420 +1072,1135 @@ export class RbStrings {
             _nacts -= 1;
             _acts += 1;
             switch (RS_LEX_ACTIONS_D[_acts - 1]) {
-case 0: {
-{
-this.newline_s = p;
-}
-break;
-}
-case 1: {
-{
-this.unicode_points(p);
-}
-break;
-}
-case 2: {
-{
-this.unescape_char(p);
-}
-break;
-}
-case 3: {
-{
-this.lexer.diagFatal();
-}
-break;
-}
-case 4: {
-{
-this.read_post_meta_or_ctrl_char(p);
-}
-break;
-}
-case 5: {
-{
-this.slash_c_char();
-}
-break;
-}
-case 6: {
-{
-this.slash_m_char();
-}
-break;
-}
-case 7: {
-{
-this.encode_escaped_char(p);
-}
-break;
-}
-case 8: {
-{
-this.escape = "\x7f"; this.hasEscape = true;
-}
-break;
-}
-case 9: {
-{
-this.encode_escaped_char(p);
-}
-break;
-}
-case 10: {
-{
-this.escape = rbByteChr(rbParseInt(this.tok2(this.escape_s, p), 8) % 256); this.hasEscape = true;
-}
-break;
-}
-case 11: {
-{
-this.escape = rbByteChr(rbParseInt(this.tok2(this.escape_s + 1, p), 16)); this.hasEscape = true;
-}
-break;
-}
-case 12: {
-{
-this.lexer.diagFatal();
-}
-break;
-}
-case 13: {
-{
-this.escape = rbChr(rbParseInt(this.tok2(this.escape_s + 1, p), 16)); this.hasEscape = true;
-}
-break;
-}
-case 14: {
-{
-this.check_invalid_escapes(p);
-}
-break;
-}
-case 15: {
-{
-this.check_invalid_escapes(p);
-}
-break;
-}
-case 16: {
-{
-this.lexer.diagFatal();
-}
-break;
-}
-case 17: {
-{
-this.lexer.diagFatal();
-}
-break;
-}
-case 18: {
-{
-this.escape_s = p;
-this.hasEscape = false;
-}
-break;
-}
-case 19: {
-{
-interp_var_kind = 3;
-}
-break;
-}
-case 20: {
-{
-interp_var_kind = 1;
-}
-break;
-}
-case 21: {
-{
-interp_var_kind = 2;
-}
-break;
-}
-case 22: {
-{
-this.hasEscape = false;
-}
-break;
-}
-case 25: {
-{
-this.te = p+1;
-}
-break;
-}
-case 26: {
-{
-this.te = p+1;
-{
-current_literal = this.lit();
-this.extend_interp_code(current_literal);
-this.rootState = RL_LEX_EN_EXPR_VALUE;
-{
-p += 1;
-_trigger_goto = true;
-_goto_level = _out;
-break actsLoop;
-}
-}
-}
-}
-case 27: {
-{
-this.te = p+1;
-{
-current_literal = this.lit();
-this.extend_string_eol_check_eof(current_literal, pe);
-if ((current_literal.heredoc())) {
-line = this.extend_string_eol_heredoc_line();
-if (current_literal.nest_and_try_closing(line, this.herebody_s, this.ts) >= 0) {
-this.herebody_s = this.te;
-p = current_literal.heredoc_e - 1;
-this.cs = (this.pop_literal());
-{
-p += 1;
-_trigger_goto = true;
-_goto_level = _out;
-break actsLoop;
-}
-} else {
-current_literal.infer_indent_level(line);
-this.herebody_s = this.te;
-}
-} else {
-if (current_literal.nest_and_try_closing(this.tok2(this.ts, this.te), this.ts, this.te) >= 0) {
-this.cs = (this.pop_literal());
-{
-p += 1;
-_trigger_goto = true;
-_goto_level = _out;
-break actsLoop;
-}
-}
-p = this.extend_string_eol_heredoc_intertwined(p);
-}
-this.extend_string_eol_words(current_literal, p);
-}
-}
-break;
-}
-case 28: {
-{
-this.te = p+1;
-{
-string = this.tok2(this.ts, this.te);
-lookahead = this.extend_string_slice_end(lookahead);
-current_literal = this.lit();
-token = -1; if (!current_literal.heredoc()) { token = current_literal.nest_and_try_closing(string, this.ts, this.te, lookahead); } if (token >= 0) {
-if ((token === TK_tLABEL_END)) {
-p += 1;
-this.pop_literal();
-this.rootState = RL_LEX_EN_EXPR_LABELARG;
-} else {
-state = this.pop_literal(); if (state >= 0) {
-this.cs = (state);
-}
-}
-{
-p += 1;
-_trigger_goto = true;
-_goto_level = _out;
-break actsLoop;
-}
-} else {
-this.extend_string_for_token_range(current_literal, string);
-}
-}
-}
-break;
-}
-case 29: {
-{
-this.te = p;
-p = p - 1;
-{
-this.extend_interp_digit_var();
-}
-}
-break;
-}
-case 30: {
-{
-this.te = p;
-p = p - 1;
-{
-current_literal = this.lit();
-this.extend_interp_var(current_literal);
-this.emit_interp_var(interp_var_kind);
-}
-}
-break;
-}
-case 31: {
-{
-this.te = p;
-p = p - 1;
-{
-this.extend_string_escaped();
-}
-}
-break;
-}
-case 32: {
-{
-this.te = p;
-p = p - 1;
-{
-this.lit().extend_space(this.ts, this.te);
-}
-}
-break;
-}
-case 33: {
-{
-this.te = p;
-p = p - 1;
-{
-string = this.tok2(this.ts, this.te);
-lookahead = this.extend_string_slice_end(lookahead);
-current_literal = this.lit();
-token = -1; if (!current_literal.heredoc()) { token = current_literal.nest_and_try_closing(string, this.ts, this.te, lookahead); } if (token >= 0) {
-if ((token === TK_tLABEL_END)) {
-p += 1;
-this.pop_literal();
-this.rootState = RL_LEX_EN_EXPR_LABELARG;
-} else {
-state = this.pop_literal(); if (state >= 0) {
-this.cs = (state);
-}
-}
-{
-p += 1;
-_trigger_goto = true;
-_goto_level = _out;
-break actsLoop;
-}
-} else {
-this.extend_string_for_token_range(current_literal, string);
-}
-}
-}
-break;
-}
-case 34: {
-{
-{
-p = (( this.te))-1;
-}
-{
-this.extend_string_escaped();
-}
-}
-break;
-}
-case 35: {
-{
-{
-p = (( this.te))-1;
-}
-{
-string = this.tok2(this.ts, this.te);
-lookahead = this.extend_string_slice_end(lookahead);
-current_literal = this.lit();
-token = -1; if (!current_literal.heredoc()) { token = current_literal.nest_and_try_closing(string, this.ts, this.te, lookahead); } if (token >= 0) {
-if ((token === TK_tLABEL_END)) {
-p += 1;
-this.pop_literal();
-this.rootState = RL_LEX_EN_EXPR_LABELARG;
-} else {
-state = this.pop_literal(); if (state >= 0) {
-this.cs = (state);
-}
-}
-{
-p += 1;
-_trigger_goto = true;
-_goto_level = _out;
-break actsLoop;
-}
-} else {
-this.extend_string_for_token_range(current_literal, string);
-}
-}
-}
-break;
-}
-case 36: {
-{
-this.te = p+1;
-{
-current_literal = this.lit();
-this.extend_interp_code(current_literal);
-this.rootState = RL_LEX_EN_EXPR_VALUE;
-{
-p += 1;
-_trigger_goto = true;
-_goto_level = _out;
-break actsLoop;
-}
-}
-}
-}
-case 37: {
-{
-this.te = p+1;
-{
-current_literal = this.lit();
-this.extend_string_eol_check_eof(current_literal, pe);
-if ((current_literal.heredoc())) {
-line = this.extend_string_eol_heredoc_line();
-if (current_literal.nest_and_try_closing(line, this.herebody_s, this.ts) >= 0) {
-this.herebody_s = this.te;
-p = current_literal.heredoc_e - 1;
-this.cs = (this.pop_literal());
-{
-p += 1;
-_trigger_goto = true;
-_goto_level = _out;
-break actsLoop;
-}
-} else {
-current_literal.infer_indent_level(line);
-this.herebody_s = this.te;
-}
-} else {
-if (current_literal.nest_and_try_closing(this.tok2(this.ts, this.te), this.ts, this.te) >= 0) {
-this.cs = (this.pop_literal());
-{
-p += 1;
-_trigger_goto = true;
-_goto_level = _out;
-break actsLoop;
-}
-}
-p = this.extend_string_eol_heredoc_intertwined(p);
-}
-this.extend_string_eol_words(current_literal, p);
-}
-}
-break;
-}
-case 38: {
-{
-this.te = p+1;
-{
-string = this.tok2(this.ts, this.te);
-lookahead = this.extend_string_slice_end(lookahead);
-current_literal = this.lit();
-token = -1; if (!current_literal.heredoc()) { token = current_literal.nest_and_try_closing(string, this.ts, this.te, lookahead); } if (token >= 0) {
-if ((token === TK_tLABEL_END)) {
-p += 1;
-this.pop_literal();
-this.rootState = RL_LEX_EN_EXPR_LABELARG;
-} else {
-state = this.pop_literal(); if (state >= 0) {
-this.cs = (state);
-}
-}
-{
-p += 1;
-_trigger_goto = true;
-_goto_level = _out;
-break actsLoop;
-}
-} else {
-this.extend_string_for_token_range(current_literal, string);
-}
-}
-}
-break;
-}
-case 39: {
-{
-this.te = p;
-p = p - 1;
-{
-this.extend_interp_digit_var();
-}
-}
-break;
-}
-case 40: {
-{
-this.te = p;
-p = p - 1;
-{
-current_literal = this.lit();
-this.extend_interp_var(current_literal);
-this.emit_interp_var(interp_var_kind);
-}
-}
-break;
-}
-case 41: {
-{
-this.te = p;
-p = p - 1;
-{
-this.extend_string_escaped();
-}
-}
-break;
-}
-case 42: {
-{
-this.te = p;
-p = p - 1;
-{
-string = this.tok2(this.ts, this.te);
-lookahead = this.extend_string_slice_end(lookahead);
-current_literal = this.lit();
-token = -1; if (!current_literal.heredoc()) { token = current_literal.nest_and_try_closing(string, this.ts, this.te, lookahead); } if (token >= 0) {
-if ((token === TK_tLABEL_END)) {
-p += 1;
-this.pop_literal();
-this.rootState = RL_LEX_EN_EXPR_LABELARG;
-} else {
-state = this.pop_literal(); if (state >= 0) {
-this.cs = (state);
-}
-}
-{
-p += 1;
-_trigger_goto = true;
-_goto_level = _out;
-break actsLoop;
-}
-} else {
-this.extend_string_for_token_range(current_literal, string);
-}
-}
-}
-break;
-}
-case 43: {
-{
-{
-p = (( this.te))-1;
-}
-{
-this.extend_string_escaped();
-}
-}
-break;
-}
-case 44: {
-{
-{
-p = (( this.te))-1;
-}
-{
-string = this.tok2(this.ts, this.te);
-lookahead = this.extend_string_slice_end(lookahead);
-current_literal = this.lit();
-token = -1; if (!current_literal.heredoc()) { token = current_literal.nest_and_try_closing(string, this.ts, this.te, lookahead); } if (token >= 0) {
-if ((token === TK_tLABEL_END)) {
-p += 1;
-this.pop_literal();
-this.rootState = RL_LEX_EN_EXPR_LABELARG;
-} else {
-state = this.pop_literal(); if (state >= 0) {
-this.cs = (state);
-}
-}
-{
-p += 1;
-_trigger_goto = true;
-_goto_level = _out;
-break actsLoop;
-}
-} else {
-this.extend_string_for_token_range(current_literal, string);
-}
-}
-}
-break;
-}
-case 45: {
-{
-this.te = p+1;
-{
-this.extend_string_escaped();
-}
-}
-break;
-}
-case 46: {
-{
-this.te = p+1;
-{
-current_literal = this.lit();
-this.extend_string_eol_check_eof(current_literal, pe);
-if ((current_literal.heredoc())) {
-line = this.extend_string_eol_heredoc_line();
-if (current_literal.nest_and_try_closing(line, this.herebody_s, this.ts) >= 0) {
-this.herebody_s = this.te;
-p = current_literal.heredoc_e - 1;
-this.cs = (this.pop_literal());
-{
-p += 1;
-_trigger_goto = true;
-_goto_level = _out;
-break actsLoop;
-}
-} else {
-current_literal.infer_indent_level(line);
-this.herebody_s = this.te;
-}
-} else {
-if (current_literal.nest_and_try_closing(this.tok2(this.ts, this.te), this.ts, this.te) >= 0) {
-this.cs = (this.pop_literal());
-{
-p += 1;
-_trigger_goto = true;
-_goto_level = _out;
-break actsLoop;
-}
-}
-p = this.extend_string_eol_heredoc_intertwined(p);
-}
-this.extend_string_eol_words(current_literal, p);
-}
-}
-break;
-}
-case 47: {
-{
-this.te = p+1;
-{
-string = this.tok2(this.ts, this.te);
-lookahead = this.extend_string_slice_end(lookahead);
-current_literal = this.lit();
-token = -1; if (!current_literal.heredoc()) { token = current_literal.nest_and_try_closing(string, this.ts, this.te, lookahead); } if (token >= 0) {
-if ((token === TK_tLABEL_END)) {
-p += 1;
-this.pop_literal();
-this.rootState = RL_LEX_EN_EXPR_LABELARG;
-} else {
-state = this.pop_literal(); if (state >= 0) {
-this.cs = (state);
-}
-}
-{
-p += 1;
-_trigger_goto = true;
-_goto_level = _out;
-break actsLoop;
-}
-} else {
-this.extend_string_for_token_range(current_literal, string);
-}
-}
-}
-break;
-}
-case 48: {
-{
-this.te = p;
-p = p - 1;
-{
-this.lit().extend_space(this.ts, this.te);
-}
-}
-break;
-}
-case 49: {
-{
-this.te = p;
-p = p - 1;
-{
-string = this.tok2(this.ts, this.te);
-lookahead = this.extend_string_slice_end(lookahead);
-current_literal = this.lit();
-token = -1; if (!current_literal.heredoc()) { token = current_literal.nest_and_try_closing(string, this.ts, this.te, lookahead); } if (token >= 0) {
-if ((token === TK_tLABEL_END)) {
-p += 1;
-this.pop_literal();
-this.rootState = RL_LEX_EN_EXPR_LABELARG;
-} else {
-state = this.pop_literal(); if (state >= 0) {
-this.cs = (state);
-}
-}
-{
-p += 1;
-_trigger_goto = true;
-_goto_level = _out;
-break actsLoop;
-}
-} else {
-this.extend_string_for_token_range(current_literal, string);
-}
-}
-}
-break;
-}
-case 50: {
-{
-this.te = p+1;
-{
-current_literal = this.lit();
-this.extend_string_eol_check_eof(current_literal, pe);
-if ((current_literal.heredoc())) {
-line = this.extend_string_eol_heredoc_line();
-if (current_literal.nest_and_try_closing(line, this.herebody_s, this.ts) >= 0) {
-this.herebody_s = this.te;
-p = current_literal.heredoc_e - 1;
-this.cs = (this.pop_literal());
-{
-p += 1;
-_trigger_goto = true;
-_goto_level = _out;
-break actsLoop;
-}
-} else {
-current_literal.infer_indent_level(line);
-this.herebody_s = this.te;
-}
-} else {
-if (current_literal.nest_and_try_closing(this.tok2(this.ts, this.te), this.ts, this.te) >= 0) {
-this.cs = (this.pop_literal());
-{
-p += 1;
-_trigger_goto = true;
-_goto_level = _out;
-break actsLoop;
-}
-}
-p = this.extend_string_eol_heredoc_intertwined(p);
-}
-this.extend_string_eol_words(current_literal, p);
-}
-}
-break;
-}
-case 51: {
-{
-this.te = p+1;
-{
-this.extend_string_escaped();
-}
-}
-break;
-}
-case 52: {
-{
-this.te = p+1;
-{
-current_literal = this.lit();
-this.extend_string_eol_check_eof(current_literal, pe);
-if ((current_literal.heredoc())) {
-line = this.extend_string_eol_heredoc_line();
-if (current_literal.nest_and_try_closing(line, this.herebody_s, this.ts) >= 0) {
-this.herebody_s = this.te;
-p = current_literal.heredoc_e - 1;
-this.cs = (this.pop_literal());
-{
-p += 1;
-_trigger_goto = true;
-_goto_level = _out;
-break actsLoop;
-}
-} else {
-current_literal.infer_indent_level(line);
-this.herebody_s = this.te;
-}
-} else {
-if (current_literal.nest_and_try_closing(this.tok2(this.ts, this.te), this.ts, this.te) >= 0) {
-this.cs = (this.pop_literal());
-{
-p += 1;
-_trigger_goto = true;
-_goto_level = _out;
-break actsLoop;
-}
-}
-p = this.extend_string_eol_heredoc_intertwined(p);
-}
-this.extend_string_eol_words(current_literal, p);
-}
-}
-break;
-}
-case 53: {
-{
-this.te = p+1;
-{
-string = this.tok2(this.ts, this.te);
-lookahead = this.extend_string_slice_end(lookahead);
-current_literal = this.lit();
-token = -1; if (!current_literal.heredoc()) { token = current_literal.nest_and_try_closing(string, this.ts, this.te, lookahead); } if (token >= 0) {
-if ((token === TK_tLABEL_END)) {
-p += 1;
-this.pop_literal();
-this.rootState = RL_LEX_EN_EXPR_LABELARG;
-} else {
-state = this.pop_literal(); if (state >= 0) {
-this.cs = (state);
-}
-}
-{
-p += 1;
-_trigger_goto = true;
-_goto_level = _out;
-break actsLoop;
-}
-} else {
-this.extend_string_for_token_range(current_literal, string);
-}
-}
-}
-break;
-}
-case 54: {
-{
-this.te = p;
-p = p - 1;
-{
-string = this.tok2(this.ts, this.te);
-lookahead = this.extend_string_slice_end(lookahead);
-current_literal = this.lit();
-token = -1; if (!current_literal.heredoc()) { token = current_literal.nest_and_try_closing(string, this.ts, this.te, lookahead); } if (token >= 0) {
-if ((token === TK_tLABEL_END)) {
-p += 1;
-this.pop_literal();
-this.rootState = RL_LEX_EN_EXPR_LABELARG;
-} else {
-state = this.pop_literal(); if (state >= 0) {
-this.cs = (state);
-}
-}
-{
-p += 1;
-_trigger_goto = true;
-_goto_level = _out;
-break actsLoop;
-}
-} else {
-this.extend_string_for_token_range(current_literal, string);
-}
-}
-}
-break;
-}
-case 55: {
-{
-this.te = p+1;
-{
-current_literal = this.lit();
-this.extend_interp_code(current_literal);
-this.rootState = RL_LEX_EN_EXPR_VALUE;
-{
-p += 1;
-_trigger_goto = true;
-_goto_level = _out;
-break actsLoop;
-}
-}
-}
-}
-case 56: {
-{
-this.te = p+1;
-{
-current_literal = this.lit();
-this.extend_string_eol_check_eof(current_literal, pe);
-if ((current_literal.heredoc())) {
-line = this.extend_string_eol_heredoc_line();
-if (current_literal.nest_and_try_closing(line, this.herebody_s, this.ts) >= 0) {
-this.herebody_s = this.te;
-p = current_literal.heredoc_e - 1;
-this.cs = (this.pop_literal());
-{
-p += 1;
-_trigger_goto = true;
-_goto_level = _out;
-break actsLoop;
-}
-} else {
-current_literal.infer_indent_level(line);
-this.herebody_s = this.te;
-}
-} else {
-if (current_literal.nest_and_try_closing(this.tok2(this.ts, this.te), this.ts, this.te) >= 0) {
-this.cs = (this.pop_literal());
-{
-p += 1;
-_trigger_goto = true;
-_goto_level = _out;
-break actsLoop;
-}
-}
-p = this.extend_string_eol_heredoc_intertwined(p);
-}
-this.extend_string_eol_words(current_literal, p);
-}
-}
-break;
-}
-case 57: {
-{
-this.te = p+1;
-{
-string = this.tok2(this.ts, this.te);
-lookahead = this.extend_string_slice_end(lookahead);
-current_literal = this.lit();
-token = -1; if (!current_literal.heredoc()) { token = current_literal.nest_and_try_closing(string, this.ts, this.te, lookahead); } if (token >= 0) {
-if ((token === TK_tLABEL_END)) {
-p += 1;
-this.pop_literal();
-this.rootState = RL_LEX_EN_EXPR_LABELARG;
-} else {
-state = this.pop_literal(); if (state >= 0) {
-this.cs = (state);
-}
-}
-{
-p += 1;
-_trigger_goto = true;
-_goto_level = _out;
-break actsLoop;
-}
-} else {
-this.extend_string_for_token_range(current_literal, string);
-}
-}
-}
-break;
-}
-case 58: {
-{
-this.te = p;
-p = p - 1;
-{
-this.extend_interp_digit_var();
-}
-}
-break;
-}
-case 59: {
-{
-this.te = p;
-p = p - 1;
-{
-current_literal = this.lit();
-this.extend_interp_var(current_literal);
-this.emit_interp_var(interp_var_kind);
-}
-}
-break;
-}
-case 60: {
-{
-this.te = p;
-p = p - 1;
-{
-string = this.tok2(this.ts, this.te);
-lookahead = this.extend_string_slice_end(lookahead);
-current_literal = this.lit();
-token = -1; if (!current_literal.heredoc()) { token = current_literal.nest_and_try_closing(string, this.ts, this.te, lookahead); } if (token >= 0) {
-if ((token === TK_tLABEL_END)) {
-p += 1;
-this.pop_literal();
-this.rootState = RL_LEX_EN_EXPR_LABELARG;
-} else {
-state = this.pop_literal(); if (state >= 0) {
-this.cs = (state);
-}
-}
-{
-p += 1;
-_trigger_goto = true;
-_goto_level = _out;
-break actsLoop;
-}
-} else {
-this.extend_string_for_token_range(current_literal, string);
-}
-}
-}
-break;
-}
-case 61: {
-{
-{
-p = (( this.te))-1;
-}
-{
-string = this.tok2(this.ts, this.te);
-lookahead = this.extend_string_slice_end(lookahead);
-current_literal = this.lit();
-token = -1; if (!current_literal.heredoc()) { token = current_literal.nest_and_try_closing(string, this.ts, this.te, lookahead); } if (token >= 0) {
-if ((token === TK_tLABEL_END)) {
-p += 1;
-this.pop_literal();
-this.rootState = RL_LEX_EN_EXPR_LABELARG;
-} else {
-state = this.pop_literal(); if (state >= 0) {
-this.cs = (state);
-}
-}
-{
-p += 1;
-_trigger_goto = true;
-_goto_level = _out;
-break actsLoop;
-}
-} else {
-this.extend_string_for_token_range(current_literal, string);
-}
-}
-}
-break;
-}
-case 62: {
-{
-this.te = p+1;
-{
-current_literal = this.lit();
-this.extend_string_eol_check_eof(current_literal, pe);
-if ((current_literal.heredoc())) {
-line = this.extend_string_eol_heredoc_line();
-if (current_literal.nest_and_try_closing(line, this.herebody_s, this.ts) >= 0) {
-this.herebody_s = this.te;
-p = current_literal.heredoc_e - 1;
-this.cs = (this.pop_literal());
-{
-p += 1;
-_trigger_goto = true;
-_goto_level = _out;
-break actsLoop;
-}
-} else {
-current_literal.infer_indent_level(line);
-this.herebody_s = this.te;
-}
-} else {
-if (current_literal.nest_and_try_closing(this.tok2(this.ts, this.te), this.ts, this.te) >= 0) {
-this.cs = (this.pop_literal());
-{
-p += 1;
-_trigger_goto = true;
-_goto_level = _out;
-break actsLoop;
-}
-}
-p = this.extend_string_eol_heredoc_intertwined(p);
-}
-this.extend_string_eol_words(current_literal, p);
-}
-}
-break;
-}
-case 63: {
-{
-this.te = p+1;
-{
-string = this.tok2(this.ts, this.te);
-lookahead = this.extend_string_slice_end(lookahead);
-current_literal = this.lit();
-token = -1; if (!current_literal.heredoc()) { token = current_literal.nest_and_try_closing(string, this.ts, this.te, lookahead); } if (token >= 0) {
-if ((token === TK_tLABEL_END)) {
-p += 1;
-this.pop_literal();
-this.rootState = RL_LEX_EN_EXPR_LABELARG;
-} else {
-state = this.pop_literal(); if (state >= 0) {
-this.cs = (state);
-}
-}
-{
-p += 1;
-_trigger_goto = true;
-_goto_level = _out;
-break actsLoop;
-}
-} else {
-this.extend_string_for_token_range(current_literal, string);
-}
-}
-}
-break;
-}
-case 64: {
-{
-this.te = p+1;
-{
-current_literal = this.lit();
-this.extend_interp_code(current_literal);
-this.rootState = RL_LEX_EN_EXPR_VALUE;
-{
-p += 1;
-_trigger_goto = true;
-_goto_level = _out;
-break actsLoop;
-}
-}
-}
-}
-case 65: {
-{
-this.te = p+1;
-{
-current_literal = this.lit();
-this.extend_string_eol_check_eof(current_literal, pe);
-if ((current_literal.heredoc())) {
-line = this.extend_string_eol_heredoc_line();
-if (current_literal.nest_and_try_closing(line, this.herebody_s, this.ts) >= 0) {
-this.herebody_s = this.te;
-p = current_literal.heredoc_e - 1;
-this.cs = (this.pop_literal());
-{
-p += 1;
-_trigger_goto = true;
-_goto_level = _out;
-break actsLoop;
-}
-} else {
-current_literal.infer_indent_level(line);
-this.herebody_s = this.te;
-}
-} else {
-if (current_literal.nest_and_try_closing(this.tok2(this.ts, this.te), this.ts, this.te) >= 0) {
-this.cs = (this.pop_literal());
-{
-p += 1;
-_trigger_goto = true;
-_goto_level = _out;
-break actsLoop;
-}
-}
-p = this.extend_string_eol_heredoc_intertwined(p);
-}
-this.extend_string_eol_words(current_literal, p);
-}
-}
-break;
-}
-case 66: {
-{
-this.te = p+1;
-{
-string = this.tok2(this.ts, this.te);
-lookahead = this.extend_string_slice_end(lookahead);
-current_literal = this.lit();
-token = -1; if (!current_literal.heredoc()) { token = current_literal.nest_and_try_closing(string, this.ts, this.te, lookahead); } if (token >= 0) {
-if ((token === TK_tLABEL_END)) {
-p += 1;
-this.pop_literal();
-this.rootState = RL_LEX_EN_EXPR_LABELARG;
-} else {
-state = this.pop_literal(); if (state >= 0) {
-this.cs = (state);
-}
-}
-{
-p += 1;
-_trigger_goto = true;
-_goto_level = _out;
-break actsLoop;
-}
-} else {
-this.extend_string_for_token_range(current_literal, string);
-}
-}
-}
-break;
-}
-case 67: {
-{
-this.te = p;
-p = p - 1;
-{
-this.extend_interp_digit_var();
-}
-}
-break;
-}
-case 68: {
-{
-this.te = p;
-p = p - 1;
-{
-current_literal = this.lit();
-this.extend_interp_var(current_literal);
-this.emit_interp_var(interp_var_kind);
-}
-}
-break;
-}
-case 69: {
-{
-this.te = p;
-p = p - 1;
-{
-this.lit().extend_space(this.ts, this.te);
-}
-}
-break;
-}
-case 70: {
-{
-this.te = p;
-p = p - 1;
-{
-string = this.tok2(this.ts, this.te);
-lookahead = this.extend_string_slice_end(lookahead);
-current_literal = this.lit();
-token = -1; if (!current_literal.heredoc()) { token = current_literal.nest_and_try_closing(string, this.ts, this.te, lookahead); } if (token >= 0) {
-if ((token === TK_tLABEL_END)) {
-p += 1;
-this.pop_literal();
-this.rootState = RL_LEX_EN_EXPR_LABELARG;
-} else {
-state = this.pop_literal(); if (state >= 0) {
-this.cs = (state);
-}
-}
-{
-p += 1;
-_trigger_goto = true;
-_goto_level = _out;
-break actsLoop;
-}
-} else {
-this.extend_string_for_token_range(current_literal, string);
-}
-}
-}
-break;
-}
-case 71: {
-{
-{
-p = (( this.te))-1;
-}
-{
-string = this.tok2(this.ts, this.te);
-lookahead = this.extend_string_slice_end(lookahead);
-current_literal = this.lit();
-token = -1; if (!current_literal.heredoc()) { token = current_literal.nest_and_try_closing(string, this.ts, this.te, lookahead); } if (token >= 0) {
-if ((token === TK_tLABEL_END)) {
-p += 1;
-this.pop_literal();
-this.rootState = RL_LEX_EN_EXPR_LABELARG;
-} else {
-state = this.pop_literal(); if (state >= 0) {
-this.cs = (state);
-}
-}
-{
-p += 1;
-_trigger_goto = true;
-_goto_level = _out;
-break actsLoop;
-}
-} else {
-this.extend_string_for_token_range(current_literal, string);
-}
-}
-}
-break;
-}
-case 72: {
-{
-this.te = p+1;
-{
-current_literal = this.lit();
-this.extend_string_eol_check_eof(current_literal, pe);
-if ((current_literal.heredoc())) {
-line = this.extend_string_eol_heredoc_line();
-if (current_literal.nest_and_try_closing(line, this.herebody_s, this.ts) >= 0) {
-this.herebody_s = this.te;
-p = current_literal.heredoc_e - 1;
-this.cs = (this.pop_literal());
-{
-p += 1;
-_trigger_goto = true;
-_goto_level = _out;
-break actsLoop;
-}
-} else {
-current_literal.infer_indent_level(line);
-this.herebody_s = this.te;
-}
-} else {
-if (current_literal.nest_and_try_closing(this.tok2(this.ts, this.te), this.ts, this.te) >= 0) {
-this.cs = (this.pop_literal());
-{
-p += 1;
-_trigger_goto = true;
-_goto_level = _out;
-break actsLoop;
-}
-}
-p = this.extend_string_eol_heredoc_intertwined(p);
-}
-this.extend_string_eol_words(current_literal, p);
-}
-}
-break;
-}
-case 73: {
-{
-this.te = p+1;
-{
-string = this.tok2(this.ts, this.te);
-lookahead = this.extend_string_slice_end(lookahead);
-current_literal = this.lit();
-token = -1; if (!current_literal.heredoc()) { token = current_literal.nest_and_try_closing(string, this.ts, this.te, lookahead); } if (token >= 0) {
-if ((token === TK_tLABEL_END)) {
-p += 1;
-this.pop_literal();
-this.rootState = RL_LEX_EN_EXPR_LABELARG;
-} else {
-state = this.pop_literal(); if (state >= 0) {
-this.cs = (state);
-}
-}
-{
-p += 1;
-_trigger_goto = true;
-_goto_level = _out;
-break actsLoop;
-}
-} else {
-this.extend_string_for_token_range(current_literal, string);
-}
-}
-}
-break;
-}
-case 74: {
-{
-this.te = p;
-p = p - 1;
-{
-this.lit().extend_space(this.ts, this.te);
-}
-}
-break;
-}
-case 75: {
-{
-this.te = p+1;
-{
-this.lexer.emit4(TK_tREGEXP_OPT, this.tok2(this.ts, this.te - 1), this.ts, this.te - 1);
-p = p - 1;
-this.rootState = RL_LEX_EN_EXPR_END;
-{
-p += 1;
-_trigger_goto = true;
-_goto_level = _out;
-break actsLoop;
-}
-}
-}
-}
-case 76: {
-{
-this.te = p;
-p = p - 1;
-{
-unknown_options = rbUnknownRegexpOptions(this.tok2(this.ts, this.te));
-if ((unknown_options)) {
-this.lexer.diagError();
-}
-this.lexer.emit4(TK_tREGEXP_OPT, this.tok2(this.ts, this.te), this.ts, this.te);
-this.rootState = RL_LEX_EN_EXPR_END;
-{
-p += 1;
-_trigger_goto = true;
-_goto_level = _out;
-break actsLoop;
-}
-}
-}
-}
-case 77: {
-{
-this.te = p+1;
-{
-
-/* warning */
-p = this.ts - 1;
-this.rootState = RL_LEX_EN_EXPR_END;
-{
-p += 1;
-_trigger_goto = true;
-_goto_level = _out;
-break actsLoop;
-}
-}
-}
-}
-case 78: {
-{
-this.te = p;
-p = p - 1;
-{
-this.emit_character_constant();
-this.rootState = RL_LEX_EN_EXPR_END;
-{
-p += 1;
-_trigger_goto = true;
-_goto_level = _out;
-break actsLoop;
-}
-}
-}
-}
-case 79: {
-{
-this.te = p;
-p = p - 1;
-{
-p = this.ts - 1;
-this.rootState = RL_LEX_EN_EXPR_END;
-{
-p += 1;
-_trigger_goto = true;
-_goto_level = _out;
-break actsLoop;
-}
-}
-}
-}
-case 80: {
-{
-{
-p = (( this.te))-1;
-}
-{
-this.emit_character_constant();
-this.rootState = RL_LEX_EN_EXPR_END;
-{
-p += 1;
-_trigger_goto = true;
-_goto_level = _out;
-break actsLoop;
-}
-}
-}
-}
-case 81: {
-{
-this.te = p+1;
-{
-this.lexer.diagError();
-}
-}
-break;
-}
-}
+              case 0: {
+                this.newline_s = p;
+                break;
+              }
+              case 1: {
+                this.unicode_points(p);
+                break;
+              }
+              case 2: {
+                this.unescape_char(p);
+                break;
+              }
+              case 3: {
+                this.lexer.diagFatal();
+                break;
+              }
+              case 4: {
+                this.read_post_meta_or_ctrl_char(p);
+                break;
+              }
+              case 5: {
+                this.slash_c_char();
+                break;
+              }
+              case 6: {
+                this.slash_m_char();
+                break;
+              }
+              case 7: {
+                this.encode_escaped_char(p);
+                break;
+              }
+              case 8: {
+                this.escape = "\x7f";
+                this.hasEscape = true;
+                break;
+              }
+              case 9: {
+                this.encode_escaped_char(p);
+                break;
+              }
+              case 10: {
+                this.escape = rbByteChr(rbParseInt(this.tok2(this.escape_s, p), 8) % 256);
+                this.hasEscape = true;
+                break;
+              }
+              case 11: {
+                this.escape = rbByteChr(rbParseInt(this.tok2(this.escape_s + 1, p), 16));
+                this.hasEscape = true;
+                break;
+              }
+              case 12: {
+                this.lexer.diagFatal();
+                break;
+              }
+              case 13: {
+                this.escape = rbChr(rbParseInt(this.tok2(this.escape_s + 1, p), 16));
+                this.hasEscape = true;
+                break;
+              }
+              case 14: {
+                this.check_invalid_escapes(p);
+                break;
+              }
+              case 15: {
+                this.check_invalid_escapes(p);
+                break;
+              }
+              case 16: {
+                this.lexer.diagFatal();
+                break;
+              }
+              case 17: {
+                this.lexer.diagFatal();
+                break;
+              }
+              case 18: {
+                this.escape_s = p;
+                this.hasEscape = false;
+                break;
+              }
+              case 19: {
+                interp_var_kind = 3;
+                break;
+              }
+              case 20: {
+                interp_var_kind = 1;
+                break;
+              }
+              case 21: {
+                interp_var_kind = 2;
+                break;
+              }
+              case 22: {
+                this.hasEscape = false;
+                break;
+              }
+              case 25: {
+                this.te = p + 1;
+                break;
+              }
+              case 26: {
+                this.te = p + 1;
+                current_literal = this.lit();
+                this.extend_interp_code(current_literal);
+                this.rootState = RL_LEX_EN_EXPR_VALUE;
+                p += 1;
+                _trigger_goto = true;
+                _goto_level = _out;
+                break actsLoop;
+              }
+              case 27: {
+                this.te = p + 1;
+                current_literal = this.lit();
+                this.extend_string_eol_check_eof(current_literal, pe);
+                if (current_literal.heredoc()) {
+                  line = this.extend_string_eol_heredoc_line();
+                  if (current_literal.nest_and_try_closing(line, this.herebody_s, this.ts) >= 0) {
+                    this.herebody_s = this.te;
+                    p = current_literal.heredoc_e - 1;
+                    this.cs = this.pop_literal();
+                    p += 1;
+                    _trigger_goto = true;
+                    _goto_level = _out;
+                    break actsLoop;
+                  } else {
+                    current_literal.infer_indent_level(line);
+                    this.herebody_s = this.te;
+                  }
+                } else {
+                  if (current_literal.nest_and_try_closing(this.tok2(this.ts, this.te), this.ts, this.te) >= 0) {
+                    this.cs = this.pop_literal();
+                    p += 1;
+                    _trigger_goto = true;
+                    _goto_level = _out;
+                    break actsLoop;
+                  }
+                  p = this.extend_string_eol_heredoc_intertwined(p);
+                }
+                this.extend_string_eol_words(current_literal, p);
+                break;
+              }
+              case 28: {
+                this.te = p + 1;
+                string = this.tok2(this.ts, this.te);
+                lookahead = this.extend_string_slice_end(lookahead);
+                current_literal = this.lit();
+                token = -1;
+                if (!current_literal.heredoc()) {
+                  token = current_literal.nest_and_try_closing(string, this.ts, this.te, lookahead);
+                }
+                if (token >= 0) {
+                  if (token === TK_tLABEL_END) {
+                    p += 1;
+                    this.pop_literal();
+                    this.rootState = RL_LEX_EN_EXPR_LABELARG;
+                  } else {
+                    state = this.pop_literal();
+                    if (state >= 0) {
+                      this.cs = state;
+                    }
+                  }
+                  p += 1;
+                  _trigger_goto = true;
+                  _goto_level = _out;
+                  break actsLoop;
+                } else {
+                  this.extend_string_for_token_range(current_literal, string);
+                }
+                break;
+              }
+              case 29: {
+                this.te = p;
+                p = p - 1;
+                this.extend_interp_digit_var();
+                break;
+              }
+              case 30: {
+                this.te = p;
+                p = p - 1;
+                current_literal = this.lit();
+                this.extend_interp_var(current_literal);
+                this.emit_interp_var(interp_var_kind);
+                break;
+              }
+              case 31: {
+                this.te = p;
+                p = p - 1;
+                this.extend_string_escaped();
+                break;
+              }
+              case 32: {
+                this.te = p;
+                p = p - 1;
+                this.lit().extend_space(this.ts, this.te);
+                break;
+              }
+              case 33: {
+                this.te = p;
+                p = p - 1;
+                string = this.tok2(this.ts, this.te);
+                lookahead = this.extend_string_slice_end(lookahead);
+                current_literal = this.lit();
+                token = -1;
+                if (!current_literal.heredoc()) {
+                  token = current_literal.nest_and_try_closing(string, this.ts, this.te, lookahead);
+                }
+                if (token >= 0) {
+                  if (token === TK_tLABEL_END) {
+                    p += 1;
+                    this.pop_literal();
+                    this.rootState = RL_LEX_EN_EXPR_LABELARG;
+                  } else {
+                    state = this.pop_literal();
+                    if (state >= 0) {
+                      this.cs = state;
+                    }
+                  }
+                  p += 1;
+                  _trigger_goto = true;
+                  _goto_level = _out;
+                  break actsLoop;
+                } else {
+                  this.extend_string_for_token_range(current_literal, string);
+                }
+                break;
+              }
+              case 34: {
+                p = this.te - 1;
+                this.extend_string_escaped();
+                break;
+              }
+              case 35: {
+                p = this.te - 1;
+                string = this.tok2(this.ts, this.te);
+                lookahead = this.extend_string_slice_end(lookahead);
+                current_literal = this.lit();
+                token = -1;
+                if (!current_literal.heredoc()) {
+                  token = current_literal.nest_and_try_closing(string, this.ts, this.te, lookahead);
+                }
+                if (token >= 0) {
+                  if (token === TK_tLABEL_END) {
+                    p += 1;
+                    this.pop_literal();
+                    this.rootState = RL_LEX_EN_EXPR_LABELARG;
+                  } else {
+                    state = this.pop_literal();
+                    if (state >= 0) {
+                      this.cs = state;
+                    }
+                  }
+                  p += 1;
+                  _trigger_goto = true;
+                  _goto_level = _out;
+                  break actsLoop;
+                } else {
+                  this.extend_string_for_token_range(current_literal, string);
+                }
+                break;
+              }
+              case 36: {
+                this.te = p + 1;
+                current_literal = this.lit();
+                this.extend_interp_code(current_literal);
+                this.rootState = RL_LEX_EN_EXPR_VALUE;
+                p += 1;
+                _trigger_goto = true;
+                _goto_level = _out;
+                break actsLoop;
+              }
+              case 37: {
+                this.te = p + 1;
+                current_literal = this.lit();
+                this.extend_string_eol_check_eof(current_literal, pe);
+                if (current_literal.heredoc()) {
+                  line = this.extend_string_eol_heredoc_line();
+                  if (current_literal.nest_and_try_closing(line, this.herebody_s, this.ts) >= 0) {
+                    this.herebody_s = this.te;
+                    p = current_literal.heredoc_e - 1;
+                    this.cs = this.pop_literal();
+                    p += 1;
+                    _trigger_goto = true;
+                    _goto_level = _out;
+                    break actsLoop;
+                  } else {
+                    current_literal.infer_indent_level(line);
+                    this.herebody_s = this.te;
+                  }
+                } else {
+                  if (current_literal.nest_and_try_closing(this.tok2(this.ts, this.te), this.ts, this.te) >= 0) {
+                    this.cs = this.pop_literal();
+                    p += 1;
+                    _trigger_goto = true;
+                    _goto_level = _out;
+                    break actsLoop;
+                  }
+                  p = this.extend_string_eol_heredoc_intertwined(p);
+                }
+                this.extend_string_eol_words(current_literal, p);
+                break;
+              }
+              case 38: {
+                this.te = p + 1;
+                string = this.tok2(this.ts, this.te);
+                lookahead = this.extend_string_slice_end(lookahead);
+                current_literal = this.lit();
+                token = -1;
+                if (!current_literal.heredoc()) {
+                  token = current_literal.nest_and_try_closing(string, this.ts, this.te, lookahead);
+                }
+                if (token >= 0) {
+                  if (token === TK_tLABEL_END) {
+                    p += 1;
+                    this.pop_literal();
+                    this.rootState = RL_LEX_EN_EXPR_LABELARG;
+                  } else {
+                    state = this.pop_literal();
+                    if (state >= 0) {
+                      this.cs = state;
+                    }
+                  }
+                  p += 1;
+                  _trigger_goto = true;
+                  _goto_level = _out;
+                  break actsLoop;
+                } else {
+                  this.extend_string_for_token_range(current_literal, string);
+                }
+                break;
+              }
+              case 39: {
+                this.te = p;
+                p = p - 1;
+                this.extend_interp_digit_var();
+                break;
+              }
+              case 40: {
+                this.te = p;
+                p = p - 1;
+                current_literal = this.lit();
+                this.extend_interp_var(current_literal);
+                this.emit_interp_var(interp_var_kind);
+                break;
+              }
+              case 41: {
+                this.te = p;
+                p = p - 1;
+                this.extend_string_escaped();
+                break;
+              }
+              case 42: {
+                this.te = p;
+                p = p - 1;
+                string = this.tok2(this.ts, this.te);
+                lookahead = this.extend_string_slice_end(lookahead);
+                current_literal = this.lit();
+                token = -1;
+                if (!current_literal.heredoc()) {
+                  token = current_literal.nest_and_try_closing(string, this.ts, this.te, lookahead);
+                }
+                if (token >= 0) {
+                  if (token === TK_tLABEL_END) {
+                    p += 1;
+                    this.pop_literal();
+                    this.rootState = RL_LEX_EN_EXPR_LABELARG;
+                  } else {
+                    state = this.pop_literal();
+                    if (state >= 0) {
+                      this.cs = state;
+                    }
+                  }
+                  p += 1;
+                  _trigger_goto = true;
+                  _goto_level = _out;
+                  break actsLoop;
+                } else {
+                  this.extend_string_for_token_range(current_literal, string);
+                }
+                break;
+              }
+              case 43: {
+                p = this.te - 1;
+                this.extend_string_escaped();
+                break;
+              }
+              case 44: {
+                p = this.te - 1;
+                string = this.tok2(this.ts, this.te);
+                lookahead = this.extend_string_slice_end(lookahead);
+                current_literal = this.lit();
+                token = -1;
+                if (!current_literal.heredoc()) {
+                  token = current_literal.nest_and_try_closing(string, this.ts, this.te, lookahead);
+                }
+                if (token >= 0) {
+                  if (token === TK_tLABEL_END) {
+                    p += 1;
+                    this.pop_literal();
+                    this.rootState = RL_LEX_EN_EXPR_LABELARG;
+                  } else {
+                    state = this.pop_literal();
+                    if (state >= 0) {
+                      this.cs = state;
+                    }
+                  }
+                  p += 1;
+                  _trigger_goto = true;
+                  _goto_level = _out;
+                  break actsLoop;
+                } else {
+                  this.extend_string_for_token_range(current_literal, string);
+                }
+                break;
+              }
+              case 45: {
+                this.te = p + 1;
+                this.extend_string_escaped();
+                break;
+              }
+              case 46: {
+                this.te = p + 1;
+                current_literal = this.lit();
+                this.extend_string_eol_check_eof(current_literal, pe);
+                if (current_literal.heredoc()) {
+                  line = this.extend_string_eol_heredoc_line();
+                  if (current_literal.nest_and_try_closing(line, this.herebody_s, this.ts) >= 0) {
+                    this.herebody_s = this.te;
+                    p = current_literal.heredoc_e - 1;
+                    this.cs = this.pop_literal();
+                    p += 1;
+                    _trigger_goto = true;
+                    _goto_level = _out;
+                    break actsLoop;
+                  } else {
+                    current_literal.infer_indent_level(line);
+                    this.herebody_s = this.te;
+                  }
+                } else {
+                  if (current_literal.nest_and_try_closing(this.tok2(this.ts, this.te), this.ts, this.te) >= 0) {
+                    this.cs = this.pop_literal();
+                    p += 1;
+                    _trigger_goto = true;
+                    _goto_level = _out;
+                    break actsLoop;
+                  }
+                  p = this.extend_string_eol_heredoc_intertwined(p);
+                }
+                this.extend_string_eol_words(current_literal, p);
+                break;
+              }
+              case 47: {
+                this.te = p + 1;
+                string = this.tok2(this.ts, this.te);
+                lookahead = this.extend_string_slice_end(lookahead);
+                current_literal = this.lit();
+                token = -1;
+                if (!current_literal.heredoc()) {
+                  token = current_literal.nest_and_try_closing(string, this.ts, this.te, lookahead);
+                }
+                if (token >= 0) {
+                  if (token === TK_tLABEL_END) {
+                    p += 1;
+                    this.pop_literal();
+                    this.rootState = RL_LEX_EN_EXPR_LABELARG;
+                  } else {
+                    state = this.pop_literal();
+                    if (state >= 0) {
+                      this.cs = state;
+                    }
+                  }
+                  p += 1;
+                  _trigger_goto = true;
+                  _goto_level = _out;
+                  break actsLoop;
+                } else {
+                  this.extend_string_for_token_range(current_literal, string);
+                }
+                break;
+              }
+              case 48: {
+                this.te = p;
+                p = p - 1;
+                this.lit().extend_space(this.ts, this.te);
+                break;
+              }
+              case 49: {
+                this.te = p;
+                p = p - 1;
+                string = this.tok2(this.ts, this.te);
+                lookahead = this.extend_string_slice_end(lookahead);
+                current_literal = this.lit();
+                token = -1;
+                if (!current_literal.heredoc()) {
+                  token = current_literal.nest_and_try_closing(string, this.ts, this.te, lookahead);
+                }
+                if (token >= 0) {
+                  if (token === TK_tLABEL_END) {
+                    p += 1;
+                    this.pop_literal();
+                    this.rootState = RL_LEX_EN_EXPR_LABELARG;
+                  } else {
+                    state = this.pop_literal();
+                    if (state >= 0) {
+                      this.cs = state;
+                    }
+                  }
+                  p += 1;
+                  _trigger_goto = true;
+                  _goto_level = _out;
+                  break actsLoop;
+                } else {
+                  this.extend_string_for_token_range(current_literal, string);
+                }
+                break;
+              }
+              case 50: {
+                this.te = p + 1;
+                current_literal = this.lit();
+                this.extend_string_eol_check_eof(current_literal, pe);
+                if (current_literal.heredoc()) {
+                  line = this.extend_string_eol_heredoc_line();
+                  if (current_literal.nest_and_try_closing(line, this.herebody_s, this.ts) >= 0) {
+                    this.herebody_s = this.te;
+                    p = current_literal.heredoc_e - 1;
+                    this.cs = this.pop_literal();
+                    p += 1;
+                    _trigger_goto = true;
+                    _goto_level = _out;
+                    break actsLoop;
+                  } else {
+                    current_literal.infer_indent_level(line);
+                    this.herebody_s = this.te;
+                  }
+                } else {
+                  if (current_literal.nest_and_try_closing(this.tok2(this.ts, this.te), this.ts, this.te) >= 0) {
+                    this.cs = this.pop_literal();
+                    p += 1;
+                    _trigger_goto = true;
+                    _goto_level = _out;
+                    break actsLoop;
+                  }
+                  p = this.extend_string_eol_heredoc_intertwined(p);
+                }
+                this.extend_string_eol_words(current_literal, p);
+                break;
+              }
+              case 51: {
+                this.te = p + 1;
+                this.extend_string_escaped();
+                break;
+              }
+              case 52: {
+                this.te = p + 1;
+                current_literal = this.lit();
+                this.extend_string_eol_check_eof(current_literal, pe);
+                if (current_literal.heredoc()) {
+                  line = this.extend_string_eol_heredoc_line();
+                  if (current_literal.nest_and_try_closing(line, this.herebody_s, this.ts) >= 0) {
+                    this.herebody_s = this.te;
+                    p = current_literal.heredoc_e - 1;
+                    this.cs = this.pop_literal();
+                    p += 1;
+                    _trigger_goto = true;
+                    _goto_level = _out;
+                    break actsLoop;
+                  } else {
+                    current_literal.infer_indent_level(line);
+                    this.herebody_s = this.te;
+                  }
+                } else {
+                  if (current_literal.nest_and_try_closing(this.tok2(this.ts, this.te), this.ts, this.te) >= 0) {
+                    this.cs = this.pop_literal();
+                    p += 1;
+                    _trigger_goto = true;
+                    _goto_level = _out;
+                    break actsLoop;
+                  }
+                  p = this.extend_string_eol_heredoc_intertwined(p);
+                }
+                this.extend_string_eol_words(current_literal, p);
+                break;
+              }
+              case 53: {
+                this.te = p + 1;
+                string = this.tok2(this.ts, this.te);
+                lookahead = this.extend_string_slice_end(lookahead);
+                current_literal = this.lit();
+                token = -1;
+                if (!current_literal.heredoc()) {
+                  token = current_literal.nest_and_try_closing(string, this.ts, this.te, lookahead);
+                }
+                if (token >= 0) {
+                  if (token === TK_tLABEL_END) {
+                    p += 1;
+                    this.pop_literal();
+                    this.rootState = RL_LEX_EN_EXPR_LABELARG;
+                  } else {
+                    state = this.pop_literal();
+                    if (state >= 0) {
+                      this.cs = state;
+                    }
+                  }
+                  p += 1;
+                  _trigger_goto = true;
+                  _goto_level = _out;
+                  break actsLoop;
+                } else {
+                  this.extend_string_for_token_range(current_literal, string);
+                }
+                break;
+              }
+              case 54: {
+                this.te = p;
+                p = p - 1;
+                string = this.tok2(this.ts, this.te);
+                lookahead = this.extend_string_slice_end(lookahead);
+                current_literal = this.lit();
+                token = -1;
+                if (!current_literal.heredoc()) {
+                  token = current_literal.nest_and_try_closing(string, this.ts, this.te, lookahead);
+                }
+                if (token >= 0) {
+                  if (token === TK_tLABEL_END) {
+                    p += 1;
+                    this.pop_literal();
+                    this.rootState = RL_LEX_EN_EXPR_LABELARG;
+                  } else {
+                    state = this.pop_literal();
+                    if (state >= 0) {
+                      this.cs = state;
+                    }
+                  }
+                  p += 1;
+                  _trigger_goto = true;
+                  _goto_level = _out;
+                  break actsLoop;
+                } else {
+                  this.extend_string_for_token_range(current_literal, string);
+                }
+                break;
+              }
+              case 55: {
+                this.te = p + 1;
+                current_literal = this.lit();
+                this.extend_interp_code(current_literal);
+                this.rootState = RL_LEX_EN_EXPR_VALUE;
+                p += 1;
+                _trigger_goto = true;
+                _goto_level = _out;
+                break actsLoop;
+              }
+              case 56: {
+                this.te = p + 1;
+                current_literal = this.lit();
+                this.extend_string_eol_check_eof(current_literal, pe);
+                if (current_literal.heredoc()) {
+                  line = this.extend_string_eol_heredoc_line();
+                  if (current_literal.nest_and_try_closing(line, this.herebody_s, this.ts) >= 0) {
+                    this.herebody_s = this.te;
+                    p = current_literal.heredoc_e - 1;
+                    this.cs = this.pop_literal();
+                    p += 1;
+                    _trigger_goto = true;
+                    _goto_level = _out;
+                    break actsLoop;
+                  } else {
+                    current_literal.infer_indent_level(line);
+                    this.herebody_s = this.te;
+                  }
+                } else {
+                  if (current_literal.nest_and_try_closing(this.tok2(this.ts, this.te), this.ts, this.te) >= 0) {
+                    this.cs = this.pop_literal();
+                    p += 1;
+                    _trigger_goto = true;
+                    _goto_level = _out;
+                    break actsLoop;
+                  }
+                  p = this.extend_string_eol_heredoc_intertwined(p);
+                }
+                this.extend_string_eol_words(current_literal, p);
+                break;
+              }
+              case 57: {
+                this.te = p + 1;
+                string = this.tok2(this.ts, this.te);
+                lookahead = this.extend_string_slice_end(lookahead);
+                current_literal = this.lit();
+                token = -1;
+                if (!current_literal.heredoc()) {
+                  token = current_literal.nest_and_try_closing(string, this.ts, this.te, lookahead);
+                }
+                if (token >= 0) {
+                  if (token === TK_tLABEL_END) {
+                    p += 1;
+                    this.pop_literal();
+                    this.rootState = RL_LEX_EN_EXPR_LABELARG;
+                  } else {
+                    state = this.pop_literal();
+                    if (state >= 0) {
+                      this.cs = state;
+                    }
+                  }
+                  p += 1;
+                  _trigger_goto = true;
+                  _goto_level = _out;
+                  break actsLoop;
+                } else {
+                  this.extend_string_for_token_range(current_literal, string);
+                }
+                break;
+              }
+              case 58: {
+                this.te = p;
+                p = p - 1;
+                this.extend_interp_digit_var();
+                break;
+              }
+              case 59: {
+                this.te = p;
+                p = p - 1;
+                current_literal = this.lit();
+                this.extend_interp_var(current_literal);
+                this.emit_interp_var(interp_var_kind);
+                break;
+              }
+              case 60: {
+                this.te = p;
+                p = p - 1;
+                string = this.tok2(this.ts, this.te);
+                lookahead = this.extend_string_slice_end(lookahead);
+                current_literal = this.lit();
+                token = -1;
+                if (!current_literal.heredoc()) {
+                  token = current_literal.nest_and_try_closing(string, this.ts, this.te, lookahead);
+                }
+                if (token >= 0) {
+                  if (token === TK_tLABEL_END) {
+                    p += 1;
+                    this.pop_literal();
+                    this.rootState = RL_LEX_EN_EXPR_LABELARG;
+                  } else {
+                    state = this.pop_literal();
+                    if (state >= 0) {
+                      this.cs = state;
+                    }
+                  }
+                  p += 1;
+                  _trigger_goto = true;
+                  _goto_level = _out;
+                  break actsLoop;
+                } else {
+                  this.extend_string_for_token_range(current_literal, string);
+                }
+                break;
+              }
+              case 61: {
+                p = this.te - 1;
+                string = this.tok2(this.ts, this.te);
+                lookahead = this.extend_string_slice_end(lookahead);
+                current_literal = this.lit();
+                token = -1;
+                if (!current_literal.heredoc()) {
+                  token = current_literal.nest_and_try_closing(string, this.ts, this.te, lookahead);
+                }
+                if (token >= 0) {
+                  if (token === TK_tLABEL_END) {
+                    p += 1;
+                    this.pop_literal();
+                    this.rootState = RL_LEX_EN_EXPR_LABELARG;
+                  } else {
+                    state = this.pop_literal();
+                    if (state >= 0) {
+                      this.cs = state;
+                    }
+                  }
+                  p += 1;
+                  _trigger_goto = true;
+                  _goto_level = _out;
+                  break actsLoop;
+                } else {
+                  this.extend_string_for_token_range(current_literal, string);
+                }
+                break;
+              }
+              case 62: {
+                this.te = p + 1;
+                current_literal = this.lit();
+                this.extend_string_eol_check_eof(current_literal, pe);
+                if (current_literal.heredoc()) {
+                  line = this.extend_string_eol_heredoc_line();
+                  if (current_literal.nest_and_try_closing(line, this.herebody_s, this.ts) >= 0) {
+                    this.herebody_s = this.te;
+                    p = current_literal.heredoc_e - 1;
+                    this.cs = this.pop_literal();
+                    p += 1;
+                    _trigger_goto = true;
+                    _goto_level = _out;
+                    break actsLoop;
+                  } else {
+                    current_literal.infer_indent_level(line);
+                    this.herebody_s = this.te;
+                  }
+                } else {
+                  if (current_literal.nest_and_try_closing(this.tok2(this.ts, this.te), this.ts, this.te) >= 0) {
+                    this.cs = this.pop_literal();
+                    p += 1;
+                    _trigger_goto = true;
+                    _goto_level = _out;
+                    break actsLoop;
+                  }
+                  p = this.extend_string_eol_heredoc_intertwined(p);
+                }
+                this.extend_string_eol_words(current_literal, p);
+                break;
+              }
+              case 63: {
+                this.te = p + 1;
+                string = this.tok2(this.ts, this.te);
+                lookahead = this.extend_string_slice_end(lookahead);
+                current_literal = this.lit();
+                token = -1;
+                if (!current_literal.heredoc()) {
+                  token = current_literal.nest_and_try_closing(string, this.ts, this.te, lookahead);
+                }
+                if (token >= 0) {
+                  if (token === TK_tLABEL_END) {
+                    p += 1;
+                    this.pop_literal();
+                    this.rootState = RL_LEX_EN_EXPR_LABELARG;
+                  } else {
+                    state = this.pop_literal();
+                    if (state >= 0) {
+                      this.cs = state;
+                    }
+                  }
+                  p += 1;
+                  _trigger_goto = true;
+                  _goto_level = _out;
+                  break actsLoop;
+                } else {
+                  this.extend_string_for_token_range(current_literal, string);
+                }
+                break;
+              }
+              case 64: {
+                this.te = p + 1;
+                current_literal = this.lit();
+                this.extend_interp_code(current_literal);
+                this.rootState = RL_LEX_EN_EXPR_VALUE;
+                p += 1;
+                _trigger_goto = true;
+                _goto_level = _out;
+                break actsLoop;
+              }
+              case 65: {
+                this.te = p + 1;
+                current_literal = this.lit();
+                this.extend_string_eol_check_eof(current_literal, pe);
+                if (current_literal.heredoc()) {
+                  line = this.extend_string_eol_heredoc_line();
+                  if (current_literal.nest_and_try_closing(line, this.herebody_s, this.ts) >= 0) {
+                    this.herebody_s = this.te;
+                    p = current_literal.heredoc_e - 1;
+                    this.cs = this.pop_literal();
+                    p += 1;
+                    _trigger_goto = true;
+                    _goto_level = _out;
+                    break actsLoop;
+                  } else {
+                    current_literal.infer_indent_level(line);
+                    this.herebody_s = this.te;
+                  }
+                } else {
+                  if (current_literal.nest_and_try_closing(this.tok2(this.ts, this.te), this.ts, this.te) >= 0) {
+                    this.cs = this.pop_literal();
+                    p += 1;
+                    _trigger_goto = true;
+                    _goto_level = _out;
+                    break actsLoop;
+                  }
+                  p = this.extend_string_eol_heredoc_intertwined(p);
+                }
+                this.extend_string_eol_words(current_literal, p);
+                break;
+              }
+              case 66: {
+                this.te = p + 1;
+                string = this.tok2(this.ts, this.te);
+                lookahead = this.extend_string_slice_end(lookahead);
+                current_literal = this.lit();
+                token = -1;
+                if (!current_literal.heredoc()) {
+                  token = current_literal.nest_and_try_closing(string, this.ts, this.te, lookahead);
+                }
+                if (token >= 0) {
+                  if (token === TK_tLABEL_END) {
+                    p += 1;
+                    this.pop_literal();
+                    this.rootState = RL_LEX_EN_EXPR_LABELARG;
+                  } else {
+                    state = this.pop_literal();
+                    if (state >= 0) {
+                      this.cs = state;
+                    }
+                  }
+                  p += 1;
+                  _trigger_goto = true;
+                  _goto_level = _out;
+                  break actsLoop;
+                } else {
+                  this.extend_string_for_token_range(current_literal, string);
+                }
+                break;
+              }
+              case 67: {
+                this.te = p;
+                p = p - 1;
+                this.extend_interp_digit_var();
+                break;
+              }
+              case 68: {
+                this.te = p;
+                p = p - 1;
+                current_literal = this.lit();
+                this.extend_interp_var(current_literal);
+                this.emit_interp_var(interp_var_kind);
+                break;
+              }
+              case 69: {
+                this.te = p;
+                p = p - 1;
+                this.lit().extend_space(this.ts, this.te);
+                break;
+              }
+              case 70: {
+                this.te = p;
+                p = p - 1;
+                string = this.tok2(this.ts, this.te);
+                lookahead = this.extend_string_slice_end(lookahead);
+                current_literal = this.lit();
+                token = -1;
+                if (!current_literal.heredoc()) {
+                  token = current_literal.nest_and_try_closing(string, this.ts, this.te, lookahead);
+                }
+                if (token >= 0) {
+                  if (token === TK_tLABEL_END) {
+                    p += 1;
+                    this.pop_literal();
+                    this.rootState = RL_LEX_EN_EXPR_LABELARG;
+                  } else {
+                    state = this.pop_literal();
+                    if (state >= 0) {
+                      this.cs = state;
+                    }
+                  }
+                  p += 1;
+                  _trigger_goto = true;
+                  _goto_level = _out;
+                  break actsLoop;
+                } else {
+                  this.extend_string_for_token_range(current_literal, string);
+                }
+                break;
+              }
+              case 71: {
+                p = this.te - 1;
+                string = this.tok2(this.ts, this.te);
+                lookahead = this.extend_string_slice_end(lookahead);
+                current_literal = this.lit();
+                token = -1;
+                if (!current_literal.heredoc()) {
+                  token = current_literal.nest_and_try_closing(string, this.ts, this.te, lookahead);
+                }
+                if (token >= 0) {
+                  if (token === TK_tLABEL_END) {
+                    p += 1;
+                    this.pop_literal();
+                    this.rootState = RL_LEX_EN_EXPR_LABELARG;
+                  } else {
+                    state = this.pop_literal();
+                    if (state >= 0) {
+                      this.cs = state;
+                    }
+                  }
+                  p += 1;
+                  _trigger_goto = true;
+                  _goto_level = _out;
+                  break actsLoop;
+                } else {
+                  this.extend_string_for_token_range(current_literal, string);
+                }
+                break;
+              }
+              case 72: {
+                this.te = p + 1;
+                current_literal = this.lit();
+                this.extend_string_eol_check_eof(current_literal, pe);
+                if (current_literal.heredoc()) {
+                  line = this.extend_string_eol_heredoc_line();
+                  if (current_literal.nest_and_try_closing(line, this.herebody_s, this.ts) >= 0) {
+                    this.herebody_s = this.te;
+                    p = current_literal.heredoc_e - 1;
+                    this.cs = this.pop_literal();
+                    p += 1;
+                    _trigger_goto = true;
+                    _goto_level = _out;
+                    break actsLoop;
+                  } else {
+                    current_literal.infer_indent_level(line);
+                    this.herebody_s = this.te;
+                  }
+                } else {
+                  if (current_literal.nest_and_try_closing(this.tok2(this.ts, this.te), this.ts, this.te) >= 0) {
+                    this.cs = this.pop_literal();
+                    p += 1;
+                    _trigger_goto = true;
+                    _goto_level = _out;
+                    break actsLoop;
+                  }
+                  p = this.extend_string_eol_heredoc_intertwined(p);
+                }
+                this.extend_string_eol_words(current_literal, p);
+                break;
+              }
+              case 73: {
+                this.te = p + 1;
+                string = this.tok2(this.ts, this.te);
+                lookahead = this.extend_string_slice_end(lookahead);
+                current_literal = this.lit();
+                token = -1;
+                if (!current_literal.heredoc()) {
+                  token = current_literal.nest_and_try_closing(string, this.ts, this.te, lookahead);
+                }
+                if (token >= 0) {
+                  if (token === TK_tLABEL_END) {
+                    p += 1;
+                    this.pop_literal();
+                    this.rootState = RL_LEX_EN_EXPR_LABELARG;
+                  } else {
+                    state = this.pop_literal();
+                    if (state >= 0) {
+                      this.cs = state;
+                    }
+                  }
+                  p += 1;
+                  _trigger_goto = true;
+                  _goto_level = _out;
+                  break actsLoop;
+                } else {
+                  this.extend_string_for_token_range(current_literal, string);
+                }
+                break;
+              }
+              case 74: {
+                this.te = p;
+                p = p - 1;
+                this.lit().extend_space(this.ts, this.te);
+                break;
+              }
+              case 75: {
+                this.te = p + 1;
+                this.lexer.emit4(TK_tREGEXP_OPT, this.tok2(this.ts, this.te - 1), this.ts, this.te - 1);
+                p = p - 1;
+                this.rootState = RL_LEX_EN_EXPR_END;
+                p += 1;
+                _trigger_goto = true;
+                _goto_level = _out;
+                break actsLoop;
+              }
+              case 76: {
+                this.te = p;
+                p = p - 1;
+                unknown_options = rbUnknownRegexpOptions(this.tok2(this.ts, this.te));
+                if (unknown_options) {
+                  this.lexer.diagError();
+                }
+                this.lexer.emit4(TK_tREGEXP_OPT, this.tok2(this.ts, this.te), this.ts, this.te);
+                this.rootState = RL_LEX_EN_EXPR_END;
+                p += 1;
+                _trigger_goto = true;
+                _goto_level = _out;
+                break actsLoop;
+              }
+              case 77: {
+                this.te = p + 1;
+                /* warning */
+                p = this.ts - 1;
+                this.rootState = RL_LEX_EN_EXPR_END;
+                p += 1;
+                _trigger_goto = true;
+                _goto_level = _out;
+                break actsLoop;
+              }
+              case 78: {
+                this.te = p;
+                p = p - 1;
+                this.emit_character_constant();
+                this.rootState = RL_LEX_EN_EXPR_END;
+                p += 1;
+                _trigger_goto = true;
+                _goto_level = _out;
+                break actsLoop;
+              }
+              case 79: {
+                this.te = p;
+                p = p - 1;
+                p = this.ts - 1;
+                this.rootState = RL_LEX_EN_EXPR_END;
+                p += 1;
+                _trigger_goto = true;
+                _goto_level = _out;
+                break actsLoop;
+              }
+              case 80: {
+                p = this.te - 1;
+                this.emit_character_constant();
+                this.rootState = RL_LEX_EN_EXPR_END;
+                p += 1;
+                _trigger_goto = true;
+                _goto_level = _out;
+                break actsLoop;
+              }
+              case 81: {
+                this.te = p + 1;
+                this.lexer.diagError();
+                break;
+              }
+            }
             if (_trigger_goto || this.lexer.fatal) {
               break;
             }
@@ -3068,6518 +2815,3926 @@ export class RbLexer {
         this.cs = RL_LEX_TRANS_TARGS_D[_trans];
         if (RL_LEX_TRANS_ACTIONS_D[_trans] !== 0) {
           switch (RL_LEX_TRANS_ACTIONS_D[_trans]) {
-case 14: {
-{
-this.newline_s = p;
-}
-break;
-}
-case 15: {
-{
-p = this.on_newline(p);
-}
-break;
-}
-case 45: {
-{
-this.sharp_s = p - 1;
-}
-break;
-}
-case 49: {
-{
-this.emit_comment_from_range(p, pe);
-}
-break;
-}
-case 190: {
-{
-tm = p;
-}
-break;
-}
-case 22: {
-{
-tm = p;
-}
-break;
-}
-case 24: {
-{
-tm = p;
-}
-break;
-}
-case 26: {
-{
-tm = p;
-}
-break;
-}
-case 56: {
-{
-heredoc_e      = p;
-}
-break;
-}
-case 229: {
-{
-tm = p - 1;
+            case 14: {
+              this.newline_s = p;
+              break;
+            }
+            case 15: {
+              p = this.on_newline(p);
+              break;
+            }
+            case 45: {
+              this.sharp_s = p - 1;
+              break;
+            }
+            case 49: {
+              this.emit_comment_from_range(p, pe);
+              break;
+            }
+            case 190: {
+              tm = p;
+              break;
+            }
+            case 22: {
+              tm = p;
+              break;
+            }
+            case 24: {
+              tm = p;
+              break;
+            }
+            case 26: {
+              tm = p;
+              break;
+            }
+            case 56: {
+              heredoc_e = p;
+              break;
+            }
+            case 229: {
+              tm = p - 1;
+              break;
+            }
+            case 232: {
+              tm = p - 2;
+              break;
+            }
+            case 244: {
+              tm = p;
+              break;
+            }
+            case 188: {
+              ident_tok = this.tok2(this.ts, this.te);
+              ident_ts = this.ts;
+              ident_te = this.te;
+              break;
+            }
+            case 331: {
+              this.num_base = 16;
+              this.num_digits_s = p;
+              break;
+            }
+            case 325: {
+              this.num_base = 10;
+              this.num_digits_s = p;
+              break;
+            }
+            case 328: {
+              this.num_base = 8;
+              this.num_digits_s = p;
+              break;
+            }
+            case 322: {
+              this.num_base = 2;
+              this.num_digits_s = p;
+              break;
+            }
+            case 337: {
+              this.num_base = 10;
+              this.num_digits_s = this.ts;
+              break;
+            }
+            case 299: {
+              this.num_base = 8;
+              this.num_digits_s = this.ts;
+              break;
+            }
+            case 314: {
+              this.num_suffix_s = p;
+              break;
+            }
+            case 307: {
+              this.num_suffix_s = p;
+              break;
+            }
+            case 304: {
+              this.num_suffix_s = p;
+              break;
+            }
+            case 74: {
+              tm = p;
+              break;
+            }
+            case 65: {
+              this.te = p + 1;
+              break;
+            }
+            case 1: {
+              this.te = p + 1;
+              this.emitGlobalVarHere();
+              this.cs = this.stack_pop();
+              p += 1;
+              _goto_level = _out;
+              continue;
+            }
+            case 87: {
+              this.te = p;
+              p = p - 1;
+              this.emitGlobalVarHere();
+              this.cs = this.stack_pop();
+              p += 1;
+              _goto_level = _out;
+              continue;
+            }
+            case 89: {
+              this.te = p;
+              p = p - 1;
+              this.emit_class_var(this.ts, this.te);
+              this.cs = this.stack_pop();
+              p += 1;
+              _goto_level = _out;
+              continue;
+            }
+            case 88: {
+              this.te = p;
+              p = p - 1;
+              this.emit_instance_var(this.ts, this.te);
+              this.cs = this.stack_pop();
+              p += 1;
+              _goto_level = _out;
+              continue;
+            }
+            case 110: {
+              this.te = p + 1;
+              this.emit_table(4);
+              this.cs = 247;
+              p += 1;
+              _goto_level = _out;
+              continue;
+            }
+            case 96: {
+              this.te = p + 1;
+              this.emit1(TK_tIDENTIFIER);
+              this.cs = 247;
+              p += 1;
+              _goto_level = _out;
+              continue;
+            }
+            case 3: {
+              this.te = p + 1;
+              p = this.ts - 1;
+              this.cs = 516;
+              this.stackPush(this.cs);
 
-}
-break;
-}
-case 232: {
-{
-tm = p - 2;
+              this.cs = 129;
+              _goto_level = _again;
+              continue;
+            }
+            case 93: {
+              this.te = p + 1;
+              this.emit_table(1);
+              this.cs = 247;
+              p += 1;
+              _goto_level = _out;
+              continue;
+            }
+            case 105: {
+              this.te = p + 1;
+              p = p - 1;
+              p = p - 1;
+              this.cs = 516;
+              _goto_level = _again;
+              continue;
+            }
+            case 5: {
+              this.te = p + 1;
+              if (false) {
+                type = this.tok2(this.ts, this.te - 1);
+                delimiter = this.tok2(this.te - 1, this.te);
+                this.st().pushLiteral(type, delimiter, this.ts);
+                this.cs = 128;
+                _goto_level = _again;
+                continue;
+              } else {
+                p = this.ts - 1;
+                this.cs = 516;
+                _goto_level = _again;
+                continue;
+              }
+            }
+            case 92: {
+              this.te = p + 1;
+              p = p - 1;
+              this.cs = 516;
+              _goto_level = _again;
+              continue;
+            }
+            case 91: {
+              this.te = p + 1;
+              p = p - 1;
+              p += 1;
+              _goto_level = _out;
+              continue;
+            }
+            case 109: {
+              this.te = p;
+              p = p - 1;
+              this.emit_table(4);
+              this.cs = 247;
+              p += 1;
+              _goto_level = _out;
+              continue;
+            }
+            case 106: {
+              this.te = p;
+              p = p - 1;
+              this.emit1(TK_tCONSTANT);
+              this.cs = 247;
+              p += 1;
+              _goto_level = _out;
+              continue;
+            }
+            case 108: {
+              this.te = p;
+              p = p - 1;
+              this.emit1(TK_tIDENTIFIER);
+              this.cs = 247;
+              p += 1;
+              _goto_level = _out;
+              continue;
+            }
+            case 103: {
+              this.te = p;
+              p = p - 1;
+              p = this.ts - 1;
+              this.cs = 516;
+              this.stackPush(this.cs);
 
-}
-break;
-}
-case 244: {
-{
-tm = p;
-}
-break;
-}
-case 188: {
-{
-ident_tok = this.tok2(this.ts, this.te);
-ident_ts = this.ts;
-ident_te = this.te;
-}
-break;
-}
-case 331: {
-{
-this.num_base = 16;
-this.num_digits_s = p;
-}
-break;
-}
-case 325: {
-{
-this.num_base = 10;
-this.num_digits_s = p;
-}
-break;
-}
-case 328: {
-{
-this.num_base = 8;
-this.num_digits_s = p;
-}
-break;
-}
-case 322: {
-{
-this.num_base = 2;
-this.num_digits_s = p;
-}
-break;
-}
-case 337: {
-{
-this.num_base = 10;
-this.num_digits_s = this.ts;
-}
-break;
-}
-case 299: {
-{
-this.num_base = 8;
-this.num_digits_s = this.ts;
-}
-break;
-}
-case 314: {
-{
-this.num_suffix_s = p;
-}
-break;
-}
-case 307: {
-{
-this.num_suffix_s = p;
-}
-break;
-}
-case 304: {
-{
-this.num_suffix_s = p;
-}
-break;
-}
-case 74: {
-{
-tm = p;
-}
-break;
-}
-case 65: {
-{
-this.te = p+1;
-}
-break;
-}
-case 1: {
-{
-this.te = p+1;
-{
-this.emitGlobalVarHere();
-this.cs = (this.stack_pop());
-{
-p += 1;
-_goto_level = _out;
-continue;
-}
-}
-}
-}
-case 87: {
-{
-this.te = p;
-p = p - 1;
-{
-this.emitGlobalVarHere();
-this.cs = (this.stack_pop());
-{
-p += 1;
-_goto_level = _out;
-continue;
-}
-}
-}
-}
-case 89: {
-{
-this.te = p;
-p = p - 1;
-{
-this.emit_class_var(this.ts, this.te);
-this.cs = (this.stack_pop());
-{
-p += 1;
-_goto_level = _out;
-continue;
-}
-}
-}
-}
-case 88: {
-{
-this.te = p;
-p = p - 1;
-{
-this.emit_instance_var(this.ts, this.te);
-this.cs = (this.stack_pop());
-{
-p += 1;
-_goto_level = _out;
-continue;
-}
-}
-}
-}
-case 110: {
-{
-this.te = p+1;
-{
-this.emit_table(4);
-this.cs = 247;
-{
-p += 1;
-_goto_level = _out;
-continue;
-}
-}
-}
-}
-case 96: {
-{
-this.te = p+1;
-{
-this.emit1(TK_tIDENTIFIER);
-this.cs = 247;
-{
-p += 1;
-_goto_level = _out;
-continue;
-}
-}
-}
-}
-case 3: {
-{
-this.te = p+1;
-{
-p = this.ts - 1;
-this.cs = 516;
-{
-this.stackPush(this.cs);
+              this.cs = 129;
+              _goto_level = _again;
+              continue;
+            }
+            case 99: {
+              this.te = p;
+              p = p - 1;
+              this.emit_table(1);
+              this.cs = 247;
+              p += 1;
+              _goto_level = _out;
+              continue;
+            }
+            case 104: {
+              this.te = p;
+              p = p - 1;
+              p = p - 1;
+              this.cs = 345;
+              _goto_level = _again;
+              continue;
+            }
+            case 97: {
+              this.te = p;
+              p = p - 1;
+              break;
+            }
+            case 102: {
+              this.te = p;
+              p = p - 1;
+              p = p - 1;
+              this.cs = 516;
+              _goto_level = _again;
+              continue;
+            }
+            case 4: {
+              p = this.te - 1;
+              this.emit_table(1);
+              this.cs = 247;
+              p += 1;
+              _goto_level = _out;
+              continue;
+            }
+            case 2: {
+              p = this.te - 1;
+              p = p - 1;
+              this.cs = 516;
+              _goto_level = _again;
+              continue;
+            }
+            case 95: {
+              switch (this.act) {
+                case 4: {
+                  p = this.te - 1;
+                  this.emit_table(4);
+                  this.cs = 247;
+                  p += 1;
+                  _goto_level = _out;
+                  continue;
+                }
+                case 5: {
+                  p = this.te - 1;
+                  this.emit1(TK_tCONSTANT);
+                  this.cs = 247;
+                  p += 1;
+                  _goto_level = _out;
+                  continue;
+                }
+                case 6: {
+                  p = this.te - 1;
+                  this.emit1(TK_tIDENTIFIER);
+                  this.cs = 247;
+                  p += 1;
+                  _goto_level = _out;
+                  continue;
+                }
+              }
+              break;
+            }
+            case 7: {
+              this.te = p + 1;
+              this.emit4(TK_tLABEL, this.tok2(this.ts, this.te - 2), this.ts, this.te - 1);
+              p = p - 1;
+              this.cs = 501;
+              p += 1;
+              _goto_level = _out;
+              continue;
+            }
+            case 8: {
+              this.te = p + 1;
+              if (true && this.ctx.in_argdef) {
+                this.emit2(TK_tBDOT3, "...");
+                this.cs = 516;
+                p += 1;
+                _goto_level = _out;
+                continue;
+              } else {
+                p -= 3;
+                this.cs = 516;
+                _goto_level = _again;
+                continue;
+              }
+            }
+            case 112: {
+              this.te = p + 1;
+              p = p - 1;
+              this.cs = 516;
+              _goto_level = _again;
+              continue;
+            }
+            case 111: {
+              this.te = p + 1;
+              p = p - 1;
+              p += 1;
+              _goto_level = _out;
+              continue;
+            }
+            case 114: {
+              this.te = p;
+              p = p - 1;
+              break;
+            }
+            case 113: {
+              this.te = p;
+              p = p - 1;
+              p = p - 1;
+              this.cs = 516;
+              _goto_level = _again;
+              continue;
+            }
+            case 6: {
+              p = this.te - 1;
+              p = p - 1;
+              this.cs = 516;
+              _goto_level = _again;
+              continue;
+            }
+            case 120: {
+              this.te = p + 1;
+              this.emit_table(1);
+              this.cs = 276;
+              p += 1;
+              _goto_level = _out;
+              continue;
+            }
+            case 119: {
+              this.te = p + 1;
+              p = p - 1;
+              this.cs = 516;
+              _goto_level = _again;
+              continue;
+            }
+            case 118: {
+              this.te = p + 1;
+              p = p - 1;
+              p += 1;
+              _goto_level = _out;
+              continue;
+            }
+            case 130: {
+              this.te = p;
+              p = p - 1;
+              this.emit1(TK_tCONSTANT);
+              this.cs = this.arg_or_cmdarg(cmd_state);
+              p += 1;
+              _goto_level = _out;
+              continue;
+            }
+            case 121: {
+              this.te = p;
+              p = p - 1;
+              this.emit1(TK_tIDENTIFIER);
+              this.cs = this.arg_or_cmdarg(cmd_state);
+              p += 1;
+              _goto_level = _out;
+              continue;
+            }
+            case 126: {
+              this.te = p;
+              p = p - 1;
+              this.emit_table(1);
+              this.cs = 276;
+              p += 1;
+              _goto_level = _out;
+              continue;
+            }
+            case 124: {
+              this.te = p;
+              p = p - 1;
+              break;
+            }
+            case 129: {
+              this.te = p;
+              p = p - 1;
+              p = p - 1;
+              this.cs = 516;
+              _goto_level = _again;
+              continue;
+            }
+            case 153: {
+              this.te = p + 1;
+              p = this.ts - 1;
+              this.cs = 516;
+              _goto_level = _again;
+              continue;
+            }
+            case 136: {
+              this.te = p + 1;
+              this.check_ambiguous_slash(tm);
+              p = tm - 1;
+              this.cs = 345;
+              _goto_level = _again;
+              continue;
+            }
+            case 142: {
+              this.te = p + 1;
+              p = p - 1;
+              p = p - 1;
+              this.cs = 345;
+              _goto_level = _again;
+              continue;
+            }
+            case 10: {
+              this.te = p + 1;
+              p = this.ts - 1;
+              this.cs = 345;
+              _goto_level = _again;
+              continue;
+            }
+            case 144: {
+              this.te = p + 1;
+              p = tm - 1;
+              this.cs = 516;
+              _goto_level = _again;
+              continue;
+            }
+            case 25: {
+              this.te = p + 1;
+              p = this.ts - 1;
+              this.cs = 516;
+              _goto_level = _again;
+              continue;
+            }
+            case 131: {
+              this.te = p + 1;
+              p = p - 1;
+              this.cs = 345;
+              _goto_level = _again;
+              continue;
+            }
+            case 132: {
+              this.te = p + 1;
+              p = p - 1;
+              p += 1;
+              _goto_level = _out;
+              continue;
+            }
+            case 143: {
+              this.te = p;
+              p = p - 1;
+              p = p - 1;
+              this.cs = 345;
+              _goto_level = _again;
+              continue;
+            }
+            case 139: {
+              this.te = p;
+              p = p - 1;
+              /* warning */
+              p = tm - 1;
+              this.cs = 345;
+              _goto_level = _again;
+              continue;
+            }
+            case 141: {
+              this.te = p;
+              p = p - 1;
+              p = p - 1;
+              this.cs = 345;
+              _goto_level = _again;
+              continue;
+            }
+            case 135: {
+              this.te = p;
+              p = p - 1;
+              p = this.ts - 1;
+              this.cs = 516;
+              _goto_level = _again;
+              continue;
+            }
+            case 134: {
+              this.te = p;
+              p = p - 1;
+              break;
+            }
+            case 152: {
+              this.te = p;
+              p = p - 1;
+              p = p - 1;
+              this.cs = 345;
+              _goto_level = _again;
+              continue;
+            }
+            case 11: {
+              p = this.te - 1;
+              break;
+            }
+            case 27: {
+              p = this.te - 1;
+              p = p - 1;
+              this.cs = 345;
+              _goto_level = _again;
+              continue;
+            }
+            case 9: {
+              switch (this.act) {
+                case 33: {
+                  p = this.te - 1;
+                  this.check_ambiguous_slash(tm);
+                  p = tm - 1;
+                  this.cs = 345;
+                  _goto_level = _again;
+                  continue;
+                }
+                case 34: {
+                  p = this.te - 1;
+                  /* warning */
+                  p = tm - 1;
+                  this.cs = 345;
+                  _goto_level = _again;
+                  continue;
+                }
+                case 39: {
+                  p = this.te - 1;
+                  p = this.ts - 1;
+                  this.cs = 516;
+                  _goto_level = _again;
+                  continue;
+                }
+                default: {
+                  p = this.te - 1;
+                  break;
+                }
+              }
+              break;
+            }
+            case 29: {
+              this.te = p + 1;
+              p = this.ts - 1;
+              this.cs = 276;
+              _goto_level = _again;
+              continue;
+            }
+            case 157: {
+              this.te = p + 1;
+              p = p - 1;
+              p += 1;
+              _goto_level = _out;
+              continue;
+            }
+            case 158: {
+              this.te = p;
+              p = p - 1;
+              p = this.ts - 1;
+              this.cs = 276;
+              _goto_level = _again;
+              continue;
+            }
+            case 30: {
+              p = this.te - 1;
+              p = this.ts - 1;
+              this.cs = 276;
+              _goto_level = _again;
+              continue;
+            }
+            case 28: {
+              switch (this.act) {
+                case 46: {
+                  p = this.te - 1;
+                  if (this.cond.active()) {
+                    this.emit4(TK_kDO_COND, "do", this.te - 2, this.te);
+                  } else {
+                    this.emit4(TK_kDO, "do", this.te - 2, this.te);
+                  }
+                  this.cs = 508;
+                  p += 1;
+                  _goto_level = _out;
+                  continue;
+                }
+                case 47: {
+                  p = this.te - 1;
+                  p = this.ts - 1;
+                  this.cs = 276;
+                  _goto_level = _again;
+                  continue;
+                }
+              }
+              break;
+            }
+            case 168: {
+              this.te = p + 1;
+              this.emit_do(true);
+              this.cs = 508;
+              p += 1;
+              _goto_level = _out;
+              continue;
+            }
+            case 161: {
+              this.te = p + 1;
+              p = p - 1;
+              this.cs = 516;
+              _goto_level = _again;
+              continue;
+            }
+            case 162: {
+              this.te = p + 1;
+              p = p - 1;
+              p += 1;
+              _goto_level = _out;
+              continue;
+            }
+            case 163: {
+              this.te = p;
+              p = p - 1;
+              break;
+            }
+            case 166: {
+              this.te = p;
+              p = p - 1;
+              p = p - 1;
+              this.cs = 516;
+              _goto_level = _again;
+              continue;
+            }
+            case 172: {
+              this.te = p + 1;
+              p = p - 1;
+              this.cs = 345;
+              _goto_level = _again;
+              continue;
+            }
+            case 171: {
+              this.te = p + 1;
+              p = p - 1;
+              p += 1;
+              _goto_level = _out;
+              continue;
+            }
+            case 180: {
+              this.te = p;
+              p = p - 1;
+              p = this.ts - 1;
+              this.cs = 345;
+              _goto_level = _again;
+              continue;
+            }
+            case 174: {
+              this.te = p;
+              p = p - 1;
+              break;
+            }
+            case 178: {
+              this.te = p;
+              p = p - 1;
+              p = p - 1;
+              this.cs = 345;
+              _goto_level = _again;
+              continue;
+            }
+            case 173: {
+              switch (this.act) {
+                case 54: {
+                  p = this.te - 1;
+                  this.emit_table(3);
+                  this.cs = 345;
+                  p += 1;
+                  _goto_level = _out;
+                  continue;
+                }
+                case 55: {
+                  p = this.te - 1;
+                  p = this.ts - 1;
+                  this.cs = 345;
+                  _goto_level = _again;
+                  continue;
+                }
+              }
+              break;
+            }
+            case 42: {
+              this.te = p + 1;
+              this.emit4(TK_tUNARY_NUM, this.tok2(this.ts, this.ts + 1), this.ts, this.ts + 1);
+              p = p - 1;
+              this.cs = 516;
+              p += 1;
+              _goto_level = _out;
+              continue;
+            }
+            case 214: {
+              this.te = p + 1;
+              type = this.tok2(this.ts, this.ts + 1);
+              delimiter = type;
+              this.st().pushLiteral(type, delimiter, this.ts);
+              p = p - 1;
+              this.cs = 128;
+              _goto_level = _again;
+              continue;
+            }
+            case 206: {
+              this.te = p + 1;
+              type = this.tok2(this.ts, this.ts + 1);
+              delimiter = this.tok2(this.te - 1, this.te);
+              this.st().pushLiteral(type, delimiter, this.ts);
+              this.cs = 128;
+              _goto_level = _again;
+              continue;
+            }
+            case 40: {
+              this.te = p + 1;
+              type = this.tok2(this.ts, this.te - 1);
+              delimiter = this.tok2(this.te - 1, this.te);
+              this.st().pushLiteral(type, delimiter, this.ts);
+              this.cs = 128;
+              _goto_level = _again;
+              continue;
+            }
+            case 227: {
+              this.te = p + 1;
+              p = p - 1;
+              p = p - 1;
+              this.emit4(TK_tSYMBEG, this.tok2(this.ts, this.ts + 1), this.ts, this.ts + 1);
+              this.cs = 134;
+              _goto_level = _again;
+              continue;
+            }
+            case 215: {
+              this.te = p + 1;
+              type = this.tok2(this.ts, this.te);
+              delimiter = this.tok2(this.te - 1, this.te);
+              this.st().pushLiteral(type, delimiter, this.ts);
+              this.cs = 128;
+              _goto_level = _again;
+              continue;
+            }
+            case 226: {
+              this.te = p + 1;
+              this.emit2(TK_tSYMBOL, this.tok2(this.ts + 1, this.ts + 2));
+              this.cs = 516;
+              p += 1;
+              _goto_level = _out;
+              continue;
+            }
+            case 54: {
+              this.te = p + 1;
+              gvar_name = this.tok2(this.ts + 1, this.te);
+              if (true && gvar_name.startsWith("$0") && gvar_name.length > 2) {
+                this.diagError();
+              }
+              this.emit3(TK_tSYMBOL, gvar_name, this.ts);
+              this.cs = 516;
+              p += 1;
+              _goto_level = _out;
+              continue;
+            }
+            case 236: {
+              this.te = p + 1;
+              p = this.st().readCharacterConstant(this.ts);
+              next_state = this.st().rootState;
+              p = p - 1;
+              if (this.qHead === this.qTail) {
+                this.cs = next_state;
+                _goto_level = _again;
+                continue;
+              } else {
+                this.cs = next_state;
+                p += 1;
+                _goto_level = _out;
+                continue;
+              }
+            }
+            case 237: {
+              this.te = p + 1;
+              this.diagFatal();
+              break;
+            }
+            case 216: {
+              this.te = p + 1;
+              this.emit_table(2);
+              p += 1;
+              _goto_level = _out;
+              continue;
+            }
+            case 37: {
+              this.te = p + 1;
+              p = p - 1;
+              if (false) {
+                ident = this.tok2(this.ts, this.te - 2);
+                this.emit4(
+                  this.at(this.ts) >= 65 && this.at(this.ts) <= 90 ? TK_tCONSTANT : TK_tIDENTIFIER,
+                  ident,
+                  this.ts,
+                  this.te - 2,
+                );
+                p = p - 1;
+                if (this.declared(ident)) {
+                  this.cs = 516;
+                } else {
+                  this.cs = this.arg_or_cmdarg(cmd_state);
+                }
+              } else {
+                this.emit4(TK_tLABEL, this.tok2(this.ts, this.te - 2), this.ts, this.te - 1);
+                this.cs = 501;
+              }
+              p += 1;
+              _goto_level = _out;
+              continue;
+            }
+            case 34: {
+              this.te = p + 1;
+              this.emit4(TK_tIDENTIFIER, ident_tok, ident_ts, ident_te);
+              p = ident_te - 1;
+              if (this.declared(ident_tok) && false) {
+                this.cs = 247;
+              } else {
+                this.cs = 307;
+              }
+              p += 1;
+              _goto_level = _out;
+              continue;
+            }
+            case 200: {
+              this.te = p + 1;
+              p = this.ts - 1;
+              this.cs_before_block_comment = this.cs;
+              this.cs = 710;
+              _goto_level = _again;
+              continue;
+            }
+            case 41: {
+              this.te = p + 1;
+              p = this.ts - 1;
+              this.cs = 516;
+              _goto_level = _again;
+              continue;
+            }
+            case 183: {
+              this.te = p + 1;
+              p = p - 1;
+              p += 1;
+              _goto_level = _out;
+              continue;
+            }
+            case 210: {
+              this.te = p;
+              p = p - 1;
+              this.emit4(TK_tUNARY_NUM, this.tok2(this.ts, this.ts + 1), this.ts, this.ts + 1);
+              p = p - 1;
+              this.cs = 516;
+              p += 1;
+              _goto_level = _out;
+              continue;
+            }
+            case 209: {
+              this.te = p;
+              p = p - 1;
+              this.emit2(TK_tSTAR, "*");
+              p += 1;
+              _goto_level = _out;
+              continue;
+            }
+            case 205: {
+              this.te = p;
+              p = p - 1;
+              this.diagFatal();
+              break;
+            }
+            case 234: {
+              this.te = p;
+              p = p - 1;
+              this.diagError();
+              break;
+            }
+            case 217: {
+              this.te = p;
+              p = p - 1;
+              gvar_name = this.tok2(this.ts + 1, this.te);
+              if (true && gvar_name.startsWith("$0") && gvar_name.length > 2) {
+                this.diagError();
+              }
+              this.emit3(TK_tSYMBOL, gvar_name, this.ts);
+              this.cs = 516;
+              p += 1;
+              _goto_level = _out;
+              continue;
+            }
+            case 230: {
+              this.te = p;
+              p = p - 1;
+              this.emit_colon_with_digits(p, tm);
+              this.cs = 516;
+              p += 1;
+              _goto_level = _out;
+              continue;
+            }
+            case 235: {
+              this.te = p;
+              p = p - 1;
+              this.diagFatal();
+              break;
+            }
+            case 207: {
+              this.te = p;
+              p = p - 1;
+              this.emit_table(2);
+              p += 1;
+              _goto_level = _out;
+              continue;
+            }
+            case 211: {
+              this.te = p;
+              p = p - 1;
+              if (true) {
+                this.emit1(TK_tBDOT2);
+              } else {
+                this.emit1(TK_tDOT2);
+              }
+              this.cs = 345;
+              p += 1;
+              _goto_level = _out;
+              continue;
+            }
+            case 212: {
+              this.te = p;
+              p = p - 1;
+              followed_by_nl = this.te - 1 === this.newline_s;
+              nl_emitted = false;
+              dots_te = followed_by_nl ? this.te - 1 : this.te;
+              if (true) {
+                if (this.nLambda > 0 && this.lambdaLast() + 1 === this.paren_nest) {
+                  this.emit4(TK_tDOT3, "...", this.ts, dots_te);
+                } else {
+                  this.emit4(TK_tBDOT3, "...", this.ts, dots_te);
+                  if (true && followed_by_nl && this.ctx.in_argdef) {
+                    this.emit4(TK_tNL, "", this.te, this.te);
+                    nl_emitted = true;
+                  }
+                }
+              } else if (true) {
+                this.emit4(TK_tBDOT3, "...", this.ts, dots_te);
+              } else {
+                this.emit4(TK_tDOT3, "...", this.ts, dots_te);
+              }
+              if (followed_by_nl && !nl_emitted) {
+                p = p - 1;
+              }
+              this.cs = 345;
+              p += 1;
+              _goto_level = _out;
+              continue;
+            }
+            case 187: {
+              this.te = p;
+              p = p - 1;
+              this.emit1(TK_tIDENTIFIER);
+              if (this.declared(this.tok2(this.ts, this.te))) {
+                this.cs = 247;
+                p += 1;
+                _goto_level = _out;
+                continue;
+              } else if (true && rbIsNumberedParam(this.tok2(this.ts, this.te))) {
+                this.cs = 247;
+                p += 1;
+                _goto_level = _out;
+                continue;
+              } else {
+                this.cs = this.arg_or_cmdarg(cmd_state);
+                p += 1;
+                _goto_level = _out;
+                continue;
+              }
+            }
+            case 197: {
+              this.te = p;
+              p = p - 1;
+              break;
+            }
+            case 199: {
+              this.te = p;
+              p = p - 1;
+              p = this.ts - 1;
+              this.cs_before_block_comment = this.cs;
+              this.cs = 710;
+              _goto_level = _again;
+              continue;
+            }
+            case 202: {
+              this.te = p;
+              p = p - 1;
+              p = this.ts - 1;
+              this.cs = 516;
+              _goto_level = _again;
+              continue;
+            }
+            case 39: {
+              p = this.te - 1;
+              this.diagFatal();
+              break;
+            }
+            case 58: {
+              p = this.te - 1;
+              this.diagError();
+              break;
+            }
+            case 33: {
+              p = this.te - 1;
+              this.emit1(TK_tIDENTIFIER);
+              if (this.declared(this.tok2(this.ts, this.te))) {
+                this.cs = 247;
+                p += 1;
+                _goto_level = _out;
+                continue;
+              } else if (true && rbIsNumberedParam(this.tok2(this.ts, this.te))) {
+                this.cs = 247;
+                p += 1;
+                _goto_level = _out;
+                continue;
+              } else {
+                this.cs = this.arg_or_cmdarg(cmd_state);
+                p += 1;
+                _goto_level = _out;
+                continue;
+              }
+            }
+            case 38: {
+              p = this.te - 1;
+              break;
+            }
+            case 53: {
+              p = this.te - 1;
+              p = this.ts - 1;
+              this.cs = 516;
+              _goto_level = _again;
+              continue;
+            }
+            case 36: {
+              switch (this.act) {
+                case 60: {
+                  p = this.te - 1;
+                  this.emit4(TK_tUNARY_NUM, this.tok2(this.ts, this.ts + 1), this.ts, this.ts + 1);
+                  p = p - 1;
+                  this.cs = 516;
+                  p += 1;
+                  _goto_level = _out;
+                  continue;
+                }
+                case 67: {
+                  p = this.te - 1;
+                  this.diagError();
+                  break;
+                }
+                case 76: {
+                  p = this.te - 1;
+                  if (true) {
+                    this.emit4(TK_tPIPE, this.tok2(this.ts, this.ts + 1), this.ts, this.ts + 1);
+                    p = p - 1;
+                    this.cs = 345;
+                    p += 1;
+                    _goto_level = _out;
+                    continue;
+                  } else {
+                    p -= 2;
+                    this.cs = 516;
+                    _goto_level = _again;
+                    continue;
+                  }
+                }
+                case 80: {
+                  p = this.te - 1;
+                  this.emit_table(2);
+                  p += 1;
+                  _goto_level = _out;
+                  continue;
+                }
+                case 81: {
+                  p = this.te - 1;
+                  this.emit4(TK_kRESCUE, "rescue", this.ts, tm);
+                  p = tm - 1;
+                  this.cs = 321;
+                  p += 1;
+                  _goto_level = _out;
+                  continue;
+                }
+                case 82: {
+                  p = this.te - 1;
+                  this.emit_table(4);
+                  this.command_start = true;
+                  this.cs = 508;
+                  p += 1;
+                  _goto_level = _out;
+                  continue;
+                }
+                case 86: {
+                  p = this.te - 1;
+                  p = this.ts - 1;
+                  this.cs = 516;
+                  _goto_level = _again;
+                  continue;
+                }
+                case 87: {
+                  p = this.te - 1;
+                  this.emit1(TK_tIDENTIFIER);
+                  if (this.declared(this.tok2(this.ts, this.te))) {
+                    this.cs = 247;
+                    p += 1;
+                    _goto_level = _out;
+                    continue;
+                  } else if (true && rbIsNumberedParam(this.tok2(this.ts, this.te))) {
+                    this.cs = 247;
+                    p += 1;
+                    _goto_level = _out;
+                    continue;
+                  } else {
+                    this.cs = this.arg_or_cmdarg(cmd_state);
+                    p += 1;
+                    _goto_level = _out;
+                    continue;
+                  }
+                }
+                case 91: {
+                  p = this.te - 1;
+                  p = this.ts - 1;
+                  this.cs = 516;
+                  _goto_level = _again;
+                  continue;
+                }
+              }
+              break;
+            }
+            case 247: {
+              this.te = p + 1;
+              p = p - 1;
+              this.cs = 345;
+              _goto_level = _again;
+              continue;
+            }
+            case 248: {
+              this.te = p + 1;
+              p = p - 1;
+              p += 1;
+              _goto_level = _out;
+              continue;
+            }
+            case 249: {
+              this.te = p;
+              p = p - 1;
+              break;
+            }
+            case 253: {
+              this.te = p;
+              p = p - 1;
+              p = p - 1;
+              this.cs = 345;
+              _goto_level = _again;
+              continue;
+            }
+            case 61: {
+              this.te = p + 1;
+              p = this.ts - 1;
+              this.cs = 516;
+              _goto_level = _again;
+              continue;
+            }
+            case 257: {
+              this.te = p + 1;
+              this.st().pushLiteral(this.tok2(this.ts, this.te), this.tok2(this.ts, this.te), this.ts);
+              this.cs = 128;
+              _goto_level = _again;
+              continue;
+            }
+            case 256: {
+              this.te = p + 1;
+              p = p - 1;
+              this.cs = 345;
+              _goto_level = _again;
+              continue;
+            }
+            case 255: {
+              this.te = p + 1;
+              p = p - 1;
+              p += 1;
+              _goto_level = _out;
+              continue;
+            }
+            case 259: {
+              this.te = p;
+              p = p - 1;
+              break;
+            }
+            case 258: {
+              this.te = p;
+              p = p - 1;
+              p = p - 1;
+              this.cs = 345;
+              _goto_level = _again;
+              continue;
+            }
+            case 60: {
+              p = this.te - 1;
+              p = p - 1;
+              this.cs = 345;
+              _goto_level = _again;
+              continue;
+            }
+            case 292: {
+              this.te = p + 1;
+              this.emit4(TK_tLAMBDA, "->", this.ts, this.ts + 2);
+              this.lambdaPush(this.paren_nest);
+              this.cs = 247;
+              p += 1;
+              _goto_level = _out;
+              continue;
+            }
+            case 71: {
+              this.te = p + 1;
+              this.emit_singleton_class();
+              this.cs = 508;
+              p += 1;
+              _goto_level = _out;
+              continue;
+            }
+            case 267: {
+              this.te = p + 1;
+              type = this.tok2(this.ts, this.te);
+              delimiter = this.tok2(this.te - 1, this.te);
+              this.st().pushLiteralFull(type, delimiter, this.ts, -1, false, false, true);
+              this.cs = 128;
+              _goto_level = _again;
+              continue;
+            }
+            case 63: {
+              this.te = p + 1;
+              p = this.ts - 1;
+              this.stackPush(this.cs);
 
-this.cs = 129;
-_goto_level = _again;
-continue;
-}
-}
-}
-}
-case 93: {
-{
-this.te = p+1;
-{
-this.emit_table(1);
-this.cs = 247;
-{
-p += 1;
-_goto_level = _out;
-continue;
-}
-}
-}
-}
-case 105: {
-{
-this.te = p+1;
-{
-p = p - 1;
-p = p - 1;
-{
-this.cs = 516;
-_goto_level = _again;
-continue;
-}
-}
-}
-}
-case 5: {
-{
-this.te = p+1;
-{
-if ((false)) {
-type = this.tok2(this.ts, this.te - 1); delimiter = this.tok2(this.te - 1, this.te);
-this.st().pushLiteral(type, delimiter, this.ts);
-{
-this.cs = 128;
-_goto_level = _again;
-continue;
-}
-} else {
-p = this.ts - 1;
-{
-this.cs = 516;
-_goto_level = _again;
-continue;
-}
-}
-}
-}
-}
-case 92: {
-{
-this.te = p+1;
-{
-p = p - 1;
-{
-this.cs = 516;
-_goto_level = _again;
-continue;
-}
-}
-}
-}
-case 91: {
-{
-this.te = p+1;
-{
-p = p - 1;
-{
-p += 1;
-_goto_level = _out;
-continue;
-}
-}
-}
-}
-case 109: {
-{
-this.te = p;
-p = p - 1;
-{
-this.emit_table(4);
-this.cs = 247;
-{
-p += 1;
-_goto_level = _out;
-continue;
-}
-}
-}
-}
-case 106: {
-{
-this.te = p;
-p = p - 1;
-{
-this.emit1(TK_tCONSTANT);
-this.cs = 247;
-{
-p += 1;
-_goto_level = _out;
-continue;
-}
-}
-}
-}
-case 108: {
-{
-this.te = p;
-p = p - 1;
-{
-this.emit1(TK_tIDENTIFIER);
-this.cs = 247;
-{
-p += 1;
-_goto_level = _out;
-continue;
-}
-}
-}
-}
-case 103: {
-{
-this.te = p;
-p = p - 1;
-{
-p = this.ts - 1;
-this.cs = 516;
-{
-this.stackPush(this.cs);
+              this.cs = 129;
+              _goto_level = _again;
+              continue;
+            }
+            case 288: {
+              this.te = p + 1;
+              this.emit_table(1);
+              this.cs = 255;
+              p += 1;
+              _goto_level = _out;
+              continue;
+            }
+            case 341: {
+              this.te = p + 1;
+              this.emit_table(1);
+              this.cs = 508;
+              p += 1;
+              _goto_level = _out;
+              continue;
+            }
+            case 281: {
+              this.te = p + 1;
+              this.emit_table(1);
+              this.cs = 508;
+              p += 1;
+              _goto_level = _out;
+              continue;
+            }
+            case 286: {
+              this.te = p + 1;
+              this.emit2(TK_tOP_ASGN, this.tok2(this.ts, this.te - 1));
+              this.cs = 345;
+              p += 1;
+              _goto_level = _out;
+              continue;
+            }
+            case 272: {
+              this.te = p + 1;
+              this.emit2(TK_tEH, "?");
+              this.cs = 508;
+              p += 1;
+              _goto_level = _out;
+              continue;
+            }
+            case 269: {
+              this.te = p + 1;
+              this.emit_table(1);
+              this.cs = 345;
+              p += 1;
+              _goto_level = _out;
+              continue;
+            }
+            case 271: {
+              this.te = p + 1;
+              this.emit2(TK_tSEMI, ";");
+              this.command_start = true;
+              this.cs = 508;
+              p += 1;
+              _goto_level = _out;
+              continue;
+            }
+            case 346: {
+              this.te = p + 1;
+              this.diagError();
+              p = p - 1;
+              break;
+            }
+            case 266: {
+              this.te = p + 1;
+              this.diagFatal();
+              break;
+            }
+            case 265: {
+              this.te = p + 1;
+              p = p - 1;
+              p += 1;
+              _goto_level = _out;
+              continue;
+            }
+            case 357: {
+              this.te = p;
+              p = p - 1;
+              this.emit_table(3);
+              this.cs = 134;
+              p += 1;
+              _goto_level = _out;
+              continue;
+            }
+            case 355: {
+              this.te = p;
+              p = p - 1;
+              this.emit_singleton_class();
+              this.cs = 508;
+              p += 1;
+              _goto_level = _out;
+              continue;
+            }
+            case 354: {
+              this.te = p;
+              p = p - 1;
+              this.emit_table(3);
+              this.command_start = true;
+              this.cs = 508;
+              p += 1;
+              _goto_level = _out;
+              continue;
+            }
+            case 296: {
+              this.te = p;
+              p = p - 1;
+              this.diagError();
+              break;
+            }
+            case 343: {
+              this.te = p;
+              p = p - 1;
+              this.emit1(TK_tCONSTANT);
+              this.cs = this.arg_or_cmdarg(cmd_state);
+              p += 1;
+              _goto_level = _out;
+              continue;
+            }
+            case 285: {
+              this.te = p;
+              p = p - 1;
+              p = this.ts - 1;
+              this.stackPush(this.cs);
 
-this.cs = 129;
-_goto_level = _again;
-continue;
-}
-}
-}
-}
-case 99: {
-{
-this.te = p;
-p = p - 1;
-{
-this.emit_table(1);
-this.cs = 247;
-{
-p += 1;
-_goto_level = _out;
-continue;
-}
-}
-}
-}
-case 104: {
-{
-this.te = p;
-p = p - 1;
-{
-p = p - 1;
-{
-this.cs = 345;
-_goto_level = _again;
-continue;
-}
-}
-}
-}
-case 97: {
-{
-this.te = p;
-p = p - 1;
-}
-break;
-}
-case 102: {
-{
-this.te = p;
-p = p - 1;
-{
-p = p - 1;
-{
-this.cs = 516;
-_goto_level = _again;
-continue;
-}
-}
-}
-}
-case 4: {
-{
-{
-p = (( this.te))-1;
-}
-{
-this.emit_table(1);
-this.cs = 247;
-{
-p += 1;
-_goto_level = _out;
-continue;
-}
-}
-}
-}
-case 2: {
-{
-{
-p = (( this.te))-1;
-}
-{
-p = p - 1;
-{
-this.cs = 516;
-_goto_level = _again;
-continue;
-}
-}
-}
-}
-case 95: {
-{
-switch (this.act) {
-case 4: {
-{
-{
-p = (( this.te))-1;
-}
-this.emit_table(4);
-this.cs = 247;
-{
-p += 1;
-_goto_level = _out;
-continue;
-}
-}
-}
-case 5: {
-{
-{
-p = (( this.te))-1;
-}
-this.emit1(TK_tCONSTANT);
-this.cs = 247;
-{
-p += 1;
-_goto_level = _out;
-continue;
-}
-}
-}
-case 6: {
-{
-{
-p = (( this.te))-1;
-}
-this.emit1(TK_tIDENTIFIER);
-this.cs = 247;
-{
-p += 1;
-_goto_level = _out;
-continue;
-}
-}
-}
-}
-}
-break;
-}
-case 7: {
-{
-this.te = p+1;
-{
-this.emit4(TK_tLABEL, this.tok2(this.ts, this.te - 2), this.ts, this.te - 1);
-p = p - 1;
-this.cs = 501;
-{
-p += 1;
-_goto_level = _out;
-continue;
-}
-}
-}
-}
-case 8: {
-{
-this.te = p+1;
-{
-if ((true && this.ctx.in_argdef)) {
-this.emit2(TK_tBDOT3, "...");
-this.cs = 516;
-{
-p += 1;
-_goto_level = _out;
-continue;
-}
-} else {
-p -= 3;
-{
-this.cs = 516;
-_goto_level = _again;
-continue;
-}
-}
-}
-}
-}
-case 112: {
-{
-this.te = p+1;
-{
-p = p - 1;
-{
-this.cs = 516;
-_goto_level = _again;
-continue;
-}
-}
-}
-}
-case 111: {
-{
-this.te = p+1;
-{
-p = p - 1;
-{
-p += 1;
-_goto_level = _out;
-continue;
-}
-}
-}
-}
-case 114: {
-{
-this.te = p;
-p = p - 1;
-}
-break;
-}
-case 113: {
-{
-this.te = p;
-p = p - 1;
-{
-p = p - 1;
-{
-this.cs = 516;
-_goto_level = _again;
-continue;
-}
-}
-}
-}
-case 6: {
-{
-{
-p = (( this.te))-1;
-}
-{
-p = p - 1;
-{
-this.cs = 516;
-_goto_level = _again;
-continue;
-}
-}
-}
-}
-case 120: {
-{
-this.te = p+1;
-{
-this.emit_table(1);
-this.cs = 276;
-{
-p += 1;
-_goto_level = _out;
-continue;
-}
-}
-}
-}
-case 119: {
-{
-this.te = p+1;
-{
-p = p - 1;
-{
-this.cs = 516;
-_goto_level = _again;
-continue;
-}
-}
-}
-}
-case 118: {
-{
-this.te = p+1;
-{
-p = p - 1;
-{
-p += 1;
-_goto_level = _out;
-continue;
-}
-}
-}
-}
-case 130: {
-{
-this.te = p;
-p = p - 1;
-{
-this.emit1(TK_tCONSTANT);
-this.cs = (this.arg_or_cmdarg(cmd_state));
-{
-p += 1;
-_goto_level = _out;
-continue;
-}
-}
-}
-}
-case 121: {
-{
-this.te = p;
-p = p - 1;
-{
-this.emit1(TK_tIDENTIFIER);
-this.cs = (this.arg_or_cmdarg(cmd_state));
-{
-p += 1;
-_goto_level = _out;
-continue;
-}
-}
-}
-}
-case 126: {
-{
-this.te = p;
-p = p - 1;
-{
-this.emit_table(1);
-this.cs = 276;
-{
-p += 1;
-_goto_level = _out;
-continue;
-}
-}
-}
-}
-case 124: {
-{
-this.te = p;
-p = p - 1;
-}
-break;
-}
-case 129: {
-{
-this.te = p;
-p = p - 1;
-{
-p = p - 1;
-{
-this.cs = 516;
-_goto_level = _again;
-continue;
-}
-}
-}
-}
-case 153: {
-{
-this.te = p+1;
-{
-p = this.ts - 1;
-{
-this.cs = 516;
-_goto_level = _again;
-continue;
-}
-}
-}
-}
-case 136: {
-{
-this.te = p+1;
-{
-this.check_ambiguous_slash(tm);
-p = tm - 1;
-{
-this.cs = 345;
-_goto_level = _again;
-continue;
-}
-}
-}
-}
-case 142: {
-{
-this.te = p+1;
-{
-p = p - 1;
-p = p - 1;
-{
-this.cs = 345;
-_goto_level = _again;
-continue;
-}
-}
-}
-}
-case 10: {
-{
-this.te = p+1;
-{
-p = this.ts - 1;
-{
-this.cs = 345;
-_goto_level = _again;
-continue;
-}
-}
-}
-}
-case 144: {
-{
-this.te = p+1;
-{
-p = tm - 1;
-{
-this.cs = 516;
-_goto_level = _again;
-continue;
-}
-}
-}
-}
-case 25: {
-{
-this.te = p+1;
-{
-p = this.ts - 1;
-{
-this.cs = 516;
-_goto_level = _again;
-continue;
-}
-}
-}
-}
-case 131: {
-{
-this.te = p+1;
-{
-p = p - 1;
-{
-this.cs = 345;
-_goto_level = _again;
-continue;
-}
-}
-}
-}
-case 132: {
-{
-this.te = p+1;
-{
-p = p - 1;
-{
-p += 1;
-_goto_level = _out;
-continue;
-}
-}
-}
-}
-case 143: {
-{
-this.te = p;
-p = p - 1;
-{
-p = p - 1;
-{
-this.cs = 345;
-_goto_level = _again;
-continue;
-}
-}
-}
-}
-case 139: {
-{
-this.te = p;
-p = p - 1;
-{
-/* warning */
-p = tm - 1;
-{
-this.cs = 345;
-_goto_level = _again;
-continue;
-}
-}
-}
-}
-case 141: {
-{
-this.te = p;
-p = p - 1;
-{
-p = p - 1;
-{
-this.cs = 345;
-_goto_level = _again;
-continue;
-}
-}
-}
-}
-case 135: {
-{
-this.te = p;
-p = p - 1;
-{
-p = this.ts - 1;
-{
-this.cs = 516;
-_goto_level = _again;
-continue;
-}
-}
-}
-}
-case 134: {
-{
-this.te = p;
-p = p - 1;
-}
-break;
-}
-case 152: {
-{
-this.te = p;
-p = p - 1;
-{
-p = p - 1;
-{
-this.cs = 345;
-_goto_level = _again;
-continue;
-}
-}
-}
-}
-case 11: {
-{
-{
-p = (( this.te))-1;
-}
-}
-break;
-}
-case 27: {
-{
-{
-p = (( this.te))-1;
-}
-{
-p = p - 1;
-{
-this.cs = 345;
-_goto_level = _again;
-continue;
-}
-}
-}
-}
-case 9: {
-{
-switch (this.act) {
-case 33: {
-{
-{
-p = (( this.te))-1;
-}
-this.check_ambiguous_slash(tm);
-p = tm - 1;
-{
-this.cs = 345;
-_goto_level = _again;
-continue;
-}
-}
-}
-case 34: {
-{
-{
-p = (( this.te))-1;
-}
-/* warning */
-p = tm - 1;
-{
-this.cs = 345;
-_goto_level = _again;
-continue;
-}
-}
-}
-case 39: {
-{
-{
-p = (( this.te))-1;
-}
-p = this.ts - 1;
-{
-this.cs = 516;
-_goto_level = _again;
-continue;
-}
-}
-}
-default: {
-{
-{
-p = (( this.te))-1;
-}
-}
-break;
-}
-}
-}
-break;
-}
-case 29: {
-{
-this.te = p+1;
-{
-p = this.ts - 1;
-{
-this.cs = 276;
-_goto_level = _again;
-continue;
-}
-}
-}
-}
-case 157: {
-{
-this.te = p+1;
-{
-p = p - 1;
-{
-p += 1;
-_goto_level = _out;
-continue;
-}
-}
-}
-}
-case 158: {
-{
-this.te = p;
-p = p - 1;
-{
-p = this.ts - 1;
-{
-this.cs = 276;
-_goto_level = _again;
-continue;
-}
-}
-}
-}
-case 30: {
-{
-{
-p = (( this.te))-1;
-}
-{
-p = this.ts - 1;
-{
-this.cs = 276;
-_goto_level = _again;
-continue;
-}
-}
-}
-}
-case 28: {
-{
-switch (this.act) {
-case 46: {
-{
-{
-p = (( this.te))-1;
-}
-if ((this.cond.active())) {
-this.emit4(TK_kDO_COND, "do", this.te - 2, this.te);
-} else {
-this.emit4(TK_kDO, "do", this.te - 2, this.te);
-}
-this.cs = 508;
-{
-p += 1;
-_goto_level = _out;
-continue;
-}
-}
-}
-case 47: {
-{
-{
-p = (( this.te))-1;
-}
-p = this.ts - 1;
-{
-this.cs = 276;
-_goto_level = _again;
-continue;
-}
-}
-}
-}
-}
-break;
-}
-case 168: {
-{
-this.te = p+1;
-{
-this.emit_do(true);
-this.cs = 508;
-{
-p += 1;
-_goto_level = _out;
-continue;
-}
-}
-}
-}
-case 161: {
-{
-this.te = p+1;
-{
-p = p - 1;
-{
-this.cs = 516;
-_goto_level = _again;
-continue;
-}
-}
-}
-}
-case 162: {
-{
-this.te = p+1;
-{
-p = p - 1;
-{
-p += 1;
-_goto_level = _out;
-continue;
-}
-}
-}
-}
-case 163: {
-{
-this.te = p;
-p = p - 1;
-}
-break;
-}
-case 166: {
-{
-this.te = p;
-p = p - 1;
-{
-p = p - 1;
-{
-this.cs = 516;
-_goto_level = _again;
-continue;
-}
-}
-}
-}
-case 172: {
-{
-this.te = p+1;
-{
-p = p - 1;
-{
-this.cs = 345;
-_goto_level = _again;
-continue;
-}
-}
-}
-}
-case 171: {
-{
-this.te = p+1;
-{
-p = p - 1;
-{
-p += 1;
-_goto_level = _out;
-continue;
-}
-}
-}
-}
-case 180: {
-{
-this.te = p;
-p = p - 1;
-{
-p = this.ts - 1;
-{
-this.cs = 345;
-_goto_level = _again;
-continue;
-}
-}
-}
-}
-case 174: {
-{
-this.te = p;
-p = p - 1;
-}
-break;
-}
-case 178: {
-{
-this.te = p;
-p = p - 1;
-{
-p = p - 1;
-{
-this.cs = 345;
-_goto_level = _again;
-continue;
-}
-}
-}
-}
-case 173: {
-{
-switch (this.act) {
-case 54: {
-{
-{
-p = (( this.te))-1;
-}
-this.emit_table(3);
-this.cs = 345;
-{
-p += 1;
-_goto_level = _out;
-continue;
-}
-}
-}
-case 55: {
-{
-{
-p = (( this.te))-1;
-}
-p = this.ts - 1;
-{
-this.cs = 345;
-_goto_level = _again;
-continue;
-}
-}
-}
-}
-}
-break;
-}
-case 42: {
-{
-this.te = p+1;
-{
-this.emit4(TK_tUNARY_NUM, this.tok2(this.ts, this.ts + 1), this.ts, this.ts + 1);
-p = p - 1;
-this.cs = 516;
-{
-p += 1;
-_goto_level = _out;
-continue;
-}
-}
-}
-}
-case 214: {
-{
-this.te = p+1;
-{
-type = this.tok2(this.ts, this.ts + 1); delimiter = type;
-this.st().pushLiteral(type, delimiter, this.ts);
-p = p - 1;
-{
-this.cs = 128;
-_goto_level = _again;
-continue;
-}
-}
-}
-}
-case 206: {
-{
-this.te = p+1;
-{
-type = this.tok2(this.ts, this.ts + 1); delimiter = this.tok2(this.te - 1, this.te);
-this.st().pushLiteral(type, delimiter, this.ts);
-{
-this.cs = 128;
-_goto_level = _again;
-continue;
-}
-}
-}
-}
-case 40: {
-{
-this.te = p+1;
-{
-type = this.tok2(this.ts, this.te - 1); delimiter = this.tok2(this.te - 1, this.te);
-this.st().pushLiteral(type, delimiter, this.ts);
-{
-this.cs = 128;
-_goto_level = _again;
-continue;
-}
-}
-}
-}
-case 227: {
-{
-this.te = p+1;
-{
-p = p - 1;
-p = p - 1;
-this.emit4(TK_tSYMBEG, this.tok2(this.ts, this.ts + 1), this.ts, this.ts + 1);
-{
-this.cs = 134;
-_goto_level = _again;
-continue;
-}
-}
-}
-}
-case 215: {
-{
-this.te = p+1;
-{
-type = this.tok2(this.ts, this.te); delimiter = this.tok2(this.te - 1, this.te);
-this.st().pushLiteral(type, delimiter, this.ts);
-{
-this.cs = 128;
-_goto_level = _again;
-continue;
-}
-}
-}
-}
-case 226: {
-{
-this.te = p+1;
-{
-this.emit2(TK_tSYMBOL, this.tok2(this.ts + 1, this.ts + 2));
-this.cs = 516;
-{
-p += 1;
-_goto_level = _out;
-continue;
-}
-}
-}
-}
-case 54: {
-{
-this.te = p+1;
-{
-gvar_name = this.tok2(this.ts + 1, this.te);
-if ((true && gvar_name.startsWith("$0") && gvar_name.length > 2)) {
-this.diagError();
-}
-this.emit3(TK_tSYMBOL, gvar_name, this.ts);
-this.cs = 516;
-{
-p += 1;
-_goto_level = _out;
-continue;
-}
-}
-}
-}
-case 236: {
-{
-this.te = p+1;
-{
-p = this.st().readCharacterConstant(this.ts); next_state = this.st().rootState;
-p = p - 1;
-if (((this.qHead === this.qTail))) {
-{
-this.cs = (next_state);
-_goto_level = _again;
-continue;
-}
-} else {
-this.cs = (next_state);
-{
-p += 1;
-_goto_level = _out;
-continue;
-}
-}
-}
-}
-}
-case 237: {
-{
-this.te = p+1;
-{
-this.diagFatal();
-}
-}
-break;
-}
-case 216: {
-{
-this.te = p+1;
-{
-this.emit_table(2);
-{
-p += 1;
-_goto_level = _out;
-continue;
-}
-}
-}
-}
-case 37: {
-{
-this.te = p+1;
-{
-p = p - 1;
-if ((false)) {
-ident = this.tok2(this.ts, this.te - 2);
-this.emit4(this.at(this.ts) >= 65 && this.at(this.ts) <= 90 ? TK_tCONSTANT : TK_tIDENTIFIER, ident, this.ts, this.te - 2);
-p = p - 1;
-if ((this.declared(ident))) {
-this.cs = 516;
-} else {
-this.cs = (this.arg_or_cmdarg(cmd_state));
-}
-} else {
-this.emit4(TK_tLABEL, this.tok2(this.ts, this.te - 2), this.ts, this.te - 1);
-this.cs = 501;
-}
-{
-p += 1;
-_goto_level = _out;
-continue;
-}
-}
-}
-}
-case 34: {
-{
-this.te = p+1;
-{
-this.emit4(TK_tIDENTIFIER, ident_tok, ident_ts, ident_te);
-p = ident_te - 1;
-if ((this.declared(ident_tok) && false)) {
-this.cs = 247;
-} else {
-this.cs = 307;
-}
-{
-p += 1;
-_goto_level = _out;
-continue;
-}
-}
-}
-}
-case 200: {
-{
-this.te = p+1;
-{
-p = this.ts - 1;
-this.cs_before_block_comment = this.cs;
-{
-this.cs = 710;
-_goto_level = _again;
-continue;
-}
-}
-}
-}
-case 41: {
-{
-this.te = p+1;
-{
-p = this.ts - 1;
-{
-this.cs = 516;
-_goto_level = _again;
-continue;
-}
-}
-}
-}
-case 183: {
-{
-this.te = p+1;
-{
-p = p - 1;
-{
-p += 1;
-_goto_level = _out;
-continue;
-}
-}
-}
-}
-case 210: {
-{
-this.te = p;
-p = p - 1;
-{
-this.emit4(TK_tUNARY_NUM, this.tok2(this.ts, this.ts + 1), this.ts, this.ts + 1);
-p = p - 1;
-this.cs = 516;
-{
-p += 1;
-_goto_level = _out;
-continue;
-}
-}
-}
-}
-case 209: {
-{
-this.te = p;
-p = p - 1;
-{
-this.emit2(TK_tSTAR, "*");
-{
-p += 1;
-_goto_level = _out;
-continue;
-}
-}
-}
-}
-case 205: {
-{
-this.te = p;
-p = p - 1;
-{
-this.diagFatal();
-}
-}
-break;
-}
-case 234: {
-{
-this.te = p;
-p = p - 1;
-{
-this.diagError();
-}
-}
-break;
-}
-case 217: {
-{
-this.te = p;
-p = p - 1;
-{
-gvar_name = this.tok2(this.ts + 1, this.te);
-if ((true && gvar_name.startsWith("$0") && gvar_name.length > 2)) {
-this.diagError();
-}
-this.emit3(TK_tSYMBOL, gvar_name, this.ts);
-this.cs = 516;
-{
-p += 1;
-_goto_level = _out;
-continue;
-}
-}
-}
-}
-case 230: {
-{
-this.te = p;
-p = p - 1;
-{
-this.emit_colon_with_digits(p, tm);
-this.cs = 516;
-{
-p += 1;
-_goto_level = _out;
-continue;
-}
-}
-}
-}
-case 235: {
-{
-this.te = p;
-p = p - 1;
-{
-this.diagFatal();
-}
-}
-break;
-}
-case 207: {
-{
-this.te = p;
-p = p - 1;
-{
-this.emit_table(2);
-{
-p += 1;
-_goto_level = _out;
-continue;
-}
-}
-}
-}
-case 211: {
-{
-this.te = p;
-p = p - 1;
-{
-if ((true)) {
-this.emit1(TK_tBDOT2);
-} else {
-this.emit1(TK_tDOT2);
-}
-this.cs = 345;
-{
-p += 1;
-_goto_level = _out;
-continue;
-}
-}
-}
-}
-case 212: {
-{
-this.te = p;
-p = p - 1;
-{
-followed_by_nl = this.te - 1 === this.newline_s;
-nl_emitted = false;
-dots_te = followed_by_nl ? this.te - 1 : this.te;
-if ((true)) {
-if (((this.nLambda > 0) && this.lambdaLast() + 1 === this.paren_nest)) {
-this.emit4(TK_tDOT3, "...", this.ts, dots_te);
-} else {
-this.emit4(TK_tBDOT3, "...", this.ts, dots_te);
-if ((true && followed_by_nl && this.ctx.in_argdef)) {
-this.emit4(TK_tNL, "", this.te, this.te);
-nl_emitted = true;
-}
-}
-} else if (true) {
-this.emit4(TK_tBDOT3, "...", this.ts, dots_te);
-} else {
-this.emit4(TK_tDOT3, "...", this.ts, dots_te);
-}
-if ((followed_by_nl && !nl_emitted)) {
-p = p - 1;
-}
-this.cs = 345;
-{
-p += 1;
-_goto_level = _out;
-continue;
-}
-}
-}
-}
-case 187: {
-{
-this.te = p;
-p = p - 1;
-{
-this.emit1(TK_tIDENTIFIER);
-if ((this.declared(this.tok2(this.ts, this.te)))) {
-this.cs = 247;
-{
-p += 1;
-_goto_level = _out;
-continue;
-}
-} else if (true && rbIsNumberedParam(this.tok2(this.ts, this.te))) {
-this.cs = 247;
-{
-p += 1;
-_goto_level = _out;
-continue;
-}
-} else {
-this.cs = (this.arg_or_cmdarg(cmd_state));
-{
-p += 1;
-_goto_level = _out;
-continue;
-}
-}
-}
-}
-}
-case 197: {
-{
-this.te = p;
-p = p - 1;
-}
-break;
-}
-case 199: {
-{
-this.te = p;
-p = p - 1;
-{
-p = this.ts - 1;
-this.cs_before_block_comment = this.cs;
-{
-this.cs = 710;
-_goto_level = _again;
-continue;
-}
-}
-}
-}
-case 202: {
-{
-this.te = p;
-p = p - 1;
-{
-p = this.ts - 1;
-{
-this.cs = 516;
-_goto_level = _again;
-continue;
-}
-}
-}
-}
-case 39: {
-{
-{
-p = (( this.te))-1;
-}
-{
-this.diagFatal();
-}
-}
-break;
-}
-case 58: {
-{
-{
-p = (( this.te))-1;
-}
-{
-this.diagError();
-}
-}
-break;
-}
-case 33: {
-{
-{
-p = (( this.te))-1;
-}
-{
-this.emit1(TK_tIDENTIFIER);
-if ((this.declared(this.tok2(this.ts, this.te)))) {
-this.cs = 247;
-{
-p += 1;
-_goto_level = _out;
-continue;
-}
-} else if (true && rbIsNumberedParam(this.tok2(this.ts, this.te))) {
-this.cs = 247;
-{
-p += 1;
-_goto_level = _out;
-continue;
-}
-} else {
-this.cs = (this.arg_or_cmdarg(cmd_state));
-{
-p += 1;
-_goto_level = _out;
-continue;
-}
-}
-}
-}
-}
-case 38: {
-{
-{
-p = (( this.te))-1;
-}
-}
-break;
-}
-case 53: {
-{
-{
-p = (( this.te))-1;
-}
-{
-p = this.ts - 1;
-{
-this.cs = 516;
-_goto_level = _again;
-continue;
-}
-}
-}
-}
-case 36: {
-{
-switch (this.act) {
-case 60: {
-{
-{
-p = (( this.te))-1;
-}
-this.emit4(TK_tUNARY_NUM, this.tok2(this.ts, this.ts + 1), this.ts, this.ts + 1);
-p = p - 1;
-this.cs = 516;
-{
-p += 1;
-_goto_level = _out;
-continue;
-}
-}
-}
-case 67: {
-{
-{
-p = (( this.te))-1;
-}
-this.diagError();
-}
-break;
-}
-case 76: {
-{
-{
-p = (( this.te))-1;
-}
-if ((true)) {
-this.emit4(TK_tPIPE, this.tok2(this.ts, this.ts + 1), this.ts, this.ts + 1);
-p = p - 1;
-this.cs = 345;
-{
-p += 1;
-_goto_level = _out;
-continue;
-}
-} else {
-p -= 2;
-{
-this.cs = 516;
-_goto_level = _again;
-continue;
-}
-}
-}
-}
-case 80: {
-{
-{
-p = (( this.te))-1;
-}
-this.emit_table(2);
-{
-p += 1;
-_goto_level = _out;
-continue;
-}
-}
-}
-case 81: {
-{
-{
-p = (( this.te))-1;
-}
-this.emit4(TK_kRESCUE, "rescue", this.ts, tm);
-p = tm - 1;
-this.cs = 321;
-{
-p += 1;
-_goto_level = _out;
-continue;
-}
-}
-}
-case 82: {
-{
-{
-p = (( this.te))-1;
-}
-this.emit_table(4);
-this.command_start = true;
-this.cs = 508;
-{
-p += 1;
-_goto_level = _out;
-continue;
-}
-}
-}
-case 86: {
-{
-{
-p = (( this.te))-1;
-}
-p = this.ts - 1;
-{
-this.cs = 516;
-_goto_level = _again;
-continue;
-}
-}
-}
-case 87: {
-{
-{
-p = (( this.te))-1;
-}
-this.emit1(TK_tIDENTIFIER);
-if ((this.declared(this.tok2(this.ts, this.te)))) {
-this.cs = 247;
-{
-p += 1;
-_goto_level = _out;
-continue;
-}
-} else if (true && rbIsNumberedParam(this.tok2(this.ts, this.te))) {
-this.cs = 247;
-{
-p += 1;
-_goto_level = _out;
-continue;
-}
-} else {
-this.cs = (this.arg_or_cmdarg(cmd_state));
-{
-p += 1;
-_goto_level = _out;
-continue;
-}
-}
-}
-}
-case 91: {
-{
-{
-p = (( this.te))-1;
-}
-p = this.ts - 1;
-{
-this.cs = 516;
-_goto_level = _again;
-continue;
-}
-}
-}
-}
-}
-break;
-}
-case 247: {
-{
-this.te = p+1;
-{
-p = p - 1;
-{
-this.cs = 345;
-_goto_level = _again;
-continue;
-}
-}
-}
-}
-case 248: {
-{
-this.te = p+1;
-{
-p = p - 1;
-{
-p += 1;
-_goto_level = _out;
-continue;
-}
-}
-}
-}
-case 249: {
-{
-this.te = p;
-p = p - 1;
-}
-break;
-}
-case 253: {
-{
-this.te = p;
-p = p - 1;
-{
-p = p - 1;
-{
-this.cs = 345;
-_goto_level = _again;
-continue;
-}
-}
-}
-}
-case 61: {
-{
-this.te = p+1;
-{
-p = this.ts - 1;
-{
-this.cs = 516;
-_goto_level = _again;
-continue;
-}
-}
-}
-}
-case 257: {
-{
-this.te = p+1;
-{
-this.st().pushLiteral(this.tok2(this.ts, this.te), this.tok2(this.ts, this.te), this.ts);
-{
-this.cs = 128;
-_goto_level = _again;
-continue;
-}
-}
-}
-}
-case 256: {
-{
-this.te = p+1;
-{
-p = p - 1;
-{
-this.cs = 345;
-_goto_level = _again;
-continue;
-}
-}
-}
-}
-case 255: {
-{
-this.te = p+1;
-{
-p = p - 1;
-{
-p += 1;
-_goto_level = _out;
-continue;
-}
-}
-}
-}
-case 259: {
-{
-this.te = p;
-p = p - 1;
-}
-break;
-}
-case 258: {
-{
-this.te = p;
-p = p - 1;
-{
-p = p - 1;
-{
-this.cs = 345;
-_goto_level = _again;
-continue;
-}
-}
-}
-}
-case 60: {
-{
-{
-p = (( this.te))-1;
-}
-{
-p = p - 1;
-{
-this.cs = 345;
-_goto_level = _again;
-continue;
-}
-}
-}
-}
-case 292: {
-{
-this.te = p+1;
-{
-this.emit4(TK_tLAMBDA, "->", this.ts, this.ts + 2);
-this.lambdaPush(this.paren_nest);
-this.cs = 247;
-{
-p += 1;
-_goto_level = _out;
-continue;
-}
-}
-}
-}
-case 71: {
-{
-this.te = p+1;
-{
-this.emit_singleton_class();
-this.cs = 508;
-{
-p += 1;
-_goto_level = _out;
-continue;
-}
-}
-}
-}
-case 267: {
-{
-this.te = p+1;
-{
-type = this.tok2(this.ts, this.te); delimiter = this.tok2(this.te - 1, this.te);
-this.st().pushLiteralFull(type, delimiter, this.ts, -1, false, false, true);
-{
-this.cs = 128;
-_goto_level = _again;
-continue;
-}
-}
-}
-}
-case 63: {
-{
-this.te = p+1;
-{
-p = this.ts - 1;
-{
-this.stackPush(this.cs);
+              this.cs = 129;
+              _goto_level = _again;
+              continue;
+            }
+            case 293: {
+              this.te = p;
+              p = p - 1;
+              this.emit_table(1);
+              this.cs = 255;
+              p += 1;
+              _goto_level = _out;
+              continue;
+            }
+            case 349: {
+              this.te = p;
+              p = p - 1;
+              this.emit1(TK_tIDENTIFIER);
+              if (this.declared(this.tok2(this.ts, this.te))) {
+                this.cs = 247;
+                p += 1;
+                _goto_level = _out;
+                continue;
+              } else if (true && rbIsNumberedParam(this.tok2(this.ts, this.te))) {
+                this.cs = 247;
+                p += 1;
+                _goto_level = _out;
+                continue;
+              } else {
+                this.cs = this.arg_or_cmdarg(cmd_state);
+                p += 1;
+                _goto_level = _out;
+                continue;
+              }
+            }
+            case 291: {
+              this.te = p;
+              p = p - 1;
+              this.emit_table(1);
+              this.cs = 508;
+              p += 1;
+              _goto_level = _out;
+              continue;
+            }
+            case 287: {
+              this.te = p;
+              p = p - 1;
+              this.emit_table(1);
+              this.cs = 508;
+              p += 1;
+              _goto_level = _out;
+              continue;
+            }
+            case 280: {
+              this.te = p;
+              p = p - 1;
+              this.emit_table(1);
+              this.cs = 345;
+              p += 1;
+              _goto_level = _out;
+              continue;
+            }
+            case 294: {
+              this.te = p;
+              p = p - 1;
+              this.emit_table(1);
+              this.cs = 345;
+              p += 1;
+              _goto_level = _out;
+              continue;
+            }
+            case 278: {
+              this.te = p;
+              p = p - 1;
+              break;
+            }
+            case 284: {
+              this.te = p;
+              p = p - 1;
+              this.diagFatal();
+              break;
+            }
+            case 69: {
+              p = this.te - 1;
+              digits = this.numeric_literal_int();
+              if (false) {
+                this.emit4(TK_tINTEGER, this.intValue(digits, this.num_base), this.ts, this.num_suffix_s);
+                p = this.num_suffix_s - 1;
+              } else {
+                p = this.numXfrm(this.intValue(digits, this.num_base), p);
+              }
+              p += 1;
+              _goto_level = _out;
+              continue;
+            }
+            case 64: {
+              p = this.te - 1;
+              this.diagError();
+              break;
+            }
+            case 68: {
+              p = this.te - 1;
+              digits = this.tok2(this.ts, this.num_suffix_s);
+              if (false) {
+                this.emit4(TK_tFLOAT, digits, this.ts, this.num_suffix_s);
+                p = this.num_suffix_s - 1;
+              } else {
+                p = this.numXfrm(digits, p);
+              }
+              p += 1;
+              _goto_level = _out;
+              continue;
+            }
+            case 62: {
+              p = this.te - 1;
+              this.diagFatal();
+              break;
+            }
+            case 66: {
+              switch (this.act) {
+                case 104: {
+                  p = this.te - 1;
+                  if (this.lambdaLast() === this.paren_nest) {
+                    this.nLambda = this.nLambda - 1;
+                    if (this.tokIs(this.ts, this.te, "{")) {
+                      this.emit2(TK_tLAMBEG, "{");
+                    } else {
+                      this.emit2(TK_kDO_LAMBDA, "do");
+                    }
+                  } else {
+                    if (this.tokIs(this.ts, this.te, "{")) {
+                      this.emit2(TK_tLCURLY, "{");
+                    } else {
+                      this.emit_do(false);
+                    }
+                  }
+                  if (this.tokIs(this.ts, this.te, "{")) {
+                    this.paren_nest += 1;
+                  }
+                  this.command_start = true;
+                  this.cs = 508;
+                  p += 1;
+                  _goto_level = _out;
+                  continue;
+                }
+                case 105: {
+                  p = this.te - 1;
+                  this.emit_table(3);
+                  this.cs = 134;
+                  p += 1;
+                  _goto_level = _out;
+                  continue;
+                }
+                case 106: {
+                  p = this.te - 1;
+                  this.emit_singleton_class();
+                  this.cs = 508;
+                  p += 1;
+                  _goto_level = _out;
+                  continue;
+                }
+                case 107: {
+                  p = this.te - 1;
+                  this.emit_table(3);
+                  this.cs = 345;
+                  p += 1;
+                  _goto_level = _out;
+                  continue;
+                }
+                case 108: {
+                  p = this.te - 1;
+                  this.emit_table(3);
+                  this.command_start = true;
+                  this.cs = 508;
+                  p += 1;
+                  _goto_level = _out;
+                  continue;
+                }
+                case 109: {
+                  p = this.te - 1;
+                  this.emit_table(3);
+                  this.cs = 321;
+                  p += 1;
+                  _goto_level = _out;
+                  continue;
+                }
+                case 110: {
+                  p = this.te - 1;
+                  this.emit_table(3);
+                  if (false && this.tokIs(this.ts, this.te, "!")) {
+                    this.cs = 345;
+                    p += 1;
+                    _goto_level = _out;
+                    continue;
+                  } else {
+                    this.cs = 276;
+                    p += 1;
+                    _goto_level = _out;
+                    continue;
+                  }
+                }
+                case 111: {
+                  p = this.te - 1;
+                  if (false) {
+                    this.emit1(TK_tIDENTIFIER);
+                    if (!this.declared(this.tok2(this.ts, this.te))) {
+                      this.cs = this.arg_or_cmdarg(cmd_state);
+                    }
+                  } else {
+                    this.emit2(TK_k__ENCODING__, "__ENCODING__");
+                  }
+                  p += 1;
+                  _goto_level = _out;
+                  continue;
+                }
+                case 112: {
+                  p = this.te - 1;
+                  this.emit_table(3);
+                  p += 1;
+                  _goto_level = _out;
+                  continue;
+                }
+                case 113: {
+                  p = this.te - 1;
+                  digits = this.numeric_literal_int();
+                  if (false) {
+                    this.emit4(TK_tINTEGER, this.intValue(digits, this.num_base), this.ts, this.num_suffix_s);
+                    p = this.num_suffix_s - 1;
+                  } else {
+                    p = this.numXfrm(this.intValue(digits, this.num_base), p);
+                  }
+                  p += 1;
+                  _goto_level = _out;
+                  continue;
+                }
+                case 115: {
+                  p = this.te - 1;
+                  if (false) {
+                    this.diagError();
+                  } else {
+                    this.emit4(TK_tINTEGER, this.intValue(this.tok2(this.ts, this.te - 1), 10), this.ts, this.te - 1);
+                    p = p - 1;
+                    p += 1;
+                    _goto_level = _out;
+                    continue;
+                  }
+                  break;
+                }
+                case 116: {
+                  p = this.te - 1;
+                  if (false) {
+                    this.diagError();
+                  } else {
+                    this.emit4(TK_tFLOAT, this.tok2(this.ts, this.te - 1), this.ts, this.te - 1);
+                    p = p - 1;
+                    p += 1;
+                    _goto_level = _out;
+                    continue;
+                  }
+                  break;
+                }
+                case 117: {
+                  p = this.te - 1;
+                  digits = this.tok2(this.ts, this.num_suffix_s);
+                  if (false) {
+                    this.emit4(TK_tFLOAT, digits, this.ts, this.num_suffix_s);
+                    p = this.num_suffix_s - 1;
+                  } else {
+                    p = this.numXfrm(digits, p);
+                  }
+                  p += 1;
+                  _goto_level = _out;
+                  continue;
+                }
+                case 119: {
+                  p = this.te - 1;
+                  this.emit1(TK_tCONSTANT);
+                  this.cs = this.arg_or_cmdarg(cmd_state);
+                  p += 1;
+                  _goto_level = _out;
+                  continue;
+                }
+                case 123: {
+                  p = this.te - 1;
+                  this.emit1(TK_tIDENTIFIER);
+                  if (this.declared(this.tok2(this.ts, this.te))) {
+                    this.cs = 247;
+                    p += 1;
+                    _goto_level = _out;
+                    continue;
+                  } else if (true && rbIsNumberedParam(this.tok2(this.ts, this.te))) {
+                    this.cs = 247;
+                    p += 1;
+                    _goto_level = _out;
+                    continue;
+                  } else {
+                    this.cs = this.arg_or_cmdarg(cmd_state);
+                    p += 1;
+                    _goto_level = _out;
+                    continue;
+                  }
+                }
+                case 124: {
+                  p = this.te - 1;
+                  if (tm === this.te) {
+                    this.emit1(TK_tFID);
+                  } else {
+                    this.emit4(TK_tIDENTIFIER, this.tok2(this.ts, tm), this.ts, tm);
+                    p = tm - 1;
+                  }
+                  this.cs = 276;
+                  p += 1;
+                  _goto_level = _out;
+                  continue;
+                }
+                case 126: {
+                  p = this.te - 1;
+                  this.emit_table(1);
+                  this.cs = 508;
+                  p += 1;
+                  _goto_level = _out;
+                  continue;
+                }
+                case 127: {
+                  p = this.te - 1;
+                  this.emit_table(1);
+                  this.cs = 345;
+                  p += 1;
+                  _goto_level = _out;
+                  continue;
+                }
+              }
+              break;
+            }
+            case 368: {
+              this.te = p + 1;
+              this.emit4(TK_tNL, "", this.newline_s, this.newline_s + 1);
+              if (false) {
+                p = p - 1;
+                this.cs = 710;
+                p += 1;
+                _goto_level = _out;
+                continue;
+              } else {
+                this.emit1(TK_tBDOT3);
+                this.cs = 345;
+                p += 1;
+                _goto_level = _out;
+                continue;
+              }
+            }
+            case 80: {
+              this.te = p + 1;
+              p = tm - 1;
+              this.cs = 516;
+              _goto_level = _again;
+              continue;
+            }
+            case 362: {
+              this.te = p + 1;
+              this.emit4(TK_tNL, "", this.newline_s, this.newline_s + 1);
+              p = p - 1;
+              this.cs = 710;
+              p += 1;
+              _goto_level = _out;
+              continue;
+            }
+            case 365: {
+              this.te = p;
+              p = p - 1;
+              if (false) {
+                this.emit4(TK_tNL, "", this.newline_s, this.newline_s + 1);
+                p = p - 1;
+                this.cs = 710;
+                p += 1;
+                _goto_level = _out;
+                continue;
+              }
+              break;
+            }
+            case 367: {
+              this.te = p;
+              p = p - 1;
+              this.emit4(TK_tNL, "", this.newline_s, this.newline_s + 1);
+              if (false) {
+                p = p - 1;
+                this.cs = 710;
+                p += 1;
+                _goto_level = _out;
+                continue;
+              } else {
+                this.emit1(TK_tBDOT2);
+                this.cs = 345;
+                p += 1;
+                _goto_level = _out;
+                continue;
+              }
+            }
+            case 366: {
+              this.te = p;
+              p = p - 1;
+              p = tm - 1;
+              this.cs = 516;
+              _goto_level = _again;
+              continue;
+            }
+            case 364: {
+              this.te = p;
+              p = p - 1;
+              this.emit4(TK_tNL, "", this.newline_s, this.newline_s + 1);
+              p = p - 1;
+              this.cs = 710;
+              p += 1;
+              _goto_level = _out;
+              continue;
+            }
+            case 75: {
+              p = this.te - 1;
+              if (false) {
+                this.emit4(TK_tNL, "", this.newline_s, this.newline_s + 1);
+                p = p - 1;
+                this.cs = 710;
+                p += 1;
+                _goto_level = _out;
+                continue;
+              }
+              break;
+            }
+            case 72: {
+              p = this.te - 1;
+              this.emit4(TK_tNL, "", this.newline_s, this.newline_s + 1);
+              p = p - 1;
+              this.cs = 710;
+              p += 1;
+              _goto_level = _out;
+              continue;
+            }
+            case 76: {
+              switch (this.act) {
+                case 140: {
+                  p = this.te - 1;
+                  if (false) {
+                    this.emit4(TK_tNL, "", this.newline_s, this.newline_s + 1);
+                    p = p - 1;
+                    this.cs = 710;
+                    p += 1;
+                    _goto_level = _out;
+                    continue;
+                  }
+                  break;
+                }
+                case 144: {
+                  p = this.te - 1;
+                  this.emit4(TK_tNL, "", this.newline_s, this.newline_s + 1);
+                  p = p - 1;
+                  this.cs = 710;
+                  p += 1;
+                  _goto_level = _out;
+                  continue;
+                }
+              }
+              break;
+            }
+            case 371: {
+              this.te = p;
+              p = p - 1;
+              this.emit_comment(this.eq_begin_s, this.te);
+              this.cs = this.cs_before_block_comment;
+              _goto_level = _again;
+              continue;
+            }
+            case 370: {
+              this.te = p;
+              p = p - 1;
+              this.diagFatal();
+              break;
+            }
+            case 381: {
+              this.te = p + 1;
+              this.eq_begin_s = this.ts;
+              this.cs = 704;
+              _goto_level = _again;
+              continue;
+            }
+            case 82: {
+              this.te = p + 1;
+              p = pe - 3;
+              break;
+            }
+            case 373: {
+              this.te = p + 1;
+              cmd_state = true;
+              p = p - 1;
+              this.cs = 508;
+              _goto_level = _again;
+              continue;
+            }
+            case 374: {
+              this.te = p + 1;
+              p = p - 1;
+              p += 1;
+              _goto_level = _out;
+              continue;
+            }
+            case 375: {
+              this.te = p;
+              p = p - 1;
+              break;
+            }
+            case 380: {
+              this.te = p;
+              p = p - 1;
+              this.eq_begin_s = this.ts;
+              this.cs = 704;
+              _goto_level = _again;
+              continue;
+            }
+            case 379: {
+              this.te = p;
+              p = p - 1;
+              cmd_state = true;
+              p = p - 1;
+              this.cs = 508;
+              _goto_level = _again;
+              continue;
+            }
+            case 81: {
+              p = this.te - 1;
+              cmd_state = true;
+              p = p - 1;
+              this.cs = 508;
+              _goto_level = _again;
+              continue;
+            }
+            case 86: {
+              this.te = p + 1;
+              p = this.st().advance(p);
+              next_state = this.st().rootState;
+              p = p - 1;
+              this.cs = next_state;
+              p += 1;
+              _goto_level = _out;
+              continue;
+            }
+            case 52: {
+              this.newline_s = p;
+              this.emit_comment_from_range(p, pe);
+              break;
+            }
+            case 154: {
+              this.newline_s = p;
+              this.te = p + 1;
+              p = this.ts - 1;
+              this.cs = 516;
+              _goto_level = _again;
+              continue;
+            }
+            case 145: {
+              this.newline_s = p;
+              this.te = p + 1;
+              p = tm - 1;
+              this.cs = 516;
+              _goto_level = _again;
+              continue;
+            }
+            case 137: {
+              this.newline_s = p;
+              this.te = p + 1;
+              p = this.ts - 1;
+              this.cs = 516;
+              _goto_level = _again;
+              continue;
+            }
+            case 213: {
+              this.newline_s = p;
+              this.te = p + 1;
+              followed_by_nl = this.te - 1 === this.newline_s;
+              nl_emitted = false;
+              dots_te = followed_by_nl ? this.te - 1 : this.te;
+              if (true) {
+                if (this.nLambda > 0 && this.lambdaLast() + 1 === this.paren_nest) {
+                  this.emit4(TK_tDOT3, "...", this.ts, dots_te);
+                } else {
+                  this.emit4(TK_tBDOT3, "...", this.ts, dots_te);
+                  if (true && followed_by_nl && this.ctx.in_argdef) {
+                    this.emit4(TK_tNL, "", this.te, this.te);
+                    nl_emitted = true;
+                  }
+                }
+              } else if (true) {
+                this.emit4(TK_tBDOT3, "...", this.ts, dots_te);
+              } else {
+                this.emit4(TK_tDOT3, "...", this.ts, dots_te);
+              }
+              if (followed_by_nl && !nl_emitted) {
+                p = p - 1;
+              }
+              this.cs = 345;
+              p += 1;
+              _goto_level = _out;
+              continue;
+            }
+            case 201: {
+              this.newline_s = p;
+              this.te = p + 1;
+              p = this.ts - 1;
+              this.cs_before_block_comment = this.cs;
+              this.cs = 710;
+              _goto_level = _again;
+              continue;
+            }
+            case 295: {
+              this.newline_s = p;
+              this.te = p + 1;
+              if (this.paren_nest === 0) {
+                /* warning */
+              }
+              this.emit4(TK_tDOT3, "...", this.ts, this.te - 1);
+              p = p - 1;
+              this.cs = 345;
+              p += 1;
+              _goto_level = _out;
+              continue;
+            }
+            case 372: {
+              this.newline_s = p;
+              this.te = p + 1;
+              this.emit_comment(this.eq_begin_s, this.te);
+              this.cs = this.cs_before_block_comment;
+              _goto_level = _again;
+              continue;
+            }
+            case 369: {
+              this.newline_s = p;
+              this.te = p + 1;
+              break;
+            }
+            case 382: {
+              this.newline_s = p;
+              this.te = p + 1;
+              this.eq_begin_s = this.ts;
+              this.cs = 704;
+              _goto_level = _again;
+              continue;
+            }
+            case 83: {
+              this.newline_s = p;
+              this.te = p + 1;
+              p = pe - 3;
+              break;
+            }
+            case 317: {
+              this.num_xfrm = XF_rational;
+              this.te = p;
+              p = p - 1;
+              digits = this.numeric_literal_int();
+              if (false) {
+                this.emit4(TK_tINTEGER, this.intValue(digits, this.num_base), this.ts, this.num_suffix_s);
+                p = this.num_suffix_s - 1;
+              } else {
+                p = this.numXfrm(this.intValue(digits, this.num_base), p);
+              }
+              p += 1;
+              _goto_level = _out;
+              continue;
+            }
+            case 315: {
+              this.num_xfrm = XF_imaginary;
+              this.te = p;
+              p = p - 1;
+              digits = this.numeric_literal_int();
+              if (false) {
+                this.emit4(TK_tINTEGER, this.intValue(digits, this.num_base), this.ts, this.num_suffix_s);
+                p = this.num_suffix_s - 1;
+              } else {
+                p = this.numXfrm(this.intValue(digits, this.num_base), p);
+              }
+              p += 1;
+              _goto_level = _out;
+              continue;
+            }
+            case 320: {
+              this.num_xfrm = XF_imaginary_rational;
+              this.te = p;
+              p = p - 1;
+              digits = this.numeric_literal_int();
+              if (false) {
+                this.emit4(TK_tINTEGER, this.intValue(digits, this.num_base), this.ts, this.num_suffix_s);
+                p = this.num_suffix_s - 1;
+              } else {
+                p = this.numXfrm(this.intValue(digits, this.num_base), p);
+              }
+              p += 1;
+              _goto_level = _out;
+              continue;
+            }
+            case 318: {
+              this.num_xfrm = XF_integer_re;
+              this.te = p;
+              p = p - 1;
+              digits = this.numeric_literal_int();
+              if (false) {
+                this.emit4(TK_tINTEGER, this.intValue(digits, this.num_base), this.ts, this.num_suffix_s);
+                p = this.num_suffix_s - 1;
+              } else {
+                p = this.numXfrm(this.intValue(digits, this.num_base), p);
+              }
+              p += 1;
+              _goto_level = _out;
+              continue;
+            }
+            case 316: {
+              this.num_xfrm = XF_integer_if;
+              this.te = p;
+              p = p - 1;
+              digits = this.numeric_literal_int();
+              if (false) {
+                this.emit4(TK_tINTEGER, this.intValue(digits, this.num_base), this.ts, this.num_suffix_s);
+                p = this.num_suffix_s - 1;
+              } else {
+                p = this.numXfrm(this.intValue(digits, this.num_base), p);
+              }
+              p += 1;
+              _goto_level = _out;
+              continue;
+            }
+            case 319: {
+              this.num_xfrm = XF_integer_rescue;
+              this.te = p;
+              p = p - 1;
+              digits = this.numeric_literal_int();
+              if (false) {
+                this.emit4(TK_tINTEGER, this.intValue(digits, this.num_base), this.ts, this.num_suffix_s);
+                p = this.num_suffix_s - 1;
+              } else {
+                p = this.numXfrm(this.intValue(digits, this.num_base), p);
+              }
+              p += 1;
+              _goto_level = _out;
+              continue;
+            }
+            case 308: {
+              this.num_xfrm = XF_imaginary_float;
+              this.te = p;
+              p = p - 1;
+              digits = this.tok2(this.ts, this.num_suffix_s);
+              if (false) {
+                this.emit4(TK_tFLOAT, digits, this.ts, this.num_suffix_s);
+                p = this.num_suffix_s - 1;
+              } else {
+                p = this.numXfrm(digits, p);
+              }
+              p += 1;
+              _goto_level = _out;
+              continue;
+            }
+            case 309: {
+              this.num_xfrm = XF_float_if;
+              this.te = p;
+              p = p - 1;
+              digits = this.tok2(this.ts, this.num_suffix_s);
+              if (false) {
+                this.emit4(TK_tFLOAT, digits, this.ts, this.num_suffix_s);
+                p = this.num_suffix_s - 1;
+              } else {
+                p = this.numXfrm(digits, p);
+              }
+              p += 1;
+              _goto_level = _out;
+              continue;
+            }
+            case 310: {
+              this.num_xfrm = XF_rational;
+              this.te = p;
+              p = p - 1;
+              digits = this.tok2(this.ts, this.num_suffix_s);
+              if (false) {
+                this.emit4(TK_tFLOAT, digits, this.ts, this.num_suffix_s);
+                p = this.num_suffix_s - 1;
+              } else {
+                p = this.numXfrm(digits, p);
+              }
+              p += 1;
+              _goto_level = _out;
+              continue;
+            }
+            case 312: {
+              this.num_xfrm = XF_imaginary_rational;
+              this.te = p;
+              p = p - 1;
+              digits = this.tok2(this.ts, this.num_suffix_s);
+              if (false) {
+                this.emit4(TK_tFLOAT, digits, this.ts, this.num_suffix_s);
+                p = this.num_suffix_s - 1;
+              } else {
+                p = this.numXfrm(digits, p);
+              }
+              p += 1;
+              _goto_level = _out;
+              continue;
+            }
+            case 311: {
+              this.num_xfrm = XF_float_rescue;
+              this.te = p;
+              p = p - 1;
+              digits = this.tok2(this.ts, this.num_suffix_s);
+              if (false) {
+                this.emit4(TK_tFLOAT, digits, this.ts, this.num_suffix_s);
+                p = this.num_suffix_s - 1;
+              } else {
+                p = this.numXfrm(digits, p);
+              }
+              p += 1;
+              _goto_level = _out;
+              continue;
+            }
+            case 147: {
+              this.e_lbrace();
+              this.te = p;
+              p = p - 1;
+              if (this.lambdaLast() === this.paren_nest) {
+                this.nLambda = this.nLambda - 1;
+                this.emit4(TK_tLAMBEG, "{", this.te - 1, this.te);
+              } else {
+                this.emit4(TK_tLCURLY, "{", this.te - 1, this.te);
+              }
+              this.command_start = true;
+              this.paren_nest += 1;
+              this.cs = 508;
+              p += 1;
+              _goto_level = _out;
+              continue;
+            }
+            case 169: {
+              this.e_lbrace();
+              this.te = p;
+              p = p - 1;
+              if (this.lambdaLast() === this.paren_nest) {
+                this.nLambda = this.nLambda - 1;
+                this.emit2(TK_tLAMBEG, "{");
+              } else {
+                this.emit2(TK_tLBRACE_ARG, "{");
+              }
+              this.paren_nest += 1;
+              this.command_start = true;
+              this.cs = 508;
+              p += 1;
+              _goto_level = _out;
+              continue;
+            }
+            case 245: {
+              this.e_lbrace();
+              this.te = p;
+              p = p - 1;
+              if (this.lambdaLast() === this.paren_nest) {
+                this.nLambda = this.nLambda - 1;
+                this.command_start = true;
+                this.emit2(TK_tLAMBEG, "{");
+              } else {
+                this.emit2(TK_tLBRACE, "{");
+              }
+              this.paren_nest += 1;
+              p += 1;
+              _goto_level = _out;
+              continue;
+            }
+            case 360: {
+              this.e_lbrace();
+              this.te = p;
+              p = p - 1;
+              if (this.lambdaLast() === this.paren_nest) {
+                this.nLambda = this.nLambda - 1;
+                if (this.tokIs(this.ts, this.te, "{")) {
+                  this.emit2(TK_tLAMBEG, "{");
+                } else {
+                  this.emit2(TK_kDO_LAMBDA, "do");
+                }
+              } else {
+                if (this.tokIs(this.ts, this.te, "{")) {
+                  this.emit2(TK_tLCURLY, "{");
+                } else {
+                  this.emit_do(false);
+                }
+              }
+              if (this.tokIs(this.ts, this.te, "{")) {
+                this.paren_nest += 1;
+              }
+              this.command_start = true;
+              this.cs = 508;
+              p += 1;
+              _goto_level = _out;
+              continue;
+            }
+            case 361: {
+              if (this.st().closeInterp(p)) {
+                p = p - 1;
+                this.cs = 128;
+                p += 1;
+                _goto_level = _out;
+                continue;
+              }
+              this.paren_nest -= 1;
+              this.te = p;
+              p = p - 1;
+              this.emit_rbrace_rparen_rbrack();
+              if (this.tokIs(this.ts, this.te, "}") || this.tokIs(this.ts, this.te, "]")) {
+                if (true) {
+                  this.cs = 516;
+                } else {
+                  this.cs = 313;
+                }
+              } else {
+              }
+              p += 1;
+              _goto_level = _out;
+              continue;
+            }
+            case 43: {
+              p = this.on_newline(p);
+              this.newline_s = p;
+              break;
+            }
+            case 16: {
+              p = this.on_newline(p);
+              tm = p;
+              break;
+            }
+            case 18: {
+              p = this.on_newline(p);
+              tm = p;
+              break;
+            }
+            case 20: {
+              p = this.on_newline(p);
+              tm = p;
+              break;
+            }
+            case 98: {
+              p = this.on_newline(p);
+              this.te = p;
+              p = p - 1;
+              break;
+            }
+            case 117: {
+              p = this.on_newline(p);
+              this.te = p;
+              p = p - 1;
+              break;
+            }
+            case 125: {
+              p = this.on_newline(p);
+              this.te = p;
+              p = p - 1;
+              break;
+            }
+            case 19: {
+              p = this.on_newline(p);
+              this.te = p + 1;
+              p = this.ts - 1;
+              this.cs = 516;
+              _goto_level = _again;
+              continue;
+            }
+            case 156: {
+              p = this.on_newline(p);
+              this.te = p;
+              p = p - 1;
+              break;
+            }
+            case 148: {
+              p = this.on_newline(p);
+              this.te = p;
+              p = p - 1;
+              p = p - 1;
+              this.cs = 516;
+              _goto_level = _again;
+              continue;
+            }
+            case 167: {
+              p = this.on_newline(p);
+              this.te = p;
+              p = p - 1;
+              break;
+            }
+            case 179: {
+              p = this.on_newline(p);
+              this.te = p;
+              p = p - 1;
+              break;
+            }
+            case 175: {
+              p = this.on_newline(p);
+              this.te = p;
+              p = p - 1;
+              p = p - 1;
+              this.cs = 516;
+              _goto_level = _again;
+              continue;
+            }
+            case 44: {
+              p = this.on_newline(p);
+              this.te = p + 1;
+              this.emit4(TK_tUNARY_NUM, this.tok2(this.ts, this.ts + 1), this.ts, this.ts + 1);
+              p = p - 1;
+              this.cs = 516;
+              p += 1;
+              _goto_level = _out;
+              continue;
+            }
+            case 35: {
+              p = this.on_newline(p);
+              this.te = p + 1;
+              this.emit4(TK_tIDENTIFIER, ident_tok, ident_ts, ident_te);
+              p = ident_te - 1;
+              if (this.declared(ident_tok) && false) {
+                this.cs = 247;
+              } else {
+                this.cs = 307;
+              }
+              p += 1;
+              _goto_level = _out;
+              continue;
+            }
+            case 198: {
+              p = this.on_newline(p);
+              this.te = p;
+              p = p - 1;
+              break;
+            }
+            case 254: {
+              p = this.on_newline(p);
+              this.te = p;
+              p = p - 1;
+              break;
+            }
+            case 250: {
+              p = this.on_newline(p);
+              this.te = p;
+              p = p - 1;
+              if (this.ctx.in_kwarg) {
+                p = p - 1;
+                this.cs = 516;
+                _goto_level = _again;
+                continue;
+              } else {
+                this.cs = 710;
+                _goto_level = _again;
+                continue;
+              }
+            }
+            case 263: {
+              p = this.on_newline(p);
+              this.te = p;
+              p = p - 1;
+              break;
+            }
+            case 260: {
+              p = this.on_newline(p);
+              this.te = p;
+              p = p - 1;
+              this.cs = 710;
+              _goto_level = _again;
+              continue;
+            }
+            case 347: {
+              p = this.on_newline(p);
+              this.te = p;
+              p = p - 1;
+              break;
+            }
+            case 279: {
+              p = this.on_newline(p);
+              this.te = p;
+              p = p - 1;
+              this.cs = 696;
+              _goto_level = _again;
+              continue;
+            }
+            case 376: {
+              p = this.on_newline(p);
+              this.te = p;
+              p = p - 1;
+              break;
+            }
+            case 46: {
+              this.sharp_s = p - 1;
+              this.emit_comment_from_range(p, pe);
+              break;
+            }
+            case 50: {
+              this.emit_comment_from_range(p, pe);
+              this.newline_s = p;
+              break;
+            }
+            case 101: {
+              this.emit_comment_from_range(p, pe);
+              this.te = p;
+              p = p - 1;
+              break;
+            }
+            case 116: {
+              this.emit_comment_from_range(p, pe);
+              this.te = p;
+              p = p - 1;
+              break;
+            }
+            case 128: {
+              this.emit_comment_from_range(p, pe);
+              this.te = p;
+              p = p - 1;
+              break;
+            }
+            case 150: {
+              this.emit_comment_from_range(p, pe);
+              this.te = p;
+              p = p - 1;
+              this.cs = 516;
+              _goto_level = _again;
+              continue;
+            }
+            case 165: {
+              this.emit_comment_from_range(p, pe);
+              this.te = p;
+              p = p - 1;
+              break;
+            }
+            case 177: {
+              this.emit_comment_from_range(p, pe);
+              this.te = p;
+              p = p - 1;
+              break;
+            }
+            case 204: {
+              this.emit_comment_from_range(p, pe);
+              this.te = p;
+              p = p - 1;
+              break;
+            }
+            case 252: {
+              this.emit_comment_from_range(p, pe);
+              this.te = p;
+              p = p - 1;
+              break;
+            }
+            case 262: {
+              this.emit_comment_from_range(p, pe);
+              this.te = p;
+              p = p - 1;
+              break;
+            }
+            case 283: {
+              this.emit_comment_from_range(p, pe);
+              this.te = p;
+              p = p - 1;
+              break;
+            }
+            case 378: {
+              this.emit_comment_from_range(p, pe);
+              this.te = p;
+              p = p - 1;
+              break;
+            }
+            case 122: {
+              tm = p;
+              this.te = p;
+              p = p - 1;
+              this.emit4(TK_tFID, this.tok2(this.ts, tm), this.ts, tm);
+              this.cs = this.arg_or_cmdarg(cmd_state);
+              p = tm - 1;
+              p += 1;
+              _goto_level = _out;
+              continue;
+            }
+            case 218: {
+              tm = p;
+              this.te = p;
+              p = p - 1;
+              this.emit4(TK_tSYMBOL, this.tok2(this.ts + 1, tm), this.ts, tm);
+              p = tm - 1;
+              this.cs = 516;
+              p += 1;
+              _goto_level = _out;
+              continue;
+            }
+            case 189: {
+              tm = p;
+              this.te = p;
+              p = p - 1;
+              p = this.ts - 1;
+              this.cs = 516;
+              _goto_level = _again;
+              continue;
+            }
+            case 276: {
+              tm = p;
+              switch (this.act) {
+                case 104: {
+                  p = this.te - 1;
+                  if (this.lambdaLast() === this.paren_nest) {
+                    this.nLambda = this.nLambda - 1;
+                    if (this.tokIs(this.ts, this.te, "{")) {
+                      this.emit2(TK_tLAMBEG, "{");
+                    } else {
+                      this.emit2(TK_kDO_LAMBDA, "do");
+                    }
+                  } else {
+                    if (this.tokIs(this.ts, this.te, "{")) {
+                      this.emit2(TK_tLCURLY, "{");
+                    } else {
+                      this.emit_do(false);
+                    }
+                  }
+                  if (this.tokIs(this.ts, this.te, "{")) {
+                    this.paren_nest += 1;
+                  }
+                  this.command_start = true;
+                  this.cs = 508;
+                  p += 1;
+                  _goto_level = _out;
+                  continue;
+                }
+                case 105: {
+                  p = this.te - 1;
+                  this.emit_table(3);
+                  this.cs = 134;
+                  p += 1;
+                  _goto_level = _out;
+                  continue;
+                }
+                case 106: {
+                  p = this.te - 1;
+                  this.emit_singleton_class();
+                  this.cs = 508;
+                  p += 1;
+                  _goto_level = _out;
+                  continue;
+                }
+                case 107: {
+                  p = this.te - 1;
+                  this.emit_table(3);
+                  this.cs = 345;
+                  p += 1;
+                  _goto_level = _out;
+                  continue;
+                }
+                case 108: {
+                  p = this.te - 1;
+                  this.emit_table(3);
+                  this.command_start = true;
+                  this.cs = 508;
+                  p += 1;
+                  _goto_level = _out;
+                  continue;
+                }
+                case 109: {
+                  p = this.te - 1;
+                  this.emit_table(3);
+                  this.cs = 321;
+                  p += 1;
+                  _goto_level = _out;
+                  continue;
+                }
+                case 110: {
+                  p = this.te - 1;
+                  this.emit_table(3);
+                  if (false && this.tokIs(this.ts, this.te, "!")) {
+                    this.cs = 345;
+                    p += 1;
+                    _goto_level = _out;
+                    continue;
+                  } else {
+                    this.cs = 276;
+                    p += 1;
+                    _goto_level = _out;
+                    continue;
+                  }
+                }
+                case 111: {
+                  p = this.te - 1;
+                  if (false) {
+                    this.emit1(TK_tIDENTIFIER);
+                    if (!this.declared(this.tok2(this.ts, this.te))) {
+                      this.cs = this.arg_or_cmdarg(cmd_state);
+                    }
+                  } else {
+                    this.emit2(TK_k__ENCODING__, "__ENCODING__");
+                  }
+                  p += 1;
+                  _goto_level = _out;
+                  continue;
+                }
+                case 112: {
+                  p = this.te - 1;
+                  this.emit_table(3);
+                  p += 1;
+                  _goto_level = _out;
+                  continue;
+                }
+                case 113: {
+                  p = this.te - 1;
+                  digits = this.numeric_literal_int();
+                  if (false) {
+                    this.emit4(TK_tINTEGER, this.intValue(digits, this.num_base), this.ts, this.num_suffix_s);
+                    p = this.num_suffix_s - 1;
+                  } else {
+                    p = this.numXfrm(this.intValue(digits, this.num_base), p);
+                  }
+                  p += 1;
+                  _goto_level = _out;
+                  continue;
+                }
+                case 115: {
+                  p = this.te - 1;
+                  if (false) {
+                    this.diagError();
+                  } else {
+                    this.emit4(TK_tINTEGER, this.intValue(this.tok2(this.ts, this.te - 1), 10), this.ts, this.te - 1);
+                    p = p - 1;
+                    p += 1;
+                    _goto_level = _out;
+                    continue;
+                  }
+                  break;
+                }
+                case 116: {
+                  p = this.te - 1;
+                  if (false) {
+                    this.diagError();
+                  } else {
+                    this.emit4(TK_tFLOAT, this.tok2(this.ts, this.te - 1), this.ts, this.te - 1);
+                    p = p - 1;
+                    p += 1;
+                    _goto_level = _out;
+                    continue;
+                  }
+                  break;
+                }
+                case 117: {
+                  p = this.te - 1;
+                  digits = this.tok2(this.ts, this.num_suffix_s);
+                  if (false) {
+                    this.emit4(TK_tFLOAT, digits, this.ts, this.num_suffix_s);
+                    p = this.num_suffix_s - 1;
+                  } else {
+                    p = this.numXfrm(digits, p);
+                  }
+                  p += 1;
+                  _goto_level = _out;
+                  continue;
+                }
+                case 119: {
+                  p = this.te - 1;
+                  this.emit1(TK_tCONSTANT);
+                  this.cs = this.arg_or_cmdarg(cmd_state);
+                  p += 1;
+                  _goto_level = _out;
+                  continue;
+                }
+                case 123: {
+                  p = this.te - 1;
+                  this.emit1(TK_tIDENTIFIER);
+                  if (this.declared(this.tok2(this.ts, this.te))) {
+                    this.cs = 247;
+                    p += 1;
+                    _goto_level = _out;
+                    continue;
+                  } else if (true && rbIsNumberedParam(this.tok2(this.ts, this.te))) {
+                    this.cs = 247;
+                    p += 1;
+                    _goto_level = _out;
+                    continue;
+                  } else {
+                    this.cs = this.arg_or_cmdarg(cmd_state);
+                    p += 1;
+                    _goto_level = _out;
+                    continue;
+                  }
+                }
+                case 124: {
+                  p = this.te - 1;
+                  if (tm === this.te) {
+                    this.emit1(TK_tFID);
+                  } else {
+                    this.emit4(TK_tIDENTIFIER, this.tok2(this.ts, tm), this.ts, tm);
+                    p = tm - 1;
+                  }
+                  this.cs = 276;
+                  p += 1;
+                  _goto_level = _out;
+                  continue;
+                }
+                case 126: {
+                  p = this.te - 1;
+                  this.emit_table(1);
+                  this.cs = 508;
+                  p += 1;
+                  _goto_level = _out;
+                  continue;
+                }
+                case 127: {
+                  p = this.te - 1;
+                  this.emit_table(1);
+                  this.cs = 345;
+                  p += 1;
+                  _goto_level = _out;
+                  continue;
+                }
+              }
+              break;
+            }
+            case 123: {
+              tm = p - 2;
+              this.te = p;
+              p = p - 1;
+              this.emit4(TK_tFID, this.tok2(this.ts, tm), this.ts, tm);
+              this.cs = this.arg_or_cmdarg(cmd_state);
+              p = tm - 1;
+              p += 1;
+              _goto_level = _out;
+              continue;
+            }
+            case 219: {
+              tm = p - 2;
+              this.te = p;
+              p = p - 1;
+              this.emit4(TK_tSYMBOL, this.tok2(this.ts + 1, tm), this.ts, tm);
+              p = tm - 1;
+              this.cs = 516;
+              p += 1;
+              _goto_level = _out;
+              continue;
+            }
+            case 191: {
+              tm = p - 2;
+              this.te = p;
+              p = p - 1;
+              p = this.ts - 1;
+              this.cs = 516;
+              _goto_level = _again;
+              continue;
+            }
+            case 277: {
+              tm = p - 2;
+              this.te = p;
+              p = p - 1;
+              if (tm === this.te) {
+                this.emit1(TK_tFID);
+              } else {
+                this.emit4(TK_tIDENTIFIER, this.tok2(this.ts, tm), this.ts, tm);
+                p = tm - 1;
+              }
+              this.cs = 276;
+              p += 1;
+              _goto_level = _out;
+              continue;
+            }
+            case 220: {
+              tm = p;
+              this.te = p;
+              p = p - 1;
+              this.emit4(TK_tSYMBOL, this.tok2(this.ts + 1, tm), this.ts, tm);
+              p = tm - 1;
+              this.cs = 516;
+              p += 1;
+              _goto_level = _out;
+              continue;
+            }
+            case 192: {
+              tm = p;
+              this.te = p;
+              p = p - 1;
+              p = this.ts - 1;
+              this.cs = 516;
+              _goto_level = _again;
+              continue;
+            }
+            case 221: {
+              tm = p - 2;
+              this.te = p;
+              p = p - 1;
+              this.emit4(TK_tSYMBOL, this.tok2(this.ts + 1, tm), this.ts, tm);
+              p = tm - 1;
+              this.cs = 516;
+              p += 1;
+              _goto_level = _out;
+              continue;
+            }
+            case 193: {
+              tm = p - 2;
+              this.te = p;
+              p = p - 1;
+              p = this.ts - 1;
+              this.cs = 516;
+              _goto_level = _again;
+              continue;
+            }
+            case 225: {
+              tm = p - 2;
+              this.te = p;
+              p = p - 1;
+              this.emit4(TK_tSYMBOL, this.tok2(this.ts + 1, tm), this.ts, tm);
+              p = tm - 1;
+              this.cs = 516;
+              p += 1;
+              _goto_level = _out;
+              continue;
+            }
+            case 196: {
+              tm = p - 2;
+              this.te = p;
+              p = p - 1;
+              p = this.ts - 1;
+              this.cs = 516;
+              _goto_level = _again;
+              continue;
+            }
+            case 224: {
+              tm = p - 2;
+              this.te = p;
+              p = p - 1;
+              this.emit4(TK_tSYMBOL, this.tok2(this.ts + 1, tm), this.ts, tm);
+              p = tm - 1;
+              this.cs = 516;
+              p += 1;
+              _goto_level = _out;
+              continue;
+            }
+            case 195: {
+              tm = p - 2;
+              switch (this.act) {
+                case 60: {
+                  p = this.te - 1;
+                  this.emit4(TK_tUNARY_NUM, this.tok2(this.ts, this.ts + 1), this.ts, this.ts + 1);
+                  p = p - 1;
+                  this.cs = 516;
+                  p += 1;
+                  _goto_level = _out;
+                  continue;
+                }
+                case 67: {
+                  p = this.te - 1;
+                  this.diagError();
+                  break;
+                }
+                case 76: {
+                  p = this.te - 1;
+                  if (true) {
+                    this.emit4(TK_tPIPE, this.tok2(this.ts, this.ts + 1), this.ts, this.ts + 1);
+                    p = p - 1;
+                    this.cs = 345;
+                    p += 1;
+                    _goto_level = _out;
+                    continue;
+                  } else {
+                    p -= 2;
+                    this.cs = 516;
+                    _goto_level = _again;
+                    continue;
+                  }
+                }
+                case 80: {
+                  p = this.te - 1;
+                  this.emit_table(2);
+                  p += 1;
+                  _goto_level = _out;
+                  continue;
+                }
+                case 81: {
+                  p = this.te - 1;
+                  this.emit4(TK_kRESCUE, "rescue", this.ts, tm);
+                  p = tm - 1;
+                  this.cs = 321;
+                  p += 1;
+                  _goto_level = _out;
+                  continue;
+                }
+                case 82: {
+                  p = this.te - 1;
+                  this.emit_table(4);
+                  this.command_start = true;
+                  this.cs = 508;
+                  p += 1;
+                  _goto_level = _out;
+                  continue;
+                }
+                case 86: {
+                  p = this.te - 1;
+                  p = this.ts - 1;
+                  this.cs = 516;
+                  _goto_level = _again;
+                  continue;
+                }
+                case 87: {
+                  p = this.te - 1;
+                  this.emit1(TK_tIDENTIFIER);
+                  if (this.declared(this.tok2(this.ts, this.te))) {
+                    this.cs = 247;
+                    p += 1;
+                    _goto_level = _out;
+                    continue;
+                  } else if (true && rbIsNumberedParam(this.tok2(this.ts, this.te))) {
+                    this.cs = 247;
+                    p += 1;
+                    _goto_level = _out;
+                    continue;
+                  } else {
+                    this.cs = this.arg_or_cmdarg(cmd_state);
+                    p += 1;
+                    _goto_level = _out;
+                    continue;
+                  }
+                }
+                case 91: {
+                  p = this.te - 1;
+                  p = this.ts - 1;
+                  this.cs = 516;
+                  _goto_level = _again;
+                  continue;
+                }
+              }
+              break;
+            }
+            case 222: {
+              tm = p - 3;
+              this.te = p;
+              p = p - 1;
+              this.emit4(TK_tSYMBOL, this.tok2(this.ts + 1, tm), this.ts, tm);
+              p = tm - 1;
+              this.cs = 516;
+              p += 1;
+              _goto_level = _out;
+              continue;
+            }
+            case 194: {
+              tm = p - 3;
+              this.te = p;
+              p = p - 1;
+              p = this.ts - 1;
+              this.cs = 516;
+              _goto_level = _again;
+              continue;
+            }
+            case 223: {
+              tm = p - 2;
+              this.te = p;
+              p = p - 1;
+              this.emit4(TK_tSYMBOL, this.tok2(this.ts + 1, tm), this.ts, tm);
+              p = tm - 1;
+              this.cs = 516;
+              p += 1;
+              _goto_level = _out;
+              continue;
+            }
+            case 342: {
+              tm = p - 2;
+              this.te = p;
+              p = p - 1;
+              this.emit4(TK_tCONSTANT, this.tok2(this.ts, tm), this.ts, tm);
+              p = tm - 1;
+              p += 1;
+              _goto_level = _out;
+              continue;
+            }
+            case 146: {
+              this.cond.push(false);
+              this.cmdarg.push(false);
+              this.paren_nest += 1;
+              this.te = p;
+              p = p - 1;
+              this.emit4(TK_tLBRACK, "[", this.te - 1, this.te);
+              this.cs = 345;
+              p += 1;
+              _goto_level = _out;
+              continue;
+            }
+            case 238: {
+              this.cond.push(false);
+              this.cmdarg.push(false);
+              this.paren_nest += 1;
+              this.te = p;
+              p = p - 1;
+              this.emit2(TK_tLBRACK, "[");
+              p += 1;
+              _goto_level = _out;
+              continue;
+            }
+            case 345: {
+              this.cond.push(false);
+              this.cmdarg.push(false);
+              this.paren_nest += 1;
+              this.te = p;
+              p = p - 1;
+              this.emit2(TK_tLBRACK2, "[");
+              this.cs = 345;
+              p += 1;
+              _goto_level = _out;
+              continue;
+            }
+            case 348: {
+              this.paren_nest -= 1;
+              this.te = p;
+              p = p - 1;
+              this.emit_rbrace_rparen_rbrack();
+              if (this.tokIs(this.ts, this.te, "}") || this.tokIs(this.ts, this.te, "]")) {
+                if (true) {
+                  this.cs = 516;
+                } else {
+                  this.cs = 313;
+                }
+              } else {
+              }
+              p += 1;
+              _goto_level = _out;
+              continue;
+            }
+            case 138: {
+              this.cond.push(false);
+              this.cmdarg.push(false);
+              this.paren_nest += 1;
+              if (false) {
+                this.command_start = true;
+              }
+              this.te = p;
+              p = p - 1;
+              if (false) {
+                this.emit4(TK_tLPAREN2, "(", this.te - 1, this.te);
+                this.cs = 508;
+                p += 1;
+                _goto_level = _out;
+                continue;
+              } else {
+                this.emit4(TK_tLPAREN_ARG, "(", this.te - 1, this.te);
+                this.cs = 345;
+                p += 1;
+                _goto_level = _out;
+                continue;
+              }
+            }
+            case 151: {
+              this.cond.push(false);
+              this.cmdarg.push(false);
+              this.paren_nest += 1;
+              if (false) {
+                this.command_start = true;
+              }
+              this.te = p;
+              p = p - 1;
+              this.emit2(TK_tLPAREN2, "(");
+              this.cs = 345;
+              p += 1;
+              _goto_level = _out;
+              continue;
+            }
+            case 159: {
+              this.cond.push(false);
+              this.cmdarg.push(false);
+              this.paren_nest += 1;
+              if (false) {
+                this.command_start = true;
+              }
+              this.te = p;
+              p = p - 1;
+              this.emit4(TK_tLPAREN_ARG, "(", this.te - 1, this.te);
+              if (false) {
+                this.cs = 508;
+                p += 1;
+                _goto_level = _out;
+                continue;
+              } else {
+                this.cs = 345;
+                p += 1;
+                _goto_level = _out;
+                continue;
+              }
+            }
+            case 208: {
+              this.cond.push(false);
+              this.cmdarg.push(false);
+              this.paren_nest += 1;
+              if (false) {
+                this.command_start = true;
+              }
+              this.te = p;
+              p = p - 1;
+              this.emit2(TK_tLPAREN, "(");
+              p += 1;
+              _goto_level = _out;
+              continue;
+            }
+            case 289: {
+              this.cond.push(false);
+              this.cmdarg.push(false);
+              this.paren_nest += 1;
+              if (false) {
+                this.command_start = true;
+              }
+              this.te = p;
+              p = p - 1;
+              this.emit_table(1);
+              this.cs = 345;
+              p += 1;
+              _goto_level = _out;
+              continue;
+            }
+            case 290: {
+              this.paren_nest -= 1;
+              this.te = p;
+              p = p - 1;
+              this.emit_rbrace_rparen_rbrack();
+              if (this.tokIs(this.ts, this.te, "}") || this.tokIs(this.ts, this.te, "]")) {
+                if (true) {
+                  this.cs = 516;
+                } else {
+                  this.cs = 313;
+                }
+              } else {
+              }
+              p += 1;
+              _goto_level = _out;
+              continue;
+            }
+            case 57: {
+              heredoc_e = p;
+              this.newline_s = p;
+              break;
+            }
+            case 233: {
+              new_herebody_s = p;
+              this.te = p;
+              p = p - 1;
+              {
+                const hd = rbHeredocOpener(this.tok2(this.ts, heredoc_e));
+                indent = hd.indent;
+                dedent_body = hd.dedent;
+                type = hd.type;
+                delimiter = hd.delimiter;
+              }
 
-this.cs = 129;
-_goto_level = _again;
-continue;
-}
-}
-}
-}
-case 288: {
-{
-this.te = p+1;
-{
-this.emit_table(1);
-this.cs = 255;
-{
-p += 1;
-_goto_level = _out;
-continue;
-}
-}
-}
-}
-case 341: {
-{
-this.te = p+1;
-{
-this.emit_table(1);
-this.cs = 508;
-{
-p += 1;
-_goto_level = _out;
-continue;
-}
-}
-}
-}
-case 281: {
-{
-this.te = p+1;
-{
-this.emit_table(1);
-this.cs = 508;
-{
-p += 1;
-_goto_level = _out;
-continue;
-}
-}
-}
-}
-case 286: {
-{
-this.te = p+1;
-{
-this.emit2(TK_tOP_ASGN, this.tok2(this.ts, this.te - 1));
-this.cs = 345;
-{
-p += 1;
-_goto_level = _out;
-continue;
-}
-}
-}
-}
-case 272: {
-{
-this.te = p+1;
-{
-this.emit2(TK_tEH, "?");
-this.cs = 508;
-{
-p += 1;
-_goto_level = _out;
-continue;
-}
-}
-}
-}
-case 269: {
-{
-this.te = p+1;
-{
-this.emit_table(1);
-this.cs = 345;
-{
-p += 1;
-_goto_level = _out;
-continue;
-}
-}
-}
-}
-case 271: {
-{
-this.te = p+1;
-{
-this.emit2(TK_tSEMI, ";");
-this.command_start = true;
-this.cs = 508;
-{
-p += 1;
-_goto_level = _out;
-continue;
-}
-}
-}
-}
-case 346: {
-{
-this.te = p+1;
-{
-this.diagError();
-p = p - 1;
-}
-}
-break;
-}
-case 266: {
-{
-this.te = p+1;
-{
-this.diagFatal();
-}
-}
-break;
-}
-case 265: {
-{
-this.te = p+1;
-{
-p = p - 1;
-{
-p += 1;
-_goto_level = _out;
-continue;
-}
-}
-}
-}
-case 357: {
-{
-this.te = p;
-p = p - 1;
-{
-this.emit_table(3);
-this.cs = 134;
-{
-p += 1;
-_goto_level = _out;
-continue;
-}
-}
-}
-}
-case 355: {
-{
-this.te = p;
-p = p - 1;
-{
-this.emit_singleton_class();
-this.cs = 508;
-{
-p += 1;
-_goto_level = _out;
-continue;
-}
-}
-}
-}
-case 354: {
-{
-this.te = p;
-p = p - 1;
-{
-this.emit_table(3);
-this.command_start = true;
-this.cs = 508;
-{
-p += 1;
-_goto_level = _out;
-continue;
-}
-}
-}
-}
-case 296: {
-{
-this.te = p;
-p = p - 1;
-{
-this.diagError();
-}
-}
-break;
-}
-case 343: {
-{
-this.te = p;
-p = p - 1;
-{
-this.emit1(TK_tCONSTANT);
-this.cs = (this.arg_or_cmdarg(cmd_state));
-{
-p += 1;
-_goto_level = _out;
-continue;
-}
-}
-}
-}
-case 285: {
-{
-this.te = p;
-p = p - 1;
-{
-p = this.ts - 1;
-{
-this.stackPush(this.cs);
-
-this.cs = 129;
-_goto_level = _again;
-continue;
-}
-}
-}
-}
-case 293: {
-{
-this.te = p;
-p = p - 1;
-{
-this.emit_table(1);
-this.cs = 255;
-{
-p += 1;
-_goto_level = _out;
-continue;
-}
-}
-}
-}
-case 349: {
-{
-this.te = p;
-p = p - 1;
-{
-this.emit1(TK_tIDENTIFIER);
-if ((this.declared(this.tok2(this.ts, this.te)))) {
-this.cs = 247;
-{
-p += 1;
-_goto_level = _out;
-continue;
-}
-} else if (true && rbIsNumberedParam(this.tok2(this.ts, this.te))) {
-this.cs = 247;
-{
-p += 1;
-_goto_level = _out;
-continue;
-}
-} else {
-this.cs = (this.arg_or_cmdarg(cmd_state));
-{
-p += 1;
-_goto_level = _out;
-continue;
-}
-}
-}
-}
-}
-case 291: {
-{
-this.te = p;
-p = p - 1;
-{
-this.emit_table(1);
-this.cs = 508;
-{
-p += 1;
-_goto_level = _out;
-continue;
-}
-}
-}
-}
-case 287: {
-{
-this.te = p;
-p = p - 1;
-{
-this.emit_table(1);
-this.cs = 508;
-{
-p += 1;
-_goto_level = _out;
-continue;
-}
-}
-}
-}
-case 280: {
-{
-this.te = p;
-p = p - 1;
-{
-this.emit_table(1);
-this.cs = 345;
-{
-p += 1;
-_goto_level = _out;
-continue;
-}
-}
-}
-}
-case 294: {
-{
-this.te = p;
-p = p - 1;
-{
-this.emit_table(1);
-this.cs = 345;
-{
-p += 1;
-_goto_level = _out;
-continue;
-}
-}
-}
-}
-case 278: {
-{
-this.te = p;
-p = p - 1;
-}
-break;
-}
-case 284: {
-{
-this.te = p;
-p = p - 1;
-{
-this.diagFatal();
-}
-}
-break;
-}
-case 69: {
-{
-{
-p = (( this.te))-1;
-}
-{
-digits = this.numeric_literal_int();
-if ((false)) {
-this.emit4(TK_tINTEGER, this.intValue(digits, this.num_base), this.ts, this.num_suffix_s);
-p = this.num_suffix_s - 1;
-} else {
-p = this.numXfrm(this.intValue(digits, this.num_base), p);
-}
-{
-p += 1;
-_goto_level = _out;
-continue;
-}
-}
-}
-}
-case 64: {
-{
-{
-p = (( this.te))-1;
-}
-{
-this.diagError();
-}
-}
-break;
-}
-case 68: {
-{
-{
-p = (( this.te))-1;
-}
-{
-digits = this.tok2(this.ts, this.num_suffix_s);
-if ((false)) {
-this.emit4(TK_tFLOAT, digits, this.ts, this.num_suffix_s);
-p = this.num_suffix_s - 1;
-} else {
-p = this.numXfrm(digits, p);
-}
-{
-p += 1;
-_goto_level = _out;
-continue;
-}
-}
-}
-}
-case 62: {
-{
-{
-p = (( this.te))-1;
-}
-{
-this.diagFatal();
-}
-}
-break;
-}
-case 66: {
-{
-switch (this.act) {
-case 104: {
-{
-{
-p = (( this.te))-1;
-}
-if ((this.lambdaLast() === this.paren_nest)) {
-this.nLambda = this.nLambda - 1;
-if ((this.tokIs(this.ts, this.te, "{"))) {
-this.emit2(TK_tLAMBEG, "{");
-} else {
-this.emit2(TK_kDO_LAMBDA, "do");
-}
-} else {
-if ((this.tokIs(this.ts, this.te, "{"))) {
-this.emit2(TK_tLCURLY, "{");
-} else {
-this.emit_do(false);
-}
-}
-if ((this.tokIs(this.ts, this.te, "{"))) {
-this.paren_nest += 1;
-}
-this.command_start = true;
-this.cs = 508;
-{
-p += 1;
-_goto_level = _out;
-continue;
-}
-}
-}
-case 105: {
-{
-{
-p = (( this.te))-1;
-}
-this.emit_table(3);
-this.cs = 134;
-{
-p += 1;
-_goto_level = _out;
-continue;
-}
-}
-}
-case 106: {
-{
-{
-p = (( this.te))-1;
-}
-this.emit_singleton_class();
-this.cs = 508;
-{
-p += 1;
-_goto_level = _out;
-continue;
-}
-}
-}
-case 107: {
-{
-{
-p = (( this.te))-1;
-}
-this.emit_table(3);
-this.cs = 345;
-{
-p += 1;
-_goto_level = _out;
-continue;
-}
-}
-}
-case 108: {
-{
-{
-p = (( this.te))-1;
-}
-this.emit_table(3);
-this.command_start = true;
-this.cs = 508;
-{
-p += 1;
-_goto_level = _out;
-continue;
-}
-}
-}
-case 109: {
-{
-{
-p = (( this.te))-1;
-}
-this.emit_table(3);
-this.cs = 321;
-{
-p += 1;
-_goto_level = _out;
-continue;
-}
-}
-}
-case 110: {
-{
-{
-p = (( this.te))-1;
-}
-this.emit_table(3);
-if ((false && this.tokIs(this.ts, this.te, "!"))) {
-this.cs = 345;
-{
-p += 1;
-_goto_level = _out;
-continue;
-}
-} else {
-this.cs = 276;
-{
-p += 1;
-_goto_level = _out;
-continue;
-}
-}
-}
-}
-case 111: {
-{
-{
-p = (( this.te))-1;
-}
-if ((false)) {
-this.emit1(TK_tIDENTIFIER);
-if (!(this.declared(this.tok2(this.ts, this.te)))) {
-this.cs = (this.arg_or_cmdarg(cmd_state));
-}
-} else {
-this.emit2(TK_k__ENCODING__, "__ENCODING__");
-}
-{
-p += 1;
-_goto_level = _out;
-continue;
-}
-}
-}
-case 112: {
-{
-{
-p = (( this.te))-1;
-}
-this.emit_table(3);
-{
-p += 1;
-_goto_level = _out;
-continue;
-}
-}
-}
-case 113: {
-{
-{
-p = (( this.te))-1;
-}
-digits = this.numeric_literal_int();
-if ((false)) {
-this.emit4(TK_tINTEGER, this.intValue(digits, this.num_base), this.ts, this.num_suffix_s);
-p = this.num_suffix_s - 1;
-} else {
-p = this.numXfrm(this.intValue(digits, this.num_base), p);
-}
-{
-p += 1;
-_goto_level = _out;
-continue;
-}
-}
-}
-case 115: {
-{
-{
-p = (( this.te))-1;
-}
-if ((false)) {
-this.diagError();
-} else {
-this.emit4(TK_tINTEGER, this.intValue(this.tok2(this.ts, this.te - 1), 10), this.ts, this.te - 1);
-p = p - 1;
-{
-p += 1;
-_goto_level = _out;
-continue;
-}
-}
-}
-break;
-}
-case 116: {
-{
-{
-p = (( this.te))-1;
-}
-if ((false)) {
-this.diagError();
-} else {
-this.emit4(TK_tFLOAT, this.tok2(this.ts, this.te - 1), this.ts, this.te - 1);
-p = p - 1;
-{
-p += 1;
-_goto_level = _out;
-continue;
-}
-}
-}
-break;
-}
-case 117: {
-{
-{
-p = (( this.te))-1;
-}
-digits = this.tok2(this.ts, this.num_suffix_s);
-if ((false)) {
-this.emit4(TK_tFLOAT, digits, this.ts, this.num_suffix_s);
-p = this.num_suffix_s - 1;
-} else {
-p = this.numXfrm(digits, p);
-}
-{
-p += 1;
-_goto_level = _out;
-continue;
-}
-}
-}
-case 119: {
-{
-{
-p = (( this.te))-1;
-}
-this.emit1(TK_tCONSTANT);
-this.cs = (this.arg_or_cmdarg(cmd_state));
-{
-p += 1;
-_goto_level = _out;
-continue;
-}
-}
-}
-case 123: {
-{
-{
-p = (( this.te))-1;
-}
-this.emit1(TK_tIDENTIFIER);
-if ((this.declared(this.tok2(this.ts, this.te)))) {
-this.cs = 247;
-{
-p += 1;
-_goto_level = _out;
-continue;
-}
-} else if (true && rbIsNumberedParam(this.tok2(this.ts, this.te))) {
-this.cs = 247;
-{
-p += 1;
-_goto_level = _out;
-continue;
-}
-} else {
-this.cs = (this.arg_or_cmdarg(cmd_state));
-{
-p += 1;
-_goto_level = _out;
-continue;
-}
-}
-}
-}
-case 124: {
-{
-{
-p = (( this.te))-1;
-}
-if ((tm === this.te)) {
-this.emit1(TK_tFID);
-} else {
-this.emit4(TK_tIDENTIFIER, this.tok2(this.ts, tm), this.ts, tm);
-p = tm - 1;
-}
-this.cs = 276;
-{
-p += 1;
-_goto_level = _out;
-continue;
-}
-}
-}
-case 126: {
-{
-{
-p = (( this.te))-1;
-}
-this.emit_table(1);
-this.cs = 508;
-{
-p += 1;
-_goto_level = _out;
-continue;
-}
-}
-}
-case 127: {
-{
-{
-p = (( this.te))-1;
-}
-this.emit_table(1);
-this.cs = 345;
-{
-p += 1;
-_goto_level = _out;
-continue;
-}
-}
-}
-}
-}
-break;
-}
-case 368: {
-{
-this.te = p+1;
-{
-this.emit4(TK_tNL, "", this.newline_s, this.newline_s + 1);
-if ((false)) {
-p = p - 1;
-this.cs = 710;
-{
-p += 1;
-_goto_level = _out;
-continue;
-}
-} else {
-this.emit1(TK_tBDOT3);
-this.cs = 345;
-{
-p += 1;
-_goto_level = _out;
-continue;
-}
-}
-}
-}
-}
-case 80: {
-{
-this.te = p+1;
-{
-p = tm - 1;
-{
-this.cs = 516;
-_goto_level = _again;
-continue;
-}
-}
-}
-}
-case 362: {
-{
-this.te = p+1;
-{
-this.emit4(TK_tNL, "", this.newline_s, this.newline_s + 1);
-p = p - 1;
-this.cs = 710;
-{
-p += 1;
-_goto_level = _out;
-continue;
-}
-}
-}
-}
-case 365: {
-{
-this.te = p;
-p = p - 1;
-{
-if ((false)) {
-this.emit4(TK_tNL, "", this.newline_s, this.newline_s + 1);
-p = p - 1;
-this.cs = 710;
-{
-p += 1;
-_goto_level = _out;
-continue;
-}
-}
-}
-}
-break;
-}
-case 367: {
-{
-this.te = p;
-p = p - 1;
-{
-this.emit4(TK_tNL, "", this.newline_s, this.newline_s + 1);
-if ((false)) {
-p = p - 1;
-this.cs = 710;
-{
-p += 1;
-_goto_level = _out;
-continue;
-}
-} else {
-this.emit1(TK_tBDOT2);
-this.cs = 345;
-{
-p += 1;
-_goto_level = _out;
-continue;
-}
-}
-}
-}
-}
-case 366: {
-{
-this.te = p;
-p = p - 1;
-{
-p = tm - 1;
-{
-this.cs = 516;
-_goto_level = _again;
-continue;
-}
-}
-}
-}
-case 364: {
-{
-this.te = p;
-p = p - 1;
-{
-this.emit4(TK_tNL, "", this.newline_s, this.newline_s + 1);
-p = p - 1;
-this.cs = 710;
-{
-p += 1;
-_goto_level = _out;
-continue;
-}
-}
-}
-}
-case 75: {
-{
-{
-p = (( this.te))-1;
-}
-{
-if ((false)) {
-this.emit4(TK_tNL, "", this.newline_s, this.newline_s + 1);
-p = p - 1;
-this.cs = 710;
-{
-p += 1;
-_goto_level = _out;
-continue;
-}
-}
-}
-}
-break;
-}
-case 72: {
-{
-{
-p = (( this.te))-1;
-}
-{
-this.emit4(TK_tNL, "", this.newline_s, this.newline_s + 1);
-p = p - 1;
-this.cs = 710;
-{
-p += 1;
-_goto_level = _out;
-continue;
-}
-}
-}
-}
-case 76: {
-{
-switch (this.act) {
-case 140: {
-{
-{
-p = (( this.te))-1;
-}
-if ((false)) {
-this.emit4(TK_tNL, "", this.newline_s, this.newline_s + 1);
-p = p - 1;
-this.cs = 710;
-{
-p += 1;
-_goto_level = _out;
-continue;
-}
-}
-}
-break;
-}
-case 144: {
-{
-{
-p = (( this.te))-1;
-}
-this.emit4(TK_tNL, "", this.newline_s, this.newline_s + 1);
-p = p - 1;
-this.cs = 710;
-{
-p += 1;
-_goto_level = _out;
-continue;
-}
-}
-}
-}
-}
-break;
-}
-case 371: {
-{
-this.te = p;
-p = p - 1;
-{
-this.emit_comment(this.eq_begin_s, this.te);
-{
-this.cs = (this.cs_before_block_comment);
-_goto_level = _again;
-continue;
-}
-}
-}
-}
-case 370: {
-{
-this.te = p;
-p = p - 1;
-{
-this.diagFatal();
-}
-}
-break;
-}
-case 381: {
-{
-this.te = p+1;
-{
-this.eq_begin_s = this.ts;
-{
-this.cs = 704;
-_goto_level = _again;
-continue;
-}
-}
-}
-}
-case 82: {
-{
-this.te = p+1;
-{
-p = pe - 3;
-}
-}
-break;
-}
-case 373: {
-{
-this.te = p+1;
-{
-cmd_state = true;
-p = p - 1;
-{
-this.cs = 508;
-_goto_level = _again;
-continue;
-}
-}
-}
-}
-case 374: {
-{
-this.te = p+1;
-{
-p = p - 1;
-{
-p += 1;
-_goto_level = _out;
-continue;
-}
-}
-}
-}
-case 375: {
-{
-this.te = p;
-p = p - 1;
-}
-break;
-}
-case 380: {
-{
-this.te = p;
-p = p - 1;
-{
-this.eq_begin_s = this.ts;
-{
-this.cs = 704;
-_goto_level = _again;
-continue;
-}
-}
-}
-}
-case 379: {
-{
-this.te = p;
-p = p - 1;
-{
-cmd_state = true;
-p = p - 1;
-{
-this.cs = 508;
-_goto_level = _again;
-continue;
-}
-}
-}
-}
-case 81: {
-{
-{
-p = (( this.te))-1;
-}
-{
-cmd_state = true;
-p = p - 1;
-{
-this.cs = 508;
-_goto_level = _again;
-continue;
-}
-}
-}
-}
-case 86: {
-{
-this.te = p+1;
-{
-p = this.st().advance(p); next_state = this.st().rootState;
-p = p - 1;
-this.cs = (next_state);
-{
-p += 1;
-_goto_level = _out;
-continue;
-}
-}
-}
-}
-case 52: {
-{
-this.newline_s = p;
-}
-{
-this.emit_comment_from_range(p, pe);
-}
-break;
-}
-case 154: {
-{
-this.newline_s = p;
-}
-{
-this.te = p+1;
-{
-p = this.ts - 1;
-{
-this.cs = 516;
-_goto_level = _again;
-continue;
-}
-}
-}
-}
-case 145: {
-{
-this.newline_s = p;
-}
-{
-this.te = p+1;
-{
-p = tm - 1;
-{
-this.cs = 516;
-_goto_level = _again;
-continue;
-}
-}
-}
-}
-case 137: {
-{
-this.newline_s = p;
-}
-{
-this.te = p+1;
-{
-p = this.ts - 1;
-{
-this.cs = 516;
-_goto_level = _again;
-continue;
-}
-}
-}
-}
-case 213: {
-{
-this.newline_s = p;
-}
-{
-this.te = p+1;
-{
-followed_by_nl = this.te - 1 === this.newline_s;
-nl_emitted = false;
-dots_te = followed_by_nl ? this.te - 1 : this.te;
-if ((true)) {
-if (((this.nLambda > 0) && this.lambdaLast() + 1 === this.paren_nest)) {
-this.emit4(TK_tDOT3, "...", this.ts, dots_te);
-} else {
-this.emit4(TK_tBDOT3, "...", this.ts, dots_te);
-if ((true && followed_by_nl && this.ctx.in_argdef)) {
-this.emit4(TK_tNL, "", this.te, this.te);
-nl_emitted = true;
-}
-}
-} else if (true) {
-this.emit4(TK_tBDOT3, "...", this.ts, dots_te);
-} else {
-this.emit4(TK_tDOT3, "...", this.ts, dots_te);
-}
-if ((followed_by_nl && !nl_emitted)) {
-p = p - 1;
-}
-this.cs = 345;
-{
-p += 1;
-_goto_level = _out;
-continue;
-}
-}
-}
-}
-case 201: {
-{
-this.newline_s = p;
-}
-{
-this.te = p+1;
-{
-p = this.ts - 1;
-this.cs_before_block_comment = this.cs;
-{
-this.cs = 710;
-_goto_level = _again;
-continue;
-}
-}
-}
-}
-case 295: {
-{
-this.newline_s = p;
-}
-{
-this.te = p+1;
-{
-if ((this.paren_nest === 0)) {
-/* warning */
-}
-this.emit4(TK_tDOT3, "...", this.ts, this.te - 1);
-p = p - 1;
-this.cs = 345;
-{
-p += 1;
-_goto_level = _out;
-continue;
-}
-}
-}
-}
-case 372: {
-{
-this.newline_s = p;
-}
-{
-this.te = p+1;
-{
-this.emit_comment(this.eq_begin_s, this.te);
-{
-this.cs = (this.cs_before_block_comment);
-_goto_level = _again;
-continue;
-}
-}
-}
-}
-case 369: {
-{
-this.newline_s = p;
-}
-{
-this.te = p+1;
-}
-break;
-}
-case 382: {
-{
-this.newline_s = p;
-}
-{
-this.te = p+1;
-{
-this.eq_begin_s = this.ts;
-{
-this.cs = 704;
-_goto_level = _again;
-continue;
-}
-}
-}
-}
-case 83: {
-{
-this.newline_s = p;
-}
-{
-this.te = p+1;
-{
-p = pe - 3;
-}
-}
-break;
-}
-case 317: {
-{
-this.num_xfrm = XF_rational;
-}
-{
-this.te = p;
-p = p - 1;
-{
-digits = this.numeric_literal_int();
-if ((false)) {
-this.emit4(TK_tINTEGER, this.intValue(digits, this.num_base), this.ts, this.num_suffix_s);
-p = this.num_suffix_s - 1;
-} else {
-p = this.numXfrm(this.intValue(digits, this.num_base), p);
-}
-{
-p += 1;
-_goto_level = _out;
-continue;
-}
-}
-}
-}
-case 315: {
-{
-this.num_xfrm = XF_imaginary;
-}
-{
-this.te = p;
-p = p - 1;
-{
-digits = this.numeric_literal_int();
-if ((false)) {
-this.emit4(TK_tINTEGER, this.intValue(digits, this.num_base), this.ts, this.num_suffix_s);
-p = this.num_suffix_s - 1;
-} else {
-p = this.numXfrm(this.intValue(digits, this.num_base), p);
-}
-{
-p += 1;
-_goto_level = _out;
-continue;
-}
-}
-}
-}
-case 320: {
-{
-this.num_xfrm = XF_imaginary_rational;
-}
-{
-this.te = p;
-p = p - 1;
-{
-digits = this.numeric_literal_int();
-if ((false)) {
-this.emit4(TK_tINTEGER, this.intValue(digits, this.num_base), this.ts, this.num_suffix_s);
-p = this.num_suffix_s - 1;
-} else {
-p = this.numXfrm(this.intValue(digits, this.num_base), p);
-}
-{
-p += 1;
-_goto_level = _out;
-continue;
-}
-}
-}
-}
-case 318: {
-{
-this.num_xfrm = XF_integer_re;
-}
-{
-this.te = p;
-p = p - 1;
-{
-digits = this.numeric_literal_int();
-if ((false)) {
-this.emit4(TK_tINTEGER, this.intValue(digits, this.num_base), this.ts, this.num_suffix_s);
-p = this.num_suffix_s - 1;
-} else {
-p = this.numXfrm(this.intValue(digits, this.num_base), p);
-}
-{
-p += 1;
-_goto_level = _out;
-continue;
-}
-}
-}
-}
-case 316: {
-{
-this.num_xfrm = XF_integer_if;
-}
-{
-this.te = p;
-p = p - 1;
-{
-digits = this.numeric_literal_int();
-if ((false)) {
-this.emit4(TK_tINTEGER, this.intValue(digits, this.num_base), this.ts, this.num_suffix_s);
-p = this.num_suffix_s - 1;
-} else {
-p = this.numXfrm(this.intValue(digits, this.num_base), p);
-}
-{
-p += 1;
-_goto_level = _out;
-continue;
-}
-}
-}
-}
-case 319: {
-{
-this.num_xfrm = XF_integer_rescue;
-}
-{
-this.te = p;
-p = p - 1;
-{
-digits = this.numeric_literal_int();
-if ((false)) {
-this.emit4(TK_tINTEGER, this.intValue(digits, this.num_base), this.ts, this.num_suffix_s);
-p = this.num_suffix_s - 1;
-} else {
-p = this.numXfrm(this.intValue(digits, this.num_base), p);
-}
-{
-p += 1;
-_goto_level = _out;
-continue;
-}
-}
-}
-}
-case 308: {
-{
-this.num_xfrm = XF_imaginary_float;
-}
-{
-this.te = p;
-p = p - 1;
-{
-digits = this.tok2(this.ts, this.num_suffix_s);
-if ((false)) {
-this.emit4(TK_tFLOAT, digits, this.ts, this.num_suffix_s);
-p = this.num_suffix_s - 1;
-} else {
-p = this.numXfrm(digits, p);
-}
-{
-p += 1;
-_goto_level = _out;
-continue;
-}
-}
-}
-}
-case 309: {
-{
-this.num_xfrm = XF_float_if;
-}
-{
-this.te = p;
-p = p - 1;
-{
-digits = this.tok2(this.ts, this.num_suffix_s);
-if ((false)) {
-this.emit4(TK_tFLOAT, digits, this.ts, this.num_suffix_s);
-p = this.num_suffix_s - 1;
-} else {
-p = this.numXfrm(digits, p);
-}
-{
-p += 1;
-_goto_level = _out;
-continue;
-}
-}
-}
-}
-case 310: {
-{
-this.num_xfrm = XF_rational;
-}
-{
-this.te = p;
-p = p - 1;
-{
-digits = this.tok2(this.ts, this.num_suffix_s);
-if ((false)) {
-this.emit4(TK_tFLOAT, digits, this.ts, this.num_suffix_s);
-p = this.num_suffix_s - 1;
-} else {
-p = this.numXfrm(digits, p);
-}
-{
-p += 1;
-_goto_level = _out;
-continue;
-}
-}
-}
-}
-case 312: {
-{
-this.num_xfrm = XF_imaginary_rational;
-}
-{
-this.te = p;
-p = p - 1;
-{
-digits = this.tok2(this.ts, this.num_suffix_s);
-if ((false)) {
-this.emit4(TK_tFLOAT, digits, this.ts, this.num_suffix_s);
-p = this.num_suffix_s - 1;
-} else {
-p = this.numXfrm(digits, p);
-}
-{
-p += 1;
-_goto_level = _out;
-continue;
-}
-}
-}
-}
-case 311: {
-{
-this.num_xfrm = XF_float_rescue;
-}
-{
-this.te = p;
-p = p - 1;
-{
-digits = this.tok2(this.ts, this.num_suffix_s);
-if ((false)) {
-this.emit4(TK_tFLOAT, digits, this.ts, this.num_suffix_s);
-p = this.num_suffix_s - 1;
-} else {
-p = this.numXfrm(digits, p);
-}
-{
-p += 1;
-_goto_level = _out;
-continue;
-}
-}
-}
-}
-case 147: {
-{
-this.e_lbrace();
-}
-{
-this.te = p;
-p = p - 1;
-{
-if ((this.lambdaLast() === this.paren_nest)) {
-this.nLambda = this.nLambda - 1;
-this.emit4(TK_tLAMBEG, "{", this.te - 1, this.te);
-} else {
-this.emit4(TK_tLCURLY, "{", this.te - 1, this.te);
-}
-this.command_start = true;
-this.paren_nest += 1;
-this.cs = 508;
-{
-p += 1;
-_goto_level = _out;
-continue;
-}
-}
-}
-}
-case 169: {
-{
-this.e_lbrace();
-}
-{
-this.te = p;
-p = p - 1;
-{
-if ((this.lambdaLast() === this.paren_nest)) {
-this.nLambda = this.nLambda - 1;
-this.emit2(TK_tLAMBEG, "{");
-} else {
-this.emit2(TK_tLBRACE_ARG, "{");
-}
-this.paren_nest += 1;
-this.command_start = true;
-this.cs = 508;
-{
-p += 1;
-_goto_level = _out;
-continue;
-}
-}
-}
-}
-case 245: {
-{
-this.e_lbrace();
-}
-{
-this.te = p;
-p = p - 1;
-{
-if ((this.lambdaLast() === this.paren_nest)) {
-this.nLambda = this.nLambda - 1;
-this.command_start = true;
-this.emit2(TK_tLAMBEG, "{");
-} else {
-this.emit2(TK_tLBRACE, "{");
-}
-this.paren_nest += 1;
-{
-p += 1;
-_goto_level = _out;
-continue;
-}
-}
-}
-}
-case 360: {
-{
-this.e_lbrace();
-}
-{
-this.te = p;
-p = p - 1;
-{
-if ((this.lambdaLast() === this.paren_nest)) {
-this.nLambda = this.nLambda - 1;
-if ((this.tokIs(this.ts, this.te, "{"))) {
-this.emit2(TK_tLAMBEG, "{");
-} else {
-this.emit2(TK_kDO_LAMBDA, "do");
-}
-} else {
-if ((this.tokIs(this.ts, this.te, "{"))) {
-this.emit2(TK_tLCURLY, "{");
-} else {
-this.emit_do(false);
-}
-}
-if ((this.tokIs(this.ts, this.te, "{"))) {
-this.paren_nest += 1;
-}
-this.command_start = true;
-this.cs = 508;
-{
-p += 1;
-_goto_level = _out;
-continue;
-}
-}
-}
-}
-case 361: {
-{
-if ((this.st().closeInterp(p))) {
-p = p - 1;
-this.cs = 128;
-{
-p += 1;
-_goto_level = _out;
-continue;
-}
-}
-this.paren_nest -= 1;
-}
-{
-this.te = p;
-p = p - 1;
-{
-this.emit_rbrace_rparen_rbrack();
-if ((this.tokIs(this.ts, this.te, "}") || this.tokIs(this.ts, this.te, "]"))) {
-if ((true)) {
-this.cs = 516;
-} else {
-this.cs = 313;
-}
-} else {
-}
-{
-p += 1;
-_goto_level = _out;
-continue;
-}
-}
-}
-}
-case 43: {
-{
-p = this.on_newline(p);
-}
-{
-this.newline_s = p;
-}
-break;
-}
-case 16: {
-{
-p = this.on_newline(p);
-}
-{
-tm = p;
-}
-break;
-}
-case 18: {
-{
-p = this.on_newline(p);
-}
-{
-tm = p;
-}
-break;
-}
-case 20: {
-{
-p = this.on_newline(p);
-}
-{
-tm = p;
-}
-break;
-}
-case 98: {
-{
-p = this.on_newline(p);
-}
-{
-this.te = p;
-p = p - 1;
-}
-break;
-}
-case 117: {
-{
-p = this.on_newline(p);
-}
-{
-this.te = p;
-p = p - 1;
-}
-break;
-}
-case 125: {
-{
-p = this.on_newline(p);
-}
-{
-this.te = p;
-p = p - 1;
-}
-break;
-}
-case 19: {
-{
-p = this.on_newline(p);
-}
-{
-this.te = p+1;
-{
-p = this.ts - 1;
-{
-this.cs = 516;
-_goto_level = _again;
-continue;
-}
-}
-}
-}
-case 156: {
-{
-p = this.on_newline(p);
-}
-{
-this.te = p;
-p = p - 1;
-}
-break;
-}
-case 148: {
-{
-p = this.on_newline(p);
-}
-{
-this.te = p;
-p = p - 1;
-{
-p = p - 1;
-{
-this.cs = 516;
-_goto_level = _again;
-continue;
-}
-}
-}
-}
-case 167: {
-{
-p = this.on_newline(p);
-}
-{
-this.te = p;
-p = p - 1;
-}
-break;
-}
-case 179: {
-{
-p = this.on_newline(p);
-}
-{
-this.te = p;
-p = p - 1;
-}
-break;
-}
-case 175: {
-{
-p = this.on_newline(p);
-}
-{
-this.te = p;
-p = p - 1;
-{
-p = p - 1;
-{
-this.cs = 516;
-_goto_level = _again;
-continue;
-}
-}
-}
-}
-case 44: {
-{
-p = this.on_newline(p);
-}
-{
-this.te = p+1;
-{
-this.emit4(TK_tUNARY_NUM, this.tok2(this.ts, this.ts + 1), this.ts, this.ts + 1);
-p = p - 1;
-this.cs = 516;
-{
-p += 1;
-_goto_level = _out;
-continue;
-}
-}
-}
-}
-case 35: {
-{
-p = this.on_newline(p);
-}
-{
-this.te = p+1;
-{
-this.emit4(TK_tIDENTIFIER, ident_tok, ident_ts, ident_te);
-p = ident_te - 1;
-if ((this.declared(ident_tok) && false)) {
-this.cs = 247;
-} else {
-this.cs = 307;
-}
-{
-p += 1;
-_goto_level = _out;
-continue;
-}
-}
-}
-}
-case 198: {
-{
-p = this.on_newline(p);
-}
-{
-this.te = p;
-p = p - 1;
-}
-break;
-}
-case 254: {
-{
-p = this.on_newline(p);
-}
-{
-this.te = p;
-p = p - 1;
-}
-break;
-}
-case 250: {
-{
-p = this.on_newline(p);
-}
-{
-this.te = p;
-p = p - 1;
-{
-if ((this.ctx.in_kwarg)) {
-p = p - 1;
-{
-this.cs = 516;
-_goto_level = _again;
-continue;
-}
-} else {
-{
-this.cs = 710;
-_goto_level = _again;
-continue;
-}
-}
-}
-}
-}
-case 263: {
-{
-p = this.on_newline(p);
-}
-{
-this.te = p;
-p = p - 1;
-}
-break;
-}
-case 260: {
-{
-p = this.on_newline(p);
-}
-{
-this.te = p;
-p = p - 1;
-{
-{
-this.cs = 710;
-_goto_level = _again;
-continue;
-}
-}
-}
-}
-case 347: {
-{
-p = this.on_newline(p);
-}
-{
-this.te = p;
-p = p - 1;
-}
-break;
-}
-case 279: {
-{
-p = this.on_newline(p);
-}
-{
-this.te = p;
-p = p - 1;
-{
-{
-this.cs = 696;
-_goto_level = _again;
-continue;
-}
-}
-}
-}
-case 376: {
-{
-p = this.on_newline(p);
-}
-{
-this.te = p;
-p = p - 1;
-}
-break;
-}
-case 46: {
-{
-this.sharp_s = p - 1;
-}
-{
-this.emit_comment_from_range(p, pe);
-}
-break;
-}
-case 50: {
-{
-this.emit_comment_from_range(p, pe);
-}
-{
-this.newline_s = p;
-}
-break;
-}
-case 101: {
-{
-this.emit_comment_from_range(p, pe);
-}
-{
-this.te = p;
-p = p - 1;
-}
-break;
-}
-case 116: {
-{
-this.emit_comment_from_range(p, pe);
-}
-{
-this.te = p;
-p = p - 1;
-}
-break;
-}
-case 128: {
-{
-this.emit_comment_from_range(p, pe);
-}
-{
-this.te = p;
-p = p - 1;
-}
-break;
-}
-case 150: {
-{
-this.emit_comment_from_range(p, pe);
-}
-{
-this.te = p;
-p = p - 1;
-{
-{
-this.cs = 516;
-_goto_level = _again;
-continue;
-}
-}
-}
-}
-case 165: {
-{
-this.emit_comment_from_range(p, pe);
-}
-{
-this.te = p;
-p = p - 1;
-}
-break;
-}
-case 177: {
-{
-this.emit_comment_from_range(p, pe);
-}
-{
-this.te = p;
-p = p - 1;
-}
-break;
-}
-case 204: {
-{
-this.emit_comment_from_range(p, pe);
-}
-{
-this.te = p;
-p = p - 1;
-}
-break;
-}
-case 252: {
-{
-this.emit_comment_from_range(p, pe);
-}
-{
-this.te = p;
-p = p - 1;
-}
-break;
-}
-case 262: {
-{
-this.emit_comment_from_range(p, pe);
-}
-{
-this.te = p;
-p = p - 1;
-}
-break;
-}
-case 283: {
-{
-this.emit_comment_from_range(p, pe);
-}
-{
-this.te = p;
-p = p - 1;
-}
-break;
-}
-case 378: {
-{
-this.emit_comment_from_range(p, pe);
-}
-{
-this.te = p;
-p = p - 1;
-}
-break;
-}
-case 122: {
-{
-tm = p;
-}
-{
-this.te = p;
-p = p - 1;
-{
-this.emit4(TK_tFID, this.tok2(this.ts, tm), this.ts, tm);
-this.cs = (this.arg_or_cmdarg(cmd_state));
-p = tm - 1;
-{
-p += 1;
-_goto_level = _out;
-continue;
-}
-}
-}
-}
-case 218: {
-{
-tm = p;
-}
-{
-this.te = p;
-p = p - 1;
-{
-this.emit4(TK_tSYMBOL, this.tok2(this.ts + 1, tm), this.ts, tm);
-p = tm - 1;
-this.cs = 516;
-{
-p += 1;
-_goto_level = _out;
-continue;
-}
-}
-}
-}
-case 189: {
-{
-tm = p;
-}
-{
-this.te = p;
-p = p - 1;
-{
-p = this.ts - 1;
-{
-this.cs = 516;
-_goto_level = _again;
-continue;
-}
-}
-}
-}
-case 276: {
-{
-tm = p;
-}
-{
-switch (this.act) {
-case 104: {
-{
-{
-p = (( this.te))-1;
-}
-if ((this.lambdaLast() === this.paren_nest)) {
-this.nLambda = this.nLambda - 1;
-if ((this.tokIs(this.ts, this.te, "{"))) {
-this.emit2(TK_tLAMBEG, "{");
-} else {
-this.emit2(TK_kDO_LAMBDA, "do");
-}
-} else {
-if ((this.tokIs(this.ts, this.te, "{"))) {
-this.emit2(TK_tLCURLY, "{");
-} else {
-this.emit_do(false);
-}
-}
-if ((this.tokIs(this.ts, this.te, "{"))) {
-this.paren_nest += 1;
-}
-this.command_start = true;
-this.cs = 508;
-{
-p += 1;
-_goto_level = _out;
-continue;
-}
-}
-}
-case 105: {
-{
-{
-p = (( this.te))-1;
-}
-this.emit_table(3);
-this.cs = 134;
-{
-p += 1;
-_goto_level = _out;
-continue;
-}
-}
-}
-case 106: {
-{
-{
-p = (( this.te))-1;
-}
-this.emit_singleton_class();
-this.cs = 508;
-{
-p += 1;
-_goto_level = _out;
-continue;
-}
-}
-}
-case 107: {
-{
-{
-p = (( this.te))-1;
-}
-this.emit_table(3);
-this.cs = 345;
-{
-p += 1;
-_goto_level = _out;
-continue;
-}
-}
-}
-case 108: {
-{
-{
-p = (( this.te))-1;
-}
-this.emit_table(3);
-this.command_start = true;
-this.cs = 508;
-{
-p += 1;
-_goto_level = _out;
-continue;
-}
-}
-}
-case 109: {
-{
-{
-p = (( this.te))-1;
-}
-this.emit_table(3);
-this.cs = 321;
-{
-p += 1;
-_goto_level = _out;
-continue;
-}
-}
-}
-case 110: {
-{
-{
-p = (( this.te))-1;
-}
-this.emit_table(3);
-if ((false && this.tokIs(this.ts, this.te, "!"))) {
-this.cs = 345;
-{
-p += 1;
-_goto_level = _out;
-continue;
-}
-} else {
-this.cs = 276;
-{
-p += 1;
-_goto_level = _out;
-continue;
-}
-}
-}
-}
-case 111: {
-{
-{
-p = (( this.te))-1;
-}
-if ((false)) {
-this.emit1(TK_tIDENTIFIER);
-if (!(this.declared(this.tok2(this.ts, this.te)))) {
-this.cs = (this.arg_or_cmdarg(cmd_state));
-}
-} else {
-this.emit2(TK_k__ENCODING__, "__ENCODING__");
-}
-{
-p += 1;
-_goto_level = _out;
-continue;
-}
-}
-}
-case 112: {
-{
-{
-p = (( this.te))-1;
-}
-this.emit_table(3);
-{
-p += 1;
-_goto_level = _out;
-continue;
-}
-}
-}
-case 113: {
-{
-{
-p = (( this.te))-1;
-}
-digits = this.numeric_literal_int();
-if ((false)) {
-this.emit4(TK_tINTEGER, this.intValue(digits, this.num_base), this.ts, this.num_suffix_s);
-p = this.num_suffix_s - 1;
-} else {
-p = this.numXfrm(this.intValue(digits, this.num_base), p);
-}
-{
-p += 1;
-_goto_level = _out;
-continue;
-}
-}
-}
-case 115: {
-{
-{
-p = (( this.te))-1;
-}
-if ((false)) {
-this.diagError();
-} else {
-this.emit4(TK_tINTEGER, this.intValue(this.tok2(this.ts, this.te - 1), 10), this.ts, this.te - 1);
-p = p - 1;
-{
-p += 1;
-_goto_level = _out;
-continue;
-}
-}
-}
-break;
-}
-case 116: {
-{
-{
-p = (( this.te))-1;
-}
-if ((false)) {
-this.diagError();
-} else {
-this.emit4(TK_tFLOAT, this.tok2(this.ts, this.te - 1), this.ts, this.te - 1);
-p = p - 1;
-{
-p += 1;
-_goto_level = _out;
-continue;
-}
-}
-}
-break;
-}
-case 117: {
-{
-{
-p = (( this.te))-1;
-}
-digits = this.tok2(this.ts, this.num_suffix_s);
-if ((false)) {
-this.emit4(TK_tFLOAT, digits, this.ts, this.num_suffix_s);
-p = this.num_suffix_s - 1;
-} else {
-p = this.numXfrm(digits, p);
-}
-{
-p += 1;
-_goto_level = _out;
-continue;
-}
-}
-}
-case 119: {
-{
-{
-p = (( this.te))-1;
-}
-this.emit1(TK_tCONSTANT);
-this.cs = (this.arg_or_cmdarg(cmd_state));
-{
-p += 1;
-_goto_level = _out;
-continue;
-}
-}
-}
-case 123: {
-{
-{
-p = (( this.te))-1;
-}
-this.emit1(TK_tIDENTIFIER);
-if ((this.declared(this.tok2(this.ts, this.te)))) {
-this.cs = 247;
-{
-p += 1;
-_goto_level = _out;
-continue;
-}
-} else if (true && rbIsNumberedParam(this.tok2(this.ts, this.te))) {
-this.cs = 247;
-{
-p += 1;
-_goto_level = _out;
-continue;
-}
-} else {
-this.cs = (this.arg_or_cmdarg(cmd_state));
-{
-p += 1;
-_goto_level = _out;
-continue;
-}
-}
-}
-}
-case 124: {
-{
-{
-p = (( this.te))-1;
-}
-if ((tm === this.te)) {
-this.emit1(TK_tFID);
-} else {
-this.emit4(TK_tIDENTIFIER, this.tok2(this.ts, tm), this.ts, tm);
-p = tm - 1;
-}
-this.cs = 276;
-{
-p += 1;
-_goto_level = _out;
-continue;
-}
-}
-}
-case 126: {
-{
-{
-p = (( this.te))-1;
-}
-this.emit_table(1);
-this.cs = 508;
-{
-p += 1;
-_goto_level = _out;
-continue;
-}
-}
-}
-case 127: {
-{
-{
-p = (( this.te))-1;
-}
-this.emit_table(1);
-this.cs = 345;
-{
-p += 1;
-_goto_level = _out;
-continue;
-}
-}
-}
-}
-}
-break;
-}
-case 123: {
-{
-tm = p - 2;
-}
-{
-this.te = p;
-p = p - 1;
-{
-this.emit4(TK_tFID, this.tok2(this.ts, tm), this.ts, tm);
-this.cs = (this.arg_or_cmdarg(cmd_state));
-p = tm - 1;
-{
-p += 1;
-_goto_level = _out;
-continue;
-}
-}
-}
-}
-case 219: {
-{
-tm = p - 2;
-}
-{
-this.te = p;
-p = p - 1;
-{
-this.emit4(TK_tSYMBOL, this.tok2(this.ts + 1, tm), this.ts, tm);
-p = tm - 1;
-this.cs = 516;
-{
-p += 1;
-_goto_level = _out;
-continue;
-}
-}
-}
-}
-case 191: {
-{
-tm = p - 2;
-}
-{
-this.te = p;
-p = p - 1;
-{
-p = this.ts - 1;
-{
-this.cs = 516;
-_goto_level = _again;
-continue;
-}
-}
-}
-}
-case 277: {
-{
-tm = p - 2;
-}
-{
-this.te = p;
-p = p - 1;
-{
-if ((tm === this.te)) {
-this.emit1(TK_tFID);
-} else {
-this.emit4(TK_tIDENTIFIER, this.tok2(this.ts, tm), this.ts, tm);
-p = tm - 1;
-}
-this.cs = 276;
-{
-p += 1;
-_goto_level = _out;
-continue;
-}
-}
-}
-}
-case 220: {
-{
-tm = p;
-}
-{
-this.te = p;
-p = p - 1;
-{
-this.emit4(TK_tSYMBOL, this.tok2(this.ts + 1, tm), this.ts, tm);
-p = tm - 1;
-this.cs = 516;
-{
-p += 1;
-_goto_level = _out;
-continue;
-}
-}
-}
-}
-case 192: {
-{
-tm = p;
-}
-{
-this.te = p;
-p = p - 1;
-{
-p = this.ts - 1;
-{
-this.cs = 516;
-_goto_level = _again;
-continue;
-}
-}
-}
-}
-case 221: {
-{
-tm = p - 2;
-}
-{
-this.te = p;
-p = p - 1;
-{
-this.emit4(TK_tSYMBOL, this.tok2(this.ts + 1, tm), this.ts, tm);
-p = tm - 1;
-this.cs = 516;
-{
-p += 1;
-_goto_level = _out;
-continue;
-}
-}
-}
-}
-case 193: {
-{
-tm = p - 2;
-}
-{
-this.te = p;
-p = p - 1;
-{
-p = this.ts - 1;
-{
-this.cs = 516;
-_goto_level = _again;
-continue;
-}
-}
-}
-}
-case 225: {
-{
-tm = p - 2;
-}
-{
-this.te = p;
-p = p - 1;
-{
-this.emit4(TK_tSYMBOL, this.tok2(this.ts + 1, tm), this.ts, tm);
-p = tm - 1;
-this.cs = 516;
-{
-p += 1;
-_goto_level = _out;
-continue;
-}
-}
-}
-}
-case 196: {
-{
-tm = p - 2;
-}
-{
-this.te = p;
-p = p - 1;
-{
-p = this.ts - 1;
-{
-this.cs = 516;
-_goto_level = _again;
-continue;
-}
-}
-}
-}
-case 224: {
-{
-tm = p - 2;
-}
-{
-this.te = p;
-p = p - 1;
-{
-this.emit4(TK_tSYMBOL, this.tok2(this.ts + 1, tm), this.ts, tm);
-p = tm - 1;
-this.cs = 516;
-{
-p += 1;
-_goto_level = _out;
-continue;
-}
-}
-}
-}
-case 195: {
-{
-tm = p - 2;
-}
-{
-switch (this.act) {
-case 60: {
-{
-{
-p = (( this.te))-1;
-}
-this.emit4(TK_tUNARY_NUM, this.tok2(this.ts, this.ts + 1), this.ts, this.ts + 1);
-p = p - 1;
-this.cs = 516;
-{
-p += 1;
-_goto_level = _out;
-continue;
-}
-}
-}
-case 67: {
-{
-{
-p = (( this.te))-1;
-}
-this.diagError();
-}
-break;
-}
-case 76: {
-{
-{
-p = (( this.te))-1;
-}
-if ((true)) {
-this.emit4(TK_tPIPE, this.tok2(this.ts, this.ts + 1), this.ts, this.ts + 1);
-p = p - 1;
-this.cs = 345;
-{
-p += 1;
-_goto_level = _out;
-continue;
-}
-} else {
-p -= 2;
-{
-this.cs = 516;
-_goto_level = _again;
-continue;
-}
-}
-}
-}
-case 80: {
-{
-{
-p = (( this.te))-1;
-}
-this.emit_table(2);
-{
-p += 1;
-_goto_level = _out;
-continue;
-}
-}
-}
-case 81: {
-{
-{
-p = (( this.te))-1;
-}
-this.emit4(TK_kRESCUE, "rescue", this.ts, tm);
-p = tm - 1;
-this.cs = 321;
-{
-p += 1;
-_goto_level = _out;
-continue;
-}
-}
-}
-case 82: {
-{
-{
-p = (( this.te))-1;
-}
-this.emit_table(4);
-this.command_start = true;
-this.cs = 508;
-{
-p += 1;
-_goto_level = _out;
-continue;
-}
-}
-}
-case 86: {
-{
-{
-p = (( this.te))-1;
-}
-p = this.ts - 1;
-{
-this.cs = 516;
-_goto_level = _again;
-continue;
-}
-}
-}
-case 87: {
-{
-{
-p = (( this.te))-1;
-}
-this.emit1(TK_tIDENTIFIER);
-if ((this.declared(this.tok2(this.ts, this.te)))) {
-this.cs = 247;
-{
-p += 1;
-_goto_level = _out;
-continue;
-}
-} else if (true && rbIsNumberedParam(this.tok2(this.ts, this.te))) {
-this.cs = 247;
-{
-p += 1;
-_goto_level = _out;
-continue;
-}
-} else {
-this.cs = (this.arg_or_cmdarg(cmd_state));
-{
-p += 1;
-_goto_level = _out;
-continue;
-}
-}
-}
-}
-case 91: {
-{
-{
-p = (( this.te))-1;
-}
-p = this.ts - 1;
-{
-this.cs = 516;
-_goto_level = _again;
-continue;
-}
-}
-}
-}
-}
-break;
-}
-case 222: {
-{
-tm = p - 3;
-}
-{
-this.te = p;
-p = p - 1;
-{
-this.emit4(TK_tSYMBOL, this.tok2(this.ts + 1, tm), this.ts, tm);
-p = tm - 1;
-this.cs = 516;
-{
-p += 1;
-_goto_level = _out;
-continue;
-}
-}
-}
-}
-case 194: {
-{
-tm = p - 3;
-}
-{
-this.te = p;
-p = p - 1;
-{
-p = this.ts - 1;
-{
-this.cs = 516;
-_goto_level = _again;
-continue;
-}
-}
-}
-}
-case 223: {
-{
-tm = p - 2;
-}
-{
-this.te = p;
-p = p - 1;
-{
-this.emit4(TK_tSYMBOL, this.tok2(this.ts + 1, tm), this.ts, tm);
-p = tm - 1;
-this.cs = 516;
-{
-p += 1;
-_goto_level = _out;
-continue;
-}
-}
-}
-}
-case 342: {
-{
-tm = p - 2;
-}
-{
-this.te = p;
-p = p - 1;
-{
-this.emit4(TK_tCONSTANT, this.tok2(this.ts, tm), this.ts, tm);
-p = tm - 1;
-{
-p += 1;
-_goto_level = _out;
-continue;
-}
-}
-}
-}
-case 146: {
-{
-this.cond.push(false);
-this.cmdarg.push(false);
-this.paren_nest += 1;
-}
-{
-this.te = p;
-p = p - 1;
-{
-this.emit4(TK_tLBRACK, "[", this.te - 1, this.te);
-this.cs = 345;
-{
-p += 1;
-_goto_level = _out;
-continue;
-}
-}
-}
-}
-case 238: {
-{
-this.cond.push(false);
-this.cmdarg.push(false);
-this.paren_nest += 1;
-}
-{
-this.te = p;
-p = p - 1;
-{
-this.emit2(TK_tLBRACK, "[");
-{
-p += 1;
-_goto_level = _out;
-continue;
-}
-}
-}
-}
-case 345: {
-{
-this.cond.push(false);
-this.cmdarg.push(false);
-this.paren_nest += 1;
-}
-{
-this.te = p;
-p = p - 1;
-{
-this.emit2(TK_tLBRACK2, "[");
-this.cs = 345;
-{
-p += 1;
-_goto_level = _out;
-continue;
-}
-}
-}
-}
-case 348: {
-{
-this.paren_nest -= 1;
-}
-{
-this.te = p;
-p = p - 1;
-{
-this.emit_rbrace_rparen_rbrack();
-if ((this.tokIs(this.ts, this.te, "}") || this.tokIs(this.ts, this.te, "]"))) {
-if ((true)) {
-this.cs = 516;
-} else {
-this.cs = 313;
-}
-} else {
-}
-{
-p += 1;
-_goto_level = _out;
-continue;
-}
-}
-}
-}
-case 138: {
-{
-this.cond.push(false);
-this.cmdarg.push(false);
-this.paren_nest += 1;
-if ((false)) {
-this.command_start = true;
-}
-}
-{
-this.te = p;
-p = p - 1;
-{
-if ((false)) {
-this.emit4(TK_tLPAREN2, "(", this.te - 1, this.te);
-this.cs = 508;
-{
-p += 1;
-_goto_level = _out;
-continue;
-}
-} else {
-this.emit4(TK_tLPAREN_ARG, "(", this.te - 1, this.te);
-this.cs = 345;
-{
-p += 1;
-_goto_level = _out;
-continue;
-}
-}
-}
-}
-}
-case 151: {
-{
-this.cond.push(false);
-this.cmdarg.push(false);
-this.paren_nest += 1;
-if ((false)) {
-this.command_start = true;
-}
-}
-{
-this.te = p;
-p = p - 1;
-{
-this.emit2(TK_tLPAREN2, "(");
-this.cs = 345;
-{
-p += 1;
-_goto_level = _out;
-continue;
-}
-}
-}
-}
-case 159: {
-{
-this.cond.push(false);
-this.cmdarg.push(false);
-this.paren_nest += 1;
-if ((false)) {
-this.command_start = true;
-}
-}
-{
-this.te = p;
-p = p - 1;
-{
-this.emit4(TK_tLPAREN_ARG, "(", this.te - 1, this.te);
-if ((false)) {
-this.cs = 508;
-{
-p += 1;
-_goto_level = _out;
-continue;
-}
-} else {
-this.cs = 345;
-{
-p += 1;
-_goto_level = _out;
-continue;
-}
-}
-}
-}
-}
-case 208: {
-{
-this.cond.push(false);
-this.cmdarg.push(false);
-this.paren_nest += 1;
-if ((false)) {
-this.command_start = true;
-}
-}
-{
-this.te = p;
-p = p - 1;
-{
-this.emit2(TK_tLPAREN, "(");
-{
-p += 1;
-_goto_level = _out;
-continue;
-}
-}
-}
-}
-case 289: {
-{
-this.cond.push(false);
-this.cmdarg.push(false);
-this.paren_nest += 1;
-if ((false)) {
-this.command_start = true;
-}
-}
-{
-this.te = p;
-p = p - 1;
-{
-this.emit_table(1);
-this.cs = 345;
-{
-p += 1;
-_goto_level = _out;
-continue;
-}
-}
-}
-}
-case 290: {
-{
-this.paren_nest -= 1;
-}
-{
-this.te = p;
-p = p - 1;
-{
-this.emit_rbrace_rparen_rbrack();
-if ((this.tokIs(this.ts, this.te, "}") || this.tokIs(this.ts, this.te, "]"))) {
-if ((true)) {
-this.cs = 516;
-} else {
-this.cs = 313;
-}
-} else {
-}
-{
-p += 1;
-_goto_level = _out;
-continue;
-}
-}
-}
-}
-case 57: {
-{
-heredoc_e      = p;
-}
-{
-this.newline_s = p;
-}
-break;
-}
-case 233: {
-{
-new_herebody_s = p;
-}
-{
-this.te = p;
-p = p - 1;
-{
-{ const hd = rbHeredocOpener(this.tok2(this.ts, heredoc_e)); indent = hd.indent; dedent_body = hd.dedent; type = hd.type; delimiter = hd.delimiter; }
-
-
-
-
-if ((true)) {
-if (((delimiter.indexOf("\n") >= 0) || (delimiter.indexOf("\r") >= 0))) {
-this.diagError();
-}
-} else if (true) {
-if (((delimiter.indexOf("\n") >= 0))) {
-if ((delimiter.endsWith("\n"))) {
-/* warning */
-delimiter = rbRstrip(delimiter);
-} else {
-this.diagFatal();
-}
-}
-}
-if ((dedent_body && false)) {
-this.emit4(TK_tLSHFT, "<<", this.ts, this.ts + 2);
-p = this.ts + 1;
-this.cs = 345;
-{
-p += 1;
-_goto_level = _out;
-continue;
-}
-} else {
-this.st().pushLiteralFull(type, delimiter, this.ts, heredoc_e, indent, dedent_body);
-if (this.st().herebody_s < 0) { this.st().herebody_s = new_herebody_s; }
-p = this.st().herebody_s - 1;
-this.cs = 128;
-}
-}
-}
-break;
-}
-case 228: {
-{
-tm = p - 1;
-
-}
-{
-this.te = p;
-p = p - 1;
-{
-this.emit_colon_with_digits(p, tm);
-this.cs = 516;
-{
-p += 1;
-_goto_level = _out;
-continue;
-}
-}
-}
-}
-case 231: {
-{
-tm = p - 2;
-
-}
-{
-this.te = p;
-p = p - 1;
-{
-this.emit_colon_with_digits(p, tm);
-this.cs = 516;
-{
-p += 1;
-_goto_level = _out;
-continue;
-}
-}
-}
-}
-case 241: {
-{
-tm = p;
-}
-{
-this.te = p;
-p = p - 1;
-{
-this.emit4(TK_kRESCUE, "rescue", this.ts, tm);
-p = tm - 1;
-this.cs = 321;
-{
-p += 1;
-_goto_level = _out;
-continue;
-}
-}
-}
-}
-case 332: {
-{
-this.num_base = 16;
-this.num_digits_s = p;
-}
-{
-this.num_suffix_s = p;
-}
-break;
-}
-case 326: {
-{
-this.num_base = 10;
-this.num_digits_s = p;
-}
-{
-this.num_suffix_s = p;
-}
-break;
-}
-case 329: {
-{
-this.num_base = 8;
-this.num_digits_s = p;
-}
-{
-this.num_suffix_s = p;
-}
-break;
-}
-case 323: {
-{
-this.num_base = 2;
-this.num_digits_s = p;
-}
-{
-this.num_suffix_s = p;
-}
-break;
-}
-case 338: {
-{
-this.num_base = 10;
-this.num_digits_s = this.ts;
-}
-{
-this.num_suffix_s = p;
-}
-break;
-}
-case 301: {
-{
-this.num_base = 8;
-this.num_digits_s = this.ts;
-}
-{
-this.num_suffix_s = p;
-}
-break;
-}
-case 339: {
-{
-this.num_suffix_s = p;
-}
-{
-this.num_xfrm = XF_integer;
-}
-break;
-}
-case 184: {
-{
-this.te = p+1;
-}
-{
-this.newline_s = p;
-}
-break;
-}
-case 305: {
-{
-this.te = p+1;
-}
-{
-this.num_suffix_s = p;
-}
-break;
-}
-case 107: {
-{
-this.te = p+1;
-}
-{
-this.act = 4;
-}
-break;
-}
-case 94: {
-{
-this.te = p+1;
-}
-{
-this.act = 5;
-}
-break;
-}
-case 90: {
-{
-this.te = p+1;
-}
-{
-this.act = 6;
-}
-break;
-}
-case 12: {
-{
-this.te = p+1;
-}
-{
-this.act = 33;
-}
-break;
-}
-case 140: {
-{
-this.te = p+1;
-}
-{
-this.act = 34;
-}
-break;
-}
-case 13: {
-{
-this.te = p+1;
-}
-{
-this.act = 39;
-}
-break;
-}
-case 133: {
-{
-this.te = p+1;
-}
-{
-this.act = 40;
-}
-break;
-}
-case 160: {
-{
-this.te = p+1;
-}
-{
-this.act = 46;
-}
-break;
-}
-case 31: {
-{
-this.te = p+1;
-}
-{
-this.act = 47;
-}
-break;
-}
-case 181: {
-{
-this.te = p+1;
-}
-{
-this.act = 54;
-}
-break;
-}
-case 170: {
-{
-this.te = p+1;
-}
-{
-this.act = 55;
-}
-break;
-}
-case 55: {
-{
-this.te = p+1;
-}
-{
-this.act = 67;
-}
-break;
-}
-case 246: {
-{
-this.te = p+1;
-}
-{
-this.act = 76;
-}
-break;
-}
-case 185: {
-{
-this.te = p+1;
-}
-{
-this.act = 80;
-}
-break;
-}
-case 240: {
-{
-this.te = p+1;
-}
-{
-this.act = 81;
-}
-break;
-}
-case 239: {
-{
-this.te = p+1;
-}
-{
-this.act = 82;
-}
-break;
-}
-case 59: {
-{
-this.te = p+1;
-}
-{
-this.act = 86;
-}
-break;
-}
-case 182: {
-{
-this.te = p+1;
-}
-{
-this.act = 87;
-}
-break;
-}
-case 186: {
-{
-this.te = p+1;
-}
-{
-this.act = 91;
-}
-break;
-}
-case 356: {
-{
-this.te = p+1;
-}
-{
-this.act = 104;
-}
-break;
-}
-case 351: {
-{
-this.te = p+1;
-}
-{
-this.act = 105;
-}
-break;
-}
-case 359: {
-{
-this.te = p+1;
-}
-{
-this.act = 107;
-}
-break;
-}
-case 352: {
-{
-this.te = p+1;
-}
-{
-this.act = 108;
-}
-break;
-}
-case 353: {
-{
-this.te = p+1;
-}
-{
-this.act = 109;
-}
-break;
-}
-case 358: {
-{
-this.te = p+1;
-}
-{
-this.act = 110;
-}
-break;
-}
-case 350: {
-{
-this.te = p+1;
-}
-{
-this.act = 111;
-}
-break;
-}
-case 344: {
-{
-this.te = p+1;
-}
-{
-this.act = 112;
-}
-break;
-}
-case 270: {
-{
-this.te = p+1;
-}
-{
-this.act = 113;
-}
-break;
-}
-case 303: {
-{
-this.te = p+1;
-}
-{
-this.act = 116;
-}
-break;
-}
-case 67: {
-{
-this.te = p+1;
-}
-{
-this.act = 117;
-}
-break;
-}
-case 273: {
-{
-this.te = p+1;
-}
-{
-this.act = 119;
-}
-break;
-}
-case 264: {
-{
-this.te = p+1;
-}
-{
-this.act = 123;
-}
-break;
-}
-case 275: {
-{
-this.te = p+1;
-}
-{
-this.act = 124;
-}
-break;
-}
-case 268: {
-{
-this.te = p+1;
-}
-{
-this.act = 126;
-}
-break;
-}
-case 274: {
-{
-this.te = p+1;
-}
-{
-this.act = 127;
-}
-break;
-}
-case 73: {
-{
-this.te = p+1;
-}
-{
-this.act = 140;
-}
-break;
-}
-case 363: {
-{
-this.te = p+1;
-}
-{
-this.act = 144;
-}
-break;
-}
-case 47: {
-{
-this.sharp_s = p - 1;
-}
-{
-this.emit_comment_from_range(p, pe);
-}
-{
-this.newline_s = p;
-}
-break;
-}
-case 100: {
-{
-this.sharp_s = p - 1;
-}
-{
-this.emit_comment_from_range(p, pe);
-}
-{
-this.te = p;
-p = p - 1;
-}
-break;
-}
-case 115: {
-{
-this.sharp_s = p - 1;
-}
-{
-this.emit_comment_from_range(p, pe);
-}
-{
-this.te = p;
-p = p - 1;
-}
-break;
-}
-case 127: {
-{
-this.sharp_s = p - 1;
-}
-{
-this.emit_comment_from_range(p, pe);
-}
-{
-this.te = p;
-p = p - 1;
-}
-break;
-}
-case 149: {
-{
-this.sharp_s = p - 1;
-}
-{
-this.emit_comment_from_range(p, pe);
-}
-{
-this.te = p;
-p = p - 1;
-{
-{
-this.cs = 516;
-_goto_level = _again;
-continue;
-}
-}
-}
-}
-case 164: {
-{
-this.sharp_s = p - 1;
-}
-{
-this.emit_comment_from_range(p, pe);
-}
-{
-this.te = p;
-p = p - 1;
-}
-break;
-}
-case 176: {
-{
-this.sharp_s = p - 1;
-}
-{
-this.emit_comment_from_range(p, pe);
-}
-{
-this.te = p;
-p = p - 1;
-}
-break;
-}
-case 203: {
-{
-this.sharp_s = p - 1;
-}
-{
-this.emit_comment_from_range(p, pe);
-}
-{
-this.te = p;
-p = p - 1;
-}
-break;
-}
-case 251: {
-{
-this.sharp_s = p - 1;
-}
-{
-this.emit_comment_from_range(p, pe);
-}
-{
-this.te = p;
-p = p - 1;
-}
-break;
-}
-case 261: {
-{
-this.sharp_s = p - 1;
-}
-{
-this.emit_comment_from_range(p, pe);
-}
-{
-this.te = p;
-p = p - 1;
-}
-break;
-}
-case 282: {
-{
-this.sharp_s = p - 1;
-}
-{
-this.emit_comment_from_range(p, pe);
-}
-{
-this.te = p;
-p = p - 1;
-}
-break;
-}
-case 377: {
-{
-this.sharp_s = p - 1;
-}
-{
-this.emit_comment_from_range(p, pe);
-}
-{
-this.te = p;
-p = p - 1;
-}
-break;
-}
-case 334: {
-{
-this.num_base = 10;
-this.num_digits_s = this.ts;
-}
-{
-this.num_suffix_s = p;
-}
-{
-this.num_xfrm = XF_integer;
-}
-break;
-}
-case 298: {
-{
-this.num_base = 8;
-this.num_digits_s = this.ts;
-}
-{
-this.num_suffix_s = p;
-}
-{
-this.num_xfrm = XF_integer;
-}
-break;
-}
-case 313: {
-{
-this.num_suffix_s = p;
-}
-{
-this.num_xfrm = XF_integer;
-}
-{
-this.te = p;
-p = p - 1;
-{
-digits = this.numeric_literal_int();
-if ((false)) {
-this.emit4(TK_tINTEGER, this.intValue(digits, this.num_base), this.ts, this.num_suffix_s);
-p = this.num_suffix_s - 1;
-} else {
-p = this.numXfrm(this.intValue(digits, this.num_base), p);
-}
-{
-p += 1;
-_goto_level = _out;
-continue;
-}
-}
-}
-}
-case 306: {
-{
-this.num_suffix_s = p;
-}
-{
-this.num_xfrm = XF_float;
-}
-{
-this.te = p;
-p = p - 1;
-{
-digits = this.tok2(this.ts, this.num_suffix_s);
-if ((false)) {
-this.emit4(TK_tFLOAT, digits, this.ts, this.num_suffix_s);
-p = this.num_suffix_s - 1;
-} else {
-p = this.numXfrm(digits, p);
-}
-{
-p += 1;
-_goto_level = _out;
-continue;
-}
-}
-}
-}
-case 302: {
-{
-this.num_suffix_s = p;
-}
-{
-this.num_xfrm = XF_float;
-}
-{
-this.te = p;
-p = p - 1;
-{
-digits = this.tok2(this.ts, this.num_suffix_s);
-if ((false)) {
-this.emit4(TK_tFLOAT, digits, this.ts, this.num_suffix_s);
-p = this.num_suffix_s - 1;
-} else {
-p = this.numXfrm(digits, p);
-}
-{
-p += 1;
-_goto_level = _out;
-continue;
-}
-}
-}
-}
-case 155: {
-{
-this.te = p+1;
-}
-{
-this.newline_s = p;
-}
-{
-this.act = 40;
-}
-break;
-}
-case 21: {
-{
-this.te = p+1;
-}
-{
-p = this.on_newline(p);
-}
-{
-this.act = 39;
-}
-break;
-}
-case 32: {
-{
-this.te = p+1;
-}
-{
-p = this.on_newline(p);
-}
-{
-this.act = 47;
-}
-break;
-}
-case 79: {
-{
-this.te = p+1;
-}
-{
-p = this.on_newline(p);
-}
-{
-this.act = 140;
-}
-break;
-}
-case 51: {
-{
-this.te = p+1;
-}
-{
-this.emit_comment_from_range(p, pe);
-}
-{
-this.act = 60;
-}
-break;
-}
-case 70: {
-{
-this.te = p+1;
-}
-{
-this.emit_comment_from_range(p, pe);
-}
-{
-this.act = 106;
-}
-break;
-}
-case 78: {
-{
-this.te = p+1;
-}
-{
-this.emit_comment_from_range(p, pe);
-}
-{
-this.act = 140;
-}
-break;
-}
-case 23: {
-{
-this.te = p+1;
-}
-{
-tm = p;
-}
-{
-this.act = 34;
-}
-break;
-}
-case 243: {
-{
-this.te = p+1;
-}
-{
-tm = p;
-}
-{
-this.act = 86;
-}
-break;
-}
-case 242: {
-{
-this.te = p+1;
-}
-{
-tm = p;
-}
-{
-this.act = 87;
-}
-break;
-}
-case 335: {
-{
-this.te = p+1;
-}
-{
-this.num_base = 10;
-this.num_digits_s = this.ts;
-}
-{
-this.act = 113;
-}
-break;
-}
-case 330: {
-{
-this.num_base = 16;
-this.num_digits_s = p;
-}
-{
-this.num_suffix_s = p;
-}
-{
-this.num_xfrm = XF_integer;
-}
-{
-this.te = p;
-p = p - 1;
-{
-digits = this.numeric_literal_int();
-if ((false)) {
-this.emit4(TK_tINTEGER, this.intValue(digits, this.num_base), this.ts, this.num_suffix_s);
-p = this.num_suffix_s - 1;
-} else {
-p = this.numXfrm(this.intValue(digits, this.num_base), p);
-}
-{
-p += 1;
-_goto_level = _out;
-continue;
-}
-}
-}
-}
-case 324: {
-{
-this.num_base = 10;
-this.num_digits_s = p;
-}
-{
-this.num_suffix_s = p;
-}
-{
-this.num_xfrm = XF_integer;
-}
-{
-this.te = p;
-p = p - 1;
-{
-digits = this.numeric_literal_int();
-if ((false)) {
-this.emit4(TK_tINTEGER, this.intValue(digits, this.num_base), this.ts, this.num_suffix_s);
-p = this.num_suffix_s - 1;
-} else {
-p = this.numXfrm(this.intValue(digits, this.num_base), p);
-}
-{
-p += 1;
-_goto_level = _out;
-continue;
-}
-}
-}
-}
-case 327: {
-{
-this.num_base = 8;
-this.num_digits_s = p;
-}
-{
-this.num_suffix_s = p;
-}
-{
-this.num_xfrm = XF_integer;
-}
-{
-this.te = p;
-p = p - 1;
-{
-digits = this.numeric_literal_int();
-if ((false)) {
-this.emit4(TK_tINTEGER, this.intValue(digits, this.num_base), this.ts, this.num_suffix_s);
-p = this.num_suffix_s - 1;
-} else {
-p = this.numXfrm(this.intValue(digits, this.num_base), p);
-}
-{
-p += 1;
-_goto_level = _out;
-continue;
-}
-}
-}
-}
-case 321: {
-{
-this.num_base = 2;
-this.num_digits_s = p;
-}
-{
-this.num_suffix_s = p;
-}
-{
-this.num_xfrm = XF_integer;
-}
-{
-this.te = p;
-p = p - 1;
-{
-digits = this.numeric_literal_int();
-if ((false)) {
-this.emit4(TK_tINTEGER, this.intValue(digits, this.num_base), this.ts, this.num_suffix_s);
-p = this.num_suffix_s - 1;
-} else {
-p = this.numXfrm(this.intValue(digits, this.num_base), p);
-}
-{
-p += 1;
-_goto_level = _out;
-continue;
-}
-}
-}
-}
-case 333: {
-{
-this.num_base = 10;
-this.num_digits_s = this.ts;
-}
-{
-this.num_suffix_s = p;
-}
-{
-this.num_xfrm = XF_integer;
-}
-{
-this.te = p;
-p = p - 1;
-{
-digits = this.numeric_literal_int();
-if ((false)) {
-this.emit4(TK_tINTEGER, this.intValue(digits, this.num_base), this.ts, this.num_suffix_s);
-p = this.num_suffix_s - 1;
-} else {
-p = this.numXfrm(this.intValue(digits, this.num_base), p);
-}
-{
-p += 1;
-_goto_level = _out;
-continue;
-}
-}
-}
-}
-case 297: {
-{
-this.num_base = 8;
-this.num_digits_s = this.ts;
-}
-{
-this.num_suffix_s = p;
-}
-{
-this.num_xfrm = XF_integer;
-}
-{
-this.te = p;
-p = p - 1;
-{
-digits = this.numeric_literal_int();
-if ((false)) {
-this.emit4(TK_tINTEGER, this.intValue(digits, this.num_base), this.ts, this.num_suffix_s);
-p = this.num_suffix_s - 1;
-} else {
-p = this.numXfrm(this.intValue(digits, this.num_base), p);
-}
-{
-p += 1;
-_goto_level = _out;
-continue;
-}
-}
-}
-}
-case 17: {
-{
-this.te = p+1;
-}
-{
-p = this.on_newline(p);
-}
-{
-tm = p;
-}
-{
-this.act = 34;
-}
-break;
-}
-case 48: {
-{
-this.te = p+1;
-}
-{
-this.sharp_s = p - 1;
-}
-{
-this.emit_comment_from_range(p, pe);
-}
-{
-this.act = 60;
-}
-break;
-}
-case 77: {
-{
-this.te = p+1;
-}
-{
-this.sharp_s = p - 1;
-}
-{
-this.emit_comment_from_range(p, pe);
-}
-{
-this.act = 140;
-}
-break;
-}
-case 340: {
-{
-this.te = p+1;
-}
-{
-this.num_suffix_s = p;
-}
-{
-this.num_xfrm = XF_integer;
-}
-{
-this.act = 115;
-}
-break;
-}
-case 336: {
-{
-this.te = p+1;
-}
-{
-this.num_base = 10;
-this.num_digits_s = this.ts;
-}
-{
-this.num_suffix_s = p;
-}
-{
-this.num_xfrm = XF_integer;
-}
-{
-this.act = 115;
-}
-break;
-}
-case 300: {
-{
-this.te = p+1;
-}
-{
-this.num_base = 8;
-this.num_digits_s = this.ts;
-}
-{
-this.num_suffix_s = p;
-}
-{
-this.num_xfrm = XF_integer;
-}
-{
-this.act = 115;
-}
-break;
-}
-}
+              if (true) {
+                if (delimiter.indexOf("\n") >= 0 || delimiter.indexOf("\r") >= 0) {
+                  this.diagError();
+                }
+              } else if (true) {
+                if (delimiter.indexOf("\n") >= 0) {
+                  if (delimiter.endsWith("\n")) {
+                    /* warning */
+                    delimiter = rbRstrip(delimiter);
+                  } else {
+                    this.diagFatal();
+                  }
+                }
+              }
+              if (dedent_body && false) {
+                this.emit4(TK_tLSHFT, "<<", this.ts, this.ts + 2);
+                p = this.ts + 1;
+                this.cs = 345;
+                p += 1;
+                _goto_level = _out;
+                continue;
+              } else {
+                this.st().pushLiteralFull(type, delimiter, this.ts, heredoc_e, indent, dedent_body);
+                if (this.st().herebody_s < 0) {
+                  this.st().herebody_s = new_herebody_s;
+                }
+                p = this.st().herebody_s - 1;
+                this.cs = 128;
+              }
+              break;
+            }
+            case 228: {
+              tm = p - 1;
+              this.te = p;
+              p = p - 1;
+              this.emit_colon_with_digits(p, tm);
+              this.cs = 516;
+              p += 1;
+              _goto_level = _out;
+              continue;
+            }
+            case 231: {
+              tm = p - 2;
+              this.te = p;
+              p = p - 1;
+              this.emit_colon_with_digits(p, tm);
+              this.cs = 516;
+              p += 1;
+              _goto_level = _out;
+              continue;
+            }
+            case 241: {
+              tm = p;
+              this.te = p;
+              p = p - 1;
+              this.emit4(TK_kRESCUE, "rescue", this.ts, tm);
+              p = tm - 1;
+              this.cs = 321;
+              p += 1;
+              _goto_level = _out;
+              continue;
+            }
+            case 332: {
+              this.num_base = 16;
+              this.num_digits_s = p;
+              this.num_suffix_s = p;
+              break;
+            }
+            case 326: {
+              this.num_base = 10;
+              this.num_digits_s = p;
+              this.num_suffix_s = p;
+              break;
+            }
+            case 329: {
+              this.num_base = 8;
+              this.num_digits_s = p;
+              this.num_suffix_s = p;
+              break;
+            }
+            case 323: {
+              this.num_base = 2;
+              this.num_digits_s = p;
+              this.num_suffix_s = p;
+              break;
+            }
+            case 338: {
+              this.num_base = 10;
+              this.num_digits_s = this.ts;
+              this.num_suffix_s = p;
+              break;
+            }
+            case 301: {
+              this.num_base = 8;
+              this.num_digits_s = this.ts;
+              this.num_suffix_s = p;
+              break;
+            }
+            case 339: {
+              this.num_suffix_s = p;
+              this.num_xfrm = XF_integer;
+              break;
+            }
+            case 184: {
+              this.te = p + 1;
+              this.newline_s = p;
+              break;
+            }
+            case 305: {
+              this.te = p + 1;
+              this.num_suffix_s = p;
+              break;
+            }
+            case 107: {
+              this.te = p + 1;
+              this.act = 4;
+              break;
+            }
+            case 94: {
+              this.te = p + 1;
+              this.act = 5;
+              break;
+            }
+            case 90: {
+              this.te = p + 1;
+              this.act = 6;
+              break;
+            }
+            case 12: {
+              this.te = p + 1;
+              this.act = 33;
+              break;
+            }
+            case 140: {
+              this.te = p + 1;
+              this.act = 34;
+              break;
+            }
+            case 13: {
+              this.te = p + 1;
+              this.act = 39;
+              break;
+            }
+            case 133: {
+              this.te = p + 1;
+              this.act = 40;
+              break;
+            }
+            case 160: {
+              this.te = p + 1;
+              this.act = 46;
+              break;
+            }
+            case 31: {
+              this.te = p + 1;
+              this.act = 47;
+              break;
+            }
+            case 181: {
+              this.te = p + 1;
+              this.act = 54;
+              break;
+            }
+            case 170: {
+              this.te = p + 1;
+              this.act = 55;
+              break;
+            }
+            case 55: {
+              this.te = p + 1;
+              this.act = 67;
+              break;
+            }
+            case 246: {
+              this.te = p + 1;
+              this.act = 76;
+              break;
+            }
+            case 185: {
+              this.te = p + 1;
+              this.act = 80;
+              break;
+            }
+            case 240: {
+              this.te = p + 1;
+              this.act = 81;
+              break;
+            }
+            case 239: {
+              this.te = p + 1;
+              this.act = 82;
+              break;
+            }
+            case 59: {
+              this.te = p + 1;
+              this.act = 86;
+              break;
+            }
+            case 182: {
+              this.te = p + 1;
+              this.act = 87;
+              break;
+            }
+            case 186: {
+              this.te = p + 1;
+              this.act = 91;
+              break;
+            }
+            case 356: {
+              this.te = p + 1;
+              this.act = 104;
+              break;
+            }
+            case 351: {
+              this.te = p + 1;
+              this.act = 105;
+              break;
+            }
+            case 359: {
+              this.te = p + 1;
+              this.act = 107;
+              break;
+            }
+            case 352: {
+              this.te = p + 1;
+              this.act = 108;
+              break;
+            }
+            case 353: {
+              this.te = p + 1;
+              this.act = 109;
+              break;
+            }
+            case 358: {
+              this.te = p + 1;
+              this.act = 110;
+              break;
+            }
+            case 350: {
+              this.te = p + 1;
+              this.act = 111;
+              break;
+            }
+            case 344: {
+              this.te = p + 1;
+              this.act = 112;
+              break;
+            }
+            case 270: {
+              this.te = p + 1;
+              this.act = 113;
+              break;
+            }
+            case 303: {
+              this.te = p + 1;
+              this.act = 116;
+              break;
+            }
+            case 67: {
+              this.te = p + 1;
+              this.act = 117;
+              break;
+            }
+            case 273: {
+              this.te = p + 1;
+              this.act = 119;
+              break;
+            }
+            case 264: {
+              this.te = p + 1;
+              this.act = 123;
+              break;
+            }
+            case 275: {
+              this.te = p + 1;
+              this.act = 124;
+              break;
+            }
+            case 268: {
+              this.te = p + 1;
+              this.act = 126;
+              break;
+            }
+            case 274: {
+              this.te = p + 1;
+              this.act = 127;
+              break;
+            }
+            case 73: {
+              this.te = p + 1;
+              this.act = 140;
+              break;
+            }
+            case 363: {
+              this.te = p + 1;
+              this.act = 144;
+              break;
+            }
+            case 47: {
+              this.sharp_s = p - 1;
+              this.emit_comment_from_range(p, pe);
+              this.newline_s = p;
+              break;
+            }
+            case 100: {
+              this.sharp_s = p - 1;
+              this.emit_comment_from_range(p, pe);
+              this.te = p;
+              p = p - 1;
+              break;
+            }
+            case 115: {
+              this.sharp_s = p - 1;
+              this.emit_comment_from_range(p, pe);
+              this.te = p;
+              p = p - 1;
+              break;
+            }
+            case 127: {
+              this.sharp_s = p - 1;
+              this.emit_comment_from_range(p, pe);
+              this.te = p;
+              p = p - 1;
+              break;
+            }
+            case 149: {
+              this.sharp_s = p - 1;
+              this.emit_comment_from_range(p, pe);
+              this.te = p;
+              p = p - 1;
+              this.cs = 516;
+              _goto_level = _again;
+              continue;
+            }
+            case 164: {
+              this.sharp_s = p - 1;
+              this.emit_comment_from_range(p, pe);
+              this.te = p;
+              p = p - 1;
+              break;
+            }
+            case 176: {
+              this.sharp_s = p - 1;
+              this.emit_comment_from_range(p, pe);
+              this.te = p;
+              p = p - 1;
+              break;
+            }
+            case 203: {
+              this.sharp_s = p - 1;
+              this.emit_comment_from_range(p, pe);
+              this.te = p;
+              p = p - 1;
+              break;
+            }
+            case 251: {
+              this.sharp_s = p - 1;
+              this.emit_comment_from_range(p, pe);
+              this.te = p;
+              p = p - 1;
+              break;
+            }
+            case 261: {
+              this.sharp_s = p - 1;
+              this.emit_comment_from_range(p, pe);
+              this.te = p;
+              p = p - 1;
+              break;
+            }
+            case 282: {
+              this.sharp_s = p - 1;
+              this.emit_comment_from_range(p, pe);
+              this.te = p;
+              p = p - 1;
+              break;
+            }
+            case 377: {
+              this.sharp_s = p - 1;
+              this.emit_comment_from_range(p, pe);
+              this.te = p;
+              p = p - 1;
+              break;
+            }
+            case 334: {
+              this.num_base = 10;
+              this.num_digits_s = this.ts;
+              this.num_suffix_s = p;
+              this.num_xfrm = XF_integer;
+              break;
+            }
+            case 298: {
+              this.num_base = 8;
+              this.num_digits_s = this.ts;
+              this.num_suffix_s = p;
+              this.num_xfrm = XF_integer;
+              break;
+            }
+            case 313: {
+              this.num_suffix_s = p;
+              this.num_xfrm = XF_integer;
+              this.te = p;
+              p = p - 1;
+              digits = this.numeric_literal_int();
+              if (false) {
+                this.emit4(TK_tINTEGER, this.intValue(digits, this.num_base), this.ts, this.num_suffix_s);
+                p = this.num_suffix_s - 1;
+              } else {
+                p = this.numXfrm(this.intValue(digits, this.num_base), p);
+              }
+              p += 1;
+              _goto_level = _out;
+              continue;
+            }
+            case 306: {
+              this.num_suffix_s = p;
+              this.num_xfrm = XF_float;
+              this.te = p;
+              p = p - 1;
+              digits = this.tok2(this.ts, this.num_suffix_s);
+              if (false) {
+                this.emit4(TK_tFLOAT, digits, this.ts, this.num_suffix_s);
+                p = this.num_suffix_s - 1;
+              } else {
+                p = this.numXfrm(digits, p);
+              }
+              p += 1;
+              _goto_level = _out;
+              continue;
+            }
+            case 302: {
+              this.num_suffix_s = p;
+              this.num_xfrm = XF_float;
+              this.te = p;
+              p = p - 1;
+              digits = this.tok2(this.ts, this.num_suffix_s);
+              if (false) {
+                this.emit4(TK_tFLOAT, digits, this.ts, this.num_suffix_s);
+                p = this.num_suffix_s - 1;
+              } else {
+                p = this.numXfrm(digits, p);
+              }
+              p += 1;
+              _goto_level = _out;
+              continue;
+            }
+            case 155: {
+              this.te = p + 1;
+              this.newline_s = p;
+              this.act = 40;
+              break;
+            }
+            case 21: {
+              this.te = p + 1;
+              p = this.on_newline(p);
+              this.act = 39;
+              break;
+            }
+            case 32: {
+              this.te = p + 1;
+              p = this.on_newline(p);
+              this.act = 47;
+              break;
+            }
+            case 79: {
+              this.te = p + 1;
+              p = this.on_newline(p);
+              this.act = 140;
+              break;
+            }
+            case 51: {
+              this.te = p + 1;
+              this.emit_comment_from_range(p, pe);
+              this.act = 60;
+              break;
+            }
+            case 70: {
+              this.te = p + 1;
+              this.emit_comment_from_range(p, pe);
+              this.act = 106;
+              break;
+            }
+            case 78: {
+              this.te = p + 1;
+              this.emit_comment_from_range(p, pe);
+              this.act = 140;
+              break;
+            }
+            case 23: {
+              this.te = p + 1;
+              tm = p;
+              this.act = 34;
+              break;
+            }
+            case 243: {
+              this.te = p + 1;
+              tm = p;
+              this.act = 86;
+              break;
+            }
+            case 242: {
+              this.te = p + 1;
+              tm = p;
+              this.act = 87;
+              break;
+            }
+            case 335: {
+              this.te = p + 1;
+              this.num_base = 10;
+              this.num_digits_s = this.ts;
+              this.act = 113;
+              break;
+            }
+            case 330: {
+              this.num_base = 16;
+              this.num_digits_s = p;
+              this.num_suffix_s = p;
+              this.num_xfrm = XF_integer;
+              this.te = p;
+              p = p - 1;
+              digits = this.numeric_literal_int();
+              if (false) {
+                this.emit4(TK_tINTEGER, this.intValue(digits, this.num_base), this.ts, this.num_suffix_s);
+                p = this.num_suffix_s - 1;
+              } else {
+                p = this.numXfrm(this.intValue(digits, this.num_base), p);
+              }
+              p += 1;
+              _goto_level = _out;
+              continue;
+            }
+            case 324: {
+              this.num_base = 10;
+              this.num_digits_s = p;
+              this.num_suffix_s = p;
+              this.num_xfrm = XF_integer;
+              this.te = p;
+              p = p - 1;
+              digits = this.numeric_literal_int();
+              if (false) {
+                this.emit4(TK_tINTEGER, this.intValue(digits, this.num_base), this.ts, this.num_suffix_s);
+                p = this.num_suffix_s - 1;
+              } else {
+                p = this.numXfrm(this.intValue(digits, this.num_base), p);
+              }
+              p += 1;
+              _goto_level = _out;
+              continue;
+            }
+            case 327: {
+              this.num_base = 8;
+              this.num_digits_s = p;
+              this.num_suffix_s = p;
+              this.num_xfrm = XF_integer;
+              this.te = p;
+              p = p - 1;
+              digits = this.numeric_literal_int();
+              if (false) {
+                this.emit4(TK_tINTEGER, this.intValue(digits, this.num_base), this.ts, this.num_suffix_s);
+                p = this.num_suffix_s - 1;
+              } else {
+                p = this.numXfrm(this.intValue(digits, this.num_base), p);
+              }
+              p += 1;
+              _goto_level = _out;
+              continue;
+            }
+            case 321: {
+              this.num_base = 2;
+              this.num_digits_s = p;
+              this.num_suffix_s = p;
+              this.num_xfrm = XF_integer;
+              this.te = p;
+              p = p - 1;
+              digits = this.numeric_literal_int();
+              if (false) {
+                this.emit4(TK_tINTEGER, this.intValue(digits, this.num_base), this.ts, this.num_suffix_s);
+                p = this.num_suffix_s - 1;
+              } else {
+                p = this.numXfrm(this.intValue(digits, this.num_base), p);
+              }
+              p += 1;
+              _goto_level = _out;
+              continue;
+            }
+            case 333: {
+              this.num_base = 10;
+              this.num_digits_s = this.ts;
+              this.num_suffix_s = p;
+              this.num_xfrm = XF_integer;
+              this.te = p;
+              p = p - 1;
+              digits = this.numeric_literal_int();
+              if (false) {
+                this.emit4(TK_tINTEGER, this.intValue(digits, this.num_base), this.ts, this.num_suffix_s);
+                p = this.num_suffix_s - 1;
+              } else {
+                p = this.numXfrm(this.intValue(digits, this.num_base), p);
+              }
+              p += 1;
+              _goto_level = _out;
+              continue;
+            }
+            case 297: {
+              this.num_base = 8;
+              this.num_digits_s = this.ts;
+              this.num_suffix_s = p;
+              this.num_xfrm = XF_integer;
+              this.te = p;
+              p = p - 1;
+              digits = this.numeric_literal_int();
+              if (false) {
+                this.emit4(TK_tINTEGER, this.intValue(digits, this.num_base), this.ts, this.num_suffix_s);
+                p = this.num_suffix_s - 1;
+              } else {
+                p = this.numXfrm(this.intValue(digits, this.num_base), p);
+              }
+              p += 1;
+              _goto_level = _out;
+              continue;
+            }
+            case 17: {
+              this.te = p + 1;
+              p = this.on_newline(p);
+              tm = p;
+              this.act = 34;
+              break;
+            }
+            case 48: {
+              this.te = p + 1;
+              this.sharp_s = p - 1;
+              this.emit_comment_from_range(p, pe);
+              this.act = 60;
+              break;
+            }
+            case 77: {
+              this.te = p + 1;
+              this.sharp_s = p - 1;
+              this.emit_comment_from_range(p, pe);
+              this.act = 140;
+              break;
+            }
+            case 340: {
+              this.te = p + 1;
+              this.num_suffix_s = p;
+              this.num_xfrm = XF_integer;
+              this.act = 115;
+              break;
+            }
+            case 336: {
+              this.te = p + 1;
+              this.num_base = 10;
+              this.num_digits_s = this.ts;
+              this.num_suffix_s = p;
+              this.num_xfrm = XF_integer;
+              this.act = 115;
+              break;
+            }
+            case 300: {
+              this.te = p + 1;
+              this.num_base = 8;
+              this.num_digits_s = this.ts;
+              this.num_suffix_s = p;
+              this.num_xfrm = XF_integer;
+              this.act = 115;
+              break;
+            }
+          }
           if (this.fatal) {
             return this.fatalToken();
           }
@@ -9800,7 +6955,8 @@ const rbHeredocOpener = (t: string): RbHeredoc => {
 };
 
 /** `_1`..`_9`. */
-const rbIsNumberedParam = (t: string): boolean => t.length === 2 && t.charCodeAt(0) === 95 && t.charCodeAt(1) >= 49 && t.charCodeAt(1) <= 57;
+const rbIsNumberedParam = (t: string): boolean =>
+  t.length === 2 && t.charCodeAt(0) === 95 && t.charCodeAt(1) >= 49 && t.charCodeAt(1) <= 57;
 
 /** Whether a regexp's options include one Ruby does not know. */
 const rbUnknownRegexpOptions = (t: string): boolean => {

@@ -4,14 +4,40 @@
 // Ported from RuboCop 1.92.2 (MIT License, Copyright (c) 2012-24 Bozhidar
 // Batsov).
 
-import { F_BEGIN, F_END, F_HEREDOC_BODY, F_KEYWORD, NT_BEGIN, NT_BLOCK, NT_BREAK, NT_FOR, NT_IF, NT_NUMBLOCK, NT_RETURN, NT_UNTIL, NT_WHILE, V_NIL } from "../ast";
+import {
+  F_BEGIN,
+  F_END,
+  F_HEREDOC_BODY,
+  F_KEYWORD,
+  NT_BEGIN,
+  NT_BLOCK,
+  NT_BREAK,
+  NT_FOR,
+  NT_IF,
+  NT_NUMBLOCK,
+  NT_RETURN,
+  NT_UNTIL,
+  NT_WHILE,
+  V_NIL,
+} from "../ast";
 import { RbCop } from "../cop";
 import { RbRewriter } from "../rewriter";
 import { RbSource } from "../source";
-import { scnEachStr, scnElse, scnElseBranch, scnHeredoc, scnIfBranch, scnInverseKeyword, scnModifier, scnSpaces, scnTernary } from "./style_cond_help";
+import {
+  scnEachStr,
+  scnElse,
+  scnElseBranch,
+  scnHeredoc,
+  scnIfBranch,
+  scnInverseKeyword,
+  scnModifier,
+  scnSpaces,
+  scnTernary,
+} from "./style_cond_help";
 import { ssxFE, ssxFS, ssxHas, ssxIsCall, ssxIsSpace, ssxMeth } from "./style_syntax_help";
 
-const SNX_ENUM: string = " collect collect_concat detect downto each find find_all find_index inject loop map! map reduce reject reject! reverse_each select select! times upto ";
+const SNX_ENUM: string =
+  " collect collect_concat detect downto each find find_all find_index inject loop map! map reduce reject reject! reverse_each select select! times upto ";
 
 export class CopStyleNext {
   c: RbCop;

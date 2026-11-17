@@ -30,7 +30,12 @@ export class RbAction {
   }
 
   empty(): boolean {
-    return this.before.length === 0 && this.after.length === 0 && this.children.length === 0 && (!this.hasRepl || (this.repl.length === 0 && this.s === this.e));
+    return (
+      this.before.length === 0 &&
+      this.after.length === 0 &&
+      this.children.length === 0 &&
+      (!this.hasRepl || (this.repl.length === 0 && this.s === this.e))
+    );
   }
 
   insertion(): boolean {
@@ -53,7 +58,16 @@ const rbFail = (): RbCombined => new RbCombined(false, new RbAction(0, 0, "", fa
 const rbOk = (a: RbAction): RbCombined => new RbCombined(true, a);
 
 /** A copy of `a` with other fields (Action#with); clobbers when a replacement swallows an insertion. */
-const rbWith = (a: RbAction, s: i32, e: i32, children: RbAction[], before: string, hasRepl: boolean, repl: string, after: string): RbCombined => {
+const rbWith = (
+  a: RbAction,
+  s: i32,
+  e: i32,
+  children: RbAction[],
+  before: string,
+  hasRepl: boolean,
+  repl: string,
+  after: string,
+): RbCombined => {
   let kids = children;
   if (hasRepl) {
     for (const c of children) {
@@ -67,7 +81,8 @@ const rbWith = (a: RbAction, s: i32, e: i32, children: RbAction[], before: strin
   return rbOk(new RbAction(s, e, before, hasRepl, repl, after, kids));
 };
 
-const rbWithChildren = (a: RbAction, children: RbAction[]): RbCombined => rbWith(a, a.s, a.e, children, a.before, a.hasRepl, a.repl, a.after);
+const rbWithChildren = (a: RbAction, children: RbAction[]): RbCombined =>
+  rbWith(a, a.s, a.e, children, a.before, a.hasRepl, a.repl, a.after);
 
 const rbCombine = (self: RbAction, action: RbAction): RbCombined => {
   if (action.empty()) {
@@ -89,7 +104,16 @@ const rbMerge = (self: RbAction, action: RbAction): RbCombined => {
   }
   const hasRepl = action.hasRepl || self.hasRepl;
   const repl = action.hasRepl ? action.repl : self.repl;
-  const r = rbWith(self, self.s, self.e, self.children, action.before + self.before, hasRepl, repl, self.after + action.after);
+  const r = rbWith(
+    self,
+    self.s,
+    self.e,
+    self.children,
+    action.before + self.before,
+    hasRepl,
+    repl,
+    self.after + action.after,
+  );
   if (!r.ok) {
     return r;
   }

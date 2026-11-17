@@ -105,7 +105,6 @@ export const TYPE_TEST_BLOCK: i32 = S_1_1;
 export const VAR_BETWEEN: i32 = S_1_1;
 export const VAR_AFTER_TYPE: i32 = S_2_2;
 
-
 // Shapes, as bits.
 export const SH_INLINE: i32 = 1;
 export const SH_BLOCK: i32 = 2;

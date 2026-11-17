@@ -23,7 +23,15 @@ export class CopLayoutTrailingEmptyLines {
     // ends_in_end?: /\s*__END__/ matches wherever `__END__` is.
     const pts = src.pts;
     for (let i = 0; i + 7 <= n; i++) {
-      if (pts[i] === 95 && pts[i + 1] === 95 && pts[i + 2] === 69 && pts[i + 3] === 78 && pts[i + 4] === 68 && pts[i + 5] === 95 && pts[i + 6] === 95) {
+      if (
+        pts[i] === 95 &&
+        pts[i + 1] === 95 &&
+        pts[i + 2] === 69 &&
+        pts[i + 3] === 78 &&
+        pts[i + 4] === 68 &&
+        pts[i + 5] === 95 &&
+        pts[i + 6] === 95
+      ) {
         return;
       }
     }

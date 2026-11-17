@@ -175,7 +175,13 @@ export const swRuleBlankLineAfterImports = (f: SwFormatter): void => {
       nextIndex = index;
     }
     const k = f.k(nextIndex);
-    if (k === SW_LINEBREAK || f.kw(nextIndex, "import") || f.kw(nextIndex, "#else") || f.kw(nextIndex, "#elseif") || f.tok(nextIndex, SW_END, "#endif")) {
+    if (
+      k === SW_LINEBREAK ||
+      f.kw(nextIndex, "import") ||
+      f.kw(nextIndex, "#else") ||
+      f.kw(nextIndex, "#elseif") ||
+      f.tok(nextIndex, SW_END, "#endif")
+    ) {
       continue;
     }
     f.insertLinebreak(endOfLine);

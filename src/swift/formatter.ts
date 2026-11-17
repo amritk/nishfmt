@@ -601,7 +601,11 @@ export class SwFormatter {
         if (k === SW_LINEBREAK && stack.length === 0 && swTokIsAt(t, i, type)) {
           return i;
         }
-      } else if ((c === SW_SC_CASE || c === SW_SC_DEFAULT || (c === SW_SC_ATTRIBUTE && t.s[i] === "@unknown")) && m !== 0 && t.c[stack[m - 1]] === SW_SC_IF) {
+      } else if (
+        (c === SW_SC_CASE || c === SW_SC_DEFAULT || (c === SW_SC_ATTRIBUTE && t.s[i] === "@unknown")) &&
+        m !== 0 &&
+        t.c[stack[m - 1]] === SW_SC_IF
+      ) {
         continue;
       } else if (m === 0 && swTokIsAt(t, i, type)) {
         return i;
@@ -871,7 +875,12 @@ export const swIndexAfterWhere = (f: SwFormatter, i: i32, pred: (f: SwFormatter,
 };
 
 /** lastIndex(in: lo ..< hi, where: pred) — scope-aware. */
-export const swLastIndexInWhere = (f: SwFormatter, lo0: i32, hi0: i32, pred: (f: SwFormatter, j: i32) => boolean): i32 => {
+export const swLastIndexInWhere = (
+  f: SwFormatter,
+  lo0: i32,
+  hi0: i32,
+  pred: (f: SwFormatter, j: i32) => boolean,
+): i32 => {
   const n = f.count();
   const lo = lo0 < 0 ? 0 : lo0;
   const hi = hi0 > n ? n : hi0;

@@ -4,7 +4,26 @@
 // Ported from RuboCop 1.92.2 (MIT License, Copyright (c) 2012-24 Bozhidar
 // Batsov).
 
-import { F_BEGIN, F_ELSE, F_END, F_HEREDOC_END, F_KEYWORD, NT_BEGIN, NT_BLOCK, NT_BREAK, NT_DEF, NT_DEFS, NT_IF, NT_LVAR, NT_LVASGN, NT_NEXT, NT_NUMBLOCK, NT_RETURN, NT_SEND, V_NIL } from "../ast";
+import {
+  F_BEGIN,
+  F_ELSE,
+  F_END,
+  F_HEREDOC_END,
+  F_KEYWORD,
+  NT_BEGIN,
+  NT_BLOCK,
+  NT_BREAK,
+  NT_DEF,
+  NT_DEFS,
+  NT_IF,
+  NT_LVAR,
+  NT_LVASGN,
+  NT_NEXT,
+  NT_NUMBLOCK,
+  NT_RETURN,
+  NT_SEND,
+  V_NIL,
+} from "../ast";
 import { RbCop } from "../cop";
 import { RbRewriter } from "../rewriter";
 import { RbSource } from "../source";
@@ -27,7 +46,16 @@ import {
   scnWholeE,
   scnWholeS,
 } from "./style_cond_help";
-import { ssxAssignment, ssxDefBody, ssxDescendants, ssxFE, ssxFS, ssxIs, ssxIsCall, ssxMeth } from "./style_syntax_help";
+import {
+  ssxAssignment,
+  ssxDefBody,
+  ssxDescendants,
+  ssxFE,
+  ssxFS,
+  ssxIs,
+  ssxIsCall,
+  ssxMeth,
+} from "./style_syntax_help";
 
 /** match_guard_clause?: raise/fail without receiver, return, break or next, on one line. */
 const sgcMatch = (src: RbSource, n: i32): boolean => {
@@ -179,7 +207,11 @@ export class CopStyleGuardClause {
       }
       if (leaveBranch !== V_NIL) {
         this.removeWholeLines(src, k, a.exS(leaveBranch), a.exE(leaveBranch));
-        k.insertAfter(ssxFS(src, heredoc, F_HEREDOC_END), ssxFE(src, heredoc, F_HEREDOC_END), `\n${src.nodeSrc(leaveBranch)}`);
+        k.insertAfter(
+          ssxFS(src, heredoc, F_HEREDOC_END),
+          ssxFE(src, heredoc, F_HEREDOC_END),
+          `\n${src.nodeSrc(leaveBranch)}`,
+        );
       }
       this.removeWholeLines(src, k, ssxFS(src, n, F_ELSE), ssxFE(src, n, F_ELSE));
       const b = guard === 1 ? ib : eb;

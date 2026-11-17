@@ -62,7 +62,17 @@ export class CopStyleRedundantRegexpEscape {
       return true;
     }
     // ALLOWED_ALWAYS_ESCAPES " \n[]^\\#", the delimiters
-    if (ch === 32 || ch === 10 || ch === 91 || ch === 93 || ch === 94 || ch === 92 || ch === 35 || ch === d0 || ch === d1) {
+    if (
+      ch === 32 ||
+      ch === 10 ||
+      ch === 91 ||
+      ch === 93 ||
+      ch === 94 ||
+      ch === 92 ||
+      ch === 35 ||
+      ch === d0 ||
+      ch === d1
+    ) {
       return true;
     }
     // requires_escape_to_avoid_interpolation?
@@ -82,7 +92,18 @@ export class CopStyleRedundantRegexpEscape {
       }
       return !edge;
     }
-    return ch === 46 || ch === 42 || ch === 43 || ch === 63 || ch === 123 || ch === 125 || ch === 40 || ch === 41 || ch === 124 || ch === 36;
+    return (
+      ch === 46 ||
+      ch === 42 ||
+      ch === 43 ||
+      ch === 63 ||
+      ch === 123 ||
+      ch === 125 ||
+      ch === 40 ||
+      ch === 41 ||
+      ch === 124 ||
+      ch === 36
+    );
   }
 }
 

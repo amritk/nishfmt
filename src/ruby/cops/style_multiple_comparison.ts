@@ -119,7 +119,13 @@ export class CopStyleMultipleComparison {
       return;
     }
     // simple_double_comparison?: (send lvar :== lvar)
-    if (ssxIs(src, n, NT_SEND) && ssxMeth(src, n) === "==" && a.nKid(n) === 3 && ssxIs(src, a.kid(n, 0), NT_LVAR) && ssxIs(src, a.kid(n, 2), NT_LVAR)) {
+    if (
+      ssxIs(src, n, NT_SEND) &&
+      ssxMeth(src, n) === "==" &&
+      a.nKid(n) === 3 &&
+      ssxIs(src, a.kid(n, 0), NT_LVAR) &&
+      ssxIs(src, a.kid(n, 2), NT_LVAR)
+    ) {
       return;
     }
     const cmp = this.simple(src, n);

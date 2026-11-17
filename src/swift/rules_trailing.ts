@@ -165,7 +165,6 @@ export const swWrapLine = (f: SwFormatter, tokenIndex: i32): void => {
   }
 };
 
-
 const swIsSingleClosureValue = (f: SwFormatter, a: SwCallArg): boolean => {
   const first = f.indexInType(SW_T_NON_SPACE_OR_COMMENT_OR_LINEBREAK, a.lo, a.hi + 1);
   const last = f.indexBefore(SW_T_NON_SPACE_OR_COMMENT_OR_LINEBREAK, a.hi + 1);
@@ -211,7 +210,12 @@ export const swRuleTrailingClosures = (f: SwFormatter): void => {
       continue;
     }
     const name = f.s(identifierIndex);
-    if (name === "performBatchUpdates" || name === "expect" || swIsConditionalStatement(f, open) || swStartOfAttribute(f, identifierIndex) >= 0) {
+    if (
+      name === "performBatchUpdates" ||
+      name === "expect" ||
+      swIsConditionalStatement(f, open) ||
+      swStartOfAttribute(f, identifierIndex) >= 0
+    ) {
       continue;
     }
     const args = swParseFunctionCallArguments(f, open);
@@ -258,7 +262,11 @@ export const swRuleTrailingClosures = (f: SwFormatter): void => {
       }
       const wasParen = startIndex === open;
       swRemoveParen(f, closingParen);
-      f.replaceTokens(startIndex, openingBrace, wasParen ? [new SwTok(SW_SPACE, " ", 0)] : [new SwTok(SW_END, ")", 0), new SwTok(SW_SPACE, " ", 0)]);
+      f.replaceTokens(
+        startIndex,
+        openingBrace,
+        wasParen ? [new SwTok(SW_SPACE, " ", 0)] : [new SwTok(SW_END, ")", 0), new SwTok(SW_SPACE, " ", 0)],
+      );
       continue;
     }
     if (count < 2) {

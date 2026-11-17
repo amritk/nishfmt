@@ -22,7 +22,16 @@ import { swParseFunctionArguments } from "./funcdecl";
 import { swHasModifier, swModifiersForDeclaration } from "./modifiers";
 import { swEndOfScope, swIsTypeKeywordStr } from "./parsing";
 import { swCollectRecursive, swFullyQualifiedName } from "./rules_acl";
-import { SW_DELIM, SW_IDENT, SW_KEYWORD, SW_OP, SW_OP_INFIX, SW_OP_POSTFIX, SW_START, SW_T_NON_SPACE_OR_COMMENT_OR_LINEBREAK } from "./token";
+import {
+  SW_DELIM,
+  SW_IDENT,
+  SW_KEYWORD,
+  SW_OP,
+  SW_OP_INFIX,
+  SW_OP_POSTFIX,
+  SW_START,
+  SW_T_NON_SPACE_OR_COMMENT_OR_LINEBREAK,
+} from "./token";
 
 const swConformsToAny = (f: SwFormatter, kw: i32, a: string, b: string): boolean => {
   const c = swParseConformances(f, kw);

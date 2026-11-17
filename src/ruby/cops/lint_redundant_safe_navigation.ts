@@ -91,7 +91,9 @@ export class CopLintRedundantSafeNavigation {
     // guaranteed_instance?
     const recv = ssxIsAnyBlock(src, r) ? a.kid(r, 0) : r;
     const m0 = ssxMeth(src, recv);
-    const guaranteed = ldhType(src, recv) === NT_SEND && (m0 === "to_s" || m0 === "to_i" || m0 === "to_f" || m0 === "to_a" || m0 === "to_h");
+    const guaranteed =
+      ldhType(src, recv) === NT_SEND &&
+      (m0 === "to_s" || m0 === "to_i" || m0 === "to_f" || m0 === "to_a" || m0 === "to_h");
     if (!guaranteed && !this.check(src, n)) {
       return true;
     }
@@ -107,7 +109,16 @@ export class CopLintRedundantSafeNavigation {
   private check(src: RbSource, n: i32): boolean {
     const a = src.a;
     const m = ssxMeth(src, n);
-    if (!(m === "instance_of?" || m === "kind_of?" || m === "is_a?" || m === "eql?" || m === "respond_to?" || m === "equal?")) {
+    if (
+      !(
+        m === "instance_of?" ||
+        m === "kind_of?" ||
+        m === "is_a?" ||
+        m === "eql?" ||
+        m === "respond_to?" ||
+        m === "equal?"
+      )
+    ) {
       return false;
     }
     const p = src.parent(n);

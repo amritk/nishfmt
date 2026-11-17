@@ -262,7 +262,10 @@ const rmlClassConstructorSend = (src: RbSource, n: i32): boolean => {
   }
   const m = rnMethod(src, n);
   const r = src.a.kid(n, 0);
-  return (m === "new" && rmlGlobalConst(src, r, ",Class,Module,Struct,")) || (m === "define" && rmlGlobalConst(src, r, ",Data,"));
+  return (
+    (m === "new" && rmlGlobalConst(src, r, ",Class,Module,Struct,")) ||
+    (m === "define" && rmlGlobalConst(src, r, ",Data,"))
+  );
 };
 
 /** Node#class_constructor? */

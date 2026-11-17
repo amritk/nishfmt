@@ -89,7 +89,14 @@ const swRemoveBoth = (f: SwFormatter, i: i32, closingIndex: i32): void => {
 };
 
 const swIsConditionalKeyword = (s: string): boolean =>
-  s === "in" || s === "while" || s === "if" || s === "case" || s === "switch" || s === "where" || s === "for" || s === "guard";
+  s === "in" ||
+  s === "while" ||
+  s === "if" ||
+  s === "case" ||
+  s === "switch" ||
+  s === "where" ||
+  s === "for" ||
+  s === "guard";
 
 /** The prev/next context for the default case's scan. */
 class SwParenCtx {
@@ -110,14 +117,24 @@ const swParenBlocks = (f: SwFormatter, c: SwParenCtx, j: i32): boolean => {
   const k = f.k(j);
   const s = f.s(j);
   const a = f.a(j);
-  if ((k === SW_OP && a === SW_OP_INFIX) || (k === SW_IDENT && (s === "any" || s === "some" || s === "each")) || (k === SW_KEYWORD && (s === "as" || s === "is" || s === "try" || s === "await"))) {
+  if (
+    (k === SW_OP && a === SW_OP_INFIX) ||
+    (k === SW_IDENT && (s === "any" || s === "some" || s === "each")) ||
+    (k === SW_KEYWORD && (s === "as" || s === "is" || s === "try" || s === "await"))
+  ) {
     const prevIsEq = c.pk === SW_OP && c.pa === SW_OP_INFIX && c.ps === "=";
     if (!(prevIsEq && k === SW_OP && a === SW_OP_INFIX && s === "->")) {
-      if ((c.pk === SW_OP && (c.pa === SW_OP_PREFIX || c.pa === SW_OP_INFIX)) || (c.pk === SW_KEYWORD && (c.ps === "as" || c.ps === "is"))) {
+      if (
+        (c.pk === SW_OP && (c.pa === SW_OP_PREFIX || c.pa === SW_OP_INFIX)) ||
+        (c.pk === SW_KEYWORD && (c.ps === "as" || c.ps === "is"))
+      ) {
         return true;
       }
     }
-    if ((c.nk === SW_OP && (c.na === SW_OP_POSTFIX || c.na === SW_OP_INFIX)) || (c.nk === SW_KEYWORD && (c.ns === "as" || c.ns === "is"))) {
+    if (
+      (c.nk === SW_OP && (c.na === SW_OP_POSTFIX || c.na === SW_OP_INFIX)) ||
+      (c.nk === SW_KEYWORD && (c.ns === "as" || c.ns === "is"))
+    ) {
       return true;
     }
     return (c.lk === SW_START && (c.ls === "[" || c.ls === "(")) || (c.lk === SW_OP && c.la === SW_OP_POSTFIX);
@@ -132,7 +149,14 @@ const swParenBlocks = (f: SwFormatter, c: SwParenCtx, j: i32): boolean => {
 };
 
 /** The `default` case. */
-const swParensDefault = (f: SwFormatter, c: SwParenCtx, i: i32, closingIndex0: i32, previousIndex: i32, innerStart: i32): void => {
+const swParensDefault = (
+  f: SwFormatter,
+  c: SwParenCtx,
+  i: i32,
+  closingIndex0: i32,
+  previousIndex: i32,
+  innerStart: i32,
+): void => {
   let closingIndex = closingIndex0;
   if (innerStart >= 0) {
     const innerEnd = swNestedParensEnd(f, closingIndex);
@@ -146,7 +170,12 @@ const swParensDefault = (f: SwFormatter, c: SwParenCtx, i: i32, closingIndex0: i
       return;
     }
   }
-  if (f.k(closingIndex - 1) === SW_OP && f.has(closingIndex + 1) && f.k(closingIndex + 1) === SW_OP && f.a(closingIndex + 1) === SW_OP_INFIX) {
+  if (
+    f.k(closingIndex - 1) === SW_OP &&
+    f.has(closingIndex + 1) &&
+    f.k(closingIndex + 1) === SW_OP &&
+    f.a(closingIndex + 1) === SW_OP_INFIX
+  ) {
     return;
   }
   const nnl = f.indexAfter(SW_T_NON_SPACE_OR_COMMENT, closingIndex);
@@ -155,7 +184,10 @@ const swParensDefault = (f: SwFormatter, c: SwParenCtx, i: i32, closingIndex0: i
   c.la = nnl >= 0 ? f.a(nnl) : 0;
   const x = f.indexAfter(SW_T_NON_SPACE_OR_COMMENT_OR_LINEBREAK, i);
   if (x >= 0 && f.k(x) === SW_OP) {
-    if ((c.nk === SW_OP && c.ns === ".") || (x === i + 1 && f.has(i - 1) && !(f.k(i - 1) === SW_SPACE || f.k(i - 1) === SW_LINEBREAK || f.isComment(i - 1)))) {
+    if (
+      (c.nk === SW_OP && c.ns === ".") ||
+      (x === i + 1 && f.has(i - 1) && !(f.k(i - 1) === SW_SPACE || f.k(i - 1) === SW_LINEBREAK || f.isComment(i - 1)))
+    ) {
       return;
     }
     if ((c.lk === SW_START && (c.ls === "[" || c.ls === "(")) || (c.lk === SW_OP && c.la === SW_OP_POSTFIX)) {
@@ -236,9 +268,18 @@ export const swRuleRedundantParens = (f: SwFormatter): void => {
     const na = c.na;
     const nextIsIn = nk === SW_KEYWORD && ns === "in";
     const isUnsafeKeyword = swIsUnsafeExpression(f, previousIndex) || (pk === SW_IDENT && ps === "unsafe" && nextIsIn);
-    if ((nk === SW_OP && na === SW_OP_INFIX && ns === "->") || (nk === SW_KEYWORD && (ns === "throws" || ns === "rethrows")) || (nk === SW_IDENT && ns === "async") || nextIsIn) {
+    if (
+      (nk === SW_OP && na === SW_OP_INFIX && ns === "->") ||
+      (nk === SW_KEYWORD && (ns === "throws" || ns === "rethrows")) ||
+      (nk === SW_IDENT && ns === "async") ||
+      nextIsIn
+    ) {
       if (!(pk === SW_KEYWORD && ps === "throws")) {
-        const b = swIndexBeforeWhere(f, i, (g, j) => g.tok(j, SW_END, ")") || g.op(j, "->", SW_OP_INFIX) || g.kw(j, "for"));
+        const b = swIndexBeforeWhere(
+          f,
+          i,
+          (g, j) => g.tok(j, SW_END, ")") || g.op(j, "->", SW_OP_INFIX) || g.kw(j, "for"),
+        );
         const scopeIndex = b < 0 ? swStartOfScope(f, i) : -1;
         if (scopeIndex >= 0) {
           isClosure = swIsStartOfClosure(f, scopeIndex) && swIsInClosureArguments(f, i);
@@ -259,7 +300,11 @@ export const swRuleRedundantParens = (f: SwFormatter): void => {
       continue;
     }
     // switch prevToken
-    if (pk === SW_STRBODY || (pk === SW_OP && pa === SW_OP_POSTFIX && (ps === "?" || ps === "!")) || (pk === SW_OP && pa === SW_OP_INFIX && ps === "->")) {
+    if (
+      pk === SW_STRBODY ||
+      (pk === SW_OP && pa === SW_OP_POSTFIX && (ps === "?" || ps === "!")) ||
+      (pk === SW_OP && pa === SW_OP_INFIX && ps === "->")
+    ) {
       continue;
     }
     if (pk === SW_IDENT && !isUnsafeKeyword) {
@@ -274,7 +319,10 @@ export const swRuleRedundantParens = (f: SwFormatter): void => {
       continue;
     }
     if (isClosure) {
-      if (f.indexAfter(SW_T_NON_SPACE_OR_COMMENT_OR_LINEBREAK, i) === closingIndex || f.indexOfIn(SW_DELIM, ":", 0, i + 1, closingIndex) >= 0) {
+      if (
+        f.indexAfter(SW_T_NON_SPACE_OR_COMMENT_OR_LINEBREAK, i) === closingIndex ||
+        f.indexOfIn(SW_DELIM, ":", 0, i + 1, closingIndex) >= 0
+      ) {
         continue;
       }
       let hasSelf = false;
@@ -315,7 +363,12 @@ export const swRuleRedundantParens = (f: SwFormatter): void => {
         continue;
       }
       stage = 6;
-    } else if ((pk === SW_DELIM && ps === ",") || pk === SW_END || pk === SW_KEYWORD || (pk === SW_IDENT && ps === "unsafe")) {
+    } else if (
+      (pk === SW_DELIM && ps === ",") ||
+      pk === SW_END ||
+      pk === SW_KEYWORD ||
+      (pk === SW_IDENT && ps === "unsafe")
+    ) {
       stage = 6;
     } else if (pk === SW_OP && pa === SW_OP_INFIX) {
       stage = 7;
@@ -338,10 +391,18 @@ export const swRuleRedundantParens = (f: SwFormatter): void => {
         continue;
       }
       const nextIsColonScope = nk === SW_START && ns === ":";
-      if (!nextBraceOrComma && !nextIsColonScope && !((ps === "for" || ps === "unsafe") && nextIsIn) && !(ps === "guard" && nk === SW_KEYWORD && ns === "else")) {
+      if (
+        !nextBraceOrComma &&
+        !nextIsColonScope &&
+        !((ps === "for" || ps === "unsafe") && nextIsIn) &&
+        !(ps === "guard" && nk === SW_KEYWORD && ns === "else")
+      ) {
         stage = 7;
       } else {
-        if (f.indexInType(SW_T_NON_SPACE_OR_COMMENT_OR_LINEBREAK, i + 1, closingIndex) < 0 || f.indexOfIn(SW_DELIM, ",", 0, i + 1, closingIndex) >= 0) {
+        if (
+          f.indexInType(SW_T_NON_SPACE_OR_COMMENT_OR_LINEBREAK, i + 1, closingIndex) < 0 ||
+          f.indexOfIn(SW_DELIM, ",", 0, i + 1, closingIndex) >= 0
+        ) {
           continue;
         }
         swRemoveBoth(f, i, closingIndex);

@@ -144,7 +144,10 @@ class SbhPaSorter {
     const src = this.src;
     const a = src.a;
     if (this.self[j]) {
-      if (sbhMethodName(src, this.rhs[j]) !== name || !(a.isNode(recv) && a.type(recv) === NT_SELF && a.nKid(recv) === 0)) {
+      if (
+        sbhMethodName(src, this.rhs[j]) !== name ||
+        !(a.isNode(recv) && a.type(recv) === NT_SELF && a.nKid(recv) === 0)
+      ) {
         return false;
       }
       return anyArgs || args.length === 0;
@@ -182,7 +185,11 @@ class SbhPaSorter {
     if (vn.length > 0 && !this.self[j]) {
       for (const n of sbhPaEachNode(src, this.rhs[j])) {
         const t = a.type(n);
-        if ((t === NT_LVAR || t === NT_IVAR || t === NT_CVAR || t === NT_GVAR) && a.nKid(n) === 1 && a.inspect(a.kid(n, 0)) === vn) {
+        if (
+          (t === NT_LVAR || t === NT_IVAR || t === NT_CVAR || t === NT_GVAR) &&
+          a.nKid(n) === 1 &&
+          a.inspect(a.kid(n, 0)) === vn
+        ) {
           return true;
         }
         if (t === NT_CONST && a.nKid(n) === 2 && a.inspect(a.kid(n, 1)) === vn) {
@@ -399,7 +406,11 @@ export class CopStyleParallelAssignment {
       modifier = a.kid(src.parent(rhs), 1);
     }
     const pt = p === V_NIL ? -1 : a.type(p);
-    if ((pt === NT_IF || pt === NT_WHILE || pt === NT_UNTIL) && !ssxHas(src, p, F_END) && (pt !== NT_IF || ssxLocIs(src, p, F_KEYWORD, "if") || ssxLocIs(src, p, F_KEYWORD, "unless"))) {
+    if (
+      (pt === NT_IF || pt === NT_WHILE || pt === NT_UNTIL) &&
+      !ssxHas(src, p, F_END) &&
+      (pt !== NT_IF || ssxLocIs(src, p, F_KEYWORD, "if") || ssxLocIs(src, p, F_KEYWORD, "unless"))
+    ) {
       // ModifierCorrector
       const text = `${src.src(ssxFS(src, p, F_KEYWORD), a.exE(p))}\n${indentation}${asg.join(`\n${indentation}`)}\n${offset}end`;
       k.replace(a.exS(p), a.exE(p), text);

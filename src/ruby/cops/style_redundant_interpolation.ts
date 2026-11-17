@@ -3,7 +3,19 @@
 // Ported from RuboCop 1.92.2 (MIT License, Copyright (c) 2012-24 Bozhidar
 // Batsov).
 
-import { F_BEGIN, NT_ARRAY, NT_BACK_REF, NT_BEGIN, NT_CVAR, NT_DSTR, NT_GVAR, NT_IVAR, NT_LVAR, NT_MATCH_PATTERN, NT_NTH_REF } from "../ast";
+import {
+  F_BEGIN,
+  NT_ARRAY,
+  NT_BACK_REF,
+  NT_BEGIN,
+  NT_CVAR,
+  NT_DSTR,
+  NT_GVAR,
+  NT_IVAR,
+  NT_LVAR,
+  NT_MATCH_PATTERN,
+  NT_NTH_REF,
+} from "../ast";
 import { RbCop } from "../cop";
 import { RbSource } from "../source";
 import { ssxFE, ssxFS, ssxHas, ssxIs } from "./style_syntax_help";
@@ -30,14 +42,26 @@ export class CopStyleRedundantInterpolation {
       }
       const t = a.type(e);
       // interpolation?: a variable, a reference or a begin
-      if (t !== NT_LVAR && t !== NT_IVAR && t !== NT_CVAR && t !== NT_GVAR && t !== NT_NTH_REF && t !== NT_BACK_REF && t !== NT_BEGIN) {
+      if (
+        t !== NT_LVAR &&
+        t !== NT_IVAR &&
+        t !== NT_CVAR &&
+        t !== NT_GVAR &&
+        t !== NT_NTH_REF &&
+        t !== NT_BACK_REF &&
+        t !== NT_BEGIN
+      ) {
         continue;
       }
       const p = src.parent(n);
       if (ssxIs(src, p, NT_DSTR)) {
         continue;
       }
-      if (ssxIs(src, p, NT_ARRAY) && ssxHas(src, p, F_BEGIN) && src.src(ssxFS(src, p, F_BEGIN), ssxFE(src, p, F_BEGIN)).startsWith("%")) {
+      if (
+        ssxIs(src, p, NT_ARRAY) &&
+        ssxHas(src, p, F_BEGIN) &&
+        src.src(ssxFS(src, p, F_BEGIN), ssxFE(src, p, F_BEGIN)).startsWith("%")
+      ) {
         continue;
       }
       // use_match_pattern?

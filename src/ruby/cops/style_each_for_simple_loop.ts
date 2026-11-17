@@ -40,7 +40,11 @@ export class CopStyleEachForSimpleLoop {
         continue;
       }
       const r = a.kid(b, 0);
-      if (!(sbhEfIs(src, r, NT_IRANGE) || sbhEfIs(src, r, NT_ERANGE)) || !sbhEfIs(src, a.kid(r, 0), NT_INT) || !sbhEfIs(src, a.kid(r, 1), NT_INT)) {
+      if (
+        !(sbhEfIs(src, r, NT_IRANGE) || sbhEfIs(src, r, NT_ERANGE)) ||
+        !sbhEfIs(src, a.kid(r, 0), NT_INT) ||
+        !sbhEfIs(src, a.kid(r, 1), NT_INT)
+      ) {
         continue;
       }
       const k = this.c.offense(a.exS(send), a.exE(send));

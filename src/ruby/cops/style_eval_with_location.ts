@@ -12,7 +12,8 @@ import { ssxArgs, ssxGlobalConst, ssxHas, ssxFS, ssxIs, ssxMeth } from "./style_
 const ssxEwlLineKw = (src: RbSource, n: i32): boolean => ssxIs(src, n, NT_INT) && src.nodeSrc(n) === "__LINE__";
 
 /** (int %v) */
-const ssxEwlIntIs = (src: RbSource, n: i32, v: i32): boolean => ssxIs(src, n, NT_INT) && src.a.text(src.a.kid(n, 0)) === `${v}`;
+const ssxEwlIntIs = (src: RbSource, n: i32, v: i32): boolean =>
+  ssxIs(src, n, NT_INT) && src.a.text(src.a.kid(n, 0)) === `${v}`;
 
 /** expected_line. */
 const ssxEwlExpected = (diff: i32): string => {
@@ -23,7 +24,8 @@ const ssxEwlExpected = (diff: i32): string => {
 };
 
 /** string_first_line. */
-const ssxEwlStringFirstLine = (src: RbSource, code: i32): i32 => (ssxHas(src, code, F_HEREDOC_BODY) ? src.line(ssxFS(src, code, F_HEREDOC_BODY)) : src.line(src.a.exS(code)));
+const ssxEwlStringFirstLine = (src: RbSource, code: i32): i32 =>
+  ssxHas(src, code, F_HEREDOC_BODY) ? src.line(ssxFS(src, code, F_HEREDOC_BODY)) : src.line(src.a.exS(code));
 
 export class CopStyleEvalWithLocation {
   c: RbCop;

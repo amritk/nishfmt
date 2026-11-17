@@ -23,7 +23,10 @@ export class CopStyleStderrPuts {
         continue;
       }
       const r = a.kid(n, 0);
-      if (!(ssxIs(src, r, NT_GVAR) && ssxSymText(src, a.kid(r, 0)) === "$stderr") && !ssxGlobalConst(src, r, "STDERR")) {
+      if (
+        !(ssxIs(src, r, NT_GVAR) && ssxSymText(src, a.kid(r, 0)) === "$stderr") &&
+        !ssxGlobalConst(src, r, "STDERR")
+      ) {
         continue;
       }
       const s = a.exS(n);

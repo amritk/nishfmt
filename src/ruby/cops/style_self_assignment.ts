@@ -3,7 +3,20 @@
 // Ported from RuboCop 1.92.2 (MIT License, Copyright (c) 2012-24 Bozhidar
 // Batsov).
 
-import { F_OPERATOR, NT_AND, NT_BEGIN, NT_CVAR, NT_CVASGN, NT_IVAR, NT_IVASGN, NT_LVAR, NT_LVASGN, NT_OR, NT_SEND, V_NIL } from "../ast";
+import {
+  F_OPERATOR,
+  NT_AND,
+  NT_BEGIN,
+  NT_CVAR,
+  NT_CVASGN,
+  NT_IVAR,
+  NT_IVASGN,
+  NT_LVAR,
+  NT_LVASGN,
+  NT_OR,
+  NT_SEND,
+  V_NIL,
+} from "../ast";
 import { RbCop } from "../cop";
 import { RbSource } from "../source";
 import { ssxFE, ssxFS, ssxInList, ssxIs, ssxMeth, ssxSymText } from "./style_syntax_help";

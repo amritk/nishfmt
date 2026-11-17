@@ -31,7 +31,18 @@ import {
 } from "../ast";
 import { RbCop } from "../cop";
 import { RbSource } from "../source";
-import { ssxArgc, ssxFE, ssxFS, ssxHas, ssxInList, ssxIs, ssxMeth, ssxOperatorName, ssxSetter, ssxSymText } from "./style_syntax_help";
+import {
+  ssxArgc,
+  ssxFE,
+  ssxFS,
+  ssxHas,
+  ssxInList,
+  ssxIs,
+  ssxMeth,
+  ssxOperatorName,
+  ssxSetter,
+  ssxSymText,
+} from "./style_syntax_help";
 
 const SSX_RS_KERNEL: string =
   " Array Complex Float Hash Integer Pathname Rational String URI __callee__ __dir__ __method__ ` abort at_exit autoload autoload? binding block_given? caller caller_locations catch eval exec exit exit! fail fork format gets global_variables iterator? lambda load local_variables loop open p print printf proc putc puts raise rand readline readlines require require_relative select set_trace_func sleep spawn sprintf srand syscall system test throw trace_var trap untrace_var warn ";

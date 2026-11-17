@@ -231,7 +231,16 @@ export class RbLiteral {
   buffer_e: i32 = -1;
   saved_herebody_s: i32 = -1;
 
-  constructor(lexer: RbLexer, strType: string, delimiter: string, strS: i32, heredocE: i32, indent: boolean, dedentBody: boolean, labelAllowed: boolean) {
+  constructor(
+    lexer: RbLexer,
+    strType: string,
+    delimiter: string,
+    strS: i32,
+    heredocE: i32,
+    indent: boolean,
+    dedentBody: boolean,
+    labelAllowed: boolean,
+  ) {
     this.lexer = lexer;
     const tt = rbLiteralType(strType);
     if (tt < 0) {
@@ -293,7 +302,15 @@ export class RbLiteral {
   }
 
   munge_escape(character: string): boolean {
-    if (this.words() && (character === " " || character === "\t" || character === "\u000b" || character === "\r" || character === "\u000c" || character === "\n")) {
+    if (
+      this.words() &&
+      (character === " " ||
+        character === "\t" ||
+        character === "\u000b" ||
+        character === "\r" ||
+        character === "\u000c" ||
+        character === "\n")
+    ) {
       return true;
     }
     return character === "\\" || (this.hasStartDelim && character === this.start_delim) || character === this.end_delim;
@@ -310,7 +327,13 @@ export class RbLiteral {
       if (this.words()) {
         this.extend_space(ts, ts);
       }
-      if (lookahead.length > 0 && this.label_allowed && lookahead.charCodeAt(0) === 58 && !(lookahead.length > 1 && lookahead.charCodeAt(1) === 58) && this.start_tok === TK_tSTRING_BEG) {
+      if (
+        lookahead.length > 0 &&
+        this.label_allowed &&
+        lookahead.charCodeAt(0) === 58 &&
+        !(lookahead.length > 1 && lookahead.charCodeAt(1) === 58) &&
+        this.start_tok === TK_tSTRING_BEG
+      ) {
         this.flush_string();
         this.lexer.emit4(TK_tLABEL_END, this.end_delim, ts, te + 1);
         return TK_tLABEL_END;
@@ -540,7 +563,15 @@ export class RbStrings {
     this.pushLiteralFull(strType, delimiter, strS, -1, false, false, false);
   }
 
-  pushLiteralFull(strType: string, delimiter: string, strS: i32, heredocE: i32, indent: boolean, dedentBody: boolean, labelAllowed: boolean = false): void {
+  pushLiteralFull(
+    strType: string,
+    delimiter: string,
+    strS: i32,
+    heredocE: i32,
+    indent: boolean,
+    dedentBody: boolean,
+    labelAllowed: boolean = false,
+  ): void {
     const lit = new RbLiteral(this.lexer, strType, delimiter, strS, heredocE, indent, dedentBody, labelAllowed);
     this.literals.push(lit);
     this.cs = this.nextStateFor(lit);
@@ -832,14 +863,15 @@ export class RbStrings {
     const pe = toI32(this.pts.length) + 2;
     const eof = pe;
     const pts = this.pts;
-    let current_literal: RbLiteral = this.literals.length > 0 ? this.lit() : new RbLiteral(this.lexer, "'", "'", 0, -1, false, false, false);
-    let string = "";
-    let lookahead = "";
-    let token = -1;
-    let line = "";
-    let interp_var_kind = 0;
-    let unknown_options = false;
-    let state = -1;
+    const current_literal: RbLiteral =
+      this.literals.length > 0 ? this.lit() : new RbLiteral(this.lexer, "'", "'", 0, -1, false, false, false);
+    const string = "";
+    const lookahead = "";
+    const token = -1;
+    const line = "";
+    const interp_var_kind = 0;
+    const unknown_options = false;
+    const state = -1;
     let _trans = 0;
     let _keys = 0;
     let _inds = 0;
@@ -893,7 +925,7 @@ export class RbStrings {
           _acts = RS_LEX_TRANS_ACTIONS_D[_trans];
           _nacts = RS_LEX_ACTIONS_D[_acts];
           _acts += 1;
-          actsLoop: while (_nacts > 0) {
+          while (_nacts > 0) {
             _nacts -= 1;
             _acts += 1;
             /*@STR_ACTIONS@*/
@@ -1452,25 +1484,25 @@ export class RbLexer {
     const pe = toI32(pts.length) + 2;
     let p = this.p;
     let eof = pe;
-    let cmd_state = this.command_start;
+    const cmd_state = this.command_start;
     this.command_start = false;
-    let tm = 0;
-    let digits = "";
-    let type = "";
-    let delimiter = "";
-    let heredoc_e = 0;
-    let new_herebody_s = 0;
-    let ident_tok = "";
-    let ident_ts = 0;
-    let ident_te = 0;
-    let gvar_name = "";
-    let ident = "";
-    let next_state = 0;
-    let followed_by_nl = false;
-    let nl_emitted = false;
-    let dots_te = 0;
-    let indent = false;
-    let dedent_body = false;
+    const tm = 0;
+    const digits = "";
+    const type = "";
+    const delimiter = "";
+    const heredoc_e = 0;
+    const new_herebody_s = 0;
+    const ident_tok = "";
+    const ident_ts = 0;
+    const ident_te = 0;
+    const gvar_name = "";
+    const ident = "";
+    const next_state = 0;
+    const followed_by_nl = false;
+    const nl_emitted = false;
+    const dots_te = 0;
+    const indent = false;
+    const dedent_body = false;
     let _trans = 0;
     let _keys = 0;
     let _inds = 0;
@@ -1642,7 +1674,8 @@ const rbHeredocOpener = (t: string): RbHeredoc => {
 };
 
 /** `_1`..`_9`. */
-const rbIsNumberedParam = (t: string): boolean => t.length === 2 && t.charCodeAt(0) === 95 && t.charCodeAt(1) >= 49 && t.charCodeAt(1) <= 57;
+const rbIsNumberedParam = (t: string): boolean =>
+  t.length === 2 && t.charCodeAt(0) === 95 && t.charCodeAt(1) >= 49 && t.charCodeAt(1) <= 57;
 
 /** Whether a regexp's options include one Ruby does not know. */
 const rbUnknownRegexpOptions = (t: string): boolean => {

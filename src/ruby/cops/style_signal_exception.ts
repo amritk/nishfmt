@@ -21,7 +21,10 @@ export class CopStyleSignalException {
     // custom_fail_defined?: a `def fail` or `def x.fail` anywhere.
     for (const n of src.pre) {
       const t = a.type(n);
-      if ((t === NT_DEF && ssxSymText(src, a.kid(n, 0)) === "fail") || (t === NT_DEFS && ssxSymText(src, a.kid(n, 1)) === "fail")) {
+      if (
+        (t === NT_DEF && ssxSymText(src, a.kid(n, 0)) === "fail") ||
+        (t === NT_DEFS && ssxSymText(src, a.kid(n, 1)) === "fail")
+      ) {
         return;
       }
     }

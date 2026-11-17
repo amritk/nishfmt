@@ -215,7 +215,11 @@ const swMergeGuardFollowingGuard = (f: SwFormatter, gi: i32): boolean => {
     if (c.starts.length !== 0 && scs >= 0) {
       const lo = c.starts[0];
       const indent = swSpaceEquivalentToTokens(f, f.startOfLine(lo), lo);
-      f.replaceTokens(fce + 1, scs, [new SwTok(SW_DELIM, ",", 0), new SwTok(SW_LINEBREAK, "\n", f.linebreakLine(gi)), new SwTok(SW_SPACE, indent, 0)]);
+      f.replaceTokens(fce + 1, scs, [
+        new SwTok(SW_DELIM, ",", 0),
+        new SwTok(SW_LINEBREAK, "\n", f.linebreakLine(gi)),
+        new SwTok(SW_SPACE, indent, 0),
+      ]);
       return true;
     }
   }

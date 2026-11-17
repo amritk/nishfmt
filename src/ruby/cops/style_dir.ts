@@ -10,7 +10,12 @@ import { ssxGlobalConst, ssxIs, ssxMeth } from "./style_syntax_help";
 
 /** (send (const {nil? cbase} :File) :m arg) with exactly one argument: the argument (0 when not). */
 const ssxDirFileCall = (src: RbSource, n: i32, m: string): i32 => {
-  if (!ssxIs(src, n, NT_SEND) || src.a.nKid(n) !== 3 || ssxMeth(src, n) !== m || !ssxGlobalConst(src, src.a.kid(n, 0), "File")) {
+  if (
+    !ssxIs(src, n, NT_SEND) ||
+    src.a.nKid(n) !== 3 ||
+    ssxMeth(src, n) !== m ||
+    !ssxGlobalConst(src, src.a.kid(n, 0), "File")
+  ) {
     return 0;
   }
   return src.a.kid(n, 2);

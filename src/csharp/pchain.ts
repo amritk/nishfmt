@@ -47,25 +47,10 @@ import {
   Y_PostfixUnaryExpression,
   Y_SimpleLambdaExpression,
 } from "./kinds";
-import {
-  DOC_HARDLINE,
-  DOC_NULL,
-  D_GROUP,
-  D_INDENT,
-  csdContainsBreak,
-} from "./doc";
-import {
-  CsPrint,
-  cswAnyComment,
-  cswTok,
-} from "./print";
-import {
-  cswNode,
-} from "./pnodes";
-import {
-  cswArgumentList,
-  cswIdentLen,
-} from "./pexprs";
+import { DOC_HARDLINE, DOC_NULL, D_GROUP, D_INDENT, csdContainsBreak } from "./doc";
+import { CsPrint, cswAnyComment, cswTok } from "./print";
+import { cswNode } from "./pnodes";
+import { cswArgumentList, cswIdentLen } from "./pexprs";
 
 class CsChain {
   nodes: i32[];
@@ -112,14 +97,21 @@ const cswFlatten = (P: CsPrint, e: i32, c: CsChain): void => {
     c.add(e, cswNode(P, P.s(e, F_ElementAccessExpression_ArgumentList)));
   } else if (P.is(e, Y_MemberAccessExpression)) {
     cswFlatten(P, P.s(e, F_MemberAccessExpression_Expression), c);
-    c.add(e, D.concat([cswTok(P, P.s(e, F_MemberAccessExpression_OperatorToken)), cswNode(P, P.s(e, F_MemberAccessExpression_Name))]));
+    c.add(
+      e,
+      D.concat([
+        cswTok(P, P.s(e, F_MemberAccessExpression_OperatorToken)),
+        cswNode(P, P.s(e, F_MemberAccessExpression_Name)),
+      ]),
+    );
   } else if (k === K_ConditionalAccessExpression) {
     cswFlatten(P, P.s(e, F_ConditionalAccessExpression_Expression), c);
     c.add(e, cswTok(P, P.s(e, F_ConditionalAccessExpression_OperatorToken)));
     cswFlatten(P, P.s(e, F_ConditionalAccessExpression_WhenNotNull), c);
   } else if (
     P.is(e, Y_PostfixUnaryExpression) &&
-    (P.k(P.s(e, F_PostfixUnaryExpression_Operand)) === K_InvocationExpression || P.is(P.s(e, F_PostfixUnaryExpression_Operand), Y_MemberAccessExpression))
+    (P.k(P.s(e, F_PostfixUnaryExpression_Operand)) === K_InvocationExpression ||
+      P.is(P.s(e, F_PostfixUnaryExpression_Operand), Y_MemberAccessExpression))
   ) {
     cswFlatten(P, P.s(e, F_PostfixUnaryExpression_Operand), c);
     c.add(e, cswTok(P, P.s(e, F_PostfixUnaryExpression_OperatorToken)));
@@ -194,17 +186,31 @@ const cswShouldMergeFirstTwo = (P: CsPrint, c: CsChain, parent: i32): boolean =>
   }
   const first = c.gn(0, 0);
   const fk = P.k(first);
-  if (!((fk === K_IdentifierName && cswIdentLen(P, first) <= 4) || fk === K_ThisExpression || fk === K_PredefinedType || fk === K_BaseExpression)) {
+  if (
+    !(
+      (fk === K_IdentifierName && cswIdentLen(P, first) <= 4) ||
+      fk === K_ThisExpression ||
+      fk === K_PredefinedType ||
+      fk === K_BaseExpression
+    )
+  ) {
     return false;
   }
   if (c.gcount(1) === 1) {
     return true;
   }
-  if (P.is(parent, Y_SimpleLambdaExpression) || P.k(parent) === K_Argument || P.is(parent, Y_BinaryExpression) || P.k(parent) === K_ExpressionStatement) {
+  if (
+    P.is(parent, Y_SimpleLambdaExpression) ||
+    P.k(parent) === K_Argument ||
+    P.is(parent, Y_BinaryExpression) ||
+    P.k(parent) === K_ExpressionStatement
+  ) {
     return true;
   }
   const n11 = c.gn(1, 1);
-  return P.k(n11) === K_InvocationExpression || P.k(n11) === K_ElementAccessExpression || P.is(n11, Y_PostfixUnaryExpression);
+  return (
+    P.k(n11) === K_InvocationExpression || P.k(n11) === K_ElementAccessExpression || P.is(n11, Y_PostfixUnaryExpression)
+  );
 };
 
 const cswIsMemberName = (P: CsPrint, n: i32, w: string): boolean => {
@@ -271,7 +277,10 @@ const cswIsMultiLineLiteral = (P: CsPrint, n: i32): boolean => {
     }
     return false;
   }
-  return P.is(n, Y_InterpolatedStringExpression) && P.tk(P.s(n, F_InterpolatedStringExpression_StringStartToken)) === K_InterpolatedMultiLineRawStringStartToken;
+  return (
+    P.is(n, Y_InterpolatedStringExpression) &&
+    P.tk(P.s(n, F_InterpolatedStringExpression_StringStartToken)) === K_InterpolatedMultiLineRawStringStartToken
+  );
 };
 
 const cswHasAncestorType = (P: CsPrint, n: i32, y: i32): boolean => {
@@ -313,7 +322,8 @@ export const cswMemberChain = (P: CsPrint, n: i32): i32 => {
       const ok =
         lk === K_InvocationExpression ||
         lk === K_ElementAccessExpression ||
-        (P.is(last, Y_PostfixUnaryExpression) && P.k(P.s(last, F_PostfixUnaryExpression_Operand)) === K_InvocationExpression);
+        (P.is(last, Y_PostfixUnaryExpression) &&
+          P.k(P.s(last, F_PostfixUnaryExpression_Operand)) === K_InvocationExpression);
       if (!ok) {
         forceOneLine = true;
       }
@@ -351,7 +361,10 @@ export const cswMemberChain = (P: CsPrint, n: i32): i32 => {
   if (!useExpanded) {
     for (let i = 0; i < c.gcount(0); i++) {
       const g0 = c.gn(0, i);
-      if (P.k(g0) === K_ArrayCreationExpression || (P.k(g0) === K_ObjectCreationExpression && P.s(g0, F_ObjectCreationExpression_Initializer) >= 0)) {
+      if (
+        P.k(g0) === K_ArrayCreationExpression ||
+        (P.k(g0) === K_ObjectCreationExpression && P.s(g0, F_ObjectCreationExpression_Initializer) >= 0)
+      ) {
         useExpanded = true;
       }
     }

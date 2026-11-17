@@ -96,17 +96,32 @@ export const lbhLiteral = (src: RbSource, n: i32): boolean => lbhTruthy(src, n) 
 
 /** COMPOSITE_LITERALS. */
 const lbhCompositeT = (t: i32): boolean =>
-  t === NT_DSTR || t === NT_XSTR || t === NT_DSYM || t === NT_ARRAY || t === NT_HASH || t === NT_IRANGE || t === NT_ERANGE || t === NT_REGEXP;
+  t === NT_DSTR ||
+  t === NT_XSTR ||
+  t === NT_DSYM ||
+  t === NT_ARRAY ||
+  t === NT_HASH ||
+  t === NT_IRANGE ||
+  t === NT_ERANGE ||
+  t === NT_REGEXP;
 
 /** basic_literal?. */
 export const lbhBasicLiteral = (src: RbSource, n: i32): boolean => lbhLiteral(src, n) && !lbhCompositeT(src.a.type(n));
 
 /** mutable_literal? (MUTABLE_LITERALS). */
 const lbhMutableT = (t: i32): boolean =>
-  t === NT_STR || t === NT_DSTR || t === NT_XSTR || t === NT_ARRAY || t === NT_HASH || t === NT_REGEXP || t === NT_IRANGE || t === NT_ERANGE;
+  t === NT_STR ||
+  t === NT_DSTR ||
+  t === NT_XSTR ||
+  t === NT_ARRAY ||
+  t === NT_HASH ||
+  t === NT_REGEXP ||
+  t === NT_IRANGE ||
+  t === NT_ERANGE;
 
 /** immutable_literal?. */
-export const lbhImmutableLiteral = (src: RbSource, n: i32): boolean => lbhLiteral(src, n) && !lbhMutableT(src.a.type(n));
+export const lbhImmutableLiteral = (src: RbSource, n: i32): boolean =>
+  lbhLiteral(src, n) && !lbhMutableT(src.a.type(n));
 
 /** recursive_basic_literal?. */
 export const lbhRecursiveBasicLiteral = (src: RbSource, n: i32): boolean => {
@@ -118,7 +133,17 @@ export const lbhRecursiveBasicLiteral = (src: RbSource, n: i32): boolean => {
   if (t === NT_SEND) {
     const m = ssxMeth(src, n);
     // LITERAL_RECURSIVE_METHODS: COMPARISON_OPERATORS + * ! <=>
-    const ok = m === "==" || m === "===" || m === "!=" || m === "<=" || m === ">=" || m === ">" || m === "<" || m === "*" || m === "!" || m === "<=>";
+    const ok =
+      m === "==" ||
+      m === "===" ||
+      m === "!=" ||
+      m === "<=" ||
+      m === ">=" ||
+      m === ">" ||
+      m === "<" ||
+      m === "*" ||
+      m === "!" ||
+      m === "<=>";
     if (!ok || !lbhRecursiveBasicLiteral(src, a.kid(n, 0))) {
       return false;
     }
@@ -244,7 +269,12 @@ const lbhNewClassOrModuleBlock = (src: RbSource, b: i32): boolean => {
     return false;
   }
   const s = a.kid(b, 0);
-  return ssxIs(src, s, NT_SEND) && a.nKid(s) === 2 && ssxMeth(src, s) === "new" && lbhAnyConst(src, a.kid(s, 0), "Class,Module");
+  return (
+    ssxIs(src, s, NT_SEND) &&
+    a.nKid(s) === 2 &&
+    ssxMeth(src, s) === "new" &&
+    lbhAnyConst(src, a.kid(s, 0), "Class,Module")
+  );
 };
 
 /** Node#parent_module_name (null: undeterminable). */
@@ -371,13 +401,17 @@ export const lbhLambdaBlock = (src: RbSource, n: i32): boolean => {
     return false;
   }
   const s = src.a.kid(n, 0);
-  return ssxIs(src, s, NT_LAMBDA) || (ssxIs(src, s, NT_SEND) && src.a.kid(s, 0) === V_NIL && ssxMeth(src, s) === "lambda");
+  return (
+    ssxIs(src, s, NT_LAMBDA) || (ssxIs(src, s, NT_SEND) && src.a.kid(s, 0) === V_NIL && ssxMeth(src, s) === "lambda")
+  );
 };
 
 /** BlockNode#lambda?: send_node.method?(:lambda). */
 export const lbhBlockIsLambda = (src: RbSource, n: i32): boolean => {
   const s = src.a.kid(n, 0);
-  return ssxIs(src, s, NT_LAMBDA) || ((ssxIs(src, s, NT_SEND) || ssxIs(src, s, NT_CSEND)) && ssxMeth(src, s) === "lambda");
+  return (
+    ssxIs(src, s, NT_LAMBDA) || ((ssxIs(src, s, NT_SEND) || ssxIs(src, s, NT_CSEND)) && ssxMeth(src, s) === "lambda")
+  );
 };
 
 /** Node#to_s (the sexp), as a key: equal for equal nodes. */

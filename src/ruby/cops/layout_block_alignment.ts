@@ -24,7 +24,14 @@ import { RbCop } from "../cop";
 import { rnE, rnHas, rnMethod, rnS } from "../node";
 import { RbSource } from "../source";
 import { TK_tLBRACK, TK_tLBRACK2, TK_tLPAREN, TK_tLPAREN2, TK_tRBRACK, TK_tRPAREN } from "../tables";
-import { rmlBeginsItsLine, rmlFirstNonWs, rmlIsAssignment, rmlIsBlock, rmlIsDef, rmlSpaces } from "./layout_multiline_help";
+import {
+  rmlBeginsItsLine,
+  rmlFirstNonWs,
+  rmlIsAssignment,
+  rmlIsBlock,
+  rmlIsDef,
+  rmlSpaces,
+} from "./layout_multiline_help";
 
 /** block_end_align_target?(parent, current). */
 const rmlBaTargetPattern = (src: RbSource, parent: i32, cur: i32): boolean => {

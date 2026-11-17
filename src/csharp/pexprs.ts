@@ -536,7 +536,11 @@ export const cswExpressionNode = (P: CsPrint, n: i32, y: i32): i32 => {
     case Y_IdentifierName:
       return cswTok(P, P.s(n, F_IdentifierName_Identifier));
     case Y_QualifiedName:
-      return D.concat([cswNode(P, P.s(n, F_QualifiedName_Left)), cswTok(P, P.s(n, F_QualifiedName_DotToken)), cswNode(P, P.s(n, F_QualifiedName_Right))]);
+      return D.concat([
+        cswNode(P, P.s(n, F_QualifiedName_Left)),
+        cswTok(P, P.s(n, F_QualifiedName_DotToken)),
+        cswNode(P, P.s(n, F_QualifiedName_Right)),
+      ]);
     case Y_GenericName:
       return D.group([cswTok(P, P.s(n, F_GenericName_Identifier)), cswNode(P, P.s(n, F_GenericName_TypeArgumentList))]);
     case Y_TypeArgumentList:
@@ -565,7 +569,10 @@ export const cswExpressionNode = (P: CsPrint, n: i32, y: i32): i32 => {
     case Y_FunctionPointerType:
       return cswFunctionPointerType(P, n);
     case Y_NullableType:
-      return D.concat([cswNode(P, P.s(n, F_NullableType_ElementType)), cswTok(P, P.s(n, F_NullableType_QuestionToken))]);
+      return D.concat([
+        cswNode(P, P.s(n, F_NullableType_ElementType)),
+        cswTok(P, P.s(n, F_NullableType_QuestionToken)),
+      ]);
     case Y_TupleType:
       return D.group([
         cswTok(P, P.s(n, F_TupleType_OpenParenToken)),
@@ -575,7 +582,10 @@ export const cswExpressionNode = (P: CsPrint, n: i32, y: i32): i32 => {
       ]);
     case Y_TupleElement: {
       const id = P.s(n, F_TupleElement_Identifier);
-      return D.concat([cswNode(P, P.s(n, F_TupleElement_Type)), id >= 0 ? D.concat([DOC_SPACE, cswTok(P, id)]) : DOC_NULL]);
+      return D.concat([
+        cswNode(P, P.s(n, F_TupleElement_Type)),
+        id >= 0 ? D.concat([DOC_SPACE, cswTok(P, id)]) : DOC_NULL,
+      ]);
     }
     case Y_OmittedTypeArgument:
     case Y_OmittedArraySizeExpression:
@@ -595,26 +605,43 @@ export const cswExpressionNode = (P: CsPrint, n: i32, y: i32): i32 => {
       ]);
     case Y_TupleExpression:
       return D.group1(
-        cswArgumentListLike(P, P.s(n, F_TupleExpression_OpenParenToken), P.s(n, F_TupleExpression_Arguments), P.s(n, F_TupleExpression_CloseParenToken)),
+        cswArgumentListLike(
+          P,
+          P.s(n, F_TupleExpression_OpenParenToken),
+          P.s(n, F_TupleExpression_Arguments),
+          P.s(n, F_TupleExpression_CloseParenToken),
+        ),
       );
     case Y_PrefixUnaryExpression:
-      return D.concat([cswTok(P, P.s(n, F_PrefixUnaryExpression_OperatorToken)), cswNode(P, P.s(n, F_PrefixUnaryExpression_Operand))]);
+      return D.concat([
+        cswTok(P, P.s(n, F_PrefixUnaryExpression_OperatorToken)),
+        cswNode(P, P.s(n, F_PrefixUnaryExpression_Operand)),
+      ]);
     case Y_AwaitExpression: {
       const e = P.s(n, F_AwaitExpression_Expression);
       const kw = cswTokSfx(P, P.s(n, F_AwaitExpression_AwaitKeyword), DOC_SPACE);
       return D.concat([kw, P.is(e, Y_QueryExpression) ? D.indent([DOC_LINE, cswNode(P, e)]) : cswNode(P, e)]);
     }
     case Y_PostfixUnaryExpression:
-      if (P.k(n) === K_SuppressNullableWarningExpression && P.is(P.s(n, F_PostfixUnaryExpression_Operand), Y_InvocationExpression)) {
+      if (
+        P.k(n) === K_SuppressNullableWarningExpression &&
+        P.is(P.s(n, F_PostfixUnaryExpression_Operand), Y_InvocationExpression)
+      ) {
         return cswMemberChain(P, n);
       }
-      return D.concat([cswNode(P, P.s(n, F_PostfixUnaryExpression_Operand)), cswTok(P, P.s(n, F_PostfixUnaryExpression_OperatorToken))]);
+      return D.concat([
+        cswNode(P, P.s(n, F_PostfixUnaryExpression_Operand)),
+        cswTok(P, P.s(n, F_PostfixUnaryExpression_OperatorToken)),
+      ]);
     case Y_MemberAccessExpression:
     case Y_ConditionalAccessExpression:
     case Y_InvocationExpression:
       return cswMemberChain(P, n);
     case Y_MemberBindingExpression:
-      return D.concat([cswTok(P, P.s(n, F_MemberBindingExpression_OperatorToken)), cswNode(P, P.s(n, F_MemberBindingExpression_Name))]);
+      return D.concat([
+        cswTok(P, P.s(n, F_MemberBindingExpression_OperatorToken)),
+        cswNode(P, P.s(n, F_MemberBindingExpression_Name)),
+      ]);
     case Y_ElementBindingExpression:
       return cswNode(P, P.s(n, F_ElementBindingExpression_ArgumentList));
     case Y_ImplicitElementAccess:
@@ -622,14 +649,21 @@ export const cswExpressionNode = (P: CsPrint, n: i32, y: i32): i32 => {
     case Y_RangeExpression: {
       const l = P.s(n, F_RangeExpression_LeftOperand);
       const r = P.s(n, F_RangeExpression_RightOperand);
-      return D.concat([l >= 0 ? cswNode(P, l) : DOC_NULL, cswTok(P, P.s(n, F_RangeExpression_OperatorToken)), r >= 0 ? cswNode(P, r) : DOC_NULL]);
+      return D.concat([
+        l >= 0 ? cswNode(P, l) : DOC_NULL,
+        cswTok(P, P.s(n, F_RangeExpression_OperatorToken)),
+        r >= 0 ? cswNode(P, r) : DOC_NULL,
+      ]);
     }
     case Y_BinaryExpression:
       return cswBinaryExpression(P, n);
     case Y_AssignmentExpression:
       return cswAssignment(P, n);
     case Y_ConditionalExpression:
-      if (!P.is(P.s(n, F_ConditionalExpression_WhenTrue), Y_ConditionalExpression) && P.is(P.s(n, F_ConditionalExpression_WhenFalse), Y_ConditionalExpression)) {
+      if (
+        !P.is(P.s(n, F_ConditionalExpression_WhenTrue), Y_ConditionalExpression) &&
+        P.is(P.s(n, F_ConditionalExpression_WhenFalse), Y_ConditionalExpression)
+      ) {
         return cswConditionalChained(P, n);
       }
       return cswConditionalRegular(P, n);
@@ -668,7 +702,10 @@ export const cswExpressionNode = (P: CsPrint, n: i32, y: i32): i32 => {
       // Keyword OpenParenToken Type CloseParenToken
       return D.concat([cswTok(P, P.s(n, 0)), cswTok(P, P.s(n, 1)), cswNode(P, P.s(n, 2)), cswTok(P, P.s(n, 3))]);
     case Y_ElementAccessExpression:
-      return D.concat([cswNode(P, P.s(n, F_ElementAccessExpression_Expression)), cswNode(P, P.s(n, F_ElementAccessExpression_ArgumentList))]);
+      return D.concat([
+        cswNode(P, P.s(n, F_ElementAccessExpression_Expression)),
+        cswNode(P, P.s(n, F_ElementAccessExpression_ArgumentList)),
+      ]);
     case Y_ArgumentList:
       return cswArgumentList(P, n);
     case Y_BracketedArgumentList:
@@ -676,7 +713,11 @@ export const cswExpressionNode = (P: CsPrint, n: i32, y: i32): i32 => {
     case Y_Argument:
       return cswArgument(P, n);
     case Y_DeclarationExpression:
-      return D.concat([cswNode(P, P.s(n, F_DeclarationExpression_Type)), DOC_SPACE, cswNode(P, P.s(n, F_DeclarationExpression_Designation))]);
+      return D.concat([
+        cswNode(P, P.s(n, F_DeclarationExpression_Type)),
+        DOC_SPACE,
+        cswNode(P, P.s(n, F_DeclarationExpression_Designation)),
+      ]);
     case Y_CastExpression:
       return cswCastExpression(P, n);
     case Y_AnonymousMethodExpression: {
@@ -695,7 +736,10 @@ export const cswExpressionNode = (P: CsPrint, n: i32, y: i32): i32 => {
     case Y_ParenthesizedLambdaExpression:
       return D.concat([cswParenLambdaHead(P, n), cswParenLambdaBody(P, n)]);
     case Y_RefExpression:
-      return D.concat([cswTokSfx(P, P.s(n, F_RefExpression_RefKeyword), DOC_SPACE), cswNode(P, P.s(n, F_RefExpression_Expression))]);
+      return D.concat([
+        cswTokSfx(P, P.s(n, F_RefExpression_RefKeyword), DOC_SPACE),
+        cswNode(P, P.s(n, F_RefExpression_Expression)),
+      ]);
     case Y_InitializerExpression:
       return cswInitializer(P, n);
     case Y_ObjectCreationExpression: {
@@ -708,7 +752,14 @@ export const cswExpressionNode = (P: CsPrint, n: i32, y: i32): i32 => {
           cswTokSfx(P, P.s(n, F_ObjectCreationExpression_NewKeyword), DOC_SPACE),
           cswNode(P, P.s(n, F_ObjectCreationExpression_Type)),
           al >= 0
-            ? D.group1(cswArgumentListLike(P, P.s(al, F_ArgumentList_OpenParenToken), P.s(al, F_ArgumentList_Arguments), P.s(al, F_ArgumentList_CloseParenToken)))
+            ? D.group1(
+                cswArgumentListLike(
+                  P,
+                  P.s(al, F_ArgumentList_OpenParenToken),
+                  P.s(al, F_ArgumentList_Arguments),
+                  P.s(al, F_ArgumentList_CloseParenToken),
+                ),
+              )
             : DOC_NULL,
           cswInitializerOptionalWithLine(P, P.s(n, F_ObjectCreationExpression_Initializer)),
         ]),
@@ -775,9 +826,16 @@ export const cswExpressionNode = (P: CsPrint, n: i32, y: i32): i32 => {
     case Y_ExpressionElement:
       return cswNode(P, P.s(n, F_ExpressionElement_Expression));
     case Y_SpreadElement:
-      return D.group([cswTok(P, P.s(n, F_SpreadElement_OperatorToken)), DOC_SPACE, cswNode(P, P.s(n, F_SpreadElement_Expression))]);
+      return D.group([
+        cswTok(P, P.s(n, F_SpreadElement_OperatorToken)),
+        DOC_SPACE,
+        cswNode(P, P.s(n, F_SpreadElement_Expression)),
+      ]);
     case Y_WithElement:
-      return D.concat([cswTok(P, P.s(n, F_WithElement_WithKeyword)), cswArgumentList(P, P.s(n, F_WithElement_ArgumentList))]);
+      return D.concat([
+        cswTok(P, P.s(n, F_WithElement_WithKeyword)),
+        cswArgumentList(P, P.s(n, F_WithElement_ArgumentList)),
+      ]);
     case Y_QueryExpression:
       return cswQueryExpression(P, n);
     case Y_QueryBody:
@@ -797,7 +855,10 @@ export const cswExpressionNode = (P: CsPrint, n: i32, y: i32): i32 => {
     case Y_WhereClause:
       return D.concat([
         cswExtraNewLines(P, n),
-        D.group([cswTok(P, P.s(n, F_WhereClause_WhereKeyword)), D.indent([DOC_LINE, cswNode(P, P.s(n, F_WhereClause_Condition))])]),
+        D.group([
+          cswTok(P, P.s(n, F_WhereClause_WhereKeyword)),
+          D.indent([DOC_LINE, cswNode(P, P.s(n, F_WhereClause_Condition))]),
+        ]),
       ]);
     case Y_OrderByClause:
       return D.concat([
@@ -806,7 +867,11 @@ export const cswExpressionNode = (P: CsPrint, n: i32, y: i32): i32 => {
         cswSepList(P, P.s(n, F_OrderByClause_Orderings), SL_ORDERING, DOC_NULL, 0, -1),
       ]);
     case Y_SelectClause:
-      return D.concat([cswExtraNewLines(P, n), cswTokSfx(P, P.s(n, F_SelectClause_SelectKeyword), DOC_SPACE), cswNode(P, P.s(n, F_SelectClause_Expression))]);
+      return D.concat([
+        cswExtraNewLines(P, n),
+        cswTokSfx(P, P.s(n, F_SelectClause_SelectKeyword), DOC_SPACE),
+        cswNode(P, P.s(n, F_SelectClause_Expression)),
+      ]);
     case Y_GroupClause:
       return D.concat([
         cswExtraNewLines(P, n),
@@ -827,7 +892,10 @@ export const cswExpressionNode = (P: CsPrint, n: i32, y: i32): i32 => {
     case Y_IsPatternExpression:
       return cswIsPattern(P, n);
     case Y_ThrowExpression:
-      return D.concat([cswTokSfx(P, P.s(n, F_ThrowExpression_ThrowKeyword), DOC_SPACE), cswNode(P, P.s(n, F_ThrowExpression_Expression))]);
+      return D.concat([
+        cswTokSfx(P, P.s(n, F_ThrowExpression_ThrowKeyword), DOC_SPACE),
+        cswNode(P, P.s(n, F_ThrowExpression_Expression)),
+      ]);
     case Y_DiscardPattern:
       return cswTok(P, P.s(n, F_DiscardPattern_UnderscoreToken));
     case Y_DiscardDesignation:
@@ -837,14 +905,24 @@ export const cswExpressionNode = (P: CsPrint, n: i32, y: i32): i32 => {
     case Y_ParenthesizedVariableDesignation:
       return D.group([
         cswTok(P, P.s(n, F_ParenthesizedVariableDesignation_OpenParenToken)),
-        D.indent([DOC_SOFTLINE, cswSepList(P, P.s(n, F_ParenthesizedVariableDesignation_Variables), SL_NODE, DOC_LINE, 0, -1)]),
+        D.indent([
+          DOC_SOFTLINE,
+          cswSepList(P, P.s(n, F_ParenthesizedVariableDesignation_Variables), SL_NODE, DOC_LINE, 0, -1),
+        ]),
         DOC_SOFTLINE,
         cswTok(P, P.s(n, F_ParenthesizedVariableDesignation_CloseParenToken)),
       ]);
     case Y_DeclarationPattern:
-      return D.concat([cswNode(P, P.s(n, F_DeclarationPattern_Type)), DOC_SPACE, cswNode(P, P.s(n, F_DeclarationPattern_Designation))]);
+      return D.concat([
+        cswNode(P, P.s(n, F_DeclarationPattern_Type)),
+        DOC_SPACE,
+        cswNode(P, P.s(n, F_DeclarationPattern_Designation)),
+      ]);
     case Y_VarPattern:
-      return D.concat([cswTokSfx(P, P.s(n, F_VarPattern_VarKeyword), DOC_SPACE), cswNode(P, P.s(n, F_VarPattern_Designation))]);
+      return D.concat([
+        cswTokSfx(P, P.s(n, F_VarPattern_VarKeyword), DOC_SPACE),
+        cswNode(P, P.s(n, F_VarPattern_Designation)),
+      ]);
     case Y_RecursivePattern:
       return cswRecursivePattern(P, n, true);
     case Y_ConstantPattern:
@@ -857,7 +935,10 @@ export const cswExpressionNode = (P: CsPrint, n: i32, y: i32): i32 => {
         cswTok(P, P.s(n, F_ParenthesizedPattern_CloseParenToken)),
       ]);
     case Y_RelationalPattern:
-      return D.concat([cswTokSfx(P, P.s(n, F_RelationalPattern_OperatorToken), DOC_SPACE), cswNode(P, P.s(n, F_RelationalPattern_Expression))]);
+      return D.concat([
+        cswTokSfx(P, P.s(n, F_RelationalPattern_OperatorToken), DOC_SPACE),
+        cswNode(P, P.s(n, F_RelationalPattern_Expression)),
+      ]);
     case Y_TypePattern:
       return cswNode(P, P.s(n, F_TypePattern_Type));
     case Y_BinaryPattern: {
@@ -873,7 +954,10 @@ export const cswExpressionNode = (P: CsPrint, n: i32, y: i32): i32 => {
       );
     }
     case Y_UnaryPattern:
-      return D.concat([cswTokSfx(P, P.s(n, F_UnaryPattern_OperatorToken), DOC_SPACE), cswNode(P, P.s(n, F_UnaryPattern_Pattern))]);
+      return D.concat([
+        cswTokSfx(P, P.s(n, F_UnaryPattern_OperatorToken), DOC_SPACE),
+        cswNode(P, P.s(n, F_UnaryPattern_Pattern)),
+      ]);
     case Y_ListPattern: {
       const des = P.s(n, F_ListPattern_Designation);
       const close = P.s(n, F_ListPattern_CloseBracketToken);
@@ -896,7 +980,10 @@ export const cswExpressionNode = (P: CsPrint, n: i32, y: i32): i32 => {
     case Y_SwitchExpression:
       return cswSwitchExpression(P, n);
     case Y_PrimaryConstructorBaseType:
-      return D.concat([cswNode(P, P.s(n, F_PrimaryConstructorBaseType_Type)), cswArgumentList(P, P.s(n, F_PrimaryConstructorBaseType_ArgumentList))]);
+      return D.concat([
+        cswNode(P, P.s(n, F_PrimaryConstructorBaseType_Type)),
+        cswArgumentList(P, P.s(n, F_PrimaryConstructorBaseType_ArgumentList)),
+      ]);
     default:
       return cswUnhandled(P, n);
   }
@@ -916,7 +1003,10 @@ export const cswSlItemMore = (P: CsPrint, item: i32, n: i32): i32 => {
       return cswSwitchArm(P, n);
     case SL_POS_SUBPATTERN: {
       const ec = P.s(n, F_Subpattern_ExpressionColon);
-      return D.concat([P.k(ec) === K_NameColon ? cswBaseExpressionColon(P, ec) : DOC_NULL, cswNode(P, P.s(n, F_Subpattern_Pattern))]);
+      return D.concat([
+        P.k(ec) === K_NameColon ? cswBaseExpressionColon(P, ec) : DOC_NULL,
+        cswNode(P, P.s(n, F_Subpattern_Pattern)),
+      ]);
     }
     case SL_PROP_SUBPATTERN: {
       const ec = P.s(n, F_Subpattern_ExpressionColon);
@@ -932,7 +1022,12 @@ export const cswSlItemMore = (P: CsPrint, item: i32, n: i32): i32 => {
       return cswTok(P, P.s(n, F_FunctionPointerUnmanagedCallingConvention_Name));
     case SL_ORDERING: {
       const kw = P.s(n, F_Ordering_AscendingOrDescendingKeyword);
-      return D.concat([DOC_SPACE, cswNode(P, P.s(n, F_Ordering_Expression)), kw < 0 ? DOC_NULL : DOC_SPACE, cswTok(P, kw)]);
+      return D.concat([
+        DOC_SPACE,
+        cswNode(P, P.s(n, F_Ordering_Expression)),
+        kw < 0 ? DOC_NULL : DOC_SPACE,
+        cswTok(P, kw),
+      ]);
     }
     default:
       P.fail("unknown list item");
@@ -956,7 +1051,10 @@ const cswTypeArgumentList = (P: CsPrint, n: i32): i32 => {
   const sep = !firstOmitted && (na > 1 || anyGeneric) ? DOC_SOFTLINE : DOC_NULL;
   return D.concat([
     cswTok(P, P.s(n, F_TypeArgumentList_LessThanToken)),
-    D.indentIf(sep !== DOC_NULL, D.concat([sep, cswSepList(P, args, SL_NODE, firstOmitted ? DOC_NULL : DOC_LINE, 0, -1)])),
+    D.indentIf(
+      sep !== DOC_NULL,
+      D.concat([sep, cswSepList(P, args, SL_NODE, firstOmitted ? DOC_NULL : DOC_LINE, 0, -1)]),
+    ),
     sep,
     cswTok(P, P.s(n, F_TypeArgumentList_GreaterThanToken)),
   ]);
@@ -979,7 +1077,9 @@ const cswArrayRankSpecifier = (P: CsPrint, n: i32): i32 => {
   }
   return D.group([
     cswTok(P, open),
-    ns > 0 ? D.concat([D.indent([DOC_SOFTLINE, cswSepList(P, sizes, SL_NODE, DOC_LINE, 0, -1)]), DOC_SOFTLINE]) : DOC_NULL,
+    ns > 0
+      ? D.concat([D.indent([DOC_SOFTLINE, cswSepList(P, sizes, SL_NODE, DOC_LINE, 0, -1)]), DOC_SOFTLINE])
+      : DOC_NULL,
     cswTok(P, close),
   ]);
 };
@@ -999,7 +1099,14 @@ const cswFunctionPointerType = (P: CsPrint, n: i32): i32 => {
       ul >= 0
         ? D.concat([
             cswTok(P, P.s(ul, F_FunctionPointerUnmanagedCallingConventionList_OpenBracketToken)),
-            cswSepList(P, P.s(ul, F_FunctionPointerUnmanagedCallingConventionList_CallingConventions), SL_CALLING_CONVENTION, DOC_SPACE, 0, -1),
+            cswSepList(
+              P,
+              P.s(ul, F_FunctionPointerUnmanagedCallingConventionList_CallingConventions),
+              SL_CALLING_CONVENTION,
+              DOC_SPACE,
+              0,
+              -1,
+            ),
             cswTok(P, P.s(ul, F_FunctionPointerUnmanagedCallingConventionList_CloseBracketToken)),
           ])
         : DOC_NULL,
@@ -1010,7 +1117,12 @@ const cswFunctionPointerType = (P: CsPrint, n: i32): i32 => {
     ast,
     ccDoc,
     cswTok(P, P.s(pl, F_FunctionPointerParameterList_LessThanToken)),
-    D.indent1(D.group([DOC_SOFTLINE, cswSepList(P, P.s(pl, F_FunctionPointerParameterList_Parameters), SL_FNPTR_PARAM, DOC_LINE, 0, -1)])),
+    D.indent1(
+      D.group([
+        DOC_SOFTLINE,
+        cswSepList(P, P.s(pl, F_FunctionPointerParameterList_Parameters), SL_FNPTR_PARAM, DOC_LINE, 0, -1),
+      ]),
+    ),
     cswTok(P, P.s(pl, F_FunctionPointerParameterList_GreaterThanToken)),
   ]);
 };
@@ -1026,15 +1138,28 @@ export const cswArgumentList = (P: CsPrint, n: i32): i32 => {
     let exprOk = P.k(e) === K_IdentifierName || P.k(e) === K_GenericName;
     if (!exprOk && P.is(e, Y_MemberAccessExpression)) {
       const ee = P.s(e, F_MemberAccessExpression_Expression);
-      exprOk = P.k(ee) === K_ThisExpression || P.k(ee) === K_PredefinedType || (P.k(ee) === K_IdentifierName && cswIdentLen(P, ee) <= 4);
+      exprOk =
+        P.k(ee) === K_ThisExpression ||
+        P.k(ee) === K_PredefinedType ||
+        (P.k(ee) === K_IdentifierName && cswIdentLen(P, ee) <= 4);
     }
     if (exprOk) {
       const pp = P.par(p);
-      indent = P.is(P.par(pp), Y_InvocationExpression) || (P.is(pp, Y_PostfixUnaryExpression) && P.is(P.par(P.par(pp)), Y_InvocationExpression));
+      indent =
+        P.is(P.par(pp), Y_InvocationExpression) ||
+        (P.is(pp, Y_PostfixUnaryExpression) && P.is(P.par(P.par(pp)), Y_InvocationExpression));
     }
   }
   return D.group1(
-    D.indentIf(indent, cswArgumentListLike(P, P.s(n, F_ArgumentList_OpenParenToken), P.s(n, F_ArgumentList_Arguments), P.s(n, F_ArgumentList_CloseParenToken))),
+    D.indentIf(
+      indent,
+      cswArgumentListLike(
+        P,
+        P.s(n, F_ArgumentList_OpenParenToken),
+        P.s(n, F_ArgumentList_Arguments),
+        P.s(n, F_ArgumentList_CloseParenToken),
+      ),
+    ),
   );
 };
 
@@ -1155,7 +1280,9 @@ const cswBinaryExpression = (P: CsPrint, n: i32): i32 => {
     P.is(p, Y_WhereClause) ||
     P.is(p, Y_WhileStatement) ||
     (P.is(p, Y_ReturnStatement) && !cswIsCoalesceWithNonBinaryLeft(P, n)) ||
-    (P.is(p, Y_ConditionalExpression) && P.s(p, F_ConditionalExpression_WhenTrue) !== n && P.s(p, F_ConditionalExpression_WhenFalse) !== n);
+    (P.is(p, Y_ConditionalExpression) &&
+      P.s(p, F_ConditionalExpression_WhenTrue) !== n &&
+      P.s(p, F_ConditionalExpression_WhenFalse) !== n);
   if (shouldNotIndent) {
     return D.group(docs);
   }
@@ -1167,7 +1294,9 @@ const cswBinaryExpression = (P: CsPrint, n: i32): i32 => {
 };
 
 export const cswIsCoalesceWithNonBinaryLeft = (P: CsPrint, n: i32): boolean =>
-  P.k(n) === K_CoalesceExpression && !P.is(P.s(n, F_BinaryExpression_Left), Y_BinaryExpression) && !cswAnyComment(P.lx, cswLeadA(P, n), cswLeadB(P, n));
+  P.k(n) === K_CoalesceExpression &&
+  !P.is(P.s(n, F_BinaryExpression_Left), Y_BinaryExpression) &&
+  !cswAnyComment(P.lx, cswLeadA(P, n), cswLeadB(P, n));
 
 const cswPrecedence = (k: i32): i32 => {
   switch (k) {
@@ -1244,7 +1373,10 @@ export const cswBinaryParts = (P: CsPrint, n: i32): i32[] => {
     docs.push(DOC_SPACE);
   }
   const possible = isCoalesce ? right : left;
-  if (P.is(possible, Y_BinaryExpression) && cswPrecedence(P.tk(op)) === cswPrecedence(P.tk(P.s(possible, F_BinaryExpression_OperatorToken)))) {
+  if (
+    P.is(possible, Y_BinaryExpression) &&
+    cswPrecedence(P.tk(op)) === cswPrecedence(P.tk(P.s(possible, F_BinaryExpression_OperatorToken)))
+  ) {
     const sub = cswBinaryParts(P, possible);
     for (let i = 0; i < toI32(sub.length); i++) {
       docs.push(sub[i]);
@@ -1350,7 +1482,11 @@ const cswAnyDescendant = (P: CsPrint, n: i32, skip: i32, excluded: i32, orCondit
     return false;
   }
   const k = P.k(n);
-  if (n !== skip && n !== excluded && (k === K_InvocationExpression || (orConditional && k === K_ConditionalAccessExpression))) {
+  if (
+    n !== skip &&
+    n !== excluded &&
+    (k === K_InvocationExpression || (orConditional && k === K_ConditionalAccessExpression))
+  ) {
     return true;
   }
   if (n === excluded) {
@@ -1439,12 +1575,19 @@ const cswConditionalChained = (P: CsPrint, n: i32): i32 => {
     P.k(p) === K_ConditionalExpression ? DOC_BREAK_PARENT : DOC_NULL,
     D.group([
       cswNode(P, P.s(n, F_ConditionalExpression_Condition)),
-      D.indent([DOC_LINE, cswTokSfx(P, P.s(n, F_ConditionalExpression_QuestionToken), DOC_SPACE), D.indentIf(P.k(wt) === K_ConditionalExpression, whenTrue)]),
+      D.indent([
+        DOC_LINE,
+        cswTokSfx(P, P.s(n, F_ConditionalExpression_QuestionToken), DOC_SPACE),
+        D.indentIf(P.k(wt) === K_ConditionalExpression, whenTrue),
+      ]),
     ]),
     DOC_LINE,
     D.group([cswTokSfx(P, P.s(n, F_ConditionalExpression_ColonToken), DOC_SPACE), whenFalse]),
   ]);
-  if (P.k(p) === K_ReturnStatement || (P.k(p) === K_Argument && P.k(P.par(p)) === K_ArgumentList && P.scount(P.s(P.par(p), F_ArgumentList_Arguments)) > 1)) {
+  if (
+    P.k(p) === K_ReturnStatement ||
+    (P.k(p) === K_Argument && P.k(P.par(p)) === K_ArgumentList && P.scount(P.s(P.par(p), F_ArgumentList_Arguments)) > 1)
+  ) {
     return D.indent1(contents);
   }
   return contents;
@@ -1456,7 +1599,8 @@ const cswCastExpression = (P: CsPrint, n: i32): i32 => {
   const type = P.s(n, F_CastExpression_Type);
   const simple =
     P.k(e) === K_ParenthesizedExpression ||
-    ((P.k(e) === K_IdentifierName || (P.k(e) === K_InvocationExpression && P.k(P.s(e, F_InvocationExpression_Expression)) === K_IdentifierName)) &&
+    ((P.k(e) === K_IdentifierName ||
+      (P.k(e) === K_InvocationExpression && P.k(P.s(e, F_InvocationExpression_Expression)) === K_IdentifierName)) &&
       P.k(type) !== K_GenericName);
   const open = cswTok(P, P.s(n, F_CastExpression_OpenParenToken));
   const td = cswNode(P, type);
@@ -1480,25 +1624,32 @@ const cswBreakParentIfNested = (P: CsPrint, n: i32, initializer: i32, doc: i32):
   if (
     pi >= 0 &&
     initializer >= 0 &&
-    (P.scount(P.s(initializer, F_InitializerExpression_Expressions)) > 1 || P.scount(P.s(pi, F_InitializerExpression_Expressions)) > 1)
+    (P.scount(P.s(initializer, F_InitializerExpression_Expressions)) > 1 ||
+      P.scount(P.s(pi, F_InitializerExpression_Expressions)) > 1)
   ) {
     return P.D.concat([doc, DOC_BREAK_PARENT]);
   }
   return doc;
 };
 
-const cswInitializerOptionalWithLine = (P: CsPrint, n: i32): i32 => (n >= 0 ? P.D.concat([DOC_LINE, cswInitializer(P, n)]) : DOC_NULL);
+const cswInitializerOptionalWithLine = (P: CsPrint, n: i32): i32 =>
+  n >= 0 ? P.D.concat([DOC_LINE, cswInitializer(P, n)]) : DOC_NULL;
 
 export const cswInitializer = (P: CsPrint, n: i32): i32 => {
   const D = P.D;
   const p = P.par(n);
-  const sep = P.is(p, Y_AssignmentExpression) || (P.is(p, Y_EqualsValueClause) && !P.is(P.par(p), Y_PropertyDeclaration)) ? DOC_LINE : DOC_NULL;
+  const sep =
+    P.is(p, Y_AssignmentExpression) || (P.is(p, Y_EqualsValueClause) && !P.is(P.par(p), Y_PropertyDeclaration))
+      ? DOC_LINE
+      : DOC_NULL;
   const exprs = P.s(n, F_InitializerExpression_Expressions);
   const ne = P.scount(exprs);
   const k = P.k(n);
   const firstKind = ne > 0 ? P.k(P.sel(exprs, 0)) : -1;
   const alwaysBreak =
-    (ne >= 3 && (k === K_ObjectInitializerExpression || (k === K_CollectionInitializerExpression && firstKind === K_ComplexElementInitializerExpression))) ||
+    (ne >= 3 &&
+      (k === K_ObjectInitializerExpression ||
+        (k === K_CollectionInitializerExpression && firstKind === K_ComplexElementInitializerExpression))) ||
     (k === K_ArrayInitializerExpression && firstKind === K_ArrayInitializerExpression);
   const close = P.s(n, F_InitializerExpression_CloseBraceToken);
   const lineDoc = alwaysBreak ? DOC_HARDLINE : DOC_LINE;
@@ -1506,7 +1657,13 @@ export const cswInitializer = (P: CsPrint, n: i32): i32 => {
   const body =
     ne === 0
       ? DOC_SPACE
-      : D.concat([D.indent([lineDoc, cswSepList(P, exprs, SL_NODE, lineDoc, 0, k !== K_ComplexElementInitializerExpression ? close : -1)]), lineDoc]);
+      : D.concat([
+          D.indent([
+            lineDoc,
+            cswSepList(P, exprs, SL_NODE, lineDoc, 0, k !== K_ComplexElementInitializerExpression ? close : -1),
+          ]),
+          lineDoc,
+        ]);
   const result = D.concat([sep, open, body, cswTok(P, close)]);
   const pk = P.t.ty(p);
   if (
@@ -1539,7 +1696,11 @@ const cswCollectionExpression = (P: CsPrint, n: i32): i32 => {
     nullSep = true;
   } else if (P.is(p, Y_AssignmentExpression)) {
     const pp = P.par(p);
-    nullSep = !(P.is(pp, Y_ObjectCreationExpression) || P.is(pp, Y_InitializerExpression) || P.k(pp) === K_ExpressionStatement);
+    nullSep = !(
+      P.is(pp, Y_ObjectCreationExpression) ||
+      P.is(pp, Y_InitializerExpression) ||
+      P.k(pp) === K_ExpressionStatement
+    );
   } else if (P.k(p) === K_EqualsValueClause) {
     nullSep = P.k(P.par(p)) !== K_VariableDeclarator;
   }
@@ -1549,17 +1710,23 @@ const cswCollectionExpression = (P: CsPrint, n: i32): i32 => {
   let alwaysBreak = false;
   if (ne > 0) {
     const e0 = P.sel(elems, 0);
-    alwaysBreak = P.k(e0) === K_ExpressionElement && P.k(P.s(e0, F_ExpressionElement_Expression)) === K_CollectionExpression;
+    alwaysBreak =
+      P.k(e0) === K_ExpressionElement && P.k(P.s(e0, F_ExpressionElement_Expression)) === K_CollectionExpression;
   }
   const close = P.s(n, F_CollectionExpression_CloseBracketToken);
   const lx = P.lx;
   const open = cswTok(P, P.s(n, F_CollectionExpression_OpenBracketToken));
   const items =
     ne > 0
-      ? D.indent([alwaysBreak ? DOC_HARDLINE : D.ifBreak(DOC_LINE, DOC_NULL, -1), cswSepList(P, elems, SL_NODE, alwaysBreak ? DOC_HARDLINE : DOC_LINE, 0, close)])
+      ? D.indent([
+          alwaysBreak ? DOC_HARDLINE : D.ifBreak(DOC_LINE, DOC_NULL, -1),
+          cswSepList(P, elems, SL_NODE, alwaysBreak ? DOC_HARDLINE : DOC_LINE, 0, close),
+        ])
       : DOC_NULL;
   const after = ne > 0 ? (alwaysBreak ? DOC_HARDLINE : D.ifBreak(DOC_LINE, DOC_NULL, -1)) : DOC_NULL;
-  const closeLead = cswAnyCommentOrDirective(lx, lx.l0[close], lx.l1[close]) ? D.concat([D.indent1(cswLeadingTriviaTok(P, close)), DOC_HARDLINE]) : DOC_NULL;
+  const closeLead = cswAnyCommentOrDirective(lx, lx.l0[close], lx.l1[close])
+    ? D.concat([D.indent1(cswLeadingTriviaTok(P, close)), DOC_HARDLINE])
+    : DOC_NULL;
   const result = D.concat([sep, open, items, after, closeLead, cswTokNoLead(P, close)]);
   return D.group1(result);
 };
@@ -1567,7 +1734,10 @@ const cswCollectionExpression = (P: CsPrint, n: i32): i32 => {
 const cswAnonymousMember = (P: CsPrint, n: i32): i32 => {
   const docs: i32[] = [];
   const p = P.par(n);
-  if (P.k(p) === K_AnonymousObjectCreationExpression && P.sel(P.s(p, F_AnonymousObjectCreationExpression_Initializers), 0) !== n) {
+  if (
+    P.k(p) === K_AnonymousObjectCreationExpression &&
+    P.sel(P.s(p, F_AnonymousObjectCreationExpression_Initializers), 0) !== n
+  ) {
     docs.push(cswExtraNewLines(P, n));
   }
   const ne = P.s(n, F_AnonymousObjectMemberDeclarator_NameEquals);
@@ -1590,7 +1760,9 @@ const cswAnonymousObjectCreation = (P: CsPrint, n: i32): i32 => {
   return D.group([
     nw,
     open,
-    ni > 0 ? D.indent([alwaysBreak ? DOC_HARDLINE : DOC_LINE, cswSepList(P, inits, SL_ANON_MEMBER, DOC_LINE, 0, close)]) : DOC_NULL,
+    ni > 0
+      ? D.indent([alwaysBreak ? DOC_HARDLINE : DOC_LINE, cswSepList(P, inits, SL_ANON_MEMBER, DOC_LINE, 0, close)])
+      : DOC_NULL,
     DOC_LINE,
     cswTok(P, close),
   ]);
@@ -1610,7 +1782,11 @@ const cswFromClause = (P: CsPrint, n: i32): i32 => {
 };
 
 const cswQueryExpression = (P: CsPrint, n: i32): i32 =>
-  P.cc([cswFromClause(P, P.s(n, F_QueryExpression_FromClause)), DOC_LINE, cswQueryBody(P, P.s(n, F_QueryExpression_Body))]);
+  P.cc([
+    cswFromClause(P, P.s(n, F_QueryExpression_FromClause)),
+    DOC_LINE,
+    cswQueryBody(P, P.s(n, F_QueryExpression_Body)),
+  ]);
 
 const cswQueryBody = (P: CsPrint, n: i32): i32 => {
   const docs: i32[] = [];
@@ -1654,7 +1830,13 @@ const cswJoinClause = (P: CsPrint, n: i32): i32 => {
         DOC_SPACE,
         cswTokSfx(P, P.s(n, F_JoinClause_EqualsKeyword), DOC_SPACE),
         cswNode(P, P.s(n, F_JoinClause_RightExpression)),
-        into >= 0 ? D.concat([DOC_LINE, cswTokSfx(P, P.s(into, F_JoinIntoClause_IntoKeyword), DOC_SPACE), cswTok(P, P.s(into, F_JoinIntoClause_Identifier))]) : DOC_NULL,
+        into >= 0
+          ? D.concat([
+              DOC_LINE,
+              cswTokSfx(P, P.s(into, F_JoinIntoClause_IntoKeyword), DOC_SPACE),
+              cswTok(P, P.s(into, F_JoinIntoClause_Identifier)),
+            ])
+          : DOC_NULL,
       ]),
     ]),
   ]);
@@ -1674,7 +1856,10 @@ const cswInterpolatedString = (P: CsPrint, n: i32): i32 => {
       const b = P.t.spanEnd(c);
       for (let j = a; j < b; j++) {
         if (toI32(src[j]) === 10) {
-          return D.concat([cswLeadingTrivia(P, cswLeadA(P, n), cswLeadB(P, n), false, false), D.strSrc(P.t.spanStart(n), P.t.spanEnd(n))]);
+          return D.concat([
+            cswLeadingTrivia(P, cswLeadA(P, n), cswLeadB(P, n), false, false),
+            D.strSrc(P.t.spanStart(n), P.t.spanEnd(n)),
+          ]);
         }
       }
     }
@@ -1764,7 +1949,10 @@ const cswIsPattern = (P: CsPrint, n: i32): i32 => {
   if (type < 0) {
     return D.group([cswNode(P, e), DOC_SPACE, cswTok(P, isK), DOC_LINE, cswRecursivePattern(P, pat, true)]);
   }
-  return D.group([D.group([cswNode(P, e), DOC_LINE, cswTok(P, isK), DOC_SPACE, cswNode(P, type)]), cswRecursivePattern(P, pat, false)]);
+  return D.group([
+    D.group([cswNode(P, e), DOC_LINE, cswTok(P, isK), DOC_SPACE, cswNode(P, type)]),
+    cswRecursivePattern(P, pat, false),
+  ]);
 };
 
 const cswRecursivePattern = (P: CsPrint, n: i32, includeType: boolean): i32 => {
@@ -1782,12 +1970,16 @@ const cswRecursivePattern = (P: CsPrint, n: i32, includeType: boolean): i32 => {
       pk === K_SwitchExpressionArm ||
       pk === K_IsPatternExpression ||
       pk === K_CasePatternSwitchLabel ||
-      (P.is(p, Y_BinaryPattern) && (P.k(P.par(p)) === K_SwitchExpressionArm || P.k(P.par(p)) === K_CasePatternSwitchLabel));
+      (P.is(p, Y_BinaryPattern) &&
+        (P.k(P.par(p)) === K_SwitchExpressionArm || P.k(P.par(p)) === K_CasePatternSwitchLabel));
     docs.push(noLine ? DOC_NULL : DOC_SOFTLINE);
     docs.push(
       D.group([
         cswTok(P, P.s(pos, F_PositionalPatternClause_OpenParenToken)),
-        D.indent([DOC_SOFTLINE, cswSepList(P, P.s(pos, F_PositionalPatternClause_Subpatterns), SL_POS_SUBPATTERN, DOC_LINE, 0, -1)]),
+        D.indent([
+          DOC_SOFTLINE,
+          cswSepList(P, P.s(pos, F_PositionalPatternClause_Subpatterns), SL_POS_SUBPATTERN, DOC_LINE, 0, -1),
+        ]),
         DOC_SOFTLINE,
         cswTok(P, P.s(pos, F_PositionalPatternClause_CloseParenToken)),
       ]),
@@ -1821,7 +2013,10 @@ const cswRecursivePattern = (P: CsPrint, n: i32, includeType: boolean): i32 => {
 const cswSwitchExpression = (P: CsPrint, n: i32): i32 => {
   const D = P.D;
   const close = P.s(n, F_SwitchExpression_CloseBraceToken);
-  const sections = D.group([D.indent([DOC_HARDLINE, cswSepList(P, P.s(n, F_SwitchExpression_Arms), SL_ARM, DOC_HARDLINE, 0, close)]), DOC_HARDLINE]);
+  const sections = D.group([
+    D.indent([DOC_HARDLINE, cswSepList(P, P.s(n, F_SwitchExpression_Arms), SL_ARM, DOC_HARDLINE, 0, close)]),
+    DOC_HARDLINE,
+  ]);
   csdRemoveInitialDoubleHardLine(D, sections);
   return D.concat([
     cswNode(P, P.s(n, F_SwitchExpression_GoverningExpression)),
@@ -1845,12 +2040,22 @@ const cswSwitchArm = (P: CsPrint, n: i32): i32 => {
   if (arrowHasComment) {
     inner = D.indent1(D.concat([DOC_LINE, cswTokSfx(P, arrow, DOC_SPACE), cswNode(P, expr)]));
   } else {
-    inner = D.concat([DOC_SPACE, cswTok(P, arrow), D.groupWithId(gid2, [D.indent1(DOC_LINE)]), D.indentIfBreak(cswNode(P, expr), gid2)]);
+    inner = D.concat([
+      DOC_SPACE,
+      cswTok(P, arrow),
+      D.groupWithId(gid2, [D.indent1(DOC_LINE)]),
+      D.indentIfBreak(cswNode(P, expr), gid2),
+    ]);
   }
   const gid1 = D.newGroupId();
   const wc = P.s(n, F_SwitchExpressionArm_WhenClause);
   return D.concat([
     cswExtraNewLines(P, n),
-    D.group([D.groupWithId(gid1, [D.concat([cswNode(P, P.s(n, F_SwitchExpressionArm_Pattern)), wc >= 0 ? cswNode(P, wc) : DOC_NULL])]), inner]),
+    D.group([
+      D.groupWithId(gid1, [
+        D.concat([cswNode(P, P.s(n, F_SwitchExpressionArm_Pattern)), wc >= 0 ? cswNode(P, wc) : DOC_NULL]),
+      ]),
+      inner,
+    ]),
   ]);
 };

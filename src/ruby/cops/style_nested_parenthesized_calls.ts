@@ -7,9 +7,19 @@
 import { RbCop } from "../cop";
 import { rbSpaceBegin } from "../help";
 import { RbSource } from "../source";
-import { ssxArgc, ssxArgs, ssxInList, ssxIsCall, ssxMeth, ssxOperatorName, ssxParenthesized, ssxSetter } from "./style_syntax_help";
+import {
+  ssxArgc,
+  ssxArgs,
+  ssxInList,
+  ssxIsCall,
+  ssxMeth,
+  ssxOperatorName,
+  ssxParenthesized,
+  ssxSetter,
+} from "./style_syntax_help";
 
-const SSX_NPC_ALLOWED: string = " be be_a be_an be_between be_falsey be_kind_of be_instance_of be_truthy be_within eq eql end_with include match raise_error respond_to start_with ";
+const SSX_NPC_ALLOWED: string =
+  " be be_a be_an be_between be_falsey be_kind_of be_instance_of be_truthy be_within eq eql end_with include match raise_error respond_to start_with ";
 
 export class CopStyleNestedParenthesizedCalls {
   c: RbCop;
@@ -31,7 +41,12 @@ export class CopStyleNestedParenthesizedCalls {
           continue;
         }
         // allowed_omission?
-        if (ssxArgc(src, nested) === 0 || ssxParenthesized(src, nested) || ssxSetter(src, nested) || ssxOperatorName(ssxMeth(src, nested))) {
+        if (
+          ssxArgc(src, nested) === 0 ||
+          ssxParenthesized(src, nested) ||
+          ssxSetter(src, nested) ||
+          ssxOperatorName(ssxMeth(src, nested))
+        ) {
           continue;
         }
         if (ssxArgc(src, n) === 1 && ssxInList(SSX_NPC_ALLOWED, ssxMeth(src, nested)) && ssxArgc(src, nested) === 1) {

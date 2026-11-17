@@ -4,10 +4,29 @@
 // Ported from RuboCop 1.92.2 (MIT License, Copyright (c) 2012-24 Bozhidar
 // Batsov).
 
-import { NT_BEGIN, NT_BLOCK, NT_CLASS, NT_DEF, NT_DEFS, NT_MODULE, NT_NUMBLOCK, NT_SCLASS, NT_SEND, V_NIL } from "../ast";
+import {
+  NT_BEGIN,
+  NT_BLOCK,
+  NT_CLASS,
+  NT_DEF,
+  NT_DEFS,
+  NT_MODULE,
+  NT_NUMBLOCK,
+  NT_SCLASS,
+  NT_SEND,
+  V_NIL,
+} from "../ast";
 import { RbCop } from "../cop";
 import { RbSource } from "../source";
-import { ssxClassConstructor, ssxIs, ssxIsAnyBlock, ssxMacro, ssxMeth, ssxWholeLinesE, ssxWholeLinesS } from "./style_syntax_help";
+import {
+  ssxClassConstructor,
+  ssxIs,
+  ssxIsAnyBlock,
+  ssxMacro,
+  ssxMeth,
+  ssxWholeLinesE,
+  ssxWholeLinesS,
+} from "./style_syntax_help";
 
 /** SendNode#bare_access_modifier?. */
 const luamBare = (src: RbSource, n: i32): boolean => {
@@ -19,7 +38,8 @@ const luamBare = (src: RbSource, n: i32): boolean => {
 };
 
 /** The cop's access_modifier?. */
-const luamAccessModifier = (src: RbSource, n: i32): boolean => luamBare(src, n) || ssxMeth(src, n) === "private_class_method";
+const luamAccessModifier = (src: RbSource, n: i32): boolean =>
+  luamBare(src, n) || ssxMeth(src, n) === "private_class_method";
 
 /** method_definition?: a def, an attr macro or define_method (with or without a block). */
 const luamMethodDefinition = (src: RbSource, n: i32): boolean => {

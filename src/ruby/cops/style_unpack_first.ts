@@ -33,7 +33,13 @@ export class CopStyleUnpackFirst {
       }
       // (call (...) :unpack (...))
       const u = a.kid(n, 0);
-      if (!ssxIsCall(src, u) || ssxMeth(src, u) !== "unpack" || a.nKid(u) !== 3 || !a.isNode(a.kid(u, 0)) || !a.isNode(a.kid(u, 2))) {
+      if (
+        !ssxIsCall(src, u) ||
+        ssxMeth(src, u) !== "unpack" ||
+        a.nKid(u) !== 3 ||
+        !a.isNode(a.kid(u, 0)) ||
+        !a.isNode(a.kid(u, 2))
+      ) {
         continue;
       }
       const ss = ssxFS(src, u, F_SELECTOR);

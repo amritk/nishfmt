@@ -276,7 +276,6 @@ const runJob = (job: Job): JobRoot => {
     }
     bytes = bytes + n;
     k++;
-
   }
   job.done = k;
   return root;
@@ -418,7 +417,10 @@ const withMallocTunables = (argv: string[]): string[] => {
   if (getenv("GLIBC_TUNABLES") !== null || !isExecutableSync("/usr/bin/env")) {
     return argv;
   }
-  const out: string[] = ["/usr/bin/env", "GLIBC_TUNABLES=glibc.malloc.trim_threshold=4294967295:glibc.malloc.mmap_threshold=33554432"];
+  const out: string[] = [
+    "/usr/bin/env",
+    "GLIBC_TUNABLES=glibc.malloc.trim_threshold=4294967295:glibc.malloc.mmap_threshold=33554432",
+  ];
   for (const a of argv) {
     out.push(a);
   }
@@ -521,7 +523,9 @@ const runWorker = (cli: Cli): i32 => {
     kprofPrint();
   }
   if (getenv("FFPROF") !== null) {
-    console.error(`worker: lex ${ms(stats.prof[0])} parse ${ms(stats.prof[1])} classify ${ms(stats.prof[2])} layout ${ms(stats.prof[3])} write ${ms(stats.prof[4])} run ${ms(stats.prof[5])} ms`);
+    console.error(
+      `worker: lex ${ms(stats.prof[0])} parse ${ms(stats.prof[1])} classify ${ms(stats.prof[2])} layout ${ms(stats.prof[3])} write ${ms(stats.prof[4])} run ${ms(stats.prof[5])} ms`,
+    );
   }
   return 0;
 };
@@ -593,8 +597,12 @@ export const main = (): i32 => {
     const eng = engineFor(cli);
     formatFiles(files, 0, toI32(files.length), cli, stats, eng);
     if (getenv("FFPROF") !== null) {
-      console.error(`searches ${eng.cpp.f.ind.stSearches} nodes ${eng.cpp.f.ind.stNodes} pops ${eng.cpp.f.ind.stPops} depth ${eng.cpp.f.ind.stDepth} listMiss ${eng.cpp.f.ind.stListMiss} listHit ${eng.cpp.f.ind.stListHit}`);
-      console.error(`lex ${ms(stats.prof[0])} parse ${ms(stats.prof[1])} classify ${ms(stats.prof[2])} layout ${ms(stats.prof[3])} write ${ms(stats.prof[4])} run-total ${ms(stats.prof[5])} ms`);
+      console.error(
+        `searches ${eng.cpp.f.ind.stSearches} nodes ${eng.cpp.f.ind.stNodes} pops ${eng.cpp.f.ind.stPops} depth ${eng.cpp.f.ind.stDepth} listMiss ${eng.cpp.f.ind.stListMiss} listHit ${eng.cpp.f.ind.stListHit}`,
+      );
+      console.error(
+        `lex ${ms(stats.prof[0])} parse ${ms(stats.prof[1])} classify ${ms(stats.prof[2])} layout ${ms(stats.prof[3])} write ${ms(stats.prof[4])} run-total ${ms(stats.prof[5])} ms`,
+      );
     }
   } else {
     const self = realpathSync("/proc/self/exe") ?? process.argv[0];
@@ -604,7 +612,18 @@ export const main = (): i32 => {
     const listPath = `${tag}.list`;
     writeFileSync(listPath, files.join("\n"));
     for (let k = 0; k < jobs; k++) {
-      const argv: string[] = [self, "--worker", listPath, `${tag}-${k}.stats`, "--width", `${cli.width}`, "--indent", `${cli.indent}`, "-j", `${jobs}`];
+      const argv: string[] = [
+        self,
+        "--worker",
+        listPath,
+        `${tag}-${k}.stats`,
+        "--width",
+        `${cli.width}`,
+        "--indent",
+        `${cli.indent}`,
+        "-j",
+        `${jobs}`,
+      ];
       if (cli.mode === MODE_WRITE) {
         argv.push("-i");
       } else {
@@ -637,14 +656,15 @@ export const main = (): i32 => {
   const ms = toI32((monotonicNanos() - t0) / toI64(1000000));
   if (!cli.quiet && cli.mode !== MODE_STDOUT) {
     const kb = toI32(stats.bytes / toI64(1024));
-    const mbTenths = kb * 10 / 1024;
-    const rate = ms > 0 ? kb * 1000 / 1024 / ms : 0;
+    const mbTenths = (kb * 10) / 1024;
+    const rate = ms > 0 ? (kb * 1000) / 1024 / ms : 0;
     const verb = cli.mode === MODE_WRITE ? "reformatted" : "would reformat";
-    console.error(`nishfmt: ${stats.files} files, ${verb} ${stats.changed}, skipped ${stats.skipped}; ${mbTenths / 10}.${mbTenths % 10} MB in ${ms} ms (${rate} MB/s, ${jobs} workers)`);
+    console.error(
+      `nishfmt: ${stats.files} files, ${verb} ${stats.changed}, skipped ${stats.skipped}; ${mbTenths / 10}.${mbTenths % 10} MB in ${ms} ms (${rate} MB/s, ${jobs} workers)`,
+    );
   }
   if (cli.mode === MODE_CHECK && stats.changed > 0) {
     return 1;
   }
   return 0;
 };
-

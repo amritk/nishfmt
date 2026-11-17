@@ -31,7 +31,15 @@ import {
 import { RbCop } from "../cop";
 import { RbSource } from "../source";
 import { LalIgnored } from "./layout_align_help";
-import { scnElseBranch, scnElsif, scnElsifConditional, scnIfBranch, scnModifier, scnOperatorKeyword, scnTernary } from "./style_cond_help";
+import {
+  scnElseBranch,
+  scnElsif,
+  scnElsifConditional,
+  scnIfBranch,
+  scnModifier,
+  scnOperatorKeyword,
+  scnTernary,
+} from "./style_cond_help";
 import { siieIfThenReplacement } from "./style_if_inside_else";
 import { stpPrefixNot } from "./style_ternary_parentheses";
 import { ssxAssignment, ssxIs, ssxIsCall, ssxLocIs, ssxMeth, ssxOperatorName } from "./style_syntax_help";

@@ -9,7 +9,15 @@ import { swEndOfConditionalAttributeBlock, swEndOfDeclarationInTypeBody } from "
 import { SwFormatter, swIndexAfterWhere } from "./formatter";
 import { swCommentDirective } from "./imports";
 import { swIsDocComment, swIsModifier } from "./modifiers";
-import { swEndOfScope, swIndexOfLastSignificantKeyword, swIsAttribute, swIsConditionalStatement, swIsDeclarationTypeKeyword, swIsStartOfClosure, SW_EX_WHERE } from "./parsing";
+import {
+  swEndOfScope,
+  swIndexOfLastSignificantKeyword,
+  swIsAttribute,
+  swIsConditionalStatement,
+  swIsDeclarationTypeKeyword,
+  swIsStartOfClosure,
+  SW_EX_WHERE,
+} from "./parsing";
 import {
   SW_COMMENT,
   SW_END,
@@ -50,7 +58,12 @@ export const swDeclarationIndexAndScope = (f: SwFormatter, i: i32): i32 => {
       unpaired++;
     } else if (f.tok(cur, SW_START, "{")) {
       const e = swEndOfScope(f, cur);
-      if (e >= 0 && i >= cur && i <= e && (swIsStartOfClosureOrFunctionBody(f, cur) || swIsConditionalStatement(f, cur))) {
+      if (
+        e >= 0 &&
+        i >= cur &&
+        i <= e &&
+        (swIsStartOfClosureOrFunctionBody(f, cur) || swIsConditionalStatement(f, cur))
+      ) {
         return SW_SCOPE_LOCAL;
       }
       if (unpaired === 0) {

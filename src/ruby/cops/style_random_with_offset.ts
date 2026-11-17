@@ -22,7 +22,11 @@ const ssxRwoRand = (src: RbSource, n: i32): boolean => {
   if (ssxIs(src, arg, NT_INT)) {
     return true;
   }
-  return (ssxIs(src, arg, NT_IRANGE) || ssxIs(src, arg, NT_ERANGE)) && ssxIs(src, a.kid(arg, 0), NT_INT) && ssxIs(src, a.kid(arg, 1), NT_INT);
+  return (
+    (ssxIs(src, arg, NT_IRANGE) || ssxIs(src, arg, NT_ERANGE)) &&
+    ssxIs(src, a.kid(arg, 0), NT_INT) &&
+    ssxIs(src, a.kid(arg, 1), NT_INT)
+  );
 };
 
 export class CopStyleRandomWithOffset {

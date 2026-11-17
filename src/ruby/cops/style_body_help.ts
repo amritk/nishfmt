@@ -80,13 +80,15 @@ export const sbhCallArgs = (src: RbSource, n: i32): i32[] => {
 };
 
 /** MethodIdentifierPredicates#comparison_method? */
-export const sbhComparisonName = (m: string): boolean => m === "==" || m === "===" || m === "!=" || m === "<=" || m === ">=" || m === "<" || m === ">";
+export const sbhComparisonName = (m: string): boolean =>
+  m === "==" || m === "===" || m === "!=" || m === "<=" || m === ">=" || m === "<" || m === ">";
 
 /** MethodIdentifierPredicates#assignment_method?: ends with `=` and is no comparison. */
 export const sbhAssignmentMethod = (m: string): boolean => !sbhComparisonName(m) && m.endsWith("=");
 
 /** MethodIdentifierPredicates#operator_method? of a dispatch node. */
-export const sbhOperatorMethod = (src: RbSource, n: i32): boolean => ssxIsCall(src, n) && ssxOperatorName(src.a.text(src.a.kid(n, 1)));
+export const sbhOperatorMethod = (src: RbSource, n: i32): boolean =>
+  ssxIsCall(src, n) && ssxOperatorName(src.a.text(src.a.kid(n, 1)));
 
 /** MethodDispatchNode#block_node: the block (or numblock) whose send this is (V_NIL for none). */
 export const sbhBlockNode = (src: RbSource, n: i32): i32 => {
@@ -378,7 +380,12 @@ export const sbhCodePoints = (s: string): i32[] => {
       out.push(((c & 0x0f) << 12) | ((s.charCodeAt(i + 1) & 0x3f) << 6) | (s.charCodeAt(i + 2) & 0x3f));
       i += 3;
     } else {
-      out.push(((c & 0x07) << 18) | ((s.charCodeAt(i + 1) & 0x3f) << 12) | ((s.charCodeAt(i + 2) & 0x3f) << 6) | (s.charCodeAt(i + 3) & 0x3f));
+      out.push(
+        ((c & 0x07) << 18) |
+          ((s.charCodeAt(i + 1) & 0x3f) << 12) |
+          ((s.charCodeAt(i + 2) & 0x3f) << 6) |
+          (s.charCodeAt(i + 3) & 0x3f),
+      );
       i += 4;
     }
   }

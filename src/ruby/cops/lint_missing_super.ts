@@ -4,7 +4,19 @@
 // Ported from RuboCop 1.92.2 (MIT License, Copyright (c) 2012-24 Bozhidar
 // Batsov).
 
-import { NT_BLOCK, NT_CLASS, NT_DEF, NT_DEFS, NT_MODULE, NT_NUMBLOCK, NT_SCLASS, NT_SEND, NT_SUPER, NT_ZSUPER, V_NIL } from "../ast";
+import {
+  NT_BLOCK,
+  NT_CLASS,
+  NT_DEF,
+  NT_DEFS,
+  NT_MODULE,
+  NT_NUMBLOCK,
+  NT_SCLASS,
+  NT_SEND,
+  NT_SUPER,
+  NT_ZSUPER,
+  V_NIL,
+} from "../ast";
 import { RbCop } from "../cop";
 import { RbSource } from "../source";
 import { lbhConstName, lbhGlobalConst } from "./lint_batch_help";
@@ -84,7 +96,12 @@ export class CopLintMissingSuper {
       if (t === NT_BLOCK || t === NT_NUMBLOCK) {
         // class_new_block: (any_block (send (const {nil? cbase} :Class) :new $_) ...)
         const s = a.kid(p, 0);
-        if (!ssxIs(src, s, NT_SEND) || a.nKid(s) !== 3 || ssxMeth(src, s) !== "new" || !lbhGlobalConst(src, a.kid(s, 0), "Class")) {
+        if (
+          !ssxIs(src, s, NT_SEND) ||
+          a.nKid(s) !== 3 ||
+          ssxMeth(src, s) !== "new" ||
+          !lbhGlobalConst(src, a.kid(s, 0), "Class")
+        ) {
           return false;
         }
         return !this.allowed(src, a.kid(s, 2));

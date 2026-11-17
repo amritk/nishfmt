@@ -10,7 +10,20 @@
 // Ported from RuboCop 1.92.2 (MIT License, Copyright (c) 2012-24 Bozhidar
 // Batsov).
 
-import { F_KEYWORD, F_OPERATOR, F_SELECTOR, NT_BLOCK_PASS, NT_CSEND, NT_HASH, NT_KWSPLAT, NT_SEND, NT_SPLAT, NT_SUPER, NT_YIELD, V_NIL } from "../ast";
+import {
+  F_KEYWORD,
+  F_OPERATOR,
+  F_SELECTOR,
+  NT_BLOCK_PASS,
+  NT_CSEND,
+  NT_HASH,
+  NT_KWSPLAT,
+  NT_SEND,
+  NT_SPLAT,
+  NT_SUPER,
+  NT_YIELD,
+  V_NIL,
+} from "../ast";
 import { RbCop } from "../cop";
 import { RbSource } from "../source";
 import { ssxFE, ssxHas, ssxIs, ssxMeth, ssxOperatorName, ssxParenthesized } from "./style_syntax_help";
@@ -22,7 +35,12 @@ const laoDiagPos = (src: RbSource, n: i32): i32 => {
   let nameE = -1;
   let first = V_NIL;
   if (t === NT_SEND || t === NT_CSEND) {
-    if (a.nKid(n) < 3 || !ssxHas(src, n, F_SELECTOR) || ssxHas(src, n, F_OPERATOR) || ssxOperatorName(ssxMeth(src, n))) {
+    if (
+      a.nKid(n) < 3 ||
+      !ssxHas(src, n, F_SELECTOR) ||
+      ssxHas(src, n, F_OPERATOR) ||
+      ssxOperatorName(ssxMeth(src, n))
+    ) {
       return -1;
     }
     nameE = ssxFE(src, n, F_SELECTOR);

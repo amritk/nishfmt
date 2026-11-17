@@ -627,7 +627,13 @@ const cswDispatch = (P: CsPrint, n: i32): i32 => {
     case Y_IncompleteMember:
       return P.str("");
     case Y_ParameterList:
-      return cswParameterListLike(P, n, P.s(n, F_ParameterList_OpenParenToken), P.s(n, F_ParameterList_Parameters), P.s(n, F_ParameterList_CloseParenToken));
+      return cswParameterListLike(
+        P,
+        n,
+        P.s(n, F_ParameterList_OpenParenToken),
+        P.s(n, F_ParameterList_Parameters),
+        P.s(n, F_ParameterList_CloseParenToken),
+      );
     case Y_BracketedParameterList:
       return cswParameterListLike(
         P,
@@ -645,7 +651,10 @@ const cswDispatch = (P: CsPrint, n: i32): i32 => {
     case Y_TypeParameterConstraintClause:
       return cswTypeParameterConstraintClause(P, n);
     case Y_ClassOrStructConstraint:
-      return P.cc([cswTok(P, P.s(n, F_ClassOrStructConstraint_ClassOrStructKeyword)), cswTok(P, P.s(n, F_ClassOrStructConstraint_QuestionToken))]);
+      return P.cc([
+        cswTok(P, P.s(n, F_ClassOrStructConstraint_ClassOrStructKeyword)),
+        cswTok(P, P.s(n, F_ClassOrStructConstraint_QuestionToken)),
+      ]);
     case Y_ConstructorConstraint:
       return P.cc([
         cswTok(P, P.s(n, F_ConstructorConstraint_NewKeyword)),
@@ -711,11 +720,17 @@ const cswDispatch = (P: CsPrint, n: i32): i32 => {
         cswExtraNewLines(P, n),
         cswTokSfx(P, P.s(n, F_CasePatternSwitchLabel_Keyword), DOC_SPACE),
         cswNode(P, P.s(n, F_CasePatternSwitchLabel_Pattern)),
-        P.s(n, F_CasePatternSwitchLabel_WhenClause) >= 0 ? cswWhenClause(P, P.s(n, F_CasePatternSwitchLabel_WhenClause)) : DOC_NULL,
+        P.s(n, F_CasePatternSwitchLabel_WhenClause) >= 0
+          ? cswWhenClause(P, P.s(n, F_CasePatternSwitchLabel_WhenClause))
+          : DOC_NULL,
         cswTok(P, P.s(n, F_CasePatternSwitchLabel_ColonToken)),
       ]);
     case Y_DefaultSwitchLabel:
-      return P.cc([cswExtraNewLines(P, n), cswTok(P, P.s(n, F_DefaultSwitchLabel_Keyword)), cswTok(P, P.s(n, F_DefaultSwitchLabel_ColonToken))]);
+      return P.cc([
+        cswExtraNewLines(P, n),
+        cswTok(P, P.s(n, F_DefaultSwitchLabel_Keyword)),
+        cswTok(P, P.s(n, F_DefaultSwitchLabel_ColonToken)),
+      ]);
     case Y_WhenClause:
       return cswWhenClause(P, n);
     case Y_TryStatement:
@@ -733,7 +748,11 @@ const cswDispatch = (P: CsPrint, n: i32): i32 => {
     case Y_CheckedStatement:
       return P.cc([cswTok(P, P.s(n, F_CheckedStatement_Keyword)), cswBlock(P, P.s(n, F_CheckedStatement_Block))]);
     case Y_UnsafeStatement:
-      return P.cc([cswExtraNewLines(P, n), cswTok(P, P.s(n, F_UnsafeStatement_UnsafeKeyword)), cswNode(P, P.s(n, F_UnsafeStatement_Block))]);
+      return P.cc([
+        cswExtraNewLines(P, n),
+        cswTok(P, P.s(n, F_UnsafeStatement_UnsafeKeyword)),
+        cswNode(P, P.s(n, F_UnsafeStatement_Block)),
+      ]);
     case Y_YieldStatement: {
       const e = P.s(n, F_YieldStatement_Expression);
       const expr = e >= 0 ? P.cc([DOC_SPACE, cswNode(P, e)]) : DOC_NULL;
@@ -748,7 +767,12 @@ const cswDispatch = (P: CsPrint, n: i32): i32 => {
     case Y_ThrowStatement: {
       const e = P.s(n, F_ThrowStatement_Expression);
       const expr = e >= 0 ? P.cc([DOC_SPACE, cswNode(P, e)]) : DOC_NULL;
-      return P.cc([cswExtraNewLines(P, n), cswTok(P, P.s(n, F_ThrowStatement_ThrowKeyword)), expr, cswTok(P, P.s(n, F_ThrowStatement_SemicolonToken))]);
+      return P.cc([
+        cswExtraNewLines(P, n),
+        cswTok(P, P.s(n, F_ThrowStatement_ThrowKeyword)),
+        expr,
+        cswTok(P, P.s(n, F_ThrowStatement_SemicolonToken)),
+      ]);
     }
     case Y_BreakStatement: {
       const name = P.s(n, F_BreakStatement_Name);
@@ -801,7 +825,14 @@ const cswDispatch = (P: CsPrint, n: i32): i32 => {
 const cswCompilationUnit = (P: CsPrint, n: i32): i32 => {
   const D = P.D;
   const docs: i32[] = [];
-  cswNamespaceLike(P, n, P.s(n, F_CompilationUnit_Externs), P.s(n, F_CompilationUnit_Usings), P.s(n, F_CompilationUnit_Members), docs);
+  cswNamespaceLike(
+    P,
+    n,
+    P.s(n, F_CompilationUnit_Externs),
+    P.s(n, F_CompilationUnit_Usings),
+    P.s(n, F_CompilationUnit_Members),
+    docs,
+  );
   const eof = P.s(n, F_CompilationUnit_EndOfFileToken);
   const finalTrivia = cswLeadingTrivia(P, P.lx.l0[eof], P.lx.l1[eof], true, false);
   if (finalTrivia !== DOC_NULL) {
@@ -816,7 +847,11 @@ const cswCompilationUnit = (P: CsPrint, n: i32): i32 => {
       D.kind[D.at(prev, D.count(prev) - 1)] === D_HARDLINE &&
       D.kind[D.at(prev, D.count(prev) - 2)] === D_HARDLINE
     ) {
-      while (D.count(finalTrivia) > 0 && D.kind[D.at(finalTrivia, 0)] === D_HARDLINE && (D.b[D.at(finalTrivia, 0)] & HL_FOR_TRIVIA) !== 0) {
+      while (
+        D.count(finalTrivia) > 0 &&
+        D.kind[D.at(finalTrivia, 0)] === D_HARDLINE &&
+        (D.b[D.at(finalTrivia, 0)] & HL_FOR_TRIVIA) !== 0
+      ) {
         // List.RemoveAt(0)
         D.a[finalTrivia] = D.a[finalTrivia] + 1;
         D.b[finalTrivia] = D.b[finalTrivia] - 1;
@@ -938,7 +973,6 @@ export const cswAttributeList = (P: CsPrint, n: i32): i32 => {
   return D.group(docs);
 };
 
-
 /** One attribute of an attribute list. */
 export const cswAttribute = (P: CsPrint, a: i32): i32 => {
   const D = P.D;
@@ -959,17 +993,23 @@ export const cswAttribute = (P: CsPrint, a: i32): i32 => {
   return D.group([
     name,
     cswTok(P, P.s(al, F_AttributeArgumentList_OpenParenToken)),
-    D.indentIf(!single, D.concat([single ? DOC_NULL : DOC_SOFTLINE, cswSepList(P, args, SL_ATTRIBUTE_ARG, DOC_LINE, 0, -1)])),
+    D.indentIf(
+      !single,
+      D.concat([single ? DOC_NULL : DOC_SOFTLINE, cswSepList(P, args, SL_ATTRIBUTE_ARG, DOC_LINE, 0, -1)]),
+    ),
     single ? DOC_NULL : DOC_SOFTLINE,
     cswTok(P, P.s(al, F_AttributeArgumentList_CloseParenToken)),
   ]);
 };
 
-
 export const cswAttributeArgument = (P: CsPrint, a: i32): i32 => {
   const ne = P.s(a, F_AttributeArgument_NameEquals);
   const nc = P.s(a, F_AttributeArgument_NameColon);
-  return P.cc([ne >= 0 ? cswNameEquals(P, ne) : DOC_NULL, nc >= 0 ? cswBaseExpressionColon(P, nc) : DOC_NULL, cswNode(P, P.s(a, F_AttributeArgument_Expression))]);
+  return P.cc([
+    ne >= 0 ? cswNameEquals(P, ne) : DOC_NULL,
+    nc >= 0 ? cswBaseExpressionColon(P, nc) : DOC_NULL,
+    cswNode(P, P.s(a, F_AttributeArgument_Expression)),
+  ]);
 };
 
 // ---- types ----
@@ -990,7 +1030,12 @@ const cswBaseTypeDeclaration = (P: CsPrint, n: i32): i32 => {
   let close = -1;
   let semicolon = -1;
   let separated = false;
-  if (y === Y_ClassDeclaration || y === Y_StructDeclaration || y === Y_InterfaceDeclaration || y === Y_UnionDeclaration) {
+  if (
+    y === Y_ClassDeclaration ||
+    y === Y_StructDeclaration ||
+    y === Y_InterfaceDeclaration ||
+    y === Y_UnionDeclaration
+  ) {
     keyword = P.s(n, F_ClassDeclaration_Keyword);
     identifier = P.s(n, F_ClassDeclaration_Identifier);
     tpl = P.s(n, F_ClassDeclaration_TypeParameterList);
@@ -1062,7 +1107,15 @@ const cswBaseTypeDeclaration = (P: CsPrint, n: i32): i32 => {
     docs.push(cswTypeParameterList(P, tpl));
   }
   if (parameterList >= 0) {
-    docs.push(cswParameterListLike(P, parameterList, P.s(parameterList, F_ParameterList_OpenParenToken), P.s(parameterList, F_ParameterList_Parameters), P.s(parameterList, F_ParameterList_CloseParenToken)));
+    docs.push(
+      cswParameterListLike(
+        P,
+        parameterList,
+        P.s(parameterList, F_ParameterList_OpenParenToken),
+        P.s(parameterList, F_ParameterList_Parameters),
+        P.s(parameterList, F_ParameterList_CloseParenToken),
+      ),
+    );
   }
   if (baseList >= 0) {
     const types = P.s(baseList, F_BaseList_Types);
@@ -1071,7 +1124,9 @@ const cswBaseTypeDeclaration = (P: CsPrint, n: i32): i32 => {
       cswTok(P, P.s(baseList, F_BaseList_ColonToken)),
       DOC_SPACE,
       cswNode(P, P.sel(types, 0)),
-      many ? D.indent([cswTok(P, P.sep(types, 0)), DOC_LINE, cswSepList(P, types, SL_NODE, DOC_LINE, 1, -1)]) : DOC_NULL,
+      many
+        ? D.indent([cswTok(P, P.sep(types, 0)), DOC_LINE, cswSepList(P, types, SL_NODE, DOC_LINE, 1, -1)])
+        : DOC_NULL,
     ]);
     docs.push(D.group1(D.indent([DOC_LINE, baseDoc])));
   }
@@ -1230,7 +1285,15 @@ const cswBaseMethodDeclaration = (P: CsPrint, n: i32): i32 => {
   if (parameterList >= 0) {
     const params = P.s(parameterList, F_ParameterList_Parameters);
     if (P.scount(params) > 0) {
-      decl.push(cswParameterListLike(P, parameterList, P.s(parameterList, F_ParameterList_OpenParenToken), params, P.s(parameterList, F_ParameterList_CloseParenToken)));
+      decl.push(
+        cswParameterListLike(
+          P,
+          parameterList,
+          P.s(parameterList, F_ParameterList_OpenParenToken),
+          params,
+          P.s(parameterList, F_ParameterList_CloseParenToken),
+        ),
+      );
     } else {
       decl.push(cswTok(P, P.s(parameterList, F_ParameterList_OpenParenToken)));
       decl.push(cswTok(P, P.s(parameterList, F_ParameterList_CloseParenToken)));
@@ -1240,7 +1303,14 @@ const cswBaseMethodDeclaration = (P: CsPrint, n: i32): i32 => {
   if (initializer >= 0) {
     const colon = cswTokSfx(P, P.s(initializer, F_ConstructorInitializer_ColonToken), DOC_SPACE);
     const argList = D.group1(cswArgumentList(P, P.s(initializer, F_ConstructorInitializer_ArgumentList)));
-    decl.push(D.group([D.indent1(DOC_HARDLINE), D.indent1(colon), cswTok(P, P.s(initializer, F_ConstructorInitializer_ThisOrBaseKeyword)), D.indent1(argList)]));
+    decl.push(
+      D.group([
+        D.indent1(DOC_HARDLINE),
+        D.indent1(colon),
+        cswTok(P, P.s(initializer, F_ConstructorInitializer_ThisOrBaseKeyword)),
+        D.indent1(argList),
+      ]),
+    );
   }
   docs.push(D.group(decl));
   if (y === Y_MethodDeclaration || y === Y_LocalFunctionStatement) {
@@ -1323,14 +1393,19 @@ const cswBasePropertyDeclaration = (P: CsPrint, n: i32): i32 => {
   if (y === Y_PropertyDeclaration) {
     idDoc = cswTok(P, P.s(n, F_PropertyDeclaration_Identifier));
   } else if (y === Y_IndexerDeclaration) {
-    idDoc = D.concat([cswTok(P, P.s(n, F_IndexerDeclaration_ThisKeyword)), cswNode(P, P.s(n, F_IndexerDeclaration_ParameterList))]);
+    idDoc = D.concat([
+      cswTok(P, P.s(n, F_IndexerDeclaration_ThisKeyword)),
+      cswNode(P, P.s(n, F_IndexerDeclaration_ParameterList)),
+    ]);
   } else {
     idDoc = cswTok(P, P.s(n, F_EventDeclaration_Identifier));
   }
   const contents = cswPropertyContents(P, accessorList, exprBody);
   const initDoc = initializer >= 0 ? cswEqualsValueClause(P, initializer) : DOC_NULL;
   const semiDoc = cswTok(P, semicolon);
-  return D.group1(D.concat([attrsDoc, modsDoc, eventKeyword, typeDoc, DOC_SPACE, eisDoc, idDoc, contents, initDoc, semiDoc]));
+  return D.group1(
+    D.concat([attrsDoc, modsDoc, eventKeyword, typeDoc, DOC_SPACE, eisDoc, idDoc, contents, initDoc, semiDoc]),
+  );
 };
 
 const cswPropertyContents = (P: CsPrint, accessorList: i32, exprBody: i32): i32 => {
@@ -1355,7 +1430,9 @@ const cswPropertyContents = (P: CsPrint, accessorList: i32, exprBody: i32): i32 
     for (let i = 0; i < na; i++) {
       items.push(cswAccessor(P, P.at(accessors, i), sep));
     }
-    return D.group1(D.concat([sep, open, D.indent(items), sep, cswTok(P, P.s(accessorList, F_AccessorList_CloseBraceToken))]));
+    return D.group1(
+      D.concat([sep, open, D.indent(items), sep, cswTok(P, P.s(accessorList, F_AccessorList_CloseBraceToken))]),
+    );
   }
   if (exprBody >= 0) {
     return cswArrowExpressionClause(P, exprBody);
@@ -1425,13 +1502,21 @@ export const cswParameterListLike = (P: CsPrint, n: i32, open: i32, params: i32,
   const D = P.D;
   return D.group([
     cswTok(P, open),
-    P.scount(params) > 0 ? D.concat([D.indent([DOC_SOFTLINE, cswSepList(P, params, SL_PARAMETER, DOC_LINE, 0, -1)]), DOC_SOFTLINE]) : DOC_NULL,
+    P.scount(params) > 0
+      ? D.concat([D.indent([DOC_SOFTLINE, cswSepList(P, params, SL_PARAMETER, DOC_LINE, 0, -1)]), DOC_SOFTLINE])
+      : DOC_NULL,
     cswTok(P, close),
   ]);
 };
 
 export const cswParameterList = (P: CsPrint, n: i32): i32 =>
-  cswParameterListLike(P, n, P.s(n, F_ParameterList_OpenParenToken), P.s(n, F_ParameterList_Parameters), P.s(n, F_ParameterList_CloseParenToken));
+  cswParameterListLike(
+    P,
+    n,
+    P.s(n, F_ParameterList_OpenParenToken),
+    P.s(n, F_ParameterList_Parameters),
+    P.s(n, F_ParameterList_CloseParenToken),
+  );
 
 export const cswParameter = (P: CsPrint, n: i32): i32 => {
   const D = P.D;
@@ -1443,7 +1528,8 @@ export const cswParameter = (P: CsPrint, n: i32): i32 => {
     const p = P.par(n);
     if (
       P.count(attrs) < 2 &&
-      (cswAnyCommentRange(P, cswLeadA(P, n), cswLeadB(P, n)) || (P.k(p) === K_ParameterList && P.scount(P.s(p, F_ParameterList_Parameters)) === 0))
+      (cswAnyCommentRange(P, cswLeadA(P, n), cswLeadB(P, n)) ||
+        (P.k(p) === K_ParameterList && P.scount(P.s(p, F_ParameterList_Parameters)) === 0))
     ) {
       docs.push(DOC_SPACE);
     } else {
@@ -1474,7 +1560,12 @@ const cswAnyCommentRange = (P: CsPrint, a: i32, b: i32): boolean => {
   const lx = P.lx;
   for (let i = a; i < b; i++) {
     const k = lx.trKind[i];
-    if (k === K_SingleLineCommentTrivia || k === K_MultiLineCommentTrivia || k === K_SingleLineDocumentationCommentTrivia || k === K_MultiLineDocumentationCommentTrivia) {
+    if (
+      k === K_SingleLineCommentTrivia ||
+      k === K_MultiLineCommentTrivia ||
+      k === K_SingleLineDocumentationCommentTrivia ||
+      k === K_MultiLineDocumentationCommentTrivia
+    ) {
       return true;
     }
   }
@@ -1522,10 +1613,19 @@ export const cswTypeParameterConstraintClause = (P: CsPrint, n: i32): i32 =>
   ]);
 
 export const cswExplicitInterfaceSpecifier = (P: CsPrint, n: i32): i32 =>
-  P.cc([cswNode(P, P.s(n, F_ExplicitInterfaceSpecifier_Name)), cswTok(P, P.s(n, F_ExplicitInterfaceSpecifier_DotToken))]);
+  P.cc([
+    cswNode(P, P.s(n, F_ExplicitInterfaceSpecifier_Name)),
+    cswTok(P, P.s(n, F_ExplicitInterfaceSpecifier_DotToken)),
+  ]);
 
 export const cswArrowExpressionClause = (P: CsPrint, n: i32): i32 =>
-  P.D.group1(P.D.indent([DOC_SPACE, cswTokSfx(P, P.s(n, F_ArrowExpressionClause_ArrowToken), DOC_LINE), cswNode(P, P.s(n, F_ArrowExpressionClause_Expression))]));
+  P.D.group1(
+    P.D.indent([
+      DOC_SPACE,
+      cswTokSfx(P, P.s(n, F_ArrowExpressionClause_ArrowToken), DOC_LINE),
+      cswNode(P, P.s(n, F_ArrowExpressionClause_Expression)),
+    ]),
+  );
 
 export const cswEqualsValueClause = (P: CsPrint, n: i32): i32 => {
   const D = P.D;
@@ -1560,7 +1660,10 @@ export const cswNameEquals = (P: CsPrint, n: i32): i32 =>
 
 export const cswBaseExpressionColon = (P: CsPrint, n: i32): i32 => {
   const p = P.par(n);
-  const isLine = P.is(p, Y_Subpattern) && P.is(P.s(p, F_Subpattern_Pattern), Y_RecursivePattern) && P.s(P.s(p, F_Subpattern_Pattern), F_RecursivePattern_Type) < 0;
+  const isLine =
+    P.is(p, Y_Subpattern) &&
+    P.is(P.s(p, F_Subpattern_Pattern), Y_RecursivePattern) &&
+    P.s(P.s(p, F_Subpattern_Pattern), F_RecursivePattern_Type) < 0;
   // NameColon has Name where ExpressionColon has Expression, both in slot 0
   return P.cc([cswNode(P, P.s(n, 0)), cswTokSfx(P, P.s(n, 1), isLine ? DOC_LINE : DOC_SPACE)]);
 };
@@ -1578,12 +1681,23 @@ export const cswVariableDeclaration = (P: CsPrint, n: i32): i32 => {
   }
   const v = P.sel(vars, 0);
   const al = P.s(v, F_VariableDeclarator_ArgumentList);
-  const left = D.concat([cswNode(P, type), DOC_SPACE, cswTok(P, P.s(v, F_VariableDeclarator_Identifier)), al >= 0 ? cswBracketedArgumentList(P, al) : DOC_NULL]);
+  const left = D.concat([
+    cswNode(P, type),
+    DOC_SPACE,
+    cswTok(P, P.s(v, F_VariableDeclarator_Identifier)),
+    al >= 0 ? cswBracketedArgumentList(P, al) : DOC_NULL,
+  ]);
   const init = P.s(v, F_VariableDeclarator_Initializer);
   if (init < 0) {
     return D.group1(left);
   }
-  return cswRightHandSide(P, n, D.concat([left, DOC_SPACE]), cswTok(P, P.s(init, F_EqualsValueClause_EqualsToken)), P.s(init, F_EqualsValueClause_Value));
+  return cswRightHandSide(
+    P,
+    n,
+    D.concat([left, DOC_SPACE]),
+    cswTok(P, P.s(init, F_EqualsValueClause_EqualsToken)),
+    P.s(init, F_EqualsValueClause_Value),
+  );
 };
 
 export const cswVariableDeclarator = (P: CsPrint, n: i32): i32 => {
@@ -1746,7 +1860,11 @@ const cswForEach = (P: CsPrint, n: i32): i32 => {
   let cp = -1;
   let st = -1;
   if (P.k(n) === K_ForEachStatement) {
-    variable = D.concat([cswNode(P, P.s(n, F_ForEachStatement_Type)), DOC_SPACE, cswTok(P, P.s(n, F_ForEachStatement_Identifier))]);
+    variable = D.concat([
+      cswNode(P, P.s(n, F_ForEachStatement_Type)),
+      DOC_SPACE,
+      cswTok(P, P.s(n, F_ForEachStatement_Identifier)),
+    ]);
     aw = P.s(n, F_ForEachStatement_AwaitKeyword);
     fe = P.s(n, F_ForEachStatement_ForEachKeyword);
     op = P.s(n, F_ForEachStatement_OpenParenToken);
@@ -1775,7 +1893,10 @@ const cswForEach = (P: CsPrint, n: i32): i32 => {
     cswTok(P, cp),
   ]);
   const sk = P.k(st);
-  const body = sk === K_ForEachStatement || sk === K_ForEachVariableStatement ? D.group([DOC_HARDLINE, cswForEach(P, st)]) : cswOptionalBraces(P, st);
+  const body =
+    sk === K_ForEachStatement || sk === K_ForEachVariableStatement
+      ? D.group([DOC_HARDLINE, cswForEach(P, st)])
+      : cswOptionalBraces(P, st);
   return D.concat([extra, head, body]);
 };
 
@@ -1790,7 +1911,8 @@ const cswWhileStatement = (P: CsPrint, n: i32): i32 => {
     D.group([D.indent([DOC_SOFTLINE, cswNode(P, P.s(n, F_WhileStatement_Condition))]), DOC_SOFTLINE]),
     cswTok(P, P.s(n, F_WhileStatement_CloseParenToken)),
   ]);
-  const body = P.k(st) === K_WhileStatement ? D.group([DOC_HARDLINE, cswWhileStatement(P, st)]) : cswOptionalBraces(P, st);
+  const body =
+    P.k(st) === K_WhileStatement ? D.group([DOC_HARDLINE, cswWhileStatement(P, st)]) : cswOptionalBraces(P, st);
   return D.concat([extra, head, body]);
 };
 
@@ -1854,7 +1976,9 @@ const cswSwitchSection = (P: CsPrint, n: i32): i32 => {
     docs.push(cswBlock(P, P.at(stmts, 0)));
   } else {
     const statements = cswNodesRespectingRangeIgnore(P, stmts);
-    docs.push(D.indent([P.k(P.at(stmts, 0)) === K_Block ? DOC_NULL : DOC_HARDLINE, cswJoin(P, DOC_HARDLINE, statements)]));
+    docs.push(
+      D.indent([P.k(P.at(stmts, 0)) === K_Block ? DOC_NULL : DOC_HARDLINE, cswJoin(P, DOC_HARDLINE, statements)]),
+    );
   }
   return D.concat(docs);
 };
@@ -1863,7 +1987,11 @@ export const cswWhenClause = (P: CsPrint, n: i32): i32 => {
   const p = P.par(n);
   const isSpace = P.k(p) === K_SwitchExpressionArm && P.k(P.s(p, F_SwitchExpressionArm_Pattern)) === K_DiscardPattern;
   return P.D.group1(
-    P.D.indent([isSpace ? DOC_SPACE : DOC_LINE, cswTokSfx(P, P.s(n, F_WhenClause_WhenKeyword), DOC_SPACE), cswNode(P, P.s(n, F_WhenClause_Condition))]),
+    P.D.indent([
+      isSpace ? DOC_SPACE : DOC_LINE,
+      cswTokSfx(P, P.s(n, F_WhenClause_WhenKeyword), DOC_SPACE),
+      cswNode(P, P.s(n, F_WhenClause_Condition)),
+    ]),
   );
 };
 
@@ -1942,7 +2070,14 @@ const cswUsingStatement = (P: CsPrint, n: i32): i32 => {
       cswTok(P, P.s(n, F_UsingStatement_UsingKeyword)),
       DOC_SPACE,
       cswTok(P, P.s(n, F_UsingStatement_OpenParenToken)),
-      D.group([D.indent([DOC_SOFTLINE, decl >= 0 ? cswVariableDeclaration(P, decl) : DOC_NULL, ex >= 0 ? cswNode(P, ex) : DOC_NULL]), DOC_SOFTLINE]),
+      D.group([
+        D.indent([
+          DOC_SOFTLINE,
+          decl >= 0 ? cswVariableDeclaration(P, decl) : DOC_NULL,
+          ex >= 0 ? cswNode(P, ex) : DOC_NULL,
+        ]),
+        DOC_SOFTLINE,
+      ]),
       cswTok(P, P.s(n, F_UsingStatement_CloseParenToken)),
       D.ifBreak(DOC_NULL, DOC_SOFTLINE, -1),
     ]),
@@ -1985,7 +2120,10 @@ const cswFixedStatement = (P: CsPrint, n: i32): i32 => {
     cswTok(P, P.s(n, F_FixedStatement_CloseParenToken)),
     D.ifBreak(DOC_NULL, DOC_SOFTLINE, -1),
   ]);
-  const body = P.k(st) === K_Block ? cswBlock(P, st) : D.indentIf(P.k(st) !== K_FixedStatement, D.concat([DOC_HARDLINE, cswNode(P, st)]));
+  const body =
+    P.k(st) === K_Block
+      ? cswBlock(P, st)
+      : D.indentIf(P.k(st) !== K_FixedStatement, D.concat([DOC_HARDLINE, cswNode(P, st)]));
   return D.concat([extra, head, body]);
 };
 

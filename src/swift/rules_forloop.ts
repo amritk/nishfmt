@@ -53,7 +53,8 @@ const swTokenizeString = (src: string): SwTok[] => {
   return out;
 };
 
-const SW_CHAIN_IGNORED: string = " reversed sorted shuffled enumerated dropFirst dropLast map flatMap compactMap filter reduce lazy ";
+const SW_CHAIN_IGNORED: string =
+  " reversed sorted shuffled enumerated dropFirst dropLast map flatMap compactMap filter reduce lazy ";
 
 /** The forLoopSubjectIdentifier state of startOfChainComponent. */
 class SwChainState {
@@ -200,7 +201,13 @@ const swParseClosureArguments = (f: SwFormatter, closureStart: i32): SwClosureAr
           argIndex = nn + 1;
           continue;
         }
-        if (f.kw(nn, "in") || f.op(nn, "->", SW_OP_INFIX) || f.kw(nn, "throws") || f.kw(nn, "rethrows") || f.tok(nn, SW_IDENT, "async")) {
+        if (
+          f.kw(nn, "in") ||
+          f.op(nn, "->", SW_OP_INFIX) ||
+          f.kw(nn, "throws") ||
+          f.kw(nn, "rethrows") ||
+          f.tok(nn, SW_IDENT, "async")
+        ) {
           break;
         }
         return null;
@@ -379,7 +386,12 @@ const swPreferForLoopAt = (f: SwFormatter, forEachIndex: i32): void => {
         return;
       }
       const pk = f.k(p);
-      if ((pk === SW_OP && (f.a(p) === SW_OP_INFIX || f.a(p) === SW_OP_PREFIX)) || f.kw(p, "return") || f.kw(p, "throw") || f.tok(p, SW_IDENT, "yield")) {
+      if (
+        (pk === SW_OP && (f.a(p) === SW_OP_INFIX || f.a(p) === SW_OP_PREFIX)) ||
+        f.kw(p, "return") ||
+        f.kw(p, "throw") ||
+        f.tok(p, SW_IDENT, "yield")
+      ) {
         return;
       }
     }

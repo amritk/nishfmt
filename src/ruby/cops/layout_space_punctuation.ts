@@ -8,7 +8,16 @@
 
 import { RbCop } from "../cop";
 import { RbSource, TK_COMMENT } from "../source";
-import { TK_tCOMMA, TK_tLAMBEG, TK_tLCURLY, TK_tPIPE, TK_tRBRACK, TK_tRPAREN, TK_tSEMI, TK_tSTRING_DEND } from "../tables";
+import {
+  TK_tCOMMA,
+  TK_tLAMBEG,
+  TK_tLCURLY,
+  TK_tPIPE,
+  TK_tRBRACK,
+  TK_tRPAREN,
+  TK_tSEMI,
+  TK_tSTRING_DEND,
+} from "../tables";
 import { LspToks } from "./layout_space_help";
 
 /** SpaceAfterPunctuation#each_missing_space over the raw tokens (`semi`: the semicolon cop). */

@@ -40,15 +40,23 @@ export const labaLambdaOrProc = (src: RbSource, n: i32): boolean => {
     if (ssxIs(src, s, NT_SEND) && a.kid(s, 0) === V_NIL && ssxMeth(src, s) === "proc" && a.nKid(s) === 2) {
       return true;
     }
-    if (ssxIs(src, s, NT_SEND) && ssxGlobalConst(src, a.kid(s, 0), "Proc") && ssxMeth(src, s) === "new" && a.nKid(s) === 2) {
+    if (
+      ssxIs(src, s, NT_SEND) &&
+      ssxGlobalConst(src, a.kid(s, 0), "Proc") &&
+      ssxMeth(src, s) === "new" &&
+      a.nKid(s) === 2
+    ) {
       return true;
     }
   }
-  return ssxIs(src, n, NT_SEND) && ssxGlobalConst(src, a.kid(n, 0), "Proc") && ssxMeth(src, n) === "new" && a.nKid(n) === 2;
+  return (
+    ssxIs(src, n, NT_SEND) && ssxGlobalConst(src, a.kid(n, 0), "Proc") && ssxMeth(src, n) === "new" && a.nKid(n) === 2
+  );
 };
 
 /** The call's arguments? (a lambda/send/csend with arguments). */
-const labaHasArgs = (src: RbSource, n: i32): boolean => (ssxIsCall(src, n) && ssxArgc(src, n) > 0) || (ssxIs(src, n, NT_SUPER) && src.a.nKid(n) > 0);
+const labaHasArgs = (src: RbSource, n: i32): boolean =>
+  (ssxIsCall(src, n) && ssxArgc(src, n) > 0) || (ssxIs(src, n, NT_SUPER) && src.a.nKid(n) > 0);
 
 export class CopLintAmbiguousBlockAssociation {
   c: RbCop;
@@ -113,7 +121,12 @@ export class CopLintAmbiguousBlockAssociation {
       cands.push(d);
     }
     for (const c of cands) {
-      if (ssxIsCall(src, c) && a.exE(c) === end && ssxInList(LABA_BLOCK_METHODS, ssxMeth(src, c)) && ssxArgc(src, c) === 0) {
+      if (
+        ssxIsCall(src, c) &&
+        a.exE(c) === end &&
+        ssxInList(LABA_BLOCK_METHODS, ssxMeth(src, c)) &&
+        ssxArgc(src, c) === 0
+      ) {
         this.c.offense(a.exS(c), a.exE(c));
         return;
       }

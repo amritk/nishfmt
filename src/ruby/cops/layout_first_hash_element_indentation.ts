@@ -7,7 +7,15 @@ import { F_BEGIN, F_END, NT_CSEND, NT_HASH, NT_SEND, V_NIL } from "../ast";
 import { RbCop } from "../cop";
 import { rnHas, rnPairs, rnS } from "../node";
 import { RbSource } from "../source";
-import { LalAligner, LalIgnored, lalBeginsItsLine, lalCheckRight, lalEachArgumentNode, lalFirstLine, lalIndentBase } from "./layout_align_help";
+import {
+  LalAligner,
+  LalIgnored,
+  lalBeginsItsLine,
+  lalCheckRight,
+  lalEachArgumentNode,
+  lalFirstLine,
+  lalIndentBase,
+} from "./layout_align_help";
 
 export class CopLayoutFirstHashElementIndentation {
   c: RbCop;

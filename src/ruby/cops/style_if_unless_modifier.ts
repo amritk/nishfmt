@@ -3,7 +3,26 @@
 // Ported from RuboCop 1.92.2 (MIT License, Copyright (c) 2012-24 Bozhidar
 // Batsov).
 
-import { F_END, F_KEYWORD, NT_AND, NT_ARRAY, NT_BEGIN, NT_CSEND, NT_DEFINED_P, NT_DSTR, NT_IF, NT_LVAR, NT_LVASGN, NT_MATCH_PATTERN, NT_MATCH_PATTERN_P, NT_MATCH_WITH_LVASGN, NT_OR, NT_PAIR, NT_SEND, V_NIL } from "../ast";
+import {
+  F_END,
+  F_KEYWORD,
+  NT_AND,
+  NT_ARRAY,
+  NT_BEGIN,
+  NT_CSEND,
+  NT_DEFINED_P,
+  NT_DSTR,
+  NT_IF,
+  NT_LVAR,
+  NT_LVASGN,
+  NT_MATCH_PATTERN,
+  NT_MATCH_PATTERN_P,
+  NT_MATCH_WITH_LVASGN,
+  NT_OR,
+  NT_PAIR,
+  NT_SEND,
+  V_NIL,
+} from "../ast";
 import { RbCop } from "../cop";
 import { rbSpaceBegin } from "../help";
 import { RbRewriter } from "../rewriter";
@@ -184,7 +203,11 @@ export class CopStyleIfUnlessModifier {
 
   /** single_line_as_modifier? */
   private singleLineAsModifier(src: RbSource, n: i32): boolean {
-    if (this.nonEligibleNode(src, n) || scnNonEligibleBodyBase(src, scnIfBranch(src, n)) || scnNonEligibleCondition(src, src.a.kid(n, 0))) {
+    if (
+      this.nonEligibleNode(src, n) ||
+      scnNonEligibleBodyBase(src, scnIfBranch(src, n)) ||
+      scnNonEligibleCondition(src, src.a.kid(n, 0))
+    ) {
       return false;
     }
     return scnModifierFits(src, n, SIUM_COP);

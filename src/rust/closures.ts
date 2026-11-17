@@ -38,9 +38,23 @@ import {
 } from "./ast";
 import { rsLastLineWidth } from "./comment";
 import { RsCtx } from "./context";
-import { rsBlockContainsComment, rsIsSimpleBlock, rsRewriteBlockWithVisitor, rsRewriteCond, rsRewriteExpr } from "./expr";
+import {
+  rsBlockContainsComment,
+  rsIsSimpleBlock,
+  rsRewriteBlockWithVisitor,
+  rsRewriteCond,
+  rsRewriteExpr,
+} from "./expr";
 import { rsParamSpanLo, rsRewriteParam } from "./items";
-import { DLT_HORIZONTAL, LT_HORIZONTAL_VERTICAL, RsListFormatting, SEP_COMMA, rsDefinitiveTactic, rsItemizeList, rsWriteList } from "./lists";
+import {
+  DLT_HORIZONTAL,
+  LT_HORIZONTAL_VERTICAL,
+  RsListFormatting,
+  SEP_COMMA,
+  rsDefinitiveTactic,
+  rsItemizeList,
+  rsWriteList,
+} from "./lists";
 import { RsShape, rsIndentStr, rsShapeLegacy } from "./shape";
 import { rsHasByte, rsLines } from "./str";
 import { rsRewriteBoundParams, rsRewriteTy } from "./types";
@@ -83,7 +97,13 @@ export const rsRewriteClosure = (ctx: RsCtx, e: i32, shape: RsShape): string | n
   return rewriteClosureWithBlock(ctx, body, prefix, bodyShape);
 };
 
-const tryRewriteWithoutBlock = (ctx: RsCtx, expr0: i32, prefix: string, shape: RsShape, bodyShape: RsShape): string | null => {
+const tryRewriteWithoutBlock = (
+  ctx: RsCtx,
+  expr0: i32,
+  prefix: string,
+  shape: RsShape,
+  bodyShape: RsShape,
+): string | null => {
   const expr = getInnerExpr(ctx, expr0, prefix);
   if (isBlockClosureForced(ctx, expr)) {
     return rewriteClosureWithBlock(ctx, expr, prefix, shape);
@@ -144,7 +164,15 @@ const vetoBlock = (ast: RsAst, e: i32): boolean => {
 
 const exprRequiresSemiToBeStmt = (ast: RsAst, e: i32): boolean => {
   const k = ast.kind[e];
-  return !(k === N_EX_IF || k === N_EX_MATCH || k === N_EX_BLOCK || k === N_EX_WHILE || k === N_EX_LOOP || k === N_EX_FOR || k === N_EX_TRY_BLOCK);
+  return !(
+    k === N_EX_IF ||
+    k === N_EX_MATCH ||
+    k === N_EX_BLOCK ||
+    k === N_EX_WHILE ||
+    k === N_EX_LOOP ||
+    k === N_EX_FOR ||
+    k === N_EX_TRY_BLOCK
+  );
 };
 
 /** A block `{ body }` made at rewrite time, as rustfmt does. */
@@ -184,7 +212,14 @@ const rewriteClosureWithBlock = (ctx: RsCtx, body: i32, prefix: string, shape: R
 
 const allowMultiLine = (ast: RsAst, e: i32): boolean => {
   const k = ast.kind[e];
-  if (k === N_EX_MATCH || k === N_EX_ASYNC || k === N_EX_BLOCK || k === N_EX_TRY_BLOCK || k === N_EX_LOOP || k === N_EX_STRUCT) {
+  if (
+    k === N_EX_MATCH ||
+    k === N_EX_ASYNC ||
+    k === N_EX_BLOCK ||
+    k === N_EX_TRY_BLOCK ||
+    k === N_EX_LOOP ||
+    k === N_EX_STRUCT
+  ) {
     return true;
   }
   if (k === N_EX_ADDR_OF || k === N_EX_TRY || k === N_EX_UNARY || k === N_EX_CAST) {
@@ -250,7 +285,8 @@ const rewriteClosureFnDecl = (ctx: RsCtx, e: i32, body: i32, shape: RsShape): Fn
   const immovable = (f & CL_STATIC) !== 0 ? "static " : "";
   const coro = (f & CL_ASYNC) !== 0 ? "async " : "";
   const capture = (f & CL_MOVE) !== 0 ? "move " : "";
-  const offset = toI32(binder.length) + toI32(const_.length) + toI32(immovable.length) + toI32(coro.length) + toI32(capture.length);
+  const offset =
+    toI32(binder.length) + toI32(const_.length) + toI32(immovable.length) + toI32(coro.length) + toI32(capture.length);
   const ns0 = shape.shrinkLeft(offset);
   if (ns0 === null) {
     return null;
@@ -334,7 +370,13 @@ export const rsRewriteLastClosure = (ctx: RsCtx, e: i32, shape: RsShape): string
   let body = ast.a[e];
   if (ast.kind[body] === N_EX_BLOCK) {
     const block = ast.a[body];
-    if ((ast.fl[block] & BLK_UNSAFE) === 0 && !ctx.insideMacro && rsIsSimpleBlock(ctx, block, true) && ast.atn[body] === 0 && ast.d[body] < 0) {
+    if (
+      (ast.fl[block] & BLK_UNSAFE) === 0 &&
+      !ctx.insideMacro &&
+      rsIsSimpleBlock(ctx, block, true) &&
+      ast.atn[body] === 0 &&
+      ast.d[body] < 0
+    ) {
       const s = ast.kid(block, 0);
       if (ast.kind[s] === N_STMT_EXPR) {
         body = ast.a[s];

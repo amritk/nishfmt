@@ -4,13 +4,46 @@
 // Ported from RuboCop 1.92.2 (MIT License, Copyright (c) 2012-24 Bozhidar
 // Batsov).
 
-import { F_BEGIN, F_DOT, F_END, F_KEYWORD, F_OPERATOR, F_SELECTOR, NT_AND, NT_BEGIN, NT_CASGN, NT_CSEND, NT_CVASGN, NT_DEFINED_P, NT_GVASGN, NT_IF, NT_IVASGN, NT_LVASGN, NT_MASGN, NT_MATCH_PATTERN_P, NT_OR, NT_SEND, V_NIL } from "../ast";
+import {
+  F_BEGIN,
+  F_DOT,
+  F_END,
+  F_KEYWORD,
+  F_OPERATOR,
+  F_SELECTOR,
+  NT_AND,
+  NT_BEGIN,
+  NT_CASGN,
+  NT_CSEND,
+  NT_CVASGN,
+  NT_DEFINED_P,
+  NT_GVASGN,
+  NT_IF,
+  NT_IVASGN,
+  NT_LVASGN,
+  NT_MASGN,
+  NT_MATCH_PATTERN_P,
+  NT_OR,
+  NT_SEND,
+  V_NIL,
+} from "../ast";
 import { RbCop } from "../cop";
 import { RbRewriter } from "../rewriter";
 import { RbSource } from "../source";
 import { scnModifier, scnTernary } from "./style_cond_help";
 import { scnVerifiedByReparse } from "./style_cond_reparse";
-import { ssxFE, ssxFS, ssxHas, ssxIs, ssxIsCall, ssxIsSpace, ssxLocIs, ssxMeth, ssxParenthesized, ssxSetter } from "./style_syntax_help";
+import {
+  ssxFE,
+  ssxFS,
+  ssxHas,
+  ssxIs,
+  ssxIsCall,
+  ssxIsSpace,
+  ssxLocIs,
+  ssxMeth,
+  ssxParenthesized,
+  ssxSetter,
+} from "./style_syntax_help";
 
 /** SafeAssignment#safe_assignment?: `(begin {equals_asgn? #setter_method?})`. */
 export const stpSafeAssignment = (src: RbSource, n: i32): boolean => {
@@ -29,10 +62,12 @@ export const stpSafeAssignment = (src: RbSource, n: i32): boolean => {
 };
 
 /** PredicateOperatorNode#semantic_operator?: the operator is `and`/`or`. */
-export const stpSemanticOperator = (src: RbSource, n: i32): boolean => ssxLocIs(src, n, F_OPERATOR, "and") || ssxLocIs(src, n, F_OPERATOR, "or");
+export const stpSemanticOperator = (src: RbSource, n: i32): boolean =>
+  ssxLocIs(src, n, F_OPERATOR, "and") || ssxLocIs(src, n, F_OPERATOR, "or");
 
 /** MethodIdentifierPredicates#prefix_not?: `not x`. */
-export const stpPrefixNot = (src: RbSource, n: i32): boolean => ssxIs(src, n, NT_SEND) && ssxMeth(src, n) === "!" && ssxLocIs(src, n, F_SELECTOR, "not");
+export const stpPrefixNot = (src: RbSource, n: i32): boolean =>
+  ssxIs(src, n, NT_SEND) && ssxMeth(src, n) === "!" && ssxLocIs(src, n, F_SELECTOR, "not");
 
 export class CopStyleTernaryParentheses {
   c: RbCop;

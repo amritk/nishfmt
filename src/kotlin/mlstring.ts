@@ -155,7 +155,10 @@ export class KMultilineStrings {
     }
     const s = new MlString();
     s.margin = margin;
-    s.dollar = t.end[receiver] - t.start[receiver] >= 2 && toI32(this.src[t.start[receiver]]) === 36 && toI32(this.src[t.start[receiver] + 1]) === 36;
+    s.dollar =
+      t.end[receiver] - t.start[receiver] >= 2 &&
+      toI32(this.src[t.start[receiver]]) === 36 &&
+      toI32(this.src[t.start[receiver] + 1]) === 36;
     s.open = t.start[receiver];
     s.trimOffset = t.start[selector] - 1;
     s.lineStart = this.countNewlines(s.open);

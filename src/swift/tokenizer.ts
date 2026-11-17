@@ -59,7 +59,12 @@ export const swCpAt = (src: u8[], n: i32, p: i32): i32 => {
   if (c < 0xf0) {
     return ((c & 0x0f) << 12) | ((toI32(src[p + 1]) & 0x3f) << 6) | (toI32(src[p + 2]) & 0x3f);
   }
-  return ((c & 0x07) << 18) | ((toI32(src[p + 1]) & 0x3f) << 12) | ((toI32(src[p + 2]) & 0x3f) << 6) | (toI32(src[p + 3]) & 0x3f);
+  return (
+    ((c & 0x07) << 18) |
+    ((toI32(src[p + 1]) & 0x3f) << 12) |
+    ((toI32(src[p + 2]) & 0x3f) << 6) |
+    (toI32(src[p + 3]) & 0x3f)
+  );
 };
 
 /** The byte length of the UTF-8 sequence starting with byte `c`. */
@@ -135,7 +140,20 @@ const swCpIsHexDigit = (c: i32): boolean => (c >= 48 && c <= 57) || (c >= 65 && 
 const swOpHead = (c: i32): boolean => {
   if (c < 0x80) {
     return (
-      c === 46 || c === 47 || c === 92 || c === 61 || c === 45 || c === 43 || c === 33 || c === 42 || c === 37 || c === 38 || c === 124 || c === 94 || c === 126 || c === 63
+      c === 46 ||
+      c === 47 ||
+      c === 92 ||
+      c === 61 ||
+      c === 45 ||
+      c === 43 ||
+      c === 33 ||
+      c === 42 ||
+      c === 37 ||
+      c === 38 ||
+      c === 124 ||
+      c === 94 ||
+      c === 126 ||
+      c === 63
     );
   }
   return (
@@ -890,7 +908,13 @@ const swFixMultilineStringIndent = (lx: SwLexer): void => {
     const nk = t.k[index + 1];
     const ns = t.s[index + 1];
     const nextIsMulti = swIsMultilineStringDelimiter(nk, ns);
-    if (!(t.k[index] === SW_SPACE && t.k[index - 1] === SW_LINEBREAK && ((nextIsMulti && nk === SW_END) || nk === SW_STRBODY))) {
+    if (
+      !(
+        t.k[index] === SW_SPACE &&
+        t.k[index - 1] === SW_LINEBREAK &&
+        ((nextIsMulti && nk === SW_END) || nk === SW_STRBODY)
+      )
+    ) {
       if (nextIsMulti && nk === SW_START) {
         offsetStack.pop();
       }
@@ -1182,7 +1206,11 @@ const swStitchOperators = (lx: SwLexer, index0: i32): void => {
       break;
     }
     const prev = t.s[index - 1];
-    if (swLxIsUnwrapOperator(lx, index - 1) || str.startsWith("\\") || !(prev.startsWith(".") || str.indexOf(".") < 0)) {
+    if (
+      swLxIsUnwrapOperator(lx, index - 1) ||
+      str.startsWith("\\") ||
+      !(prev.startsWith(".") || str.indexOf(".") < 0)
+    ) {
       break;
     }
     if (swStackLast(lx) === index - 1) {
@@ -1307,7 +1335,11 @@ const swSetOperatorType = (lx: SwLexer, i0: i32): void => {
         (prk === SW_SPACE ||
           prk === SW_LINEBREAK ||
           (pk === SW_OP && pa === SW_OP_INFIX) ||
-          (pk === SW_OP && pa === SW_OP_POSTFIX && (ps === "?" || ps === "!") && prevNonSpaceIndex > 0 && swLxIsTok(lx, prevNonSpaceIndex - 1, SW_KEYWORD, "try")) ||
+          (pk === SW_OP &&
+            pa === SW_OP_POSTFIX &&
+            (ps === "?" || ps === "!") &&
+            prevNonSpaceIndex > 0 &&
+            swLxIsTok(lx, prevNonSpaceIndex - 1, SW_KEYWORD, "try")) ||
           (pk === SW_START && (ps === "(" || ps === "[")) ||
           (pk === SW_DELIM && (ps === ":" || ps === ",")) ||
           (pk === SW_KEYWORD && (ps === "try" || ps === "await")))
@@ -1356,7 +1388,11 @@ const swProcessToken = (lx: SwLexer): void => {
   const ta = t.a[count - 1];
   if (!(tk === SW_SPACE || swKindIsComment(tk, ts)) && tk !== SW_IDENT) {
     const prevIndex = swLxIndexBefore(lx, SW_T_NON_SPACE_OR_COMMENT, count - 1);
-    if (prevIndex >= 0 && t.k[prevIndex] === SW_KEYWORD && (t.s[prevIndex] === "consume" || t.s[prevIndex] === "discard")) {
+    if (
+      prevIndex >= 0 &&
+      t.k[prevIndex] === SW_KEYWORD &&
+      (t.s[prevIndex] === "consume" || t.s[prevIndex] === "discard")
+    ) {
       t.set(prevIndex, SW_IDENT, t.s[prevIndex], 0);
     }
   }
@@ -1369,7 +1405,14 @@ const swProcessToken = (lx: SwLexer): void => {
         (pk === SW_OP && ps === ".") ||
         (ts === "await" &&
           pk === SW_KEYWORD &&
-          (ps === "func" || ps === "let" || ps === "var" || ps === "class" || ps === "struct" || ps === "enum" || ps === "extension" || ps === "typealias"))
+          (ps === "func" ||
+            ps === "let" ||
+            ps === "var" ||
+            ps === "class" ||
+            ps === "struct" ||
+            ps === "enum" ||
+            ps === "extension" ||
+            ps === "typealias"))
       ) {
         t.set(t.count() - 1, SW_IDENT, ts, 0);
         swProcessToken(lx);
@@ -1529,7 +1572,9 @@ const swProcessToken = (lx: SwLexer): void => {
             const q = swLxIndexBefore(lx, SW_T_NON_SPACE_OR_COMMENT_OR_LINEBREAK, count - 1);
             if (
               q >= 0 &&
-              (swLxIsTok(lx, q, SW_START, "<") || swLxIsTok(lx, q, SW_DELIM, ",") || (t.k[q] === SW_OP && t.s[q] === "==" && t.a[q] === SW_OP_INFIX))
+              (swLxIsTok(lx, q, SW_START, "<") ||
+                swLxIsTok(lx, q, SW_DELIM, ",") ||
+                (t.k[q] === SW_OP && t.s[q] === "==" && t.a[q] === SW_OP_INFIX))
             ) {
               isMinusDigit = true;
             }
@@ -1537,7 +1582,16 @@ const swProcessToken = (lx: SwLexer): void => {
         }
         if (!isMinusDigit) {
           let allowed = false;
-          if (ts === "." || ts === "==" || ts === "?" || ts === "!" || ts === "&" || ts === "->" || ts === "~" || ts === "::") {
+          if (
+            ts === "." ||
+            ts === "==" ||
+            ts === "?" ||
+            ts === "!" ||
+            ts === "&" ||
+            ts === "->" ||
+            ts === "~" ||
+            ts === "::"
+          ) {
             allowed = swLxIndexBefore(lx, SW_T_NON_SPACE_OR_COMMENT_OR_LINEBREAK, count - 1) !== genericIndex;
           }
           if (!allowed) {
@@ -1549,7 +1603,10 @@ const swProcessToken = (lx: SwLexer): void => {
         }
       } else if (tk === SW_DELIM && ts === ":" && lx.stack.length > 1) {
         const q = lx.stack[toI32(lx.stack.length) - 2];
-        if ((t.k[q] === SW_END && t.s[q] === "case") || (t.k[q] === SW_OP && t.s[q] === "?" && t.a[q] === SW_OP_INFIX)) {
+        if (
+          (t.k[q] === SW_END && t.s[q] === "case") ||
+          (t.k[q] === SW_OP && t.s[q] === "?" && t.a[q] === SW_OP_INFIX)
+        ) {
           swConvertOpeningChevronToOperator(lx, genericIndex);
           swProcessToken(lx);
           return;
@@ -1615,7 +1672,9 @@ const swProcessToken = (lx: SwLexer): void => {
               const pk = t.k[prevIndex];
               const ps = t.s[prevIndex];
               const keep =
-                (pk === SW_KEYWORD && (ps === "if" || ps === "guard" || ps === "while" || ps === "for" || ps === "await")) || (pk === SW_DELIM && ps === ",");
+                (pk === SW_KEYWORD &&
+                  (ps === "if" || ps === "guard" || ps === "while" || ps === "for" || ps === "await")) ||
+                (pk === SW_DELIM && ps === ",");
               if (!keep) {
                 t.set(t.count() - 1, SW_END, ts, 0);
                 swProcessToken(lx);

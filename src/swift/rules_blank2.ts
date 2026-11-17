@@ -10,7 +10,14 @@ import { swDeclKeywordIndex, swDeclLo, swParseDeclarations, swReleaseDecls } fro
 import { SwDecl, SwFormatter, swIndexAfterWhere, swIndexBeforeWhere } from "./formatter";
 import { swCommentDirective } from "./imports";
 import { swIsModifier, swStartOfModifiers } from "./modifiers";
-import { swEndOfScope, swIsDeclarationTypeKeyword, swIsLabel, swParseType, swStartOfScope, swSwitchStatementBranches } from "./parsing";
+import {
+  swEndOfScope,
+  swIsDeclarationTypeKeyword,
+  swIsLabel,
+  swParseType,
+  swStartOfScope,
+  swSwitchStatementBranches,
+} from "./parsing";
 import { swStrLess } from "./rules_braces";
 import { swLowercased } from "./rules_simple";
 import {
@@ -71,7 +78,10 @@ export const swRuleBlankLinesBetweenScopes = (f: SwFormatter): void => {
   let spaceable = false;
   for (let i0 = f.enumStartAll(); i0 >= 0; i0 = f.enumNextAll()) {
     const s = f.s(i0);
-    if (f.k(i0) === SW_KEYWORD && (s === "class" || s === "actor" || s === "struct" || s === "extension" || s === "enum")) {
+    if (
+      f.k(i0) === SW_KEYWORD &&
+      (s === "class" || s === "actor" || s === "struct" || s === "extension" || s === "enum")
+    ) {
       spaceable = !f.lastIs(SW_T_NON_SPACE_OR_COMMENT_OR_LINEBREAK, i0, SW_KEYWORD, "import");
       continue;
     }
@@ -190,7 +200,11 @@ const swHeaderCommentRangeAll = (f: SwFormatter): i32[] | null => {
       if (b >= 0 && f.k(b) === SW_COMMENT) {
         const body = f.s(b);
         f.updateEnablement(startIndex);
-        if (!f.isEnabled() || (body.startsWith("/") && !body.startsWith("//")) || body.startsWith("swift-tools-version")) {
+        if (
+          !f.isEnabled() ||
+          (body.startsWith("/") && !body.startsWith("//")) ||
+          body.startsWith("swift-tools-version")
+        ) {
           return null;
         }
       }
@@ -206,7 +220,12 @@ const swHeaderCommentRangeAll = (f: SwFormatter): i32[] | null => {
         }
         if (f.has(index + 1) && f.k(index + 1) === SW_LINEBREAK) {
           lastHeader = index + 1;
-        } else if (f.has(index + 1) && f.k(index + 1) === SW_SPACE && f.has(index + 2) && f.k(index + 2) === SW_LINEBREAK) {
+        } else if (
+          f.has(index + 1) &&
+          f.k(index + 1) === SW_SPACE &&
+          f.has(index + 2) &&
+          f.k(index + 2) === SW_LINEBREAK
+        ) {
           lastHeader = index + 2;
         }
         break;
@@ -306,7 +325,10 @@ export const swRuleModifierOrder = (f: SwFormatter): void => {
       if (index < 0) {
         break;
       }
-      if ((f.k(index) === SW_OP && (f.a(index) === SW_OP_PREFIX || f.a(index) === SW_OP_INFIX)) || f.kw(index, "case")) {
+      if (
+        (f.k(index) === SW_OP && (f.a(index) === SW_OP_PREFIX || f.a(index) === SW_OP_INFIX)) ||
+        f.kw(index, "case")
+      ) {
         hasLast = false;
         lastIndex = previousIndex;
         break;
@@ -768,4 +790,5 @@ export const swRuleSortTypealiases = (f: SwFormatter): void => {
   }
 };
 
-const swKindIsCommentTok = (t: SwTok): boolean => t.k === SW_COMMENT || (t.k === SW_START && (t.s === "//" || t.s === "/*")) || (t.k === SW_END && t.s === "*/");
+const swKindIsCommentTok = (t: SwTok): boolean =>
+  t.k === SW_COMMENT || (t.k === SW_START && (t.s === "//" || t.s === "/*")) || (t.k === SW_END && t.s === "*/");

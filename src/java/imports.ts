@@ -67,7 +67,11 @@ export class ImportFixer {
     // The toks before the first class, interface or enum keyword.
     let stop = inp.nToks - 1; // EOF
     for (let t = 0; t < inp.nToks; t++) {
-      if ((inp.tFlags[t] & TF_TOKEN) !== 0 && inp.tKind[t] === JK_IDENT && (inp.is(t, "class") || inp.is(t, "interface") || inp.is(t, "enum"))) {
+      if (
+        (inp.tFlags[t] & TF_TOKEN) !== 0 &&
+        inp.tKind[t] === JK_IDENT &&
+        (inp.is(t, "class") || inp.is(t, "interface") || inp.is(t, "enum"))
+      ) {
         stop = t;
         break;
       }
@@ -424,7 +428,8 @@ class NameSet {
   }
 }
 
-const isIdStart = (c: i32): boolean => (c >= 65 && c <= 90) || (c >= 97 && c <= 122) || c === 95 || c === 36 || c >= 128;
+const isIdStart = (c: i32): boolean =>
+  (c >= 65 && c <= 90) || (c >= 97 && c <= 122) || c === 95 || c === 36 || c >= 128;
 const isIdPart = (c: i32): boolean => isIdStart(c) || (c >= 48 && c <= 57);
 
 /**
@@ -457,8 +462,21 @@ const scanJavadocRefs = (src: u8[], a: i32, e: i32, used: NameSet): void => {
     if (!isRef) {
       continue;
     }
-    while (i < e && (toI32(src[i]) === 32 || toI32(src[i]) === 9 || toI32(src[i]) === 10 || toI32(src[i]) === 13 || toI32(src[i]) === 42)) {
-      if (toI32(src[i]) === 42 && !(i > a && (toI32(src[i - 1]) === 10 || toI32(src[i - 1]) === 13 || toI32(src[i - 1]) === 32 || toI32(src[i - 1]) === 9))) {
+    while (
+      i < e &&
+      (toI32(src[i]) === 32 ||
+        toI32(src[i]) === 9 ||
+        toI32(src[i]) === 10 ||
+        toI32(src[i]) === 13 ||
+        toI32(src[i]) === 42)
+    ) {
+      if (
+        toI32(src[i]) === 42 &&
+        !(
+          i > a &&
+          (toI32(src[i - 1]) === 10 || toI32(src[i - 1]) === 13 || toI32(src[i - 1]) === 32 || toI32(src[i - 1]) === 9)
+        )
+      ) {
         break;
       }
       i++;
@@ -522,4 +540,5 @@ const atLineStart = (src: u8[], a: i32, i: i32): boolean => {
   return true;
 };
 
-export const isStaticImport = (t: JTree, imp: i32): boolean => t.kind[imp] === N_IMPORT && (t.flags[imp] & FL_STATIC) !== 0;
+export const isStaticImport = (t: JTree, imp: i32): boolean =>
+  t.kind[imp] === N_IMPORT && (t.flags[imp] & FL_STATIC) !== 0;

@@ -18,7 +18,14 @@ import {
   SW_SCOPE_THROWS_TYPE,
   swScopeType,
 } from "./parsing2";
-import { SW_DELIM, SW_END, SW_LINEBREAK, SW_START, SW_T_NON_SPACE_OR_COMMENT, SW_T_NON_SPACE_OR_COMMENT_OR_LINEBREAK } from "./token";
+import {
+  SW_DELIM,
+  SW_END,
+  SW_LINEBREAK,
+  SW_START,
+  SW_T_NON_SPACE_OR_COMMENT,
+  SW_T_NON_SPACE_OR_COMMENT_OR_LINEBREAK,
+} from "./token";
 
 /** addOrRemoveTrailingComma(beforeEndOfScope:trailingCommaSupported:) for a known answer. */
 const swAddOrRemoveTrailingComma = (f: SwFormatter, endOfListIndex: i32, insert: boolean): void => {
@@ -61,7 +68,12 @@ export const swRuleTrailingCommas = (f: SwFormatter): void => {
       swAddOrRemoveTrailingComma(f, i, true);
       continue;
     }
-    if (st === SW_SCOPE_SUBSCRIPT || st === SW_SCOPE_CAPTURE_LIST || st === SW_SCOPE_FUNCTION_CALL || st === SW_SCOPE_PARAMETER_LIST) {
+    if (
+      st === SW_SCOPE_SUBSCRIPT ||
+      st === SW_SCOPE_CAPTURE_LIST ||
+      st === SW_SCOPE_FUNCTION_CALL ||
+      st === SW_SCOPE_PARAMETER_LIST
+    ) {
       swAddOrRemoveTrailingComma(f, i, false);
       continue;
     }

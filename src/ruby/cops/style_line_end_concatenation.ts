@@ -5,7 +5,17 @@
 
 import { RbCop } from "../cop";
 import { RbSource } from "../source";
-import { TK_tDOT, TK_tLBRACK2, TK_tLSHFT, TK_tPERCENT, TK_tPLUS, TK_tSTAR2, TK_tSTRING, TK_tSTRING_BEG, TK_tSTRING_END } from "../tables";
+import {
+  TK_tDOT,
+  TK_tLBRACK2,
+  TK_tLSHFT,
+  TK_tPERCENT,
+  TK_tPLUS,
+  TK_tSTAR2,
+  TK_tSTRING,
+  TK_tSTRING_BEG,
+  TK_tSTRING_END,
+} from "../tables";
 
 /** standard_string_literal?. */
 const rbLecStandard = (src: RbSource, i: i32): boolean => {
@@ -34,7 +44,11 @@ export class CopStyleLineEndConcatenation {
     for (let i = 0; i + 2 < nt; i++) {
       const op = i + 1;
       const succ = i + 2;
-      if (!rbLecStandard(src, succ) || (src.tokT[op] !== TK_tPLUS && src.tokT[op] !== TK_tLSHFT) || !rbLecStandard(src, i)) {
+      if (
+        !rbLecStandard(src, succ) ||
+        (src.tokT[op] !== TK_tPLUS && src.tokT[op] !== TK_tLSHFT) ||
+        !rbLecStandard(src, i)
+      ) {
         continue;
       }
       if (src.line(src.tokS[op]) === src.line(src.tokS[succ])) {

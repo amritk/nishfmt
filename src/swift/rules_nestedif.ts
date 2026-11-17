@@ -65,7 +65,7 @@ const swHasCommentDirective = (f: SwFormatter, lo: i32, hi: i32): boolean => {
   return false;
 };
 
-const swHasMultilineString =(f: SwFormatter, lo: i32, hi: i32): boolean => {
+const swHasMultilineString = (f: SwFormatter, lo: i32, hi: i32): boolean => {
   for (let j = lo; j < hi; j++) {
     if (swIsMultilineStringDelimiter(f.k(j), f.s(j))) {
       return true;
@@ -75,7 +75,13 @@ const swHasMultilineString =(f: SwFormatter, lo: i32, hi: i32): boolean => {
 };
 
 /** replaceNestedIfIndentation(_:with:after:through:). */
-const swReplaceNestedIfIndentation = (f: SwFormatter, oldIndent: string, newIndent: string, lowerBound: i32, upperBound0: i32): void => {
+const swReplaceNestedIfIndentation = (
+  f: SwFormatter,
+  oldIndent: string,
+  newIndent: string,
+  lowerBound: i32,
+  upperBound0: i32,
+): void => {
   if (oldIndent === newIndent) {
     return;
   }
@@ -136,7 +142,12 @@ const swFlattenElseIf = (f: SwFormatter, ifIndex: i32): boolean => {
   if (f.indexAfter(SW_T_NON_SPACE_OR_COMMENT_OR_LINEBREAK, nestedEnd) !== oe) {
     return false;
   }
-  if (swHasComment(f, elseIndex + 1, nestedIfIndex) || swHasComment(f, nestedEnd + 1, oe) || swHasMultilineString(f, nestedIfIndex, nestedEnd + 1) || swHasCommentDirective(f, nestedIfIndex, nestedEnd + 1)) {
+  if (
+    swHasComment(f, elseIndex + 1, nestedIfIndex) ||
+    swHasComment(f, nestedEnd + 1, oe) ||
+    swHasMultilineString(f, nestedIfIndex, nestedEnd + 1) ||
+    swHasCommentDirective(f, nestedIfIndex, nestedEnd + 1)
+  ) {
     return false;
   }
   const outerIndent = f.currentIndentForLine(elseIndex);
@@ -249,7 +260,8 @@ const swMergeNestedIf = (f: SwFormatter, ifIndex: i32): boolean => {
   for (let q = 0; q < toI32(ccl.length); q += 2) {
     lines.push(f.slice(ccl[q], ccl[q + 1]));
   }
-  const wrapSeparator = lines.length === 0 && (swConditionsAreWrapped(f, ifIndex, obs) || swConditionsAreWrapped(f, nested, nbs));
+  const wrapSeparator =
+    lines.length === 0 && (swConditionsAreWrapped(f, ifIndex, obs) || swConditionsAreWrapped(f, nested, nbs));
   const conditionIndent = swSpaceEquivalentToTokens(f, f.startOfLine(ocs), ocs);
   const outerIndent = f.currentIndentForLine(ifIndex);
   const nestedIndent = f.currentIndentForLine(nested);

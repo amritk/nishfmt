@@ -19,7 +19,14 @@ import {
 import { SwDecl, SwFormatter } from "./formatter";
 import { swHasModifier, swIndexOfModifier, swStartOfModifiers } from "./modifiers";
 import { swIndexOfLastSignificantKeyword, swStartOfScope, SW_EX_WHERE } from "./parsing";
-import { SW_KEYWORD, SW_SPACE, SW_START, SW_T_NON_SPACE_OR_COMMENT, SW_T_NON_SPACE_OR_COMMENT_OR_LINEBREAK, SwTok } from "./token";
+import {
+  SW_KEYWORD,
+  SW_SPACE,
+  SW_START,
+  SW_T_NON_SPACE_OR_COMMENT,
+  SW_T_NON_SPACE_OR_COMMENT_OR_LINEBREAK,
+  SwTok,
+} from "./token";
 
 /** Visibility as a level: higher is more visible; -1 for none. */
 export const swVisLevel = (s: string): i32 => {
@@ -259,7 +266,10 @@ export const swRuleRedundantInternal = (f: SwFormatter): void => {
         const pt = f.indexBefore(SW_T_NON_SPACE_OR_COMMENT_OR_LINEBREAK, tk);
         if (pt >= 0) {
           const ps = f.s(pt);
-          if ((ps === "public" || ps === "package" || ps === "internal" || ps === "private" || ps === "fileprivate") && ps !== "internal") {
+          if (
+            (ps === "public" || ps === "package" || ps === "internal" || ps === "private" || ps === "fileprivate") &&
+            ps !== "internal"
+          ) {
             continue;
           }
         }

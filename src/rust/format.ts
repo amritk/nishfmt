@@ -148,7 +148,12 @@ const FN_MAIN_PREFIX: string = "fn main() {\n";
 const isStringKind = (k: i32): boolean => k === K_IN_STRING || k === K_START_STRING;
 
 /** format_code_block: the code wrapped in `fn main() {}`, formatted, then unwrapped. */
-export const rsFormatCodeBlock = (parent: RsCtx, code: string, cfg: RsConfig, isMacroDef: boolean): RsSnippet | null => {
+export const rsFormatCodeBlock = (
+  parent: RsCtx,
+  code: string,
+  cfg: RsConfig,
+  isMacroDef: boolean,
+): RsSnippet | null => {
   const indent = rsIndentStr(cfg, cfg.tabSpaces, 0);
   let wrapped = FN_MAIN_PREFIX;
   let needIndent = true;

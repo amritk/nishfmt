@@ -801,7 +801,12 @@ export class JParser {
       t.push(this.method(mods, start, typarams, -1, true));
       return;
     }
-    if (t.op[cls] === CK_RECORD && this.kindAt(0) === JK_IDENT && this.isAt(1, "{") && this.inp.sameText(this.tokAt(0), t.name[cls])) {
+    if (
+      t.op[cls] === CK_RECORD &&
+      this.kindAt(0) === JK_IDENT &&
+      this.isAt(1, "{") &&
+      this.inp.sameText(this.tokAt(0), t.name[cls])
+    ) {
       const n = t.node(N_METHOD, start);
       t.a[n] = mods;
       t.b[n] = typarams >= 0 ? typarams : t.empty();
@@ -928,7 +933,10 @@ export class JParser {
       t.flags[v] = FL_VARARGS;
     }
     // A receiver: `Type this` or `Type Outer.this`.
-    if (allowReceiver && (this.is("this") || (this.kindAt(0) === JK_IDENT && this.isAt(1, ".") && this.isAt(2, "this")))) {
+    if (
+      allowReceiver &&
+      (this.is("this") || (this.kindAt(0) === JK_IDENT && this.isAt(1, ".") && this.isAt(2, "this")))
+    ) {
       let ne = t.node(N_IDENTIFIER, this.pos());
       t.name[ne] = this.ident();
       this.finish(ne);
@@ -1104,7 +1112,13 @@ export class JParser {
         t.a[at] = annos;
         t.b[at] = s;
         e = this.finish(at);
-      } else if (this.kindAt(1) === JK_IDENT && !this.isAt(1, "class") && !this.isAt(1, "this") && !this.isAt(1, "new") && !this.isAt(1, "super")) {
+      } else if (
+        this.kindAt(1) === JK_IDENT &&
+        !this.isAt(1, "class") &&
+        !this.isAt(1, "this") &&
+        !this.isAt(1, "new") &&
+        !this.isAt(1, "super")
+      ) {
         this.next();
         const s = t.node(N_MEMBER_SELECT, start);
         t.a[s] = e;
@@ -1225,7 +1239,13 @@ export class JParser {
   private blockStatement(): void {
     const t = this.t;
     // Local classes and declarations with modifiers.
-    if (this.is("final") || this.is("abstract") || this.is("static") || this.is("strictfp") || (this.is("@") && !this.isAt(1, "interface"))) {
+    if (
+      this.is("final") ||
+      this.is("abstract") ||
+      this.is("static") ||
+      this.is("strictfp") ||
+      (this.is("@") && !this.isAt(1, "interface"))
+    ) {
       const mods = this.modifiers();
       if (this.isClassStart()) {
         t.push(this.classDecl(mods));
@@ -1297,20 +1317,36 @@ export class JParser {
     // Quick rejections.
     const n1 = this.tokAt(1);
     const inp = this.inp;
-    if (inp.is(n1, "=") || inp.is(n1, "(") || inp.is(n1, ";") || inp.is(n1, ":") || inp.is(n1, ")") || inp.is(n1, "+") || inp.is(n1, "-")) {
+    if (
+      inp.is(n1, "=") ||
+      inp.is(n1, "(") ||
+      inp.is(n1, ";") ||
+      inp.is(n1, ":") ||
+      inp.is(n1, ")") ||
+      inp.is(n1, "+") ||
+      inp.is(n1, "-")
+    ) {
       return false;
     }
     const m = new Mark();
     this.save(m);
     this.type();
-    const ok = !this.err && this.kindAt(0) === JK_IDENT && !isJavaKeyword(this.inp, this.tokAt(0)) && this.declaratorFollows(1);
+    const ok =
+      !this.err && this.kindAt(0) === JK_IDENT && !isJavaKeyword(this.inp, this.tokAt(0)) && this.declaratorFollows(1);
     this.restore(m);
     return ok;
   }
 
   /** What may follow a declared name. */
   private declaratorFollows(i: i32): boolean {
-    return this.isAt(i, "=") || this.isAt(i, ";") || this.isAt(i, ",") || this.isAt(i, "[") || this.isAt(i, ":") || this.isAt(i, ")");
+    return (
+      this.isAt(i, "=") ||
+      this.isAt(i, ";") ||
+      this.isAt(i, ",") ||
+      this.isAt(i, "[") ||
+      this.isAt(i, ":") ||
+      this.isAt(i, ")")
+    );
   }
 
   private isYieldStatement(): boolean {
@@ -1680,7 +1716,13 @@ export class JParser {
     } else {
       this.expect(":");
       const sm = t.mark();
-      while (!this.is("case") && !(this.is("default") && (this.isAt(1, ":") || this.op2At(1, "-", ">"))) && !this.is("}") && !this.atEof() && !this.err) {
+      while (
+        !this.is("case") &&
+        !(this.is("default") && (this.isAt(1, ":") || this.op2At(1, "-", ">"))) &&
+        !this.is("}") &&
+        !this.atEof() &&
+        !this.err
+      ) {
         this.blockStatement();
       }
       t.c[n] = t.list(sm);
@@ -2326,7 +2368,15 @@ export class JParser {
     const t = this.t;
     const start = this.pos();
     const k = this.kindAt(0);
-    if (k === JK_NUMBER || k === JK_STRING || k === JK_CHAR || k === JK_TEXT_BLOCK || this.is("true") || this.is("false") || this.is("null")) {
+    if (
+      k === JK_NUMBER ||
+      k === JK_STRING ||
+      k === JK_CHAR ||
+      k === JK_TEXT_BLOCK ||
+      this.is("true") ||
+      this.is("false") ||
+      this.is("null")
+    ) {
       return this.literal();
     }
     if (this.is("(")) {
@@ -2650,7 +2700,14 @@ export const isJavaKeyword = (inp: GInput, t: i32): boolean => {
     case 98:
       return inp.is(t, "boolean") || inp.is(t, "break") || inp.is(t, "byte");
     case 99:
-      return inp.is(t, "case") || inp.is(t, "catch") || inp.is(t, "char") || inp.is(t, "class") || inp.is(t, "const") || inp.is(t, "continue");
+      return (
+        inp.is(t, "case") ||
+        inp.is(t, "catch") ||
+        inp.is(t, "char") ||
+        inp.is(t, "class") ||
+        inp.is(t, "const") ||
+        inp.is(t, "continue")
+      );
     case 100:
       return inp.is(t, "default") || inp.is(t, "do") || inp.is(t, "double");
     case 101:
@@ -2660,7 +2717,14 @@ export const isJavaKeyword = (inp: GInput, t: i32): boolean => {
     case 103:
       return inp.is(t, "goto");
     case 105:
-      return inp.is(t, "if") || inp.is(t, "implements") || inp.is(t, "import") || inp.is(t, "instanceof") || inp.is(t, "int") || inp.is(t, "interface");
+      return (
+        inp.is(t, "if") ||
+        inp.is(t, "implements") ||
+        inp.is(t, "import") ||
+        inp.is(t, "instanceof") ||
+        inp.is(t, "int") ||
+        inp.is(t, "interface")
+      );
     case 108:
       return inp.is(t, "long");
     case 110:
@@ -2670,9 +2734,23 @@ export const isJavaKeyword = (inp: GInput, t: i32): boolean => {
     case 114:
       return inp.is(t, "return");
     case 115:
-      return inp.is(t, "short") || inp.is(t, "static") || inp.is(t, "strictfp") || inp.is(t, "super") || inp.is(t, "switch") || inp.is(t, "synchronized");
+      return (
+        inp.is(t, "short") ||
+        inp.is(t, "static") ||
+        inp.is(t, "strictfp") ||
+        inp.is(t, "super") ||
+        inp.is(t, "switch") ||
+        inp.is(t, "synchronized")
+      );
     case 116:
-      return inp.is(t, "this") || inp.is(t, "throw") || inp.is(t, "throws") || inp.is(t, "transient") || inp.is(t, "try") || inp.is(t, "true");
+      return (
+        inp.is(t, "this") ||
+        inp.is(t, "throw") ||
+        inp.is(t, "throws") ||
+        inp.is(t, "transient") ||
+        inp.is(t, "try") ||
+        inp.is(t, "true")
+      );
     case 118:
       return inp.is(t, "void") || inp.is(t, "volatile");
     case 119:

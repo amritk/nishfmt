@@ -77,10 +77,12 @@ import { TK_kRESCUE_MOD } from "../tables";
 export const ssxIs = (src: RbSource, n: i32, t: i32): boolean => src.a.isNode(n) && src.a.type(n) === t;
 
 /** call_type?: send or csend. */
-export const ssxIsCall = (src: RbSource, n: i32): boolean => src.a.isNode(n) && (src.a.type(n) === NT_SEND || src.a.type(n) === NT_CSEND);
+export const ssxIsCall = (src: RbSource, n: i32): boolean =>
+  src.a.isNode(n) && (src.a.type(n) === NT_SEND || src.a.type(n) === NT_CSEND);
 
 /** any_block_type?: block or numblock. */
-export const ssxIsAnyBlock = (src: RbSource, n: i32): boolean => src.a.isNode(n) && (src.a.type(n) === NT_BLOCK || src.a.type(n) === NT_NUMBLOCK);
+export const ssxIsAnyBlock = (src: RbSource, n: i32): boolean =>
+  src.a.isNode(n) && (src.a.type(n) === NT_BLOCK || src.a.type(n) === NT_NUMBLOCK);
 
 /** The method name of a send/csend ("" for other nodes). */
 export const ssxMeth = (src: RbSource, n: i32): string => {
@@ -124,13 +126,15 @@ export const ssxFE = (src: RbSource, n: i32, f: i32): i32 => src.a.fE(src.a.map(
 export const ssxParenthesized = (src: RbSource, n: i32): boolean => ssxLocIs(src, n, F_END, ")");
 
 /** command?(name): no receiver, that method. */
-export const ssxCommand = (src: RbSource, n: i32, name: string): boolean => ssxIsCall(src, n) && src.a.kid(n, 0) === V_NIL && ssxMeth(src, n) === name;
+export const ssxCommand = (src: RbSource, n: i32, name: string): boolean =>
+  ssxIsCall(src, n) && src.a.kid(n, 0) === V_NIL && ssxMeth(src, n) === name;
 
 /** setter_method?: the send has an operator (`a.b = c`). */
 export const ssxSetter = (src: RbSource, n: i32): boolean => ssxHas(src, n, F_OPERATOR);
 
 /** MethodIdentifierPredicates#operator_method? */
-export const ssxOperatorName = (m: string): boolean => ssxInList(" | ^ & <=> == === =~ > >= < <= << >> + - * / % ** ~ +@ -@ !@ ~@ [] []= ! != !~ ` ", m);
+export const ssxOperatorName = (m: string): boolean =>
+  ssxInList(" | ^ & <=> == === =~ > >= < <= << >> + - * / % ** ~ +@ -@ !@ ~@ [] []= ! != !~ ` ", m);
 
 /** Whether m is one of the space-separated words of list (which starts and ends with a space). */
 export const ssxInList = (list: string, m: string): boolean => m.length > 0 && list.indexOf(` ${m} `) >= 0;
@@ -144,7 +148,17 @@ export const ssxAssignment = (src: RbSource, n: i32): boolean => {
   if (t === NT_SEND || t === NT_CSEND) {
     return ssxSetter(src, n);
   }
-  return t === NT_LVASGN || t === NT_IVASGN || t === NT_CVASGN || t === NT_GVASGN || t === NT_CASGN || t === NT_MASGN || t === NT_OP_ASGN || t === NT_OR_ASGN || t === NT_AND_ASGN;
+  return (
+    t === NT_LVASGN ||
+    t === NT_IVASGN ||
+    t === NT_CVASGN ||
+    t === NT_GVASGN ||
+    t === NT_CASGN ||
+    t === NT_MASGN ||
+    t === NT_OP_ASGN ||
+    t === NT_OR_ASGN ||
+    t === NT_AND_ASGN
+  );
 };
 
 /** Node#argument?: one of a send parent's arguments. */
@@ -187,13 +201,16 @@ export const ssxBlockLiteral = (src: RbSource, n: i32): boolean => {
 };
 
 /** The def's argument node (def: kid 1, defs: kid 2). */
-export const ssxDefArgs = (src: RbSource, n: i32): i32 => (src.a.type(n) === NT_DEF ? src.a.kid(n, 1) : src.a.kid(n, 2));
+export const ssxDefArgs = (src: RbSource, n: i32): i32 =>
+  src.a.type(n) === NT_DEF ? src.a.kid(n, 1) : src.a.kid(n, 2);
 
 /** The def's body (def: kid 2, defs: kid 3). */
-export const ssxDefBody = (src: RbSource, n: i32): i32 => (src.a.type(n) === NT_DEF ? src.a.kid(n, 2) : src.a.kid(n, 3));
+export const ssxDefBody = (src: RbSource, n: i32): i32 =>
+  src.a.type(n) === NT_DEF ? src.a.kid(n, 2) : src.a.kid(n, 3);
 
 /** The def's name. */
-export const ssxDefName = (src: RbSource, n: i32): string => (src.a.type(n) === NT_DEF ? src.a.text(src.a.kid(n, 0)) : src.a.text(src.a.kid(n, 1)));
+export const ssxDefName = (src: RbSource, n: i32): string =>
+  src.a.type(n) === NT_DEF ? src.a.text(src.a.kid(n, 0)) : src.a.text(src.a.kid(n, 1));
 
 /** DefNode#endless?: no `end`. */
 export const ssxEndless = (src: RbSource, n: i32): boolean => !ssxHas(src, n, F_END);
@@ -235,7 +252,8 @@ export const ssxCommentsInLines = (src: RbSource, l1: i32, l2: i32): boolean => 
 export const ssxIsSpace = (c: i32): boolean => c === 32 || c === 9 || c === 10 || c === 11 || c === 12 || c === 13;
 
 /** Ruby's \w: [a-zA-Z0-9_]. */
-export const ssxIsWord = (c: i32): boolean => (c >= 48 && c <= 57) || (c >= 65 && c <= 90) || (c >= 97 && c <= 122) || c === 95;
+export const ssxIsWord = (c: i32): boolean =>
+  (c >= 48 && c <= 57) || (c >= 65 && c <= 90) || (c >= 97 && c <= 122) || c === 95;
 
 /** Whether every code point of a string satisfies \w (s is UTF-8 bytes; non-ASCII bytes fail). */
 export const ssxAllWord = (s: string, from: i32, to: i32): boolean => {
@@ -253,7 +271,18 @@ export const ssxBasicLiteral = (src: RbSource, n: i32): boolean => {
     return false;
   }
   const t = src.a.type(n);
-  return t === NT_STR || t === NT_INT || t === NT_FLOAT || t === NT_SYM || t === NT_TRUE || t === NT_FALSE || t === NT_NIL || t === NT_COMPLEX || t === NT_RATIONAL || t === NT_REGOPT;
+  return (
+    t === NT_STR ||
+    t === NT_INT ||
+    t === NT_FLOAT ||
+    t === NT_SYM ||
+    t === NT_TRUE ||
+    t === NT_FALSE ||
+    t === NT_NIL ||
+    t === NT_COMPLEX ||
+    t === NT_RATIONAL ||
+    t === NT_REGOPT
+  );
 };
 
 /** range_by_whole_lines: the start of the line holding s. */
@@ -310,9 +339,11 @@ export const ssxSiblingIndex = (src: RbSource, n: i32): i32 => {
 };
 
 /** The selector range start (MethodDispatchNode#selector: keyword, else selector). */
-export const ssxSelS = (src: RbSource, n: i32): i32 => (ssxHas(src, n, F_KEYWORD) ? ssxFS(src, n, F_KEYWORD) : ssxFS(src, n, F_SELECTOR));
+export const ssxSelS = (src: RbSource, n: i32): i32 =>
+  ssxHas(src, n, F_KEYWORD) ? ssxFS(src, n, F_KEYWORD) : ssxFS(src, n, F_SELECTOR);
 
-export const ssxSelE = (src: RbSource, n: i32): i32 => (ssxHas(src, n, F_KEYWORD) ? ssxFE(src, n, F_KEYWORD) : ssxFE(src, n, F_SELECTOR));
+export const ssxSelE = (src: RbSource, n: i32): i32 =>
+  ssxHas(src, n, F_KEYWORD) ? ssxFE(src, n, F_KEYWORD) : ssxFE(src, n, F_SELECTOR);
 
 /** MethodDispatchNode#dot? */
 export const ssxDot = (src: RbSource, n: i32): boolean => ssxLocIs(src, n, F_DOT, ".");
@@ -442,7 +473,8 @@ export const ssxInMacroScope = (src: RbSource, n: i32): boolean => {
 };
 
 /** MethodDispatchNode#macro?: no receiver, in macro scope (send nodes). */
-export const ssxMacro = (src: RbSource, n: i32): boolean => ssxIs(src, n, NT_SEND) && src.a.kid(n, 0) === V_NIL && ssxInMacroScope(src, n);
+export const ssxMacro = (src: RbSource, n: i32): boolean =>
+  ssxIs(src, n, NT_SEND) && src.a.kid(n, 0) === V_NIL && ssxInMacroScope(src, n);
 
 /** MethodDispatchNode#access_modifier?: a macro `public`, `protected`, `private` or `module_function`. */
 export const ssxAccessModifier = (src: RbSource, n: i32): boolean => {

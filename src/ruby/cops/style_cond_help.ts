@@ -54,7 +54,19 @@ import {
   V_NIL,
 } from "../ast";
 import { RbSource } from "../source";
-import { ssxAssignment, ssxDescendants, ssxFE, ssxFS, ssxHas, ssxIs, ssxIsCall, ssxIsSpace, ssxLocIs, ssxMeth, ssxParenthesized } from "./style_syntax_help";
+import {
+  ssxAssignment,
+  ssxDescendants,
+  ssxFE,
+  ssxFS,
+  ssxHas,
+  ssxIs,
+  ssxIsCall,
+  ssxIsSpace,
+  ssxLocIs,
+  ssxMeth,
+  ssxParenthesized,
+} from "./style_syntax_help";
 
 // ---- IfNode, WhileNode, UntilNode -------------------------------------------------
 
@@ -147,7 +159,8 @@ export const scnIfBranch = (src: RbSource, n: i32): i32 => (scnUnless(src, n) ? 
 export const scnElseBranch = (src: RbSource, n: i32): i32 => (scnUnless(src, n) ? src.a.kid(n, 1) : src.a.kid(n, 2));
 
 /** ConditionalNode#body: the if branch of an if, the body of a while/until. */
-export const scnBody = (src: RbSource, n: i32): i32 => (src.a.type(n) === NT_IF ? scnIfBranch(src, n) : src.a.kid(n, 1));
+export const scnBody = (src: RbSource, n: i32): i32 =>
+  src.a.type(n) === NT_IF ? scnIfBranch(src, n) : src.a.kid(n, 1);
 
 /** IfNode#elsif_conditional?: the else branch is an elsif. */
 export const scnElsifConditional = (src: RbSource, n: i32): boolean => {
@@ -248,7 +261,8 @@ export const scnChained = (src: RbSource, n: i32): boolean => {
 export const scnOperatorKeyword = (src: RbSource, n: i32): boolean => ssxIs(src, n, NT_AND) || ssxIs(src, n, NT_OR);
 
 /** any_def_type? and endless? */
-export const scnEndlessDef = (src: RbSource, n: i32): boolean => (ssxIs(src, n, NT_DEF) || ssxIs(src, n, NT_DEFS)) && !ssxHas(src, n, F_END);
+export const scnEndlessDef = (src: RbSource, n: i32): boolean =>
+  (ssxIs(src, n, NT_DEF) || ssxIs(src, n, NT_DEFS)) && !ssxHas(src, n, F_END);
 
 /** Node#source_range.size == 0. */
 export const scnEmptySource = (src: RbSource, n: i32): boolean => src.a.exE(n) - src.a.exS(n) === 0;
@@ -346,7 +360,13 @@ const scnMagicComment = (t: string): boolean => {
     i++;
   }
   const rest = t.substring(i, k);
-  if (!(rest.startsWith("frozen_string_literal:") || rest.startsWith("warn_indent:") || rest.startsWith("warn_past_scope:"))) {
+  if (
+    !(
+      rest.startsWith("frozen_string_literal:") ||
+      rest.startsWith("warn_indent:") ||
+      rest.startsWith("warn_past_scope:")
+    )
+  ) {
     return false;
   }
   return !emacs || t.endsWith("-*-");
@@ -473,7 +493,14 @@ export class ScnAssoc {
         out.push(c);
       }
     }
-    if (t === NT_IF || t === NT_WHILE || t === NT_WHILE_POST || t === NT_UNTIL || t === NT_UNTIL_POST || t === NT_MASGN) {
+    if (
+      t === NT_IF ||
+      t === NT_WHILE ||
+      t === NT_WHILE_POST ||
+      t === NT_UNTIL ||
+      t === NT_UNTIL_POST ||
+      t === NT_MASGN
+    ) {
       // sort_by begin_pos
       for (let i = 1; i < toI32(out.length); i++) {
         let j = i;
@@ -587,7 +614,8 @@ export const scnIndentDiff = (s: string): i32 => {
 /** LineLengthHelp#line_length. */
 export const scnLineLength = (s: string): i32 => scnLen(s) + scnIndentDiff(s);
 
-const scnWordChar = (c: i32): boolean => (c >= 48 && c <= 57) || (c >= 65 && c <= 90) || (c >= 97 && c <= 122) || c === 95 || c >= 0x80;
+const scnWordChar = (c: i32): boolean =>
+  (c >= 48 && c <= 57) || (c >= 65 && c <= 90) || (c >= 97 && c <= 122) || c === 95 || c >= 0x80;
 
 const SCN_MODES: string = "disable-next enable-next todo-next disable enable push todo next pop";
 
@@ -941,7 +969,8 @@ export const scnModifierFits = (src: RbSource, n: i32, cop: string): boolean => 
 };
 
 /** kwbegin or conditional body (WhileUntilModifier's non_eligible_body? additions). */
-export const scnKwbeginOrConditional = (src: RbSource, b: i32): boolean => scnConditional(src, b) || ssxIs(src, b, NT_KWBEGIN);
+export const scnKwbeginOrConditional = (src: RbSource, b: i32): boolean =>
+  scnConditional(src, b) || ssxIs(src, b, NT_KWBEGIN);
 
 /** The heredoc range (body through end) of a heredoc string node: [s, e]. */
 export const scnHeredocRange = (src: RbSource, h: i32): i32[] => {

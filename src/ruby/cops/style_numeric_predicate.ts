@@ -10,7 +10,8 @@ import { RbSource } from "../source";
 import { ssxIntValue, ssxIs, ssxMeth } from "./style_syntax_help";
 
 /** (send _ :& _). */
-const rbNpAnd = (src: RbSource, n: i32): boolean => ssxIs(src, n, NT_SEND) && ssxMeth(src, n) === "&" && src.a.nKid(n) === 3;
+const rbNpAnd = (src: RbSource, n: i32): boolean =>
+  ssxIs(src, n, NT_SEND) && ssxMeth(src, n) === "&" && src.a.nKid(n) === 3;
 
 /** (int 0). */
 const rbNpZero = (src: RbSource, h: i32): boolean => ssxIs(src, h, NT_INT) && ssxIntValue(src, h) === 0;
@@ -53,7 +54,10 @@ export class CopStyleNumericPredicate {
       }
       // handled_by_bitwise_predicate? (Style/BitwisePredicate's Enabled is `pending`, which is truthy)
       if (m === "==" || m === ">") {
-        if (rbNpZero(src, x) && (rbNpAnd(src, r) || (ssxIs(src, r, NT_BEGIN) && a.nKid(r) === 1 && rbNpAnd(src, a.kid(r, 0))))) {
+        if (
+          rbNpZero(src, x) &&
+          (rbNpAnd(src, r) || (ssxIs(src, r, NT_BEGIN) && a.nKid(r) === 1 && rbNpAnd(src, a.kid(r, 0))))
+        ) {
           continue;
         }
       }

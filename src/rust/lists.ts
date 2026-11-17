@@ -4,13 +4,7 @@
 // Developers): lists.rs, config/lists.rs.
 
 import { RsCtx } from "./context";
-import {
-  rsFindCommentEnd,
-  rsFindUncommented,
-  rsFirstLineWidth,
-  rsLastLineWidth,
-  rsRewriteComment,
-} from "./comment";
+import { rsFindCommentEnd, rsFindUncommented, rsFirstLineWidth, rsLastLineWidth, rsRewriteComment } from "./comment";
 import { RsConfig, RsShape, rsIndentStr, rsShapeLegacy } from "./shape";
 import {
   RsStrBuf,
@@ -77,7 +71,9 @@ export class RsListItem {
   isMultiline(): boolean {
     const pre = this.pre;
     const post = this.post;
-    return rsHasByte(this.inner(), 10) || (pre !== null && rsHasByte(pre, 10)) || (post !== null && rsHasByte(post, 10));
+    return (
+      rsHasByte(this.inner(), 10) || (pre !== null && rsHasByte(pre, 10)) || (post !== null && rsHasByte(post, 10))
+    );
   }
 
   hasSingleLineComment(): boolean {
@@ -390,9 +386,22 @@ export const rsWriteList = (items: RsListItem[], f: RsListFormatting): string | 
       if (!startsWithNewline(comment)) {
         if (f.alignComments) {
           let align = postCommentAlignment(st.itemMaxWidth, rsWidth(innerItem));
-          if (rsFirstLineWidth(formatted) + rsLastLineWidth(result.lastLine(), f.cfg.tabSpaces) + align + 1 > f.cfg.maxWidth) {
+          if (
+            rsFirstLineWidth(formatted) + rsLastLineWidth(result.lastLine(), f.cfg.tabSpaces) + align + 1 >
+            f.cfg.maxWidth
+          ) {
             st.itemMaxWidth = -1;
-            const formatted1 = rewritePostComment(st, items, i, last, innerItem, comment, overhead, itemLastLineWidth, f);
+            const formatted1 = rewritePostComment(
+              st,
+              items,
+              i,
+              last,
+              innerItem,
+              comment,
+              overhead,
+              itemLastLineWidth,
+              f,
+            );
             if (formatted1 === null) {
               return null;
             }
@@ -465,7 +474,12 @@ const trimSpTab = (s: string): string => {
 };
 
 /** extract_post_comment. */
-export const rsExtractPostComment = (postSnippet: string, commentEnd: i32, separator: string, isLast: boolean): string | null => {
+export const rsExtractPostComment = (
+  postSnippet: string,
+  commentEnd: i32,
+  separator: string,
+  isLast: boolean,
+): string | null => {
   const ps = rsTrim(postSnippet.slice(0, commentEnd));
   let lastInlineEndsWithSep = false;
   if (isLast) {
@@ -641,7 +655,12 @@ export const rsShapeForTactic = (tactic: i32, h: RsShape | null, v: RsShape): Rs
   return v;
 };
 
-export const rsStructLitFormatting = (shape: RsShape, tactic: i32, ctx: RsCtx, forceNoTrailingComma: boolean): RsListFormatting => {
+export const rsStructLitFormatting = (
+  shape: RsShape,
+  tactic: i32,
+  ctx: RsCtx,
+  forceNoTrailingComma: boolean,
+): RsListFormatting => {
   const f = new RsListFormatting(shape, ctx.cfg);
   f.tactic = tactic;
   f.separator = ",";

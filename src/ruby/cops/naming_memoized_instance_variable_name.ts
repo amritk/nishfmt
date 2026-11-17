@@ -54,7 +54,11 @@ const nmivFind = (src: RbSource, n: i32): NmivDef => {
       if (a.isNode(s) && a.type(s) === NT_SEND && a.nKid(s) === 3) {
         const m = a.text(a.kid(s, 1));
         const arg = a.kid(s, 2);
-        if ((m === "define_method" || m === "define_singleton_method") && a.isNode(arg) && (a.type(arg) === NT_SYM || a.type(arg) === NT_STR)) {
+        if (
+          (m === "define_method" || m === "define_singleton_method") &&
+          a.isNode(arg) &&
+          (a.type(arg) === NT_SYM || a.type(arg) === NT_STR)
+        ) {
           return new NmivDef(p, a.text(a.kid(arg, 0)));
         }
       }
@@ -96,7 +100,12 @@ const nmivNameable = (name: string): boolean => {
 
 /** matches?: the variable is one of the method name's candidates (or the method initializes). */
 const nmivMatches = (method: string, ivar: string): boolean => {
-  if (method === "initialize" || method === "initialize_clone" || method === "initialize_copy" || method === "initialize_dup") {
+  if (
+    method === "initialize" ||
+    method === "initialize_clone" ||
+    method === "initialize_copy" ||
+    method === "initialize_dup"
+  ) {
     return true;
   }
   const m = nmivStrip(method);
@@ -179,7 +188,12 @@ export class CopNamingMemoizedInstanceVariableName {
     }
     const cond = a.kid(first, 0);
     const ret = a.kid(first, 1);
-    if (!a.isNode(cond) || a.type(cond) !== NT_DEFINED_P || a.nKid(cond) !== 1 || !nmivIvar(src, a.kid(cond, 0), name)) {
+    if (
+      !a.isNode(cond) ||
+      a.type(cond) !== NT_DEFINED_P ||
+      a.nKid(cond) !== 1 ||
+      !nmivIvar(src, a.kid(cond, 0), name)
+    ) {
       return;
     }
     if (!a.isNode(ret) || a.type(ret) !== NT_RETURN || a.nKid(ret) !== 1 || !nmivIvar(src, a.kid(ret, 0), name)) {

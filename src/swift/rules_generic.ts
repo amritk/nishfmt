@@ -118,7 +118,9 @@ const swParseGenericTypes = (f: SwFormatter, start: i32, types: SwGenType[]): i3
       gi = toI32(types.length) - 1;
     }
     if (rhsLo >= 0 && ct >= 0) {
-      types[gi].confs.push(new SwGenConf(swStringExcludingLinebreaksAndComments(f, rhsLo, rhsHi + 1), full, ct, lhs, cur));
+      types[gi].confs.push(
+        new SwGenConf(swStringExcludingLinebreaksAndComments(f, rhsLo, rhsHi + 1), full, ct, lhs, cur),
+      );
     }
     if (!more) {
       break;

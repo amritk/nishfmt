@@ -3,7 +3,23 @@
 // Ported from RuboCop 1.92.2 (MIT License, Copyright (c) 2012-24 Bozhidar
 // Batsov).
 
-import { F_BEGIN, F_COLON, F_END, F_QUESTION, NT_BEGIN, NT_BREAK, NT_CSEND, NT_DEFINED_P, NT_IF, NT_NEXT, NT_RETURN, NT_SEND, NT_SUPER, NT_YIELD, V_NIL } from "../ast";
+import {
+  F_BEGIN,
+  F_COLON,
+  F_END,
+  F_QUESTION,
+  NT_BEGIN,
+  NT_BREAK,
+  NT_CSEND,
+  NT_DEFINED_P,
+  NT_IF,
+  NT_NEXT,
+  NT_RETURN,
+  NT_SEND,
+  NT_SUPER,
+  NT_YIELD,
+  V_NIL,
+} from "../ast";
 import { RbCop } from "../cop";
 import { rbSpaceBegin, rbSpaceEnd } from "../help";
 import { RbSource } from "../source";
@@ -78,7 +94,10 @@ export class CopStyleNestedTernaryOperator {
     if (t === NT_RETURN || t === NT_BREAK || t === NT_NEXT) {
       return true;
     }
-    if (!(t === NT_SEND || t === NT_CSEND || t === NT_SUPER || t === NT_YIELD || t === NT_DEFINED_P) || ssxParenthesized(src, p)) {
+    if (
+      !(t === NT_SEND || t === NT_CSEND || t === NT_SUPER || t === NT_YIELD || t === NT_DEFINED_P) ||
+      ssxParenthesized(src, p)
+    ) {
       return false;
     }
     if (stpPrefixNot(src, p)) {

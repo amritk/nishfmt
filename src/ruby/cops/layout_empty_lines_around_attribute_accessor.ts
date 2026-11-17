@@ -64,7 +64,13 @@ export class CopLayoutEmptyLinesAroundAttributeAccessor {
       }
       if (a.type(sib) === NT_SEND) {
         const m = a.text(a.kid(sib, 1));
-        if (rbAttrAccAccessor(src, sib) || m === "alias_method" || m === "public" || m === "protected" || m === "private") {
+        if (
+          rbAttrAccAccessor(src, sib) ||
+          m === "alias_method" ||
+          m === "public" ||
+          m === "protected" ||
+          m === "private"
+        ) {
           continue;
         }
       }

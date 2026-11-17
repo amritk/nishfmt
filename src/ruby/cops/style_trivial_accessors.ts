@@ -4,12 +4,39 @@
 // Ported from RuboCop 1.92.2 (MIT License, Copyright (c) 2012-24 Bozhidar
 // Batsov).
 
-import { F_KEYWORD, NT_ARG, NT_ARGS, NT_CLASS, NT_DEF, NT_DEFS, NT_IVAR, NT_IVASGN, NT_LVAR, NT_MODULE, NT_SCLASS, NT_SELF, NT_SEND, V_NIL } from "../ast";
+import {
+  F_KEYWORD,
+  NT_ARG,
+  NT_ARGS,
+  NT_CLASS,
+  NT_DEF,
+  NT_DEFS,
+  NT_IVAR,
+  NT_IVASGN,
+  NT_LVAR,
+  NT_MODULE,
+  NT_SCLASS,
+  NT_SELF,
+  NT_SEND,
+  V_NIL,
+} from "../ast";
 import { RbCop } from "../cop";
 import { RbSource } from "../source";
-import { ssxDefArgs, ssxDefBody, ssxDefName, ssxFE, ssxFS, ssxInList, ssxIs, ssxIsAnyBlock, ssxMeth, ssxSymText } from "./style_syntax_help";
+import {
+  ssxDefArgs,
+  ssxDefBody,
+  ssxDefName,
+  ssxFE,
+  ssxFS,
+  ssxInList,
+  ssxIs,
+  ssxIsAnyBlock,
+  ssxMeth,
+  ssxSymText,
+} from "./style_syntax_help";
 
-const SSX_TA_ALLOWED: string = " to_ary to_a to_c to_enum to_h to_hash to_i to_int to_io to_open to_path to_proc to_r to_regexp to_str to_s to_sym initialize ";
+const SSX_TA_ALLOWED: string =
+  " to_ary to_a to_c to_enum to_h to_hash to_i to_int to_io to_open to_path to_proc to_r to_regexp to_str to_s to_sym initialize ";
 
 /** MethodIdentifierPredicates#assignment_method? */
 const ssxTaAssignmentMethod = (m: string): boolean => !ssxInList(" == === != <= >= > < ", m) && m.endsWith("=");
@@ -25,12 +52,18 @@ const ssxTaNamesMatch = (src: RbSource, n: i32): boolean => {
   return iv.length > 0 && m === iv.substring(1, toI32(iv.length));
 };
 
-const ssxTaAllowedName = (src: RbSource, n: i32): boolean => ssxInList(SSX_TA_ALLOWED, ssxDefName(src, n)) || !ssxTaNamesMatch(src, n);
+const ssxTaAllowedName = (src: RbSource, n: i32): boolean =>
+  ssxInList(SSX_TA_ALLOWED, ssxDefName(src, n)) || !ssxTaNamesMatch(src, n);
 
 const ssxTaReader = (src: RbSource, n: i32): boolean => {
   const args = ssxDefArgs(src, n);
   const body = ssxDefBody(src, n);
-  return src.a.nKid(args) === 0 && ssxIs(src, body, NT_IVAR) && !ssxTaAllowedName(src, n) && !ssxDefName(src, n).endsWith("?");
+  return (
+    src.a.nKid(args) === 0 &&
+    ssxIs(src, body, NT_IVAR) &&
+    !ssxTaAllowedName(src, n) &&
+    !ssxDefName(src, n).endsWith("?")
+  );
 };
 
 const ssxTaWriter = (src: RbSource, n: i32): boolean => {

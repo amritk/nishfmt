@@ -28,7 +28,20 @@ import {
 } from "../ast";
 import { RbCop } from "../cop";
 import { RbSource } from "../source";
-import { ssxArgc, ssxCommentsInLines, ssxFE, ssxFS, ssxHas, ssxIs, ssxIsCall, ssxMeth, ssxParenthesized, ssxSelE, ssxSelS, ssxSymText } from "./style_syntax_help";
+import {
+  ssxArgc,
+  ssxCommentsInLines,
+  ssxFE,
+  ssxFS,
+  ssxHas,
+  ssxIs,
+  ssxIsCall,
+  ssxMeth,
+  ssxParenthesized,
+  ssxSelE,
+  ssxSelS,
+  ssxSymText,
+} from "./style_syntax_help";
 import { ssxVerifiedRemovals } from "./style_syntax_reparse";
 
 /** MlhsNode#assignments, flattened into out. */
@@ -61,7 +74,15 @@ const ssxMcwapSameNameAssignment = (src: RbSource, n: i32): boolean => {
   while (p !== V_NIL) {
     const t = a.type(p);
     const shorthand = t === NT_OP_ASGN || t === NT_OR_ASGN || t === NT_AND_ASGN;
-    if (shorthand || t === NT_LVASGN || t === NT_IVASGN || t === NT_CVASGN || t === NT_GVASGN || t === NT_CASGN || t === NT_MASGN) {
+    if (
+      shorthand ||
+      t === NT_LVASGN ||
+      t === NT_IVASGN ||
+      t === NT_CVASGN ||
+      t === NT_GVASGN ||
+      t === NT_CASGN ||
+      t === NT_MASGN
+    ) {
       if (!(shorthand && ssxIsCall(src, a.kid(p, 0)))) {
         if (t === NT_MASGN) {
           const asg: i32[] = [];
@@ -116,7 +137,11 @@ export class CopStyleMethodCallWithoutArgsParentheses {
       if (m === "call" && ssxSelS(src, n) < 0) {
         continue;
       }
-      if (m === "!" && a.kid(n, 0) !== V_NIL && src.src(ssxFS(src, n, F_SELECTOR), ssxFE(src, n, F_SELECTOR)) === "not") {
+      if (
+        m === "!" &&
+        a.kid(n, 0) !== V_NIL &&
+        src.src(ssxFS(src, n, F_SELECTOR), ssxFE(src, n, F_SELECTOR)) === "not"
+      ) {
         continue;
       }
       // default_argument?
@@ -134,7 +159,8 @@ export class CopStyleMethodCallWithoutArgsParentheses {
           b = src.parent(b);
         }
         if (b !== V_NIL && !(a.type(b) === NT_BLOCK && a.exS(a.kid(b, 1)) >= 0)) {
-          const literal = par !== V_NIL && (a.type(par) === NT_BLOCK || a.type(par) === NT_NUMBLOCK) && a.kid(par, 0) === n;
+          const literal =
+            par !== V_NIL && (a.type(par) === NT_BLOCK || a.type(par) === NT_NUMBLOCK) && a.kid(par, 0) === n;
           if (a.kid(n, 0) === V_NIL && !literal) {
             continue;
           }

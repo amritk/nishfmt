@@ -6,7 +6,14 @@
 import { F_KEYWORD, NT_UNTIL, NT_WHILE, V_NIL } from "../ast";
 import { RbCop } from "../cop";
 import { RbSource } from "../source";
-import { scnKwbeginOrConditional, scnModifierFits, scnNonEligibleBodyBase, scnNonEligibleCondition, scnNonEligibleNodeBase, scnToModifierForm } from "./style_cond_help";
+import {
+  scnKwbeginOrConditional,
+  scnModifierFits,
+  scnNonEligibleBodyBase,
+  scnNonEligibleCondition,
+  scnNonEligibleNodeBase,
+  scnToModifierForm,
+} from "./style_cond_help";
 import { ssxFE, ssxFS } from "./style_syntax_help";
 
 const SWUM_COP: string = "Style/WhileUntilModifier";

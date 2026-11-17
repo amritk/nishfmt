@@ -52,7 +52,13 @@ export class CopStyleYodaCondition {
       const lhs = a.kid(n, 0);
       const rhs = a.kid(n, 2);
       // file_constant_equal_program_name?
-      if ((m === "==" || m === "!=") && lhs !== V_NIL && src.nodeSrc(lhs) === "__FILE__" && a.nKid(n) === 3 && ssxIs(src, rhs, NT_GVAR)) {
+      if (
+        (m === "==" || m === "!=") &&
+        lhs !== V_NIL &&
+        src.nodeSrc(lhs) === "__FILE__" &&
+        a.nKid(n) === 3 &&
+        ssxIs(src, rhs, NT_GVAR)
+      ) {
         const g = a.text(a.kid(rhs, 0));
         if (g === "$0" || g === "$PROGRAM_NAME") {
           continue;

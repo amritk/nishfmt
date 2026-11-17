@@ -14,7 +14,15 @@ import { RbCop } from "../cop";
 import { rbSpaceBegin, rbSpaceEnd } from "../help";
 import { RbRewriter } from "../rewriter";
 import { RbSource } from "../source";
-import { LDH_INF, LDH_NEG_INF, LdhAnalysis, LdhConfig, LdhDirective, LdhRegistry, ldhStrip } from "./lint_directive_help";
+import {
+  LDH_INF,
+  LDH_NEG_INF,
+  LdhAnalysis,
+  LdhConfig,
+  LdhDirective,
+  LdhRegistry,
+  ldhStrip,
+} from "./lint_directive_help";
 import { lrceIndex } from "./lint_redundant_cop_enable_directive";
 
 const LRCD_MARKER: string = "DEPARTMENT";
@@ -324,7 +332,14 @@ export class CopLintRedundantCopDisableDirective {
     return new RbRewriter(src.n);
   }
 
-  private entireComment(src: RbSource, reg: LdhRegistry, cfg: LdhConfig, self: LdhAnalysis | null, d: LdhDirective, cops: string[]): void {
+  private entireComment(
+    src: RbSource,
+    reg: LdhRegistry,
+    cfg: LdhConfig,
+    self: LdhAnalysis | null,
+    d: LdhDirective,
+    cops: string[],
+  ): void {
     const k = this.offense(src, self, d.ms, d.me);
     if (k === null) {
       return;

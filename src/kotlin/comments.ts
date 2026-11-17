@@ -6,7 +6,14 @@
 // Ported from ktfmt's KDocCommentsHelper (Apache License 2.0, Copyright (c)
 // Meta Platforms, Inc. and affiliates).
 
-import { indentJavadoc, indentLineComments, javadocShaped, preserveIndentation, splitLines, trimTrailing } from "../gdoc/comments";
+import {
+  indentJavadoc,
+  indentLineComments,
+  javadocShaped,
+  preserveIndentation,
+  splitLines,
+  trimTrailing,
+} from "../gdoc/comments";
 import { GEngine } from "../gdoc/engine";
 import { TF_COMMENT, TF_JAVADOC, TF_LINE_COMMENT } from "../gdoc/input";
 import { formatKDoc } from "./kdoc";

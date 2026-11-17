@@ -3,7 +3,18 @@
 // Ported from RuboCop 1.92.2 (MIT License, Copyright (c) 2012-24 Bozhidar
 // Batsov).
 
-import { F_SELECTOR, NT_BLOCK, NT_CBASE, NT_CONST, NT_CSEND, NT_INT, NT_NTH_REF, NT_NUMBLOCK, NT_SEND, V_NIL } from "../ast";
+import {
+  F_SELECTOR,
+  NT_BLOCK,
+  NT_CBASE,
+  NT_CONST,
+  NT_CSEND,
+  NT_INT,
+  NT_NTH_REF,
+  NT_NUMBLOCK,
+  NT_SEND,
+  V_NIL,
+} from "../ast";
 import { RbCop } from "../cop";
 import { RbSource } from "../source";
 import { ssxFS, ssxIs, ssxIsCall, ssxMeth } from "./style_syntax_help";
@@ -25,7 +36,8 @@ export const rbNodeReceiver = (src: RbSource, n: i32): i32 => {
 };
 
 /** to_f_method?: (send !nil? :to_f). */
-const rbFdToF = (src: RbSource, n: i32): boolean => ssxIs(src, n, NT_SEND) && src.a.nKid(n) === 2 && src.a.kid(n, 0) !== V_NIL && ssxMeth(src, n) === "to_f";
+const rbFdToF = (src: RbSource, n: i32): boolean =>
+  ssxIs(src, n, NT_SEND) && src.a.nKid(n) === 2 && src.a.kid(n, 0) !== V_NIL && ssxMeth(src, n) === "to_f";
 
 /** regexp_last_match?. */
 const rbFdLastMatch = (src: RbSource, n: i32): boolean => {
@@ -33,7 +45,12 @@ const rbFdLastMatch = (src: RbSource, n: i32): boolean => {
   if (ssxIs(src, n, NT_NTH_REF)) {
     return true;
   }
-  if (!ssxIs(src, n, NT_SEND) || a.nKid(n) !== 3 || ssxMeth(src, n) !== "last_match" || !ssxIs(src, a.kid(n, 2), NT_INT)) {
+  if (
+    !ssxIs(src, n, NT_SEND) ||
+    a.nKid(n) !== 3 ||
+    ssxMeth(src, n) !== "last_match" ||
+    !ssxIs(src, a.kid(n, 2), NT_INT)
+  ) {
     return false;
   }
   const r = a.kid(n, 0);

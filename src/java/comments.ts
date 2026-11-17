@@ -7,7 +7,15 @@
 
 import { GEngine, reformatParameterComment } from "../gdoc/engine";
 import { TF_COMMENT, TF_JAVADOC, TF_LINE_COMMENT } from "../gdoc/input";
-import { indentJavadoc, indentLineComments, javadocShaped, preserveIndentation, splitLines, trimBoth, trimTrailing } from "../gdoc/comments";
+import {
+  indentJavadoc,
+  indentLineComments,
+  javadocShaped,
+  preserveIndentation,
+  splitLines,
+  trimBoth,
+  trimTrailing,
+} from "../gdoc/comments";
 import { formatJavadoc } from "./javadoc";
 
 /** JavaCommentsHelper.rewrite, as the engine's comment rewriter. */

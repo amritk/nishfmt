@@ -10,7 +10,7 @@ import { RbSource } from "../source";
 import { ssxInList, ssxIs } from "./style_syntax_help";
 
 // The Perl names ENGLISH_VARS maps to English ones.
-const RB_SGV_PERL: string = " $: $\" $0 $! $@ $; $, $/ $\\ $. $_ $> $< $$ $? $~ $= $* ";
+const RB_SGV_PERL: string = ' $: $" $0 $! $@ $; $, $/ $\\ $. $_ $> $< $$ $? $~ $= $* ';
 
 export class CopStyleSpecialGlobalVars {
   c: RbCop;

@@ -183,7 +183,12 @@ export const swParseImports = (f: SwFormatter): SwImportGroup[] => {
           continue;
         }
         const body = f.s(j);
-        if (body.indexOf("created") >= 0 || body.indexOf("Created") >= 0 || body.indexOf(fileName) >= 0 || swCommentDirective(body) === "swift-tools-version") {
+        if (
+          body.indexOf("created") >= 0 ||
+          body.indexOf("Created") >= 0 ||
+          body.indexOf(fileName) >= 0 ||
+          swCommentDirective(body) === "swift-tools-version"
+        ) {
           startIndex = codeStart;
           break;
         }
@@ -601,4 +606,3 @@ export const swRuleDuplicateImports = (f: SwFormatter): void => {
     swRemoveImportGroupLines(f, r, r);
   }
 };
-

@@ -10,7 +10,8 @@ import { RbSource } from "../source";
 import { ssxCommand, ssxHas, ssxInList, ssxIs, ssxLocIs, ssxWholeLinesE, ssxWholeLinesS } from "./style_syntax_help";
 
 /** redundant_feature? for Ruby 3.3. */
-const lrrsRedundant = (f: string): boolean => ssxInList(" enumerator thread rational complex ruby2_keywords fiber set ", f);
+const lrrsRedundant = (f: string): boolean =>
+  ssxInList(" enumerator thread rational complex ruby2_keywords fiber set ", f);
 
 /** ModifierNode#modifier_form? of a parent that has it (if/while/until), false for others. */
 export const lrrsModifierForm = (src: RbSource, p: i32): boolean => {

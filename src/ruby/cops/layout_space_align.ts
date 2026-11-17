@@ -14,7 +14,14 @@ import { LspToks, lspIsWs } from "./layout_space_help";
 
 /** ASSIGNMENT_OR_COMPARISON_TOKENS. */
 export const lspAsgnOrCmp = (t: i32): boolean =>
-  t === TK_tEQL || t === TK_tEQ || t === TK_tEQQ || t === TK_tNEQ || t === TK_tLEQ || t === TK_tGEQ || t === TK_tOP_ASGN || t === TK_tLSHFT;
+  t === TK_tEQL ||
+  t === TK_tEQ ||
+  t === TK_tEQQ ||
+  t === TK_tNEQ ||
+  t === TK_tLEQ ||
+  t === TK_tGEQ ||
+  t === TK_tOP_ASGN ||
+  t === TK_tLSHFT;
 
 /** Token#equal_sign? */
 const lspEqualSign = (t: i32): boolean => t === TK_tEQL || t === TK_tOP_ASGN;

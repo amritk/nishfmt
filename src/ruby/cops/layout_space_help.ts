@@ -142,7 +142,18 @@ export const lspRemoveSpace = (src: RbSource, k: RbRewriter, le: i32, rs: i32): 
  * SurroundingSpace#no_space_offenses with a SpaceCorrector.remove_space
  * autocorrect of the same delimiters (every no_space style cop of this batch).
  */
-export const lspNoSpaceOffenses = (cop: RbCop, ign: LspIgnored, src: RbSource, node: i32, ls: i32, le: i32, rs: i32, re: i32, startOk: boolean, endOk: boolean): void => {
+export const lspNoSpaceOffenses = (
+  cop: RbCop,
+  ign: LspIgnored,
+  src: RbSource,
+  node: i32,
+  ls: i32,
+  le: i32,
+  rs: i32,
+  re: i32,
+  startOk: boolean,
+  endOk: boolean,
+): void => {
   if (lspExtraSpace(src, ls, le, true) && !startOk) {
     const k = cop.offense(le, lspReposition(src, le, 1, false));
     if (k !== null) {

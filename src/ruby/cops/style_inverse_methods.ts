@@ -11,7 +11,18 @@ import { ssxDefName, ssxDescendants, ssxIs, ssxIsAnyBlock, ssxIsCall, ssxMeth } 
 
 /** The inverse_methods keys (both directions). */
 const rbInvMethod = (m: string): boolean =>
-  m === "any?" || m === "none?" || m === "even?" || m === "odd?" || m === "==" || m === "!=" || m === "=~" || m === "!~" || m === "<" || m === ">=" || m === ">" || m === "<=";
+  m === "any?" ||
+  m === "none?" ||
+  m === "even?" ||
+  m === "odd?" ||
+  m === "==" ||
+  m === "!=" ||
+  m === "=~" ||
+  m === "!~" ||
+  m === "<" ||
+  m === ">=" ||
+  m === ">" ||
+  m === "<=";
 
 /** camel_case_constant?: a const whose source matches /[A-Z]+[a-z]+/. */
 const rbInvCamel = (src: RbSource, n: i32): boolean => {
@@ -123,7 +134,10 @@ export class CopStyleInverseMethods {
     if (!rbInvMethod(m) || rbInvNegated(src, n)) {
       return;
     }
-    if (ssxIs(src, call, NT_CSEND) && (m === "<=" || m === ">=" || m === "<" || m === ">" || m === "any?" || m === "none?")) {
+    if (
+      ssxIs(src, call, NT_CSEND) &&
+      (m === "<=" || m === ">=" || m === "<" || m === ">" || m === "any?" || m === "none?")
+    ) {
       return;
     }
     // part_of_ignored_node?
@@ -134,7 +148,10 @@ export class CopStyleInverseMethods {
         return;
       }
     }
-    if ((m === "<=" || m === ">=" || m === "<" || m === ">") && (rbInvCamel(src, lhs) || (rhs.length === 1 && rbInvCamel(src, rhs[0])))) {
+    if (
+      (m === "<=" || m === ">=" || m === "<" || m === ">") &&
+      (rbInvCamel(src, lhs) || (rhs.length === 1 && rbInvCamel(src, rhs[0])))
+    ) {
       return;
     }
     this.c.note(s, e);

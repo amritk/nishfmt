@@ -81,7 +81,12 @@ export const nmhCps = (s: string): i32[] => {
       out.push(((b & 0x0f) << 12) | ((s.charCodeAt(i + 1) & 0x3f) << 6) | (s.charCodeAt(i + 2) & 0x3f));
       i += 3;
     } else if (i + 3 < n) {
-      out.push(((b & 0x07) << 18) | ((s.charCodeAt(i + 1) & 0x3f) << 12) | ((s.charCodeAt(i + 2) & 0x3f) << 6) | (s.charCodeAt(i + 3) & 0x3f));
+      out.push(
+        ((b & 0x07) << 18) |
+          ((s.charCodeAt(i + 1) & 0x3f) << 12) |
+          ((s.charCodeAt(i + 2) & 0x3f) << 6) |
+          (s.charCodeAt(i + 3) & 0x3f),
+      );
       i += 4;
     } else {
       out.push(b);

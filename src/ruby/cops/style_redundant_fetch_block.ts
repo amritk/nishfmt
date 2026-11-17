@@ -95,7 +95,11 @@ export class CopStyleRedundantFetchBlock {
         }
       }
       const arg = a.kid(s, 2);
-      if (ssxIs(src, arg, NT_SPLAT) || ssxIs(src, arg, NT_FORWARDED_RESTARG) || (ssxIs(src, arg, NT_HASH) && !ssxHas(src, arg, F_BEGIN))) {
+      if (
+        ssxIs(src, arg, NT_SPLAT) ||
+        ssxIs(src, arg, NT_FORWARDED_RESTARG) ||
+        (ssxIs(src, arg, NT_HASH) && !ssxHas(src, arg, F_BEGIN))
+      ) {
         continue;
       }
       this.c.offense(ssxFS(src, s, F_SELECTOR), ssxFE(src, n, F_END));

@@ -40,7 +40,14 @@ import { RbCop } from "../cop";
 import { rnE, rnFieldSrc, rnHas, rnHeredoc, rnS } from "../node";
 import { RbRewriter } from "../rewriter";
 import { RbSource } from "../source";
-import { RbLayLines, rbLayCommentAtLine, rbLayDirectiveEnabled, rbLayHasAt, rbLayRxSpace, rbLayWordByte } from "./layout_empty_help";
+import {
+  RbLayLines,
+  rbLayCommentAtLine,
+  rbLayDirectiveEnabled,
+  rbLayHasAt,
+  rbLayRxSpace,
+  rbLayWordByte,
+} from "./layout_empty_help";
 
 /** A heredoc str, dstr or xstr. */
 const rbGuardHeredoc = (src: RbSource, n: i32): boolean => {

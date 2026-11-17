@@ -20,7 +20,8 @@ const LDBG_METHODS: string =
   "Kernel.debugger,jard,binding.console,";
 
 /** debugger_method_names: the last segment of each. */
-const LDBG_NAMES: string = ",irb,byebug,remote_byebug,save_and_open_page,save_and_open_screenshot,save_page,save_screenshot,b,break,pry,remote_pry,pry_remote,rescue,debugger,jard,console,";
+const LDBG_NAMES: string =
+  ",irb,byebug,remote_byebug,save_and_open_page,save_and_open_screenshot,save_page,save_screenshot,b,break,pry,remote_pry,pry_remote,rescue,debugger,jard,console,";
 
 /** Whether n is a call (send or csend). */
 const ldbgCall = (src: RbSource, n: i32): boolean => ssxIs(src, n, NT_SEND) || ssxIs(src, n, NT_CSEND);
@@ -118,7 +119,11 @@ export class CopLintDebugger {
 
   /** lambda_or_proc? on a non-block node: (send #global_const?(:Proc) :new). */
   private lambdaOrProc(src: RbSource, n: i32): boolean {
-    return ssxIs(src, n, NT_SEND) && src.a.nKid(n) === 2 && ssxMeth(src, n) === "new" && lbhGlobalConst(src, src.a.kid(n, 0), "Proc");
+    return (
+      ssxIs(src, n, NT_SEND) &&
+      src.a.nKid(n) === 2 &&
+      ssxMeth(src, n) === "new" &&
+      lbhGlobalConst(src, src.a.kid(n, 0), "Proc")
+    );
   }
 }
-

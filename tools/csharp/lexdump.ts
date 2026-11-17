@@ -39,7 +39,9 @@ export const main = (): i32 => {
         for (let r = lx.t0[t]; r < lx.t1[t]; r++) {
           trail = trail + ` T${lx.trKind[r]}`;
         }
-        console.log(`${t} k=${lx.kind[t]} ck=${lx.ck[t]} '${String.fromBytes(src, lx.start[t], lx.end[t])}'${lead}${trail}`);
+        console.log(
+          `${t} k=${lx.kind[t]} ck=${lx.ck[t]} '${String.fromBytes(src, lx.start[t], lx.end[t])}'${lead}${trail}`,
+        );
       }
     }
   }

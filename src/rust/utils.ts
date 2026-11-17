@@ -161,7 +161,8 @@ export const rsLastLineContainsSingleLineComment = (s: string): boolean => {
   return l !== null && l.indexOf("//") >= 0;
 };
 
-export const rsIsAttributesExtendable = (s: string): boolean => !rsHasByte(s, 10) && !rsLastLineContainsSingleLineComment(s);
+export const rsIsAttributesExtendable = (s: string): boolean =>
+  !rsHasByte(s, 10) && !rsLastLineContainsSingleLineComment(s);
 
 /** last_line_extendable. */
 export const rsLastLineExtendable = (s: string): boolean => {
@@ -263,7 +264,16 @@ export const rsLeftMostSubExpr = (ast: RsAst, e0: i32): i32 => {
   let e = e0;
   for (;;) {
     const k = ast.kind[e];
-    if (k === N_EX_CALL || k === N_EX_BINARY || k === N_EX_CAST || k === N_EX_ASSIGN || k === N_EX_ASSIGN_OP || k === N_EX_FIELD || k === N_EX_INDEX || k === N_EX_TRY) {
+    if (
+      k === N_EX_CALL ||
+      k === N_EX_BINARY ||
+      k === N_EX_CAST ||
+      k === N_EX_ASSIGN ||
+      k === N_EX_ASSIGN_OP ||
+      k === N_EX_FIELD ||
+      k === N_EX_INDEX ||
+      k === N_EX_TRY
+    ) {
       e = ast.a[e];
       continue;
     }

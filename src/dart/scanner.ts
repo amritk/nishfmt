@@ -356,7 +356,14 @@ export class DtScanner {
       } else {
         this.lt = 0;
       }
-    } else if (kind === T_SEMI || kind === T_LBRACE || kind === T_RBRACE || kind === T_ARROW || kind === T_AMPAMP || kind === T_BARBAR) {
+    } else if (
+      kind === T_SEMI ||
+      kind === T_LBRACE ||
+      kind === T_RBRACE ||
+      kind === T_ARROW ||
+      kind === T_AMPAMP ||
+      kind === T_BARBAR
+    ) {
       this.lt = 0;
     }
   }
@@ -506,7 +513,15 @@ export class DtScanner {
     while (i < b && this.at(i) === 32) {
       i++;
     }
-    if (!(this.at(i) === 64 && this.at(i + 1) === 100 && this.at(i + 2) === 97 && this.at(i + 3) === 114 && this.at(i + 4) === 116)) {
+    if (
+      !(
+        this.at(i) === 64 &&
+        this.at(i + 1) === 100 &&
+        this.at(i + 2) === 97 &&
+        this.at(i + 3) === 114 &&
+        this.at(i + 4) === 116
+      )
+    ) {
       return;
     }
     i += 5;
@@ -596,7 +611,10 @@ export class DtScanner {
       case 91: {
         // `[]` and `[]=` are single tokens only as operator names.
         const prev = this.t.count - 1;
-        if (d === 93 && ((this.t.kind[prev] === T_IDENT && this.t.kw[prev] === K_OPERATOR) || this.t.kind[prev] === T_HASH)) {
+        if (
+          d === 93 &&
+          ((this.t.kind[prev] === T_IDENT && this.t.kw[prev] === K_OPERATOR) || this.t.kind[prev] === T_HASH)
+        ) {
           if (this.at(p + 2) === 61) {
             this.op(T_INDEX_EQ, 3);
           } else {

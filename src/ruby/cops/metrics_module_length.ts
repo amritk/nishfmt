@@ -22,7 +22,13 @@ const mmoModuleCasgn = (src: RbSource, n: i32): boolean => {
     return false;
   }
   const s = a.kid(b, 0);
-  return a.isNode(s) && a.type(s) === NT_SEND && a.nKid(s) === 2 && a.text(a.kid(s, 1)) === "new" && ssxGlobalConst(src, a.kid(s, 0), "Module");
+  return (
+    a.isNode(s) &&
+    a.type(s) === NT_SEND &&
+    a.nKid(s) === 2 &&
+    a.text(a.kid(s, 1)) === "new" &&
+    ssxGlobalConst(src, a.kid(s, 0), "Module")
+  );
 };
 
 export class CopMetricsModuleLength {

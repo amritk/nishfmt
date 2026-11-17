@@ -240,7 +240,15 @@ const swIndentForScopeInMultilineCondition = (f: SwFormatter, scopeStart: i32): 
   for (let j = f.startOfLine(scopeStart); j < scopeStart; j++) {
     if (f.k(j) === SW_KEYWORD) {
       const s = f.s(j);
-      if (s === "if" || s === "guard" || s === "while" || s === "for" || s === "repeat" || s === "case" || s === "switch") {
+      if (
+        s === "if" ||
+        s === "guard" ||
+        s === "while" ||
+        s === "for" ||
+        s === "repeat" ||
+        s === "case" ||
+        s === "switch"
+      ) {
         hasKeyword = true;
         break;
       }
@@ -263,7 +271,12 @@ const swIndentForScopeInMultilineCondition = (f: SwFormatter, scopeStart: i32): 
       const scope = swCurrentScope(f, nextIndex);
       if (!(scope >= 0 && (f.tok(scope, SW_START, "(") || f.tok(scope, SW_START, "[")))) {
         const cs = swStartOfConditionalStatement(f, nextIndex);
-        if (cs < 0 || !(cs < scopeStart) || !f.onSameLine(cs, scopeStart) || swStartOfScope(f, nextIndex) !== swStartOfScope(f, cs)) {
+        if (
+          cs < 0 ||
+          !(cs < scopeStart) ||
+          !f.onSameLine(cs, scopeStart) ||
+          swStartOfScope(f, nextIndex) !== swStartOfScope(f, cs)
+        ) {
           return null;
         }
         const fc = f.indexAfter(SW_T_NON_SPACE_OR_COMMENT_OR_LINEBREAK, cs);
@@ -296,7 +309,10 @@ const swIsFirstStackedClosureArgument = (f: SwFormatter, i: i32): boolean => {
   }
   const ok =
     f.tok(prevIndex, SW_START, "(") ||
-    (f.tok(prevIndex, SW_DELIM, ":") && f.has(prevIndex - 1) && f.k(prevIndex - 1) === SW_IDENT && swPrevIs(f, SW_T_NON_SPACE, prevIndex - 1, SW_START, "("));
+    (f.tok(prevIndex, SW_DELIM, ":") &&
+      f.has(prevIndex - 1) &&
+      f.k(prevIndex - 1) === SW_IDENT &&
+      swPrevIs(f, SW_T_NON_SPACE, prevIndex - 1, SW_START, "("));
   if (!ok) {
     return false;
   }
@@ -549,7 +565,11 @@ export const swRuleIndent = (f: SwFormatter): boolean => {
       }
     }
     // The second switch
-    if ((tk === SW_END && (ts === "case" || ts === "default")) || (tk === SW_KEYWORD && (ts === "@unknown" || ts === "#else" || ts === "#elseif")) || (tk === SW_START && ts === "#if")) {
+    if (
+      (tk === SW_END && (ts === "case" || ts === "default")) ||
+      (tk === SW_KEYWORD && (ts === "@unknown" || ts === "#else" || ts === "#elseif")) ||
+      (tk === SW_START && ts === "#if")
+    ) {
       if (tk === SW_END && ts === "case") {
         st.pushScope(tk, ts, ta);
         let indent = st.lastIndent();
@@ -807,7 +827,9 @@ const swIndentLinebreak = (f: SwFormatter, st: SwIndentState, i: i32, lastNSL: i
       const nk = f.k(nextTokenIndex);
       const ns = f.s(nextTokenIndex);
       let notWrapped =
-        (nk === SW_END && (ns === "}" || ns === "]" || ns === ")") && f.a(nextTokenIndex) === 0) || nk === SW_STRBODY || swIsStartOfStatement(f, nextTokenIndex, scope);
+        (nk === SW_END && (ns === "}" || ns === "]" || ns === ")") && f.a(nextTokenIndex) === 0) ||
+        nk === SW_STRBODY ||
+        swIsStartOfStatement(f, nextTokenIndex, scope);
       if (!notWrapped) {
         let identLike = false;
         if (nk === SW_IDENT) {
@@ -818,7 +840,12 @@ const swIndentLinebreak = (f: SwFormatter, st: SwIndentState, i: i32, lastNSL: i
             identLike = true;
           }
         }
-        if (identLike || swIsMacroTok(f, nextTokenIndex) || f.kw(nextTokenIndex, "try") || f.kw(nextTokenIndex, "await")) {
+        if (
+          identLike ||
+          swIsMacroTok(f, nextTokenIndex) ||
+          f.kw(nextTokenIndex, "try") ||
+          f.kw(nextTokenIndex, "await")
+        ) {
           const lt = f.indexBefore(SW_T_NON_SPACE_OR_COMMENT_OR_LINEBREAK, nextTokenIndex);
           if (lt >= 0 && !f.kw(lt, "return") && !(f.k(lt) === SW_OP && f.a(lt) === SW_OP_INFIX)) {
             notWrapped = true;
@@ -865,7 +892,13 @@ const swIndentLinebreak = (f: SwFormatter, st: SwIndentState, i: i32, lastNSL: i
         const startIndex = f.indexAfter(SW_T_NON_SPACE, lineStart);
         if (startIndex >= 0) {
           let ok = swIsStartOfStatement(f, startIndex);
-          if (!ok && (f.k(startIndex) === SW_IDENT || f.kw(startIndex, "try") || f.kw(startIndex, "await") || swIsTrailingClosureLabel(f, startIndex))) {
+          if (
+            !ok &&
+            (f.k(startIndex) === SW_IDENT ||
+              f.kw(startIndex, "try") ||
+              f.kw(startIndex, "await") ||
+              swIsTrailingClosureLabel(f, startIndex))
+          ) {
             const lt = f.indexBefore(SW_T_NON_SPACE_OR_COMMENT_OR_LINEBREAK, startIndex);
             ok = lt >= 0 && !f.kw(lt, "return") && !(f.k(lt) === SW_OP && f.a(lt) === SW_OP_INFIX);
           }
@@ -905,7 +938,9 @@ const swIndentLinebreak = (f: SwFormatter, st: SwIndentState, i: i32, lastNSL: i
           lineStart = f.startOfLine(effectiveLastIndex, true);
         }
       }
-      const startTokIsElse = startHas && ((stK === SW_KEYWORD && (stS === "#else" || stS === "#elseif")) || (stK === SW_END && stS === "#endif"));
+      const startTokIsElse =
+        startHas &&
+        ((stK === SW_KEYWORD && (stS === "#else" || stS === "#elseif")) || (stK === SW_END && stS === "#endif"));
       if (f.op(lineStart, ".", SW_OP_INFIX) && startTokIsElse) {
         indent = f.currentIndentForLine(lineStart);
       } else if (swAllEndOfScopeOrSpace(f, lineStart, effectiveLastIndex)) {
@@ -920,7 +955,10 @@ const swIndentLinebreak = (f: SwFormatter, st: SwIndentState, i: i32, lastNSL: i
       } else {
         indent = indent + swLinewrapIndent(f, i);
       }
-    } else if (!swPrevIs(f, SW_T_NON_SPACE_OR_COMMENT_OR_LINEBREAK, i, SW_KEYWORD, "func") && (!swIsInClosureArguments(f, i) || lineIndex === st.lastStart())) {
+    } else if (
+      !swPrevIs(f, SW_T_NON_SPACE_OR_COMMENT_OR_LINEBREAK, i, SW_KEYWORD, "func") &&
+      (!swIsInClosureArguments(f, i) || lineIndex === st.lastStart())
+    ) {
       let usedCondition = false;
       const lt = f.indexBefore(SW_T_NON_SPACE_OR_COMMENT_OR_LINEBREAK, i);
       if (lt >= 0 && f.tok(lt, SW_DELIM, ",")) {
@@ -954,9 +992,17 @@ const swIndentLinebreak = (f: SwFormatter, st: SwIndentState, i: i32, lastNSL: i
   // Apply indent
   if (nxk === SW_LINEBREAK) {
     // indentBlankLines is off
-  } else if (nxk === SW_ERROR || (nxk === SW_KEYWORD && (nxs === "#else" || nxs === "#elseif")) || (nxk === SW_END && nxs === "#endif")) {
+  } else if (
+    nxk === SW_ERROR ||
+    (nxk === SW_KEYWORD && (nxs === "#else" || nxs === "#elseif")) ||
+    (nxk === SW_END && nxs === "#endif")
+  ) {
     // error, #else, #elseif, #endif
-  } else if ((nxk === SW_START && (nxs === "/*" || nxs === "//" || nxs === "#if")) || f.k(nextNonSpaceIndex) === SW_COMMENT || (nxk === SW_END && nxs === "*/")) {
+  } else if (
+    (nxk === SW_START && (nxs === "/*" || nxs === "//" || nxs === "#if")) ||
+    f.k(nextNonSpaceIndex) === SW_COMMENT ||
+    (nxk === SW_END && nxs === "*/")
+  ) {
     let stage = 0;
     if ((nxk === SW_START && nxs === "/*") || nxk === SW_COMMENT || (nxk === SW_END && nxs === "*/")) {
       const e = swEndOfScope(f, nextNonSpaceIndex);
@@ -1078,4 +1124,3 @@ const swTabExtra = (s: string): i32 => {
   }
   return n;
 };
-

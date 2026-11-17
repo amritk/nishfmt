@@ -3,7 +3,19 @@
 // Ported from RuboCop 1.92.2 (MIT License, Copyright (c) 2012-24 Bozhidar
 // Batsov).
 
-import { NT_BEGIN, NT_DEF, NT_DEFS, NT_EFLIPFLOP, NT_ERANGE, NT_IF, NT_IFLIPFLOP, NT_IRANGE, NT_NIL, NT_SEND, V_NIL } from "../ast";
+import {
+  NT_BEGIN,
+  NT_DEF,
+  NT_DEFS,
+  NT_EFLIPFLOP,
+  NT_ERANGE,
+  NT_IF,
+  NT_IFLIPFLOP,
+  NT_IRANGE,
+  NT_NIL,
+  NT_SEND,
+  V_NIL,
+} from "../ast";
 import { RbCop } from "../cop";
 import { RbSource } from "../source";
 import { scnOperatorKeyword, scnTernary } from "./style_cond_help";

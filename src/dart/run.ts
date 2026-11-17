@@ -37,7 +37,9 @@ export const formatDart = (e: DartEngine, path: string, src: u8[], n: i32, out: 
   }
   if (e.dump === "tokens") {
     for (let i = 0; i < toks.count; i++) {
-      out.str(`${toks.kind[i]} ${toks.kw[i]} ${toks.start[i]} ${toks.end[i]} L${toks.lineS[i]}-${toks.lineE[i]} c${toks.cCount[i]} `);
+      out.str(
+        `${toks.kind[i]} ${toks.kw[i]} ${toks.start[i]} ${toks.end[i]} L${toks.lineS[i]}-${toks.lineE[i]} c${toks.cCount[i]} `,
+      );
       out.range(src, toks.start[i], toks.end[i]);
       out.byte(10);
     }

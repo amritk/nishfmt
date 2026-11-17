@@ -25,9 +25,23 @@ import {
   RsAst,
 } from "./ast";
 import { rsAttrsContainSkip, rsRewriteAttrs } from "./attr";
-import { rsCombineStrsWithMissingComments, rsFirstLineWidth, rsRewriteComment, rsTrimmedLastLineWidth } from "./comment";
+import {
+  rsCombineStrsWithMissingComments,
+  rsFirstLineWidth,
+  rsRewriteComment,
+  rsTrimmedLastLineWidth,
+} from "./comment";
 import { RsCtx } from "./context";
-import { EXPR_STMT, RT_DEFAULT, rsFormatExpr, rsIsEmptyBlock, rsIsSimpleBlock, rsPreferNextLine, rsRewriteCond, rsRewriteExpr } from "./expr";
+import {
+  EXPR_STMT,
+  RT_DEFAULT,
+  rsFormatExpr,
+  rsIsEmptyBlock,
+  rsIsSimpleBlock,
+  rsPreferNextLine,
+  rsRewriteCond,
+  rsRewriteExpr,
+} from "./expr";
 import { RsListFormatting, rsItemizeList, rsWriteList } from "./lists";
 import { RsShape, rsIndentStr, rsIndentStrNl, rsShapeIndented } from "./shape";
 import { rsHasByte, rsLastIndexOf, rsTrim, rsWidth, rsWsLenAt } from "./str";
@@ -150,7 +164,13 @@ const rewriteMatchArms = (ctx: RsCtx, e: i32, shape: RsShape, lo: i32, hi: i32, 
   return rsWriteList(items, fmt);
 };
 
-const rewriteMatchArm = (ctx: RsCtx, arm: i32, shape: RsShape, isLast: boolean, hasLeadingPipe: boolean): string | null => {
+const rewriteMatchArm = (
+  ctx: RsCtx,
+  arm: i32,
+  shape: RsShape,
+  isLast: boolean,
+  hasLeadingPipe: boolean,
+): string | null => {
   const ast = ctx.ast;
   const cfg = ctx.cfg;
   const pat = ast.a[arm];
@@ -211,7 +231,16 @@ const rewriteMatchArm = (ctx: RsCtx, arm: i32, shape: RsShape, isLast: boolean, 
   if (lhs === null) {
     return null;
   }
-  return rewriteMatchBody(ctx, body, lhs, shape, rsHasByte(guardStr, 10), ast.hi[pat], rsLoWithAttrs(ast, body), isLast);
+  return rewriteMatchBody(
+    ctx,
+    body,
+    lhs,
+    shape,
+    rsHasByte(guardStr, 10),
+    ast.hi[pat],
+    rsLoWithAttrs(ast, body),
+    isLast,
+  );
 };
 
 const stmtIsExprMac = (ast: RsAst, s: i32): boolean => ast.kind[s] === N_STMT_EXPR && ast.kind[ast.a[s]] === N_EX_MAC;
@@ -223,7 +252,14 @@ const blockCanBeFlattened = (ctx: RsCtx, e: i32): i32 => {
     return -1;
   }
   const block = ast.a[e];
-  if (ast.d[e] < 0 && (ast.fl[block] & BLK_UNSAFE) === 0 && !ctx.insideMacro && rsIsSimpleBlock(ctx, block, true) && ast.atn[e] === 0 && !stmtIsExprMac(ast, ast.kid(block, 0))) {
+  if (
+    ast.d[e] < 0 &&
+    (ast.fl[block] & BLK_UNSAFE) === 0 &&
+    !ctx.insideMacro &&
+    rsIsSimpleBlock(ctx, block, true) &&
+    ast.atn[e] === 0 &&
+    !stmtIsExprMac(ast, ast.kid(block, 0))
+  ) {
     return block;
   }
   return -1;
@@ -305,7 +341,16 @@ const nopBlockCollapse = (s: string | null, budget: number): string | null => {
 };
 
 /** rewrite_match_body; [arrowLo, arrowHi) is the span between the pattern and the body. */
-const rewriteMatchBody = (ctx: RsCtx, body0: i32, patsStr: string, shape: RsShape, hasGuard: boolean, arrowLo: i32, arrowHi: i32, isLast: boolean): string | null => {
+const rewriteMatchBody = (
+  ctx: RsCtx,
+  body0: i32,
+  patsStr: string,
+  shape: RsShape,
+  hasGuard: boolean,
+  arrowLo: i32,
+  arrowHi: i32,
+  isLast: boolean,
+): string | null => {
   const ast = ctx.ast;
   const cfg = ctx.cfg;
   const fl = flattenArmBody(ctx, body0, shape.offsetLeft(rsExtraOffset(patsStr, shape.usedWidth()) + 4));
@@ -352,16 +397,49 @@ const rewriteMatchBody = (ctx: RsCtx, body0: i32, patsStr: string, shape: RsShap
   const nlShape = rsShapeIndented(nbi, shape.al, cfg);
   const nextLine = nopBlockCollapse(rsFormatExpr(ctx, body, EXPR_STMT, nlShape), nlShape.width);
   if (origBody !== null && nextLine !== null && rsPreferNextLine(origBody, nextLine, RT_DEFAULT)) {
-    return combineNextLine(ctx, patsStr, nextLine, isBlock, arrowComment, nbi, shape, comma, forbidSameLine, altBlockSep);
+    return combineNextLine(
+      ctx,
+      patsStr,
+      nextLine,
+      isBlock,
+      arrowComment,
+      nbi,
+      shape,
+      comma,
+      forbidSameLine,
+      altBlockSep,
+    );
   }
   if (origBody !== null && extend && rsFirstLineWidth(origBody) <= origBudget) {
     return `${patsStr} => ${origBody}${comma}`;
   }
   if (origBody !== null && nextLine !== null && rsHasByte(origBody, 10)) {
-    return combineNextLine(ctx, patsStr, nextLine, isBlock, arrowComment, nbi, shape, comma, forbidSameLine, altBlockSep);
+    return combineNextLine(
+      ctx,
+      patsStr,
+      nextLine,
+      isBlock,
+      arrowComment,
+      nbi,
+      shape,
+      comma,
+      forbidSameLine,
+      altBlockSep,
+    );
   }
   if (origBody === null && nextLine !== null) {
-    return combineNextLine(ctx, patsStr, nextLine, isBlock, arrowComment, nbi, shape, comma, forbidSameLine, altBlockSep);
+    return combineNextLine(
+      ctx,
+      patsStr,
+      nextLine,
+      isBlock,
+      arrowComment,
+      nbi,
+      shape,
+      comma,
+      forbidSameLine,
+      altBlockSep,
+    );
   }
   if (origBody === null) {
     return null;
@@ -418,7 +496,13 @@ const hasInnerAttrs = (ast: RsAst, b: i32): boolean => {
   return false;
 };
 
-const rewriteGuard = (ctx: RsCtx, guard: i32, shape: RsShape, patternWidth: i32, multilinePattern: boolean): string | null => {
+const rewriteGuard = (
+  ctx: RsCtx,
+  guard: i32,
+  shape: RsShape,
+  patternWidth: i32,
+  multilinePattern: boolean,
+): string | null => {
   const cfg = ctx.cfg;
   if (guard < 0) {
     return "";

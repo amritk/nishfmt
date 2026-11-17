@@ -6,7 +6,16 @@
 import { F_END, NT_DEF, NT_DEFS } from "../ast";
 import { RbCop } from "../cop";
 import { RbSource } from "../source";
-import { ssxCharLen, ssxCommentsInLines, ssxDefArgs, ssxDefBody, ssxDefName, ssxLocIs, ssxMultiline, ssxSingleLine } from "./style_syntax_help";
+import {
+  ssxCharLen,
+  ssxCommentsInLines,
+  ssxDefArgs,
+  ssxDefBody,
+  ssxDefName,
+  ssxLocIs,
+  ssxMultiline,
+  ssxSingleLine,
+} from "./style_syntax_help";
 
 export class CopStyleEmptyMethod {
   c: RbCop;

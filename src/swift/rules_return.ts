@@ -205,7 +205,8 @@ const swRemoveBareReturn = (f: SwFormatter, i: i32, startIndex: i32): void => {
         if (pki >= 0) {
           const ks = f.s(pki);
           if (ks === "let" || ks === "var") {
-            const ok = f.op(prevIndex, "=", SW_OP_INFIX) || f.lastIndexOfIn(SW_OP, "=", SW_OP_INFIX, pki + 1, prevIndex) >= 0;
+            const ok =
+              f.op(prevIndex, "=", SW_OP_INFIX) || f.lastIndexOfIn(SW_OP, "=", SW_OP_INFIX, pki + 1, prevIndex) >= 0;
             if (!ok || swIsConditionalStatement(f, pki)) {
               return;
             }

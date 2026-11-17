@@ -4,7 +4,18 @@
 // Ported from RuboCop 1.92.2 (MIT License, Copyright (c) 2012-24 Bozhidar
 // Batsov).
 
-import { NT_DEF, NT_DEFS, NT_KWOPTARG, NT_KWRESTARG, NT_OPTARG, NT_RESTARG, NT_SEND, NT_SUPER, NT_ZSUPER, V_NIL } from "../ast";
+import {
+  NT_DEF,
+  NT_DEFS,
+  NT_KWOPTARG,
+  NT_KWRESTARG,
+  NT_OPTARG,
+  NT_RESTARG,
+  NT_SEND,
+  NT_SUPER,
+  NT_ZSUPER,
+  V_NIL,
+} from "../ast";
 import { RbCop } from "../cop";
 import { RbSource } from "../source";
 import { ldhType } from "./lint_detect_help";
@@ -31,7 +42,10 @@ export class CopLintUselessMethodDefinition {
       const p = src.parent(n);
       if (p !== V_NIL && a.type(p) === NT_SEND) {
         const m = ssxMeth(src, p);
-        const nonBare = ssxMacro(src, p) && a.nKid(p) === 3 && (m === "public" || m === "protected" || m === "private" || m === "module_function");
+        const nonBare =
+          ssxMacro(src, p) &&
+          a.nKid(p) === 3 &&
+          (m === "public" || m === "protected" || m === "private" || m === "module_function");
         if (!nonBare) {
           continue;
         }

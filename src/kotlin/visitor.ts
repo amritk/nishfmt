@@ -306,7 +306,15 @@ export class KVisitor {
         return;
       case N_CALL_EXPRESSION:
         this.sync(n);
-        this.visitCallElement(this.calleeOf(n), this.child(n, N_TYPE_ARGUMENT_LIST), this.child(n, N_VALUE_ARGUMENT_LIST), n, this.expressionBreakIndent, this.ZERO, this.ZERO);
+        this.visitCallElement(
+          this.calleeOf(n),
+          this.child(n, N_TYPE_ARGUMENT_LIST),
+          this.child(n, N_VALUE_ARGUMENT_LIST),
+          n,
+          this.expressionBreakIndent,
+          this.ZERO,
+          this.ZERO,
+        );
         return;
       case N_VALUE_ARGUMENT_LIST:
         this.visitValueArgumentListInternal(n);
@@ -326,7 +334,16 @@ export class KVisitor {
         this.visitSimpleNameExpression(n);
         return;
       case N_VALUE_PARAMETER_LIST:
-        this.visitEachCommaSeparated(this.kidsOf(n, N_VALUE_PARAMETER), this.trailingCommaOfParams(n), false, true, null, null, true, true);
+        this.visitEachCommaSeparated(
+          this.kidsOf(n, N_VALUE_PARAMETER),
+          this.trailingCommaOfParams(n),
+          false,
+          true,
+          null,
+          null,
+          true,
+          true,
+        );
         this.pop();
         return;
       case N_VALUE_ARGUMENT:
@@ -441,7 +458,15 @@ export class KVisitor {
         return;
       case N_SUPER_TYPE_CALL_ENTRY:
         this.sync(n);
-        this.visitCallElement(this.child(n, N_CONSTRUCTOR_CALLEE), -1, this.child(n, N_VALUE_ARGUMENT_LIST), -1, this.expressionBreakIndent, this.ZERO, this.ZERO);
+        this.visitCallElement(
+          this.child(n, N_CONSTRUCTOR_CALLEE),
+          -1,
+          this.child(n, N_VALUE_ARGUMENT_LIST),
+          -1,
+          this.expressionBreakIndent,
+          this.ZERO,
+          this.ZERO,
+        );
         return;
       case N_DELEGATED_SUPER_TYPE_ENTRY:
         this.sync(n);
@@ -498,7 +523,19 @@ export class KVisitor {
       case N_DESTRUCTURING_DECLARATION_ENTRY: {
         this.sync(n);
         const id = this.child(n, T_IDENTIFIER);
-        this.declareOne(false, this.child(n, N_MODIFIER_LIST), -1, -1, -1, id, this.typeRefAfterColon(n), -1, this.exprAfterTok(n, T_EQ), -1, -1);
+        this.declareOne(
+          false,
+          this.child(n, N_MODIFIER_LIST),
+          -1,
+          -1,
+          -1,
+          id,
+          this.typeRefAfterColon(n),
+          -1,
+          this.exprAfterTok(n, T_EQ),
+          -1,
+          -1,
+        );
         return;
       }
       case N_STRING_TEMPLATE:
@@ -518,7 +555,16 @@ export class KVisitor {
       case N_TYPE_PARAMETER_LIST:
         this.sync(n);
         this.open(this.expressionBreakIndent);
-        this.visitEachCommaSeparated(this.kidsOf(n, N_TYPE_PARAMETER), this.trailingCommaBefore(n, T_GT), false, true, "<", ">", true, true);
+        this.visitEachCommaSeparated(
+          this.kidsOf(n, N_TYPE_PARAMETER),
+          this.trailingCommaBefore(n, T_GT),
+          false,
+          true,
+          "<",
+          ">",
+          true,
+          true,
+        );
         this.pop();
         this.close();
         return;
@@ -586,7 +632,15 @@ export class KVisitor {
         this.sync(n);
         const recv = this.firstExpr(n);
         if (this.ty(recv) === N_CALL_EXPRESSION) {
-          this.visitCallElement(this.calleeOf(recv), this.child(recv, N_TYPE_ARGUMENT_LIST), this.child(recv, N_VALUE_ARGUMENT_LIST), recv, this.expressionBreakIndent, this.ZERO, this.ZERO);
+          this.visitCallElement(
+            this.calleeOf(recv),
+            this.child(recv, N_TYPE_ARGUMENT_LIST),
+            this.child(recv, N_VALUE_ARGUMENT_LIST),
+            recv,
+            this.expressionBreakIndent,
+            this.ZERO,
+            this.ZERO,
+          );
         } else {
           this.visit(recv);
         }
@@ -606,7 +660,16 @@ export class KVisitor {
       case N_COLLECTION_LITERAL_EXPRESSION:
         this.sync(n);
         this.open(this.expressionBreakIndent);
-        this.visitEachCommaSeparated(this.exprKids(n), this.trailingCommaBefore(n, T_RBRACKET), false, true, "[", "]", true, true);
+        this.visitEachCommaSeparated(
+          this.exprKids(n),
+          this.trailingCommaBefore(n, T_RBRACKET),
+          false,
+          true,
+          "[",
+          "]",
+          true,
+          true,
+        );
         this.pop();
         this.close();
         return;
@@ -738,7 +801,16 @@ export class KVisitor {
     } else {
       this.open(this.expressionBreakIndent);
       if (parameterList >= 0) {
-        this.visitEachCommaSeparated(this.paramsOf(parameterList), this.trailingCommaOfParams(parameterList), false, true, "(", ")", true, true);
+        this.visitEachCommaSeparated(
+          this.paramsOf(parameterList),
+          this.trailingCommaOfParams(parameterList),
+          false,
+          true,
+          "(",
+          ")",
+          true,
+          true,
+        );
         this.pop();
       }
       if (typeOrDelegationCall >= 0) {
@@ -1078,7 +1150,18 @@ export class KVisitor {
     if (hasKw) {
       this.brk(UNIFIED, " ", this.ZERO);
     }
-    this.visitFunctionLikeExpression(this.child(n, N_MODIFIER_LIST), hasKw ? "constructor" : null, -1, -1, -1, this.child(n, N_VALUE_PARAMETER_LIST), -1, -1, -1, false);
+    this.visitFunctionLikeExpression(
+      this.child(n, N_MODIFIER_LIST),
+      hasKw ? "constructor" : null,
+      -1,
+      -1,
+      -1,
+      this.child(n, N_VALUE_PARAMETER_LIST),
+      -1,
+      -1,
+      -1,
+      false,
+    );
     this.close();
   }
 
@@ -1093,7 +1176,18 @@ export class KVisitor {
         explicit = call;
       }
     }
-    this.visitFunctionLikeExpression(this.child(n, N_MODIFIER_LIST), "constructor", -1, -1, -1, this.child(n, N_VALUE_PARAMETER_LIST), -1, this.firstExpr(n), explicit, false);
+    this.visitFunctionLikeExpression(
+      this.child(n, N_MODIFIER_LIST),
+      "constructor",
+      -1,
+      -1,
+      -1,
+      this.child(n, N_VALUE_PARAMETER_LIST),
+      -1,
+      this.firstExpr(n),
+      explicit,
+      false,
+    );
     this.close();
   }
 
@@ -1101,7 +1195,15 @@ export class KVisitor {
     this.open(this.ZERO);
     const ref = this.child(n, N_CONSTRUCTOR_DELEGATION_REFERENCE);
     this.tok(ref >= 0 && this.child(ref, T_THIS_KEYWORD) >= 0 ? "this" : "super");
-    this.visitCallElement(-1, this.child(n, N_TYPE_ARGUMENT_LIST), this.child(n, N_VALUE_ARGUMENT_LIST), n, this.expressionBreakIndent, this.ZERO, this.ZERO);
+    this.visitCallElement(
+      -1,
+      this.child(n, N_TYPE_ARGUMENT_LIST),
+      this.child(n, N_VALUE_ARGUMENT_LIST),
+      n,
+      this.expressionBreakIndent,
+      this.ZERO,
+      this.ZERO,
+    );
     this.close();
   }
 
@@ -1239,7 +1341,19 @@ export class KVisitor {
       }
       this.close();
     } else {
-      this.declareOne(false, this.child(n, N_MODIFIER_LIST), this.valOrVar(n), -1, -1, this.child(n, T_IDENTIFIER), typeReference, -1, this.exprAfterTok(n, T_EQ), -1, -1);
+      this.declareOne(
+        false,
+        this.child(n, N_MODIFIER_LIST),
+        this.valOrVar(n),
+        -1,
+        -1,
+        this.child(n, T_IDENTIFIER),
+        typeReference,
+        -1,
+        this.exprAfterTok(n, T_EQ),
+        -1,
+        -1,
+      );
     }
     this.close();
   }
@@ -1262,7 +1376,16 @@ export class KVisitor {
     }
     this.brk(UNIFIED, "", this.expressionBreakIndent);
     this.open(this.expressionBreakIndent);
-    this.visitEachCommaSeparated(this.kidsOf(n, N_DESTRUCTURING_DECLARATION_ENTRY), hasTrailingComma, true, true, null, null, true, true);
+    this.visitEachCommaSeparated(
+      this.kidsOf(n, N_DESTRUCTURING_DECLARATION_ENTRY),
+      hasTrailingComma,
+      true,
+      true,
+      null,
+      null,
+      true,
+      true,
+    );
     this.pop();
     this.close();
     this.close();
@@ -1353,7 +1476,16 @@ export class KVisitor {
 
   visitTypeArgumentList(n: i32): void {
     this.sync(n);
-    this.visitEachCommaSeparated(this.kidsOf(n, N_TYPE_PROJECTION), this.trailingCommaBefore(n, T_GT), false, true, "<", ">", true, true);
+    this.visitEachCommaSeparated(
+      this.kidsOf(n, N_TYPE_PROJECTION),
+      this.trailingCommaBefore(n, T_GT),
+      false,
+      true,
+      "<",
+      ">",
+      true,
+      true,
+    );
     this.pop();
   }
 
@@ -1380,7 +1512,10 @@ export class KVisitor {
 
   visitFunctionType(n: i32): void {
     this.sync(n);
-    const crl = this.child(n, N_CONTEXT_RECEIVER_LIST) >= 0 ? this.child(n, N_CONTEXT_RECEIVER_LIST) : this.child(n, N_CONTEXT_PARAMETER_LIST);
+    const crl =
+      this.child(n, N_CONTEXT_RECEIVER_LIST) >= 0
+        ? this.child(n, N_CONTEXT_RECEIVER_LIST)
+        : this.child(n, N_CONTEXT_PARAMETER_LIST);
     if (crl >= 0) {
       this.handleContextReceiverList(crl);
       this.space();
@@ -1431,7 +1566,11 @@ export class KVisitor {
       this.tokN(this.opSign(n));
       this.visit(this.selectorOf(n));
       this.close();
-    } else if (this.isChainedScopingFunction(n) && this.isMultilineScopingFunction(this.chainRoot(n)) && !this.chainedSelectorsHaveValueArguments(n)) {
+    } else if (
+      this.isChainedScopingFunction(n) &&
+      this.isMultilineScopingFunction(this.chainRoot(n)) &&
+      !this.chainedSelectorsHaveValueArguments(n)
+    ) {
       this.visitChainedScopingFunction(n, false);
     } else {
       this.emitQualifiedExpression(n);
@@ -1585,7 +1724,15 @@ export class KVisitor {
    * visitCallElement. `callNode` holds the lambda arguments (a call or
    * delegation call), or -1 for none.
    */
-  visitCallElement(callee: i32, typeArgumentList: i32, argumentList: i32, callNode: i32, argumentsIndent: i32, lambdaIndent: i32, negativeLambdaIndent: i32): void {
+  visitCallElement(
+    callee: i32,
+    typeArgumentList: i32,
+    argumentList: i32,
+    callNode: i32,
+    argumentsIndent: i32,
+    lambdaIndent: i32,
+    negativeLambdaIndent: i32,
+  ): void {
     this.open(lambdaIndent);
     let brokeBeforeBrace = -1;
     this.open(negativeLambdaIndent);
@@ -1616,7 +1763,10 @@ export class KVisitor {
   visitValueArgumentListInternal(n: i32): i32 {
     this.sync(n);
     const args = this.kidsOf(n, N_VALUE_ARGUMENT);
-    const single = args.length === 1 && this.ty(this.firstExpr(args[0])) === N_LAMBDA_EXPRESSION && this.child(args[0], N_VALUE_ARGUMENT_NAME) < 0;
+    const single =
+      args.length === 1 &&
+      this.ty(this.firstExpr(args[0])) === N_LAMBDA_EXPRESSION &&
+      this.child(args[0], N_VALUE_ARGUMENT_NAME) < 0;
     const hasTrailingComma = this.trailingCommaBefore(n, T_RPAR);
     const hasEmptyParens = this.hasEmptyParens(n);
     let wrapInBlock = false;
@@ -1634,7 +1784,16 @@ export class KVisitor {
       leadingBreak = !hasEmptyParens;
       breakAfterPrefix = !hasEmptyParens;
     }
-    const tag = this.visitEachCommaSeparated(args, hasTrailingComma, wrapInBlock, leadingBreak, "(", ")", breakAfterPrefix, breakBeforePostfix);
+    const tag = this.visitEachCommaSeparated(
+      args,
+      hasTrailingComma,
+      wrapInBlock,
+      leadingBreak,
+      "(",
+      ")",
+      breakAfterPrefix,
+      breakBeforePostfix,
+    );
     this.pop();
     return tag;
   }
@@ -1656,10 +1815,16 @@ export class KVisitor {
     }
     const hasArrow = this.child(fl, T_ARROW) >= 0;
     const g = this.g;
-    const bracePlusBlockIndent = brokeBeforeBrace < 0 ? this.blockIndent : g.ifIndent(brokeBeforeBrace, this.blockPlusExpressionBreakIndent, this.blockIndent);
+    const bracePlusBlockIndent =
+      brokeBeforeBrace < 0
+        ? this.blockIndent
+        : g.ifIndent(brokeBeforeBrace, this.blockPlusExpressionBreakIndent, this.blockIndent);
     const bracePlusExpressionIndent =
-      brokeBeforeBrace < 0 ? this.expressionBreakIndent : g.ifIndent(brokeBeforeBrace, this.doubleExpressionBreakIndent, this.expressionBreakIndent);
-    const bracePlusZeroIndent = brokeBeforeBrace < 0 ? this.ZERO : g.ifIndent(brokeBeforeBrace, this.expressionBreakIndent, this.ZERO);
+      brokeBeforeBrace < 0
+        ? this.expressionBreakIndent
+        : g.ifIndent(brokeBeforeBrace, this.doubleExpressionBreakIndent, this.expressionBreakIndent);
+    const bracePlusZeroIndent =
+      brokeBeforeBrace < 0 ? this.ZERO : g.ifIndent(brokeBeforeBrace, this.expressionBreakIndent, this.ZERO);
     this.tok("{");
     if (hasParams || hasArrow) {
       this.space();
@@ -1686,7 +1851,12 @@ export class KVisitor {
       const shouldForceMultiline = this.hasSourceNewlineInLambdaBody(n);
       const f = this.t.first[body];
       const startsWithComment = f >= 0 && kIsComment(this.t.type[f]);
-      if (!shouldForceMultiline && statements.length === 1 && this.ty(statements[0]) !== N_RETURN && !startsWithComment) {
+      if (
+        !shouldForceMultiline &&
+        statements.length === 1 &&
+        this.ty(statements[0]) !== N_RETURN &&
+        !startsWithComment
+      ) {
         this.visitStatement(statements[0]);
       } else {
         this.visitStatements(statements);
@@ -2025,7 +2195,15 @@ export class KVisitor {
       const sel = this.selectorOf(part);
       if (this.ty(sel) === N_CALL_EXPRESSION) {
         this.visit(this.calleeOf(sel));
-        this.visitCallElement(-1, this.child(sel, N_TYPE_ARGUMENT_LIST), this.child(sel, N_VALUE_ARGUMENT_LIST), sel, this.expressionBreakIndent, this.ZERO, this.ZERO);
+        this.visitCallElement(
+          -1,
+          this.child(sel, N_TYPE_ARGUMENT_LIST),
+          this.child(sel, N_VALUE_ARGUMENT_LIST),
+          sel,
+          this.expressionBreakIndent,
+          this.ZERO,
+          this.ZERO,
+        );
       } else {
         this.visit(sel);
       }
@@ -2273,7 +2451,15 @@ export class KVisitor {
       this.visit(target);
       this.tok(":");
     }
-    this.visitCallElement(this.child(n, N_CONSTRUCTOR_CALLEE), -1, this.child(n, N_VALUE_ARGUMENT_LIST), -1, this.expressionBreakIndent, this.ZERO, this.ZERO);
+    this.visitCallElement(
+      this.child(n, N_CONSTRUCTOR_CALLEE),
+      -1,
+      this.child(n, N_VALUE_ARGUMENT_LIST),
+      -1,
+      this.expressionBreakIndent,
+      this.ZERO,
+      this.ZERO,
+    );
   }
 
   visitWhenExpression(n: i32): void {
@@ -2397,7 +2583,16 @@ export class KVisitor {
     this.brk(UNIFIED, "", this.expressionBreakIndent);
     this.open(this.expressionBreakIndent);
     const rb = ind >= 0 ? this.child(ind, T_RBRACKET) : -1;
-    this.visitEachCommaSeparated(ind >= 0 ? this.exprKids(ind) : this.push(), rb >= 0 && this.prevIsComma(rb), true, true, null, null, true, true);
+    this.visitEachCommaSeparated(
+      ind >= 0 ? this.exprKids(ind) : this.push(),
+      rb >= 0 && this.prevIsComma(rb),
+      true,
+      true,
+      null,
+      null,
+      true,
+      true,
+    );
     this.pop();
     this.close();
     this.close();
@@ -2410,7 +2605,11 @@ export class KVisitor {
     this.tok("for");
     this.space();
     this.tok("(");
-    this.visit(this.child(n, N_VALUE_PARAMETER) >= 0 ? this.child(n, N_VALUE_PARAMETER) : this.child(n, N_DESTRUCTURING_DECLARATION));
+    this.visit(
+      this.child(n, N_VALUE_PARAMETER) >= 0
+        ? this.child(n, N_VALUE_PARAMETER)
+        : this.child(n, N_DESTRUCTURING_DECLARATION),
+    );
     this.space();
     this.tok("in");
     this.open(this.ZERO);
@@ -2953,7 +3152,12 @@ const kDecodeAt = (src: u8[], a: i32, e: i32): i32 => {
     return ((c & 0x0f) << 12) | ((toI32(src[a + 1]) & 0x3f) << 6) | (toI32(src[a + 2]) & 0x3f);
   }
   if (a + 3 < e) {
-    return ((c & 0x07) << 18) | ((toI32(src[a + 1]) & 0x3f) << 12) | ((toI32(src[a + 2]) & 0x3f) << 6) | (toI32(src[a + 3]) & 0x3f);
+    return (
+      ((c & 0x07) << 18) |
+      ((toI32(src[a + 1]) & 0x3f) << 12) |
+      ((toI32(src[a + 2]) & 0x3f) << 6) |
+      (toI32(src[a + 3]) & 0x3f)
+    );
   }
   return c;
 };
@@ -2976,17 +3180,32 @@ const kIsUpperCodePoint = (cp: i32): boolean => {
 };
 
 const kIsSimpleName = (t: i32): boolean =>
-  t === N_REFERENCE_EXPRESSION || t === N_OPERATION_REFERENCE || t === N_LABEL || t === N_ENUM_ENTRY_SUPERCLASS_REFERENCE_EXPRESSION;
+  t === N_REFERENCE_EXPRESSION ||
+  t === N_OPERATION_REFERENCE ||
+  t === N_LABEL ||
+  t === N_ENUM_ENTRY_SUPERCLASS_REFERENCE_EXPRESSION;
 
-const kIsAssignment = (op: i32): boolean => op === T_EQ || op === T_PLUSEQ || op === T_MINUSEQ || op === T_MULTEQ || op === T_DIVEQ || op === T_PERCEQ;
+const kIsAssignment = (op: i32): boolean =>
+  op === T_EQ || op === T_PLUSEQ || op === T_MINUSEQ || op === T_MULTEQ || op === T_DIVEQ || op === T_PERCEQ;
 
-const kIsWhenCondition = (t: i32): boolean => t === N_WHEN_CONDITION_EXPRESSION || t === N_WHEN_CONDITION_IS_PATTERN || t === N_WHEN_CONDITION_IN_RANGE;
+const kIsWhenCondition = (t: i32): boolean =>
+  t === N_WHEN_CONDITION_EXPRESSION || t === N_WHEN_CONDITION_IS_PATTERN || t === N_WHEN_CONDITION_IN_RANGE;
 
 const kIsContainerNode = (t: i32): boolean =>
-  t === N_CONDITION || t === N_THEN || t === N_ELSE || t === N_LOOP_RANGE || t === N_BODY || t === N_INDICES || t === N_LABEL_QUALIFIER;
+  t === N_CONDITION ||
+  t === N_THEN ||
+  t === N_ELSE ||
+  t === N_LOOP_RANGE ||
+  t === N_BODY ||
+  t === N_INDICES ||
+  t === N_LABEL_QUALIFIER;
 
 const kIsTypeElement = (t: i32): boolean =>
-  t === N_USER_TYPE || t === N_NULLABLE_TYPE || t === N_FUNCTION_TYPE || t === N_DYNAMIC_TYPE || t === N_INTERSECTION_TYPE;
+  t === N_USER_TYPE ||
+  t === N_NULLABLE_TYPE ||
+  t === N_FUNCTION_TYPE ||
+  t === N_DYNAMIC_TYPE ||
+  t === N_INTERSECTION_TYPE;
 
 /** Whether nodes of this type are KtExpressions. */
 export const kIsExpr = (t: i32): boolean => {

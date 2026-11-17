@@ -23,7 +23,12 @@ export class CopLintSafeNavigationWithEmpty {
         continue;
       }
       const cond = a.kid(n, 0);
-      if (!ssxIs(src, cond, NT_CSEND) || ssxMeth(src, cond) !== "empty?" || a.nKid(cond) !== 2 || ssxIs(src, a.kid(cond, 0), NT_CSEND)) {
+      if (
+        !ssxIs(src, cond, NT_CSEND) ||
+        ssxMeth(src, cond) !== "empty?" ||
+        a.nKid(cond) !== 2 ||
+        ssxIs(src, a.kid(cond, 0), NT_CSEND)
+      ) {
         continue;
       }
       const k = this.c.offense(a.exS(cond), a.exE(cond));

@@ -592,7 +592,10 @@ export class RsVisitor {
       while (i < toI32(snippet.length) && snippet.charCodeAt(i) === 32) {
         i++;
       }
-      const startsNl = i < toI32(snippet.length) && (snippet.charCodeAt(i) === 10 || (snippet.charCodeAt(i) === 13 && i + 1 < toI32(snippet.length) && snippet.charCodeAt(i + 1) === 10));
+      const startsNl =
+        i < toI32(snippet.length) &&
+        (snippet.charCodeAt(i) === 10 ||
+          (snippet.charCodeAt(i) === 13 && i + 1 < toI32(snippet.length) && snippet.charCodeAt(i + 1) === 10));
       const t = rsTrim(snippet);
       if (t.length !== 0) {
         if (includeEmptySemi) {
@@ -617,7 +620,8 @@ export class RsVisitor {
     }
     if (k === N_LOCAL || k === N_STMT_EXPR || k === N_STMT_SEMI) {
       const attrsOf = k === N_LOCAL ? s : ast.a[s];
-      const skip = k === N_LOCAL ? rsAttrsContainSkip(this.ctx(), attrsOf) : rsExprAttrsContainSkip(this.ctx(), attrsOf);
+      const skip =
+        k === N_LOCAL ? rsAttrsContainSkip(this.ctx(), attrsOf) : rsExprAttrsContainSkip(this.ctx(), attrsOf);
       if (skip) {
         this.pushSkippedWithSpan(attrsOf, slo, shi, ast.lo[attrsOf]);
       } else {

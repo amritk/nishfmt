@@ -3,7 +3,14 @@
 // Ported from SwiftFormat 0.64.7 (MIT License, Copyright (c) 2016 Nick
 // Lockwood).
 
-import { swDeclHi, swDeclIsStoredInstanceProperty, swDeclKeywordIndex, swDeclLo, swParseEnclosingType, swReleaseDecls } from "./decl";
+import {
+  swDeclHi,
+  swDeclIsStoredInstanceProperty,
+  swDeclKeywordIndex,
+  swDeclLo,
+  swParseEnclosingType,
+  swReleaseDecls,
+} from "./decl";
 import { swParsePropertyDeclaration } from "./expr";
 import { SwDecl, SwFormatter } from "./formatter";
 import { swCurrentScope, swEndOfScope, swLastSignificantKeyword } from "./parsing";
@@ -207,7 +214,11 @@ const swIsArgumentToken = (f: SwFormatter, index: i32): boolean => {
       const o = f.indexOfBefore(SW_START, "(", 0, index);
       if (o >= 0) {
         const ni = f.indexBefore(SW_T_NON_SPACE_OR_COMMENT_OR_LINEBREAK, o);
-        if (ni >= 0 && f.k(ni) === SW_IDENT && f.lastIs(SW_T_NON_SPACE_OR_COMMENT_OR_LINEBREAK, ni, SW_KEYWORD, "func")) {
+        if (
+          ni >= 0 &&
+          f.k(ni) === SW_IDENT &&
+          f.lastIs(SW_T_NON_SPACE_OR_COMMENT_OR_LINEBREAK, ni, SW_KEYWORD, "func")
+        ) {
           return true;
         }
       }
@@ -310,7 +321,10 @@ export const swRuleVoid = (f: SwFormatter): void => {
       if (!hasLocalVoid) {
         f.replaceTokensWith1(i, endIndex + 1, SW_IDENT, "Void", 0);
       }
-    } else if ((f.tok(pt, SW_START, "<") || (f.tok(pt, SW_DELIM, ",") && swCurrentScopeIs(f, i, "<"))) && !hasLocalVoid) {
+    } else if (
+      (f.tok(pt, SW_START, "<") || (f.tok(pt, SW_DELIM, ",") && swCurrentScopeIs(f, i, "<"))) &&
+      !hasLocalVoid
+    ) {
       f.replaceTokensWith1(i, endIndex + 1, SW_IDENT, "Void", 0);
     } else if (f.op(pt, "=", SW_OP_INFIX)) {
       const eq = pt;
@@ -483,7 +497,8 @@ export const swRuleNumberFormatting = (f: SwFormatter): void => {
 };
 
 /** hasLowerPrecedenceThanAnd(at:). */
-const swHasLowerPrecedenceThanAnd = (f: SwFormatter, i: i32): boolean => f.op(i, "||", SW_OP_INFIX) || f.op(i, "?", SW_OP_INFIX) || f.op(i, "=", SW_OP_INFIX);
+const swHasLowerPrecedenceThanAnd = (f: SwFormatter, i: i32): boolean =>
+  f.op(i, "||", SW_OP_INFIX) || f.op(i, "?", SW_OP_INFIX) || f.op(i, "=", SW_OP_INFIX);
 
 /** conditionHasLowerPrecedenceThanAnd(in: lo ..< hi). */
 const swConditionHasLowerPrecedenceThanAnd = (f: SwFormatter, lo: i32, hi: i32): boolean => {
@@ -588,4 +603,3 @@ export const swRuleAndOperator = (f: SwFormatter): void => {
     }
   }
 };
-
