@@ -1,0 +1,8 @@
+node_modules/
+dist/
+build/
+.nish/
+*.ll
+*.modules/
+bench/work/
+*.log

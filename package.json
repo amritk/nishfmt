@@ -1,0 +1,28 @@
+{
+  "name": "@amritk/nishfmt",
+  "version": "0.0.0",
+  "description": "One fast native formatter for C++, Java, Kotlin, Ruby, Swift, Rust, Dart and C#, matching each language's reference formatter byte for byte. Written in Nish.",
+  "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/amritk/nishfmt.git"
+  },
+  "homepage": "https://github.com/amritk/nishfmt",
+  "private": true,
+  "bin": {
+    "nishfmt": "dist/nishfmt"
+  },
+  "engines": {
+    "nish": ">=0.40.1"
+  },
+  "scripts": {
+    "fetch-nish": "bash scripts/fetch-nish.sh",
+    "build": "bash build.sh",
+    "test": "bash tests/run.sh dist/nishfmt",
+    "lint": "biome check .",
+    "format": "biome check --write ."
+  },
+  "devDependencies": {
+    "@biomejs/biome": "1.8.3"
+  }
+}

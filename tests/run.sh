@@ -8,7 +8,7 @@
 # must leave it unchanged. unbalanced.cpp must be skipped and left untouched.
 set -uo pipefail
 here=$(cd "$(dirname "$0")" && pwd)
-bin=${1:-$here/../build/nishfmt}
+bin=${1:-$here/../dist/nishfmt}
 work=$(mktemp -d)
 trap 'rm -rf "$work"' EXIT
 fail=0 pass=0
