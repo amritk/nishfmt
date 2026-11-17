@@ -46,6 +46,25 @@ The harder corpora are built from a language's `raw/`:
 | `dart4` | `tools/dart/mk3.sh dart4` | each file marked `3.7`, `3.8` or `3.12`, for the older tall styles |
 | `cs2` | `tools/csharp/mkcs2.sh` | each directory first formatted with non-default CSharpier options |
 
+## Corpus results
+
+Files the reference tool accepts, and how many of them nishfmt formats byte
+for byte as it does, on the corpora the README's table is measured on:
+
+| Corpus | Files | Identical |
+| --- | ---: | ---: |
+| C++ | 10344 | 10306 |
+| Java | 7627 | 7627 |
+| Kotlin | 9602 | 9602 |
+| C# | 13988 | 13988 |
+| Dart, tall style | 10313 | 10313 |
+| Dart, short style (below 3.7) | 8218 | 8218 |
+| Swift | 6710 | 6710 |
+| Rust | 7899 | 7899 |
+| Ruby | 1998 | 1998 |
+
+The 38 C++ files left are described in [C++](cpp.md#results-by-repository).
+
 ## Comparing
 
 ```bash
