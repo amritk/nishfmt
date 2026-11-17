@@ -8,7 +8,6 @@
     "url": "git+https://github.com/amritk/nishfmt.git"
   },
   "homepage": "https://github.com/amritk/nishfmt",
-  "private": true,
   "bin": {
     "nishfmt": "dist/nishfmt"
   },
