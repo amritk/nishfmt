@@ -19,22 +19,22 @@ cannot format exactly as the reference tool would is left untouched.
 Times are for formatting each corpus in place, on a 4-core container and
 pinned to one core:
 
-| Language | Matches | Files | Identical | Reference tool, 4 cores / 1 core | nishfmt, 4 cores / 1 core |
-| --- | --- | ---: | ---: | ---: | ---: |
-| C++ | clang-format 18, `{BasedOnStyle: LLVM, ColumnLimit: 120}` | 10344 | 10306 | 87.0 s / 212.9 s | **7.07 s / 28.9 s** |
-| Java | google-java-format 1.28 | 7627 | 7627 | 75.2 s / 252.9 s | **2.17 s / 8.64 s** |
-| Kotlin | ktfmt 0.64, default style | 9602 | 9602 | 92.9 s / not run | **2.03 s / 7.02 s** |
-| C# | CSharpier 1.4.0, default options | 13988 | 13988 | 63.0 s / 122.7 s | **3.10 s / 6.63 s** |
-| Dart, tall style | `dart format` 3.14 | 10313 | 10313 | 55.2 s / 59.9 s | **3.08 s / 8.50 s** |
-| Dart, short style (below 3.7) | `dart format` 3.14 | 8218 | 8218 | 25.4 s / 25.6 s | **3.76 s / 6.27 s** |
-| Swift | SwiftFormat 0.64.7, default rules | 6710 | 6710 | 131.7 s / 262.5 s | **10.2 s / 29.4 s** |
-| Rust | rustfmt 1.9.0, default config, edition 2021 | 7899 | 7899 | 7.6 s / 29.1 s | **1.35 s / 5.0 s** |
-| Ruby | `rubocop -a` 1.92.2, default config, `TargetRubyVersion: 3.3` | 1998 | 1998 | 303.9 s / 289.6 s | **4.00 s / 12.7 s** |
+| Language | Matches | Identical | Reference tool, 4 cores / 1 core | nishfmt, 4 cores / 1 core |
+| --- | --- | ---: | ---: | ---: |
+| C++ | clang-format 18, `{BasedOnStyle: LLVM, ColumnLimit: 120}` | 99.6% of 10,344 | 87.0 s / 212.9 s | **7.07 s / 28.9 s** |
+| Java | google-java-format 1.28 | 100% of 7,627 | 75.2 s / 252.9 s | **2.17 s / 8.64 s** |
+| Kotlin | ktfmt 0.64, default style | 100% of 9,602 | 92.9 s / not run | **2.03 s / 7.02 s** |
+| C# | CSharpier 1.4.0, default options | 100% of 13,988 | 63.0 s / 122.7 s | **3.10 s / 6.63 s** |
+| Dart, tall style | `dart format` 3.14 | 100% of 10,313 | 55.2 s / 59.9 s | **3.08 s / 8.50 s** |
+| Dart, short style (below 3.7) | `dart format` 3.14 | 100% of 8,218 | 25.4 s / 25.6 s | **3.76 s / 6.27 s** |
+| Swift | SwiftFormat 0.64.7, default rules | 100% of 6,710 | 131.7 s / 262.5 s | **10.2 s / 29.4 s** |
+| Rust | rustfmt 1.9.0, default config, edition 2021 | 100% of 7,899 | 7.6 s / 29.1 s | **1.35 s / 5.0 s** |
+| Ruby | `rubocop -a` 1.92.2, default config, `TargetRubyVersion: 3.3` | 100% of 1,998 | 303.9 s / 289.6 s | **4.00 s / 12.7 s** |
 
-- **Files** counts the corpus files the reference tool accepts, and
-  **Identical** how many of them nishfmt formats byte for byte as it does.
-  Times cover the whole corpus directory, including the few files the
-  reference rejects.
+- **Identical** is the share of the corpus files the reference tool accepts
+  that nishfmt formats byte for byte as it does; the exact counts are in
+  [Benchmarks](docs/benchmarks.md#corpus-results). Times cover the whole
+  corpus directory, including the few files the reference rejects.
 - One core is `taskset -c 0`, with `-j 1` for nishfmt. nishfmt's times are
   the best of three. The C++, Java and Ruby rows were measured together on
   an otherwise idle machine, the reference tools one run each; the others
