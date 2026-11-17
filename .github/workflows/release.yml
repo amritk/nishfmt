@@ -9,10 +9,13 @@
 # release.yml: on a v<version> tag, link src/main.ts with the nish pinned in
 # .nish-version on Linux and macOS (x86_64 and arm64), check each binary's
 # --version and format a file with it, and attach the tarballs with
-# SHA256SUMS and signed build provenance to the release. Attestations exist
-# only while the repository is public. npm and Homebrew are off until their
-# environments are set up (amritk/workflows' README, "Setting up a
-# repository").
+# SHA256SUMS and signed build provenance to the release, then publish it to
+# npm: @amritk/nishfmt with a launcher, and one @amritk/nishfmt-<target>
+# package per target holding the binary. npm publishes through trusted
+# publishing (OIDC) from the environment `npm`, which npmjs.com names with
+# this file, `release.yml`; a package's first publish needs NPM_TOKEN in that
+# environment. Attestations and provenance exist only while the repository is
+# public.
 #
 # A pull request that changes the release builds and smoke-tests every target
 # without releasing anything, and checks the release-please config.
@@ -51,6 +54,7 @@ jobs:
     with:
       mode: app
       versioning: release-please
+      npm: true
       test: bash build.sh && bash tests/run.sh dist/nishfmt
       smoke: |
         printf 'int  main( ){return 0;}\n' > smoke.cpp
