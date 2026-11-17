@@ -100,6 +100,12 @@ that `.github/workflows/release.yml` calls, pinned by commit:
 The release PR is opened with `GITHUB_TOKEN`, so CI does not run on it by
 itself; close and reopen it to run the checks before merging.
 
+Two repository settings make this work: **Settings, Actions, General,
+Workflow permissions** must allow GitHub Actions to create pull requests
+(release-please opens the release PR with `GITHUB_TOKEN`), and the first
+release is 0.1.0 (`initial-version`), with the changelog starting at the
+rename to nishfmt (`bootstrap-sha`).
+
 ## Commits and PRs
 
 Commits and PR titles are conventional, `type(scope): imperative subject`:

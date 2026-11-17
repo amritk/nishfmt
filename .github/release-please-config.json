@@ -1,6 +1,7 @@
 {
   "$schema": "https://raw.githubusercontent.com/googleapis/release-please/main/schemas/config.json",
-  "$comment": "Read by amritk/workflows' release-please.yml (see .github/workflows/release.yml). include-component-in-tag false is load-bearing: the release runs only on a v<version> tag.",
+  "$comment": "Read by amritk/workflows' release-please.yml (see .github/workflows/release.yml). include-component-in-tag false is load-bearing: the release runs only on a v<version> tag. bootstrap-sha is the last commit before the project became nishfmt: the history before it (as fastfmt) stays in git but not in the changelog. initial-version makes the first release 0.1.0 rather than release-please's default 1.0.0.",
+  "bootstrap-sha": "d069a5d1a96602040e0a9dbb6b30b5248140d481",
   "packages": {
     ".": {
       "release-type": "node",
@@ -9,6 +10,7 @@
       "include-component-in-tag": false,
       "include-v-in-tag": true,
       "bump-minor-pre-major": true,
+      "initial-version": "0.1.0",
       "extra-files": ["src/main.ts", "README.md"],
       "changelog-sections": [
         { "type": "feat", "section": "Features" },
