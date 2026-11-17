@@ -1,0 +1,57 @@
+# Releases nishfmt with amritk/workflows' reusable workflows, in app mode.
+#
+# release-please.yml: every push to main keeps a release PR open, bumping
+# package.json, NISHFMT_VERSION in src/main.ts, the README's --version output
+# and CHANGELOG.md from the conventional commits since the last release.
+# Merging it tags v<version>, creates the GitHub release, and starts this
+# workflow on the tag.
+#
+# release.yml: on a v<version> tag, link src/main.ts with the nish pinned in
+# .nish-version on Linux and macOS (x86_64 and arm64), check each binary's
+# --version and format a file with it, and attach the tarballs with
+# SHA256SUMS and signed build provenance to the release. Attestations exist
+# only while the repository is public. npm and Homebrew are off until their
+# environments are set up (amritk/workflows' README, "Setting up a
+# repository").
+#
+# A pull request that changes the release builds and smoke-tests every target
+# without releasing anything, and checks the release-please config.
+
+name: Release
+
+on:
+  push:
+    branches: [main]
+    tags: ["v*"]
+  pull_request:
+    paths:
+      - .github/workflows/release.yml
+      - .github/release-please-config.json
+      - .github/.release-please-manifest.json
+      - .nish-version
+      - package.json
+  workflow_dispatch:
+
+permissions: {}
+
+jobs:
+  release-please:
+    uses: amritk/workflows/.github/workflows/release-please.yml@c20c512afd4838c8c2a4e1de48df727e699f6e58
+    permissions:
+      contents: write
+      pull-requests: write
+      issues: write
+      actions: write
+  release:
+    uses: amritk/workflows/.github/workflows/release.yml@c20c512afd4838c8c2a4e1de48df727e699f6e58
+    permissions:
+      contents: write
+      id-token: write
+      attestations: write
+    with:
+      mode: app
+      versioning: release-please
+      test: bash build.sh && bash tests/run.sh dist/nishfmt
+      smoke: |
+        printf 'int  main( ){return 0;}\n' > smoke.cpp
+        test "$("$BIN" smoke.cpp)" = "int main() { return 0; }"
