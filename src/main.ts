@@ -100,6 +100,9 @@ class Stats {
   bytes: i64 = 0;
 }
 
+/** The version `--version` prints; release-please bumps it. */
+const NISHFMT_VERSION: string = "0.0.0"; // x-release-please-version
+
 const ms = (x: i64): i64 => x / toI64(1000000);
 
 const usage = (): string =>
@@ -125,10 +128,11 @@ const usage = (): string =>
     "  -j <n>          worker processes (default: one per core)",
     "  -q, --quiet     no summary",
     "  -h, --help      this text",
+    "  -v, --version   print the version",
     "",
-    "In C++, a `// nishfmt off` ... `// nishfmt on` region is left as written; a file",
-    "that does not parse (unbalanced brackets, unterminated literals) is left",
-    "untouched and counted as skipped.",
+    "A file nishfmt cannot format exactly as the reference tool would (one that",
+    "does not parse, say) is left untouched and counted as skipped. In C++, a",
+    "`// nishfmt off` ... `// nishfmt on` region is left as written.",
   ].join("\n");
 
 /** Files formatted in one region: up to this many, or until this many bytes were read. */
@@ -440,6 +444,9 @@ const parseArgs = (cli: Cli): i32 => {
       cli.quiet = true;
     } else if (a === "-h" || a === "--help") {
       console.log(usage());
+      return 0;
+    } else if (a === "-v" || a === "--version") {
+      console.log(`nishfmt ${NISHFMT_VERSION}`);
       return 0;
     } else if (a === "--width" || a === "--indent" || a === "-j") {
       if (i + 1 >= toI32(argv.length)) {
