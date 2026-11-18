@@ -8,6 +8,7 @@
 
 import {
   F_BEGIN,
+  F_ELSE,
   F_END,
   F_KEYWORD,
   F_OPERATOR,
@@ -17,30 +18,41 @@ import {
   NT_ARRAY,
   NT_BEGIN,
   NT_BLOCK_PASS,
+  NT_BLOCK,
   NT_BREAK,
+  NT_CASE,
+  NT_CASE_MATCH,
+  NT_CLASS,
   NT_CSEND,
   NT_DEF,
   NT_DEFS,
   NT_ENSURE,
   NT_ERANGE,
+  NT_FOR,
   NT_FORWARDED_KWRESTARG,
   NT_FORWARDED_RESTARG,
   NT_IF,
+  NT_IN_PATTERN,
   NT_IRANGE,
   NT_KWBEGIN,
   NT_LAMBDA,
   NT_MASGN,
   NT_MATCH_PATTERN,
   NT_MATCH_PATTERN_P,
+  NT_MODULE,
   NT_NEXT,
+  NT_NUMBLOCK,
   NT_OR,
   NT_PAIR,
+  NT_RESBODY,
   NT_RESCUE,
   NT_RETURN,
+  NT_SCLASS,
   NT_SEND,
   NT_SUPER,
   NT_UNTIL,
   NT_UNTIL_POST,
+  NT_WHEN,
   NT_WHILE,
   NT_WHILE_POST,
   NT_YIELD,
@@ -107,6 +119,10 @@ const sbhSlmCommandCall = (src: RbSource, n0: i32): boolean => {
     return false;
   }
   const t = src.a.type(n);
+  // `return foo` is a command too, even as `return(foo)`.
+  if (t === NT_RETURN) {
+    return src.a.nKid(n) > 0;
+  }
   if (t !== NT_SEND && t !== NT_CSEND && t !== NT_SUPER && t !== NT_YIELD) {
     return false;
   }
@@ -142,6 +158,59 @@ const sbhSlmArgCall = (src: RbSource, def: i32): i32 => {
     }
   }
   return V_NIL;
+};
+
+/** EndlessMethodBodyHelp#statement_body? */
+const sbhSlmStatementBody = (src: RbSource, def: i32, p: i32): boolean => {
+  const a = src.a;
+  const t = a.type(p);
+  if (t === NT_WHEN) {
+    return a.kid(p, -1) === def;
+  }
+  if (
+    t === NT_RESBODY ||
+    t === NT_IN_PATTERN ||
+    t === NT_FOR ||
+    t === NT_CLASS ||
+    t === NT_BLOCK ||
+    t === NT_NUMBLOCK
+  ) {
+    return a.kid(p, 2) === def;
+  }
+  if (t === NT_WHILE || t === NT_UNTIL || t === NT_MODULE || t === NT_SCLASS) {
+    return a.kid(p, 1) === def;
+  }
+  if (t === NT_IF) {
+    return !ssxHas(src, p, F_QUESTION) && a.kid(p, 0) !== def;
+  }
+  if (t === NT_CASE || t === NT_CASE_MATCH) {
+    return ssxHas(src, p, F_ELSE) && a.kid(p, -1) === def;
+  }
+  return false;
+};
+
+/** EndlessMethodBodyHelp#command_position? */
+const sbhSlmCommandPosition = (src: RbSource, def: i32): boolean => {
+  const a = src.a;
+  const p = src.parent(def);
+  if (p === V_NIL) {
+    return true;
+  }
+  const t = a.type(p);
+  if (t === NT_BEGIN || t === NT_KWBEGIN || t === NT_RESCUE || t === NT_ENSURE) {
+    return true;
+  }
+  if (t === NT_MASGN) {
+    return false;
+  }
+  if (sbhSlmAssignment(src, p)) {
+    return true;
+  }
+  if (ssxIsCall(src, p) && sbhAssignmentMethod(sbhMethodName(src, p))) {
+    const args = sbhCallArgs(src, p);
+    return args.length > 0 && args[args.length - 1] === def;
+  }
+  return sbhSlmStatementBody(src, def, p);
 };
 
 /** SingleLineMethods#require_parentheses? */
@@ -212,8 +281,17 @@ const sbhSlmEndlessBody = (src: RbSource, body: i32): boolean => {
   if (sbhSlmAssignment(src, body) && sbhSlmCommandCall(src, sbhSlmAssignedValue(src, body))) {
     return false;
   }
+  // body_disallowed_outside_statement?: endless_method_with_command_body?
+  if ((t === NT_DEF || t === NT_DEFS) && ssxEndless(src, body) && sbhSlmCommandCall(src, ssxDefBody(src, body))) {
+    return false;
+  }
+  // command_body_outside_statement? (argument_receiving_call: TargetRubyVersion is below 4.0)
   const call = sbhSlmArgCall(src, src.parent(body));
-  if (!sbhSlmRequireParens(src, body) && sbhSlmCommandCall(src, body) && call !== V_NIL) {
+  if (
+    !sbhSlmRequireParens(src, body) &&
+    sbhSlmCommandCall(src, body) &&
+    !sbhSlmCommandPosition(src, src.parent(body))
+  ) {
     return false;
   }
   if (call !== V_NIL && !ssxParenthesized(src, call)) {
