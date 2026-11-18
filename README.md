@@ -28,7 +28,7 @@ pinned to one core:
 | Dart, tall style | `dart format` 3.14.1 | 100% of 10,313 | 55.2 s / 59.9 s | **3.08 s / 8.50 s** |
 | Dart, short style (below 3.7) | `dart format` 3.14.1 | 100% of 8,218 | 25.4 s / 25.6 s | **3.76 s / 6.27 s** |
 | Swift | SwiftFormat 0.64.7, default rules | 100% of 6,710 | 131.7 s / 262.5 s | **10.2 s / 29.4 s** |
-| Rust | rustfmt 1.10.0, edition 2024, `style_edition = "2024"`, `max_width = 120` | 100% of 8,321 | TIMEREF | **TIMENISH** |
+| Rust | rustfmt 1.10.0, edition 2024, `style_edition = "2024"`, `max_width = 120` | 100% of 8,321 | 19.8 s / 45.6 s | **1.89 s / 7.06 s** |
 | Ruby | `rubocop -a` 1.92.3, default config, `TargetRubyVersion: 3.3` | 100% of 1,999 | 303.9 s / 289.6 s | **4.00 s / 12.7 s** |
 
 - **Identical** is the share of the corpus files the reference tool accepts

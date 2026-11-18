@@ -205,15 +205,18 @@ branches no input can show at this configuration, ported all the same:
 
 ## Speed
 
-All on the shared 4-core machine at low load (other jobs make it noisy;
-under load nishfmt took 2.6–3.9 s on 4 cores), the 8349 files of
-`/work/c/rust/raw` (108 MB). The stdin row is from an earlier, busier run.
+The 8349 files of `bench/work/corpus/rust/raw` (108 MB) at nishfmt's style,
+on a shared 4-core machine; nishfmt the best of three, rustfmt one run.
 
 | | 4 cores | 1 core (`taskset -c 0`, nishfmt `-j 1`) |
 | --- | --- | --- |
-| nishfmt (`-i -q` on a copy of raw) | 1.35 s | 5.0–5.2 s |
-| rustfmt, 100 files per process (`xargs -n 100`) | 7.6 s | 29.1 s |
-| rustfmt, one file per process through stdin | 148 s | 442 s |
+| nishfmt (`-i -q` on a copy of raw) | 1.89 s | 7.06 s |
+| rustfmt, 100 files per process (`xargs -n 100`) | 19.8 s | 45.6 s |
+
+The same machine ran the edition 2021 binary at 1.51 s / 5.23 s. At the
+old configuration (`FFEDITION=2021 FFSTYLE=2021 FFWIDTH=100`) the dev driver
+is within 2% of it; the rest is the configuration, chiefly the 422 files
+with let chains that now parse and are formatted.
 
 rustfmt given file arguments also formats each file's out-of-line modules,
 so the batch numbers include some repeated work; stdin per file is the
