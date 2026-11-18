@@ -20,7 +20,7 @@ Where the two goals pull apart, matching wins, then speed.
 | Swift | `src/swift` | SwiftFormat 0.64.7, default rules | `swiftformat stdin --quiet < f` |
 | Rust | `src/rust` | rustfmt 1.9.0, default config, edition 2021 | `rustfmt --edition 2021 < f` |
 | Dart | `src/dart` | `dart format` (Dart 3.14) | `dart format < f` |
-| C# | `src/csharp` | CSharpier 1.4.0, default options | `csharpier format --write-stdout < f` |
+| C# | `src/csharp` | CSharpier 1.4.0, default options except `end_of_line = crlf` | `csharpier format --write-stdout < f`, run below the `.editorconfig` that `mk.sh cs` writes ([README](../README.md#settings)) |
 
 A new language takes a directory of its own, a prefix for its names (below),
 a corpus (`bench/corpus/repos.txt` and a case in `mk.sh`) and a row in the
