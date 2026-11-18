@@ -2896,6 +2896,12 @@ export class Parser {
         this.parseFunctionTry();
         return;
       }
+      if (k === P_CARET && this.lastCode() >= 0 && isIdentKind(d.kind[this.lastCode()])) {
+        // clang-format 23: after an identifier a `^` starts no block literal
+        // (`String ^ NAME { ... }`, a C++/CX handle).
+        this.push();
+        continue;
+      }
       if (k === P_CARET && !(this.last >= 0 && d.kind[this.last] === KW_OPERATOR)) {
         // clang-format's statement loop reads `^ type (args) { ... }` as a
         // block literal, whatever comes before the `^` (but `operator`).
