@@ -4,7 +4,7 @@
 // (LineLengthHelp with the default configuration) and the StatementModifier
 // mixin.
 //
-// Ported from RuboCop 1.92.2, rubocop-ast 1.51.0 (MIT License, Copyright (c)
+// Ported from RuboCop 1.92.3, rubocop-ast 1.52.0 (MIT License, Copyright (c)
 // 2012-24 Bozhidar Batsov) and parser 3.3.13.0 (MIT License, Copyright (c)
 // 2013-2024 parser contributors).
 

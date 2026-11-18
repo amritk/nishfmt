@@ -1,7 +1,7 @@
 // Lint/ReturnInVoidContext (no correction): `return value` in `initialize`
 // or a setter method, outside a lambda / define_method block.
 //
-// Ported from RuboCop 1.92.2 (MIT License, Copyright (c) 2012-24 Bozhidar
+// Ported from RuboCop 1.92.3 (MIT License, Copyright (c) 2012-24 Bozhidar
 // Batsov).
 
 import { F_KEYWORD, NT_DEF, NT_RETURN, V_NIL } from "../ast";

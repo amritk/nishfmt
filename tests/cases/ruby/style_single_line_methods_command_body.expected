@@ -1,0 +1,19 @@
+# frozen_string_literal: true
+
+def foo
+  def bar = baz qux
+end
+
+def a = yield b
+x = [def c
+       yield d
+     end]
+y = (def e = super f)
+z = def g = yield h
+foo(def i
+  yield j
+end)
+def l = yield m if k
+def q = def r = 3
+def s = [def t; end]
+puts x, y, z

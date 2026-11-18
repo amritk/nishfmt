@@ -12,7 +12,7 @@ says how to rebuild them and rerun the comparisons.
 | C++ | clang-format | 18.1.3 | `clang-format` on PATH |
 | Java | google-java-format | 1.28.0, all-dependencies jar | `$GJF` |
 | Kotlin | ktfmt | 0.65, with-dependencies jar (from the GitHub release; Maven Central stops at 0.64), run with `--kotlinlang-style` | `$KTFMT` |
-| Ruby | RuboCop | 1.92.2 | `rubocop` on PATH |
+| Ruby | RuboCop | 1.92.3 | `rubocop` on PATH |
 | Swift | SwiftFormat | 0.64.7 | `$SWIFTFORMAT`, else `swiftformat` |
 | Rust | rustfmt | 1.9.0 | `rustfmt` on PATH |
 | Dart | `dart format` | Dart SDK 3.14.1 (dart_style 3.1.14-wip at 5a9534fad9ff) | `$DART`, else `dart` |
@@ -70,7 +70,7 @@ for byte as it does, on the corpora the README's table is measured on:
 | Dart, `dart6` (every version) | 7849 | 7849 |
 | Swift | 6710 | 6710 |
 | Rust | 7899 | 7899 |
-| Ruby | 1998 | 1998 |
+| Ruby | 1999 | 1999 |
 
 The 38 C++ files left are described in [C++](cpp.md#results-by-repository).
 
@@ -112,6 +112,10 @@ corpus. nishfmt is faster than it, on 4 cores and on 1:
 ktrs 0.5.1, a Rust reimplementation of ktfmt, had a Kotlin row here, measured
 against ktfmt 0.64 in its default (Meta) style; it was not re-measured against
 the kotlinlang corpus, so the row is gone.
+
+The Ruby times here and in the README were measured under the previous RuboCop, when
+the corpus counted 1998 files; rebuilt at the same commits it now counts 1999
+(see Corpus results), and the times were not re-measured.
 
 nitrocop, another Rust reimplementation of RuboCop, matched on fewer than a
 quarter of the files of an earlier sample and is left out. rustfmt is itself

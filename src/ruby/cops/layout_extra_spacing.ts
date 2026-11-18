@@ -2,7 +2,7 @@
 // false, ForceEqualSignAlignment: false), with the alignment_lines part of
 // PrecedingFollowingAlignment that LspAlign does not have.
 //
-// Ported from RuboCop 1.92.2 (MIT License, Copyright (c) 2012-24 Bozhidar
+// Ported from RuboCop 1.92.3 (MIT License, Copyright (c) 2012-24 Bozhidar
 // Batsov).
 
 import { NT_PAIR, V_NIL } from "../ast";
@@ -43,6 +43,17 @@ const rmlEsDistinct = (xs: i32[]): i32 => {
   const s = new Set<i32>();
   for (const x of xs) {
     s.add(x);
+  }
+  return toI32(s.size);
+};
+
+/** distinct_spacings(entries).count(&:positive?) over [line, spacing, ...] pairs. */
+const rmlEsPositiveDistinct = (entries: i32[]): i32 => {
+  const s = new Set<i32>();
+  for (let i = 1; i < toI32(entries.length); i += 2) {
+    if (entries[i] > 0) {
+      s.add(entries[i]);
+    }
   }
   return toI32(s.size);
 };
@@ -195,7 +206,12 @@ class RmlEsState {
       if (v !== undefined) {
         return v;
       }
-      const r = rmlEsDistinct(prof.tSpacings[ent]) > 1 || this.otherColumn(prof, col, prof.tLines[ent]);
+      // spacings.uniq.size > 1 || distinct_spacings(entries).count(&:positive?) > 1 ||
+      //   aligned_on_other_column?
+      const r =
+        rmlEsDistinct(prof.tSpacings[ent]) > 1 ||
+        (entries !== undefined && rmlEsPositiveDistinct(entries) > 1) ||
+        this.otherColumn(prof, col, prof.tLines[ent]);
       prof.verdicts.set(ent, r);
       return r;
     }

@@ -1,7 +1,7 @@
 // Layout/EmptyLinesAroundArguments: empty lines before the arguments (or
 // closing parenthesis) of a multi-line call.
 //
-// Ported from RuboCop 1.92.2 (MIT License, Copyright (c) 2012-24 Bozhidar
+// Ported from RuboCop 1.92.3 (MIT License, Copyright (c) 2012-24 Bozhidar
 // Batsov).
 
 import { F_END, F_SELECTOR, NT_CSEND, NT_SEND, V_NIL } from "../ast";

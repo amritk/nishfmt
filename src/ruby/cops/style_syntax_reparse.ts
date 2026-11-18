@@ -1,7 +1,7 @@
 // RuboCop::Cop::ReparsedEquivalence for corrections that only remove ranges:
 // a correction counts only when the corrected source parses to the same AST.
 //
-// Ported from RuboCop 1.92.2 (MIT License, Copyright (c) 2012-24 Bozhidar
+// Ported from RuboCop 1.92.3 (MIT License, Copyright (c) 2012-24 Bozhidar
 // Batsov).
 
 import { NT_CLASS, NT_DEF, NT_DEFS, NT_MODULE, NT_SCLASS, RbAst, V_NIL, vTag } from "../ast";

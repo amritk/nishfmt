@@ -1,4 +1,4 @@
-// The Unicode property names regexp_parser 2.13.1 accepts after `\p{...}`
+// The Unicode property names regexp_parser 2.13.4 accepts after `\p{...}`
 // (normalized: without `^`, spaces, `_` and `-`, downcased), from its
 // scanner/properties/{short,long}.csv (MIT License, Copyright (c) 2010-2026
 // Ammar Ali). Generated.

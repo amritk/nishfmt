@@ -2,7 +2,7 @@
 // MaxChainLength: 2, AllowedMethods: present? blank? presence try try!; its
 // correction is unsafe: detection only).
 //
-// Ported from RuboCop 1.92.2 (MIT License, Copyright (c) 2012-24 Bozhidar
+// Ported from RuboCop 1.92.3 (MIT License, Copyright (c) 2012-24 Bozhidar
 // Batsov).
 
 import {

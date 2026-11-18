@@ -1,11 +1,12 @@
 // Lint/LiteralAsCondition. Its corrections are safe, so they run under
 // `rubocop -a` too.
 //
-// Ported from RuboCop 1.92.2 (MIT License, Copyright (c) 2012-24 Bozhidar
+// Ported from RuboCop 1.92.3 (MIT License, Copyright (c) 2012-24 Bozhidar
 // Batsov).
 
 import {
   F_ELSE,
+  F_END,
   F_QUESTION,
   F_SELECTOR,
   NT_AND,
@@ -19,6 +20,7 @@ import {
   NT_FOR,
   NT_IF,
   NT_IN_PATTERN,
+  NT_KWBEGIN,
   NT_MATCH_VAR,
   NT_NEXT,
   NT_NUMBLOCK,
@@ -35,6 +37,7 @@ import {
 } from "../ast";
 import { RbCop } from "../cop";
 import { LalIgnored } from "./layout_align_help";
+import { RbRewriter } from "../rewriter";
 import { RbSource } from "../source";
 import { lbhBasicLiteral, lbhFalsey, lbhLiteral, lbhTruthy, lbhValueUsed } from "./lint_batch_help";
 import {
@@ -112,8 +115,35 @@ export class CopLintLiteralAsCondition {
     if (this.voidValue(src, rhs)) {
       return;
     }
-    k.replace(a.exS(n), a.exE(n), src.nodeSrc(rhs));
+    this.replaceNode(src, k, n, src.nodeSrc(rhs));
+  }
+
+  /** replace_node: skipped inside a node an earlier correction replaced. */
+  private replaceNode(src: RbSource, k: RbRewriter, n: i32, repl: string): void {
+    for (let p = src.parent(n); p !== V_NIL; p = src.parent(p)) {
+      if (this.ign.has(p)) {
+        return;
+      }
+    }
+    k.replace(src.a.exS(n), src.a.exE(n), repl);
     this.c.commit(k);
+    this.ign.add(n);
+  }
+
+  /** removable?: whether the node can go without leaving a hole where a value is needed. */
+  private removable(src: RbSource, n: i32): boolean {
+    if (lbhValueUsed(src, n)) {
+      return false;
+    }
+    const p = src.parent(n);
+    if (p === V_NIL) {
+      return true;
+    }
+    const t = src.a.type(p);
+    if (t === NT_BEGIN || t === NT_KWBEGIN || t === NT_WHEN) {
+      return true;
+    }
+    return (t === NT_IF || t === NT_WHILE || t === NT_UNTIL) && ssxHas(src, p, F_END);
   }
 
   /** void_value_expression?. */
@@ -142,11 +172,10 @@ export class CopLintLiteralAsCondition {
       return;
     }
     if (sameSense) {
-      k.replace(a.exS(cond), a.exE(cond), keep);
+      this.replaceNode(src, k, cond, keep);
     } else {
-      k.remove(a.exS(n), a.exE(n));
+      this.replaceNode(src, k, n, this.removable(src, n) ? "" : "nil");
     }
-    this.c.commit(k);
   }
 
   private onPostLoop(src: RbSource, n: i32, isWhile: boolean): void {
@@ -173,12 +202,12 @@ export class CopLintLiteralAsCondition {
       if (at < 0) {
         return;
       }
-      k.replace(
-        a.exS(n),
-        a.exE(n),
+      this.replaceNode(
+        src,
+        k,
+        n,
         `${ns.substring(0, at)}${keep}${ns.substring(at + toI32(cs.length), toI32(ns.length))}`,
       );
-      this.c.commit(k);
       return;
     }
     if (this.orphansLoopControl(src, n)) {
@@ -192,8 +221,7 @@ export class CopLintLiteralAsCondition {
         parts.push(src.nodeSrc(ch));
       }
     }
-    k.replace(a.exS(n), a.exE(n), parts.join("\n"));
-    this.c.commit(k);
+    this.replaceNode(src, k, n, parts.join("\n"));
   }
 
   /** orphans_loop_control_keyword?. */
@@ -357,7 +385,7 @@ export class CopLintLiteralAsCondition {
       return;
     }
     const k = this.c.offense(a.exS(cond), a.exE(cond));
-    if (k === null || this.ign.partOf(src, n)) {
+    if (k === null) {
       return;
     }
     let repl = "";
@@ -378,11 +406,9 @@ export class CopLintLiteralAsCondition {
       repl = at < 0 ? `${es}\nend` : `${es.substring(0, at)}if${es.substring(at + 5, toI32(es.length))}\nend`;
     } else if (hasElse || ssxHas(src, n, F_QUESTION)) {
       repl = src.nodeSrc(eb);
-    } else if (lbhValueUsed(src, n)) {
+    } else if (!this.removable(src, n)) {
       repl = "nil";
     }
-    k.replace(a.exS(n), a.exE(n), repl);
-    this.c.commit(k);
-    this.ign.add(n);
+    this.replaceNode(src, k, n, repl);
   }
 }

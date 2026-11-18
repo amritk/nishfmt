@@ -1,6 +1,6 @@
 // Style/EvalWithLocation.
 //
-// Ported from RuboCop 1.92.2 (MIT License, Copyright (c) 2012-24 Bozhidar
+// Ported from RuboCop 1.92.3 (MIT License, Copyright (c) 2012-24 Bozhidar
 // Batsov).
 
 import { F_HEREDOC_BODY, NT_CVAR, NT_DSTR, NT_GVAR, NT_INT, NT_IVAR, NT_LVAR, NT_SEND, NT_STR, V_NIL } from "../ast";

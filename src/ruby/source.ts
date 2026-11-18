@@ -2,7 +2,7 @@
 // lines and node ancestry, and the rubocop:disable directives in its comments
 // (RuboCop::CommentConfig). Positions are code point offsets.
 //
-// Ported from rubocop-ast 1.51.0 and RuboCop 1.92.2 (MIT License, Copyright
+// Ported from rubocop-ast 1.52.0 and RuboCop 1.92.3 (MIT License, Copyright
 // (c) 2012-24 Bozhidar Batsov).
 
 import { F_HEREDOC_END, M_HEREDOC, NT_BEGIN, RbAst, V_NIL, rbSplitComma, vIdx } from "./ast";

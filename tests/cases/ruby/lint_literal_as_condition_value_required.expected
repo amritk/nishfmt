@@ -1,0 +1,3 @@
+cond ? nil : bar
+nil while cond
+foo(nil, bar)

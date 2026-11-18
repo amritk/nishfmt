@@ -1,0 +1,32 @@
+# frozen_string_literal: true
+
+def m
+  puts "#{42 => var
+          x}" # rubocop:disable Style/RedundantInterpolation
+  puts "#{return
+          foo}" # rubocop:disable Style/RedundantInterpolation
+  puts "#{return if foo}" # rubocop:disable Style/RedundantInterpolation
+  puts "#{foo ? return : return}"
+  puts "#{begin
+    return foo
+  rescue StandardError
+    bar
+  end}" # rubocop:disable Style/RedundantInterpolation
+  puts "#{begin
+    return foo
+  rescue StandardError
+    return bar
+  end}"
+  puts "#{begin
+    foo
+  ensure
+    return bar
+  end}"
+  puts "#{begin
+    return foo
+  rescue StandardError
+    bar
+  else
+    return baz
+  end}"
+end

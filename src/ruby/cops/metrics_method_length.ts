@@ -1,7 +1,7 @@
 // Metrics/MethodLength (detection only; CountComments: false, Max: 10,
 // CountAsOne: [], AllowedMethods: [], AllowedPatterns: []).
 //
-// Ported from RuboCop 1.92.2 (MIT License, Copyright (c) 2012-24 Bozhidar
+// Ported from RuboCop 1.92.3 (MIT License, Copyright (c) 2012-24 Bozhidar
 // Batsov).
 
 import { NT_BLOCK, NT_CSEND, NT_DEF, NT_DEFS, NT_NUMBLOCK, NT_SEND } from "../ast";

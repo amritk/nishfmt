@@ -1,7 +1,7 @@
 // Lint/StructNewOverride (no correction): a `Struct.new` member named like
 // one of Struct's own methods.
 //
-// Ported from RuboCop 1.92.2 (MIT License, Copyright (c) 2012-24 Bozhidar
+// Ported from RuboCop 1.92.3 (MIT License, Copyright (c) 2012-24 Bozhidar
 // Batsov).
 
 import { NT_SEND, NT_STR, NT_SYM } from "../ast";

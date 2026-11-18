@@ -4,7 +4,7 @@
 // the MethodComplexity mixin's matchers. RepeatedAttributeDiscount is off
 // under the default CountRepeatedAttributes: true (AbcSize).
 //
-// Ported from RuboCop 1.92.2 (MIT License, Copyright (c) 2012-24 Bozhidar
+// Ported from RuboCop 1.92.3 (MIT License, Copyright (c) 2012-24 Bozhidar
 // Batsov).
 
 import {

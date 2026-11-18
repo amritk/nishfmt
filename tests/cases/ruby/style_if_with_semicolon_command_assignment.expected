@@ -1,0 +1,18 @@
+# frozen_string_literal: true
+
+cond ? (@x = foo a) : (@y ||= bar b)
+cond ? (@x += foo a) : (Y = @z = bar b)
+cond ? (obj.x = foo a) : (obj[k] = bar b)
+if cond
+  (@a = begin
+    foo c
+  rescue StandardError
+    nil
+  end)
+else
+  (@d = 1, 2)
+end
+cond ? (@a = super b) : @b = x == y
+cond ? @a = list.map { |v| v } : @b = defined? c
+cond ? (@a = list.each_slice 2 do |v| v end) : (@b = c.d e)
+cond ? obj.x = 1 : obj.y = 2

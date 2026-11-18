@@ -1,6 +1,6 @@
 // Style/SlicingWithRange (unsafe: detection only).
 //
-// Ported from RuboCop 1.92.2 (MIT License, Copyright (c) 2012-24 Bozhidar
+// Ported from RuboCop 1.92.3 (MIT License, Copyright (c) 2012-24 Bozhidar
 // Batsov).
 
 import { F_DOT, F_END, F_SELECTOR, NT_ERANGE, NT_INT, NT_IRANGE, NT_NIL, V_NIL } from "../ast";

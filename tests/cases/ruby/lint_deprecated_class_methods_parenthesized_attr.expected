@@ -1,0 +1,2 @@
+foo bar, attr_accessor(:name)
+foo bar, attr_reader(:name)

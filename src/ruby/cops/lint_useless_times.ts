@@ -1,7 +1,7 @@
 // Lint/UselessTimes (unsafe; detection only): `0.times`, `1.times` or a
 // negative count's `times`, with its block when it has one.
 //
-// Ported from RuboCop 1.92.2 (MIT License, Copyright (c) 2012-24 Bozhidar
+// Ported from RuboCop 1.92.3 (MIT License, Copyright (c) 2012-24 Bozhidar
 // Batsov).
 
 import { NT_BLOCK_PASS, NT_INT, NT_SEND, NT_SYM } from "../ast";

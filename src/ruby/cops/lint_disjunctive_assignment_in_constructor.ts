@@ -1,7 +1,7 @@
 // Lint/DisjunctiveAssignmentInConstructor. The cop is unsafe, so its
 // correction never runs under `rubocop -a`: it only detects.
 //
-// Ported from RuboCop 1.92.2 (MIT License, Copyright (c) 2012-24 Bozhidar
+// Ported from RuboCop 1.92.3 (MIT License, Copyright (c) 2012-24 Bozhidar
 // Batsov).
 
 import { F_OPERATOR, NT_BEGIN, NT_DEF, NT_IVASGN, NT_OR_ASGN, V_NIL } from "../ast";

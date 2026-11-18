@@ -1,6 +1,6 @@
 // Layout/ElseAlignment (with Layout/EndAlignment's keyword style).
 //
-// Ported from RuboCop 1.92.2 (MIT License, Copyright (c) 2012-24 Bozhidar
+// Ported from RuboCop 1.92.3 (MIT License, Copyright (c) 2012-24 Bozhidar
 // Batsov).
 
 import {
@@ -12,6 +12,7 @@ import {
   NT_CASE,
   NT_CASE_MATCH,
   NT_CLASS,
+  NT_CSEND,
   NT_DEF,
   NT_DEFS,
   NT_ENSURE,
@@ -81,7 +82,7 @@ export class CopLayoutElseAlignment {
         if (rnHas(src, n, F_ELSE)) {
           this.check(src, rnS(src, a.kid(n, -2), F_KEYWORD), n);
         }
-      } else if (rmlAsgnType(t) || t === NT_SEND) {
+      } else if (rmlAsgnType(t) || t === NT_SEND || t === NT_CSEND) {
         // check_assignment
         const rhs = rmlFirstPartOfCallChain(src, rmlExtractRhs(src, n));
         if (rhs === V_NIL || !a.isNode(rhs) || a.type(rhs) !== NT_IF) {

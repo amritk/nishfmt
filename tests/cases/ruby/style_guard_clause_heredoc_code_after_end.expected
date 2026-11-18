@@ -1,0 +1,18 @@
+def func
+  raise(<<~MESSAGE) unless condition
+    text
+  MESSAGE
+
+  foo
+
+  bar
+end
+
+def func
+  return unless other_condition
+  raise(<<~MESSAGE) unless condition
+    text
+  MESSAGE
+
+  foo
+end

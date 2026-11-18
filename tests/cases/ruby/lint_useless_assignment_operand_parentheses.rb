@@ -1,0 +1,47 @@
+# frozen_string_literal: true
+
+def m0(foo)
+  foo += bar baz
+end
+
+def m1(foo)
+  foo -= qux&.quux baz
+end
+
+def m2(foo)
+  foo += yield bar
+end
+
+def m3(foo)
+  foo *= bar + baz
+end
+
+def m4(foo)
+  foo += bar ? baz : qux
+end
+
+def m5(foo, bar)
+  foo *= bar += baz
+end
+
+def m6(foo)
+  foo += defined? bar
+end
+
+def m7(foo)
+  foo += bar do
+    baz
+  end
+end
+
+def m8(foo)
+  foo += bar[baz]
+end
+
+def m9(foo)
+  foo += -> { bar }
+end
+
+def m10(foo)
+  foo += @bar ||= baz
+end

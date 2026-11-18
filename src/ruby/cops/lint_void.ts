@@ -1,10 +1,11 @@
 // Lint/Void (CheckForMethodsWithNoSideEffects: false).
 //
-// Ported from RuboCop 1.92.2 (MIT License, Copyright (c) 2012-24 Bozhidar
+// Ported from RuboCop 1.92.3 (MIT License, Copyright (c) 2012-24 Bozhidar
 // Batsov).
 
 import {
   F_DOT,
+  F_END,
   F_HEREDOC_END,
   F_KEYWORD,
   F_NAME,
@@ -13,6 +14,7 @@ import {
   NT_ARRAY,
   NT_BEGIN,
   NT_BLOCK,
+  NT_BLOCK_PASS,
   NT_CASE,
   NT_CASE_MATCH,
   NT_COMPLEX,
@@ -29,6 +31,8 @@ import {
   NT_FALSE,
   NT_FLOAT,
   NT_FOR,
+  NT_FORWARDED_ARGS,
+  NT_FORWARDED_RESTARG,
   NT_GVAR,
   NT_HASH,
   NT_IF,
@@ -46,6 +50,7 @@ import {
   NT_REGOPT,
   NT_SELF,
   NT_SEND,
+  NT_SPLAT,
   NT_STR,
   NT_SYM,
   NT_TRUE,
@@ -62,6 +67,7 @@ import { vfSameNode } from "./lint_variable_force";
 import { rnHeredoc } from "../node";
 import {
   ssxDefName,
+  ssxDescendants,
   ssxFE,
   ssxFS,
   ssxHas,
@@ -69,6 +75,7 @@ import {
   ssxIs,
   ssxIsAnyBlock,
   ssxIsCall,
+  ssxLocIs,
   ssxMeth,
 } from "./style_syntax_help";
 
@@ -92,6 +99,38 @@ const lvoLiteral = (t: i32): boolean =>
   t === NT_REGOPT ||
   t === NT_FALSE ||
   t === NT_NIL;
+
+/** node.each_descendant(:begin).any? */
+const lvoHasBegin = (src: RbSource, n: i32): boolean => {
+  for (const d of ssxDescendants(src, n)) {
+    if (src.a.type(d) === NT_BEGIN) {
+      return true;
+    }
+  }
+  return false;
+};
+
+/** Void#operation?: an operator call whose operands are values. */
+const lvoOperation = (src: RbSource, n: i32): boolean => {
+  const a = src.a;
+  const m = ssxMeth(src, n);
+  if (a.nKid(n) === 2) {
+    return m === "+@" || m === "-@" || m === "~" || m === "!" || !ssxHas(src, n, F_DOT);
+  }
+  if (a.nKid(n) !== 3) {
+    return false;
+  }
+  const arg = a.kid(n, 2);
+  // trailing_comma?
+  if (src.src(a.exE(arg), a.exE(n)).indexOf(",") >= 0) {
+    return false;
+  }
+  const t = a.type(arg);
+  if (t === NT_HASH) {
+    return ssxLocIs(src, arg, F_END, "}");
+  }
+  return !(t === NT_SPLAT || t === NT_BLOCK_PASS || t === NT_FORWARDED_ARGS || t === NT_FORWARDED_RESTARG);
+};
 
 /** entirely_literal?. */
 const lvoEntirelyLiteral = (src: RbSource, n: i32): boolean => {
@@ -260,26 +299,26 @@ export class CopLintVoid {
     const t = a.type(n);
     // check_literal
     if (lvoEntirelyLiteral(src, n) && t !== NT_XSTR && t !== NT_IRANGE && t !== NT_ERANGE && t !== NT_NIL) {
-      this.flag(src, n, a.exS(n), a.exE(n));
+      this.flag(src, n, a.exS(n), a.exE(n), !lvoHasBegin(src, n));
     }
     // check_var
     if (t === NT_IVAR || t === NT_GVAR || t === NT_CVAR || t === NT_LVAR) {
-      this.flag(src, n, ssxFS(src, n, F_NAME), ssxFE(src, n, F_NAME));
+      this.flag(src, n, ssxFS(src, n, F_NAME), ssxFE(src, n, F_NAME), true);
     } else if (t === NT_CONST) {
-      this.flag(src, n, a.exS(n), a.exE(n));
+      this.flag(src, n, a.exS(n), a.exE(n), true);
     }
     // check_self
     if (t === NT_SELF) {
-      this.flag(src, n, a.exS(n), a.exE(n));
+      this.flag(src, n, a.exS(n), a.exE(n), true);
     }
     // check_void_expression
     if (t === NT_DEFINED_P || labaLambdaOrProc(src, n)) {
-      this.flag(src, n, a.exS(n), a.exE(n));
+      this.flag(src, n, a.exS(n), a.exE(n), true);
     }
   }
 
   /** An offense whose correction is autocorrect_void_expression. */
-  private flag(src: RbSource, n: i32, s: i32, e: i32): void {
+  private flag(src: RbSource, n: i32, s: i32, e: i32, correct: boolean): void {
     const a = src.a;
     const k = this.c.offense(s, e);
     if (k === null) {
@@ -289,6 +328,7 @@ export class CopLintVoid {
     const p = src.parent(n);
     const pt = p === V_NIL ? -1 : a.type(p);
     let skip =
+      !correct ||
       (t === NT_CONST && !lvoSpecialKeyword(src, n)) ||
       pt === NT_IF ||
       pt === NT_CASE ||
@@ -330,8 +370,7 @@ export class CopLintVoid {
     if (!ssxInList(LVO_OPERATORS, m)) {
       return;
     }
-    const unary = m === "+@" || m === "-@" || m === "~" || m === "!";
-    if (!unary && ssxHas(src, n, F_DOT) && a.nKid(n) === 2) {
+    if (!lvoOperation(src, n)) {
       return;
     }
     if (each) {

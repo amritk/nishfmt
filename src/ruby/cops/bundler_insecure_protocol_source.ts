@@ -1,7 +1,7 @@
 // Bundler/InsecureProtocolSource (AllowHttpProtocol: true, so only the
 // deprecated symbol sources are corrected). Gemfiles only.
 //
-// Ported from RuboCop 1.92.2 (MIT License, Copyright (c) 2012-24 Bozhidar
+// Ported from RuboCop 1.92.3 (MIT License, Copyright (c) 2012-24 Bozhidar
 // Batsov).
 
 import { NT_SEND, NT_SYM, V_NIL } from "../ast";
