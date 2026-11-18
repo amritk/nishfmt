@@ -137,18 +137,9 @@ export class CopStyleParenthesesAroundCondition {
       if ((t === NT_WHILE || t === NT_UNTIL) && ssxIsAnyBlock(src, first) && ssxLocIs(src, first, F_END, "end")) {
         continue;
       }
-      // semicolon_separated_expressions?
+      // `(foo; bar)` and `(foo\n bar)` would leave only `foo` as the condition.
       if (a.nKid(cond) > 1) {
-        const second = a.kid(cond, 1);
-        let semi = false;
-        for (let p = a.exE(first); p < a.exS(second); p++) {
-          if (src.at(p) === 59) {
-            semi = true;
-          }
-        }
-        if (semi) {
-          continue;
-        }
+        continue;
       }
       if (this.modifierOp(src, first) || ssxIs(src, first, NT_MASGN)) {
         continue;
