@@ -170,7 +170,7 @@ export class Formatter {
   npass: i32 = 0; // passes of the current file
   curPass: i32 = 0;
   seenBefore: i32[]; // per source token: 1 when a pass before the current one saw it
-  compoundReq: i32[]; // per token: 1 on a compound requirement's `{` (the parser's compoundReqs)
+  compoundReqs: i32[]; // the parser's compound requirement `{`s, this pass
   useful: i32[]; // per pass: 1 when it sees a token no earlier pass saw
   seenBy: i32[];
   map: i32[]; // pass token -> source token
@@ -321,7 +321,7 @@ export class Formatter {
     this.ppCnt = new Array<i32>(0);
     this.useful = new Array<i32>(0);
     this.seenBefore = new Array<i32>(0);
-    this.compoundReq = new Array<i32>(0);
+    this.compoundReqs = new Array<i32>(0);
     this.bcLa = new Array<i32>(0);
     this.bcLe = new Array<i32>(0);
     this.bcCa = new Array<i32>(0);
@@ -1319,7 +1319,7 @@ export class Formatter {
         // clang-format 23's tryMergeSimpleBlock: a `{` that starts a statement
         // (TT_BlockLBrace) is never merged under AllowShortBlocksOnASingleLine
         // Never, neither with its body nor with an empty `}`.
-        const blockLBrace = lineIsBlockOnly && tt === TT_UNKNOWN && this.compoundReq[last] === 0;
+        const blockLBrace = lineIsBlockOnly && tt === TT_UNKNOWN && this.compoundReqs.indexOf(last) < 0;
         // A block opened on a `case`/`default:` line is never merged.
         const caseLine =
           d.kind[lineStart] === KW_CASE ||
@@ -1529,7 +1529,7 @@ export class Formatter {
       if (next >= 0 && d.nl[nf] < 2 && onlyComments && this.offMarker(f) !== 1 && d.col[nf] === d.col[f]) {
         const pp = d.lType[next] === LT_PREPROCESSOR || d.lType[next] === LT_IMPORT;
         const iw = d.opts.indentWidth;
-        if (!this.seenTok(f) && this.finalizedFirst(nf) && iw > 0 && d.col[f] % iw === 0) {
+        if (!this.seenTok(f) && this.finalizedTok(nf) && iw > 0 && d.col[f] % iw === 0) {
           // clang-format 23: aligned with a line an earlier pass formatted
           // (its first token finalized), the comment keeps its column. (A
           // comment an earlier pass formatted keeps that pass's output.)
@@ -2368,13 +2368,7 @@ export class Formatter {
     if (d.failed) {
       return PASS_FAIL;
     }
-    if (toI32(this.compoundReq.length) < d.ntok) {
-      this.compoundReq = new Array<i32>(d.ntok + 64);
-    }
-    this.compoundReq.fill(0);
-    for (const t of p.compoundReqs) {
-      this.compoundReq[t] = 1;
-    }
+    this.compoundReqs = p.compoundReqs;
     // Objective-C beyond declarations (literals, @implementation, method
     // bodies): the file is left alone.
     if (d.objcSeen && d.objcOther) {
@@ -3054,7 +3048,7 @@ export class Formatter {
         off = false;
       } else if (this.textStartsWith(ta, te, "/*")) {
         blockComment = true;
-        pos = this.findText("*/", searchFrom + 2);
+        pos = text.indexOf("*/", searchFrom + 2);
       }
       const merge = te > ta && toI32(d.src[te - 1]) === 92;
       if (!off && !merge) {
@@ -4262,11 +4256,11 @@ export class Formatter {
   }
 
   /**
-   * Whether line-first token `t` is finalized in clang-format: an earlier
-   * #if pass formatted its line (markFinalized skips a conditional
-   * directive's `#`, which each pass formats again).
+   * Whether pass token `t` is finalized in clang-format: an earlier #if pass
+   * formatted it (markFinalized skips a conditional directive's `#`, which
+   * each pass formats again).
    */
-  finalizedFirst(t: i32): boolean {
+  finalizedTok(t: i32): boolean {
     const d = this.d;
     if (
       d.kind[t] === P_HASH &&
@@ -4300,14 +4294,7 @@ export class Formatter {
     } else if (t < 0) {
       return false;
     }
-    const d = this.d;
-    if (
-      d.kind[t] === P_HASH &&
-      (d.ppKind[t] === PP_IF || d.ppKind[t] === PP_ELIF || d.ppKind[t] === PP_ELSE || d.ppKind[t] === PP_ENDIF)
-    ) {
-      return false;
-    }
-    return this.seenBefore[this.map[t]] === 1;
+    return this.finalizedTok(t);
   }
 
   /** Whether emitted entry `i` lies in a `clang-format off` region. */
