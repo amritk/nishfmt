@@ -1667,8 +1667,9 @@ export class Annot {
           return true;
         }
       }
+      // (clang's FirstAfterPPLine: a directive read just before `q`.)
       if (q === first) {
-        return false;
+        return d.fap[q] === 1;
       }
       if (this.directiveBefore(q)) {
         return true;

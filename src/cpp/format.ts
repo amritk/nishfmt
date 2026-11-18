@@ -175,6 +175,7 @@ export class Formatter {
   seenBy: i32[];
   map: i32[]; // pass token -> source token
   o2p: i32[]; // source token -> pass token, -1 if skipped
+  fapFull: i32[]; // source token -> clang's FirstAfterPPLine, from any pass
   decFull: i32[]; // source token -> its FormatDecision (see Doc.dec)
   passSeen: i32[]; // source token -> passes so far that saw it
   finCol: i32[]; // source comment token -> the column the pass that formatted it left it at
@@ -312,6 +313,7 @@ export class Formatter {
     this.sMulti = new Array<i32>(0);
     this.sPlain = new Array<i32>(0);
     this.sInPP = new Array<i32>(0);
+    this.fapFull = new Array<i32>(0);
     this.sPPKind = new Array<i32>(0);
     this.sPPId = new Array<i32>(0);
     this.sUnesc = new Array<i32>(0);
@@ -2253,7 +2255,9 @@ export class Formatter {
         for (let j = 0; j < d.ntok; j++) {
           d.passMul[j] = 0;
           d.dec[j] = 0;
+          d.fap[j] = 0;
         }
+        scanAfterDirective(d.kind, d.inPP, d.ntok, null, d.fap);
         this.rec = false;
         const r = this.runPass(out, prof, mayRestart);
         if (r === PASS_RESTART) {
@@ -2279,6 +2283,15 @@ export class Formatter {
       }
       this.npass = np;
       this.markUsefulPasses(np);
+      // clang-format parses every pass before it formats any, so a token
+      // gets FirstAfterPPLine from whichever pass sets it.
+      if (toI32(this.fapFull.length) < this.fullN) {
+        this.fapFull = new Array<i32>(this.fullN + 64);
+      }
+      this.fapFull.fill(0);
+      for (let p = 0; p < np; p++) {
+        scanAfterDirective(this.sKind, this.sInPP, this.fullN, this.vis[p], this.fapFull);
+      }
       for (let t = 0; t < this.fullN; t++) {
         this.decFull[t] = 0;
       }
@@ -2755,6 +2768,7 @@ export class Formatter {
       d.final[j] = this.sFinal[t];
       d.dec[j] = this.decFull[t];
       d.hidSemi[j] = this.hiddenSemi(t, vis);
+      d.fap[j] = this.fapFull[t];
       d.asmFin[j] = 0;
       d.nxt[j] = -1;
       d.prv[j] = -1;
@@ -6140,4 +6154,37 @@ const includeCategoryOf = (name: string): i32 => {
     return 3;
   }
   return 1;
+};
+
+/**
+ * clang-format's FirstAfterPPLine, for one pass (`vis`, or every token when
+ * null): a directive read while a line is still open (any code token came
+ * before it) marks the next token pushed, a comment or code, in `out`.
+ * UnwrappedLineParser reads the next token before it ends a line, so this
+ * holds for directives right after a statement.
+ */
+const scanAfterDirective = (kind: i32[], inPP: i32[], n: i32, vis: i32[] | null, out: i32[]): void => {
+  let code = false;
+  let armed = false;
+  for (let t = 0; t < n; t++) {
+    if (vis !== null && vis[t] === 0) {
+      continue;
+    }
+    if (inPP[t] === 1) {
+      if (code) {
+        armed = true;
+      }
+      continue;
+    }
+    if (kind[t] === K_EOF) {
+      continue;
+    }
+    if (armed) {
+      out[t] = 1;
+      armed = false;
+    }
+    if (kind[t] !== K_COMMENT) {
+      code = true;
+    }
+  }
 };
