@@ -1875,22 +1875,18 @@ export class Classifier {
         return;
       }
       // Any other colon right inside parentheses: an inline assembly
-      // operand separator (unless it reads as an Objective-C selector's).
+      // operand separator on an `asm` line (clang-format 23 asks
+      // `Line.First->is(tok::kw_asm)`), else a bit field's before a number,
+      // else nothing.
       if (this.k(o) === P_LPAREN && !(d.lType[this.line] === LT_PREPROCESSOR && d.ppKind[this.first] === PP_PRAGMA)) {
+        if (this.lineStartsWithAsm()) {
+          this.set(t, TT_INLINE_ASM_COLON);
+          return;
+        }
         const n = this.next(t);
         if (n >= 0 && this.k(n) === K_NUMBER) {
           this.set(t, TT_BIT_FIELD_COLON);
-          return;
         }
-        const p = this.prev(t);
-        if (p >= 0 && isWordKind(this.k(p)) && n >= 0) {
-          const nk = this.k(n);
-          const nn = this.next(n);
-          if (nk === P_RPAREN || nk === P_COMMA || (isWordKind(nk) && nn >= 0 && this.k(nn) === P_COLON)) {
-            return;
-          }
-        }
-        this.set(t, TT_INLINE_ASM_COLON);
       }
       return;
     }
@@ -2413,7 +2409,13 @@ export class Classifier {
   /** Marks the function declaration name, or the ctor/dtor name, of line `l`. */
   markDeclName(l: i32): void {
     const d = this.d;
+    // clang-format's annotate marks a constructor or destructor name first;
+    // the search for a declaration name stops there.
+    const ctor = this.markCtorDtorName(l);
     for (let t = d.nxt[this.first]; t >= 0; t = d.nxt[t]) {
+      if (t === ctor) {
+        return;
+      }
       // clang-format's search stops at the first braced list, nested or not
       // (calculateFormattingInformation).
       if (d.bk[t] === BK_BRACED_INIT && (d.kind[t] === P_LBRACE || d.kind[t] === P_RBRACE)) {
@@ -2436,7 +2438,17 @@ export class Classifier {
         return;
       }
     }
-    // A constructor or destructor: no return type.
+  }
+
+  /**
+   * clang-format 23's getFunctionName and isCtorOrDtorName: past `friend`,
+   * `inline` and their kin, `[[...]]` and a `template <...>` prefix, the
+   * unqualified name before a `(` names a constructor or destructor in a
+   * class, on a line ending in a function body, or after its own class name
+   * (`A::A`, `A<T>::A`). Answers that token, or -1.
+   */
+  markCtorDtorName(l: i32): i32 {
+    const d = this.d;
     let t = this.first;
     while (t >= 0) {
       const k = this.k(t);
@@ -2456,26 +2468,42 @@ export class Classifier {
         t = d.match[t] >= 0 ? d.nxt[d.match[t]] : -1;
         continue;
       }
+      if (k === KW_TEMPLATE) {
+        const o = this.next(t);
+        if (o < 0 || this.ty(o) !== TT_TEMPLATE_OPENER || d.match[o] < 0) {
+          return -1;
+        }
+        t = this.next(d.match[o]);
+        continue;
+      }
       break;
     }
     if (t < 0) {
-      return;
+      return -1;
     }
     if (this.k(t) === P_COLONCOLON) {
       t = d.nxt[t];
     }
-    while (t >= 0 && this.k(t) === K_IDENT && d.nxt[t] >= 0 && this.k(d.nxt[t]) === P_COLONCOLON) {
-      t = d.nxt[d.nxt[t]];
+    // skipNameQualifier: `A::`, `A<T>::`.
+    while (t >= 0 && this.k(t) === K_IDENT) {
+      let n = this.next(t);
+      if (n >= 0 && this.ty(n) === TT_TEMPLATE_OPENER && d.match[n] >= 0) {
+        n = this.next(d.match[n]);
+      }
+      if (n < 0 || this.k(n) !== P_COLONCOLON) {
+        break;
+      }
+      t = this.next(n);
     }
     if (t >= 0 && this.k(t) === P_TILDE) {
       t = d.nxt[t];
     }
-    if (t < 0 || this.k(t) !== K_IDENT) {
-      return;
+    if (t < 0 || this.k(t) !== K_IDENT || this.ty(t) !== TT_UNKNOWN) {
+      return -1;
     }
     const lp = this.next(t);
-    if (lp < 0 || this.k(lp) !== P_LPAREN || d.match[lp] < 0) {
-      return;
+    if (lp < 0 || this.k(lp) !== P_LPAREN || this.ty(lp) !== TT_UNKNOWN || d.match[lp] < 0) {
+      return -1;
     }
     let qualified = false;
     const p = this.prev(t);
@@ -2485,7 +2513,10 @@ export class Classifier {
         q = this.prev(q);
       }
       if (q >= 0 && this.k(q) === P_COLONCOLON) {
-        const qq = this.prev(q);
+        let qq = this.prev(q);
+        if (qq >= 0 && this.ty(qq) === TT_TEMPLATE_CLOSER && d.match[qq] >= 0) {
+          qq = this.prev(d.match[qq]);
+        }
         qualified = qq >= 0 && d.sameText(qq, t);
       }
     }
@@ -2494,7 +2525,9 @@ export class Classifier {
       if (d.lMustDecl[l] === 1) {
         d.lMightFn[l] = 1;
       }
+      return t;
     }
+    return -1;
   }
 
   /**
