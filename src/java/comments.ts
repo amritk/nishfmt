@@ -31,7 +31,7 @@ export const rewriteJavaComment = (g: GEngine, tok: i32, maxWidth: i32, column0:
   if ((f & TF_JAVADOC) !== 0) {
     const j = formatJavadoc(text, column0);
     if (j === null) {
-      g.fail("javadoc needs a character class this port does not have");
+      g.fail("javadoc this port cannot format exactly");
       return text;
     }
     text = j;

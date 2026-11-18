@@ -8,6 +8,7 @@
 // Ported from google-java-format 2.0.0 (Apache License 2.0, Copyright 2016 Google Inc.).
 
 import { strUtf16Len } from "../core/arr";
+import { splitLines } from "../gdoc/comments";
 
 // Token types.
 const T_BEGIN: i32 = 1;
@@ -89,6 +90,9 @@ const jdLower = (c: i32): i32 => (c >= 65 && c <= 90 ? c + 32 : c);
 
 const isJdSpaceOrTab = (c: i32): boolean => c === 32 || c === 9;
 
+/** BRACE_CONTEXTS: contexts a left brace opens and the matching right brace closes. */
+const isJdBraceContext = (c: i32): boolean => c === NC_SNIPPET || c === NC_INLINE_TAG || c === NC_BRACE;
+
 /** JavadocLexer's NestingStack<NestingContext>; the top is the last element. */
 class JdLexer {
   s: string = "";
@@ -114,7 +118,7 @@ class JdLexer {
 
   /** containsAny(BRACE_CONTEXTS). */
   inBraceContext(): boolean {
-    return this.contains(NC_SNIPPET) || this.contains(NC_INLINE_TAG) || this.contains(NC_BRACE);
+    return this.stack.some(isJdBraceContext);
   }
 
   /** containsAny(TAG_CONTEXTS). */
@@ -146,7 +150,7 @@ class JdLexer {
       return 0;
     }
     const top = this.stack[k - 1];
-    if (top !== NC_SNIPPET && top !== NC_INLINE_TAG && top !== NC_BRACE) {
+    if (!isJdBraceContext(top)) {
       return 0;
     }
     this.stack.pop();
@@ -464,33 +468,6 @@ const countNewlines = (s: string): i32 => {
   return n;
 };
 
-/** JavadocLexer.lex; answers null when the comment does not lex (unbalanced tags). */
-
-/** String.lines(): split at \n, \r and \r\n, with no empty last line after a final terminator. */
-const jdLines = (s: string): string[] => {
-  const out: string[] = [];
-  const n = toI32(s.length);
-  let start = 0;
-  let i = 0;
-  while (i < n) {
-    const c = s.charCodeAt(i);
-    if (c === 10 || c === 13) {
-      out.push(s.substring(start, i));
-      i++;
-      if (c === 13 && i < n && s.charCodeAt(i) === 10) {
-        i++;
-      }
-      start = i;
-    } else {
-      i++;
-    }
-  }
-  if (start < n) {
-    out.push(s.substring(start, n));
-  }
-  return out;
-};
-
 /** NOT_SPACE_OR_TAB.indexIn: the first character that is not a space or tab, or -1. */
 const jdFirstNonSpaceOrTab = (s: string): i32 => {
   for (let i = 0; i < toI32(s.length); i++) {
@@ -553,10 +530,7 @@ const jdClassicCommentText = (input: string): string => {
   while (end > 3 && input.charCodeAt(end - 1) === 42) {
     end--;
   }
-  const lines = jdLines(input.substring(3, end));
-  if (lines.length === 0) {
-    return "";
-  }
+  const lines = splitLines(input.substring(3, end));
   // The first line keeps a leading `*`, as in `/** * foo\n * bar\n */`.
   let starPrefixLength = -1;
   let nonStarMinLeading = -1;
@@ -606,9 +580,10 @@ const lexJavadoc = (body: string): JdToks | null => {
   }
   raw.add(T_END, "*/");
   const joined = joinAdjacent(raw);
-  const out = deindentPreCodeBlocks(optionalizeSpacesAfterLinks(inferParagraphTags(joined)));
-  out.undecidable = joined.undecidable;
-  return out;
+  if (joined.undecidable) {
+    return joined;
+  }
+  return deindentPreCodeBlocks(optionalizeSpacesAfterLinks(inferParagraphTags(joined)));
 };
 
 /**
@@ -693,8 +668,7 @@ const joinAdjacent = (input: JdToks): JdToks => {
       continue;
     }
     // A word hyphenated across a line break is joined back together (but not "pre- and post-").
-    const nl = countNewlines(ws);
-    if (nl === 1 && nextLiteral && input.values[i] !== "and" && input.values[i] !== "or") {
+    if (nextLiteral && countNewlines(ws) === 1 && input.values[i] !== "and" && input.values[i] !== "or") {
       const end = jdIsHyphenatedWordEnd(acc);
       const start = end === 0 ? 0 : jdIsWordStart(input.values[i]);
       if (end === 1 && start === 1) {
@@ -714,6 +688,7 @@ const joinAdjacent = (input: JdToks): JdToks => {
   }
   return out;
 };
+
 const inferParagraphTags = (input: JdToks): JdToks => {
   const out = new JdToks();
   let i = 0;
@@ -1146,7 +1121,7 @@ class JdWriter {
       case T_HTML_COMMENT: {
         this.request(RW_NEWLINE);
         // A comment over several lines keeps their text, each after a bare ` * `.
-        const lines = jdLines(value);
+        const lines = splitLines(value);
         this.writeToken(type, lines[0]);
         for (let i = 1; i < toI32(lines.length); i++) {
           this.newline(false);
