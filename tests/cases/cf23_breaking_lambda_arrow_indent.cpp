@@ -1,0 +1,9 @@
+void f() {
+  auto transformedReceiver = resumableTransform(
+      [receiver = std::move(untransformedReceiver)](
+          std::vector<std::string> initializeArg) mutable
+          -> folly::coro::Task<
+              std::pair<std::vector<std::string>, Receiver<int>>> {
+        co_return 1;
+      });
+}

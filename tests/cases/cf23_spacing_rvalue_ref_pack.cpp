@@ -1,0 +1,9 @@
+template <typename... Args>
+  requires(std::is_constructible<T, Args && ...>::value)
+void f();
+template <typename T>
+  requires(A<T> && B<T &&>)
+void g();
+template <typename T>
+  requires(sizeof(T) * 2 > 4 && (X<T *> || Y))
+void h();

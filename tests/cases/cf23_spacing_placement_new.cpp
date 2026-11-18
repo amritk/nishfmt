@@ -1,0 +1,1 @@
+void f() noexcept(noexcept(::new(static_cast<void *>(p)) T(args...)));
