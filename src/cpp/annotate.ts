@@ -32,6 +32,7 @@ import {
   KW_REQUIRES,
   KW_RETURN,
   KW_STRUCT,
+  KW_SWITCH,
   KW_TEMPLATE,
   KW_TYPENAME,
   KW_UNION,
@@ -206,6 +207,8 @@ export class Annot {
   pcnt: i32[];
   bpcnt: i32[];
   ctd: i32[]; // closes a template declaration
+  pmv: i32[]; // the name a multi-variable declaration's comma follows (PartOfMultiVariableDeclStmt)
+  sonStk: i32[]; // per open bracket: the last start of a name in it (FirstStartOfName)
   crc: i32[]; // closes a requires clause
   rqc: i32[]; // a `requires` that starts a clause
   role: i32[]; // comma list of a `{`, or -1
@@ -274,6 +277,8 @@ export class Annot {
     this.pcnt = new Array<i32>(16);
     this.bpcnt = new Array<i32>(16);
     this.ctd = new Array<i32>(16);
+    this.pmv = new Array<i32>(16);
+    this.sonStk = new Array<i32>(16);
     this.crc = new Array<i32>(16);
     this.rqc = new Array<i32>(16);
     this.role = new Array<i32>(16);
@@ -331,6 +336,7 @@ export class Annot {
       this.pcnt = new Array<i32>(n);
       this.bpcnt = new Array<i32>(n);
       this.ctd = new Array<i32>(n);
+      this.pmv = new Array<i32>(n);
       this.crc = new Array<i32>(n);
       this.rqc = new Array<i32>(n);
       this.role = new Array<i32>(n);
@@ -566,6 +572,11 @@ export class Annot {
     let sp = 0;
     let level = 0;
     let bindS = 1;
+    // clang-format's IsMultiVariableDeclStmt: a comma after a name, at the
+    // top level or in the head of a `for`, `if` or `switch`.
+    const fk = d.kind[d.lFirst[sl]];
+    const initStmt = fk === KW_FOR || fk === KW_IF || fk === KW_SWITCH;
+    this.sonStk[0] = -1;
     for (let t = a; ; t = d.nxt[t]) {
       this.fkHead[t] = -1;
       this.fakeR[t] = 0;
@@ -576,6 +587,7 @@ export class Annot {
       this.pcnt[t] = 0;
       this.bpcnt[t] = 0;
       this.ctd[t] = 0;
+      this.pmv[t] = 0;
       this.crc[t] = 0;
       this.rqc[t] = 0;
       this.role[t] = -1;
@@ -593,6 +605,21 @@ export class Annot {
       }
       const opens = this.opensScope(t) && d.match[t] > t;
       const closes = this.closesScope(t) && d.match[t] >= 0 && d.match[t] < t;
+      const tk = d.kind[t];
+      if (d.type[t] === TT_START_OF_NAME) {
+        this.sonStk[sp] = t;
+      } else if (tk === P_SEMI) {
+        this.sonStk[sp] = -1;
+      } else if (
+        tk === P_COMMA &&
+        d.type[t] !== TT_CTOR_INITIALIZER_COMMA &&
+        d.type[t] !== TT_INHERITANCE_COMMA &&
+        this.sonStk[sp] >= 0 &&
+        (sp === 0 || initStmt)
+      ) {
+        this.pmv[this.sonStk[sp]] = 1;
+        d.lMultiVar[sl] = 1;
+      }
       if (sp > 0 && !closes) {
         const o = this.stk[sp - 1];
         const k = d.kind[t];
@@ -624,13 +651,17 @@ export class Annot {
         this.bind[t] = bindS;
       }
       if (opens) {
-        if (sp >= toI32(this.stk.length)) {
-          this.stk = growI32(this.stk, sp + 1);
-          this.stkB = growI32(this.stkB, sp + 1);
+        if (sp + 1 >= toI32(this.stk.length)) {
+          this.stk = growI32(this.stk, sp + 2);
+          this.stkB = growI32(this.stkB, sp + 2);
+        }
+        if (sp + 1 >= toI32(this.sonStk.length)) {
+          this.sonStk = growI32(this.sonStk, sp + 2);
         }
         this.stk[sp] = t;
         this.stkB[sp] = bindS;
         sp++;
+        this.sonStk[sp] = -1;
         level++;
         let inc = 1;
         if (d.type[t] === TT_TEMPLATE_OPENER) {
@@ -644,12 +675,22 @@ export class Annot {
         break;
       }
     }
-    // Template declarations and requires clauses.
+    // Template declarations and requires clauses. Only the outermost
+    // template declaration's `>` closes one (clang-format 23).
+    let tdDepth = 0;
     for (let t = a; ; t = d.nxt[t]) {
+      if (d.type[t] === TT_TEMPLATE_OPENER && d.match[t] > t && d.prv[t] >= 0 && d.kind[d.prv[t]] === KW_TEMPLATE) {
+        tdDepth++;
+      }
       if (d.type[t] === TT_TEMPLATE_CLOSER) {
         const m = d.match[t];
-        if (m >= 0 && d.prv[m] >= 0 && d.kind[d.prv[m]] === KW_TEMPLATE) {
-          this.ctd[t] = 1;
+        if (m >= 0 && m < t && d.prv[m] >= 0 && d.kind[d.prv[m]] === KW_TEMPLATE) {
+          if (tdDepth > 0) {
+            tdDepth--;
+          }
+          if (tdDepth === 0) {
+            this.ctd[t] = 1;
+          }
         }
       }
       if (d.kind[t] === KW_REQUIRES && this.isRequiresClause(t, a)) {
@@ -1838,7 +1879,7 @@ export class Annot {
       return 500;
     }
     if (rt === TT_START_OF_NAME || rt === TT_FUNCTION_DECLARATION_NAME || rk === KW_OPERATOR) {
-      if (d.kind[d.lFirst[l]] === KW_FOR && d.lMultiVar[l] === 1) {
+      if (d.kind[d.lFirst[l]] === KW_FOR && this.pmv[t] === 1) {
         return 3;
       }
       if (lt === TT_START_OF_NAME) {

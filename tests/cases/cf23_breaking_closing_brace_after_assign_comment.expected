@@ -1,0 +1,8 @@
+void f() {
+  const char *const inputs[] = // NOLINT(cppcoreguidelines-avoid-c-arrays,hicpp-avoid-c-arrays,modernize-avoid-c-arrays)
+      {
+          "[1,]",
+          "[,1]",
+          R"({"a":1,})",
+  };
+}

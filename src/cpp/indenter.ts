@@ -1161,6 +1161,9 @@ export class Indenter {
         tk = d.prv[tk];
       }
       this.setTop(R_VP, vp);
+      if (a.pmv[d.prv[cur]] === 1) {
+        this.setTop(R_LS, vp);
+      }
     }
     const spaces = d.spaces[cur] + extra;
     const fm = this.fm;
