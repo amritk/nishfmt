@@ -895,27 +895,8 @@ export class Indenter {
       d.lRetWrap[this.line] === 0 &&
       this.topHas(F_BBP)
     ) {
-      // Not past a line comment or a directive inside the line (clang-format 23).
-      const first = d.lFirst[this.line];
-      for (let q = prev; q >= 0; q = d.prv[q]) {
-        if (d.type[q] === TT_LINE_COMMENT) {
-          return false;
-        }
-        if (d.type[q] === TT_TEMPLATE_CLOSER) {
-          q = d.match[q];
-          if (q < 0) {
-            return false;
-          }
-        }
-        const qp = d.prv[q];
-        if (q !== first && qp >= 0 && q > qp + 1 && d.inPP[q - 1] === 1 && d.inPP[q] === 0) {
-          return false;
-        }
-        if (q === first) {
-          break;
-        }
-      }
-      return true;
+      // (clang-format 23: not past a line comment or an inner directive.)
+      return a.nbb[cur] === 0;
     }
     if (pk === P_LBRACE && d.bk[prev] === BK_BLOCK && ck !== P_RBRACE && ck !== K_COMMENT) {
       return true;

@@ -216,6 +216,7 @@ export class Annot {
   jnl: i32[]; // a joined line's first token: its newlines before the join
   mf: i32[]; // step flags (M_*)
   nlc: i32[]; // new-line column rules (N_*)
+  nbb: i32[]; // a function name nameBreakBlocked holds
   cf: i32[]; // current-line rules (C_*)
   strTab: i32[]; // 1 for a string literal holding a tab
   pnc: i32[]; // the previous non-comment token, or -1
@@ -278,7 +279,6 @@ export class Annot {
     this.bpcnt = new Array<i32>(16);
     this.ctd = new Array<i32>(16);
     this.pmv = new Array<i32>(16);
-    this.sonStk = new Array<i32>(16);
     this.crc = new Array<i32>(16);
     this.rqc = new Array<i32>(16);
     this.role = new Array<i32>(16);
@@ -286,6 +286,7 @@ export class Annot {
     this.ilev = new Array<i32>(16);
     this.mf = new Array<i32>(16);
     this.nlc = new Array<i32>(16);
+    this.nbb = new Array<i32>(16);
     this.cf = new Array<i32>(16);
     this.strTab = new Array<i32>(16);
     this.pnc = new Array<i32>(16);
@@ -312,6 +313,7 @@ export class Annot {
     this.segParsed = new Array<i32>(16);
     this.stk = new Array<i32>(64);
     this.stkB = new Array<i32>(64);
+    this.sonStk = new Array<i32>(64); // grows with stk
   }
 
   /** Prepares for a new file: sizes the columns and forgets every line. */
@@ -344,6 +346,7 @@ export class Annot {
       this.ilev = new Array<i32>(n);
       this.mf = new Array<i32>(n);
       this.nlc = new Array<i32>(n);
+      this.nbb = new Array<i32>(n);
       this.cf = new Array<i32>(n);
       this.strTab = new Array<i32>(n);
       this.pnc = new Array<i32>(n);
@@ -393,11 +396,6 @@ export class Annot {
     }
     const tt = d.type[t];
     return tt !== TT_DESIGNATED_INITIALIZER_PERIOD && tt !== TT_TRAILING_RETURN_ARROW && tt !== TT_LAMBDA_ARROW;
-  }
-
-  isTrailingReturnArrow(t: i32): boolean {
-    const tt = this.d.type[t];
-    return tt === TT_TRAILING_RETURN_ARROW || tt === TT_LAMBDA_ARROW;
   }
 
   /** A comment that ends its line (or a line comment). */
@@ -622,13 +620,12 @@ export class Annot {
       }
       if (sp > 0 && !closes) {
         const o = this.stk[sp - 1];
-        const k = d.kind[t];
-        if (k === P_LBRACE && d.bk[t] === BK_BLOCK) {
+        if (tk === P_LBRACE && d.bk[t] === BK_BLOCK) {
           this.bpcnt[o] = this.bpcnt[o] + 1;
         }
-        if (k === P_COMMA) {
+        if (tk === P_COMMA) {
           this.pcnt[o] = this.pcnt[o] + 1;
-        } else if (this.pcnt[o] === 0 && k !== K_COMMENT) {
+        } else if (this.pcnt[o] === 0 && tk !== K_COMMENT) {
           this.pcnt[o] = 1;
         }
       }
@@ -654,8 +651,6 @@ export class Annot {
         if (sp + 1 >= toI32(this.stk.length)) {
           this.stk = growI32(this.stk, sp + 2);
           this.stkB = growI32(this.stkB, sp + 2);
-        }
-        if (sp + 1 >= toI32(this.sonStk.length)) {
           this.sonStk = growI32(this.sonStk, sp + 2);
         }
         this.stk[sp] = t;
@@ -1557,6 +1552,7 @@ export class Annot {
       }
       this.mf[t] = m;
       this.nlc[t] = this.newLineRules(l, t, pc);
+      this.nbb[t] = d.type[t] === TT_FUNCTION_DECLARATION_NAME && this.nameBreakBlocked(t, d.lFirst[l]) ? 1 : 0;
       this.cf[t] = this.currentLineRules(l, t, pc);
       if (k !== K_COMMENT) {
         pc = t;
@@ -1581,7 +1577,7 @@ export class Annot {
       return d.nl[t] > 0 && d.inPP[t] === 0;
     }
     // A directive between the two (taken out of the line) ends the line before it.
-    if (t > left + 1 && d.inPP[t - 1] === 1 && d.inPP[t] === 0) {
+    if (this.directiveBefore(t)) {
       return true;
     }
     if (lk === K_STRING && rk === K_STRING) {
@@ -1643,6 +1639,39 @@ export class Annot {
     }
     if (rk === K_STRING && d.at(d.start[t]) === 82 && d.at(d.start[t] + 1) === 34) {
       return d.multi[t] === 1 && d.nl[t] > 0;
+    }
+    return false;
+  }
+
+  /** A directive (taken out of the line) sits between `t` and the token before it: clang's FirstAfterPPLine. */
+  directiveBefore(t: i32): boolean {
+    const d = this.d;
+    const p = d.prv[t];
+    return p >= 0 && t > p + 1 && d.inPP[t - 1] === 1 && d.inPP[t] === 0;
+  }
+
+  /**
+   * clang-format 23 never forces the break before a function's name past a
+   * line comment or a directive inside the line before it.
+   */
+  nameBreakBlocked(t: i32, first: i32): boolean {
+    const d = this.d;
+    for (let q = d.prv[t]; q >= 0; q = d.prv[q]) {
+      if (d.type[q] === TT_LINE_COMMENT) {
+        return true;
+      }
+      if (d.type[q] === TT_TEMPLATE_CLOSER) {
+        q = d.match[q];
+        if (q < 0) {
+          return true;
+        }
+      }
+      if (q === first) {
+        return false;
+      }
+      if (this.directiveBefore(q)) {
+        return true;
+      }
     }
     return false;
   }
@@ -1837,7 +1866,8 @@ export class Annot {
       lk === KW_STRUCT ||
       lk === K_COMMENT ||
       this.isMemberAccess(t) ||
-      this.isTrailingReturnArrow(t) ||
+      rt === TT_TRAILING_RETURN_ARROW ||
+      rt === TT_LAMBDA_ARROW ||
       rk === P_LESSLESS ||
       rk === P_COLON ||
       rk === P_LSQUARE ||
