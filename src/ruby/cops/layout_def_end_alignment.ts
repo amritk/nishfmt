@@ -66,10 +66,23 @@ export class CopLayoutDefEndAlignment {
     }
     const k = this.c.offense(es, rnE(src, n, F_END));
     if (k !== null) {
-      const p = src.parent(n);
-      const to = p !== V_NIL && src.a.type(p) === NT_SEND ? p : n;
-      rmlAlignEnd(src, k, es, src.column(src.a.exS(to)));
+      rmlAlignEnd(src, k, es, src.column(src.a.exS(this.outermostDefModifier(src, n))));
       this.c.commit(k);
     }
+  }
+
+  /** outermost_def_modifier: the last of the send ancestors that each modify `n`. */
+  private outermostDefModifier(src: RbSource, n: i32): i32 {
+    let to = n;
+    for (let p = src.parent(n); p !== V_NIL; p = src.parent(p)) {
+      if (src.a.type(p) !== NT_SEND) {
+        continue;
+      }
+      if (rmlDefModifier(src, p) !== n) {
+        break;
+      }
+      to = p;
+    }
+    return to;
   }
 }
