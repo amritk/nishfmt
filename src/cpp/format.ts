@@ -3018,8 +3018,14 @@ export class Formatter {
     let mainFound = false;
     let off = false;
     let rawTerm = ')"';
-    while (true) {
-      let pos = text.indexOf("\n", searchFrom);
+    while (searchFrom < n) {
+      // The next newline, past line splices (clang-format 23).
+      let pos = searchFrom;
+      if (toI32(d.src[searchFrom]) !== 10) {
+        do {
+          pos = text.indexOf("\n", pos + 1);
+        } while (pos >= 0 && toI32(d.src[pos - 1]) === 92);
+      }
       let lineEnd = pos >= 0 ? pos : n;
       // Trimmed bounds.
       let ta = prev;
@@ -3039,14 +3045,20 @@ export class Formatter {
       if (off && this.textContains(ta, te, rawTerm)) {
         off = false;
       }
+      // A line starting a block comment reaches to its end (clang-format
+      // 23): the includes in it are not sorted.
+      let blockComment = false;
       if (this.isFormatOff(ta, te)) {
         off = true;
       } else if (this.isFormatOn(ta, te)) {
         off = false;
+      } else if (this.textStartsWith(ta, te, "/*")) {
+        blockComment = true;
+        pos = this.findText("*/", searchFrom + 2);
       }
       const merge = te > ta && toI32(d.src[te - 1]) === 92;
       if (!off && !merge) {
-        if (this.matchInclude(prev, lineEnd)) {
+        if (!blockComment && this.matchInclude(prev, lineEnd)) {
           if (this.textContains(prev, lineEnd, "/*") && !this.textContains(prev, lineEnd, "*/")) {
             // An unclosed block comment: the lines up to its end go along.
             const c = this.findText("*/", searchFrom);
