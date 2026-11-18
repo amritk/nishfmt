@@ -302,14 +302,28 @@ export class JParser {
       this.restore(m);
       t.a[cu] = t.empty();
     }
+    // javac (since JDK 21) rejects semicolons after the package or an
+    // import declaration that are followed by another import: "extraneous
+    // semicolon". After the last import they are empty type declarations.
+    const seenPackage = t.b[cu] >= 0;
+    let semis = false;
     while (this.is(";")) {
       this.next();
+      semis = true;
+    }
+    if (semis && seenPackage && this.is("import")) {
+      this.fail();
     }
     const im = t.mark();
     while (this.is("import") && !this.err) {
       t.push(this.importDecl());
+      semis = false;
       while (this.is(";")) {
         this.next();
+        semis = true;
+      }
+      if (semis && this.is("import")) {
+        this.fail();
       }
     }
     t.c[cu] = t.list(im);
@@ -320,9 +334,9 @@ export class JParser {
         continue;
       }
       if (this.is("import")) {
-        // javac allows imports after a stray semicolon; keep them as type decls.
-        t.push(this.importDecl());
-        continue;
+        // An import after a type declaration: "class, interface, enum, or record expected".
+        this.fail();
+        break;
       }
       if (this.looksLikeModule()) {
         t.e[cu] = this.moduleDecl();

@@ -162,6 +162,8 @@ export class JVisitor {
   nPath: i32 = 0;
   typeAnnotationSimpleNames: string[];
   exprDepth: i32 = 0; // scans of ExpressionTrees open (JavaInputAstVisitor.inExpression)
+  hugPoints: i32[]; // node -> the hug point of a construct that may be hugged, or -1
+  notHuggable: i32[]; // node -> 1 for a lambda its call must not hug
 
   constructor(g: JlEngine, t: JTree) {
     this.g = g;
@@ -169,6 +171,8 @@ export class JVisitor {
     this.inp = g.inp;
     this.path = new Array<i32>(256);
     this.typeAnnotationSimpleNames = [];
+    this.hugPoints = new Array<i32>(0);
+    this.notHuggable = new Array<i32>(0);
   }
 
   reset(): void {
@@ -181,6 +185,15 @@ export class JVisitor {
     this.nPath = 0;
     this.exprDepth = 0;
     this.typeAnnotationSimpleNames = [];
+    const nn = this.t.n;
+    if (toI32(this.hugPoints.length) < nn) {
+      this.hugPoints = new Array<i32>(nn * 2);
+      this.notHuggable = new Array<i32>(nn * 2);
+    }
+    for (let i = 0; i < nn; i++) {
+      this.hugPoints[i] = -1;
+      this.notHuggable[i] = 0;
+    }
   }
 
   /** JavaInputAstVisitor.markForPartialFormat: a region boundary, outside expressions only. */
@@ -306,7 +319,9 @@ export class JVisitor {
         this.token("while");
         this.g.space();
         this.token("(");
+        this.g.headerStart();
         this.scan(t.a[t.a[n]]);
+        this.g.headerEnd();
         this.token(")");
         this.visitStatement(t.b[n], true, true, false);
         break;
@@ -329,10 +344,12 @@ export class JVisitor {
         this.token("synchronized");
         this.g.space();
         this.token("(");
+        this.g.headerStart();
         this.g.open(this.plusFour);
         this.g.brk();
         this.scan(t.a[t.a[n]]);
         this.g.close();
+        this.g.headerEnd();
         this.token(")");
         this.g.space();
         this.scan(t.b[n]);
@@ -401,6 +418,7 @@ export class JVisitor {
         this.token("assert");
         this.g.space();
         this.g.open(t.b[n] < 0 ? this.ZERO : this.plusFour);
+        this.g.fence();
         this.scan(t.a[n]);
         if (t.b[n] >= 0) {
           this.g.brkSp();
@@ -662,9 +680,6 @@ export class JVisitor {
     const types = t.d[n];
     for (let i = 0; i < this.len(types); i++) {
       const ty = this.at(types, i);
-      if (t.kind[ty] === N_IMPORT) {
-        continue;
-      }
       if (afterFirstToken) {
         g.blankLineWanted(BL_YES);
       }
@@ -723,7 +738,6 @@ export class JVisitor {
     }
     this.visitQualifiedName(t.a[n]);
     this.token(";");
-    this.dropEmptyDeclarations();
   }
 
   private checkForTypeAnnotation(n: i32): void {
@@ -1011,7 +1025,10 @@ export class JVisitor {
       g.guessToken("(");
       g.guessToken(")");
     } else {
-      this.addArguments(t.d[init], this.plusFour);
+      if (t.e[init] >= 0) {
+        this.doNotHug(init);
+      }
+      this.addArguments(t.d[init], this.plusFour, this.ZERO);
     }
     if (t.e[init] >= 0) {
       this.addBodyDeclarations(this.listItems(t.f[t.e[init]]), true, true);
@@ -2687,6 +2704,7 @@ export class JVisitor {
     g.close();
     g.space();
     g.op("->");
+    this.markHugPoint(n);
     g.open(statementBody ? this.ZERO : this.plusFour);
     if (statementBody) {
       g.space();
@@ -2717,9 +2735,10 @@ export class JVisitor {
     if (t.e[n] >= 0) {
       const annos = this.visitModifiersOf(t.a[t.e[n]], HORIZONTAL, -1);
       this.visitAnnotations(annos, false, true);
+      this.doNotHug(n);
     }
     this.scan(t.c[n]);
-    this.addArguments(t.d[n], this.plusFour);
+    this.addArguments(t.d[n], this.plusFour, this.ZERO);
     g.close();
     if (t.e[n] >= 0) {
       this.addBodyDeclarations(this.listItems(t.f[t.e[n]]), true, true);
@@ -2864,14 +2883,25 @@ export class JVisitor {
     this.token(">");
   }
 
-  addArguments(args: i32, plusIndent: i32): void {
+  addArguments(args: i32, plusIndent: i32, huggedPlusIndent: i32): void {
     const g = this.g;
-    g.open(plusIndent);
-    this.token("(");
     const na = this.len(args);
+    const items = this.listItems(args);
+    const tabular = na % 2 === 0 && this.argumentsAreTabular(items) === 2;
+    const hug = this.canHugOnlyArgument(items);
+    if (hug) {
+      g.openHuggable(
+        plusIndent,
+        this.hasHuggedBlockLambda(args) ? this.ZERO : huggedPlusIndent,
+        this.hugPointOf(items[0]),
+        true,
+      );
+    } else {
+      g.open(plusIndent);
+    }
+    this.token("(");
     if (na > 0) {
-      const items = this.listItems(args);
-      if (na % 2 === 0 && this.argumentsAreTabular(items) === 2) {
+      if (tabular) {
         g.forcedBreak();
         g.open(this.ZERO);
         for (let i = 0; i < na - 1; i += 2) {
@@ -2894,21 +2924,68 @@ export class JVisitor {
         this.token(",");
         g.brkSp();
         g.open(this.ZERO);
-        this.argList(items.slice(1, items.length));
+        this.argList(items.slice(1, items.length), false);
         g.close();
         g.close();
       } else {
         g.brk();
-        this.argList(items);
+        this.argList(items, hug);
       }
     }
     this.token(")");
     g.close();
   }
 
-  private argList(args: i32[]): void {
+  /** The hug point of `n`, created on first use; it is marked when `n` is visited. */
+  private hugPointOf(n: i32): i32 {
+    if (this.hugPoints[n] < 0) {
+      this.hugPoints[n] = this.g.newHugPoint();
+    }
+    return this.hugPoints[n];
+  }
+
+  private markHugPoint(n: i32): void {
+    const h = this.hugPoints[n];
+    if (h >= 0) {
+      this.hugPoints[n] = -1;
+      this.g.hugPoint(h);
+    }
+  }
+
+  private isHuggable(n: i32): boolean {
+    return this.t.kind[n] === N_LAMBDA;
+  }
+
+  private canHugOnlyArgument(args: i32[]): boolean {
+    return args.length === 1 && this.isHuggable(args[0]) && this.notHuggable[args[0]] === 0;
+  }
+
+  /** Keeps the call `call0` from hugging its block lambda argument. */
+  private doNotHug(call0: i32): void {
+    const t = this.t;
+    const call = this.getArrayBase(call0);
+    const k = t.kind[call];
+    const args = k === N_METHOD_INVOCATION ? t.c[call] : k === N_NEW_CLASS ? t.d[call] : -1;
+    if (args >= 0 && this.hasHuggedBlockLambda(args)) {
+      this.notHuggable[this.at(args, 0)] = 1;
+    }
+  }
+
+  private hasHuggedBlockLambda(args: i32): boolean {
+    if (this.len(args) !== 1) {
+      return false;
+    }
+    const a = this.at(args, 0);
+    return this.t.kind[a] === N_LAMBDA && (this.t.flags[a] & FL_STATEMENT_BODY) !== 0;
+  }
+
+  private argList(args: i32[], hug: boolean): void {
     const g = this.g;
-    g.open(this.ZERO);
+    if (hug) {
+      g.openHuggedArguments();
+    } else {
+      g.open(this.ZERO);
+    }
     const fill = this.hasOnlyShortItems(args) ? INDEPENDENT : UNIFIED;
     for (let i = 0; i < toI32(args.length); i++) {
       if (i > 0) {
@@ -3140,6 +3217,9 @@ export class JVisitor {
         this.token(".");
       } else {
         g.open(this.plusFour);
+        if (items.length > 0) {
+          this.doNotHug(node);
+        }
         this.scan(this.getArrayBase(node));
         g.brk();
         needDot = true;
@@ -3240,19 +3320,33 @@ export class JVisitor {
     }
     const minLength = 4;
     let length = needDot0 ? minLength : 0;
-    for (const e of items) {
+    let hasBroken = needDot0;
+    for (let i = 0; i < toI32(items.length); i++) {
+      const e = items[i];
       if (needDot) {
         if (length > minLength) {
           g.breakOp(UNIFIED, "", this.ZERO, -1);
+          hasBroken = true;
         }
         this.token(".");
         length++;
+      }
+      const onFirstLine = !hasBroken && i < toI32(items.length) - 1;
+      if (onFirstLine) {
+        this.doNotHug(e);
       }
       if (!this.fillFirstArgument(e, items, trailingDereferences ? this.ZERO : this.minusFour)) {
         const tyargTag = g.genSym();
         this.dotExpressionUpToArgs(e, tyargTag);
         const tyargIndent = g.ifIndent(tyargTag, this.plusFour, this.ZERO);
-        this.dotExpressionArgsAndParen(e, tyargIndent, trailingDereferences || needDot ? this.plusFour : this.ZERO);
+        // Calls that stay on the first line of the chain indent hugged
+        // arguments by an extra +4, to tell them from the trailing dereferences.
+        this.dotExpressionArgsAndParen(
+          e,
+          tyargIndent,
+          trailingDereferences || needDot ? this.plusFour : this.ZERO,
+          onFirstLine ? this.plusFour : this.ZERO,
+        );
       }
       length += this.inp.width(this.t.start[e], this.t.end[e]);
       needDot = true;
@@ -3276,7 +3370,9 @@ export class JVisitor {
       t.kind[t.b[e]] !== N_IDENTIFIER ||
       this.inp.width(this.inp.tPos[name], this.inp.tEnd[name]) > 4 ||
       this.len(t.a[e]) > 0 ||
-      this.len(t.c[e]) !== 1
+      this.len(t.c[e]) !== 1 ||
+      // Huggable arguments are handled by addArguments, see canHugOnlyArgument.
+      this.isHuggable(this.at(t.c[e], 0))
     ) {
       return false;
     }
@@ -3318,6 +3414,11 @@ export class JVisitor {
     const nameTag = g.genSym();
     for (let i = 0; i < toI32(items.length); i++) {
       const e = items[i];
+      // Don't hug a block lambda if its call stays on the first line of the
+      // chain and has trailing dereferences.
+      if (!needDot0 && (i === 0 || prefixes0.indexOf(i) >= 0) && i < toI32(items.length) - 1) {
+        this.doNotHug(e);
+      }
       if (needDot) {
         let fill = UNIFIED;
         if (up < toI32(sorted.length) && i <= sorted[up]) {
@@ -3334,7 +3435,8 @@ export class JVisitor {
       }
       const tyargIndent = g.ifIndent(tyargTag, this.plusFour, this.ZERO);
       const argsIndent = g.ifIndent(nameTag, this.plusFour, trailingDereferences ? this.plusFour : this.ZERO);
-      this.dotExpressionArgsAndParen(e, tyargIndent, argsIndent);
+      const huggedArgsIndent = g.ifIndent(nameTag, this.ZERO, trailingDereferences ? this.plusFour : this.ZERO);
+      this.dotExpressionArgsAndParen(e, tyargIndent, argsIndent, huggedArgsIndent);
       needDot = true;
     }
     g.close();
@@ -3411,14 +3513,14 @@ export class JVisitor {
     }
   }
 
-  private dotExpressionArgsAndParen(e0: i32, tyargIndent: i32, indent: i32): void {
+  private dotExpressionArgsAndParen(e0: i32, tyargIndent: i32, indent: i32, huggedIndent: i32): void {
     const t = this.t;
     const g = this.g;
     const indices = this.getArrayIndices(e0);
     const e = this.getArrayBase(e0);
     if (t.kind[e] === N_METHOD_INVOCATION) {
       g.open(tyargIndent);
-      this.addArguments(t.c[e], indent);
+      this.addArguments(t.c[e], indent, huggedIndent);
       g.close();
     }
     this.formatArrayIndices(indices);
