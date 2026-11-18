@@ -3,7 +3,8 @@
 // google-java-format 1.28 (Apache License 2.0, Copyright 2015 Google Inc.);
 // the order of every op matches the original, since the layout depends on it.
 
-import { GEngine, INDEPENDENT, UNIFIED, FORCED, BL_NO, BL_PRESERVE, BL_YES } from "../gdoc/engine";
+import { INDEPENDENT, UNIFIED, FORCED, BL_NO, BL_PRESERVE, BL_YES } from "../gdoc/engine";
+import { JlEngine } from "./layout/engine";
 import { GInput } from "../gdoc/input";
 import {
   CK_ANNOTATION,
@@ -149,7 +150,7 @@ class SplitMods {
 }
 
 export class JVisitor {
-  g: GEngine;
+  g: JlEngine;
   t: JTree;
   inp: GInput;
   ZERO: i32 = 0;
@@ -162,7 +163,7 @@ export class JVisitor {
   typeAnnotationSimpleNames: string[];
   exprDepth: i32 = 0; // scans of ExpressionTrees open (JavaInputAstVisitor.inExpression)
 
-  constructor(g: GEngine, t: JTree) {
+  constructor(g: JlEngine, t: JTree) {
     this.g = g;
     this.t = t;
     this.inp = g.inp;

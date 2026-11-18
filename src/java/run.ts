@@ -3,6 +3,7 @@
 import { guessSep } from "../core/files";
 import { Out } from "../core/out";
 import { GEngine } from "../gdoc/engine";
+import { JlEngine } from "./layout/engine";
 import { GInput } from "../gdoc/input";
 import { JTree } from "./ast";
 import { lexJava } from "./lexer";
@@ -19,7 +20,7 @@ export class JavaEngine {
   inp: GInput;
   tree: JTree;
   parser: JParser;
-  g: GEngine;
+  g: JlEngine;
   vis: JVisitor;
   imports: ImportFixer;
   buf1: Out;
@@ -35,7 +36,7 @@ export class JavaEngine {
     this.inp = new GInput();
     this.tree = new JTree();
     this.parser = new JParser(this.inp, this.tree);
-    this.g = new GEngine(this.inp);
+    this.g = new JlEngine(this.inp, new GEngine(this.inp));
     this.vis = new JVisitor(this.g, this.tree);
     this.g.rewrite = rewriteJavaComment;
     this.wrapper = new StringWrapper(this.inp, this.tree);
