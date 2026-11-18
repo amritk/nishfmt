@@ -1,0 +1,15 @@
+class A {
+  void f() {
+    int sealed = 1;
+    int non = 2;
+    x = non - sealed;
+    abstract sealed class B {}
+    int[] a = new int[0];
+    int[][] b;
+    Object r = @A String::length;
+    switch (x) {
+      case 1 -> f();
+      default -> x = 1;
+    }
+  }
+}

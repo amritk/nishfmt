@@ -6,6 +6,7 @@
 
 import { GInput } from "../gdoc/input";
 import { JK_CHAR, JK_IDENT, JK_NUMBER, JK_STRING, JK_TEXT_BLOCK } from "./lexer";
+import { modifierRank, RANK_NON_SEALED } from "./modifiers";
 import {
   CK_ANNOTATION,
   CK_CLASS,
@@ -182,8 +183,12 @@ export class JParser {
     return this.op2At(0, a, b);
   }
 
+  op3At(i: i32, a: string, b: string, c: string): boolean {
+    return this.op2At(i, a, b) && this.isAt(i + 2, c) && this.adjAt(i + 2);
+  }
+
   op3(a: string, b: string, c: string): boolean {
-    return this.op2(a, b) && this.isAt(2, c) && this.adjAt(2);
+    return this.op3At(0, a, b, c);
   }
 
   kindAt(i: i32): i32 {
@@ -599,13 +604,51 @@ export class JParser {
     if (inp.is(t, "default")) {
       return !this.isAt(1, ":") && !this.op2At(1, "-", ">");
     }
-    if (inp.is(t, "sealed")) {
-      return this.kindAt(1) === JK_IDENT || this.isAt(1, "@");
+    // javac's modifiersOpt asks isSealedClassStart(false) and
+    // isNonSealedClassStart(false), in a block as well: otherwise the word is
+    // an identifier (`sealed int x;` is a field of type `sealed`).
+    return this.isSealedOrNonSealedClassStart(false);
+  }
+
+  /** javac's isSealedClassStart(local) or isNonSealedClassStart(local) at the current token. */
+  private isSealedOrNonSealedClassStart(local: boolean): boolean {
+    if (this.is("sealed")) {
+      return this.allowedAfterSealedOrNonSealed(1, local, false);
     }
-    if (inp.is(t, "non")) {
-      return this.isAt(1, "-") && this.isAt(2, "sealed") && this.adjAt(1) && this.adjAt(2);
+    return this.isNonSealedAt(0) && this.allowedAfterSealedOrNonSealed(3, local, true);
+  }
+
+  /** javac's isNonSealedIdentifier: `non-sealed` at token p+i, its three tokens adjacent. */
+  private isNonSealedAt(i: i32): boolean {
+    return this.op3At(i, "non", "-", "sealed");
+  }
+
+  /**
+   * javac's allowedAfterSealedOrNonSealed: whether token p+i, after `sealed`
+   * or `non-sealed`, makes that word a modifier of a class declaration
+   * (`local`: of a local class).
+   */
+  private allowedAfterSealedOrNonSealed(i: i32, local: boolean, nonSealed: boolean): boolean {
+    if (this.isAt(i, "@")) {
+      return !this.isAt(i + 1, "interface") || nonSealed;
     }
-    return false;
+    if (
+      this.isAt(i, "abstract") ||
+      this.isAt(i, "final") ||
+      this.isAt(i, "strictfp") ||
+      this.isAt(i, "class") ||
+      this.isAt(i, "interface") ||
+      this.isAt(i, "enum")
+    ) {
+      return true;
+    }
+    if (local) {
+      return false;
+    }
+    if (this.isAt(i, "public") || this.isAt(i, "protected") || this.isAt(i, "private") || this.isAt(i, "static")) {
+      return true;
+    }
+    return this.isNonSealedAt(i) || this.isAt(i, "sealed");
   }
 
   /** Modifiers and declaration annotations; the node's start is -1 when there are none. */
@@ -614,6 +657,8 @@ export class JParser {
     const n = t.node(N_MODIFIERS, -1);
     const am = t.mark();
     let any = false;
+    // The modifier words seen, a bit per Modifier ordinal: javac's "repeated modifier".
+    let seen = 0;
     while (!this.err) {
       if (this.is("@") && !this.isAt(1, "interface")) {
         if (!any) {
@@ -626,7 +671,13 @@ export class JParser {
           t.start[n] = this.pos();
         }
         any = true;
-        if (this.is("non")) {
+        const non = this.is("non");
+        const bit = 1 << (non ? RANK_NON_SEALED : modifierRank(this.inp, this.tokAt(0)));
+        if ((seen & bit) !== 0) {
+          this.rejected = true;
+        }
+        seen = seen | bit;
+        if (non) {
           this.skip(3);
         } else {
           if (this.is("sealed")) {
@@ -921,6 +972,11 @@ export class JParser {
     }
     // A constructor: `Name(`, or a compact record constructor `Name {`.
     if (this.kindAt(0) === JK_IDENT && this.isAt(1, "(")) {
+      // javac's constructorOrMethodOrFieldDeclaration parses the name as the
+      // return type, unannotatedType(false): `var() {}` is "'var' is not allowed here".
+      if (this.isRestrictedTypeName(this.tokAt(0))) {
+        this.rejected = true;
+      }
       t.push(this.method(mods, start, typarams, -1, true));
       return;
     }
@@ -1220,8 +1276,10 @@ export class JParser {
 
   allowVarType: boolean = false;
   // javac reported an error and parsed on: a restricted name as a type ("'var'
-  // is not allowed here") or a declared name, a `permits` clause without
-  // `sealed`, an unqualified `yield(...)`. The file fails once the parse keeps
+  // is not allowed here"), a declared name or a constructor-shaped member's
+  // name, a `permits` clause without `sealed`, an unqualified `yield(...)`, a
+  // repeated modifier, a sealed or non-sealed local class, annotations before
+  // an expression that is not a method reference. The file fails once the parse keeps
   // that tree; a lookahead that restores a Mark drops the flag with it.
   rejected: boolean = false;
 
@@ -1275,7 +1333,9 @@ export class JParser {
   qualifiedType(): i32 {
     const t = this.t;
     const start = this.pos();
-    if (this.kindAt(0) !== JK_IDENT) {
+    // A reserved word is javac's "illegal start of type" (`return` in a record
+    // body that was a method `record f() { return null; }`).
+    if (!this.isIdent()) {
       this.fail();
       return t.node(N_IDENTIFIER, start);
     }
@@ -1453,9 +1513,12 @@ export class JParser {
       t.push(this.classDecl(mods));
       return;
     }
-    if ((this.is("sealed") || this.op3("non", "-", "sealed")) && this.looksLikeLocalClassAfterModifiers()) {
-      const mods = this.modifiers();
-      t.push(this.classDecl(mods));
+    // javac's blockStatement: isNonSealedClassStart(true) or
+    // isSealedClassStart(true) is "sealed or non-sealed local classes are not
+    // allowed", and the class is parsed on.
+    if (this.isSealedOrNonSealedClassStart(true)) {
+      this.rejected = true;
+      t.push(this.classDecl(this.modifiers()));
       return;
     }
     if (this.isLocalVarDecl()) {
@@ -1465,15 +1528,6 @@ export class JParser {
       return;
     }
     t.push(this.statement());
-  }
-
-  private looksLikeLocalClassAfterModifiers(): boolean {
-    const m = new Mark();
-    this.save(m);
-    this.modifiers();
-    const ok = this.isClassStart();
-    this.restore(m);
-    return ok;
   }
 
   /** Declarators of a local variable after its modifiers; pushes each VARIABLE. */
@@ -1492,11 +1546,13 @@ export class JParser {
   /** Whether a local variable declaration starts here (javac's speculative check). */
   private isLocalVarDecl(): boolean {
     if (this.isPrimitive(0)) {
-      // `int.class` is an expression.
-      if (this.isAt(1, ".")) {
-        return false;
+      // `int.class`, `int[].class` and `int[]::new` are expressions: javac's
+      // term(EXPR | TYPE) leaves type mode at bracketsSuffix's `.class` or `::`.
+      let i = 1;
+      while (this.isAt(i, "[") && this.isAt(i + 1, "]")) {
+        i += 2;
       }
-      return true;
+      return !this.isAt(i, ".") && !this.op2At(i, ":", ":");
     }
     if (this.kindAt(0) !== JK_IDENT || isJavaKeyword(this.inp, this.tokAt(0))) {
       return false;
@@ -1566,7 +1622,9 @@ export class JParser {
       // `yield(x);` is a call when what follows the `)` is not part of an expression.
       return true;
     }
-    return false;
+    // javac's error recovery: `yield ;` is a yield statement, whose missing
+    // expression is "illegal start of expression".
+    return inp.is(n1, ";");
   }
 
   statement(): i32 {
@@ -1616,7 +1674,7 @@ export class JParser {
       const n = t.node(N_SWITCH, start);
       this.next();
       t.a[n] = this.parExpression();
-      t.b[n] = this.switchBody();
+      t.b[n] = this.switchBody(true);
       return this.finish(n);
     }
     if (this.is("synchronized")) {
@@ -1680,9 +1738,30 @@ export class JParser {
       return this.classDecl(mods);
     }
     const n = t.node(N_EXPRESSION_STATEMENT, start);
-    t.a[n] = this.expression();
+    t.a[n] = this.checkExprStat(this.expression());
     this.expect(";");
     return this.finish(n);
+  }
+
+  /**
+   * javac's checkExprStat (TreeInfo.isExpressionStatement): an expression
+   * statement is an assignment, `++` / `--`, a method call or a class instance
+   * creation; anything else (`x;`, `int[].class;`, `(f());`) is "not a statement".
+   */
+  private checkExprStat(e: i32): i32 {
+    const t = this.t;
+    const k = t.kind[e];
+    const ok =
+      k === N_ASSIGNMENT ||
+      k === N_COMPOUND_ASSIGNMENT ||
+      k === N_METHOD_INVOCATION ||
+      k === N_NEW_CLASS ||
+      (k === N_UNARY &&
+        (t.op[e] === OP_PREINC || t.op[e] === OP_PREDEC || t.op[e] === OP_POSTINC || t.op[e] === OP_POSTDEC));
+    if (!ok) {
+      this.rejected = true;
+    }
+    return e;
   }
 
   private parExpression(): i32 {
@@ -1731,7 +1810,7 @@ export class JParser {
       } else {
         while (!this.err) {
           const es = t.node(N_EXPRESSION_STATEMENT, this.pos());
-          t.a[es] = this.expression();
+          t.a[es] = this.checkExprStat(this.expression());
           t.push(this.finish(es));
           if (!this.accept(",")) {
             break;
@@ -1749,7 +1828,7 @@ export class JParser {
     if (!this.is(")")) {
       while (!this.err) {
         const es = t.node(N_EXPRESSION_STATEMENT, this.pos());
-        t.a[es] = this.expression();
+        t.a[es] = this.checkExprStat(this.expression());
         t.push(this.finish(es));
         if (!this.accept(",")) {
           break;
@@ -1854,19 +1933,19 @@ export class JParser {
     return this.finish(n);
   }
 
-  /** `{ case ...: ... }` of a switch statement or expression. */
-  private switchBody(): i32 {
+  /** A switch's `{ cases }`; `statement`: a switch statement's, not a switch expression's. */
+  private switchBody(statement: boolean): i32 {
     const t = this.t;
     this.expect("{");
     const m = t.mark();
     while (!this.is("}") && !this.atEof() && !this.err) {
-      t.push(this.switchCase());
+      t.push(this.switchCase(statement));
     }
     this.expect("}");
     return t.list(m);
   }
 
-  private switchCase(): i32 {
+  private switchCase(statement: boolean): i32 {
     const t = this.t;
     const n = t.node(N_CASE, this.pos());
     const lm = t.mark();
@@ -1902,6 +1981,11 @@ export class JParser {
         t.push(s);
       } else {
         const e = this.expression();
+        // A switch statement's rule body is javac's parseStatementAsBlock, an
+        // expression statement; a switch expression's is the case's value.
+        if (statement) {
+          this.checkExprStat(e);
+        }
         t.d[n] = e;
         this.expect(";");
       }
@@ -2610,7 +2694,7 @@ export class JParser {
       const n = t.node(N_SWITCH_EXPRESSION, start);
       this.next();
       t.a[n] = this.parExpression();
-      t.b[n] = this.switchBody();
+      t.b[n] = this.switchBody(false);
       return this.finish(n);
     }
     if (this.isPrimitive(0)) {
@@ -2631,8 +2715,17 @@ export class JParser {
       return ty;
     }
     if (this.is("@")) {
-      // An annotated type in expression position (a method reference qualifier or a cast).
-      return this.type();
+      // An annotated type in expression position. javac's term3 (MONKEYS_AT,
+      // EXPR mode) takes only a method reference after the annotations: a
+      // class literal is "no annotations are allowed in the type of a class
+      // literal" and anything else an illegal start of expression. On an
+      // array type (`@A String[]::new`) javac drops the annotations, and
+      // google-java-format fails ("did not generate token").
+      const ty = this.type();
+      if (!this.op2(":", ":") || t.kind[ty] === N_ARRAY_TYPE) {
+        this.rejected = true;
+      }
+      return ty;
     }
     if (k === JK_IDENT) {
       // Generic type before `::`: `List<String>::new`. As in javac's term3, no

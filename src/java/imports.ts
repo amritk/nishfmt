@@ -55,15 +55,18 @@ export const guessSeparator = (src: u8[], n: i32): string => {
 const isJavaWs = (c: i32): boolean => c === 32 || c === 9 || c === 10 || c === 13 || c === 12 || c === 11;
 
 /**
- * ImportOrderer.reorderImports over lexed toks. Answers null when the text
- * stays as it is, "" (with `failed` set) when gjf would refuse the file.
+ * ImportOrderer.reorderImports over lexed toks. `reorder` writes the new text
+ * to `out` and answers true, or answers false: with `failure` set when gjf
+ * would refuse the file, with it empty when the text stays as it is.
  */
 export class ImportFixer {
-  failed: boolean = false;
+  // Why reorder gave up on the file ("" when it did not): ImportOrderer's
+  // FormatterException, which fails the whole file.
+  failure: string = "";
 
   /** The text with its imports reordered, or null to keep it. `inp` holds the lexed text. */
   reorder(inp: GInput, out: Out): boolean {
-    this.failed = false;
+    this.failure = "";
     const src = inp.src;
     const n = inp.n;
     // The toks before the first class, interface or enum keyword.
@@ -105,21 +108,24 @@ export class ImportFixer {
       const isStatic = inp.is(i, "static");
       // ImportType.MODULE: the word after `import`, so `import module.Foo;`
       // then has no identifier ("Unexpected token after import: .").
-      if (isStatic || inp.is(i, "module")) {
+      const isModule = !isStatic && inp.is(i, "module");
+      if (isStatic || isModule) {
         i++;
         if (this.isSpaceTok(inp, i)) {
           i++;
         }
       }
       if (!this.isIdentTok(inp, i)) {
-        this.failed = true;
+        this.failure = isModule
+          ? "a module import (ImportType.MODULE): unexpected token after import"
+          : "unexpected token after import";
         return false;
       }
       // The imported name.
       let name = "";
       while (true) {
         if (!this.isIdentTok(inp, i)) {
-          this.failed = true;
+          this.failure = "unexpected token in an imported name";
           return false;
         }
         name = name + inp.text(i);
@@ -139,7 +145,7 @@ export class ImportFixer {
         i++;
       }
       if (!inp.is(i, ";")) {
-        this.failed = true;
+        this.failure = "no ; after an import";
         return false;
       }
       while (inp.is(i, ";")) {
@@ -198,7 +204,7 @@ export class ImportFixer {
     // A later import before the class means they are not contiguous.
     for (let t = afterLast; t < stop; t++) {
       if (this.isIdentTok(inp, t) && inp.is(t, "import")) {
-        this.failed = true;
+        this.failure = "imports not contiguous";
         return false;
       }
     }
