@@ -19,7 +19,11 @@ e=$(date +%s.%N)
 # "Files <out> and <ref> differ", with paths that may hold spaces.
 diff -rq "$w/out" "$d/ref" | grep '^Files ' | sed -e 's|^Files ||' -e "s| and $d/ref/.* differ\$||" \
   -e "s|^$w/out/|./|" | grep -vxF -f "$d/failed.txt" > "$w/differ.txt"
-total=$(( $(find "$d/ref" -type f | wc -l) - $(wc -l < "$d/failed.txt") ))
+# $d/support.txt, when a builder writes one, lists files that are the same in
+# raw/ and ref/ and are not corpus files (tools/dart/mk5.sh's package files).
+support=0
+[ -f "$d/support.txt" ] && support=$(wc -l < "$d/support.txt")
+total=$(( $(find "$d/ref" -type f | wc -l) - $(wc -l < "$d/failed.txt") - support ))
 nd=$(wc -l < "$w/differ.txt")
 (cd "$w/out" && while read -r f; do diff -u "$f" "$d/ref/$f"; done < "$w/differ.txt") > "$w/all.diff"
 printf '%s: %d / %d identical; %.2f s\n' "$lang" $((total - nd)) "$total" "$(echo "$e - $s" | bc)"

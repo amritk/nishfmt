@@ -33,7 +33,7 @@ export class RsFormatted {
 /** Lexes, parses and formats `src[0, n)` (already normalized: LF, no BOM). */
 export const rsFormatSource = (src: u8[], n: i32, cfg: RsConfig, isMacroDef: boolean): RsFormatted => {
   const r = new RsFormatted();
-  const t = new RsTokens(src, n);
+  const t = new RsTokens(src, n, cfg.edition);
   rsLex(t);
   if (t.failed) {
     r.parseFailed = true;
@@ -126,6 +126,8 @@ const hasTrailingWhitespace = (s: string, skipped: RsRanges): boolean => {
 /** format_snippet: null when the snippet does not parse or formats with errors. */
 export const rsFormatSnippet = (parent: RsCtx, code: string, cfg: RsConfig, isMacroDef: boolean): RsSnippet | null => {
   const n = toI32(code.length);
+  // A snippet is a part of its parent's source, at its parent's edition.
+  cfg.edition = parent.cfg.edition;
   const r = rsFormatSource(strBytes(code), n, cfg, isMacroDef);
   if (r.unsupported) {
     parent.unsupported(r.why);
