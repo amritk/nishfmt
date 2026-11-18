@@ -1376,6 +1376,11 @@ export class Classifier {
           if (d.lMustDecl[l] === 1 && !this.ctorSeen) {
             this.expr[dep] = 0;
           }
+          // A braced list's comma starts an expression again (parseBrace's
+          // IsBracedListComma).
+          if (dep > 0 && this.k(this.open[dep]) === P_LBRACE && d.bk[this.open[dep]] === BK_BRACED_INIT) {
+            this.expr[dep] = 1;
+          }
           // A foreach macro's arguments after the first are expressions.
           if (
             dep > 0 &&
@@ -2339,6 +2344,11 @@ export class Classifier {
   markDeclName(l: i32): void {
     const d = this.d;
     for (let t = d.nxt[this.first]; t >= 0; t = d.nxt[t]) {
+      // clang-format's search stops at the first braced list, nested or not
+      // (calculateFormattingInformation).
+      if (d.bk[t] === BK_BRACED_INIT && (d.kind[t] === P_LBRACE || d.kind[t] === P_RBRACE)) {
+        break;
+      }
       // (An `operator` counts at any depth, as for clang-format.)
       if (d.nest[t] !== 0 && d.kind[t] !== KW_OPERATOR) {
         continue;
