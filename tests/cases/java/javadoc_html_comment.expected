@@ -1,0 +1,9 @@
+class Comments {
+  /**
+   * Text before.
+   * <!-- a comment
+   *      over two lines -->
+   * Text after.
+   */
+  void f() {}
+}

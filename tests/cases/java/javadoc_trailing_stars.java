@@ -1,0 +1,14 @@
+class TrailingStars {
+  /** Returns the value. **/
+  int a() {
+    return 1;
+  }
+
+  /**
+   * Returns the other value,
+   * on two lines.
+   ***/
+  int b() {
+    return 2;
+  }
+}
