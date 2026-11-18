@@ -143,7 +143,6 @@ import {
 export class Parser {
   macro: i32 = -1; // the directive whose body is being parsed, or -1
   eofLine: i32 = -1; // the last line a statement ended at the end of the input
-  macroBodyStart: i32 = 0; // the first line of the macro body being parsed
   inUnbraced: boolean = false; // parsing an unbraced control body's statement
   unbracedLevel: i32 = 0; // unbraced if/else/loop bodies the parse is inside (clang-format's UnbracedBodyLevel)
   inRequiresExpr: boolean = false; // parsing a requires expression's body
@@ -595,15 +594,12 @@ export class Parser {
     const saveDecl = this.mustDecl;
     this.level = 1;
     this.macro = hash;
-    const saveBodyStart = this.macroBodyStart;
-    this.macroBodyStart = this.d.nline;
     const saveList = this.macroList;
     this.macroList = this.listParent;
     // clang-format parses a macro body with MustBeDeclaration off.
     this.mustDecl = false;
     this.parseLevel(false);
     this.addLine();
-    this.macroBodyStart = saveBodyStart;
     this.macroList = saveList;
     this.macro = -1;
     this.level = saveLevel;
@@ -730,25 +726,20 @@ export class Parser {
           this.addLine();
           return;
         }
-        // A goto label in code: one level out, like a case label. (In a
-        // macro body, not on its first line: clang-format's
-        // `!Line->InMacroBody || CurrentLines->size() > 1`.)
-        if (
-          (this.first < 0 || attrOnly) &&
-          !this.mustDecl &&
-          this.peek(1) === P_COLON &&
-          (this.macro < 0 || this.d.nline > this.macroBodyStart)
-        ) {
-          this.parseCaseLabel();
+        // A goto label in code: one level out, like a case label (also on
+        // a macro body's first line: clang-format 23's parsePPDefine no
+        // longer reads past a leading `label:`).
+        if ((this.first < 0 || attrOnly) && !this.mustDecl && this.peek(1) === P_COLON) {
+          this.parseCaseLabel(true);
           return;
         }
         break;
       case KW_CASE:
-        this.parseCaseLabel();
+        this.parseCaseLabel(false);
         return;
       case KW_DEFAULT:
         if (this.peek(1) === P_COLON) {
-          this.parseCaseLabel();
+          this.parseCaseLabel(false);
           return;
         }
         break;
@@ -940,7 +931,11 @@ export class Parser {
     }
   }
 
-  parseCaseLabel(): void {
+  /**
+   * clang-format's parseLabel, after a `case`, `default` or goto label
+   * (`isGoto`): only a case label's line takes a block after it.
+   */
+  parseCaseLabel(isGoto: boolean): void {
     const d = this.d;
     const saveLevel = this.level;
     const unbraced = this.inUnbraced;
@@ -999,7 +994,7 @@ export class Parser {
     while (d.kind[this.pos] === P_HASH && d.ppKind[this.pos] !== PP_NONE && this.macro < 0) {
       this.parsePPInline();
     }
-    if (this.cur() === P_LBRACE) {
+    if (this.cur() === P_LBRACE && !isGoto) {
       this.parseBlock(1, false, TT_UNKNOWN);
       let b = this.pos;
       while (d.kind[b] === P_HASH && d.ppKind[b] !== PP_NONE) {
@@ -2853,7 +2848,7 @@ export class Parser {
       // `MACRO /* c */` then `case x:`: clang-format's statement loop reads
       // the case label into the same line.
       if (k === KW_CASE && this.first >= 0) {
-        this.parseCaseLabel();
+        this.parseCaseLabel(false);
         return;
       }
       if (k === P_LBRACE) {

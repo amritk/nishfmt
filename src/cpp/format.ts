@@ -65,6 +65,7 @@ import {
   PP_PRAGMA,
   PP_ERROR,
   TT_UNKNOWN,
+  TT_INHERITANCE_COLON,
   KW_EXTERN,
   KW_DEFAULT,
   KW_CASE,
@@ -675,6 +676,25 @@ export class Formatter {
     return d.kind[n] !== P_COLONCOLON && !isOperatorAfterVar(d.kind[n]);
   }
 
+  /**
+   * clang-format 23's LT_AccessModifier: a line where an access keyword is
+   * followed by a colon annotated as an inheritance colon (`... public : int
+   * x;` after a macro without `;`) takes the access specifier's offset too.
+   */
+  hasAccessModifierColon(l: i32): boolean {
+    const d = this.d;
+    for (let t = d.nxt[d.lFirst[l]]; t >= 0; t = d.nxt[t]) {
+      if (d.type[t] === TT_INHERITANCE_COLON) {
+        const p = this.ann.prevNonComment(t);
+        const pk = p >= 0 ? d.kind[p] : -1;
+        if (pk === KW_PUBLIC || pk === KW_PRIVATE || pk === KW_PROTECTED) {
+          return true;
+        }
+      }
+    }
+    return false;
+  }
+
   /** The indent of line `l` in its list, with `base` added. */
   indentOf(l: i32, base: i32): i32 {
     const d = this.d;
@@ -682,7 +702,7 @@ export class Formatter {
       return 0;
     }
     let ind = (d.lAbs[l] === 1 ? 0 : base) + d.lLevel[l] * d.opts.indentWidth;
-    if (this.isAccessSpecifier(l)) {
+    if (this.isAccessSpecifier(l) || this.hasAccessModifierColon(l)) {
       ind = ind + d.opts.accessModifierOffset;
       if (ind < 0) {
         ind = 0;
