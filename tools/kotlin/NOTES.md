@@ -1,7 +1,10 @@
 # Kotlin port notes
 
-`src/kotlin/` ports ktfmt 0.65 in its default (Meta) style, on a lexer and
-parser ported from the Kotlin compiler 2.4.10.
+`src/kotlin/` ports ktfmt 0.65 in its kotlinlang style (`--kotlinlang-style`,
+`Formatter.KOTLINLANG_FORMAT`), on a lexer and parser ported from the Kotlin
+compiler 2.4.10. It first ported 0.65 in the default (Meta) style; the
+sections below on 0.65's changes were measured in that style, and
+[Kotlinlang style](#kotlinlang-style) says what moving to kotlinlang changed.
 
 ## Versions
 
@@ -40,7 +43,10 @@ nishfmt skips the other 3. One is a `.kt` file with a top-level statement,
 which ktfmt 0.65 rejects too. The other two are enum entries ending in
 `;` with nothing after it (`enum class A { X; }`), which nishfmt rejected
 before this port as well: the passes around the pretty printer leave text
-that does not parse, so the file is skipped, never mis-formatted.
+that does not parse, so the file is skipped, never mis-formatted. That was
+true of the Meta-style port only: in kotlinlang style the trailing-comma
+pass reads the `;` as dropped, and nishfmt formats `enum class A { X; }` as
+`enum class A {\n    X,\n}`, as `ktfmt --kotlinlang-style` does.
 
 ## What 0.65 changed, and where it is ported
 
@@ -71,7 +77,71 @@ The block-like call formatting of a95ec2e was reverted before the release
 (e11fc40, dba5965) and changes nothing. 874c483 removed dead tabular
 alignment code. `FormattingOptions` gained only `experimentalEngine`.
 
+## Kotlinlang style
+
+`--kotlinlang-style` selects `Formatter.KOTLINLANG_FORMAT`, which is
+`FormattingOptions(blockIndent = 4, continuationIndent = 4)` with every other
+field at its default. nishfmt formats Kotlin only in this style, and has no
+flag for Meta or Google style. The options live in `src/kotlin/options.ts`.
+
+| Option | META_FORMAT | KOTLINLANG_FORMAT |
+| --- | --- | --- |
+| `maxWidth` | 100 | 100 |
+| `blockIndent` | 2 | **4** |
+| `continuationIndent` | 4 | 4 |
+| `trailingCommaManagementStrategy` | `ONLY_ADD` | **`COMPLETE`** |
+| `removeUnusedImports` | true | true |
+| `preserveLambdaBreaks` | true | true |
+
+Every read of an option on the path `--kotlinlang-style` takes (`format/`
+and `kdoc/` at v0.65, not `format/visitor/kotlinlang/`, which only
+`--experimental-engine` reaches), from
+`grep -rn 'options\.\|blockIndent\|continuationIndent\|manageTrailingCommas\|removeRedundantTrailingCommas'`:
+
+| Upstream | Styles differ? | nishfmt |
+| --- | --- | --- |
+| `FormatterState`: `blockIndent = Indentation.Const(options.blockIndent)`, read through `helpers.kt:109` everywhere a block opens: class, function and accessor bodies, `{` and `}` tokens, `ControlFlowExpressionFormatter.kt:102-107` (`when`), `DeclarationFormatter.kt:532` (property accessors), `:682-695` (`emitBracedBlock`), `CallFormatter.kt:267` (a lambda's `}`) | yes, 2 against 4 | `visitor.ts` `KVisitor.blockIndent`, from `K_BLOCK_INDENT` |
+| `CallFormatter.kt:240`: a lambda's body indent `Indentation.If(brokeBeforeBrace, blockIndent + expressionBreakIndent, blockIndent)` | yes, through `blockIndent` | `visitor.ts` `blockPlusExpressionBreakIndent`, `K_BLOCK_INDENT + K_CONTINUATION_INDENT` |
+| `FormatterState`: `expressionBreakIndent = Indentation.Const(options.continuationIndent)`, and its negations and doubles | no, 4 in both | `K_CONTINUATION_INDENT` |
+| `RedundantElementManager.kt:52`: `trailingCommaManagementStrategy.removeRedundantTrailingCommas` runs `TrailingCommas.Detector`, which drops the trailing comma of every managed list (value arguments and parameters, lambda parameters, type arguments and parameters, collection literals, `when` entries, enum entries) before the layout | yes: true for `COMPLETE`, false for `ONLY_ADD` | `passes.ts` `detectTrailingCommas` and `managedTrailingComma`, in `dropRedundant` and the combined passes (which mark the dropped commas so the comma pass reads the tree as if they were gone) |
+| `RedundantElementManager.kt:97` (`addRedundantElements`), `ListFormatter.kt:155-218`, `ExpressionFormatter.kt:373`, `ControlFlowExpressionFormatter.kt:344`, `helpers.kt:566`: `manageTrailingCommas`, which is `strategy != NONE` | no, true in both | unchanged: the comma pass still adds a comma to a list on more than one line, and the visitor never wraps lists in a block |
+| `RedundantElementManager.kt:39`: `removeUnusedImports` | no, true in both | unchanged |
+| `CallFormatter.kt:311`: `preserveLambdaBreaks` | no, true in both | unchanged |
+| `Formatter.kt:101,123`: `MultilineStringFormatter(options.continuationIndent)` | no, 4 in both | `mlstring.ts`, from `K_CONTINUATION_INDENT` |
+| `GroupInfo.kt:31-122`: `computeGroups(continuationIndent)`, a short first part groups with the next when shorter than the continuation indent | no, 4 in both | `visitor.ts`, from `K_CONTINUATION_INDENT` |
+| `Formatter.kt:156,166`: `KDocCommentsHelper(lineSeparator, options.maxWidth)` and `computeBreaks(..., options.maxWidth, ...)` | no, 100 in both | `run.ts` sets the engine's `maxWidth`, `kdoc.ts` its table width, from `K_MAX_WIDTH` |
+| `kdoc/KDocWriter.kt:58`: `KDocWriter(blockIndentCount, ...)` | no: nothing constructs a `KDocWriter` | not ported |
+| `kdoc/*`: the `KDocFormattingOptions` reads (`convertMarkup`, `collapseSpaces`, `hangingIndent`, ...) | no: `KDocCommentsHelper` builds the same `KDocFormattingOptions` from `maxWidth` alone in every style | unchanged |
+| `Formatter.kt:162,180`: `debuggingPrintOpsAfterFormatting`, `useExperimentalEngine` | no, false in both | not ported |
+
+Because `COMPLETE` drops a trailing comma before the layout, a list that
+fits on one line loses it, and the visitor no longer forces it onto one item
+per line (`forceMultiline = trailingComma != null`); the comma pass after the
+layout puts the comma back where the list still breaks. An enum's `;` after
+its last entry is a redundant semicolon in both styles, so `A, B,;` becomes
+`A, B,` on lines of their own.
+
+### Corpus
+
+The kt repositories of `bench/corpus/repos.txt` again, the reference built
+by `mk.sh kt` with `--kotlinlang-style`: 9604 files, of which the
+reference rejects 2.
+
+| | ktfmt 0.65, kotlinlang reference |
+| --- | ---: |
+| nishfmt at the Meta port (main at 4ded8fb) | 734 / 9602 |
+| nishfmt in kotlinlang style | 9602 / 9602 |
+
 ## Tests
 
-Each change above has a case in `tests/cases/kotlin/`, its `.expected` from
-the 0.65 jar at its defaults, and each fails on the 0.64 port.
+Each change above has a case in `tests/cases/kotlin/`. Every `.expected`
+comes from the 0.65 jar with `--kotlinlang-style`, including the cases the
+Meta port added, which were regenerated; `trailing_comma_relayout.kt` got a
+new input, whose comma pushes the line to 101 columns at 4-space indent. The
+`kotlinlang_*` cases cover the style: block indent in classes, functions,
+accessors, control flow and `when`; a lambda's body indent after a break
+before its brace; trailing commas removed from lists that fit, of every
+managed kind; commas kept or put back on lists that break; and KDoc and
+multiline strings under 4-space blocks. Each fails on the Meta port. The
+`unclosed_*.kts` cases keep their input as expected: ktfmt rejects them in
+every style.

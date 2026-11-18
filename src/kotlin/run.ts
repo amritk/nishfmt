@@ -13,6 +13,7 @@ import { rewriteKotlinComment } from "./comments";
 import { tokenizeKotlin } from "./input";
 import { KLexemes } from "./lexer";
 import { KMultilineStrings } from "./mlstring";
+import { K_MAX_WIDTH } from "./options";
 import { KParser } from "./parser";
 import { KPasses } from "./passes";
 import { T_WHITE_SPACE, ktTypeName } from "./types";
@@ -73,6 +74,7 @@ export class KotlinEngine {
     this.inp = new GInput();
     this.g = new GEngine(this.inp);
     this.g.rewrite = rewriteKotlinComment;
+    this.g.maxWidth = K_MAX_WIDTH;
     this.vis = new KVisitor(this.g, this.b.tree);
     this.passes = new KPasses(this.b.tree);
     this.ml = new KMultilineStrings(this.b.tree);

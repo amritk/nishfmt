@@ -11,7 +11,7 @@ says how to rebuild them and rerun the comparisons.
 | --- | --- | --- | --- |
 | C++ | clang-format | 18.1.3 | `clang-format` on PATH |
 | Java | google-java-format | 1.28.0, all-dependencies jar | `$GJF` |
-| Kotlin | ktfmt | 0.65, with-dependencies jar (from the GitHub release; Maven Central stops at 0.64) | `$KTFMT` |
+| Kotlin | ktfmt | 0.65, with-dependencies jar (from the GitHub release; Maven Central stops at 0.64), run with `--kotlinlang-style` | `$KTFMT` |
 | Ruby | RuboCop | 1.92.3 | `rubocop` on PATH |
 | Swift | SwiftFormat | 0.64.7 | `$SWIFTFORMAT`, else `swiftformat` |
 | Rust | rustfmt | 1.10.0 (Rust 1.99.1) | `$RUSTFMT`, else `rustfmt +1.99.1` |
@@ -32,7 +32,8 @@ writes `bench/work/corpus/<lang>` (or `$CORPUS/<lang>`):
 
 - `raw/`, the sources as found (C++ files over 250 KB and Ruby beyond a
   2000-file sample are left out, as are hidden directories);
-- `ref/`, the reference tool's output at its default settings (for C#, the
+- `ref/`, the reference tool's output at its default settings (for Kotlin,
+  ktfmt's `--kotlinlang-style`; for C#, the
   [README](../README.md#settings)'s `.editorconfig`, which `mk.sh cs` writes
   above `ref/` with an empty `.git`; see `tools/csharp/NOTES.md`);
 - `failed.txt`, the files the reference rejected, which every comparison
@@ -95,21 +96,22 @@ fresh copy each run:
 - **1 core**: `taskset -c 0 nishfmt -i -q -j 1 <dir>`.
 - nishfmt's time is the best of three; each reference tool's is one run (they
   take minutes). clang-format ran 50 files a process; google-java-format as
-  one JVM over all the files; RuboCop with `--parallel` on 4 cores; rustfmt
+  one JVM over all the files; ktfmt with `--kotlinlang-style`, 300 files a
+  process, 4 at a time, as `mk.sh` runs it; RuboCop with `--parallel` on 4 cores; rustfmt
   100 files a process; CSharpier on .NET 10 with `--no-cache`.
 
 ## Rust reimplementations
 
-Two of the reference tools have a Rust reimplementation that also matches
-them on the whole corpus. nishfmt is faster than both, on 4 cores and on 1:
+RuboCop has a Rust reimplementation that also matches it on the whole
+corpus. nishfmt is faster than it, on 4 cores and on 1:
 
 | Language | Files | Reimplementation, 4 cores / 1 core | nishfmt, 4 cores / 1 core |
 | --- | ---: | ---: | ---: |
-| Kotlin | 9602 | ktrs 0.5.1: 2.43 s / 8.96 s | 2.03 s / 7.02 s |
 | Ruby | 1998 | rbcop 0.1.4: 6.55 s / 20.4 s | 4.00 s / 12.7 s |
 
-The Kotlin row was measured against the ktfmt 0.64 corpus, before nishfmt
-moved to ktfmt 0.65; ktrs follows ktfmt 0.64.
+ktrs 0.5.1, a Rust reimplementation of ktfmt, had a Kotlin row here, measured
+against ktfmt 0.64 in its default (Meta) style; it was not re-measured against
+the kotlinlang corpus, so the row is gone.
 
 The Ruby times here and in the README were measured under the previous RuboCop, when
 the corpus counted 1998 files; rebuilt at the same commits it now counts 1999

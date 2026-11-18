@@ -6,7 +6,8 @@ port (RuboCop) are the worked examples: read `src/kotlin/run.ts` and
 
 ## The goal
 
-Byte-for-byte the reference tool's output at its default settings, on every
+Byte-for-byte the reference tool's output at its default settings (or the
+one fixed style the table names), on every
 file of the corpus the reference tool accepts. After that comes speed: faster
 than the reference tool and any native reimplementation, on 1 core and 4.
 Where the two goals pull apart, matching wins, then speed.
@@ -15,7 +16,7 @@ Where the two goals pull apart, matching wins, then speed.
 | --- | --- | --- | --- |
 | C++ | `src/cpp` | clang-format 18, `{BasedOnStyle: LLVM, ColumnLimit: 120}` | `clang-format --style='{BasedOnStyle: LLVM, ColumnLimit: 120}' < f` |
 | Java | `src/java` | google-java-format 1.28 | `java -jar $GJF - < f` |
-| Kotlin | `src/kotlin` | ktfmt 0.65, default style | `java -jar $KTFMT - < f` parses as a script, so only for `.kts`; a `.kt` file goes by name, `java -jar $KTFMT f` (in place) |
+| Kotlin | `src/kotlin` | ktfmt 0.65, `--kotlinlang-style` | `java -jar $KTFMT --kotlinlang-style - < f` parses as a script, so only for `.kts`; a `.kt` file goes by name, `java -jar $KTFMT --kotlinlang-style f` (in place) |
 | Ruby | `src/ruby` | `rubocop -a` 1.92.3, `TargetRubyVersion: 3.3` | `bench/corpus/mk.sh` shows the invocation |
 | Swift | `src/swift` | SwiftFormat 0.64.7, default rules | `swiftformat stdin --quiet < f` |
 | Rust | `src/rust` | rustfmt 1.10.0, default config, edition 2021 | `rustfmt +1.99.1 --edition 2021 < f` |
