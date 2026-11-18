@@ -1,0 +1,7 @@
+class MultiCatchComment {
+  void f() {
+    try {} catch (
+// catch comment
+    IOException | RuntimeException e) {}
+  }
+}

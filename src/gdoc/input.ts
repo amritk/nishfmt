@@ -3,8 +3,9 @@
 // each real token carries the comments and whitespace before and after it.
 // A language's lexer fills the tok columns; `buildTokens` groups them.
 //
-// Ported from google-java-format's Input, JavaInput and InputOutput
-// (Apache License 2.0, Copyright 2015 Google Inc.).
+// Ported from google-java-format 1.28.0's Input, JavaInput and InputOutput
+// (Apache License 2.0, Copyright 2015 Google Inc.); 1.23.0 (ktfmt 0.65's) and
+// 2.0.0 (Java's) give the same output here, as tools/kotlin/NOTES.md says.
 
 import { growI32, utf16Len } from "../core/arr";
 

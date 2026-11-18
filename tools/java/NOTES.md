@@ -130,6 +130,15 @@ From the javadoc port (#17), in `src/java/javadoc.ts` and `src/java/comments.ts`
 | `StringWrapper` | `src/java/strings.ts`, `src/java/partial.ts` |
 | `javadoc/*`, `JavaCommentsHelper` | `src/java/javadoc.ts`, `src/java/comments.ts`, `src/gdoc/comments.ts` |
 
+`src/java/lexer.ts` is a port of `JavaInput`'s and `JavacTokens`'
+tokenization and carries their header. `src/java/parser.ts` and
+`src/java/ast.ts` are not ports and carry no ported-module header: they are
+nishfmt's own recursive-descent parser and tree, built to give the javac tree
+shapes the visitor reads and to make javac's parse decisions, without
+translating javac's code. `src/gdoc/` credits google-java-format 1.28.0; why
+that holds for Java's 2.0.0 is in
+[tools/kotlin/NOTES.md](../kotlin/NOTES.md#srcgdocs-version).
+
 ## Working on it
 
 ```bash
