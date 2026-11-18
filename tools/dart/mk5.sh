@@ -5,11 +5,12 @@
 # .dart_tool/package_config.json and pubspec.lock that `dart pub get
 # --offline` writes for it, so every file is at language version 3.8 by its
 # package config rather than by a `// @dart=` comment. That gives dart5/raw;
-# dart5/ref is `dart format .` run inside each package directory, and
-# dart5/failed.txt lists the files it rejects.
+# dart5/ref is `dart format .` of that (which finds each file's package config
+# itself), and dart5/failed.txt lists the files it rejects.
 #
-# The package files are the same in raw/ and ref/; cmp.sh leaves pubspec.yaml,
-# pubspec.lock and .dart_tool/ out of its total, and so does the count here.
+# The package files are the same in raw/ and ref/ and are not corpus files:
+# they are listed in dart5/support.txt, which cmp.sh leaves out of its total,
+# and the count printed here leaves them out too.
 #
 #   mk5.sh
 set -uo pipefail
@@ -25,18 +26,11 @@ for p in */; do
   printf 'name: %s\nenvironment:\n  sdk: ^3.8.0\n' "$name" > "$p/pubspec.yaml"
   (cd "$p" && "$DART" pub get --offline > /dev/null) || { echo "mk5.sh: pub get failed in $p" >&2; exit 1; }
 done
+find . -type f \( -path '*/.dart_tool/*' -o -name pubspec.yaml -o -name pubspec.lock \) | sort > ../support.txt
 cp -r "$d/raw" "$d/ref"
 cd "$d/ref"
-: > ../dartformat.log; : > ../failed.txt
-for p in */; do
-  p=${p%/}
-  (cd "$p" && "$DART" format . > /dev/null 2> ../../dartformat.$p.log)
-  # Paths in the log are relative to the package directory.
-  sed -n -e 's/^line [0-9]*, column [0-9]* of \(.*\.dart\): .*/\1/p' \
-    -e 's/^Hit a bug in the formatter when formatting \(.*\.dart\)\.$/\1/p' "../dartformat.$p.log" \
-    | sed -e 's|^\./||' -e "s|^|./$p/|" >> ../failed.txt
-  cat "../dartformat.$p.log" >> ../dartformat.log && rm "../dartformat.$p.log"
-done
-sort -u -o ../failed.txt ../failed.txt
-n=$(find . -type f -not -path '*/.dart_tool/*' -not -name pubspec.yaml -not -name pubspec.lock | wc -l)
-echo "dart5: $n files, reference failed on $(wc -l < ../failed.txt)"
+"$DART" format . > /dev/null 2> ../dartformat.log
+sed -n -e 's/^line [0-9]*, column [0-9]* of \(.*\.dart\): .*/\1/p' \
+  -e 's/^Hit a bug in the formatter when formatting \(.*\.dart\)\.$/\1/p' ../dartformat.log \
+  | sed -e 's|^\./||' -e 's|^|./|' | sort -u > ../failed.txt
+echo "dart5: $(( $(find . -type f | wc -l) - $(wc -l < ../support.txt) )) files, reference failed on $(wc -l < ../failed.txt)"
