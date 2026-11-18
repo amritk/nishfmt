@@ -444,9 +444,7 @@ export class Classifier {
     // `(&)`, `(*)`, `(C::*)` make a function or array type whatever the
     // context (clang-format 23's parseParens; a pointer, not a block's `^`).
     const last = d.prv[c];
-    const lk = this.k(last);
-    const bare =
-      (lk === P_STAR || lk === P_AMP || lk === P_AMPAMP) && (d.prv[last] === o || this.k(d.prv[last]) === P_COLONCOLON);
+    const bare = this.isPtrKind(last) && (d.prv[last] === o || this.k(d.prv[last]) === P_COLONCOLON);
     if (this.expr[this.depth] === 1 && !bare) {
       return;
     }
@@ -469,13 +467,15 @@ export class Classifier {
     if (!ptr) {
       return;
     }
-    for (let q = f; q >= 0 && q !== c && !bare; q = this.next(q)) {
-      if (d.match[q] > q) {
-        q = d.match[q];
-        continue;
-      }
-      if (this.k(q) === P_COMMA) {
-        return;
+    if (!bare) {
+      for (let q = f; q >= 0 && q !== c; q = this.next(q)) {
+        if (d.match[q] > q) {
+          q = d.match[q];
+          continue;
+        }
+        if (this.k(q) === P_COMMA) {
+          return;
+        }
       }
     }
     // (The token right after `)`: a comment there hides what follows.)
@@ -1293,7 +1293,10 @@ export class Classifier {
         case P_AMP:
         case P_AMPAMP:
           if (this.ty(t) === TT_UNKNOWN) {
-            if (this.inRequiresParens(t, dep) || (k === P_AMPAMP && this.inRequiresClause(t, dep))) {
+            if (
+              (this.lineHasRequires && this.inRequiresParens(t, dep)) ||
+              (k === P_AMPAMP && this.inRequiresClause(t, dep))
+            ) {
               this.set(t, TT_BINARY_OPERATOR);
             } else {
               const inExpr = (this.expr[dep] === 1 && this.afterNew[dep] === 0) || this.sa[dep] === 1;
@@ -1672,7 +1675,7 @@ export class Classifier {
         return;
       }
     }
-    if (this.k(n) === P_LPAREN && d.nxt[n] >= 0 && this.k(d.nxt[n]) === P_RPAREN) {
+    if (nk0 === P_LPAREN && d.nxt[n] >= 0 && this.k(d.nxt[n]) === P_RPAREN) {
       const after = d.nxt[d.nxt[n]];
       if (after >= 0 && this.k(after) === P_LESS) {
         // `operator()<T>()`: clang-format types only the first `(`.
@@ -2773,7 +2776,7 @@ const spaceBeforeCode = (d: Doc, l: i32, r: i32): boolean => {
   }
   // `vld3.8`, `SSE4.2`, `[[suppress(type.5)]]`: a number from `.` hugs the name.
   if (isIdentKind(lk) && rk === K_NUMBER) {
-    return d.at(d.start[r]) !== 46;
+    return d.firstByte(r) !== 46;
   }
   if (lt === TT_OVERLOADED_OPERATOR && (rt === TT_TEMPLATE_OPENER || rt === TT_TEMPLATE_CLOSER)) {
     return true;
@@ -2853,10 +2856,8 @@ const spaceBeforeCode = (d: Doc, l: i32, r: i32): boolean => {
   }
   if (rk === P_COLONCOLON) {
     if (isIdentKind(lk)) {
-      // `ALWAYS_INLINE ::std::string`: a name that may be a macro keeps the
-      // space (clang-format's isPossibleMacro).
-      const lp = prevCode(d, left);
-      return d.ws[r] === 1 && d.len(left) > 1 && !(lp >= 0 && d.kind[lp] === P_COLONCOLON) && noLower(d, left);
+      // `ALWAYS_INLINE ::std::string`: a name that may be a macro keeps the space.
+      return d.ws[r] === 1 && isPossibleMacro(d, left);
     }
     // (After a block comment: clang-format's rule for those, `/*x=*/` hugging.)
     if (lk === K_COMMENT) {
@@ -3101,7 +3102,6 @@ export const CLASSIFY_KINDS: i32 =
   TT_TRAILING_ANNOTATION +
   P_LPAREN;
 
-/** The token before `t`, comments skipped, or -1. */
 /** Whether identifier `t` has no lower-case letter. */
 const noLower = (d: Doc, t: i32): boolean => {
   for (let i = d.start[t]; i < d.end[t]; i++) {
@@ -3112,6 +3112,17 @@ const noLower = (d: Doc, t: i32): boolean => {
   }
   return true;
 };
+
+/**
+ * clang-format's isPossibleMacro(AllowFollowingColonColon): an all-caps name
+ * of two or more characters, not qualified by a `::` before it.
+ */
+const isPossibleMacro = (d: Doc, t: i32): boolean => {
+  const p = prevCode(d, t);
+  return d.len(t) > 1 && !(p >= 0 && d.kind[p] === P_COLONCOLON) && noLower(d, t);
+};
+
+/** The token before `t`, comments skipped, or -1. */
 
 const prevCode = (d: Doc, t: i32): i32 => {
   let p = d.prv[t];
@@ -3327,8 +3338,9 @@ export const isTypeName = (d: Doc, t: i32): boolean => {
     return false;
   }
   const w = d.len(t);
-  if (w < 6 || w > 9 || d.at(d.end[t] - 2) !== 95 || d.at(d.end[t] - 1) !== 116) {
-    return false; // every one ends in `_t`
+  // (Every one is 6 to 9 bytes and ends in `_t`: 95 `_`, 116 `t`.)
+  if (w < 6 || w > 9 || d.at(d.end[t] - 2) !== 95 || d.lastByte(t) !== 116) {
+    return false;
   }
   return (
     d.is(t, "clock_t") ||
