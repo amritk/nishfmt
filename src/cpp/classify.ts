@@ -509,9 +509,14 @@ export class Classifier {
       const op = this.prev(o);
       if (d.kind[o] === P_LPAREN && op >= 0 && this.k(op) === KW_REQUIRES && !this.requiresExprParen(o)) {
         // Each level from here in: its `<`s (less any `>`s) before the next
-        // level's `(`, or before `t`.
+        // level's `(`, or before `t`. (A braced list or a lambda's brackets
+        // are read whole, their tokens untyped.)
         for (let y = x; y <= dep; y++) {
-          if (d.kind[this.open[y]] !== P_LPAREN) {
+          const yk = d.kind[this.open[y]];
+          if (yk === P_LBRACE || yk === P_LSQUARE) {
+            return false;
+          }
+          if (yk !== P_LPAREN) {
             continue;
           }
           let end = t;
@@ -524,7 +529,7 @@ export class Classifier {
           let excess = 0;
           for (let q = d.nxt[this.open[y]]; q >= 0 && q !== end; q = d.nxt[q]) {
             const k = this.k(q);
-            if (k === P_LPAREN && d.match[q] > q && d.match[q] < end) {
+            if ((k === P_LPAREN || k === P_LBRACE || k === P_LSQUARE) && d.match[q] > q && d.match[q] < end) {
               q = d.match[q];
             } else if (k === P_LESS) {
               excess++;
