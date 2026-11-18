@@ -61,7 +61,7 @@ for byte as it does, on the corpora the README's table is measured on:
 | Dart, short style (below 3.7) | 8218 | 8218 |
 | Swift | 6710 | 6710 |
 | Rust | 7899 | 7899 |
-| Ruby | 1998 | 1998 |
+| Ruby | 1999 | 1999 |
 
 The 38 C++ files left are described in [C++](cpp.md#results-by-repository).
 
