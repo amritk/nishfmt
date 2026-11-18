@@ -1,0 +1,3 @@
+sealed class A permits var {
+
+}
