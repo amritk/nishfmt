@@ -23,6 +23,7 @@ import {
   rsWriteList,
 } from "./lists";
 import { RsShape, rsIndentStr } from "./shape";
+import { rsTrimRawPrefix, rsVersionSort } from "./sort";
 import { rsHasByte, rsTrimEnd } from "./str";
 import { rsFormatVisibility, rsIdentStr } from "./utils";
 import { RsVisitor } from "./visitor";
@@ -238,7 +239,7 @@ const cloneTree = (t: RsUseTree): RsUseTree => {
 };
 
 /** UseTree::normalize. */
-const normalizeTree = (t0: RsUseTree): RsUseTree => {
+const normalizeTree = (t0: RsUseTree, se: i32): RsUseTree => {
   const t = cloneTree(t0);
   let last = t.path.pop();
   if (!t.hasAttrs) {
@@ -284,14 +285,14 @@ const normalizeTree = (t0: RsUseTree): RsUseTree => {
     for (const s of last.list[0].path) {
       t.path.push(s);
     }
-    return normalizeTree(t);
+    return normalizeTree(t, se);
   }
   if (last.k === USK_LIST) {
     const list: RsUseTree[] = [];
     for (const sub of last.list) {
-      list.push(normalizeTree(sub));
+      list.push(normalizeTree(sub, se));
     }
-    list.sort((x: RsUseTree, y: RsUseTree): i32 => rsCmpUseTree(x, y));
+    list.sort((x: RsUseTree, y: RsUseTree): i32 => rsCmpUseTree(x, y, se));
     // dedup.
     const dd: RsUseTree[] = [];
     for (const x of list) {
@@ -396,32 +397,48 @@ const kindRank = (k: i32): i32 => {
   return 5;
 };
 
-/** Ord for UseSegment (style edition 2021). */
-const cmpSeg = (a: RsUseSeg, b: RsUseSeg): i32 => {
+/** Ord for UseSegment, at style edition `se`. */
+const cmpSeg = (a: RsUseSeg, b: RsUseSeg, se: i32): i32 => {
   if (a.k === b.k) {
     if (a.k === USK_SELF || a.k === USK_SUPER || a.k === USK_CRATE) {
-      return cmpOptStr(a.alias, b.alias);
+      const x = a.alias;
+      const y = b.alias;
+      if (se >= 2024 && x !== null && y !== null) {
+        return rsVersionSort(rsTrimRawPrefix(x), rsTrimRawPrefix(y));
+      }
+      return cmpOptStr(x, y);
     }
     if (a.k === USK_GLOB) {
       return 0;
     }
     if (a.k === USK_IDENT) {
-      let o = cmpBool(isUpperSnake(a.name), isUpperSnake(b.name));
-      if (o === 0) {
-        o = cmpBool(startsUpper(a.name), startsUpper(b.name));
-      }
-      if (o === 0) {
-        o = cmpStr(a.name, b.name);
+      let o = 0;
+      if (se >= 2024) {
+        o = rsVersionSort(rsTrimRawPrefix(a.name), rsTrimRawPrefix(b.name));
+      } else {
+        // snake_case < CamelCase < UPPER_SNAKE_CASE
+        o = cmpBool(isUpperSnake(a.name), isUpperSnake(b.name));
+        if (o === 0) {
+          o = cmpBool(startsUpper(a.name), startsUpper(b.name));
+        }
+        if (o === 0) {
+          o = cmpStr(a.name, b.name);
+        }
       }
       if (o !== 0) {
         return o;
       }
-      return cmpOptStr(a.alias, b.alias);
+      const x = a.alias;
+      const y = b.alias;
+      if (se >= 2024 && x !== null && y !== null) {
+        return rsVersionSort(rsTrimRawPrefix(x), rsTrimRawPrefix(y));
+      }
+      return cmpOptStr(x, y);
     }
     // Lists: lexicographic.
     const n = a.list.length < b.list.length ? a.list.length : b.list.length;
     for (let i = 0; i < n; i++) {
-      const o = rsCmpUseTree(a.list[i], b.list[i]);
+      const o = rsCmpUseTree(a.list[i], b.list[i], se);
       if (o !== 0) {
         return o;
       }
@@ -441,11 +458,11 @@ const removeAlias = (s: RsUseSeg): RsUseSeg => {
 };
 
 /** Ord for UseTree. */
-export const rsCmpUseTree = (a: RsUseTree, b: RsUseTree): i32 => {
+export const rsCmpUseTree = (a: RsUseTree, b: RsUseTree, se: i32): i32 => {
   const n = a.path.length < b.path.length ? a.path.length : b.path.length;
   for (let i = 0; i < n; i++) {
-    const o = cmpSeg(a.path[i], b.path[i]);
-    if (o !== 0 && cmpSeg(removeAlias(a.path[i]), removeAlias(b.path[i])) !== 0) {
+    const o = cmpSeg(a.path[i], b.path[i], se);
+    if (o !== 0 && cmpSeg(removeAlias(a.path[i]), removeAlias(b.path[i]), se) !== 0) {
       return o;
     }
   }
@@ -580,7 +597,7 @@ export const rsUseTreeOfItem = (ctx: RsCtx, item: i32): RsUseTree => {
     attrs.push(ast.attr(item, i));
   }
   const t = useTreeFromAst(ctx, ast.a[item], null, true, ast.e[item], ast.lo[item], attrs.length === 0 ? null : attrs);
-  return normalizeTree(t);
+  return normalizeTree(t, ctx.cfg.styleEdition);
 };
 
 /** format_import (a use item that is not reordered). */

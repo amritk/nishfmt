@@ -126,8 +126,9 @@ const hasTrailingWhitespace = (s: string, skipped: RsRanges): boolean => {
 /** format_snippet: null when the snippet does not parse or formats with errors. */
 export const rsFormatSnippet = (parent: RsCtx, code: string, cfg: RsConfig, isMacroDef: boolean): RsSnippet | null => {
   const n = toI32(code.length);
-  // A snippet is a part of its parent's source, at its parent's edition.
+  // A snippet is a part of its parent's source, at its parent's editions.
   cfg.edition = parent.cfg.edition;
+  cfg.styleEdition = parent.cfg.styleEdition;
   const r = rsFormatSource(strBytes(code), n, cfg, isMacroDef);
   if (r.unsupported) {
     parent.unsupported(r.why);

@@ -2,7 +2,8 @@
 //   nish tools/dev/rust.ts --link /tmp/rustdev && /tmp/rustdev <file>
 // prints the formatted file, or exits 1 when it cannot be formatted. With
 // more than one file it formats each and prints nothing (for profiling).
-// FFEDITION=2024 parses at edition 2024 instead of 2021.
+// It formats as nishfmt does (edition 2024, style edition 2024, width 120);
+// FFEDITION, FFSTYLE (2015 to 2024) and FFWIDTH override each.
 
 import { Out } from "../../src/core/out";
 import { RustEngine, formatRust } from "../../src/rust/run";
@@ -21,8 +22,16 @@ const rsDevOne = (path: string, print: boolean): i32 => {
   e.dump = getenv("FFDUMP") !== null;
   e.parseOnly = getenv("FFPARSE") !== null;
   const edition = getenv("FFEDITION");
-  if (edition !== null && edition === "2024") {
-    e.edition = 2024;
+  if (edition !== null) {
+    e.edition = parseInt(edition);
+  }
+  const style = getenv("FFSTYLE");
+  if (style !== null) {
+    e.styleEdition = parseInt(style);
+  }
+  const width = getenv("FFWIDTH");
+  if (width !== null) {
+    e.maxWidth = parseInt(width);
   }
   if (!formatRust(e, path, src, n, out)) {
     return 1;

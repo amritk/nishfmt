@@ -22,6 +22,9 @@ export class RsConfig {
   commentWidth: i32 = 80;
   // The Rust edition the source is parsed at (rustfmt's `edition`).
   edition: i32 = 2021;
+  // The style edition (rustfmt's `style_edition`): the formatting rules of
+  // that edition of the Rust Style Guide.
+  styleEdition: i32 = 2021;
   constructor() {}
 }
 
