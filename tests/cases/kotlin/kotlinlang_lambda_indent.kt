@@ -1,0 +1,28 @@
+fun foo() = someVeryLongScopingFunctionNameThatGoesOnAndOn(argumentNumberOne, argumentTwo) { x ->
+  println(x)
+  println(x)
+}
+
+fun bar() {
+  val result = items.map { item ->
+    val y = item * 2
+    y + 1
+  }
+  run {
+    // only a comment
+  }
+  val longerName = aVeryLongFunctionNameForTheReceiverHereAndMore.anotherCallWithAName { value ->
+    value.toString()
+  }
+}
+
+fun scoped() = aVeryLongScopingFunctionNameThatCannotFitOnTheFirstLineWithTheDeclarationAtAll12345678 {
+  println(1)
+  println(2)
+}
+
+fun broken() {
+  call(firstArgumentWithALongName, secondArgumentWithALongName, thirdArgumentWithALongName, fourth) { x ->
+    println(x)
+  }
+}

@@ -1,6 +1,6 @@
 // Formatting binary-operator chains and pairs (`a + b`, `x as T`, `[x; n]`).
 //
-// Ported from rustfmt 1.9.0 (MIT OR Apache-2.0, Copyright The Rust Project
+// Ported from rustfmt 1.10.0 (MIT OR Apache-2.0, Copyright The Rust Project
 // Developers): pairs.rs.
 
 import { N_EX_BINARY } from "./ast";

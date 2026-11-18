@@ -1,7 +1,7 @@
 // Lint/UselessMethodDefinition (unsafe; detection only): a method whose body
 // is only `super` with the same arguments.
 //
-// Ported from RuboCop 1.92.2 (MIT License, Copyright (c) 2012-24 Bozhidar
+// Ported from RuboCop 1.92.3 (MIT License, Copyright (c) 2012-24 Bozhidar
 // Batsov).
 
 import {

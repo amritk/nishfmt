@@ -1,6 +1,6 @@
 // Style/Attr.
 //
-// Ported from RuboCop 1.92.2 (MIT License, Copyright (c) 2012-24 Bozhidar
+// Ported from RuboCop 1.92.3 (MIT License, Copyright (c) 2012-24 Bozhidar
 // Batsov).
 
 import { F_SELECTOR, NT_BLOCK, NT_CLASS, NT_DEF, NT_FALSE, NT_SEND, NT_TRUE, V_NIL } from "../ast";

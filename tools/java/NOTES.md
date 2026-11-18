@@ -47,7 +47,7 @@ From the release notes, checked against the source diff of 1.28.0 and 2.0.0:
   - A new layout engine (`layout.Doc`, `Docs`, `LayoutBuilder`,
     `LayoutSolver`): greedy, one pass, with choices for hugging. Ported as
     `src/java/layout/engine.ts` (`JlEngine`). The 1.x engine still ships and
-    ktfmt 0.64 still runs on it, so `src/gdoc/engine.ts` stays as it was.
+    ktfmt (0.65 now) still runs on it, so `src/gdoc/engine.ts` stays as it was.
     With the 1.28 visitor's ops the new engine gives the same output on the
     whole corpus; what changed is what the 2.0.0 visitor asks of it.
   - A sole lambda argument stays on the call's line (#19): `addArguments`

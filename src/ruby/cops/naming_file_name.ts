@@ -2,7 +2,7 @@
 // ExpectMatchingDefinition: false, Regex: nil, IgnoreExecutableScripts:
 // true). Its offense is a global one (line 1, column 0, empty).
 //
-// Ported from RuboCop 1.92.2 (MIT License, Copyright (c) 2012-24 Bozhidar
+// Ported from RuboCop 1.92.3 (MIT License, Copyright (c) 2012-24 Bozhidar
 // Batsov).
 
 import { RbCop } from "../cop";

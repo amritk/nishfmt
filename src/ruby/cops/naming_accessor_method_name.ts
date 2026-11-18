@@ -1,7 +1,7 @@
 // Naming/AccessorMethodName (detection only; without a project index,
 // overrides_inherited_method? is false).
 //
-// Ported from RuboCop 1.92.2 (MIT License, Copyright (c) 2012-24 Bozhidar
+// Ported from RuboCop 1.92.3 (MIT License, Copyright (c) 2012-24 Bozhidar
 // Batsov).
 
 import { F_NAME, NT_ARG, NT_DEF, NT_DEFS } from "../ast";

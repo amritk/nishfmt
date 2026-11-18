@@ -1,7 +1,7 @@
 // Lint/PercentStringArray (unsafe; detection only): quotes or commas in a
 // %w/%W element, or a quoted string split at whitespace.
 //
-// Ported from RuboCop 1.92.2 (MIT License, Copyright (c) 2012-24 Bozhidar
+// Ported from RuboCop 1.92.3 (MIT License, Copyright (c) 2012-24 Bozhidar
 // Batsov).
 
 import { NT_ARRAY, NT_STR } from "../ast";

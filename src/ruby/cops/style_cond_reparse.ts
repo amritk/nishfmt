@@ -2,7 +2,7 @@
 // reparsing it: ReparsedEquivalence (verified_by_reparse, correction_parses?)
 // for corrections of any shape, given as a corrector.
 //
-// Ported from RuboCop 1.92.2 (MIT License, Copyright (c) 2012-24 Bozhidar
+// Ported from RuboCop 1.92.3 (MIT License, Copyright (c) 2012-24 Bozhidar
 // Batsov).
 
 import { NT_BEGIN, NT_CLASS, NT_DEF, NT_DEFS, NT_MODULE, NT_SCLASS, RbAst, V_NIL, vTag } from "../ast";

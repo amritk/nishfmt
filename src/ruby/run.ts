@@ -2,7 +2,7 @@
 // corrects anything (Runner#do_inspection_loop). A file that does not parse,
 // or uses what this port does not handle, is left as it is.
 //
-// Ported from RuboCop 1.92.2 (MIT License, Copyright (c) 2012-24 Bozhidar
+// Ported from RuboCop 1.92.3 (MIT License, Copyright (c) 2012-24 Bozhidar
 // Batsov).
 
 import { Out } from "../core/out";

@@ -1,7 +1,7 @@
 // Formatting `use` declarations: use trees normalized and sorted
 // (imports_granularity and group_imports are Preserve).
 //
-// Ported from rustfmt 1.9.0 (MIT OR Apache-2.0, Copyright The Rust Project
+// Ported from rustfmt 1.10.0 (MIT OR Apache-2.0, Copyright The Rust Project
 // Developers): imports.rs.
 
 import { N_USE_TREE, PATH_GLOBAL, RsAst, UT_GLOB, UT_NESTED, UT_RENAME } from "./ast";

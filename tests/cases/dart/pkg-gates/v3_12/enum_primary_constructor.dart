@@ -1,0 +1,2 @@
+enum E(int x) { a(1) }
+var   unformatted  =   [1,2,  3];

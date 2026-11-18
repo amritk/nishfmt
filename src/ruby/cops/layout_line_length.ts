@@ -3,7 +3,7 @@
 // http/https schemes, AllowQualifiedName, AllowCopDirectives; SplitStrings
 // off, so strings are never split).
 //
-// Ported from RuboCop 1.92.2 (MIT License, Copyright (c) 2012-24 Bozhidar
+// Ported from RuboCop 1.92.3 (MIT License, Copyright (c) 2012-24 Bozhidar
 // Batsov).
 
 import {
@@ -11,7 +11,8 @@ import {
   F_BEGIN,
   F_END,
   F_HEREDOC_BODY,
-  F_OPERATOR,
+  F_KEYWORD,
+  F_NAME,
   NT_ARRAY,
   NT_BLOCK,
   NT_CSEND,
@@ -1023,8 +1024,13 @@ export class CopLayoutLineLength {
     const a = src.a;
     const parts: string[] = ["def "];
     if (a.type(node) === NT_DEFS) {
-      parts.push(src.nodeSrc(a.kid(node, 0)));
-      parts.push(src.src(rnS(src, node, F_OPERATOR), rnE(src, node, F_OPERATOR)));
+      // node.loc.keyword.end.join(node.loc.name.begin).source.lstrip
+      let rs = rnE(src, node, F_KEYWORD);
+      const re = rnS(src, node, F_NAME);
+      while (rs < re && rbLayStripWs(src.at(rs))) {
+        rs++;
+      }
+      parts.push(src.src(rs, re));
     }
     parts.push(ssxDefName(src, node));
     const args = ssxDefArgs(src, node);

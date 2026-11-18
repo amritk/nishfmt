@@ -1,6 +1,6 @@
 // Style/OrAssignment.
 //
-// Ported from RuboCop 1.92.2 (MIT License, Copyright (c) 2012-24 Bozhidar
+// Ported from RuboCop 1.92.3 (MIT License, Copyright (c) 2012-24 Bozhidar
 // Batsov).
 
 import { NT_CVAR, NT_CVASGN, NT_GVAR, NT_GVASGN, NT_IF, NT_IVAR, NT_IVASGN, NT_LVAR, NT_LVASGN, V_NIL } from "../ast";

@@ -21,13 +21,16 @@ google-java-format rejects are left out.
 
 ## Kotlin
 
-The Kotlin side ports ktfmt 0.64's default style onto a lexer and parser
-ported from the Kotlin compiler (PSI-shaped, with the IntelliJ platform's
+The Kotlin side ports ktfmt 0.65's kotlinlang style (`--kotlinlang-style`:
+4-space blocks, and trailing commas removed where a list fits on one line)
+onto a lexer and parser ported from the Kotlin compiler 2.4.10, the version
+ktfmt 0.65 builds against (PSI-shaped, with the IntelliJ platform's
 builder): ktfmt's visitor, the shared Doc engine, KDoc formatting, import
 sorting with the removal of unused imports, multiline string handling and
-trailing commas. ktrs 0.5.1, the Rust reimplementation of ktfmt, also
-matches ktfmt on all 9602 corpus files, and nishfmt is faster than it on 1
-core and 4.
+trailing commas. As ktfmt 0.65 does, a `.kt` file parses as a regular file
+and a `.kts` file as a script.
+[tools/kotlin/NOTES.md](../tools/kotlin/NOTES.md) lists what the move from
+ktfmt 0.64 and to kotlinlang style changed.
 
 ## C#
 
@@ -60,7 +63,7 @@ Files the reference rejects at their version are left out.
 
 ## Rust
 
-The Rust side ports rustfmt 1.9.0 onto a lexer and parser modelled on
+The Rust side ports rustfmt 1.10.0 onto a lexer and parser modelled on
 rustc_parse (a struct-of-arrays AST with rustc's spans): its items,
 expressions, chains, patterns, types, comments, imports and macros, with
 `macro_rules!` bodies formatted as rustfmt does by default. The corpus is cargo, tokio,

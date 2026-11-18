@@ -1,0 +1,5 @@
+// rustfmt 1.10.0 prints a trait impl's `const` before `impl`, as rustc 1.99
+// parses it.
+const impl Bar for () {}
+pub const impl<T: Copy> Bar<T> for Vec<T> where T: Clone {}
+const   impl  Default for Foo { fn default() -> Self { Foo } }

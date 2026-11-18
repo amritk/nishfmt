@@ -1,7 +1,7 @@
 // Reordering `use`, `extern crate` and `mod foo;` items: consecutive items
 // of one kind (not separated by a blank line) are sorted.
 //
-// Ported from rustfmt 1.9.0 (MIT OR Apache-2.0, Copyright The Rust Project
+// Ported from rustfmt 1.10.0 (MIT OR Apache-2.0, Copyright The Rust Project
 // Developers): reorder.rs.
 
 import { IT_LOADED, N_EXTERN_CRATE, N_MOD, N_USE, RsAst } from "./ast";

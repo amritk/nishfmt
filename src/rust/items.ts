@@ -1,7 +1,7 @@
 // Formatting top-level items: functions, structs, enums, traits, impls,
 // type aliases, statics, extern blocks; and `let` statements.
 //
-// Ported from rustfmt 1.9.0 (MIT OR Apache-2.0, Copyright The Rust Project
+// Ported from rustfmt 1.10.0 (MIT OR Apache-2.0, Copyright The Rust Project
 // Developers): items.rs, vertical.rs.
 
 import {
@@ -52,6 +52,7 @@ import {
   rsTrimmedLastLineWidth,
 } from "./comment";
 import { RsCtx } from "./context";
+import { KW_CONST, T_NOT } from "./lexer";
 import {
   RHS_BOUNDS,
   RHS_EXPR,
@@ -822,8 +823,12 @@ export const rsRewriteParam = (ctx: RsCtx, p: i32, shape: RsShape): string | nul
     }
     return result;
   }
-  // An unnamed param is its type alone: rustfmt 1.9 drops its attributes.
-  return rsRewriteTy(ctx, ty, shape);
+  // An unnamed param: its attributes, then its type.
+  const tyStr = rsRewriteTy(ctx, ty, shape);
+  if (tyStr === null) {
+    return null;
+  }
+  return rsCombineStrsWithMissingComments(ctx, paramAttrs, tyStr, spLo, spHi, shape, !multiAttrLines && !hasDocs);
 };
 
 /** The Spanned span of a param: [lo, hi). */
@@ -1446,7 +1451,7 @@ const rsLoWithAttrsField = (ast: RsAst, f: i32): i32 => ast.lo[f];
 
 /** visit_enum / format_enum. */
 /**
- * visit_enum as rustfmt 1.9 has it: the header and generics are pushed, then the
+ * visit_enum as rustfmt 1.10 has it: the header and generics are pushed, then the
  * variant list as a rewrite of the body's span. A list that fails leaves the
  * block indent raised, so the body's snippet starts on a new line at that indent.
  * Generics that fail panic there (an unwrap): the file is skipped.
@@ -1618,7 +1623,7 @@ const rewriteStatic = (ctx: RsCtx, item: i32, bi: i32, al: i32): string | null =
   const cfg = ctx.cfg;
   const isConst = ast.kind[item] === N_CONST;
   const g = isConst ? ast.a[item] : -1;
-  // rustfmt 1.9 does not format generic const items (generic_const_items): kept as written.
+  // rustfmt 1.10 does not format generic const items (generic_const_items): kept as written.
   if (g >= 0 && (ast.ln[ast.a[g]] > 0 || ast.ln[g] > 0)) {
     return null;
   }
@@ -1705,7 +1710,7 @@ export const rsRewriteTypeAlias = (ctx: RsCtx, item: i32, bi: i32, al: i32, kind
   const lo = ast.lo[item];
   const hi = ast.hi[item];
   const rhsHi = ty >= 0 ? ast.hi[ty] : ast.hi[w];
-  // rustfmt 1.9 prints `default` before the visibility here; an opaque type in an
+  // rustfmt 1.10 prints `default` before the visibility here; an opaque type in an
   // impl loses its visibility (DEFAULT_VISIBILITY).
   const dropVis = kind === IVK_IMPL && ty >= 0 && ast.kind[ty] === N_TY_IMPL;
   let result = `${(ast.fl[item] & IT_DEFAULT) !== 0 ? "default " : ""}${dropVis ? "" : rsFormatVisibility(ctx, ast.e[item])}type `;
@@ -1920,6 +1925,30 @@ export const rsFormatImpl = (ctx: RsCtx, item: i32, bi: i32, al: i32): string | 
   return result + "}";
 };
 
+/**
+ * Whether the impl's `const` is written after `impl`: the token before the
+ * first type (`!` aside) is `const`. Tokens hold no comments, so a comment
+ * anywhere in between does not hide it.
+ */
+const isConstAfterImpl = (ctx: RsCtx, tyLo: i32): boolean => {
+  const t = ctx.f.t;
+  let l = 0;
+  let h = t.nt;
+  while (l < h) {
+    const m = (l + h) >> 1;
+    if (t.lo[m] < tyLo) {
+      l = m + 1;
+    } else {
+      h = m;
+    }
+  }
+  let i = l - 1;
+  if (i >= 0 && t.kind[i] === T_NOT) {
+    i--;
+  }
+  return i >= 0 && t.kw[i] === KW_CONST;
+};
+
 const formatImplRefAndType = (ctx: RsCtx, item: i32, bi: i32, al: i32): string | null => {
   const ast = ctx.ast;
   const cfg = ctx.cfg;
@@ -1927,11 +1956,21 @@ const formatImplRefAndType = (ctx: RsCtx, item: i32, bi: i32, al: i32): string |
   const ofTrait = ast.b[item];
   const selfTy = ast.c[item];
   const f = ast.fl[item];
+  const firstTy = ofTrait >= 0 ? ofTrait : selfTy;
+  if ((f & IT_CONST) !== 0 && isConstAfterImpl(ctx, ast.lo[firstTy])) {
+    // rustc 1.99 rejects `impl const Tr for T` and parses an inherent
+    // `impl const S` as an impl of the type `const S`. The parser still takes
+    // both the 1.9 way, so skip the file, whatever comments sit in between.
+    ctx.unsupported("impl const");
+    return null;
+  }
   let result = rsFormatVisibility(ctx, ast.e[item]);
   if (ofTrait >= 0) {
-    // rustfmt 1.9 prints a trait impl's `const` before the trait (`impl const Tr for T`).
     if ((f & IT_DEFAULT) !== 0) {
       result = result + "default ";
+    }
+    if ((f & IT_CONST) !== 0) {
+      result = result + "const ";
     }
     if ((f & IT_UNSAFE) !== 0) {
       result = result + "unsafe ";
@@ -1953,7 +1992,7 @@ const formatImplRefAndType = (ctx: RsCtx, item: i32, bi: i32, al: i32): string |
   result = result + gs;
   let traitRefOverhead = 0;
   if (ofTrait >= 0) {
-    const polarity = ((f & IT_CONST) !== 0 ? "const " : "") + ((f & IT_NEGATIVE) !== 0 ? "!" : "");
+    const polarity = (f & IT_NEGATIVE) !== 0 ? "!" : "";
     const rl = rsLastLineWidth(result, cfg.tabSpaces);
     const tr = rewriteTraitRef(ctx, ofTrait, bi, al, polarity, rl);
     if (tr === null) {

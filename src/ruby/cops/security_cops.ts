@@ -2,7 +2,7 @@
 // false), MarshalLoad, Open (Safe: false) and YAMLLoad (maximum target Ruby
 // 3.0, so it never runs under TargetRubyVersion 3.3).
 //
-// Ported from RuboCop 1.92.2 (MIT License, Copyright (c) 2012-24 Bozhidar
+// Ported from RuboCop 1.92.3 (MIT License, Copyright (c) 2012-24 Bozhidar
 // Batsov).
 
 import {

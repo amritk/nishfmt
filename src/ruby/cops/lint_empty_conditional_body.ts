@@ -1,7 +1,7 @@
 // Lint/EmptyConditionalBody (AllowComments: true). Its correction (flipping
 // an orphaned `else`) runs under `rubocop -a`.
 //
-// Ported from RuboCop 1.92.2 (MIT License, Copyright (c) 2012-24 Bozhidar
+// Ported from RuboCop 1.92.3 (MIT License, Copyright (c) 2012-24 Bozhidar
 // Batsov).
 
 import { F_BEGIN, F_ELSE, F_END, NT_IF, V_NIL } from "../ast";

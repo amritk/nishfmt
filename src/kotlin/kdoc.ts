@@ -4,14 +4,14 @@
 // ktfmt's KDocCommentsHelper configures is ported: KDoc comments, greedy
 // line breaking, no markup conversion, nested lists indented by 4.
 //
-// Ported from ktfmt's kdoc package: KDocFormatter, ParagraphListBuilder,
+// Ported from ktfmt 0.65's kdoc package: KDocFormatter, ParagraphListBuilder,
 // Paragraph, Table and Utilities (Apache License 2.0, Copyright (c) Meta
 // Platforms, Inc. and affiliates; originally from the kdoc-formatter
 // project, Copyright 2022 Google LLC).
 
 import { strUtf16Len } from "../core/arr";
+import { K_MAX_WIDTH } from "./options";
 
-const MAX_WIDTH: i32 = 100;
 const HANGING_INDENT: i32 = 2;
 const NESTED_LIST_INDENT: i32 = 4;
 const LINE_PREFIX: string = " * ";
@@ -533,7 +533,7 @@ class KdBuilder {
           const t = new KdTable();
           const nextRow = t.read(this, i - 1);
           if (nextRow >= 0) {
-            const content = t.format(MAX_WIDTH - indentSize - 3);
+            const content = t.format(K_MAX_WIDTH - indentSize - 3);
             for (let index = 0; index < toI32(content.length); index++) {
               this.appendText(content[index]);
               this.paragraph.separate = index === 0;

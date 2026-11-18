@@ -1,9 +1,11 @@
 // The Dart entry point: dart_format's pipeline over one file.
 //
-// Ported from dart_style (Dart SDK 3.14) (BSD-3-Clause, Copyright the Dart
-// project authors).
+// Ported from dart_style 3.1.14-wip at 5a9534fad9ff, the commit Dart SDK
+// 3.14.1 pins (BSD-3-Clause, Copyright the Dart project authors).
 
 import { Out } from "../core/out";
+import { DtFileConfig, dtConfigFor } from "./config";
+import { DtFeature, dtFeatures } from "./features";
 import { DtAst, dtNodeName, dtSig, N_NAMED_TYPE } from "./ast";
 import { DtParser } from "./parser";
 import { DT_STYLE, DtPiece, dtFixedState, dtKids, dtPin } from "./pieces";
@@ -45,10 +47,28 @@ export const formatDart = (e: DartEngine, path: string, src: u8[], n: i32, out: 
     }
     return true;
   }
+  // The project: the package's language version, the configured page width.
+  // dart format reads it for every file, `// @dart=` comment or not.
+  const cfg = new DtFileConfig();
+  if (!dtConfigFor(path, cfg)) {
+    if (e.debug) {
+      console.error(`${path}: project: ${cfg.why}`);
+    }
+    return false;
+  }
   const t1 = monotonicNanos();
+  // The language version, as major * 1000 + minor: the `// @dart=` comment,
+  // else the package's, else the newest (DT_VER_NEWEST). The analyzer parses
+  // at it and the style follows it.
+  let ver = DT_VER_NEWEST;
+  if (toks.verMajor >= 0) {
+    ver = dtVer(toks.verMajor, toks.verMinor);
+  } else if (cfg.verMajor >= 0) {
+    ver = dtVer(cfg.verMajor, cfg.verMinor);
+  }
   // Patterns (and so pattern `case`s) arrived in language 3.0.
-  const patterns = !(toks.verMajor >= 0 && toks.verMajor < 3);
-  const primaryCtors = !(toks.verMajor >= 0 && (toks.verMajor < 3 || (toks.verMajor === 3 && toks.verMinor < 13)));
+  const patterns = ver >= 3000;
+  const primaryCtors = ver >= 3013;
   let p = new DtParser(toks);
   p.patterns = patterns;
   p.primaryCtors = primaryCtors;
@@ -81,12 +101,25 @@ export const formatDart = (e: DartEngine, path: string, src: u8[], n: i32, out: 
     dtDumpNode(p.a, toks, u16, unit, 0, out);
     return true;
   }
+  // Syntax of a feature the version does not enable is an error dart format reports.
+  // Nothing newer than 3.13 is gated, so from 3.13 on there is nothing to find.
+  const feat = new DtFeature();
+  if (ver < 3013) {
+    dtFeatures(p.a, toks, unit, feat);
+  }
+  if (feat.ver > ver) {
+    if (e.debug) {
+      console.error(`${path}: ${feat.name} needs language ${toI32(feat.ver / 1000)}.${feat.ver % 1000}`);
+    }
+    return false;
+  }
   // The language version picks the style: the short style up to 3.6.
-  if (toks.verMajor >= 0 && (toks.verMajor < 3 || (toks.verMajor === 3 && toks.verMinor <= 6))) {
+  if (ver <= 3006) {
     DTS_STATE[0] = 0;
     DTS_STATE[1] = 0;
     DTS_STATE[2] = 0;
-    const sv = new DtsVisitor(toks, p.a, 80);
+    // The short style takes the configured width; `// dart format width=` is the tall style's.
+    const sv = new DtsVisitor(toks, p.a, cfg.pageWidth);
     const text = sv.run(unit, dtLineEnding(src, n));
     if (sv.failed || DTS_STATE[2] !== 0) {
       if (e.debug) {
@@ -98,8 +131,8 @@ export const formatDart = (e: DartEngine, path: string, src: u8[], n: i32, out: 
     return true;
   }
   // The tall style's language-versioned switches (FormattingStyle).
-  DT_STYLE[0] = toks.verMajor === 3 && toks.verMinor === 7 ? 1 : 0;
-  DT_STYLE[1] = toks.verMajor >= 0 && toks.verMajor === 3 && toks.verMinor < 13 ? 0 : 1;
+  DT_STYLE[0] = ver === 3007 ? 1 : 0;
+  DT_STYLE[1] = ver >= 3013 ? 1 : 0;
   const v = new DtVisitor(toks, p.a);
   const root = v.buildUnit(unit);
   const t3 = monotonicNanos();
@@ -109,7 +142,7 @@ export const formatDart = (e: DartEngine, path: string, src: u8[], n: i32, out: 
     }
     return false;
   }
-  const pageWidth = dtPageWidth(toks);
+  const pageWidth = dtPageWidth(toks, cfg.pageWidth);
   if (DT_STYLE[1] !== 0) {
     // pinStateByPageWidthBeforeSolving (3.13 on); before that the writer
     // binds by page width while formatting.
@@ -131,14 +164,21 @@ export const formatDart = (e: DartEngine, path: string, src: u8[], n: i32, out: 
   return true;
 };
 
+/** A language version as one number, major * 1000 + minor (minor clamped below 1000). */
+const dtVer = (major: i32, minor: i32): i32 =>
+  major > 1000000 ? 1000000000 : major * 1000 + (minor < 999 ? minor : 999);
+
+/** No `// @dart=` comment and no package: dart_style's newest version, which takes every newer side. */
+const DT_VER_NEWEST: i32 = 2000000000;
+
 /** Nanoseconds spent per phase: scan, parse, pieces, solve, output. */
 export const DT_PROF = new Float64Array(8);
 
 export const dtProfReport = (): string =>
   `scan ${DT_PROF[0] / 1e6} ms, parse ${DT_PROF[1] / 1e6} ms, pieces ${DT_PROF[2] / 1e6} ms, solve ${DT_PROF[3] / 1e6} ms, output ${DT_PROF[4] / 1e6} ms`;
 
-/** A `// dart format width=N` comment before the first token, or 80. */
-const dtPageWidth = (t: DtTokens): i32 => {
+/** A `// dart format width=N` comment before the first token, or `dflt`. */
+const dtPageWidth = (t: DtTokens, dflt: i32): i32 => {
   const first = t.cFirst[1];
   for (let k = 0; k < t.cCount[1]; k++) {
     const ci = first + k;
@@ -176,7 +216,7 @@ const dtPageWidth = (t: DtTokens): i32 => {
       return w;
     }
   }
-  return 80;
+  return dflt;
 };
 
 /** "\r\n" when the first line ends with one, else "\n". */

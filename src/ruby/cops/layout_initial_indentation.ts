@@ -1,10 +1,10 @@
 // Layout/InitialIndentation: indentation of the first non-comment token.
 //
-// Ported from RuboCop 1.92.2 (MIT License, Copyright (c) 2012-24 Bozhidar
+// Ported from RuboCop 1.92.3 (MIT License, Copyright (c) 2012-24 Bozhidar
 // Batsov).
 
 import { RbCop } from "../cop";
-import { RbSource } from "../source";
+import { RbSource, TK_COMMENT } from "../source";
 
 export class CopLayoutInitialIndentation {
   c: RbCop;
@@ -15,10 +15,10 @@ export class CopLayoutInitialIndentation {
 
   run(src: RbSource): void {
     this.c.begin(src);
-    // first_token: the first token whose text does not start with `#`.
+    // first_token: the first token that is not a comment.
     let t = -1;
     for (let i = 0; i < toI32(src.tokS.length); i++) {
-      if (!src.tokV[i].startsWith("#")) {
+      if (src.tokT[i] !== TK_COMMENT) {
         t = i;
         break;
       }

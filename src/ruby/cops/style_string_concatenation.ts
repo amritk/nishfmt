@@ -1,12 +1,13 @@
 // Style/StringConcatenation (Mode: aggressive; unsafe: detection only).
 //
-// Ported from RuboCop 1.92.2 (MIT License, Copyright (c) 2012-24 Bozhidar
+// Ported from RuboCop 1.92.3 (MIT License, Copyright (c) 2012-24 Bozhidar
 // Batsov).
 
 import { NT_SEND, NT_STR } from "../ast";
 import { RbCop } from "../cop";
+import { rnHeredoc } from "../node";
 import { RbSource } from "../source";
-import { ssxIs, ssxIsSpace, ssxMeth, ssxMultiline } from "./style_syntax_help";
+import { ssxDescendants, ssxIs, ssxIsSpace, ssxMeth, ssxMultiline } from "./style_syntax_help";
 
 /** plus_node?. */
 const rbScPlus = (src: RbSource, n: i32): boolean => ssxIs(src, n, NT_SEND) && ssxMeth(src, n) === "+";
@@ -57,6 +58,17 @@ export class CopStyleStringConcatenation {
       let top = n;
       while (rbScPlus(src, src.parent(top))) {
         top = src.parent(top);
+      }
+      // heredoc?: a heredoc among the descendants (only strings carry a heredoc map).
+      let heredoc = false;
+      for (const d of ssxDescendants(src, top)) {
+        if (rnHeredoc(src, d)) {
+          heredoc = true;
+          break;
+        }
+      }
+      if (heredoc) {
+        continue;
       }
       this.c.offense(a.exS(top), a.exE(top));
     }

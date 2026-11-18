@@ -1,7 +1,7 @@
 // The parts of RuboCop::AST::Node and its subclasses the cops use, as
 // functions of a source and a node handle.
 //
-// Ported from rubocop-ast 1.51.0 (MIT License, Copyright (c) 2012-24 Bozhidar
+// Ported from rubocop-ast 1.52.0 (MIT License, Copyright (c) 2012-24 Bozhidar
 // Batsov).
 
 import { F_BEGIN, F_HEREDOC_END, M_HEREDOC, NT_PAIR, NT_SEND, V_NIL } from "./ast";

@@ -2,7 +2,7 @@
 // tokens_within over them, Token#space_before?/space_after?, and the
 // SurroundingSpace and SpaceCorrector mixins.
 //
-// Ported from RuboCop 1.92.2 and rubocop-ast 1.51.0 (MIT License, Copyright
+// Ported from RuboCop 1.92.3 and rubocop-ast 1.52.0 (MIT License, Copyright
 // (c) 2012-24 Bozhidar Batsov).
 
 import { RbCop } from "../cop";

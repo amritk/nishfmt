@@ -1,9 +1,13 @@
 # Rust port notes
 
-rustfmt 1.9.0, default configuration, `--edition 2021` (style edition 2021),
-as `rustfmt --edition 2021 < file` formats one file.
+rustfmt 1.10.0 (the rustfmt of Rust 1.99.1, `rustfmt 1.10.0-stable (58cf8f9c35
+2026-10-13)`), default configuration, `--edition 2021` (style edition 2021),
+as `rustfmt +1.99.1 --edition 2021 < file` formats one file.
 
 ## Status
+
+The first two rows are against rustfmt 1.10.0; the others were measured
+against rustfmt 1.9.0, which formats the two corpora identically.
 
 | Corpus | Identical (cmp.sh) | Skipped by the port |
 | --- | --- | --- |
@@ -36,18 +40,30 @@ files use syntax the parser does not take (unstable features such as
 fields/binders, `final`/`impl` restrictions), macros 2.0, or
 `rustfmt::skip::macros`/`attributes`.
 
-## The reference is the 1.9.0 binary, not the source at hand
+## The reference source
 
-`/opt/ref/rustfmt-src` is rustfmt **1.12.0**; the reference binary is
-1.9.0. The 1.10–1.12 entries of its `CHANGELOG.md` list what changed, and
-where the binary disagrees with the source the port follows the binary:
+The binary is built from `src/tools/rustfmt` at the Rust release tag (1.99.1
+for rustfmt 1.10.0), not from a tag of the rustfmt repository; port from that
+tree. A sparse, blobless clone fetches it with the parser:
 
-- trait impls print `impl const Tr for T` (inherent: `const impl S`);
+```bash
+v=1.99.1; mkdir -p $TMPDIR/rustsrc/$v && cd $TMPDIR/rustsrc/$v && git init -q &&
+  git remote add origin https://github.com/rust-lang/rust &&
+  git sparse-checkout set --no-cone /src/tools/rustfmt/ /compiler/rustc_parse/ /compiler/rustc_lexer/ &&
+  git fetch -q --depth 1 --filter=blob:none origin refs/tags/$v && git checkout -q FETCH_HEAD
+```
+
+Behaviors of rustfmt 1.10.0 that look like bugs, which the port keeps
+(`binary_quirks`; later rustfmt sources change several of them):
+
 - an associated type alias prints `default` before its visibility, and an
   opaque (`impl Trait`) type alias in an impl drops its visibility;
-- unnamed params (`fn(i32)`, a foreign fn's `...`) drop their attributes;
 - a fn pointer type looks for its parameter list from the start of the
   whole type (so a `(` in a `for<#[attr] 'a>` binder is taken for it);
+- a fn pointer type's list item for an unnamed param starts at its type, so
+  a block comment after the param's attributes makes them a pre-comment
+  too and they are printed twice (`fn(#[a] /* c */ i32)`; the output is
+  not a fixed point, so `tests/run.sh` cannot hold it as a case);
 - a struct pattern field's missing-comment span runs up to the pattern, so
   `ident:` is duplicated after a comment between attribute and field;
 - loop bodies drop their inner attributes;
@@ -55,7 +71,6 @@ where the binary disagrees with the source the port follows the binary:
 - nested parentheses are removed even when they carry attributes (dropped);
 - empty generic args are dropped inside macros too;
 - generic const items are kept as written;
-- `macro_rules! /* c */ name` loses the comment;
 - `for  await` (not exactly one space) panics, so such files are skipped;
 - light_rewrite_comment keeps the whitespace char before a leading `*`
   (none when the `*` is at column 0) instead of inserting a space;
@@ -64,6 +79,47 @@ where the binary disagrees with the source the port follows the binary:
 - an enum whose variant list fails is pushed as header, then the body's
   snippet on a new line at the (still raised) variant indent; generics that
   fail there panic (the file is skipped).
+
+## rustfmt 1.10.0
+
+The source diff from Rust 1.97.0 (rustfmt 1.9.0) to 1.99.1, and where each
+change that reaches the default config went (`tests/cases/rust/v1_10_*`):
+
+- range patterns are formatted by `range.rs` `rewrite_range`, as range
+  expressions are (#6871): `expr.ts` `rsRewriteRange`, from `patterns.ts`;
+- a trait impl's `const` comes before `unsafe` and `impl`
+  (`const impl Tr for T`): `items.ts` `formatImplRefAndType`;
+- an unnamed param keeps its attributes (`fn(#[a] i32)`): `items.ts`
+  `rsRewriteParam`, with the list item starting where `Spanned` puts it
+  (`types.ts`, `rsParamSpannedLo`);
+- `macro_rules!` headers keep a comment before the name as written
+  (`header.rs`, #6457): `macros.ts` `rsRewriteMacroDef`.
+
+Not ported, and why:
+
+- #6840 (a commented single fn parameter) only swaps two branches of the
+  style edition 2024 path in `rewrite_fn_base`; the long-return-type fix
+  (#6835) is style edition 2027 only.
+- The parser changes of rustc 1.99: `impl const Tr for T` is an error and an
+  inherent `impl const S` parses `const S` as a type (rustfmt prints
+  `impl const S`, dropping a comment after `const`). The port's parser still
+  takes both the 1.9 way, so `formatImplRefAndType` skips a file whose
+  token before the first type (`!` aside) is `const`, whatever comments sit
+  around it (`v1_10_inherent_impl_const`; the trait forms, which the
+  reference rejects, cannot have an `.expected`), until the parser follows
+  rustc. It also rejects `const unsafe impl`, which rustc accepts.
+- Unstable syntax: `super let`, field representing types, `mut`/`impl`
+  restrictions, fn delegation, pattern types, direct const args,
+  `cfg_select!` (formatted on nightly only). Such files stay skipped. Try
+  blocks are formatted: the `expr.rs` try-block arms are the same in 1.9.0
+  and 1.10.0, so the forms the parser takes need no change.
+- Options nishfmt does not read: `--file-lines` (the `missed_spans.rs`,
+  `visitor.rs` and `formatting.rs` changes), `hex_literal_case` (now
+  stable, default `Preserve`), `doc_comment_code_block_small_heuristics`,
+  and `string.rs`'s whitespace test, which `rewrite_string` uses only for
+  `format_strings` and `wrap_comments`.
+- `modules.rs` skipping a missing out-of-line module with a custom
+  attribute: formatting through stdin resolves no modules.
 
 ## Speed
 
@@ -161,13 +217,13 @@ None on the corpora. Approximations that could show elsewhere:
 
 ## Tests
 
-`tests/cases/rust/*.rs` with `*.expected` from `rustfmt --edition 2021`:
+`tests/cases/rust/*.rs` with `*.expected` from `rustfmt +1.99.1 --edition 2021`:
 macro_rules bodies, macro arguments rustc rejects or recovers from, a
 frontmatter after a shebang, raw-ident mod order, long attribute literals,
-where clauses that grow the AST arrays, and the 1.9.0 behaviors above
-(`binary_quirks`). Every `.expected` is a fixed point of the reference. `tests/run.sh` only runs the
-top-level C++ cases; these need a Rust loop (format each `.rs`, compare
-with `.expected`, and check each `.expected` is left unchanged).
+where clauses that grow the AST arrays, the rustfmt 1.10.0 behaviors
+above (`binary_quirks`) and the 1.10.0 changes (`v1_10_*`). Every
+`.expected` is a fixed point of the reference; `tests/run.sh` formats each
+`.rs` and each `.expected` and compares.
 
 ## Iterating
 

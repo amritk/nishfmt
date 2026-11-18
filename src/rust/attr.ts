@@ -1,7 +1,7 @@
 // Formatting attributes and meta items. Meta items are parsed from an
 // attribute's tokens the way rustc_ast's `Attribute::meta` does.
 //
-// Ported from rustfmt 1.9.0 (MIT OR Apache-2.0, Copyright The Rust Project
+// Ported from rustfmt 1.10.0 (MIT OR Apache-2.0, Copyright The Rust Project
 // Developers): attr.rs; and rustc_ast's attr/mod.rs (MIT OR Apache-2.0,
 // Copyright The Rust Project Developers).
 

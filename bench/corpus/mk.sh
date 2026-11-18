@@ -1,16 +1,17 @@
 #!/usr/bin/env bash
 # Builds one language's corpus from the clones in $REPOS: $CORPUS/<lang>/raw
 # holds the sources as found, $CORPUS/<lang>/ref the reference tool's output at
-# its default settings (C#: under $CORPUS/cs/.editorconfig, CSharpier's defaults
-# with end_of_line = crlf), and $CORPUS/<lang>/failed.txt the files it rejected
-# (left out of comparisons).
+# its default settings (Kotlin: ktfmt's --kotlinlang-style; C#: under
+# $CORPUS/cs/.editorconfig, CSharpier's defaults with end_of_line = crlf), and
+# $CORPUS/<lang>/failed.txt the files it rejected (left out of comparisons).
 #
 #   mk.sh cpp|java|kt|rb|swift|rust|dart|cs
 #
 # Tools, each from the environment or PATH: clang-format 18; $GJF and $KTFMT,
-# the google-java-format 2.0.0 (run on JDK 21) and ktfmt 0.64
-# all-dependencies jars (required for java and kt); rubocop 1.92.2;
-# $SWIFTFORMAT (swiftformat 0.64.7); rustfmt 1.9.0; $DART (Dart SDK 3.14.1);
+# the google-java-format 2.0.0 (run on JDK 21) and ktfmt 0.65
+# all-dependencies jars (required for java and kt); rubocop 1.92.3;
+# $SWIFTFORMAT (swiftformat 0.64.7); $RUSTFMT (rustfmt 1.10.0, default
+# `rustfmt +1.99.1`); $DART (Dart SDK 3.14.1);
 # $CSHARPIER (csharpier 1.4.0).
 set -uo pipefail
 here=$(cd "$(dirname "$0")" && pwd)
@@ -24,6 +25,7 @@ if { [ "$lang" = java ] && [ -z "$GJF" ]; } || { [ "$lang" = kt ] && [ -z "$KTFM
 fi
 DART=${DART:-dart}
 CSHARPIER=${CSHARPIER:-csharpier}
+export RUSTFMT=${RUSTFMT:-rustfmt +1.99.1}
 case $lang in
   cpp) pat=(-name '*.cpp' -o -name '*.cc' -o -name '*.cxx' -o -name '*.hpp' -o -name '*.hh' -o -name '*.hxx' -o -name '*.h') ;;
   java) pat=(-name '*.java') ;;
@@ -63,7 +65,7 @@ case $lang in
   java) find . -type f -print0 | xargs -0 -P"$(nproc)" -n 200 sh -c \
           'java -jar '"$GJF"' --replace "$@" 2>/dev/null || for f; do cp "../raw/$f" "$f"; java -jar '"$GJF"' --replace "$f" 2>/dev/null || echo "$f" >> ../failed.txt; done' _ ;;
   kt) find . -type f -print0 | xargs -0 -P"$(nproc)" -n 300 sh -c \
-        'java -jar '"$KTFMT"' "$@" >/dev/null 2>&1 || for f; do cp "../raw/$f" "$f"; java -jar '"$KTFMT"' "$f" >/dev/null 2>&1 || echo "$f" >> ../failed.txt; done' _ ;;
+        'java -jar '"$KTFMT"' --kotlinlang-style "$@" >/dev/null 2>&1 || for f; do cp "../raw/$f" "$f"; java -jar '"$KTFMT"' --kotlinlang-style "$f" >/dev/null 2>&1 || echo "$f" >> ../failed.txt; done' _ ;;
   rb) printf 'AllCops:\n  TargetRubyVersion: 3.3\n' > ../rubocop.yml
       find . -type f -print0 | xargs -0 -P"$(nproc)" -n 100 sh -c \
         'rubocop -a -c ../rubocop.yml --cache false --format quiet "$@" >/dev/null 2>&1; true' _
@@ -72,7 +74,7 @@ case $lang in
   swift) "$SWIFTFORMAT" . --quiet 2> ../swiftformat.log; grep -o '[^ ]*\.swift' ../swiftformat.log | sed "s|^$PWD|.|" | sort -u >> ../failed.txt ;;
   # Through stdin, so rustfmt formats only that file, not its out-of-line modules.
   rust) find . -type f -print0 | xargs -0 -P"$(nproc)" -I{} sh -c \
-          'rustfmt --edition 2021 < "$1" > "$1.o" 2>/dev/null && mv "$1.o" "$1" || { rm -f "$1.o"; echo "$1" >> ../failed.txt; }' _ {} ;;
+          '$RUSTFMT --edition 2021 < "$1" > "$1.o" 2>/dev/null && mv "$1.o" "$1" || { rm -f "$1.o"; echo "$1" >> ../failed.txt; }' _ {} ;;
   dart) "$DART" format . > /dev/null 2> ../dartformat.log; grep -o '[^ ]*\.dart' ../dartformat.log | sort -u >> ../failed.txt ;;
   # The style's .editorconfig and an empty .git (a .gitignore boundary) sit
   # above ref/, so cmp.sh does not count them; see tools/csharp/NOTES.md.

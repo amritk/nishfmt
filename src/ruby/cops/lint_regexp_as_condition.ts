@@ -1,6 +1,6 @@
 // Lint/RegexpAsCondition.
 //
-// Ported from RuboCop 1.92.2 (MIT License, Copyright (c) 2012-24 Bozhidar
+// Ported from RuboCop 1.92.3 (MIT License, Copyright (c) 2012-24 Bozhidar
 // Batsov).
 
 import { NT_CASE, NT_CASE_MATCH, NT_IF, NT_MATCH_CURRENT_LINE, NT_SEND, NT_UNTIL, NT_WHILE, V_NIL } from "../ast";

@@ -1,0 +1,9 @@
+# frozen_string_literal: true
+
+puts '..2'
+puts '1..'
+puts '1.5...'
+puts "#{..'a'}"
+puts "#{:a..}"
+puts "#{nil..}"
+puts "#{1r..}"

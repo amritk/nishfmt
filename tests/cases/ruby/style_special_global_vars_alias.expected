@@ -1,0 +1,5 @@
+# frozen_string_literal: true
+
+alias $ARGV2 $*
+alias $LOAD2 $:
+puts $! # rubocop:disable Style/SpecialGlobalVars

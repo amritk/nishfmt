@@ -1,0 +1,26 @@
+// @dart=3.6
+class MyWidget extends StatelessWidget {
+  const MyWidget({super.key, required this.title, this.subtitle, this.onTap, this.padding = const EdgeInsets.all(16)});
+  @override
+  Widget build(BuildContext context) {
+    return Scaffold(appBar: AppBar(title: Text(title, style: Theme.of(context).textTheme.headlineMedium?.copyWith(color: Colors.white))),
+      body: ListView.builder(itemCount: items.length, itemBuilder: (context, index) => ListTile(title: Text(items[index].name), onTap: () => onTap?.call(items[index]))),
+      floatingActionButton: FloatingActionButton(onPressed: () { Navigator.of(context).push(MaterialPageRoute(builder: (_) => const DetailPage())); }, child: const Icon(Icons.add),),
+    );
+  }
+}
+
+void chains() {
+  final value = await repository.fetchAllTheThings(userId: currentUser.id).timeout(const Duration(seconds: 30)).catchError((error) => fallbackValue);
+  final short = a.b.c.d();
+  final mixed = someObject.someProperty.someMethod(argument).anotherProperty.finalMethodCall(anotherArgument, yetAnother);
+  expect(find.byType(SomeWidgetWithALongName), findsOneWidget, reason: 'the widget should be present after pumping');
+  if (someVeryLongConditionVariableName && anotherVeryLongConditionVariableName || yetAnotherOne) {
+    return;
+  }
+  final veryLongVariableNameForTheResult = someFunctionWithAVeryLongName(argumentOne) ?? defaultValue;
+  someMap[someKeyExpressionThatIsLong] = someValueExpressionThatIsAlsoLong + anotherLongValueExpression;
+  return switch (kind) { Kind.alpha => handleAlphaWithAVeryLongFunctionName(input, options), Kind.beta => handleBeta(input), };
+}
+
+Future<Map<String, List<SomeVeryLongTypeName<WithGenericArguments>>>> functionWithAVeryLongSignature(String firstParameter, int secondParameter, {bool named = false}) async => {};

@@ -1,6 +1,6 @@
 // Style/AccessorGrouping (EnforcedStyle: grouped).
 //
-// Ported from RuboCop 1.92.2 (MIT License, Copyright (c) 2012-24 Bozhidar
+// Ported from RuboCop 1.92.3 (MIT License, Copyright (c) 2012-24 Bozhidar
 // Batsov).
 
 import { NT_BLOCK, NT_CASGN, NT_CLASS, NT_DEF, NT_MODULE, NT_SCLASS, NT_SEND, V_NIL } from "../ast";

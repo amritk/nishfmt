@@ -4,7 +4,7 @@
 // snake_case format with ConfigurableFormatting#class_emitter_method?, and the
 // UncommunicativeName mixin.
 //
-// Ported from RuboCop 1.92.2 (MIT License, Copyright (c) 2012-24 Bozhidar
+// Ported from RuboCop 1.92.3 (MIT License, Copyright (c) 2012-24 Bozhidar
 // Batsov).
 
 import { NT_CLASS, NT_DEFS, NT_KWRESTARG, NT_MLHS, NT_RESTARG, rbTypeName, V_NIL, vTag, VT_SYM } from "../ast";

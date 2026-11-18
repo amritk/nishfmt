@@ -1,7 +1,7 @@
 // Layout/SpaceInsideHashLiteralBraces (EnforcedStyle: space,
 // EnforcedStyleForEmptyBraces: no_space).
 //
-// Ported from RuboCop 1.92.2 (MIT License, Copyright (c) 2012-24 Bozhidar
+// Ported from RuboCop 1.92.3 (MIT License, Copyright (c) 2012-24 Bozhidar
 // Batsov).
 
 import { F_BEGIN, F_END, NT_HASH, NT_HASH_PATTERN } from "../ast";

@@ -1,6 +1,6 @@
 // Naming/BinaryOperatorParameterName.
 //
-// Ported from RuboCop 1.92.2 (MIT License, Copyright (c) 2012-24 Bozhidar
+// Ported from RuboCop 1.92.3 (MIT License, Copyright (c) 2012-24 Bozhidar
 // Batsov).
 
 import { F_NAME, NT_ARG, NT_BLOCK, NT_DEF, NT_LVAR, NT_LVASGN, V_NIL } from "../ast";

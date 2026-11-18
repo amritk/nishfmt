@@ -4,16 +4,16 @@
 // Strings with template expressions, nested strings and one-line strings
 // are left alone. Works on the pretty printer's output, line by line.
 //
-// Ported from ktfmt's MultilineStringFormatter (Apache License 2.0,
+// Ported from ktfmt 0.65's MultilineStringFormatter (Apache License 2.0,
 // Copyright (c) Meta Platforms, Inc. and affiliates).
 
 import { Out } from "../core/out";
 import { KTree } from "./builder";
 import { kIsComment } from "./input";
+import { K_CONTINUATION_INDENT } from "./options";
 import { N_DOT_QUALIFIED_EXPRESSION, N_SAFE_ACCESS_EXPRESSION, N_STRING_TEMPLATE, T_DOT, T_SAFE_ACCESS } from "./types";
 import { kIsExpr } from "./visitor";
 
-const CONTINUATION_INDENT: i32 = 4;
 const NO_INDENT: i32 = 2147483647;
 
 /** One `"""...""".trimX()` candidate. */
@@ -285,7 +285,7 @@ export class KMultilineStrings {
       content.push(this.trimmed(s, a, b, minimal));
     }
     const indentation = kmSpaces(s.indentCount);
-    const cont = kmSpaces(CONTINUATION_INDENT);
+    const cont = kmSpaces(K_CONTINUATION_INDENT);
     let m = s.dollar ? '$$"""\n' : '"""\n';
     let isLastLineEmpty = true;
     for (let i = 0; i < toI32(content.length); i++) {

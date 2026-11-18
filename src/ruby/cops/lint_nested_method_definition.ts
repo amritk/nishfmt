@@ -2,7 +2,7 @@
 // correction): a def inside a def, unless a scoping block or `class << x`
 // encloses it.
 //
-// Ported from RuboCop 1.92.2 (MIT License, Copyright (c) 2012-24 Bozhidar
+// Ported from RuboCop 1.92.3 (MIT License, Copyright (c) 2012-24 Bozhidar
 // Batsov).
 
 import { NT_CONST, NT_DEF, NT_DEFS, NT_SCLASS, NT_SEND, V_NIL } from "../ast";

@@ -1,7 +1,7 @@
 // Lint/NextWithoutAccumulator (no correction): a bare `next` in a
 // multi-statement `reduce(x)`/`inject(x)` block.
 //
-// Ported from RuboCop 1.92.2 (MIT License, Copyright (c) 2012-24 Bozhidar
+// Ported from RuboCop 1.92.3 (MIT License, Copyright (c) 2012-24 Bozhidar
 // Batsov).
 
 import { NT_BEGIN, NT_NEXT, NT_SYM } from "../ast";

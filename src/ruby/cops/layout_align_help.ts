@@ -4,7 +4,7 @@
 // extract_rhs, the MultilineElementIndentation mixin, and the node
 // predicates they read (bare access modifiers, macro scope, arguments).
 //
-// Ported from RuboCop 1.92.2 and rubocop-ast 1.51.0 (MIT License, Copyright
+// Ported from RuboCop 1.92.3 and rubocop-ast 1.52.0 (MIT License, Copyright
 // (c) 2012-24 Bozhidar Batsov). The display width table is generated from
 // unicode-display_width 3.3.0 (MIT License, Copyright (c) 2011, 2015-2025 Jan
 // Lelis).
