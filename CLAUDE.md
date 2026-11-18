@@ -76,7 +76,14 @@ reports success when lint fails. Run it bare, or check `$?` / `PIPESTATUS`.
 it, its `.expected` file taken from the reference tool. The case's input must
 differ from its `.expected`: nishfmt writes a skipped file back verbatim, so
 an already-formatted input passes whether the file was formatted or skipped,
-and cannot catch a formatter that wrongly gives up.
+and cannot catch a formatter that wrongly gives up. Run each new case against
+the base commit's binary before committing it: a case the old binary already
+passes pins nothing.
+
+**Skip what the reference rejects.** When a port makes a parser accept a new
+form (a new syntax, a top-level member, a module import), port the reference
+parser's rejections for that form in the same change, and probe it with inputs
+the reference refuses (its exit status is non-zero) as well as ones it formats.
 
 **An upgrade's "no case needed" claim is tested, not argued.** A ported
 upstream change that cannot alter the reference tool's output under
