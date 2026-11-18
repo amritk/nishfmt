@@ -50,13 +50,17 @@ The 4 files CSharpier refuses are left out.
 
 The Dart side ports dart_style whole: a scanner and parser to the
 analyzer's AST shapes; the tall style's piece builder, solver and cost
-model, with the variants `dart format` 3.14 still keeps for language
+model, with the variants `dart format` 3.14.1 still keeps for language
 versions 3.7, 3.8 to 3.12 and 3.13 on; and the short style used below 3.7
 (source visitor, chunk builder, rules and line splitter). The version comes
-from the file's `// @dart=` comment, else 3.14; nishfmt does not read
-package configs for it. The corpus is flutter/packages, flutter/samples,
-riverpod, bloc, http, getx, flame, dart_style, shelf, dio and test, plus
-`dart2`, the same files first formatted at other widths (10313 / 10313),
+from the file's `// @dart=` comment, else from the package's entry in the
+nearest `.dart_tool/package_config.json`, else dart_style's newest, 3.13;
+like dart format, nishfmt never reads `pubspec.yaml`. The page width comes
+from `// dart format width=N`, else `formatter: page_width` in the nearest
+`analysis_options.yaml`, else 80. The corpus is flutter/packages,
+flutter/samples, riverpod, bloc, http, getx, flame, dart_style, shelf, dio
+and test, plus `dart2`, the same files first formatted at other widths
+(10313 / 10313),
 `dart3`, the same files marked `// @dart=2.19` or `3.6` for the short style
 (8218 / 8218), and `dart4`, marked `3.7`, `3.8` or `3.12` (8663 / 8663).
 Files the reference rejects at their version are left out.
