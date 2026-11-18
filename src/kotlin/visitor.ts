@@ -1361,8 +1361,8 @@ export class KVisitor {
 
   visitDestructuringDeclaration(n: i32): void {
     this.sync(n);
-    // A destructuring declaration's only modifiers are annotations, each
-    // block on lines of their own.
+    // A destructuring declaration's only modifiers are annotations: they
+    // go first, then a forced break.
     const mods = this.child(n, N_MODIFIER_LIST);
     if (mods >= 0) {
       this.visitModifierList(mods);
