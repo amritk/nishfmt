@@ -219,7 +219,7 @@ const vfBadStart = (c: i32): boolean => {
 };
 
 /** VariableForce#local_variable_name?: Ruby makes a local variable of a named capture with this name. */
-export const vfLocalVariableName = (name: string): boolean => {
+const vfLocalVariableName = (name: string): boolean => {
   const k = toI32(name.length);
   if (k === 0 || VF_RESERVED.indexOf(` ${name} `) >= 0) {
     return false;

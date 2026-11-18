@@ -251,32 +251,6 @@ export const rbLitInterpolatedLiteral = (src: RbSource, n: i32): string => {
   return parts.join("");
 };
 
-/** Util#trim_string_interpolation_escape_character: `\#{...}` becomes `#{...}` (lazily, within a line). */
-export const rbLitTrimInterpEscape = (s: string): string => {
-  const parts: string[] = [];
-  const n = toI32(s.length);
-  let i = 0;
-  let from = 0;
-  while (i + 2 < n) {
-    if (s.charCodeAt(i) === 92 && s.charCodeAt(i + 1) === 35 && s.charCodeAt(i + 2) === 123) {
-      let j = i + 3;
-      while (j < n && s.charCodeAt(j) !== 125 && s.charCodeAt(j) !== 10) {
-        j++;
-      }
-      if (j < n && s.charCodeAt(j) === 125) {
-        parts.push(s.substring(from, i));
-        parts.push(s.substring(i + 1, j + 1));
-        from = j + 1;
-        i = j + 1;
-        continue;
-      }
-    }
-    i++;
-  }
-  parts.push(s.substring(from, n));
-  return parts.join("");
-};
-
 /** The source lines before the first non-comment token (FrozenStringLiteral#leading_comment_lines). */
 export const rbLitLeadingCommentLines = (src: RbSource): string[] => {
   let firstLine = -1;

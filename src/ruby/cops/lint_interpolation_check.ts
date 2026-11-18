@@ -4,10 +4,11 @@
 // Ported from RuboCop 1.92.3 (MIT License, Copyright (c) 2012-24 Bozhidar
 // Batsov).
 
-import { F_BEGIN, F_END, M_HEREDOC, NT_DEF, NT_DEFS, NT_DSTR, NT_REGEXP, NT_STR, NT_YIELD, V_NIL } from "../ast";
+import { F_BEGIN, F_END, M_HEREDOC, NT_DSTR, NT_REGEXP, NT_STR, NT_YIELD, V_NIL } from "../ast";
 import { RbCop } from "../cop";
 import { RbSource } from "../source";
 import { lbhSiblingIndex } from "./lint_batch_help";
+import { ldhAncestorDef } from "./lint_detect_help";
 import { ssxFE, ssxFS, ssxHas, ssxIs } from "./style_syntax_help";
 
 export class CopLintInterpolationCheck {
@@ -108,13 +109,7 @@ export class CopLintInterpolationCheck {
     if (!yields) {
       return false;
     }
-    for (let p = src.parent(n); p !== V_NIL; p = src.parent(p)) {
-      const t = src.a.type(p);
-      if (t === NT_DEF || t === NT_DEFS) {
-        return false;
-      }
-    }
-    return true;
+    return ldhAncestorDef(src, n) === V_NIL;
   }
 
   /** interpolated_source. */

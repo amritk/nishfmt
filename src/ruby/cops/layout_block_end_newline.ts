@@ -16,7 +16,7 @@ import {
   rmlLastNonNilChild,
   rmlSingleLine,
 } from "./layout_multiline_help";
-import { lspIsWs } from "./layout_space_help";
+import { lalIsStripWs } from "./layout_align_help";
 
 /** BlockEndNewline#last_heredoc_argument (V_NIL for none). */
 const rmlBenHeredoc = (src: RbSource, n: i32): i32 => {
@@ -64,8 +64,6 @@ const rmlBenOverlapsInner = (src: RbSource, n: i32): boolean => {
 };
 
 /** Ruby's String#strip / #rstrip set: whitespace and NUL. */
-const rmlBenStripByte = (c: i32): boolean => lspIsWs(c) || c === 0;
-
 /** code_end_pos: the end of the code on the range's last line, before a comment and trailing whitespace. */
 const rmlBenCodeEnd = (src: RbSource, rs: i32, re: i32): i32 => {
   const l = src.line(re);
@@ -74,7 +72,7 @@ const rmlBenCodeEnd = (src: RbSource, rs: i32, re: i32): i32 => {
     return src.lineEnd(l);
   }
   let e = src.commS[cm];
-  while (e > rs && rmlBenStripByte(src.at(e - 1))) {
+  while (e > rs && lalIsStripWs(src.at(e - 1))) {
     e--;
   }
   return e;
@@ -105,7 +103,7 @@ export class CopLayoutBlockEndNewline {
       }
       const rs = a.exE(last);
       let i = rs;
-      while (i < ee && (lspIsWs(src.at(i)) || src.at(i) === 0)) {
+      while (i < ee && lalIsStripWs(src.at(i))) {
         i++;
       }
       if (src.at(i) === 59) {
@@ -125,10 +123,10 @@ export class CopLayoutBlockEndNewline {
         const ce = rmlBenCodeEnd(src, rs, ee);
         let ts = rs;
         let te = ce;
-        while (ts < te && rmlBenStripByte(src.at(ts))) {
+        while (ts < te && lalIsStripWs(src.at(ts))) {
           ts++;
         }
-        while (te > ts && rmlBenStripByte(src.at(te - 1))) {
+        while (te > ts && lalIsStripWs(src.at(te - 1))) {
           te--;
         }
         k.remove(rs, ce);

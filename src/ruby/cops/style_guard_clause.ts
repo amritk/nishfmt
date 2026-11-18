@@ -60,6 +60,7 @@ import {
   scnWholeE,
   scnWholeS,
 } from "./style_cond_help";
+import { lalIsStripWs, lalIsWs } from "./layout_align_help";
 import {
   ssxDefBody,
   ssxDescendants,
@@ -86,18 +87,16 @@ const sgcMatch = (src: RbSource, n: i32): boolean => {
 };
 
 /** Ruby's \s, on one byte. */
-const sgcSpace = (c: i32): boolean => c === 32 || (c >= 9 && c <= 13);
-
 /** range_by_whole_lines(range).source.strip == range.source. */
 const sgcAloneOnLine = (src: RbSource, s: i32, e: i32): boolean => {
   for (let p = src.lineStart(src.line(s)); p < s; p++) {
-    if (!sgcSpace(src.at(p)) && src.at(p) !== 0) {
+    if (!lalIsStripWs(src.at(p))) {
       return false;
     }
   }
   const le = src.lineEnd(src.line(e));
   for (let p = e; p < le; p++) {
-    if (!sgcSpace(src.at(p)) && src.at(p) !== 0) {
+    if (!lalIsStripWs(src.at(p))) {
       return false;
     }
   }
@@ -278,7 +277,7 @@ export class CopStyleGuardClause {
     // !source_line[last_column..].match?(/\A\s*(?:\z|[#;)\]}])/)
     let p = ssxFE(src, n, F_END);
     const le = src.lineEnd(src.line(p));
-    while (p < le && sgcSpace(src.at(p))) {
+    while (p < le && lalIsWs(src.at(p))) {
       p++;
     }
     if (p >= le) {

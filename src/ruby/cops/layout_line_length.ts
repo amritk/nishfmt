@@ -1027,7 +1027,7 @@ export class CopLayoutLineLength {
       // node.loc.keyword.end.join(node.loc.name.begin).source.lstrip
       let rs = rnE(src, node, F_KEYWORD);
       const re = rnS(src, node, F_NAME);
-      while (rs < re && (src.at(rs) === 32 || (src.at(rs) >= 9 && src.at(rs) <= 13) || src.at(rs) === 0)) {
+      while (rs < re && rbLayStripWs(src.at(rs))) {
         rs++;
       }
       parts.push(src.src(rs, re));

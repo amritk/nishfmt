@@ -1,7 +1,8 @@
 # Generate src/ruby/registry.ts: the enabled cops in RuboCop's registry order
 # and each one's autocorrect_incompatible_with, read from the RuboCop that is
-# loaded, with the default configuration and TargetRubyVersion 3.3. Biome
-# then formats the file:
+# loaded, with the default configuration and TargetRubyVersion 3.3, and
+# writes the same order to tools/ruby/coporder.txt for genteam.py. Biome then
+# formats the file:
 #
 #     ruby tools/ruby/genregistry.rb > src/ruby/registry.ts
 #     npx biome format --write src/ruby/registry.ts
@@ -15,6 +16,7 @@ config = Dir.mktmpdir do |dir|
 end
 enabled = RuboCop::Cop::Registry.global.enabled(config)
 major, minor, patch = RuboCop::Version::STRING.split(".")
+File.write(File.join(__dir__, "coporder.txt"), enabled.map { |c| "#{c.cop_name}\n" }.join)
 
 puts <<~TS
   // Cop facts the team needs: RuboCop's registry order (corrections merge in

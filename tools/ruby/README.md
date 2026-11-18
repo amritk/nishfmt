@@ -19,7 +19,8 @@ grammar's reduce actions translated from the generated ruby33.rb:
     python3 genparser.py $G/ruby33.rb ../../src/ruby/parser.ts
 
 `src/ruby/registry.ts` (the enabled cops in registry order and each one's
-`autocorrect_incompatible_with`) is read from the RuboCop that is loaded:
+`autocorrect_incompatible_with`) and `coporder.txt` (the order `genteam.py`
+reads) are read from the RuboCop that is loaded:
 
     ruby genregistry.rb > ../../src/ruby/registry.ts
     npx biome format --write ../../src/ruby/registry.ts

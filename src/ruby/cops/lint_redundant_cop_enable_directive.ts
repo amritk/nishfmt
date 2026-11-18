@@ -14,13 +14,12 @@ import { rbSpaceEnd } from "../help";
 import { RbRewriter } from "../rewriter";
 import { RbSource } from "../source";
 import { LdhConfig, LdhDirective, LdhRegistry } from "./lint_directive_help";
+import { lalIsWs } from "./layout_align_help";
 
 /** Whether c is Ruby's \w. */
 const lrceWord = (c: i32): boolean => (c >= 48 && c <= 57) || (c >= 65 && c <= 90) || (c >= 97 && c <= 122) || c === 95;
 
 /** Whether c is Ruby's \s. */
-const lrceSpace = (c: i32): boolean => c === 32 || (c >= 9 && c <= 13);
-
 /** The first position of `name` (not followed by \w) within [s, e), or -1. */
 export const lrceIndex = (src: RbSource, s: i32, e: i32, name: string): i32 => {
   const n = toI32(name.length);
@@ -73,7 +72,7 @@ export class CopLintRedundantCopEnableDirective {
     for (let i = 0; i + 3 <= src.n && !(hasEnable && hasPop); i++) {
       if (src.at(i) === 101 && i + 6 <= src.n && src.src(i, i + 6) === "enable") {
         hasEnable = true;
-      } else if (src.at(i) === 112 && src.src(i, i + 3) === "pop") {
+      } else if (src.at(i) === 112 && src.at(i + 1) === 111 && src.at(i + 2) === 112) {
         hasPop = true;
       }
     }
@@ -115,7 +114,7 @@ export class CopLintRedundantCopEnableDirective {
     const re = d.reasonEnd(src);
     // range.end.join(comment.source_range.end).source.match?(/\A\s*(?:#|\z)/)
     let p = re;
-    while (p < d.ce && lrceSpace(src.at(p))) {
+    while (p < d.ce && lalIsWs(src.at(p))) {
       p++;
     }
     if (p >= d.ce || src.at(p) === 35) {
