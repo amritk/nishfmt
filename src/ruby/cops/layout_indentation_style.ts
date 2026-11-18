@@ -3,9 +3,9 @@
 // Ported from RuboCop 1.92.3 (MIT License, Copyright (c) 2012-24 Bozhidar
 // Batsov).
 
-import { F_BEGIN, F_HEREDOC_BODY, NT_DSTR, NT_STR } from "../ast";
+import { F_BEGIN, F_HEREDOC_BODY, F_HEREDOC_END, NT_DSTR, NT_STR, NT_XSTR } from "../ast";
 import { RbCop } from "../cop";
-import { rnE, rnHas, rnHeredoc, rnS } from "../node";
+import { rnHas, rnHeredoc, rnS } from "../node";
 import { RbSource } from "../source";
 import { lalIsWs } from "./layout_align_help";
 import { RbLayLines } from "./layout_empty_help";
@@ -43,12 +43,14 @@ export class CopLayoutIndentationStyle {
         ready = true;
         for (const n of src.pre) {
           const t = a.type(n);
-          if (t !== NT_STR && t !== NT_DSTR) {
+          // each_node(:any_str)
+          if (t !== NT_STR && t !== NT_DSTR && t !== NT_XSTR) {
             continue;
           }
           if (rnHeredoc(src, n)) {
+            // heredoc_body.join(heredoc_end.begin)
             rs.push(rnS(src, n, F_HEREDOC_BODY));
-            re.push(rnE(src, n, F_HEREDOC_BODY));
+            re.push(rnS(src, n, F_HEREDOC_END));
           } else if (rnHas(src, n, F_BEGIN)) {
             rs.push(a.exS(n));
             re.push(a.exE(n));
