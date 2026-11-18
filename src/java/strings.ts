@@ -5,7 +5,7 @@
 // again on the new text. (Text blocks are indented by the formatter itself;
 // the String.lines and stripIndent helpers here serve its visitTextBlock.)
 //
-// Ported from google-java-format 2.0.0 (Apache License 2.0, Copyright 2018 Google Inc.).
+// Ported from google-java-format 2.0.0 (Apache License 2.0, Copyright 2019 Google Inc.).
 
 import { utf16Len, strUtf16Len } from "../core/arr";
 import { Out } from "../core/out";

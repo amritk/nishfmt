@@ -7,9 +7,10 @@
 #   mk.sh cpp|java|kt|rb|swift|rust|dart|cs
 #
 # Tools, each from the environment or PATH: clang-format 18; $GJF and $KTFMT,
-# the google-java-format 1.28 and ktfmt 0.64 all-dependencies jars (required
-# for java and kt); rubocop 1.92.2; $SWIFTFORMAT (swiftformat 0.64.7);
-# rustfmt 1.9.0; $DART (Dart 3.14); $CSHARPIER (csharpier 1.4.0).
+# the google-java-format 2.0.0 (run on JDK 21) and ktfmt 0.64
+# all-dependencies jars (required for java and kt); rubocop 1.92.2;
+# $SWIFTFORMAT (swiftformat 0.64.7); rustfmt 1.9.0; $DART (Dart 3.14);
+# $CSHARPIER (csharpier 1.4.0).
 set -uo pipefail
 here=$(cd "$(dirname "$0")" && pwd)
 lang=$1

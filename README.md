@@ -117,7 +117,7 @@ usage: nishfmt [options] <file-or-dir>...
 
 Formats each file to match its language's reference formatter:
   C++ (.cpp .cc .cxx .hpp .hh .hxx .h)  clang-format 18, LLVM style
-  Java (.java)                        google-java-format 1.28
+  Java (.java)                        google-java-format 2.0.0
   Kotlin (.kt .kts)                   ktfmt 0.64
   Ruby (.rb, Gemfile, .gemspec, ...)  rubocop -a 1.92.2
   Swift (.swift)                      SwiftFormat 0.64.7

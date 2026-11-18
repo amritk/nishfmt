@@ -14,7 +14,7 @@ Where the two goals pull apart, matching wins, then speed.
 | Language | Directory | Reference | One file, through stdin |
 | --- | --- | --- | --- |
 | C++ | `src/cpp` | clang-format 18, `{BasedOnStyle: LLVM, ColumnLimit: 120}` | `clang-format --style='{BasedOnStyle: LLVM, ColumnLimit: 120}' < f` |
-| Java | `src/java` | google-java-format 1.28 | `java -jar $GJF - < f` |
+| Java | `src/java` | google-java-format 2.0.0 (on JDK 21) | `java -jar $GJF - < f` |
 | Kotlin | `src/kotlin` | ktfmt 0.64, default style | `java -jar $KTFMT - < f` |
 | Ruby | `src/ruby` | `rubocop -a` 1.92.2, `TargetRubyVersion: 3.3` | `bench/corpus/mk.sh` shows the invocation |
 | Swift | `src/swift` | SwiftFormat 0.64.7, default rules | `swiftformat stdin --quiet < f` |
@@ -60,8 +60,9 @@ for a binary). The traps that cost the most in earlier ports:
   (`runJob` in `src/main.ts`), so allocate freely per file. The region is
   freed afterwards.
 - `src/core/` (`Out`, `growI32`, `utf16Len`, file walking) and
-  `src/gdoc/` (google-java-format's Doc engine, used by Java and Kotlin) are
-  shared. Don't change them in a way that alters the C++, Java, Kotlin or
+  `src/gdoc/` (google-java-format 1.x's Doc engine, which Kotlin uses, and
+  the token input and comment helpers Java and Kotlin share) are shared;
+  Java has 2.0.0's layout engine of its own in `src/java/layout/`. Don't change them in a way that alters the C++, Java, Kotlin or
   Ruby output.
 - Ported code keeps its license: each ported module starts with a comment
   naming the project, version and license, as `src/ruby/run.ts` does:
