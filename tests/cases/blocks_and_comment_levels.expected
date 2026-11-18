@@ -14,7 +14,7 @@ void f() {
   if (!a)
     b();
 
-    // Wallet
+  // Wallet
 #ifdef X
   c();
 #endif

@@ -1,5 +1,7 @@
 void f() {
-  { auto toDestroy = std::move(sender); }
+  {
+    auto toDestroy = std::move(sender);
+  }
   SCOPE_EXIT { EXPECT_EQ(barrier.fetch_sub(1), 1); };
   if (x) {
     y();

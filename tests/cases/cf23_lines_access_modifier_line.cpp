@@ -1,0 +1,11 @@
+// input
+struct S {
+ private:
+  template <typename T, typename... Ts>
+  auto _dispatch(const T &obj, hb_priority<1>, Ts &&...ds) HB_AUTO_RETURN(obj.sanitize(this, std::forward<Ts>(ds)...))
+
+  template <typename T, typename... Ts>
+  auto _dispatch(const T &obj, hb_priority<0>, Ts &&...ds) HB_AUTO_RETURN(default_return_value())
+ public:
+  int x;
+};

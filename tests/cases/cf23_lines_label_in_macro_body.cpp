@@ -1,0 +1,4 @@
+#define GET_INPUT(label, remain) \
+  label:                         \
+    --szsrc;                     \
+    ch = *src++;

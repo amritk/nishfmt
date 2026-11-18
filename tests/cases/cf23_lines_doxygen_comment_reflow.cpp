@@ -1,0 +1,6 @@
+// input
+/**
+ { \frac{\|\texttt{src1}-\texttt{src2}\|_{L_2} }{\|\texttt{src2}\|_{L_2}} }{if  \(\texttt{normType} = \texttt{NORM_RELATIVE | NORM_L2}\) }
+ \f]
+ */
+int x;

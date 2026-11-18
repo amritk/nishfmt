@@ -65,6 +65,7 @@ import {
   PP_PRAGMA,
   PP_ERROR,
   TT_UNKNOWN,
+  TT_INHERITANCE_COLON,
   KW_EXTERN,
   KW_DEFAULT,
   KW_CASE,
@@ -169,6 +170,7 @@ export class Formatter {
   npass: i32 = 0; // passes of the current file
   curPass: i32 = 0;
   seenBefore: i32[]; // per source token: 1 when a pass before the current one saw it
+  compoundReqs: i32[]; // the parser's compound requirement `{`s, this pass
   useful: i32[]; // per pass: 1 when it sees a token no earlier pass saw
   seenBy: i32[];
   map: i32[]; // pass token -> source token
@@ -319,6 +321,7 @@ export class Formatter {
     this.ppCnt = new Array<i32>(0);
     this.useful = new Array<i32>(0);
     this.seenBefore = new Array<i32>(0);
+    this.compoundReqs = new Array<i32>(0);
     this.bcLa = new Array<i32>(0);
     this.bcLe = new Array<i32>(0);
     this.bcCa = new Array<i32>(0);
@@ -673,6 +676,25 @@ export class Formatter {
     return d.kind[n] !== P_COLONCOLON && !isOperatorAfterVar(d.kind[n]);
   }
 
+  /**
+   * clang-format 23's LT_AccessModifier: a line where an access keyword is
+   * followed by a colon annotated as an inheritance colon (`... public : int
+   * x;` after a macro without `;`) takes the access specifier's offset too.
+   */
+  hasAccessModifierColon(l: i32): boolean {
+    const d = this.d;
+    for (let t = d.nxt[d.lFirst[l]]; t >= 0; t = d.nxt[t]) {
+      if (d.type[t] === TT_INHERITANCE_COLON) {
+        const p = this.ann.prevNonComment(t);
+        const pk = p >= 0 ? d.kind[p] : -1;
+        if (pk === KW_PUBLIC || pk === KW_PRIVATE || pk === KW_PROTECTED) {
+          return true;
+        }
+      }
+    }
+    return false;
+  }
+
   /** The indent of line `l` in its list, with `base` added. */
   indentOf(l: i32, base: i32): i32 {
     const d = this.d;
@@ -680,7 +702,7 @@ export class Formatter {
       return 0;
     }
     let ind = (d.lAbs[l] === 1 ? 0 : base) + d.lLevel[l] * d.opts.indentWidth;
-    if (this.isAccessSpecifier(l)) {
+    if (this.isAccessSpecifier(l) || this.hasAccessModifierColon(l)) {
       ind = ind + d.opts.accessModifierOffset;
       if (ind < 0) {
         ind = 0;
@@ -1294,12 +1316,17 @@ export class Formatter {
         const af = d.lFirst[a];
         const emptyBody = d.kind[af] === P_RBRACE && d.lOpen[a] === l;
         const lineIsBlockOnly = lineStart === last;
+        // clang-format 23's tryMergeSimpleBlock: a `{` that starts a statement
+        // (TT_BlockLBrace) is never merged under AllowShortBlocksOnASingleLine
+        // Never, neither with its body nor with an empty `}`.
+        const blockLBrace = lineIsBlockOnly && tt === TT_UNKNOWN && this.compoundReqs.indexOf(last) < 0;
         // A block opened on a `case`/`default:` line is never merged.
         const caseLine =
           d.kind[lineStart] === KW_CASE ||
           (d.kind[lineStart] === KW_DEFAULT && d.nxt[lineStart] >= 0 && d.kind[d.nxt[lineStart]] === P_COLON);
         if (
           !isControl &&
+          !blockLBrace &&
           (!lineIsBlockOnly || !this.braceAfterLabelOrControl(l, prevL)) &&
           !caseLine &&
           emptyBody &&
@@ -1364,6 +1391,7 @@ export class Formatter {
         const blockLike = tt === TT_UNKNOWN || (tt === TT_CONTROL_STATEMENT_LBRACE && fk === KW_SWITCH);
         if (
           blockLike &&
+          !blockLBrace &&
           !ctrl &&
           !emptyBody &&
           !isFunction &&
@@ -1500,7 +1528,19 @@ export class Formatter {
       const nf = next >= 0 ? d.lFirst[next] : -1;
       if (next >= 0 && d.nl[nf] < 2 && onlyComments && this.offMarker(f) !== 1 && d.col[nf] === d.col[f]) {
         const pp = d.lType[next] === LT_PREPROCESSOR || d.lType[next] === LT_IMPORT;
-        d.lLevel[l] = pp ? 0 : d.lLevel[next];
+        const iw = d.opts.indentWidth;
+        if (!this.seenTok(f) && this.finalizedTok(nf) && iw > 0 && d.col[f] % iw === 0) {
+          // clang-format 23: aligned with a line an earlier pass formatted
+          // (its first token finalized), the comment keeps its column. (A
+          // comment an earlier pass formatted keeps that pass's output.)
+          if (head !== d.topHead) {
+            // (A child line's level is relative to its block: not ported.)
+            d.failed = true;
+          }
+          d.lLevel[l] = d.col[f] / iw;
+        } else {
+          d.lLevel[l] = pp ? 0 : d.lLevel[next];
+        }
       } else {
         next = d.kind[f] !== P_RBRACE ? l : -1;
       }
@@ -2328,6 +2368,7 @@ export class Formatter {
     if (d.failed) {
       return PASS_FAIL;
     }
+    this.compoundReqs = p.compoundReqs;
     // Objective-C beyond declarations (literals, @implementation, method
     // bodies): the file is left alone.
     if (d.objcSeen && d.objcOther) {
@@ -2971,8 +3012,14 @@ export class Formatter {
     let mainFound = false;
     let off = false;
     let rawTerm = ')"';
-    while (true) {
-      let pos = text.indexOf("\n", searchFrom);
+    while (searchFrom < n) {
+      // The next newline, past line splices (clang-format 23).
+      let pos = searchFrom;
+      if (toI32(d.src[searchFrom]) !== 10) {
+        do {
+          pos = text.indexOf("\n", pos + 1);
+        } while (pos >= 0 && toI32(d.src[pos - 1]) === 92);
+      }
       let lineEnd = pos >= 0 ? pos : n;
       // Trimmed bounds.
       let ta = prev;
@@ -2992,14 +3039,20 @@ export class Formatter {
       if (off && this.textContains(ta, te, rawTerm)) {
         off = false;
       }
+      // A line starting a block comment reaches to its end (clang-format
+      // 23): the includes in it are not sorted.
+      let blockComment = false;
       if (this.isFormatOff(ta, te)) {
         off = true;
       } else if (this.isFormatOn(ta, te)) {
         off = false;
+      } else if (this.textStartsWith(ta, te, "/*")) {
+        blockComment = true;
+        pos = text.indexOf("*/", searchFrom + 2);
       }
       const merge = te > ta && toI32(d.src[te - 1]) === 92;
       if (!off && !merge) {
-        if (this.matchInclude(prev, lineEnd)) {
+        if (!blockComment && this.matchInclude(prev, lineEnd)) {
           if (this.textContains(prev, lineEnd, "/*") && !this.textContains(prev, lineEnd, "*/")) {
             // An unclosed block comment: the lines up to its end go along.
             const c = this.findText("*/", searchFrom);
@@ -4202,6 +4255,22 @@ export class Formatter {
     }
   }
 
+  /**
+   * Whether pass token `t` is finalized in clang-format: an earlier #if pass
+   * formatted it (markFinalized skips a conditional directive's `#`, which
+   * each pass formats again).
+   */
+  finalizedTok(t: i32): boolean {
+    const d = this.d;
+    if (
+      d.kind[t] === P_HASH &&
+      (d.ppKind[t] === PP_IF || d.ppKind[t] === PP_ELIF || d.ppKind[t] === PP_ELSE || d.ppKind[t] === PP_ENDIF)
+    ) {
+      return false;
+    }
+    return this.seenTok(t);
+  }
+
   /** Whether pass token `t` was seen by an earlier #if pass. */
   seenTok(t: i32): boolean {
     return this.rec && this.curPass > 0 && t >= 0 && this.seenBefore[this.map[t]] === 1;
@@ -4225,14 +4294,7 @@ export class Formatter {
     } else if (t < 0) {
       return false;
     }
-    const d = this.d;
-    if (
-      d.kind[t] === P_HASH &&
-      (d.ppKind[t] === PP_IF || d.ppKind[t] === PP_ELIF || d.ppKind[t] === PP_ELSE || d.ppKind[t] === PP_ENDIF)
-    ) {
-      return false;
-    }
-    return this.seenBefore[this.map[t]] === 1;
+    return this.finalizedTok(t);
   }
 
   /** Whether emitted entry `i` lies in a `clang-format off` region. */
@@ -5137,8 +5199,10 @@ export class Formatter {
     }
     const c0 = d.at(a);
     const c1 = d.at(a + 1);
+    // (`@`, and since clang-format 23 `\`, commonly have special meaning.)
     if (
       c0 === 64 ||
+      c0 === 92 ||
       this.textAt(a, "TODO") ||
       this.textAt(a, "FIXME") ||
       this.textAt(a, "XXX") ||
@@ -5721,8 +5785,8 @@ export class Formatter {
       bc--;
     }
     let ac = sp;
-    // Don't trim the blanks if that would put `*/` right after the break.
-    if (!(this.splitDecoStar && e - sp > 1 && d.at(sp + 1) === 47)) {
+    // (clang-format 23 keeps the blanks after a decoration ending in `*`.)
+    if (!this.splitDecoStar) {
       while (ac < e && isBlankByte(d.at(ac))) {
         ac++;
       }

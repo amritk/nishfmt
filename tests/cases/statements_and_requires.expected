@@ -34,7 +34,8 @@ void g() {
   if (likely(x)) [[likely]] {
     return;
   }
-  {}
+  {
+  }
   __asm__ volatile("cpuid \n\t"
                    : "=a"(cpu_info[0]), "=b"(cpu_info[1]), "=c"(cpu_info[2]), "=d"(cpu_info[3])
                    : "a"(info_type), "c"(0));

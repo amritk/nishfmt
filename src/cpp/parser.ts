@@ -32,6 +32,8 @@ import {
   BK_UNKNOWN,
   isSimpleTypeKind,
   isWordKind,
+  isLiteralKind,
+  PP_OTHER,
   K_COMMENT,
   K_EOF,
   K_IDENT,
@@ -140,12 +142,45 @@ import {
   P_PLUSPLUS,
 } from "./tok";
 
+/**
+ * Whether the directive at `#` token `h` is one calculateBraceTypes stops
+ * skipping at (clang-format 23's `pp_not_keyword, pp_define`): `#define`, or
+ * a word that names no directive.
+ */
+const ppWordEndsBraceScan = (d: Doc, h: i32): boolean => {
+  const w = h + 1;
+  if (w >= d.ntok - 1 || d.ppId[w] !== d.ppId[h] || d.nl[w] !== 0 || !isWordKind(d.kind[w])) {
+    return false;
+  }
+  const pk = d.ppKind[h];
+  if (pk === PP_DEFINE) {
+    return d.is(w, "define"); // (not `#undef`)
+  }
+  if (pk !== PP_OTHER) {
+    return false;
+  }
+  // The directive words the lexer leaves as PP_OTHER.
+  return !(
+    d.is(w, "line") ||
+    d.is(w, "defined") ||
+    d.is(w, "__include_macros") ||
+    d.is(w, "ident") ||
+    d.is(w, "sccs") ||
+    d.is(w, "assert") ||
+    d.is(w, "unassert") ||
+    d.is(w, "__public_macro") ||
+    d.is(w, "__private_macro") ||
+    d.is(w, "embed")
+  );
+};
+
 export class Parser {
   macro: i32 = -1; // the directive whose body is being parsed, or -1
   eofLine: i32 = -1; // the last line a statement ended at the end of the input
-  macroBodyStart: i32 = 0; // the first line of the macro body being parsed
   inUnbraced: boolean = false; // parsing an unbraced control body's statement
+  unbracedLevel: i32 = 0; // unbraced if/else/loop bodies the parse is inside (clang-format's UnbracedBodyLevel)
   inRequiresExpr: boolean = false; // parsing a requires expression's body
+  compoundReqs: i32[]; // the `{` of each compound requirement (clang-format's TT_CompoundRequirementLBrace)
   objcDepth: i32 = 0; // inside an Objective-C @interface/@protocol body (parseObjCUntilAtEnd)
   // Per line list (index: its parent `{` + 1, 0 for the top): the last line
   // that is no directive, and the line before it in the list (-1: none).
@@ -167,6 +202,7 @@ export class Parser {
     this.d = d;
     this.codeTail = new Array<i32>(0);
     this.codeTailPrev = new Array<i32>(0);
+    this.compoundReqs = new Array<i32>(0);
   }
 
   cur(): i32 {
@@ -337,6 +373,21 @@ export class Parser {
 
   /** Emits each comment that starts a line as a line of its own. */
   flushComments(): boolean {
+    // Own-line comments read before a directive: clang-format 23's readToken
+    // flushes them at the line's level less the unbraced bodies it is inside
+    // (UnbracedBodyLevel), braces and child blocks included. (A macro body
+    // ends before any directive.)
+    if (this.macro < 0 && this.unbracedLevel > 0 && this.commentsThenDirective()) {
+      const save = this.level;
+      this.level = this.level > this.unbracedLevel ? this.level - this.unbracedLevel : 0;
+      const r = this.flushCommentsAtLevel();
+      this.level = save;
+      return r;
+    }
+    return this.flushCommentsAtLevel();
+  }
+
+  flushCommentsAtLevel(): boolean {
     const d = this.d;
     let any = false;
     while (this.cur() === K_COMMENT && this.first < 0 && this.continuesTrailingComment()) {
@@ -579,15 +630,12 @@ export class Parser {
     const saveDecl = this.mustDecl;
     this.level = 1;
     this.macro = hash;
-    const saveBodyStart = this.macroBodyStart;
-    this.macroBodyStart = this.d.nline;
     const saveList = this.macroList;
     this.macroList = this.listParent;
     // clang-format parses a macro body with MustBeDeclaration off.
     this.mustDecl = false;
     this.parseLevel(false);
     this.addLine();
-    this.macroBodyStart = saveBodyStart;
     this.macroList = saveList;
     this.macro = -1;
     this.level = saveLevel;
@@ -714,15 +762,10 @@ export class Parser {
           this.addLine();
           return;
         }
-        // A goto label in code: one level out, like a case label. (In a
-        // macro body, not on its first line: clang-format's
-        // `!Line->InMacroBody || CurrentLines->size() > 1`.)
-        if (
-          (this.first < 0 || attrOnly) &&
-          !this.mustDecl &&
-          this.peek(1) === P_COLON &&
-          (this.macro < 0 || this.d.nline > this.macroBodyStart)
-        ) {
+        // A goto label in code: one level out, like a case label (also on
+        // a macro body's first line: clang-format 23's parsePPDefine no
+        // longer reads past a leading `label:`).
+        if ((this.first < 0 || attrOnly) && !this.mustDecl && this.peek(1) === P_COLON) {
           this.parseCaseLabel();
           return;
         }
@@ -770,7 +813,11 @@ export class Parser {
           this.parseStatement();
           return;
         }
-        // A block statement.
+        // A block statement (clang-format 23's TT_BlockLBrace), or in a
+        // requires expression a compound requirement.
+        if (this.inRequiresExpr) {
+          this.compoundReqs.push(this.pos);
+        }
         this.parseBlock(1, this.mustDecl, TT_UNKNOWN);
         // A requires expression's compound requirement: `{ e } noexcept -> C<T>;`.
         if (this.cur() === KW_NOEXCEPT) {
@@ -920,8 +967,13 @@ export class Parser {
     }
   }
 
+  /**
+   * clang-format's parseLabel, after a `case`, `default` or goto label:
+   * only a case label's line takes a block after it.
+   */
   parseCaseLabel(): void {
     const d = this.d;
+    const isGoto = d.kind[this.pos] !== KW_CASE && d.kind[this.pos] !== KW_DEFAULT;
     const saveLevel = this.level;
     const unbraced = this.inUnbraced;
     // clang-format's parseLabel: one level out, but not to 0 inside a directive.
@@ -979,7 +1031,7 @@ export class Parser {
     while (d.kind[this.pos] === P_HASH && d.ppKind[this.pos] !== PP_NONE && this.macro < 0) {
       this.parsePPInline();
     }
-    if (this.cur() === P_LBRACE) {
+    if (this.cur() === P_LBRACE && !isGoto) {
       this.parseBlock(1, false, TT_UNKNOWN);
       let b = this.pos;
       while (d.kind[b] === P_HASH && d.ppKind[b] !== PP_NONE) {
@@ -1100,6 +1152,7 @@ export class Parser {
     this.bodyComments();
     const wasUnbraced = this.inUnbraced;
     this.inUnbraced = true;
+    this.unbracedLevel = this.unbracedLevel + 1;
     this.parseStructuralElement();
     this.inUnbraced = wasUnbraced;
     // A body still open at the end of the input (a macro body without `;`)
@@ -1107,18 +1160,19 @@ export class Parser {
     if (this.eofLine >= before && this.eofLine === d.nline - 1) {
       d.lLevel[this.eofLine] = this.level - 1;
     }
-    // Comments between the body and a directive are read ahead with the
-    // body, so clang-format gives them its level.
+    // Comments between the body and a directive are read ahead inside the
+    // body: flushed at its level less the unbraced bodies, this one included.
     if (this.first < 0 && this.commentsThenDirective()) {
       this.flushComments();
     } else if (this.first < 0 && this.macro < 0 && this.directivesCommentsDirective()) {
       // Directives, then comments, then a directive: all read ahead with the
-      // body's last token, so the comments still take the body's level.
+      // body's last token, as above.
       while (d.kind[this.pos] === P_HASH && d.ppKind[this.pos] !== PP_NONE) {
         this.parsePPInline();
       }
       this.flushComments();
     }
+    this.unbracedLevel = this.unbracedLevel - 1;
     this.level = this.level - 1;
   }
 
@@ -1303,6 +1357,7 @@ export class Parser {
       this.bodyComments();
       const wasUnbraced = this.inUnbraced;
       this.inUnbraced = true;
+      this.unbracedLevel = this.unbracedLevel + 1;
       this.parseStructuralElement();
       this.inUnbraced = wasUnbraced;
       // A body still open at the end of the input (a macro's last line) is
@@ -1314,8 +1369,8 @@ export class Parser {
       if (this.eofLine >= 0 && this.eofLine === d.nline - 1) {
         this.eofLine = -1;
       }
-      // Comments between the body and a directive take the body's level,
-      // as after any control statement's body (parseControlBody).
+      // Comments between the body and a directive: as after any control
+      // statement's body (parseControlBody).
       if (this.first < 0 && this.commentsThenDirective()) {
         this.flushComments();
       } else if (this.first < 0 && this.macro < 0 && this.directivesCommentsDirective()) {
@@ -1324,6 +1379,7 @@ export class Parser {
         }
         this.flushComments();
       }
+      this.unbracedLevel = this.unbracedLevel - 1;
       this.level = this.level - 1;
       return;
     }
@@ -2014,11 +2070,20 @@ export class Parser {
       while (next < d.ntok - 1 && d.kind[next] === K_COMMENT) {
         next++;
       }
-      // Skip directives: clang-format skips the rest of the directive's first
-      // line only, so the lines a `\` continues are scanned as code.
+      // Skip directives, the lines a `\` continues included (clang-format
+      // 23 skips to the next unescaped newline), but not a `#define` or an
+      // unknown directive: its word is the next token.
       while (next < d.ntok - 1 && d.kind[next] === P_HASH && d.ppKind[next] !== PP_NONE && this.macro < 0) {
-        next = next + 2;
-        while (next < d.ntok - 1 && (d.kind[next] === K_COMMENT || d.nl[next] === 0)) {
+        const word = next + 1;
+        if (ppWordEndsBraceScan(d, next)) {
+          next = word;
+          break;
+        }
+        next = word + 1;
+        while (
+          next < d.ntok - 1 &&
+          ((d.inPP[next] === 1 && d.ppKind[next] === PP_NONE) || (d.kind[next] === K_COMMENT && d.nl[next] === 0))
+        ) {
           next++;
         }
         while (next < d.ntok - 1 && d.kind[next] === K_COMMENT) {
@@ -2052,7 +2117,9 @@ export class Parser {
             const trailing = tok + 1 < d.ntok && d.kind[tok + 1] === K_COMMENT && d.nl[tok + 1] === 0;
             const nk = this.macro >= 0 && d.ppId[next] !== this.macro && !trailing ? K_EOF : d.kind[next];
             let braced = false;
-            if (nk === P_LPAREN) {
+            // (clang-format 23: also after a literal, or before `->`.)
+            const pk = prevTok >= 0 ? d.kind[prevTok] : -1;
+            if (nk === P_LPAREN || nk === P_ARROW || isLiteralKind(pk)) {
               braced = true;
             }
             if (
@@ -2093,6 +2160,22 @@ export class Parser {
                 n2++;
               }
               braced = d.kind[n2] !== P_LSQUARE;
+            }
+            // clang-format 23: a macro body that is one nonempty `{...}`, the
+            // first token of its line, is a braced list unless its last token
+            // ends a statement (`;`, a block's brace, a label's `:`). (The
+            // next non-comment token ends the macro, trailing comment or not.)
+            if (
+              this.macro >= 0 &&
+              top === this.pos &&
+              this.first < 0 &&
+              prevTok !== this.pos &&
+              d.ppId[next] !== this.macro &&
+              pk !== P_SEMI &&
+              pk !== P_COLON &&
+              d.bk[prevTok] !== BK_BLOCK
+            ) {
+              braced = true;
             }
             const v = braced ? BK_BRACED_INIT : BK_BLOCK;
             d.bk[tok] = v;
@@ -2140,6 +2223,7 @@ export class Parser {
     const d = this.d;
     const n = d.ntok - 1;
     let i = this.nextNonComment(this.pos);
+    const first = i;
     while (i < n) {
       // A directive between the keyword and the name is read past.
       if (d.kind[i] === P_HASH && d.ppKind[i] !== PP_NONE && d.ppId[i] === i) {
@@ -2171,8 +2255,9 @@ export class Parser {
       }
       const prev = i;
       i = this.nextNonComment(i);
-      // Macros may sit between the keyword and the name.
-      if (!this.isNonMacroIdent(prev) && i < n && d.kind[i] === P_LPAREN) {
+      // Macros may sit between the keyword and the name (clang-format 23:
+      // any word right after the keyword, `struct macro(a) S { ... };`).
+      if ((!this.isNonMacroIdent(prev) || prev === first) && i < n && d.kind[i] === P_LPAREN) {
         i = this.skipBracket(i);
       }
     }

@@ -1,0 +1,22 @@
+void f() {
+  {
+    x();
+  }
+  {
+  }
+  {
+    int y = 1;
+  }
+  switch (k) {
+  default: {
+  }
+  }
+}
+template <typename T>
+concept C = requires(T t) {
+  { *t } -> std::same_as<int>;
+};
+#define M                                                                                                              \
+  {                                                                                                                    \
+    a();                                                                                                               \
+  }
