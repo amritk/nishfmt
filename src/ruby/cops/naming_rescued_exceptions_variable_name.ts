@@ -20,7 +20,7 @@ import {
 import { RbCop } from "../cop";
 import { RbRewriter } from "../rewriter";
 import { RbSource } from "../source";
-import { ssxDescendants, ssxFE, ssxFS } from "./style_syntax_help";
+import { ssxDescendants, ssxFE, ssxFS, ssxIsCall } from "./style_syntax_help";
 
 /** The name of an assignment node (AsgnNode#name / CasgnNode#name), or "" when it has none. */
 const nrevName = (src: RbSource, n: i32): string => {
@@ -97,12 +97,16 @@ export class CopNamingRescuedExceptionsVariableName {
     if (k === null) {
       return;
     }
+    let kw = src.parent(src.parent(n));
+    while (kw !== V_NIL && a.type(kw) !== NT_KWBEGIN) {
+      kw = src.parent(kw);
+    }
+    // a `begin` that is the receiver or an argument of a call is left alone
+    if (kw !== V_NIL && ssxIsCall(src, src.parent(kw))) {
+      return;
+    }
     k.replace(a.exS(ev), a.exE(ev), preferred);
     if (this.correctNode(src, k, a.kid(n, 2), bad, preferred) === V_NIL) {
-      let kw = src.parent(src.parent(n));
-      while (kw !== V_NIL && a.type(kw) !== NT_KWBEGIN) {
-        kw = src.parent(kw);
-      }
       if (kw !== V_NIL) {
         const kp = src.parent(kw);
         if (kp !== V_NIL) {
@@ -110,8 +114,9 @@ export class CopNamingRescuedExceptionsVariableName {
           for (let i = 0; i < a.nKid(kp); i++) {
             const c = a.kid(kp, i);
             if (after) {
+              // right_siblings.grep(AST::Node)
               if (!a.isNode(c)) {
-                break;
+                continue;
               }
               if (this.correctNode(src, k, c, bad, preferred) !== V_NIL) {
                 break;
