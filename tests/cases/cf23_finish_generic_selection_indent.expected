@@ -1,0 +1,6 @@
+#define upb_AddOverflow(a, b, out)                                                                                     \
+  _Generic((a),                                                                                                        \
+      size_t: _Generic((b),                                                                                            \
+          size_t: upb_AddOverflow_size_t_size_t(a, b, out),                                                            \
+          uint32_t: upb_AddOverflow_size_t_uint32_t(a, b, out)),                                                       \
+      uint32_t: _Generic((b), size_t: upb_AddOverflow_uint32_t_size_t(a, b, out)))
