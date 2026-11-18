@@ -140,6 +140,58 @@ import {
   P_PLUSPLUS,
 } from "./tok";
 
+/**
+ * Whether the directive at `#` token `h` is one calculateBraceTypes stops
+ * skipping at (clang-format 23's `pp_not_keyword, pp_define`): `#define`, or
+ * a word that names no directive.
+ */
+const ppWordEndsBraceScan = (d: Doc, h: i32): boolean => {
+  const w = h + 1;
+  if (w >= d.ntok - 1 || d.ppId[w] !== d.ppId[h] || d.nl[w] !== 0) {
+    return false;
+  }
+  const k = d.kind[w];
+  if (k !== K_IDENT && k < 100) {
+    return false; // no word (`# 1 "f"`): no identifier to test
+  }
+  if (d.is(w, "define")) {
+    return true;
+  }
+  const kws = [
+    "if",
+    "ifdef",
+    "ifndef",
+    "elif",
+    "elifdef",
+    "elifndef",
+    "else",
+    "endif",
+    "defined",
+    "include",
+    "__include_macros",
+    "undef",
+    "line",
+    "error",
+    "pragma",
+    "import",
+    "include_next",
+    "warning",
+    "ident",
+    "sccs",
+    "assert",
+    "unassert",
+    "__public_macro",
+    "__private_macro",
+    "embed",
+  ];
+  for (const s of kws) {
+    if (d.is(w, s)) {
+      return false;
+    }
+  }
+  return true;
+};
+
 export class Parser {
   macro: i32 = -1; // the directive whose body is being parsed, or -1
   eofLine: i32 = -1; // the last line a statement ended at the end of the input
@@ -2033,11 +2085,20 @@ export class Parser {
       while (next < d.ntok - 1 && d.kind[next] === K_COMMENT) {
         next++;
       }
-      // Skip directives: clang-format skips the rest of the directive's first
-      // line only, so the lines a `\` continues are scanned as code.
+      // Skip directives, the lines a `\` continues included (clang-format
+      // 23 skips to the next unescaped newline), but not a `#define` or an
+      // unknown directive: its word is the next token.
       while (next < d.ntok - 1 && d.kind[next] === P_HASH && d.ppKind[next] !== PP_NONE && this.macro < 0) {
-        next = next + 2;
-        while (next < d.ntok - 1 && (d.kind[next] === K_COMMENT || d.nl[next] === 0)) {
+        const word = next + 1;
+        if (ppWordEndsBraceScan(d, next)) {
+          next = word;
+          break;
+        }
+        next = word + 1;
+        while (
+          next < d.ntok - 1 &&
+          ((d.inPP[next] === 1 && d.ppKind[next] === PP_NONE) || (d.kind[next] === K_COMMENT && d.nl[next] === 0))
+        ) {
           next++;
         }
         while (next < d.ntok - 1 && d.kind[next] === K_COMMENT) {
@@ -2071,7 +2132,9 @@ export class Parser {
             const trailing = tok + 1 < d.ntok && d.kind[tok + 1] === K_COMMENT && d.nl[tok + 1] === 0;
             const nk = this.macro >= 0 && d.ppId[next] !== this.macro && !trailing ? K_EOF : d.kind[next];
             let braced = false;
-            if (nk === P_LPAREN) {
+            // (clang-format 23: also after a literal, or before `->`.)
+            const pk = prevTok >= 0 ? d.kind[prevTok] : -1;
+            if (nk === P_LPAREN || nk === P_ARROW || pk === K_NUMBER || pk === K_STRING || pk === K_CHAR) {
               braced = true;
             }
             if (
@@ -2112,6 +2175,21 @@ export class Parser {
                 n2++;
               }
               braced = d.kind[n2] !== P_LSQUARE;
+            }
+            // clang-format 23: a macro body that is one nonempty `{...}`, the
+            // first token of its line, is a braced list unless its last token
+            // ends a statement (`;`, a block's brace, a label's `:`).
+            if (
+              this.macro >= 0 &&
+              top === this.pos &&
+              this.first < 0 &&
+              prevTok !== this.pos &&
+              nk === K_EOF &&
+              pk !== P_SEMI &&
+              pk !== P_COLON &&
+              d.bk[prevTok] !== BK_BLOCK
+            ) {
+              braced = true;
             }
             const v = braced ? BK_BRACED_INIT : BK_BLOCK;
             d.bk[tok] = v;
