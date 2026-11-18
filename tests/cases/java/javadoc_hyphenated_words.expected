@@ -1,0 +1,8 @@
+class Hyphens {
+  /**
+   * A thread-safe map that is pre- and post-processed, kept read-
+   *
+   * <p>only after the first well-known call.
+   */
+  void f() {}
+}
