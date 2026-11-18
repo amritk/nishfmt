@@ -5,6 +5,7 @@
 
 import { INDEPENDENT, UNIFIED, FORCED, BL_NO, BL_PRESERVE, BL_YES } from "../gdoc/engine";
 import { JlEngine } from "./layout/engine";
+import { growI32 } from "../core/arr";
 import { GInput } from "../gdoc/input";
 import {
   CK_ANNOTATION,
@@ -189,8 +190,8 @@ export class JVisitor {
     this.typeAnnotationSimpleNames = [];
     const nn = this.t.n;
     if (toI32(this.hugPoints.length) < nn) {
-      this.hugPoints = new Array<i32>(nn * 2);
-      this.notHuggable = new Array<i32>(nn * 2);
+      this.hugPoints = growI32(this.hugPoints, nn * 2);
+      this.notHuggable = growI32(this.notHuggable, nn * 2);
     }
     for (let i = 0; i < nn; i++) {
       this.hugPoints[i] = -1;

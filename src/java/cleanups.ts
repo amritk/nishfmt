@@ -230,6 +230,9 @@ export class JavaCleanups {
   /** checkClassSemicolons: the semicolons between a class's members (an enum's `;` after its constants stays). */
   private classSemicolons(inp: GInput, t: JTree, c: i32): void {
     const members = t.f[c];
+    // An anonymous class body starts at its `{` here (javac starts it at the
+    // call), so the call's arguments, which CleanupScanner adds as spans, are
+    // never in the range.
     const classStart = t.start[c];
     const classEnd = t.end[c];
     const lo: i32[] = [];

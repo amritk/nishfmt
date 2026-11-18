@@ -64,6 +64,8 @@ export const formatJava = (e: JavaEngine, path: string, src0: u8[], n0: i32, out
   if (!parseJava(e, path)) {
     return false;
   }
+  // Whether a pass after the last parse changed the text.
+  let changed = false;
   // REMOVE_UNUSED_IMPORTS.
   if (e.imports.removeUnused(e.inp, e.tree, e.root, e.buf1)) {
     src = e.buf1.buf.slice(0, e.buf1.n);
@@ -76,6 +78,7 @@ export const formatJava = (e: JavaEngine, path: string, src0: u8[], n0: i32, out
   if (e.cleanups.run(e.inp, e.tree, e.root, e.buf1)) {
     src = e.buf1.buf.slice(0, e.buf1.n);
     n = e.buf1.n;
+    changed = true;
     if (!lexJava(e.inp, src, n)) {
       return false;
     }
@@ -84,6 +87,7 @@ export const formatJava = (e: JavaEngine, path: string, src0: u8[], n0: i32, out
   if (reorderModifiers(e.inp, e.buf1)) {
     src = e.buf1.buf.slice(0, e.buf1.n);
     n = e.buf1.n;
+    changed = true;
     if (!lexJava(e.inp, src, n)) {
       return false;
     }
@@ -92,6 +96,7 @@ export const formatJava = (e: JavaEngine, path: string, src0: u8[], n0: i32, out
   if (e.imports.reorder(e.inp, e.buf1)) {
     src = e.buf1.buf.slice(0, e.buf1.n);
     n = e.buf1.n;
+    changed = true;
     if (!lexJava(e.inp, src, n)) {
       return false;
     }
@@ -101,7 +106,8 @@ export const formatJava = (e: JavaEngine, path: string, src0: u8[], n0: i32, out
     }
     return false;
   }
-  if (!parseJava(e, path)) {
+  // The tree of the last parse still fits text no pass changed since.
+  if (changed && !parseJava(e, path)) {
     return false;
   }
   const root = e.root;
