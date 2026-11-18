@@ -3,10 +3,10 @@
 // Ported from RuboCop 1.92.3 (MIT License, Copyright (c) 2012-24 Bozhidar
 // Batsov).
 
-import { F_END, NT_ARRAY, NT_BLOCK, NT_NUMBLOCK, NT_SEND, NT_SUPER, NT_ZSUPER, V_NIL } from "../ast";
+import { F_DOT, F_END, NT_ARRAY, NT_BLOCK, NT_NUMBLOCK, NT_SEND, NT_SUPER, NT_ZSUPER, V_NIL } from "../ast";
 import { RbCop } from "../cop";
 import { RbSource, TK_COMMENT } from "../source";
-import { ssxGlobalConst, ssxIs, ssxIsSpace, ssxLocIs, ssxMeth } from "./style_syntax_help";
+import { ssxGlobalConst, ssxHas, ssxIs, ssxIsSpace, ssxLocIs, ssxMeth, ssxOperatorName } from "./style_syntax_help";
 
 /** (send (const {nil? cbase} :C) :m) with no arguments. */
 const ssxElConstCall = (src: RbSource, n: i32, c: string, m: string): boolean =>
@@ -244,8 +244,13 @@ export class CopStyleEmptyLiteral {
         if (p !== V_NIL) {
           const pt = a.type(p);
           const first = pt === NT_SEND ? a.kid(p, 2) : a.kid(p, 0);
+          // An operator method without a dot (`foo[Hash[]]`) keeps its argument.
+          const op = pt === NT_SEND && ssxOperatorName(ssxMeth(src, p)) && !ssxHas(src, p, F_DOT);
           unpar =
-            (pt === NT_SEND || pt === NT_SUPER || pt === NT_ZSUPER) && first === n && !ssxLocIs(src, p, F_END, ")");
+            (pt === NT_SEND || pt === NT_SUPER || pt === NT_ZSUPER) &&
+            !op &&
+            first === n &&
+            !ssxLocIs(src, p, F_END, ")");
         }
         if (unpar) {
           const from = ssxElArg0(src, p);
