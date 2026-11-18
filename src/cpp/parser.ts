@@ -2237,6 +2237,7 @@ export class Parser {
     const d = this.d;
     const n = d.ntok - 1;
     let i = this.nextNonComment(this.pos);
+    const first = i;
     while (i < n) {
       // A directive between the keyword and the name is read past.
       if (d.kind[i] === P_HASH && d.ppKind[i] !== PP_NONE && d.ppId[i] === i) {
@@ -2268,8 +2269,9 @@ export class Parser {
       }
       const prev = i;
       i = this.nextNonComment(i);
-      // Macros may sit between the keyword and the name.
-      if (!this.isNonMacroIdent(prev) && i < n && d.kind[i] === P_LPAREN) {
+      // Macros may sit between the keyword and the name (clang-format 23:
+      // any word right after the keyword, `struct macro(a) S { ... };`).
+      if ((!this.isNonMacroIdent(prev) || prev === first) && i < n && d.kind[i] === P_LPAREN) {
         i = this.skipBracket(i);
       }
     }

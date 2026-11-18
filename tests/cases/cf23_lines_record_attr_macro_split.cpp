@@ -1,0 +1,2 @@
+struct __align__(8) uchar8 { uchar a0, a1; };
+struct ALIGN(8) S2 { int a; };
