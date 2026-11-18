@@ -3,9 +3,11 @@
 // ops become a tree of levels, `computeBreaks` decides which breaks are
 // taken, and `write` renders the tree through JavaOutput's blank-line rules.
 //
-// Ported from google-java-format's OpsBuilder, DocBuilder, Doc, Indent,
-// Output.BreakTag and JavaOutput (Apache License 2.0, Copyright 2015 Google
-// Inc.). The tree is kept in columns; each `Doc` subclass is a kind.
+// Ported from google-java-format 1.28.0's OpsBuilder, DocBuilder, Doc,
+// Indent, Output.BreakTag, JavaOutput, CommentsHelper and Newlines (Apache
+// License 2.0, Copyright 2015, 2016 Google Inc.); tools/kotlin/NOTES.md says
+// why that credit holds for ktfmt's 1.23.0 and Java's 2.0.0. The tree is kept
+// in columns; each `Doc` subclass is a kind.
 
 import { growI32, strUtf16Len } from "../core/arr";
 import { Out } from "../core/out";

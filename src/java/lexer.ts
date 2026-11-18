@@ -3,6 +3,9 @@
 // whitespace split into runs of spaces and single newlines, and comments as
 // their own toks. Columns follow JavaInput's arithmetic, including its habit
 // of advancing a split operator's later characters by the whole operator.
+//
+// Ported from google-java-format 2.0.0's JavaInput and JavacTokens (Apache
+// License 2.0, Copyright 2015, 2016 Google Inc.).
 
 import {
   GInput,

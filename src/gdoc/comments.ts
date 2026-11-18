@@ -3,7 +3,9 @@
 // and are wrapped at 100 columns, javadoc-shaped block comments are
 // re-starred, other block comments keep their relative indentation.
 //
-// Ported from google-java-format 1.28 (Apache License 2.0, Copyright 2015 Google Inc.).
+// Ported from google-java-format 1.28.0's JavaCommentsHelper and Newlines
+// (Apache License 2.0, Copyright 2015, 2016 Google Inc.); tools/kotlin/NOTES.md
+// says why that credit holds for ktfmt's 1.23.0 and Java's 2.0.0.
 
 import { strUtf16Len } from "../core/arr";
 

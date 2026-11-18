@@ -130,6 +130,15 @@ From the javadoc port (#17), in `src/java/javadoc.ts` and `src/java/comments.ts`
 | `StringWrapper` | `src/java/strings.ts`, `src/java/partial.ts` |
 | `javadoc/*`, `JavaCommentsHelper` | `src/java/javadoc.ts`, `src/java/comments.ts`, `src/gdoc/comments.ts` |
 
+`src/java/lexer.ts` is a port of `JavaInput`'s and `JavacTokens`'
+tokenization and carries their header. `src/java/parser.ts` and
+`src/java/ast.ts` are not ports and carry no ported-module header: they are
+nishfmt's own recursive-descent parser and tree, built to give the javac tree
+shapes the visitor reads and to make javac's parse decisions, without
+translating javac's code. `src/gdoc/` credits google-java-format 1.28.0; why
+that holds for Java's 2.0.0 is in
+[tools/kotlin/NOTES.md](../kotlin/NOTES.md#srcgdocs-version).
+
 ## Working on it
 
 ```bash
@@ -139,3 +148,19 @@ dist/javadev file.java | diff - <(java -jar $GJF - < file.java)
 
 `FFDEBUG=1` makes the driver say why it skipped a file (a lex or parse
 error, imports not contiguous, a layout failure).
+
+## Regression cases
+
+`tests/cases/java/<name>.java` formats to `<name>.expected`, gjf 2.0.0's
+output on JDK 21. `tests/cases/java/skip_<name>.java` is a file gjf 2.0.0
+rejects: it has no `.expected`, and `tests/run.sh` checks that `-i` reports it
+skipped and leaves it byte for byte as it is.
+
+`var_variable_name` is a control: it passes on 275573b (the 1.28 port) as
+well and pins no 2.0.0 change. It has `var` as a parameter and variable name,
+which javac 21 allows, so the restricted-type-name rejections must not skip
+it.
+
+`empty_file`, `javadoc_leading_block` and `javadoc_moe_strip` are files gjf
+2.0.0 accepts and leaves as they are, so their `.expected` is their input and
+they pass whether nishfmt formats them or skips them.

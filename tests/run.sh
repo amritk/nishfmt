@@ -5,7 +5,7 @@
 #
 # Each tests/cases/<name>.cpp with a <name>.expected (clang-format 23.1.5, LLVM
 # style, ColumnLimit 120) must format to it, and formatting the expected file
-# must leave it unchanged. unbalanced.cpp and each tests/cases/rust/skip_*.rs
+# must leave it unchanged. unbalanced.cpp and each tests/cases/<lang>/skip_*
 # (a file the reference tool rejects) must be skipped and left untouched.
 set -uo pipefail
 here=$(cd "$(dirname "$0")" && pwd)
@@ -115,19 +115,22 @@ else
   fail=$((fail + 1))
 fi
 
-# Rust files rustfmt rejects are skipped, not formatted: each
-# tests/cases/rust/skip_<name>.rs must be reported skipped by -i and left
-# byte for byte as it is, and --check must find nothing to change.
-for src in "$here"/cases/rust/skip_*.rs; do
+# Files the reference tool rejects are skipped, not formatted: each
+# tests/cases/<lang>/skip_<name>.<ext>, which has no .expected, must be
+# reported skipped by -i and left byte for byte as it is, and --check must find
+# nothing to change.
+for src in "$here"/cases/*/skip_*; do
   [ -f "$src" ] || continue
-  label="rust/$(basename "$src" .rs)"
-  cp "$src" "$work/skip.rs"
-  msg=$("$bin" -i "$work/skip.rs" 2>&1)
+  file=${src##*/}
+  label=${src#"$here"/cases/}
+  label=${label%.*}
+  cp "$src" "$work/$file"
+  msg=$("$bin" -i "$work/$file" 2>&1)
   case $msg in
-    *"nishfmt: skipped $work/skip.rs "*) skipped=1 ;;
+    *"nishfmt: skipped $work/$file "*) skipped=1 ;;
     *) skipped=0 ;;
   esac
-  if [ "$skipped" -eq 1 ] && cmp -s "$work/skip.rs" "$src" && "$bin" --check -q "$work/skip.rs" > /dev/null 2>&1; then
+  if [ "$skipped" -eq 1 ] && cmp -s "$work/$file" "$src" && "$bin" --check -q "$work/$file" > /dev/null 2>&1; then
     pass=$((pass + 1))
   else
     echo "FAIL $label: not skipped and left untouched"

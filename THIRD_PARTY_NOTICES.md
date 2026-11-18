@@ -6,7 +6,7 @@ nishfmt is MIT licensed ([LICENSE](LICENSE)). Its formatters for Java, Kotlin, R
 | --- | --- | --- | --- | --- |
 | C++ | clang-format 23.1.5 (LLVM) | Apache-2.0 WITH LLVM-exception | — | Not ported: nishfmt's C++ formatter is its own code, written to make clang-format's decisions. No LLVM code is included. |
 | Java | google-java-format 2.0.0 | Apache-2.0 | Copyright 2015, 2016, 2019, 2026 Google Inc. | `src/java/` |
-| Kotlin, Java | google-java-format 1.28 (the sources ported; ktfmt 0.65 bundles 1.23.0, and the Kotlin gate matches it): the Doc engine ktfmt runs on, and the token input and comment re-indentation both languages share | Apache-2.0 | Copyright 2015, 2016 Google Inc. | `src/gdoc/` |
+| Kotlin, Java | google-java-format 1.28.0: the Doc engine ktfmt runs on, and the token input and comment re-indentation both languages share. ktfmt 0.65 runs on 1.23.0 and Java on 2.0.0; the ported parts give the same output in all three ([tools/kotlin/NOTES.md](tools/kotlin/NOTES.md#srcgdocs-version)) | Apache-2.0 | Copyright 2015, 2016 Google Inc. | `src/gdoc/` |
 | Kotlin | ktfmt 0.65 | Apache-2.0 | Copyright (c) Meta Platforms, Inc. and affiliates | `src/kotlin/` |
 | Kotlin | the Kotlin compiler 2.4.10 and the IntelliJ platform's PsiBuilderImpl | Apache-2.0 | Copyright JetBrains s.r.o. and Kotlin Programming Language contributors | `src/kotlin/` (lexer and parser) |
 | Ruby | RuboCop 1.92.3 | MIT | Copyright (c) 2012-24 Bozhidar Batsov | `src/ruby/`, `src/ruby/cops/` |
