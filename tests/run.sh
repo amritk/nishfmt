@@ -75,7 +75,8 @@ for pkg in "$here"/cases/dart/pkg-*/; do
     label="dart/$pname/$rel"
     if [ -f "$work/pkg/$base.untouched" ]; then
       cp "$work/pkg/$rel" "$work/orig"
-      if (cd "$work/pkg" && "$bin" -i "$rel" 2>&1) | grep -q "skipped" && cmp -s "$work/pkg/$rel" "$work/orig"; then
+      msg=$(cd "$work/pkg" && "$bin" -i "$rel" 2>&1)
+      if printf '%s\n' "$msg" | grep -qF "nishfmt: skipped $rel " && cmp -s "$work/pkg/$rel" "$work/orig"; then
         pass=$((pass + 1))
       else
         echo "FAIL $label: not left untouched"

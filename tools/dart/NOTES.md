@@ -26,6 +26,7 @@ and their corpus refs are byte-identical.
 | `src/dart/shortvisit.ts` | the short style's `SourceVisitor`, `ArgumentListVisitor` and `CallChainVisitor` |
 | `src/dart/short.ts` | the short style's back end: `Chunk`, `ChunkBuilder`, `NestingLevel`, the `Rule` classes, `LineWriter`, `LineSplitter`, `SolveState` and its queue |
 | `src/dart/config.ts` | `ConfigCache`: the package config (`findPackageConfig`, the JSON parse and checks, `packageOf`), `analysis_options.yaml` (a YAML subset, includes, `merge`), cached per directory in module storage |
+| `src/dart/features.ts` | the newest language feature a file's syntax needs (the analyzer's `flags.dart` release versions), checked against its version after the parse |
 | `src/dart/run.ts` | `formatDart`: the project, then the style from the `// @dart=` header or the package's version, `// dart format width=N` |
 
 ## Behaviour
@@ -47,9 +48,11 @@ and their corpus refs are byte-identical.
   cannot follow the project exactly: a package config that fails any of
   package_config's checks, an include that cannot be read or resolved, YAML
   outside the subset `config.ts` reads (anchors, tags, block or multi-line
-  scalars, escapes, tabs, a duplicate key), a `page_width` that is not a
-  positive decimal integer, and any `trailing_commas` but `automate`
-  (`preserve` is not implemented).
+  scalars, escapes, tabs, a duplicate key), a `page_width` int that is not
+  from 1 to 10^8 (a value that is not an int is ignored, as dart_style's
+  `{'page_width': int width}` ignores it), any `trailing_commas` but
+  `automate` (`preserve` is not implemented), and syntax of a language
+  feature the file's version does not enable (below).
 - The project is read once per directory per process (`D` entries in
   `config.ts`'s table) and each package config and options file once per
   process (`C`, `Y`), as `strace -f -e trace=openat` over dart5 shows.
@@ -64,7 +67,7 @@ and their corpus refs are byte-identical.
 - The parser follows the version where the analyzer's parse differs without
   an error: before 3.0 a `case` holds an expression, and before 3.13 `var`
   and `final` are fine on any parameter. Syntax that an older version lacks
-  is still accepted, but such files are ones `dart format` rejects.
+  is parsed, and then the file is left alone (`features.ts`, Version gates).
 - Files that do not parse, or that the analyzer would reject in a way
   `dart format` reports, are left alone; so are files where dart_style would
   throw (a short-style rule index from another line, two solve states it
@@ -97,12 +100,39 @@ to 3.14) and dart5 (a package at 3.8) check them; no side was wrong.
 | patterns, 3.0: before, a `case` holds an expression | analyzer `FeatureSet` | `DtParser.patterns` | expression before 3.0 |
 | primary constructors, 3.13: before, `var` and `final` are fine on any parameter; from 3.13 an error | analyzer | `DtParser.primaryCtors` | allowed before 3.13 |
 
-The other features enabled by version (records and class modifiers 3.0,
-extension types 3.3, digit separators 3.6, null-aware elements 3.8, dot
-shorthands 3.10, private named parameters 3.12, ...) only add syntax: at an
-older version the analyzer reports it as an error, so dart format rejects
-the file. nishfmt does not check those and formats such a file; the corpora
-leave those files out (`failed.txt`).
+The features that only add syntax are errors at an older version, so dart
+format rejects the file; `features.ts` finds the newest one a file uses
+and `formatDart` leaves the file untouched when its version is older. Each
+row was checked against dart format 3.14.1 at the version below and at the
+release, and each has a case in `tests/cases/dart/pkg-gates/`:
+
+| Feature (analyzer name) | From | Syntax nishfmt checks |
+| --- | --- | --- |
+| nonfunction-type-aliases | 2.13 | `typedef T = <not a function type>;` |
+| generic-metadata | 2.14 | `@A<T>()` |
+| triple-shift | 2.14 | `>>>`, `>>>=`, `operator >>>` |
+| constructor-tearoffs | 2.15 | `f<T>` and `List<T>` as expressions, `C.new`, a constructor named `C.new` |
+| enhanced-enums | 2.17 | enum type parameters, `with`, `implements`, members, a `;` after the values, arguments on a value |
+| super-parameters | 2.17 | `super.x` parameters |
+| named-arguments-anywhere | 2.17 | a positional argument after a named one |
+| unnamed-libraries | 2.19 | `library;` |
+| records | 3.0 | record literals and record types |
+| patterns | 3.0 | switch expressions, `case` clauses, pattern declarations, assignments and for parts, every pattern node |
+| class-modifiers, sealed-class | 3.0 | `base`, `interface`, `final`, `sealed`, `mixin class`, `base mixin`, on class declarations and aliases |
+| inline-class | 3.3 | extension types |
+| digit-separators | 3.6 | `_` in a number |
+| null-aware-elements | 3.8 | `?e` elements, `?k: ?v` entries |
+| dot-shorthands | 3.10 | `.name`, `.name()`, `.new()` |
+| primary-constructors | 3.13 | a primary constructor on a class or enum, its `this :` body, `new()`, `class A;`, `enum E;`, `extension type E(int i);` |
+
+Features at 2.12 and before (null safety, extension methods, spreads,
+collection `if`, set literals) are on at every version dart format takes.
+wildcard-variables (3.7) and private-named-parameters (3.12) have no
+syntactic check (`void f(_, _)` and `{this._x}` format at the version
+before). On dart6, the files dart format rejects for a feature their
+version does not enable went from 1265 of 2372 left untouched to 2372 of
+2372 (dart3 1252 to 2019 of 2019, dart4 795 to 1655 of 1655, dart5 1138 to
+1747 of 1747).
 
 ## Corpora
 

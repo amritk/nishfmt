@@ -1,0 +1,2 @@
+@Tag<int>()
+void f() {}

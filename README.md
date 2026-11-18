@@ -55,10 +55,11 @@ rerun every number.
 ## Settings
 
 nishfmt formats each language the way its reference tool does at that
-tool's default settings, and only those. It reads no configuration file:
+tool's default settings, and only those. It reads no style configuration:
 `.clang-format`, `rustfmt.toml`, `.rubocop.yml`, `.swiftformat`,
-`.csharpierrc`, `.editorconfig` and `analysis_options.yaml` are all ignored,
-so a file comes out the same in any repository.
+`.csharpierrc` and `.editorconfig` are all ignored. The one exception is
+Dart, whose language version and page width `dart format` takes from the
+project (below).
 
 - **Java, Kotlin, Swift, Rust:** the tool's defaults: google-java-format's
   Google style, ktfmt's default style, SwiftFormat's default rules, and
@@ -88,7 +89,8 @@ so a file comes out the same in any repository.
   `pubspec.yaml` is not read. The page width comes from `// dart format
   width=N` (tall style), else `formatter: page_width` in the nearest
   `analysis_options.yaml` (with its includes), else 80. Where `dart format`
-  would warn and fall back, or a project file is beyond nishfmt's reader, or
+  would warn and fall back or reject the file (syntax its language version
+  does not enable), or a project file is beyond nishfmt's reader, or
   `trailing_commas: preserve` is set, the file is left untouched.
 - **Ruby:** `rubocop -a`: every cop RuboCop enables by default, with its safe
   corrections only, targeting Ruby 3.3.

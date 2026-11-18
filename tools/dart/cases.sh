@@ -11,8 +11,8 @@
 # so that both tools read the copy's package config and analysis options.
 # With --regen, NAME.expected is `dart format` of the copy, except where a
 # NAME.untouched marker says nishfmt must leave the file alone (there dart
-# format must have warned). The binary may be tools/dev/dart.ts's (which
-# prints the file, or exits 1 when it leaves it alone) or nishfmt.
+# format must have warned or rejected it). The binary is tools/dev/dart.ts's,
+# which prints the file, or exits 1 when it leaves it alone.
 DART=${DART:-dart}
 bin=$(cd "$(dirname "$1")" && pwd)/$(basename "$1")
 dir=$(cd "$(dirname "$0")/../../tests/cases/dart" && pwd)
@@ -45,9 +45,11 @@ for pkg in "$dir"/pkg-*/; do
       if [ "$2" = "--regen" ] && ! grep -q preserve "$work/p/$n.untouched" && ! (cd "$work/p" && "$DART" format -o none "$rel" 2>&1 >/dev/null) | grep -qi "warning\|could not\|error"; then
         echo "dart format did not warn: $pname/$rel"; fail=1
       fi
-      if (cd "$work/p" && "$bin" "$rel" > "$tmp" 2>/dev/null) && ! cmp -s "$tmp" "$work/p/$rel"; then
-        echo "FAIL $pname/$n: formatted, not left untouched"; fail=1
-      else echo "PASS $pname/$n (untouched)"; fi
+      # The dev driver exits 1 when it leaves a file alone; anything else
+      # (formatted, a crash, no binary) fails.
+      (cd "$work/p" && "$bin" "$rel" > /dev/null 2>&1); st=$?
+      if [ "$st" -eq 1 ]; then echo "PASS $pname/$n (untouched)"; else
+        echo "FAIL $pname/$n: exit $st, not left untouched"; fail=1; fi
       continue
     fi
     if [ "$2" = "--regen" ]; then

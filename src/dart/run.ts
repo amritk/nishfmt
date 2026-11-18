@@ -5,6 +5,7 @@
 
 import { Out } from "../core/out";
 import { DtFileConfig, dtConfigFor } from "./config";
+import { DtFeature, dtFeatures } from "./features";
 import { DtAst, dtNodeName, dtSig, N_NAMED_TYPE } from "./ast";
 import { DtParser } from "./parser";
 import { DT_STYLE, DtPiece, dtFixedState, dtKids, dtPin } from "./pieces";
@@ -99,6 +100,15 @@ export const formatDart = (e: DartEngine, path: string, src: u8[], n: i32, out: 
     const u16 = dtUtf16Offsets(src, n);
     dtDumpNode(p.a, toks, u16, unit, 0, out);
     return true;
+  }
+  // Syntax of a feature the version does not enable is an error dart format reports.
+  const feat = new DtFeature();
+  dtFeatures(p.a, toks, unit, feat);
+  if (feat.ver > ver) {
+    if (e.debug) {
+      console.error(`${path}: ${feat.name} needs language ${toI32(feat.ver / 1000)}.${feat.ver % 1000}`);
+    }
+    return false;
   }
   // The language version picks the style: the short style up to 3.6.
   if (ver <= 3006) {

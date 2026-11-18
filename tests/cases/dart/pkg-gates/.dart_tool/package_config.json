@@ -1,0 +1,121 @@
+{
+  "configVersion": 2,
+  "packages": [
+    {
+      "name": "v2_12",
+      "rootUri": "../v2_12/",
+      "packageUri": "lib/",
+      "languageVersion": "2.12"
+    },
+    {
+      "name": "v2_13",
+      "rootUri": "../v2_13/",
+      "packageUri": "lib/",
+      "languageVersion": "2.13"
+    },
+    {
+      "name": "v2_14",
+      "rootUri": "../v2_14/",
+      "packageUri": "lib/",
+      "languageVersion": "2.14"
+    },
+    {
+      "name": "v2_15",
+      "rootUri": "../v2_15/",
+      "packageUri": "lib/",
+      "languageVersion": "2.15"
+    },
+    {
+      "name": "v2_16",
+      "rootUri": "../v2_16/",
+      "packageUri": "lib/",
+      "languageVersion": "2.16"
+    },
+    {
+      "name": "v2_17",
+      "rootUri": "../v2_17/",
+      "packageUri": "lib/",
+      "languageVersion": "2.17"
+    },
+    {
+      "name": "v2_18",
+      "rootUri": "../v2_18/",
+      "packageUri": "lib/",
+      "languageVersion": "2.18"
+    },
+    {
+      "name": "v2_19",
+      "rootUri": "../v2_19/",
+      "packageUri": "lib/",
+      "languageVersion": "2.19"
+    },
+    {
+      "name": "v3_0",
+      "rootUri": "../v3_0/",
+      "packageUri": "lib/",
+      "languageVersion": "3.0"
+    },
+    {
+      "name": "v3_2",
+      "rootUri": "../v3_2/",
+      "packageUri": "lib/",
+      "languageVersion": "3.2"
+    },
+    {
+      "name": "v3_3",
+      "rootUri": "../v3_3/",
+      "packageUri": "lib/",
+      "languageVersion": "3.3"
+    },
+    {
+      "name": "v3_5",
+      "rootUri": "../v3_5/",
+      "packageUri": "lib/",
+      "languageVersion": "3.5"
+    },
+    {
+      "name": "v3_6",
+      "rootUri": "../v3_6/",
+      "packageUri": "lib/",
+      "languageVersion": "3.6"
+    },
+    {
+      "name": "v3_7",
+      "rootUri": "../v3_7/",
+      "packageUri": "lib/",
+      "languageVersion": "3.7"
+    },
+    {
+      "name": "v3_8",
+      "rootUri": "../v3_8/",
+      "packageUri": "lib/",
+      "languageVersion": "3.8"
+    },
+    {
+      "name": "v3_9",
+      "rootUri": "../v3_9/",
+      "packageUri": "lib/",
+      "languageVersion": "3.9"
+    },
+    {
+      "name": "v3_10",
+      "rootUri": "../v3_10/",
+      "packageUri": "lib/",
+      "languageVersion": "3.10"
+    },
+    {
+      "name": "v3_12",
+      "rootUri": "../v3_12/",
+      "packageUri": "lib/",
+      "languageVersion": "3.12"
+    },
+    {
+      "name": "v3_13",
+      "rootUri": "../v3_13/",
+      "packageUri": "lib/",
+      "languageVersion": "3.13"
+    }
+  ],
+  "generator": "pub",
+  "generatorVersion": "3.14.1"
+}

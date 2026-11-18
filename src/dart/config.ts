@@ -240,13 +240,13 @@ const dtIsFile = (p: string): boolean => {
 
 // Values: what JSON and YAML read into, and what analysis options merge.
 
-const V_NULL: i32 = 0;
-const V_BOOL: i32 = 1;
-const V_INT: i32 = 2;
-const V_FLOAT: i32 = 3;
-const V_STR: i32 = 4;
-const V_LIST: i32 = 5;
-const V_MAP: i32 = 6;
+const DTV_NULL: i32 = 0;
+const DTV_BOOL: i32 = 1;
+const DTV_INT: i32 = 2;
+const DTV_FLOAT: i32 = 3;
+const DTV_STR: i32 = 4;
+const DTV_LIST: i32 = 5;
+const DTV_MAP: i32 = 6;
 
 class DtVal {
   kind: i32;
@@ -263,7 +263,7 @@ class DtVal {
 }
 
 const dtValStr = (s: string): DtVal => {
-  const v = new DtVal(V_STR);
+  const v = new DtVal(DTV_STR);
   v.s = s;
   return v;
 };
@@ -358,7 +358,7 @@ class DtJson {
 
   fail(): DtVal {
     this.failed = true;
-    return new DtVal(V_NULL);
+    return new DtVal(DTV_NULL);
   }
 
   value(depth: i32): DtVal {
@@ -368,7 +368,7 @@ class DtJson {
     this.ws();
     const c = this.at(this.p);
     if (c === 123) {
-      const m = new DtVal(V_MAP);
+      const m = new DtVal(DTV_MAP);
       this.p = this.p + 1;
       this.ws();
       if (this.at(this.p) === 125) {
@@ -405,7 +405,7 @@ class DtJson {
       return m;
     }
     if (c === 91) {
-      const l = new DtVal(V_LIST);
+      const l = new DtVal(DTV_LIST);
       this.p = this.p + 1;
       this.ws();
       if (this.at(this.p) === 93) {
@@ -430,15 +430,15 @@ class DtJson {
       return dtValStr(this.str());
     }
     if (this.word("true")) {
-      const v = new DtVal(V_BOOL);
+      const v = new DtVal(DTV_BOOL);
       v.n = 1;
       return v;
     }
     if (this.word("false")) {
-      return new DtVal(V_BOOL);
+      return new DtVal(DTV_BOOL);
     }
     if (this.word("null")) {
-      return new DtVal(V_NULL);
+      return new DtVal(DTV_NULL);
     }
     return this.num();
   }
@@ -500,9 +500,9 @@ class DtJson {
       }
     }
     if (!isInt) {
-      return new DtVal(V_FLOAT);
+      return new DtVal(DTV_FLOAT);
     }
-    const v = new DtVal(V_INT);
+    const v = new DtVal(DTV_INT);
     v.n = -1;
     if (!neg && de - ds <= 9) {
       let x = 0;
@@ -624,7 +624,7 @@ class DtYaml {
 
   fail(): DtVal {
     this.failed = true;
-    return new DtVal(V_NULL);
+    return new DtVal(DTV_NULL);
   }
 
   /** Splits the lines; false when a byte rules the file out. */
@@ -710,7 +710,7 @@ class DtYaml {
       k = this.next(k + 1);
     }
     if (k < 0) {
-      return new DtVal(V_NULL);
+      return new DtVal(DTV_NULL);
     }
     const v = this.block(k, this.ls[k] + this.ind[k], -1);
     if (!this.failed && this.next(this.cur) >= 0) {
@@ -741,7 +741,7 @@ class DtYaml {
   }
 
   seq(line: i32, col: i32): DtVal {
-    const l = new DtVal(V_LIST);
+    const l = new DtVal(DTV_LIST);
     let k = line;
     while (!this.failed) {
       const p = this.ls[k] + col;
@@ -755,7 +755,7 @@ class DtYaml {
         if (k2 >= 0 && this.ind[k2] > col) {
           l.items.push(this.block(k2, this.ls[k2] + this.ind[k2], col));
         } else {
-          l.items.push(new DtVal(V_NULL));
+          l.items.push(new DtVal(DTV_NULL));
         }
       } else {
         l.items.push(this.block(k, r, col));
@@ -778,7 +778,7 @@ class DtYaml {
   }
 
   map(line: i32, col: i32): DtVal {
-    const m = new DtVal(V_MAP);
+    const m = new DtVal(DTV_MAP);
     let k = line;
     let p = this.ls[k] + col;
     while (!this.failed) {
@@ -793,7 +793,7 @@ class DtYaml {
       while (r < this.le[k] && this.at(r) === 32) {
         r++;
       }
-      let v = new DtVal(V_NULL);
+      let v = new DtVal(DTV_NULL);
       if (r === this.le[k] || this.at(r) === 35) {
         this.cur = k + 1;
         const k2 = this.next(this.cur);
@@ -906,7 +906,7 @@ class DtYaml {
       return "";
     }
     const v = dtYamlPlain(String.fromBytes(this.b, p, j));
-    if (v.kind !== V_STR) {
+    if (v.kind !== DTV_STR) {
       this.failed = true;
       return "";
     }
@@ -1038,7 +1038,7 @@ class DtYaml {
     }
     const isMap = this.at(p) === 123;
     const close = isMap ? 125 : 93;
-    const v = new DtVal(isMap ? V_MAP : V_LIST);
+    const v = new DtVal(isMap ? DTV_MAP : DTV_LIST);
     let i = this.sp(p + 1, e);
     if (this.at(i) === close) {
       this.pos = i + 1;
@@ -1048,7 +1048,7 @@ class DtYaml {
       let key = "";
       if (isMap) {
         const kv = this.flowItem(i, e, depth);
-        if (this.failed || kv.kind !== V_STR || dtValHas(v, kv.s)) {
+        if (this.failed || kv.kind !== DTV_STR || dtValHas(v, kv.s)) {
           return this.fail();
         }
         key = kv.s;
@@ -1102,15 +1102,15 @@ class DtYaml {
 const dtYamlPlain = (s: string): DtVal => {
   const n = toI32(s.length);
   if (s === "~" || s === "null" || s === "Null" || s === "NULL") {
-    return new DtVal(V_NULL);
+    return new DtVal(DTV_NULL);
   }
   if (s === "true" || s === "True" || s === "TRUE") {
-    const v = new DtVal(V_BOOL);
+    const v = new DtVal(DTV_BOOL);
     v.n = 1;
     return v;
   }
   if (s === "false" || s === "False" || s === "FALSE") {
-    return new DtVal(V_BOOL);
+    return new DtVal(DTV_BOOL);
   }
   const c0 = s.charCodeAt(0);
   const c1 = n > 1 ? s.charCodeAt(1) : -1;
@@ -1118,19 +1118,37 @@ const dtYamlPlain = (s: string): DtVal => {
   const sign0 = c0 === 43 || c0 === 45;
   const digit1 = c1 >= 48 && c1 <= 57;
   if (digit0 || (sign0 && digit1)) {
-    // int.tryParse(radix: 10), else double.tryParse; hex and octal are not taken.
-    if (c0 === 48 && (c1 === 120 || c1 === 111)) {
-      return new DtVal(-1);
+    if (c0 === 48 && c1 === 120) {
+      // int.tryParse("0x..."), else a string.
+      return dtYamlRadix(s, 2, 16);
     }
+    if (c0 === 48 && c1 === 111) {
+      // int.tryParse(rest, radix: 8), which would also take a sign: not followed.
+      const d = n > 2 ? s.charCodeAt(2) : -1;
+      if (d === 43 || d === 45) {
+        return new DtVal(-1);
+      }
+      return dtYamlRadix(s, 2, 8);
+    }
+    // int.tryParse(radix: 10), else double.tryParse, else a string.
     let i = sign0 ? 1 : 0;
+    while (i < n - 1 && s.charCodeAt(i) === 48) {
+      i++;
+    }
     const ds = i;
     while (i < n && s.charCodeAt(i) >= 48 && s.charCodeAt(i) <= 57) {
       i++;
     }
     if (i === n) {
-      const v = new DtVal(V_INT);
+      const digits = n - ds;
+      const max = c0 === 45 ? "9223372036854775808" : "9223372036854775807";
+      if (digits > 19 || (digits === 19 && dtDigitsAbove(s, ds, max))) {
+        // Past a 64-bit int: double.tryParse takes it.
+        return new DtVal(DTV_FLOAT);
+      }
+      const v = new DtVal(DTV_INT);
       v.n = -1;
-      if (c0 !== 45 && n - ds <= 9) {
+      if (c0 !== 45 && digits <= 9) {
         let x = 0;
         for (let j = ds; j < n; j++) {
           x = x * 10 + s.charCodeAt(j) - 48;
@@ -1139,20 +1157,74 @@ const dtYamlPlain = (s: string): DtVal => {
       }
       return v;
     }
-    return dtYamlFloat(s) ? new DtVal(V_FLOAT) : new DtVal(-1);
+    return dtYamlFloat(s) ? new DtVal(DTV_FLOAT) : dtValStr(s);
   }
   if ((c0 === 46 && digit1) || (sign0 && c1 === 46)) {
     if (s === "+.inf" || s === "+.Inf" || s === "+.INF" || s === "-.inf" || s === "-.Inf" || s === "-.INF") {
-      return new DtVal(V_FLOAT);
+      return new DtVal(DTV_FLOAT);
     }
-    return dtYamlFloat(s) ? new DtVal(V_FLOAT) : new DtVal(-1);
+    return dtYamlFloat(s) ? new DtVal(DTV_FLOAT) : dtValStr(s);
   }
   if (n === 4 && c0 === 46) {
     if (s === ".inf" || s === ".Inf" || s === ".INF" || s === ".nan" || s === ".NaN" || s === ".NAN") {
-      return new DtVal(V_FLOAT);
+      return new DtVal(DTV_FLOAT);
     }
   }
   return dtValStr(s);
+};
+
+/** Whether the 19 digits of `s` from `ds` are above `max`, 19 digits too. */
+const dtDigitsAbove = (s: string, ds: i32, max: string): boolean => {
+  for (let i = 0; i < 19; i++) {
+    const a = s.charCodeAt(ds + i);
+    const b = max.charCodeAt(i);
+    if (a !== b) {
+      return a > b;
+    }
+  }
+  return false;
+};
+
+/** int.tryParse of the digits after `s`'s prefix in `radix` (16 or 8): an int, a string when they are not digits, unsure past 64 bits. */
+const dtYamlRadix = (s: string, from: i32, radix: i32): DtVal => {
+  const n = toI32(s.length);
+  if (n === from) {
+    return dtValStr(s);
+  }
+  let x = 0;
+  let big = false;
+  let i = from;
+  while (i < n - 1 && s.charCodeAt(i) === 48) {
+    i++;
+  }
+  const ds = i;
+  for (let j = from; j < n; j++) {
+    const c = s.charCodeAt(j);
+    let d = -1;
+    if (c >= 48 && c <= 57) {
+      d = c - 48;
+    } else if (radix === 16 && c >= 97 && c <= 102) {
+      d = c - 87;
+    } else if (radix === 16 && c >= 65 && c <= 70) {
+      d = c - 55;
+    }
+    if (d < 0 || d >= radix) {
+      return dtValStr(s);
+    }
+    if (j >= ds && !big) {
+      if (x >= 100000000) {
+        big = true;
+      } else {
+        x = x * radix + d;
+      }
+    }
+  }
+  if ((radix === 16 && n - ds > 15) || (radix === 8 && n - ds > 20)) {
+    return new DtVal(-1);
+  }
+  const v = new DtVal(DTV_INT);
+  v.n = big ? -1 : x;
+  return v;
 };
 
 /** `[+-]? (d+ (. d*)? | . d+) ([eE] [+-]? d+)?`, which double.tryParse takes. */
@@ -1207,10 +1279,10 @@ const dtAllKind = (v: DtVal, kind: i32): boolean => {
 };
 
 const dtPromote = (l: DtVal): DtVal => {
-  const m = new DtVal(V_MAP);
+  const m = new DtVal(DTV_MAP);
   for (const x of l.items) {
     if (!dtValHas(m, x.s)) {
-      const t = new DtVal(V_BOOL);
+      const t = new DtVal(DTV_BOOL);
       t.n = 1;
       m.keys.push(x.s);
       m.items.push(t);
@@ -1220,14 +1292,14 @@ const dtPromote = (l: DtVal): DtVal => {
 };
 
 const dtMerge = (d: DtVal, o: DtVal): DtVal => {
-  if (d.kind === V_LIST && dtAllKind(d, V_STR) && o.kind === V_MAP && dtAllKind(o, V_BOOL)) {
+  if (d.kind === DTV_LIST && dtAllKind(d, DTV_STR) && o.kind === DTV_MAP && dtAllKind(o, DTV_BOOL)) {
     return dtMerge(dtPromote(d), o);
   }
-  if (d.kind === V_MAP && dtAllKind(d, V_BOOL) && o.kind === V_LIST && dtAllKind(o, V_STR)) {
+  if (d.kind === DTV_MAP && dtAllKind(d, DTV_BOOL) && o.kind === DTV_LIST && dtAllKind(o, DTV_STR)) {
     return dtMerge(d, dtPromote(o));
   }
-  if (d.kind === V_MAP && o.kind === V_MAP) {
-    const m = new DtVal(V_MAP);
+  if (d.kind === DTV_MAP && o.kind === DTV_MAP) {
+    const m = new DtVal(DTV_MAP);
     for (let i = 0; i < toI32(d.keys.length); i++) {
       m.keys.push(d.keys[i]);
       m.items.push(d.items[i]);
@@ -1249,9 +1321,9 @@ const dtMerge = (d: DtVal, o: DtVal): DtVal => {
     }
     return m;
   }
-  if (d.kind === V_LIST && o.kind === V_LIST) {
+  if (d.kind === DTV_LIST && o.kind === DTV_LIST) {
     // Only a list's kind and whether it is all strings reach the formatter.
-    const l = new DtVal(V_LIST);
+    const l = new DtVal(DTV_LIST);
     for (const x of d.items) {
       l.items.push(x);
     }
@@ -1260,7 +1332,7 @@ const dtMerge = (d: DtVal, o: DtVal): DtVal => {
     }
     return l;
   }
-  if (o.kind === V_NULL) {
+  if (o.kind === DTV_NULL) {
     return d;
   }
   return o;
@@ -1388,29 +1460,29 @@ const dtParsePackageConfig = (file: string, b: u8[], n: i32): DtPkgs | null => {
   const j = new DtJson(b, n);
   const top = j.value(0);
   j.ws();
-  if (j.failed || j.p !== n || top.kind !== V_MAP) {
+  if (j.failed || j.p !== n || top.kind !== DTV_MAP) {
     return null;
   }
   const ver = dtValGet(top, "configVersion");
   const list = dtValGet(top, "packages");
-  if (ver === null || ver.kind !== V_INT || ver.n !== 2 || list === null || list.kind !== V_LIST) {
+  if (ver === null || ver.kind !== DTV_INT || ver.n !== 2 || list === null || list.kind !== DTV_LIST) {
     return null;
   }
   const base = dtDirname(file);
   const baseDir = dtSlash(base);
   const ps = new DtPkgs();
   for (const e of list.items) {
-    if (e.kind !== V_MAP) {
+    if (e.kind !== DTV_MAP) {
       return null;
     }
     const name = dtValGet(e, "name");
     const root = dtValGet(e, "rootUri");
     const pu = dtValGet(e, "packageUri");
     const lv = dtValGet(e, "languageVersion");
-    if (name === null || name.kind !== V_STR || root === null || root.kind !== V_STR) {
+    if (name === null || name.kind !== DTV_STR || root === null || root.kind !== DTV_STR) {
       return null;
     }
-    if ((pu !== null && pu.kind !== V_STR) || (lv !== null && lv.kind !== V_STR)) {
+    if ((pu !== null && pu.kind !== DTV_STR) || (lv !== null && lv.kind !== DTV_STR)) {
       return null;
     }
     if (!dtPackageName(name.s)) {
@@ -1579,7 +1651,7 @@ class DtOptions {
 const dtOptFail = (o: DtOptions, why: string): DtVal => {
   o.failed = true;
   o.why = why;
-  return new DtVal(V_MAP);
+  return new DtVal(DTV_MAP);
 };
 
 /** readAnalysisOptions: the options at `path` with their includes merged in. */
@@ -1601,13 +1673,13 @@ const dtReadOptions = (o: DtOptions, path: string, depth: i32): DtVal => {
   if (y.failed) {
     return dtOptFail(o, `${path}: YAML this reader does not take`);
   }
-  if (doc.kind !== V_MAP) {
-    return new DtVal(V_MAP);
+  if (doc.kind !== DTV_MAP) {
+    return new DtVal(DTV_MAP);
   }
-  let options = new DtVal(V_MAP);
+  let options = new DtVal(DTV_MAP);
   let inc: DtVal | null = null;
   for (let i = 0; i < toI32(doc.keys.length); i++) {
-    if (doc.keys[i] === "include" && doc.items[i].kind !== V_NULL) {
+    if (doc.keys[i] === "include" && doc.items[i].kind !== DTV_NULL) {
       inc = doc.items[i];
       continue;
     }
@@ -1618,16 +1690,16 @@ const dtReadOptions = (o: DtOptions, path: string, depth: i32): DtVal => {
     return doc;
   }
   const dir = dtDirname(dtNormalize(path));
-  if (inc.kind === V_STR) {
+  if (inc.kind === DTV_STR) {
     const io = dtInclude(o, dir, path, inc.s, depth);
     if (o.failed) {
       return io;
     }
     options = dtMerge(io, options);
-  } else if (inc.kind === V_LIST) {
-    let merged = new DtVal(V_MAP);
+  } else if (inc.kind === DTV_LIST) {
+    let merged = new DtVal(DTV_MAP);
     for (const x of inc.items) {
-      if (x.kind !== V_STR) {
+      if (x.kind !== DTV_STR) {
         return dtOptFail(o, `${path}: an include that is not a string`);
       }
       const io = dtInclude(o, dir, path, x.s, depth);
@@ -1785,18 +1857,20 @@ const dtOptionsFor = (f: string, cfgKey: string, ps: DtPkgs | null, r: DtFileCon
   let ok = !o.failed;
   r.why = o.why;
   const fm: DtVal | null = ok ? dtValGet(opts, "formatter") : null;
-  if (fm !== null && fm.kind === V_MAP) {
+  if (fm !== null && fm.kind === DTV_MAP) {
     const w = dtValGet(fm, "page_width");
-    if (w !== null) {
-      if (w.kind === V_INT && w.n > 0 && w.n <= 100000000) {
+    // dart_style takes `{'page_width': int width}` and ignores any other value.
+    if (w !== null && w.kind === DTV_INT) {
+      if (w.n > 0 && w.n <= 100000000) {
         r.pageWidth = w.n;
       } else {
+        // 0, a negative width or one past 10^8: not followed.
         ok = false;
-        r.why = `${f}: a page_width that is not a positive integer`;
+        r.why = `${f}: a page_width int that is not from 1 to 10^8`;
       }
     }
     const tc = dtValGet(fm, "trailing_commas");
-    if (tc !== null && !(tc.kind === V_STR && tc.s === "automate")) {
+    if (tc !== null && !(tc.kind === DTV_STR && tc.s === "automate")) {
       ok = false;
       r.why = `${f}: trailing_commas other than automate`;
     }
