@@ -101,7 +101,7 @@ class Stats {
 }
 
 /** The version `--version` prints; release-please bumps it. */
-const NISHFMT_VERSION: string = "0.0.0"; // x-release-please-version
+const NISHFMT_VERSION: string = "0.1.0"; // x-release-please-version
 
 const ms = (x: i64): i64 => x / toI64(1000000);
 

@@ -2,7 +2,16 @@
   "$schema": "https://biomejs.dev/schemas/2.6.8/schema.json",
   "files": {
     "maxSize": 4194304,
-    "includes": ["**", "!**/.nish", "!**/dist", "!**/build", "!**/node_modules", "!**/tests/cases", "!**/bench/work"]
+    "includes": [
+      "**",
+      "!**/.nish",
+      "!**/dist",
+      "!**/build",
+      "!**/node_modules",
+      "!**/tests/cases",
+      "!**/bench/work",
+      "!.github/.release-please-manifest.json"
+    ]
   },
   "assist": { "actions": { "source": { "organizeImports": "off" } } },
   "linter": {
