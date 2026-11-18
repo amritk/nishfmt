@@ -169,6 +169,7 @@ export class Formatter {
   npass: i32 = 0; // passes of the current file
   curPass: i32 = 0;
   seenBefore: i32[]; // per source token: 1 when a pass before the current one saw it
+  compoundReq: i32[]; // per token: 1 on a compound requirement's `{` (the parser's compoundReqs)
   useful: i32[]; // per pass: 1 when it sees a token no earlier pass saw
   seenBy: i32[];
   map: i32[]; // pass token -> source token
@@ -319,6 +320,7 @@ export class Formatter {
     this.ppCnt = new Array<i32>(0);
     this.useful = new Array<i32>(0);
     this.seenBefore = new Array<i32>(0);
+    this.compoundReq = new Array<i32>(0);
     this.bcLa = new Array<i32>(0);
     this.bcLe = new Array<i32>(0);
     this.bcCa = new Array<i32>(0);
@@ -1294,12 +1296,17 @@ export class Formatter {
         const af = d.lFirst[a];
         const emptyBody = d.kind[af] === P_RBRACE && d.lOpen[a] === l;
         const lineIsBlockOnly = lineStart === last;
+        // clang-format 23's tryMergeSimpleBlock: a `{` that starts a statement
+        // (TT_BlockLBrace) is never merged under AllowShortBlocksOnASingleLine
+        // Never, neither with its body nor with an empty `}`.
+        const blockLBrace = lineIsBlockOnly && tt === TT_UNKNOWN && this.compoundReq[last] === 0;
         // A block opened on a `case`/`default:` line is never merged.
         const caseLine =
           d.kind[lineStart] === KW_CASE ||
           (d.kind[lineStart] === KW_DEFAULT && d.nxt[lineStart] >= 0 && d.kind[d.nxt[lineStart]] === P_COLON);
         if (
           !isControl &&
+          !blockLBrace &&
           (!lineIsBlockOnly || !this.braceAfterLabelOrControl(l, prevL)) &&
           !caseLine &&
           emptyBody &&
@@ -1364,6 +1371,7 @@ export class Formatter {
         const blockLike = tt === TT_UNKNOWN || (tt === TT_CONTROL_STATEMENT_LBRACE && fk === KW_SWITCH);
         if (
           blockLike &&
+          !blockLBrace &&
           !ctrl &&
           !emptyBody &&
           !isFunction &&
@@ -1500,7 +1508,19 @@ export class Formatter {
       const nf = next >= 0 ? d.lFirst[next] : -1;
       if (next >= 0 && d.nl[nf] < 2 && onlyComments && this.offMarker(f) !== 1 && d.col[nf] === d.col[f]) {
         const pp = d.lType[next] === LT_PREPROCESSOR || d.lType[next] === LT_IMPORT;
-        d.lLevel[l] = pp ? 0 : d.lLevel[next];
+        const iw = d.opts.indentWidth;
+        if (!this.seenTok(f) && this.finalizedFirst(nf) && iw > 0 && d.col[f] % iw === 0) {
+          // clang-format 23: aligned with a line an earlier pass formatted
+          // (its first token finalized), the comment keeps its column. (A
+          // comment an earlier pass formatted keeps that pass's output.)
+          if (head !== d.topHead) {
+            // (A child line's level is relative to its block: not ported.)
+            d.failed = true;
+          }
+          d.lLevel[l] = d.col[f] / iw;
+        } else {
+          d.lLevel[l] = pp ? 0 : d.lLevel[next];
+        }
       } else {
         next = d.kind[f] !== P_RBRACE ? l : -1;
       }
@@ -2327,6 +2347,13 @@ export class Formatter {
     p.parseFile();
     if (d.failed) {
       return PASS_FAIL;
+    }
+    if (toI32(this.compoundReq.length) < d.ntok) {
+      this.compoundReq = new Array<i32>(d.ntok + 64);
+    }
+    this.compoundReq.fill(0);
+    for (const t of p.compoundReqs) {
+      this.compoundReq[t] = 1;
     }
     // Objective-C beyond declarations (literals, @implementation, method
     // bodies): the file is left alone.
@@ -4200,6 +4227,22 @@ export class Formatter {
         this.escCol[pp] = end;
       }
     }
+  }
+
+  /**
+   * Whether line-first token `t` is finalized in clang-format: an earlier
+   * #if pass formatted its line (markFinalized skips a conditional
+   * directive's `#`, which each pass formats again).
+   */
+  finalizedFirst(t: i32): boolean {
+    const d = this.d;
+    if (
+      d.kind[t] === P_HASH &&
+      (d.ppKind[t] === PP_IF || d.ppKind[t] === PP_ELIF || d.ppKind[t] === PP_ELSE || d.ppKind[t] === PP_ENDIF)
+    ) {
+      return false;
+    }
+    return this.seenTok(t);
   }
 
   /** Whether pass token `t` was seen by an earlier #if pass. */

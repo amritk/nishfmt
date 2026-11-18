@@ -146,6 +146,7 @@ export class Parser {
   macroBodyStart: i32 = 0; // the first line of the macro body being parsed
   inUnbraced: boolean = false; // parsing an unbraced control body's statement
   inRequiresExpr: boolean = false; // parsing a requires expression's body
+  compoundReqs: i32[]; // the `{` of each compound requirement (clang-format's TT_CompoundRequirementLBrace)
   objcDepth: i32 = 0; // inside an Objective-C @interface/@protocol body (parseObjCUntilAtEnd)
   // Per line list (index: its parent `{` + 1, 0 for the top): the last line
   // that is no directive, and the line before it in the list (-1: none).
@@ -167,6 +168,7 @@ export class Parser {
     this.d = d;
     this.codeTail = new Array<i32>(0);
     this.codeTailPrev = new Array<i32>(0);
+    this.compoundReqs = new Array<i32>(0);
   }
 
   cur(): i32 {
@@ -770,7 +772,11 @@ export class Parser {
           this.parseStatement();
           return;
         }
-        // A block statement.
+        // A block statement (clang-format 23's TT_BlockLBrace), or in a
+        // requires expression a compound requirement.
+        if (this.inRequiresExpr) {
+          this.compoundReqs.push(this.pos);
+        }
         this.parseBlock(1, this.mustDecl, TT_UNKNOWN);
         // A requires expression's compound requirement: `{ e } noexcept -> C<T>;`.
         if (this.cur() === KW_NOEXCEPT) {
