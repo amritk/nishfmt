@@ -181,13 +181,17 @@ that parses past them must still succeed.
 
 Expressions follow term3's modes. After an expression's leading type
 annotations the type is read in EXPR mode, so `@A Outer.@B Inner::new` is
-"<identifier> expected" (`exprModeType`), and on an array type (`@A
+"<identifier> expected" (`hasDotAnnotation`), and on an array type (`@A
 String[]::new`) gjf fails ("did not generate token"); `@Foo
 java.lang.String::length` fails the same way and stays skipped. Type
 arguments before `this(...)` or `super(...)` make an explicit constructor
-call, and before anything else an illegal start. After an identifier only
-dims take annotations, `String @A []::new`, and bracketsSuffix rejects an
-annotated dim on a class literal. `isUnboundMemberRef` decides whether `<`
+call, and before anything else an illegal start; after `o.` they take
+`super` but not `this`. Type arguments read in EXPR mode (a call's, a method
+reference's, a creator's) are types, never a wildcard or `<>`
+(`exprTypeArgs`), and a name in a type or an expression is never `_`
+(`refIdent`), which javac allows only in declarations and patterns. After
+an identifier only dims take annotations, `String @A []::new`, and
+bracketsSuffix rejects an annotated dim on a class literal. `isUnboundMemberRef` decides whether `<`
 after a name starts a method reference's type: its type arguments must close
 before `.`, `[` or `::`, so `List<String> @A []::new` is a less-than. And
 blockStatement has no case for `static`: a local `static class` or `static

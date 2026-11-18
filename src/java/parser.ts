@@ -1340,7 +1340,7 @@ export class JParser {
       return t.node(N_IDENTIFIER, start);
     }
     let e = t.node(N_IDENTIFIER, start);
-    t.name[e] = this.ident();
+    t.name[e] = this.refIdent();
     this.finish(e);
     if (this.is("<")) {
       e = this.typeArgsOn(e, start);
@@ -1359,7 +1359,7 @@ export class JParser {
         const annos = t.list(am);
         const s = t.node(N_MEMBER_SELECT, start);
         t.a[s] = e;
-        t.name[s] = this.ident();
+        t.name[s] = this.refIdent();
         this.finish(s);
         const at = t.node(N_ANNOTATED_TYPE, start);
         t.a[at] = annos;
@@ -1375,7 +1375,7 @@ export class JParser {
         this.next();
         const s = t.node(N_MEMBER_SELECT, start);
         t.a[s] = e;
-        t.name[s] = this.ident();
+        t.name[s] = this.refIdent();
         e = this.finish(s);
       } else {
         break;
@@ -1410,6 +1410,39 @@ export class JParser {
     }
     this.expect(">");
     return t.list(m);
+  }
+
+  /**
+   * Type arguments read in javac's EXPR mode (a call's, a method reference's,
+   * a creator's): typeArguments takes each with parseType, so a wildcard and
+   * `<>` are "illegal start of type". Nested type arguments are TYPE mode.
+   */
+  private exprTypeArgs(): i32 {
+    const t = this.t;
+    const l = this.typeArgs();
+    const n = t.len(l);
+    if (n === 0) {
+      this.rejected = true;
+    }
+    for (let i = 0; i < n; i++) {
+      if (t.kind[t.at(l, i)] === N_WILDCARD) {
+        this.rejected = true;
+      }
+    }
+    return l;
+  }
+
+  /**
+   * javac's ident() where it names no variable (in a type or an expression):
+   * `_` is "as of release 21, the underscore keyword '_' is only allowed to
+   * declare unnamed patterns, local variables, exception parameters or lambda
+   * parameters".
+   */
+  private refIdent(): i32 {
+    if (this.is("_")) {
+      this.rejected = true;
+    }
+    return this.ident();
   }
 
   /** `[]` dims (with annotations) after a type. */
@@ -2549,12 +2582,16 @@ export class JParser {
     while (!this.err) {
       if (this.is(".")) {
         if (this.isAt(1, "<")) {
-          // .<T>method(args)
+          // .<T>method(args). javac's term3 takes `super` here but not
+          // `this` ("illegal start of expression").
           this.next();
-          const targs = this.typeArgs();
+          const targs = this.exprTypeArgs();
+          if (this.is("this")) {
+            this.rejected = true;
+          }
           const s = t.node(N_MEMBER_SELECT, t.start[e]);
           t.a[s] = e;
-          t.name[s] = this.ident();
+          t.name[s] = this.refIdent();
           this.finish(s);
           const mi = t.node(N_METHOD_INVOCATION, t.start[e]);
           t.a[mi] = targs;
@@ -2576,14 +2613,13 @@ export class JParser {
         this.next();
         const s = t.node(N_MEMBER_SELECT, t.start[e]);
         t.a[s] = e;
-        if (this.kindAt(0) === JK_IDENT) {
-          t.name[s] = this.tokAt(0);
-          this.next();
-        } else {
-          this.fail();
-        }
+        t.name[s] = this.refIdent();
         this.finish(s);
         if (this.is("(")) {
+          // `o.this(...)`: javac's term3 ends at `o.this`, "not a statement".
+          if (this.inp.is(t.name[s], "this")) {
+            this.rejected = true;
+          }
           const mi = t.node(N_METHOD_INVOCATION, t.start[e]);
           t.a[mi] = t.empty();
           t.b[mi] = s;
@@ -2618,13 +2654,13 @@ export class JParser {
     t.a[n] = qual;
     this.skip(2);
     if (this.is("<")) {
-      t.b[n] = this.typeArgs();
+      t.b[n] = this.exprTypeArgs();
     }
     if (this.is("new")) {
       t.flags[n] = FL_NEW_REF;
       this.next();
     } else {
-      t.name[n] = this.ident();
+      t.name[n] = this.refIdent();
     }
     return this.finish(n);
   }
@@ -2696,7 +2732,7 @@ export class JParser {
       // javac's term3 reads typeArgumentsOpt(EXPR) first, and only `this` and
       // `super` then take them, with arguments: `<String>this(1)`,
       // `<String>super()`. Anything else is an illegal start of expression.
-      const targs = this.typeArgs();
+      const targs = this.exprTypeArgs();
       if ((!this.is("this") && !this.is("super")) || !this.isAt(1, "(")) {
         this.fail();
         return t.node(N_IDENTIFIER, start);
@@ -2746,6 +2782,10 @@ export class JParser {
       return ty;
     }
     if (k === JK_IDENT) {
+      // term3's UNDERSCORE case: javac's ident() rejects `_` here, whatever follows.
+      if (this.is("_")) {
+        this.rejected = true;
+      }
       // Generic type before `::`: `List<String>::new`. As in javac's term3, no
       // restricted-name check on a type in expression position (see below).
       if (this.isAt(1, "<") && this.isUnboundMemberRef(1)) {
@@ -2770,8 +2810,7 @@ export class JParser {
       }
       // Qualified names with array types: a.b.C[].class
       const id = t.node(N_IDENTIFIER, start);
-      t.name[id] = this.tokAt(0);
-      this.next();
+      t.name[id] = this.ident();
       this.finish(id);
       if (this.is("(")) {
         // javac's isInvalidUnqualifiedMethodIdentifier: "invalid use of a
@@ -2938,7 +2977,7 @@ export class JParser {
         this.next();
         const s = t.node(N_MEMBER_SELECT, t.start[id]);
         t.a[s] = e;
-        t.name[s] = this.ident();
+        t.name[s] = this.refIdent();
         e = this.finish(s);
       }
       const ty = this.bracketsOpt(e);
@@ -2953,7 +2992,7 @@ export class JParser {
         this.next();
         const s = t.node(N_MEMBER_SELECT, t.start[id]);
         t.a[s] = e;
-        t.name[s] = this.ident();
+        t.name[s] = this.refIdent();
         e = this.finish(s);
       }
       const pt = t.node(N_PARAMETERIZED_TYPE, t.start[id]);
@@ -2975,7 +3014,7 @@ export class JParser {
     this.expect("new");
     let targs = -1;
     if (this.is("<")) {
-      targs = this.typeArgs();
+      targs = this.exprTypeArgs();
     }
     // The type, without dims.
     let ty = -1;
