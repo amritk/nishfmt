@@ -3,7 +3,18 @@
 // Ported from RuboCop 1.92.3 (MIT License, Copyright (c) 2012-24 Bozhidar
 // Batsov).
 
-import { NT_BACK_REF, NT_CLASS, NT_DSTR, NT_GVAR, NT_MODULE, NT_NTH_REF, NT_REGEXP, NT_XSTR, V_NIL } from "../ast";
+import {
+  NT_ALIAS,
+  NT_BACK_REF,
+  NT_CLASS,
+  NT_DSTR,
+  NT_GVAR,
+  NT_MODULE,
+  NT_NTH_REF,
+  NT_REGEXP,
+  NT_XSTR,
+  V_NIL,
+} from "../ast";
 import { RbCop } from "../cop";
 import { RbSource } from "../source";
 
@@ -20,6 +31,11 @@ export class CopStylePerlBackrefs {
     for (const n of src.pre) {
       const t = a.type(n);
       if (t !== NT_BACK_REF && t !== NT_GVAR && t !== NT_NTH_REF) {
+        continue;
+      }
+      // `alias $MATCH $&` names the variables, it does not read them.
+      const ap = src.parent(n);
+      if (ap !== V_NIL && a.type(ap) === NT_ALIAS) {
         continue;
       }
       const first = a.text(a.kid(n, 0));
