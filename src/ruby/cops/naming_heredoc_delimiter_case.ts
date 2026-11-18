@@ -71,7 +71,11 @@ export class CopNamingHeredocDelimiterCase {
         continue;
       }
       const expr = src.nodeSrc(n);
-      const delim = nhdcDelimiter(expr);
+      const hs = ssxFS(src, n, F_HEREDOC_END);
+      const he = ssxFE(src, n, F_HEREDOC_END);
+      // delimiter: the heredoc end's source, stripped
+      const endSrc = src.src(hs, he);
+      const delim = nhdcStrip(endSrc);
       const up = nhdcUpcase(delim);
       if (delim === up) {
         continue;
@@ -92,12 +96,10 @@ export class CopNamingHeredocDelimiterCase {
       if (inBody) {
         continue;
       }
-      const hs = ssxFS(src, n, F_HEREDOC_END);
-      const he = ssxFE(src, n, F_HEREDOC_END);
       const k = this.c.offense(hs, he);
       if (k !== null) {
         k.replace(a.exS(n), a.exE(n), nhdcUpcase(expr));
-        k.replace(hs, he, up);
+        k.replace(hs, he, nhdcUpcase(endSrc));
         this.c.commit(k);
       }
     }
