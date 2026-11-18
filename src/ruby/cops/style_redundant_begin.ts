@@ -64,11 +64,11 @@ import {
   ssxFS,
   ssxHas,
   ssxIsAnyBlock,
-  ssxIsCall,
   ssxIsSpace,
   ssxLocIs,
   ssxMultiline,
   ssxParenthesized,
+  ssxSetter,
   ssxSingleLine,
   ssxWholeLinesE,
   ssxWholeLinesS,
@@ -178,7 +178,8 @@ const sbhRbCommandCall = (src: RbSource, n0: i32): boolean => {
   if (sbhCallArgs(src, n).length === 0 || ssxParenthesized(src, n) || sbhOperatorMethod(src, n)) {
     return false;
   }
-  return !(ssxIsCall(src, n) && ssxHas(src, n, F_OPERATOR));
+  // !setter_method?
+  return !ssxSetter(src, n);
 };
 
 /** statement_position? */

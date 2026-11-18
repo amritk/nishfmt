@@ -1,0 +1,11 @@
+foo do
+  a(_1)
+
+  private
+end
+
+bar do
+  b(_1, _2)
+
+  protected
+end

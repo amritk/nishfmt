@@ -102,6 +102,10 @@ them on the whole corpus. nishfmt is faster than both, on 4 cores and on 1:
 | Kotlin | 9602 | ktrs 0.5.1: 2.43 s / 8.96 s | 2.03 s / 7.02 s |
 | Ruby | 1998 | rbcop 0.1.4: 6.55 s / 20.4 s | 4.00 s / 12.7 s |
 
+The Ruby times here and in the README were measured under the previous RuboCop, when
+the corpus counted 1998 files; rebuilt at the same commits it now counts 1999
+(see Corpus results), and the times were not re-measured.
+
 nitrocop, another Rust reimplementation of RuboCop, matched on fewer than a
 quarter of the files of an earlier sample and is left out. rustfmt is itself
 native.
