@@ -1,7 +1,8 @@
 // The CSharp entry point: CSharpier's pipeline over one file.
 //
 // After CSharpier 1.4.0 (MIT License, Copyright (c) 2021 Bela VanderVoort):
-// CSharpFormatter.cs, GeneratedCodeUtilities.cs and PrinterOptions.cs.
+// CSharpFormatter.cs, GeneratedCodeUtilities.cs and PrinterOptions.cs
+// (GetLineEnding for the style's end_of_line = crlf: always "\r\n").
 
 import { K_MultiLineCommentTrivia, K_SingleLineCommentTrivia } from "./kinds";
 import { Out } from "../core/out";
@@ -147,7 +148,10 @@ const csParse = (src: u8[], a: i32, b: i32, syms: string[]): CsParsed => {
 };
 
 /** Prints a parsed file into out; answers an error message, or "" when it printed. */
-const csPrintTree = (lx: CsLexer, root: i32, tree: CsTree, eolCr: boolean, out: Out): string => {
+const csPrintTree = (lx: CsLexer, root: i32, tree: CsTree, out: Out): string => {
+  // PrinterOptions.GetLineEnding: the style's end_of_line = crlf gives "\r\n",
+  // whatever the input's line breaks are
+  const eolCr = true;
   const D = new CsDocs(lx.src, lx.nt * 3 + 64);
   const P = new CsPrint(tree, D, eolCr);
   const doc = cswNode(P, root);
@@ -188,20 +192,12 @@ export const formatCSharp = (e: CSharpEngine, path: string, src: u8[], n: i32, o
     }
     return false;
   }
-  // the line ending: the first line break's
-  let eolCr = false;
-  for (let i = s; i < n; i++) {
-    if (toI32(src[i]) === 10) {
-      eolCr = i > s && toI32(src[i - 1]) === 13;
-      break;
-    }
-  }
   const tree = first.t;
   if (tree === null) {
     return false;
   }
   const body = new Out(n + 1024);
-  const msg = csPrintTree(lx, first.root, tree, eolCr, body);
+  const msg = csPrintTree(lx, first.root, tree, body);
   if (msg !== "") {
     if (e.debug) {
       console.error(`${path}: ${msg}`);
@@ -234,7 +230,7 @@ export const formatCSharp = (e: CSharpEngine, path: string, src: u8[], n: i32, o
     if (at === null) {
       return false;
     }
-    const m2 = csPrintTree(again.lx, again.root, at, eolCr, next);
+    const m2 = csPrintTree(again.lx, again.root, at, next);
     if (m2 !== "") {
       if (e.debug) {
         console.error(`${path}: with ${sets.keys[si]}: ${m2}`);

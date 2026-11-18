@@ -1,0 +1,32 @@
+using System;
+using System.Collections.Generic;
+
+namespace Demo
+{
+    /// <summary>
+    /// An all-CRLF file.
+    /// </summary>
+    public class Input
+    {
+        /* multi
+           line */
+        private readonly List<int> items = new List<int>();
+
+        public string Text = @"line one
+line two";
+
+#if DEBUG
+        public void Debug() { }
+#else
+        public   void   Release( ) { }
+#endif
+
+        public void M(int a,   int b)
+        {
+            if (a > b) { Console.WriteLine("greater"); }
+            var r = """
+                raw
+                """;
+        }
+    }
+}

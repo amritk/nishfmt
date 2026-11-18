@@ -1,14 +1,29 @@
 # C# (CSharpier 1.4.0) port notes
 
 Target: byte-for-byte `csharpier format` 1.4.0 output with the default
-options (printWidth 100, indent 4 spaces, end of line auto), checked with
+options (printWidth 100, indent 4 spaces) except end of line crlf, the
+`.editorconfig` in the README's Settings, which `bench/corpus/mk.sh cs` writes
+above `ref/`; checked with
 
     WORK=/work/out-cs bash bench/corpus/cmp.sh <nishfmt> cs
     WORK=/work/out-cs bash bench/corpus/cmp.sh <nishfmt> cs2
 
 `cs2` is the `cs` corpus pre-formatted with odd options per directory
 (printWidth 40 / 150, tabs, indent 2; see `mkcs2.sh`) and referenced with the
-defaults, so every file needs real reformatting.
+style, so every file needs real reformatting. Its raw files are CRLF and the
+`cs` raw files mostly LF, so both directions are gated.
+
+Config resolution (CSharpier.Cli `Options/OptionsProvider.cs` and
+`EditorConfig/`): the first `.csharpierrc*` found at or above a file's
+directory decides every option and `.editorconfig` files are then not read
+at all; failing that, the nearest `.editorconfig` and its parents up to a
+`root = true` one are merged, a closer file's setting winning. So `mkcs2.sh`
+writes its odd options as non-root `.editorconfig` files below the style's
+root one; a `.csharpierrc` would drop `end_of_line = crlf`. Ignore files
+(`IgnoreFile.cs`): every `.gitignore` above a file counts up to the first
+directory holding a `.git`, so `mk.sh` and `mkcs2.sh` put an empty `.git`
+in the corpus directory, or the checkout's `.gitignore` (which ignores
+`bench/work/`) leaves CSharpier formatting nothing.
 
 ## Layout
 
@@ -48,7 +63,8 @@ culture compare for InvariantCultureIgnoreCase), modifier sorting,
 csharpier-ignore (node, range, members, lists, method with attributes),
 directives and disabled text, regions, raw and verbatim strings (with
 Roslyn's raw string dedent for ValueText), the preprocessor symbol sets and
-reprints, generated and auto-generated file skipping, BOM, CRLF.
+reprints, generated and auto-generated file skipping, BOM, and the line
+ending (`PrinterOptions.GetLineEnding` with end_of_line crlf: always `\r\n`).
 
 Details that matter for byte equality:
 
@@ -62,11 +78,19 @@ Details that matter for byte equality:
 - PropagateBreaks, ContainsBreak and RemoveInitialDoubleHardLine follow the
   C# object graph exactly: shared docs are shared indices, concats are
   mutated in place.
+- Line endings: hard and literal lines, comment lines (StringReader
+  splitting on `\r\n`, `\r`, `\n`), raw string lines (`Token.lineSeparators`)
+  and csharpier-ignore text (`[\t\v\f ]*(\r\n?|\n)` replaced) are written
+  as `\r\n`. A verbatim string drops every `\r` and splits on `\n`, so a bare
+  CR inside one disappears. Disabled text (`trivia.ToString()`) and an
+  interpolated string whose holes hold a `\n` (`node.ToString()`) are copied
+  as they are, line endings included. The symbol-set reprints parse the CRLF
+  output of the pass before.
 
 ## Known differences / not ported
 
-- Options other than the defaults (useTabs, indentSize, printWidth, end of
-  line); `.csharpierrc` / `.editorconfig` are not read.
+- Options other than the style's (useTabs, indentSize, printWidth, other end
+  of line settings); `.csharpierrc` / `.editorconfig` are not read.
 - UTF-16 files are refused (CSharpier decodes them).
 - A file CSharpier would crash on (a preprocessor condition its
   BooleanExpressionParser rejects, a too-deep tree) is refused.
@@ -84,7 +108,7 @@ and a BOM the test harness adds.
 
 ## Timings
 
-13992 files, 164 MB, 4 cores:
+13992 files, 164 MB, 4 cores (measured on the LF corpus, before the change to CRLF output):
 
 | | 4 cores | 1 core (`taskset -c 0`, `-j 1`) |
 | --- | --- | --- |
