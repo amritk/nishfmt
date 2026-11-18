@@ -2755,6 +2755,10 @@ const spaceBeforeCode = (d: Doc, l: i32, r: i32): boolean => {
   if (lk === KW_OPERATOR) {
     return rk === P_COLONCOLON;
   }
+  // `vld3.8`, `SSE4.2`, `[[suppress(type.5)]]`: a number from `.` hugs the name.
+  if (isIdentKind(lk) && rk === K_NUMBER) {
+    return d.at(d.start[r]) !== 46;
+  }
   if (lt === TT_OVERLOADED_OPERATOR && (rt === TT_TEMPLATE_OPENER || rt === TT_TEMPLATE_CLOSER)) {
     return true;
   }
