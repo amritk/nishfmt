@@ -11,6 +11,8 @@ import {
   NT_ALIAS,
   NT_BEGIN,
   NT_BLOCK,
+  NT_CASE,
+  NT_CASE_MATCH,
   NT_CASGN,
   NT_CLASS,
   NT_CONST,
@@ -157,8 +159,13 @@ export class CopLintDuplicateMethods {
     }
   }
 
+  /** inside_condition?: an if, case or case_match ancestor. */
   private insideIf(src: RbSource, n: i32): boolean {
-    return lbhAncestor(src, n, NT_IF) !== V_NIL;
+    return (
+      lbhAncestor(src, n, NT_IF) !== V_NIL ||
+      lbhAncestor(src, n, NT_CASE) !== V_NIL ||
+      lbhAncestor(src, n, NT_CASE_MATCH) !== V_NIL
+    );
   }
 
   private onSend(src: RbSource, n: i32): void {
