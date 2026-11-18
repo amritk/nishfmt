@@ -62,8 +62,8 @@ for a binary). The traps that cost the most in earlier ports:
 - `src/core/` (`Out`, `growI32`, `utf16Len`, file walking) and
   `src/gdoc/` (google-java-format 1.x's Doc engine, which Kotlin uses, and
   the token input and comment helpers Java and Kotlin share) are shared;
-  Java has 2.0.0's layout engine of its own in `src/java/layout/`. Don't change them in a way that alters the C++, Java, Kotlin or
-  Ruby output.
+  Java has 2.0.0's layout engine of its own in `src/java/layout/`. Don't
+  change them in a way that alters the C++, Java, Kotlin or Ruby output.
 - Ported code keeps its license: each ported module starts with a comment
   naming the project, version and license, as `src/ruby/run.ts` does:
   - SwiftFormat 0.64.7 (MIT License, Copyright (c) 2016 Nick Lockwood)

@@ -10,7 +10,7 @@
 
 import { Out } from "../core/out";
 import { gIsIdentPart } from "../gdoc/engine";
-import { GInput } from "../gdoc/input";
+import { GInput, TF_COMMENT } from "../gdoc/input";
 import {
   CK_ENUM,
   FL_ENUM,
@@ -311,6 +311,20 @@ export class JavaCleanups {
     this.addDeletion(inp.tPos[rp], inp.tEnd[rp]);
   }
 }
+
+/**
+ * The comments of `inp`'s text, in order, as one string; CleanupScanner's
+ * verifyCommentsPreserved compares them before and after the deletions.
+ */
+export const cleanupComments = (inp: GInput): string => {
+  const parts: string[] = [];
+  for (let t = 0; t < inp.nToks; t++) {
+    if ((inp.tFlags[t] & TF_COMMENT) !== 0) {
+      parts.push(inp.text(t));
+    }
+  }
+  return parts.join("\u0000");
+};
 
 /** Where member `m` ends: javac ends the last declarator of a field at its `;`. */
 const memberEnd = (inp: GInput, t: JTree, m: i32): i32 => {

@@ -356,7 +356,22 @@ export class JParser {
       if (implicit < 0) {
         implicit = this.implicitClass();
       }
+      const fieldStartOk = this.topLevelFieldStart();
+      const before = t.nTmp;
       this.member(implicit);
+      // javac 21's topLevelMethodOrFieldDeclaration: a method, or a field
+      // whose first name is followed by `=` or `;` and whose type is not
+      // `var`. Anything else ("class, interface, enum, or record expected"
+      // for an initializer, a constructor-shaped member or `int a, b;`) is
+      // an error.
+      if (!this.err && t.nTmp > before) {
+        const m = t.tmp[before];
+        if (t.kind[m] === N_BLOCK || (t.kind[m] === N_METHOD && (t.flags[m] & FL_CTOR) !== 0)) {
+          this.fail();
+        } else if (t.kind[m] === N_VARIABLE && !fieldStartOk) {
+          this.fail();
+        }
+      }
     }
     if (implicit >= 0) {
       if (t.b[cu] >= 0) {
@@ -377,6 +392,27 @@ export class JParser {
     }
     this.finish(cu);
     return cu;
+  }
+
+  /**
+   * Looks ahead over modifiers, type and name: whether `=` or `;` follows
+   * the name, and the type is not `var`, as javac 21 needs of a top-level
+   * field. The position is left as it was.
+   */
+  private topLevelFieldStart(): boolean {
+    const m = new Mark();
+    this.save(m);
+    this.modifiers();
+    let ok = false;
+    if (!this.is("<") && !this.is("var") && !this.is("void")) {
+      this.type();
+      if (!this.err && this.kindAt(0) === JK_IDENT) {
+        this.next();
+        ok = this.is("=") || this.is(";");
+      }
+    }
+    this.restore(m);
+    return ok;
   }
 
   /** The implicitly declared class the top-level members go in. */

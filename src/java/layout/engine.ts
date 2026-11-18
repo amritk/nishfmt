@@ -612,6 +612,8 @@ export class JlEngine {
     const st = inp.tokenAt(pos);
     const et = inp.tokenAt(pos + len - 1);
     if (st < 0 || et < 0) {
+      // No token there: LayoutBuilder's position map answers null and it throws.
+      this.fail("no token for actualSize");
       return len;
     }
     let start = inp.tPos[inp.kTok[st]];
@@ -637,6 +639,7 @@ export class JlEngine {
     const inp = this.inp;
     const st = inp.tokenAt(pos);
     if (st < 0) {
+      this.fail("no token for actualStartColumn");
       return pos;
     }
     const tokPos = inp.tPos[inp.kTok[st]];
@@ -796,6 +799,8 @@ export class JlEngine {
   blankLineWanted(mode: i32): void {
     if (this.tokenI < this.inp.nTokens) {
       this.blankLine(this.firstNumbered(this.tokenI), mode, -1);
+    } else {
+      this.fail("blank line wanted past the last token");
     }
   }
 
@@ -803,6 +808,8 @@ export class JlEngine {
   blankLineWantedIf(tag: i32): void {
     if (this.tokenI < this.inp.nTokens) {
       this.blankLine(this.firstNumbered(this.tokenI), BL_COND, tag);
+    } else {
+      this.fail("blank line wanted past the last token");
     }
   }
 
@@ -1635,6 +1642,8 @@ export class JlEngine {
         this.nHeader = this.nHeader + 1;
       } else if (this.nHeader > 0) {
         this.nHeader = this.nHeader - 1;
+      } else {
+        this.fail("a header's end without its start");
       }
       return col;
     }

@@ -103,7 +103,9 @@ export class ImportFixer {
         i++;
       }
       const isStatic = inp.is(i, "static");
-      if (isStatic) {
+      // ImportType.MODULE: the word after `import`, so `import module.Foo;`
+      // then has no identifier ("Unexpected token after import: .").
+      if (isStatic || inp.is(i, "module")) {
         i++;
         if (this.isSpaceTok(inp, i)) {
           i++;

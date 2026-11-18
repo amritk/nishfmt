@@ -450,24 +450,88 @@ export const javaLines = (s: string): string[] => {
   return out;
 };
 
-export const stripTrailingJ = (s: string): string => {
-  let b = toI32(s.length);
-  while (b > 0 && isSwWs(s.charCodeAt(b - 1))) {
-    b--;
+/**
+ * The byte length of a Character.isWhitespace character at byte `i` of `s`,
+ * or 0: ASCII tab to carriage return, U+001C to U+001F and the space, and the
+ * Unicode space, line and paragraph separators but the no-break ones
+ * (U+00A0, U+2007, U+202F).
+ */
+const javaWsLen = (s: string, i: i32): i32 => {
+  const c = s.charCodeAt(i);
+  if (c < 0x80) {
+    return (c >= 9 && c <= 13) || (c >= 28 && c <= 32) ? 1 : 0;
   }
-  return s.substring(0, b);
+  const n = toI32(s.length);
+  if (i + 2 >= n) {
+    return 0;
+  }
+  const c1 = s.charCodeAt(i + 1);
+  const c2 = s.charCodeAt(i + 2);
+  if (c === 0xe1 && c1 === 0x9a && c2 === 0x80) {
+    return 3; // U+1680
+  }
+  if (c === 0xe2 && c1 === 0x80 && ((c2 >= 0x80 && c2 <= 0x8a && c2 !== 0x87) || c2 === 0xa8 || c2 === 0xa9)) {
+    return 3; // U+2000-2006, U+2008-200A, U+2028, U+2029
+  }
+  if (c === 0xe2 && c1 === 0x81 && c2 === 0x9f) {
+    return 3; // U+205F
+  }
+  if (c === 0xe3 && c1 === 0x80 && c2 === 0x80) {
+    return 3; // U+3000
+  }
+  return 0;
 };
 
-/** String.stripIndent over lines joined without a trailing terminator, split again. */
+/** String.stripTrailing: `s` without its trailing Character.isWhitespace characters. */
+export const stripTrailingJ = (s: string): string => {
+  let end = 0;
+  let i = 0;
+  const n = toI32(s.length);
+  while (i < n) {
+    const w = javaWsLen(s, i);
+    if (w > 0) {
+      i += w;
+    } else {
+      i++;
+      // Past the rest of a multi-byte character.
+      while (i < n && (s.charCodeAt(i) & 0xc0) === 0x80) {
+        i++;
+      }
+      end = i;
+    }
+  }
+  return s.substring(0, end);
+};
+
+/** The leading Character.isWhitespace characters of `l`: their count, and in `jwsBytes` their bytes. */
+const javaLeadingWs = (l: string, max: i32): i32 => {
+  let k = 0;
+  let i = 0;
+  while (k < max && i < toI32(l.length)) {
+    const w = javaWsLen(l, i);
+    if (w === 0) {
+      break;
+    }
+    i += w;
+    k++;
+  }
+  jwsBytes[0] = i;
+  return k;
+};
+
+const jwsBytes = new Int32Array(1);
+
+/**
+ * String.stripIndent over lines joined without a trailing terminator, split
+ * again: the least indentation (in characters) of the non-blank lines and
+ * the last line goes from every line, and so does trailing whitespace.
+ */
 export const stripIndentLines = (lines: string[]): string[] => {
   let min = 2147483647;
   for (let i = 0; i < toI32(lines.length); i++) {
     const l = lines[i];
-    let k = 0;
-    while (k < toI32(l.length) && isSwWs(l.charCodeAt(k))) {
-      k++;
-    }
-    const blank = k === toI32(l.length);
+    const k = javaLeadingWs(l, 2147483647);
+    const blank = jwsBytes[0] === toI32(l.length);
     if (!blank || i === toI32(lines.length) - 1) {
       if (k < min) {
         min = k;
@@ -479,15 +543,8 @@ export const stripIndentLines = (lines: string[]): string[] => {
   }
   const out: string[] = [];
   for (const l of lines) {
-    let k = 0;
-    while (k < toI32(l.length) && isSwWs(l.charCodeAt(k))) {
-      k++;
-    }
-    if (k === toI32(l.length)) {
-      out.push("");
-    } else {
-      out.push(stripTrailingJ(l.substring(min, toI32(l.length))));
-    }
+    javaLeadingWs(l, min);
+    out.push(stripTrailingJ(l.substring(jwsBytes[0], toI32(l.length))));
   }
   return out;
 };

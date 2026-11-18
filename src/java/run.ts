@@ -16,7 +16,7 @@ import { ImportFixer } from "./imports";
 import { StringWrapper, needWrapping, replacementRanges } from "./strings";
 import { partialFormat } from "./partial";
 import { reorderModifiers } from "./modifiers";
-import { JavaCleanups } from "./cleanups";
+import { JavaCleanups, cleanupComments } from "./cleanups";
 
 /** One worker's reusable Java state. */
 export class JavaEngine {
@@ -53,6 +53,11 @@ export class JavaEngine {
 export const formatJava = (e: JavaEngine, path: string, src0: u8[], n0: i32, out: Out): boolean => {
   let src = src0;
   let n = n0;
+  // An empty file has an empty character range, so Formatter replaces nothing.
+  if (n === 0) {
+    out.n = 0;
+    return true;
+  }
   // Cleanups.apply: the passes Cleanups.enabledPasses turns on for the CLI,
   // in its order, each on the text the one before left.
   if (!lexJava(e.inp, src, n)) {
@@ -76,10 +81,18 @@ export const formatJava = (e: JavaEngine, path: string, src0: u8[], n0: i32, out
   }
   // AST_CLEANUPS.
   if (e.cleanups.run(e.inp, e.tree, e.root, e.buf1)) {
+    const comments = cleanupComments(e.inp);
     src = e.buf1.buf.slice(0, e.buf1.n);
     n = e.buf1.n;
     changed = true;
     if (!lexJava(e.inp, src, n)) {
+      return false;
+    }
+    // verifyCommentsPreserved: "error: cleanups modified comments".
+    if (cleanupComments(e.inp) !== comments) {
+      if (e.debug) {
+        console.error(`${path}: cleanups modified comments`);
+      }
       return false;
     }
   }
@@ -148,14 +161,14 @@ export const formatJava = (e: JavaEngine, path: string, src0: u8[], n0: i32, out
             }
             return false;
           }
-          const changed = partialFormat(e.inp, g, replacementRanges(repls), e.buf2);
-          if (changed < 0) {
+          const partialChanged = partialFormat(e.inp, g, replacementRanges(repls), e.buf2);
+          if (partialChanged < 0) {
             if (e.debug) {
               console.error(`${path}: partial format failed`);
             }
             return false;
           }
-          if (changed === 1) {
+          if (partialChanged === 1) {
             fmt = e.buf2.buf.slice(0, e.buf2.n);
             if (!lexJava(e.inp, fmt, toI32(fmt.length))) {
               return false;
@@ -173,7 +186,8 @@ export const formatJava = (e: JavaEngine, path: string, src0: u8[], n0: i32, out
     }
   }
   out.n = 0;
-  const sep = guessSep(src0, n0);
+  // JavaOutput's line separator, guessed from the text the cleanups left.
+  const sep = guessSep(src, n);
   if (sep === "\n") {
     out.range(res.buf, 0, res.n);
   } else {
