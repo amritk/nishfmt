@@ -145,6 +145,7 @@ export class Parser {
   eofLine: i32 = -1; // the last line a statement ended at the end of the input
   macroBodyStart: i32 = 0; // the first line of the macro body being parsed
   inUnbraced: boolean = false; // parsing an unbraced control body's statement
+  unbracedLevel: i32 = 0; // unbraced if/else/loop bodies the parse is inside (clang-format's UnbracedBodyLevel)
   inRequiresExpr: boolean = false; // parsing a requires expression's body
   compoundReqs: i32[]; // the `{` of each compound requirement (clang-format's TT_CompoundRequirementLBrace)
   objcDepth: i32 = 0; // inside an Objective-C @interface/@protocol body (parseObjCUntilAtEnd)
@@ -379,6 +380,19 @@ export class Parser {
   }
 
   /**
+   * flushComments for own-line comments read before a directive: clang-format
+   * 23's readToken flushes them at the line's level less the unbraced bodies
+   * it is inside (UnbracedBodyLevel), braces and child blocks included.
+   */
+  flushDirectiveComments(): boolean {
+    const save = this.level;
+    this.level = this.level > this.unbracedLevel ? this.level - this.unbracedLevel : 0;
+    const any = this.flushComments();
+    this.level = save;
+    return any;
+  }
+
+  /**
    * clang-format's distributeComments: among the comments between two code
    * tokens, the first after the first that sits at the next token's column,
    * and every comment after it, starts a new section. Whether comment `t` is
@@ -603,7 +617,7 @@ export class Parser {
     // directives, out of the block, indented by their level alone.
     if (this.first < 0 && this.listParent >= 0 && this.macro < 0 && this.commentsThenDirective()) {
       const l0 = d.nline;
-      const any = this.flushComments();
+      const any = this.flushDirectiveComments();
       for (let l = l0; l < d.nline; l++) {
         if (d.lParent[l] === this.listParent && d.kind[d.lFirst[l]] === K_COMMENT) {
           d.lAbs[l] = 1;
@@ -613,7 +627,7 @@ export class Parser {
         return;
       }
     }
-    if (this.first < 0 && this.flushComments()) {
+    if (this.first < 0 && (this.commentsThenDirective() ? this.flushDirectiveComments() : this.flushComments())) {
       return;
     }
     // `/* c */ if (...)`: clang-format adds the comments to the line and
@@ -1022,7 +1036,7 @@ export class Parser {
           }
         }
         if (this.commentsThenDirective()) {
-          this.flushComments();
+          this.flushDirectiveComments();
         }
         this.level = saveLevel;
         return;
@@ -1048,7 +1062,7 @@ export class Parser {
     // Comments read past the block's `}` before a directive are flushed at
     // the `}`'s level, as clang-format reads them while consuming the brace.
     if (braced && this.commentsThenDirective()) {
-      this.flushComments();
+      this.flushDirectiveComments();
     }
     this.level = saveLevel;
     // clang-format's parseLabel parses the statement after the label itself,
@@ -1095,7 +1109,7 @@ export class Parser {
     // flushes the comments at the control line's level, reads past the
     // directive, and the body is still the statement after it.
     if (this.macro < 0 && this.commentsThenDirective()) {
-      this.flushComments();
+      this.flushDirectiveComments();
       while (d.kind[this.pos] === P_HASH && d.ppKind[this.pos] !== PP_NONE) {
         this.parsePPInline();
       }
@@ -1106,6 +1120,7 @@ export class Parser {
     this.bodyComments();
     const wasUnbraced = this.inUnbraced;
     this.inUnbraced = true;
+    this.unbracedLevel = this.unbracedLevel + 1;
     this.parseStructuralElement();
     this.inUnbraced = wasUnbraced;
     // A body still open at the end of the input (a macro body without `;`)
@@ -1113,18 +1128,19 @@ export class Parser {
     if (this.eofLine >= before && this.eofLine === d.nline - 1) {
       d.lLevel[this.eofLine] = this.level - 1;
     }
-    // Comments between the body and a directive are read ahead with the
-    // body, so clang-format gives them its level.
+    // Comments between the body and a directive are read ahead inside the
+    // body: flushed at its level less the unbraced bodies, this one included.
     if (this.first < 0 && this.commentsThenDirective()) {
-      this.flushComments();
+      this.flushDirectiveComments();
     } else if (this.first < 0 && this.macro < 0 && this.directivesCommentsDirective()) {
       // Directives, then comments, then a directive: all read ahead with the
-      // body's last token, so the comments still take the body's level.
+      // body's last token, as above.
       while (d.kind[this.pos] === P_HASH && d.ppKind[this.pos] !== PP_NONE) {
         this.parsePPInline();
       }
-      this.flushComments();
+      this.flushDirectiveComments();
     }
+    this.unbracedLevel = this.unbracedLevel - 1;
     this.level = this.level - 1;
   }
 
@@ -1309,6 +1325,7 @@ export class Parser {
       this.bodyComments();
       const wasUnbraced = this.inUnbraced;
       this.inUnbraced = true;
+      this.unbracedLevel = this.unbracedLevel + 1;
       this.parseStructuralElement();
       this.inUnbraced = wasUnbraced;
       // A body still open at the end of the input (a macro's last line) is
@@ -1320,16 +1337,17 @@ export class Parser {
       if (this.eofLine >= 0 && this.eofLine === d.nline - 1) {
         this.eofLine = -1;
       }
-      // Comments between the body and a directive take the body's level,
-      // as after any control statement's body (parseControlBody).
+      // Comments between the body and a directive: as after any control
+      // statement's body (parseControlBody).
       if (this.first < 0 && this.commentsThenDirective()) {
-        this.flushComments();
+        this.flushDirectiveComments();
       } else if (this.first < 0 && this.macro < 0 && this.directivesCommentsDirective()) {
         while (d.kind[this.pos] === P_HASH && d.ppKind[this.pos] !== PP_NONE) {
           this.parsePPInline();
         }
-        this.flushComments();
+        this.flushDirectiveComments();
       }
+      this.unbracedLevel = this.unbracedLevel - 1;
       this.level = this.level - 1;
       return;
     }
@@ -1814,7 +1832,7 @@ export class Parser {
       // as lines of their own outside the block.
       this.level = saveLineLevel;
       const l0 = d.nline;
-      this.flushComments();
+      this.flushDirectiveComments();
       for (let l = l0; l < d.nline; l++) {
         d.lAbs[l] = 1;
       }
