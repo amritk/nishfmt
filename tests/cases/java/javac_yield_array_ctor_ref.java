@@ -1,0 +1,1 @@
+class A { Object o = yield[]::new; }

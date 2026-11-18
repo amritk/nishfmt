@@ -126,9 +126,13 @@ import {
   OP_USR,
 } from "./ast";
 
+// A MODIFIERS node's op: whether `sealed` is among its words (javac's
+// Flags.SEALED, which permitsClause reads).
+const MODS_SEALED: i32 = 1;
+
 /** A saved parser position for speculation. */
 class Mark {
-  restricted: boolean = false;
+  rejected: boolean = false;
   p: i32 = 0;
   n: i32 = 0;
   nLists: i32 = 0;
@@ -254,7 +258,7 @@ export class JParser {
   }
 
   save(m: Mark): void {
-    m.restricted = this.restrictedType;
+    m.rejected = this.rejected;
     m.p = this.p;
     m.n = this.t.n;
     m.nLists = this.t.nLists;
@@ -264,7 +268,7 @@ export class JParser {
   }
 
   restore(m: Mark): void {
-    this.restrictedType = m.restricted;
+    this.rejected = m.rejected;
     this.p = m.p;
     this.t.n = m.n;
     this.t.nLists = m.nLists;
@@ -286,7 +290,7 @@ export class JParser {
     this.p = 0;
     this.nT = this.inp.nTokens;
     this.err = false;
-    this.restrictedType = false;
+    this.rejected = false;
     this.allowVarType = false;
     // At most a few nodes per token (an enum constant makes three of one).
     t.ensure(this.nT * 4 + 1024);
@@ -396,7 +400,7 @@ export class JParser {
       t.d[cu] = t.list(dm);
     }
     this.finish(cu);
-    if (this.restrictedType) {
+    if (this.rejected) {
       this.fail();
     }
     return cu;
@@ -635,6 +639,9 @@ export class JParser {
         if (this.is("non")) {
           this.skip(3);
         } else {
+          if (this.is("sealed")) {
+            t.op[n] = MODS_SEALED;
+          }
           this.next();
         }
       } else {
@@ -749,7 +756,7 @@ export class JParser {
     if (this.is("class")) {
       t.op[n] = CK_CLASS;
       this.next();
-      t.name[n] = this.ident();
+      t.name[n] = this.typeName();
       if (this.is("<")) {
         t.b[n] = this.typeParameters();
       }
@@ -759,30 +766,24 @@ export class JParser {
       if (this.accept("implements")) {
         t.d[n] = this.typeList();
       }
-      if (this.is("permits")) {
-        this.next();
-        t.e[n] = this.typeList();
-      }
+      t.e[n] = this.permitsClause(mods);
       t.f[n] = this.classBody(n);
     } else if (this.is("interface")) {
       t.op[n] = CK_INTERFACE;
       this.next();
-      t.name[n] = this.ident();
+      t.name[n] = this.typeName();
       if (this.is("<")) {
         t.b[n] = this.typeParameters();
       }
       if (this.accept("extends")) {
         t.d[n] = this.typeList();
       }
-      if (this.is("permits")) {
-        this.next();
-        t.e[n] = this.typeList();
-      }
+      t.e[n] = this.permitsClause(mods);
       t.f[n] = this.classBody(n);
     } else if (this.is("enum")) {
       t.op[n] = CK_ENUM;
       this.next();
-      t.name[n] = this.ident();
+      t.name[n] = this.typeName();
       if (this.accept("implements")) {
         t.d[n] = this.typeList();
       }
@@ -790,12 +791,12 @@ export class JParser {
     } else if (this.is("@")) {
       t.op[n] = CK_ANNOTATION;
       this.skip(2);
-      t.name[n] = this.ident();
+      t.name[n] = this.typeName();
       t.f[n] = this.classBody(n);
     } else if (this.is("record")) {
       t.op[n] = CK_RECORD;
       this.next();
-      t.name[n] = this.ident();
+      t.name[n] = this.typeName();
       if (this.is("<")) {
         t.b[n] = this.typeParameters();
       }
@@ -821,6 +822,28 @@ export class JParser {
     return this.finish(n);
   }
 
+  /**
+   * javac's permitsClause: `permits` and a qualidentList (names, not types:
+   * no type arguments, annotations or restricted-name check). On a class or
+   * interface that is not `sealed`, "invalid permits clause".
+   */
+  private permitsClause(mods: i32): i32 {
+    const t = this.t;
+    if (!this.is("permits")) {
+      return t.empty();
+    }
+    if (t.op[mods] !== MODS_SEALED) {
+      this.rejected = true;
+    }
+    this.next();
+    const m = t.mark();
+    t.push(this.qualident(false));
+    while (this.accept(",") && !this.err) {
+      t.push(this.qualident(false));
+    }
+    return t.list(m);
+  }
+
   private typeList(): i32 {
     const t = this.t;
     const m = t.mark();
@@ -844,7 +867,7 @@ export class JParser {
       const annos = t.list(am);
       const n = t.node(N_TYPE_PARAMETER, start);
       t.a[n] = annos;
-      t.name[n] = this.ident();
+      t.name[n] = this.typeName();
       const bm = t.mark();
       if (this.accept("extends")) {
         t.push(this.type());
@@ -936,11 +959,21 @@ export class JParser {
   /** Variable declarators after the type: `a = 1, b[] = {}`; pushes each VARIABLE. */
   private declarators(mods: i32, start: i32, type: i32, field: boolean): void {
     const t = this.t;
+    let compound = false;
     while (!this.err) {
       const v = t.node(N_VARIABLE, start);
       t.a[v] = mods;
       t.name[v] = this.ident();
-      t.b[v] = this.bracketsOpt(type);
+      if (type >= 0) {
+        t.b[v] = this.bracketsOpt(type);
+      } else if (compound || this.is("[") || this.is("@")) {
+        // `var` (type -1): javac's variableDeclaratorRest, "'var' is not
+        // allowed in a compound declaration" (`var x = 1, y = 2`) or "as an
+        // element type of an array" (`var x[]`).
+        this.fail();
+      } else {
+        t.b[v] = -1;
+      }
       if (this.accept("=")) {
         t.c[v] = this.is("{") ? this.arrayInit(-1, this.pos()) : this.expression();
       }
@@ -949,6 +982,7 @@ export class JParser {
         break;
       }
       this.next();
+      compound = true;
     }
   }
 
@@ -1137,7 +1171,6 @@ export class JParser {
     );
   }
 
-  /** A type with dims; annotations before it become an ANNOTATED_TYPE. */
   /**
    * A type, as javac's unannotatedType: a restricted name (`var`, `yield`,
    * `record`, `sealed`, `permits`), looked through array types, is "not
@@ -1149,34 +1182,52 @@ export class JParser {
     this.allowVarType = false;
     const ty = this.typeAnnotated();
     if (!this.err) {
-      let e = ty;
-      while (this.t.kind[e] === N_ARRAY_TYPE) {
-        e = this.t.a[e];
-      }
-      if (this.t.kind[e] === N_IDENTIFIER && this.t.name[e] >= 0) {
-        const w = this.t.name[e];
-        const inp = this.inp;
-        if (
-          (inp.is(w, "var") && !allowVar) ||
-          inp.is(w, "yield") ||
-          inp.is(w, "record") ||
-          inp.is(w, "sealed") ||
-          inp.is(w, "permits")
-        ) {
-          // Not this.fail(): a lookahead that parses a type here must still
-          // succeed, as javac's does, and the file fails once the parse
-          // keeps the type (Mark drops the flag with a lookahead).
-          this.restrictedType = true;
-        }
+      const w = this.restrictedTypeName(ty);
+      if (w >= 0 && (!allowVar || !this.inp.is(w, "var"))) {
+        // Not this.fail(): a lookahead that parses a type here must still
+        // succeed, as javac's does, and the file fails once the parse
+        // keeps the type (Mark drops the flag with a lookahead).
+        this.rejected = true;
       }
     }
     return ty;
   }
 
-  allowVarType: boolean = false;
-  // A restricted name was parsed as a type ("'var' is not allowed here").
-  restrictedType: boolean = false;
+  /** javac's restrictedTypeNameStartingAtSource, at source 21: `var`, `yield`, `record`, `sealed`, `permits`. */
+  private isRestrictedTypeName(w: i32): boolean {
+    const inp = this.inp;
+    return inp.is(w, "var") || inp.is(w, "yield") || inp.is(w, "record") || inp.is(w, "sealed") || inp.is(w, "permits");
+  }
 
+  /** javac's restrictedTypeName: the restricted name (its tok) a type is, looked through array types, or -1. */
+  private restrictedTypeName(ty: i32): i32 {
+    let e = ty;
+    while (this.t.kind[e] === N_ARRAY_TYPE) {
+      e = this.t.a[e];
+    }
+    if (this.t.kind[e] === N_IDENTIFIER && this.t.name[e] >= 0 && this.isRestrictedTypeName(this.t.name[e])) {
+      return this.t.name[e];
+    }
+    return -1;
+  }
+
+  /** javac's typeName(): a declared class or type parameter name, which a restricted name may not be. */
+  private typeName(): i32 {
+    const w = this.ident();
+    if (!this.err && this.isRestrictedTypeName(w)) {
+      this.rejected = true;
+    }
+    return w;
+  }
+
+  allowVarType: boolean = false;
+  // javac reported an error and parsed on: a restricted name as a type ("'var'
+  // is not allowed here") or a declared name, a `permits` clause without
+  // `sealed`, an unqualified `yield(...)`. The file fails once the parse keeps
+  // that tree; a lookahead that restores a Mark drops the flag with it.
+  rejected: boolean = false;
+
+  /** A type with dims; annotations before it become an ANNOTATED_TYPE. */
   private typeAnnotated(): i32 {
     const t = this.t;
     if (this.is("@")) {
@@ -2059,6 +2110,11 @@ export class JParser {
         if (explicit) {
           const p = this.formalParameter(false, true);
           const ty = t.b[p];
+          // javac's lambdaExpressionOrStatement: a restricted type with array
+          // brackets, `var[] x` or `var x[]`, is "not allowed as an element type of an array".
+          if (ty >= 0 && t.kind[ty] === N_ARRAY_TYPE && this.restrictedTypeName(ty) >= 0) {
+            this.rejected = true;
+          }
           if (ty >= 0 && t.kind[ty] === N_IDENTIFIER && this.inp.is(t.name[ty], "var")) {
             nVar++;
           } else {
@@ -2592,8 +2648,10 @@ export class JParser {
         this.restore(m);
       }
       // Array type before `::` or `.class`: `String[]::new`, `String[].class`.
+      // javac's bracketsSuffix, which does not check for a restricted name:
+      // `var[].class` is a class literal.
       if (this.isAt(1, "[") && this.isAt(2, "]")) {
-        const ty = this.type();
+        const ty = this.typeAnnotated();
         if (this.is(".") && this.isAt(1, "class")) {
           this.next();
           const s = t.node(N_MEMBER_SELECT, start);
@@ -2610,6 +2668,11 @@ export class JParser {
       this.next();
       this.finish(id);
       if (this.is("(")) {
+        // javac's isInvalidUnqualifiedMethodIdentifier: "invalid use of a
+        // restricted identifier 'yield'"; `this.yield(1)` and `A.yield(1)` are calls.
+        if (this.inp.is(t.name[id], "yield")) {
+          this.rejected = true;
+        }
         const mi = t.node(N_METHOD_INVOCATION, start);
         t.a[mi] = t.empty();
         t.b[mi] = id;
