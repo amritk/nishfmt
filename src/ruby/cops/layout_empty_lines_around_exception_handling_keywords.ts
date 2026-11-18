@@ -61,6 +61,10 @@ export class CopLayoutEmptyLinesAroundExceptionHandlingKeywords {
       const t = a.type(n);
       let body = V_NIL;
       if (t === NT_DEF || t === NT_DEFS || t === NT_BLOCK || t === NT_NUMBLOCK) {
+        // An endless def has no `end` and is skipped.
+        if ((t === NT_DEF || t === NT_DEFS) && !rnHas(src, n, F_END)) {
+          continue;
+        }
         body = a.kid(n, -1);
       } else if (t === NT_KWBEGIN) {
         body = a.kid(n, 0);
@@ -80,10 +84,7 @@ export class CopLayoutEmptyLinesAroundExceptionHandlingKeywords {
       if (line === defLine) {
         continue;
       }
-      // last_body_and_end_on_same_line? (an endless def has no `end`: RuboCop raises there).
-      if (!rnHas(src, par, F_END)) {
-        return;
-      }
+      // last_body_and_end_on_same_line?
       const endLine = src.line(rnS(src, par, F_END));
       let lastBody = 0;
       if (a.type(body) !== NT_RESCUE) {
