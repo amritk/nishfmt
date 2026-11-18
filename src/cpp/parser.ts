@@ -12,6 +12,7 @@ import {
   isIdentKind,
   CW_FINAL,
   TT_CLASS_HEAD_NAME,
+  TT_TEMPLATE_CLOSER,
   P_HASHHASH,
   KW_NOEXCEPT,
   P_LESSLESSEQUAL,
@@ -1586,6 +1587,16 @@ export class Parser {
         return;
       }
       if (k === P_RPAREN) {
+        // clang-format 23: a `>` right before `()` closes a template.
+        if (this.lastCode() === open) {
+          let p = d.prv[open];
+          while (p >= 0 && d.kind[p] === K_COMMENT) {
+            p = d.prv[p];
+          }
+          if (p >= 0 && d.kind[p] === P_GREATER) {
+            this.markTemplateCloser(p);
+          }
+        }
         d.match[open] = this.pos;
         d.match[this.pos] = open;
         this.push();
@@ -1819,6 +1830,11 @@ export class Parser {
       }
       if (k === P_LBRACE) {
         d.bk[this.pos] = BK_BRACED_INIT;
+        // clang-format 23: a `>` right before a braced list closes a template.
+        const p = this.lastCode();
+        if (p >= 0 && d.kind[p] === P_GREATER) {
+          this.markTemplateCloser(p);
+        }
         this.parseBracedList();
         continue;
       }
@@ -2944,8 +2960,24 @@ export class Parser {
         this.addLine();
         return;
       }
+      if (k === P_GREATER) {
+        // clang-format 23's parseStructuralElement: a `>` before `{` closes
+        // a template.
+        const gt = this.pos;
+        this.push();
+        if (d.kind[this.nextNonComment(gt)] === P_LBRACE) {
+          this.markTemplateCloser(gt);
+        }
+        continue;
+      }
       this.parseExprToken();
     }
+  }
+
+  /** Finalizes `>` at `t` as a template closer, as clang-format's parser does. */
+  markTemplateCloser(t: i32): void {
+    this.d.type[t] = TT_TEMPLATE_CLOSER;
+    this.d.final[t] = 1;
   }
 
   /**

@@ -315,72 +315,84 @@ export class Classifier {
     return isLiteralKind(this.k(t));
   }
 
-  /** The `>` closing the template bracket at `lt`, or -1 if `<` compares. */
+  /**
+   * The `>` closing the template bracket at `lt`, or -1 if `<` compares
+   * (clang-format 23's parseAngle). A `>` the parser already made a closer
+   * (before `{` or an empty `()`) closes whatever the checks below say.
+   */
   findCloser(lt: i32, inExpr: boolean, parentLess: boolean, saFirst: boolean): i32 {
     const d = this.d;
     let depth = 0;
+    let seenTernary = false;
+    let maybeAngles = true;
     let t = d.nxt[lt];
     while (t >= 0) {
       const k = d.kind[t];
       if (depth === 0) {
         if (k === P_GREATER) {
           const n = d.nxt[t];
+          if (!(d.final[t] === 1 && d.type[t] === TT_TEMPLATE_CLOSER)) {
+            // `a < b >> 2`: a `>` right against another closes nothing unless
+            // the `<` sits in template arguments.
+            if (n >= 0 && d.kind[n] === P_GREATER && d.ws[n] === 0 && !parentLess) {
+              return -1;
+            }
+            // `a < b ? c : d > e`: after a `?:` in an expression, only a `>`
+            // before `(` or `{` closes.
+            if (inExpr && seenTernary && (n < 0 || (d.kind[n] !== P_LPAREN && d.kind[n] !== P_LBRACE))) {
+              return -1;
+            }
+            if (!maybeAngles) {
+              return -1;
+            }
+            // `static_assert(N < M > -1)`: nor in a static_assert's first
+            // argument before `-` or a name.
+            if (saFirst && n >= 0 && (d.kind[n] === P_MINUS || isIdentKind(d.kind[n]))) {
+              return -1;
+            }
+          }
           if (n >= 0 && isLiteralKind(d.kind[n])) {
             return -1;
           }
-          // `a < b >> 2`: a `>` right against another closes nothing unless
-          // the `<` sits in template arguments (clang-format's parseAngle).
-          if (n >= 0 && d.kind[n] === P_GREATER && d.ws[n] === 0 && !parentLess) {
-            return -1;
-          }
-          // `static_assert(N < M > -1)`: nor in a static_assert's first
-          // argument before `-` or a name.
-          if (saFirst && n >= 0 && (d.kind[n] === P_MINUS || isIdentKind(d.kind[n]))) {
-            return -1;
-          }
           return t;
-        }
-        if (k === P_LESS) {
-          // clang-format's parseAngle: after a literal, `}` or `)` a `<`
-          // opens nothing; one whose angle fails to close is an operator too.
-          const p = this.prev(t);
-          const pk = p >= 0 ? this.k(p) : -1;
-          const binary =
-            p >= 0 &&
-            (this.isLit(p) ||
-              pk === P_RBRACE ||
-              (pk === P_RPAREN && !(d.match[p] >= 0 && this.ty(d.match[p]) === TT_OVERLOADED_OPERATOR_LPAREN)));
-          if (!binary) {
-            const c = this.findCloser(t, false, true, false);
-            if (c >= 0) {
-              t = d.nxt[c];
-              continue;
-            }
-          }
-          t = d.nxt[t];
-          continue;
         }
         // (A `{` is nested, as in `X<T{}>`: clang-format bails only on closers.)
         if (k === P_SEMI || k === P_RBRACE || k === P_RPAREN || k === P_RSQUARE) {
           return -1;
         }
-        // (clang-format does not bail out on a line starting with `template`.)
-        if (
-          inExpr &&
-          d.kind[this.first] !== KW_TEMPLATE &&
-          (k === P_AMPAMP || k === P_PIPEPIPE || k === P_QUESTION || k === P_COLON)
-        ) {
-          // An `&&` right before `>`, `,` or `...` is a reference type, not a binary operator.
-          const n = d.nxt[t];
-          if (
-            !(
-              k === P_AMPAMP &&
-              n >= 0 &&
-              (d.kind[n] === P_GREATER || d.kind[n] === P_COMMA || d.kind[n] === P_ELLIPSIS)
-            )
-          ) {
+        // An `&&` or `||` that is a binary operator, in an expression, makes
+        // these angles a comparison unless an earlier closer settles it.
+        // (An `&&` right before `>`, `,` or `...` is a reference type.)
+        const p = d.prv[t];
+        if (maybeAngles && inExpr && d.kind[this.first] !== KW_TEMPLATE && p >= 0 && p !== lt) {
+          const pk = d.kind[p];
+          if (pk === P_PIPEPIPE) {
+            maybeAngles = false;
+          } else if (pk === P_AMPAMP && !(k === P_GREATER || k === P_COMMA || k === P_ELLIPSIS)) {
+            maybeAngles = false;
+          }
+        }
+        if (p >= 0 && p !== lt && (d.kind[p] === P_QUESTION || d.kind[p] === P_COLON)) {
+          seenTernary = true;
+        }
+        if (k === P_LESS) {
+          const c = this.nestedCloser(t);
+          if (c >= 0) {
+            t = d.nxt[c];
+            continue;
+          }
+          t = d.nxt[t];
+          continue;
+        }
+        if (k === P_QUESTION) {
+          // parseConditional: everything up to the `:` is read as an
+          // expression, a `>` among it a comparison.
+          const c = this.conditionalColon(t);
+          if (c < 0) {
             return -1;
           }
+          t = d.nxt[c];
+          continue;
         }
       }
       if (k === P_LPAREN || k === P_LSQUARE || k === P_LBRACE) {
@@ -390,6 +402,64 @@ export class Classifier {
         if (depth < 0) {
           return -1;
         }
+      }
+      t = d.nxt[t];
+    }
+    return -1;
+  }
+
+  /**
+   * The closer of a `<` met inside template arguments or a conditional, or
+   * -1: after a literal, `}` or `)` a `<` opens nothing.
+   */
+  nestedCloser(t: i32): i32 {
+    const d = this.d;
+    const p = this.prev(t);
+    const pk = p >= 0 ? this.k(p) : -1;
+    const binary =
+      p >= 0 &&
+      (this.isLit(p) ||
+        pk === P_RBRACE ||
+        (pk === P_RPAREN && !(d.match[p] >= 0 && this.ty(d.match[p]) === TT_OVERLOADED_OPERATOR_LPAREN)));
+    return binary ? -1 : this.findCloser(t, false, true, false);
+  }
+
+  /**
+   * The `:` ending the conditional whose `?` is `q` (clang-format's
+   * parseConditional), or -1 when a closing bracket comes first.
+   */
+  conditionalColon(q: i32): i32 {
+    const d = this.d;
+    let depth = 0;
+    let t = d.nxt[q];
+    while (t >= 0) {
+      const k = d.kind[t];
+      if (depth === 0) {
+        if (k === P_COLON) {
+          return t;
+        }
+        if (k === P_SEMI || k === P_RBRACE || k === P_RPAREN || k === P_RSQUARE) {
+          return -1;
+        }
+        if (k === P_LESS) {
+          const c = this.nestedCloser(t);
+          if (c >= 0) {
+            t = d.nxt[c];
+            continue;
+          }
+        } else if (k === P_QUESTION) {
+          const c = this.conditionalColon(t);
+          if (c < 0) {
+            return -1;
+          }
+          t = d.nxt[c];
+          continue;
+        }
+      }
+      if (k === P_LPAREN || k === P_LSQUARE || k === P_LBRACE) {
+        depth++;
+      } else if (k === P_RPAREN || k === P_RSQUARE || k === P_RBRACE) {
+        depth--;
       }
       t = d.nxt[t];
     }
