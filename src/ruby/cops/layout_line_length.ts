@@ -11,7 +11,8 @@ import {
   F_BEGIN,
   F_END,
   F_HEREDOC_BODY,
-  F_OPERATOR,
+  F_KEYWORD,
+  F_NAME,
   NT_ARRAY,
   NT_BLOCK,
   NT_CSEND,
@@ -1023,8 +1024,13 @@ export class CopLayoutLineLength {
     const a = src.a;
     const parts: string[] = ["def "];
     if (a.type(node) === NT_DEFS) {
-      parts.push(src.nodeSrc(a.kid(node, 0)));
-      parts.push(src.src(rnS(src, node, F_OPERATOR), rnE(src, node, F_OPERATOR)));
+      // node.loc.keyword.end.join(node.loc.name.begin).source.lstrip
+      let rs = rnE(src, node, F_KEYWORD);
+      const re = rnS(src, node, F_NAME);
+      while (rs < re && (src.at(rs) === 32 || (src.at(rs) >= 9 && src.at(rs) <= 13) || src.at(rs) === 0)) {
+        rs++;
+      }
+      parts.push(src.src(rs, re));
     }
     parts.push(ssxDefName(src, node));
     const args = ssxDefArgs(src, node);
