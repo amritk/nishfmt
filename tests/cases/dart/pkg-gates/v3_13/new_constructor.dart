@@ -1,3 +1,4 @@
 class A {
   new();
 }
+var   unformatted  =   [1,2,  3];

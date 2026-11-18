@@ -1,3 +1,4 @@
 class A(int x) {
   this : assert(x > 0);
 }
+var   unformatted  =   [1,2,  3];

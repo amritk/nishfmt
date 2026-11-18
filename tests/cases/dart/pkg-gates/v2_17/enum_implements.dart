@@ -1,1 +1,2 @@
 enum E implements I { a }
+var   unformatted  =   [1,2,  3];

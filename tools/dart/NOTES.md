@@ -104,7 +104,10 @@ The features that only add syntax are errors at an older version, so dart
 format rejects the file; `features.ts` finds the newest one a file uses
 and `formatDart` leaves the file untouched when its version is older. Each
 row was checked against dart format 3.14.1 at the version below and at the
-release, and each has a case in `tests/cases/dart/pkg-gates/`:
+release, and each has a case in `tests/cases/dart/pkg-gates/`, one
+package at the version below (untouched) and one at the release (dart
+format's output). Every release input also has a line dart format must
+change, so a gate that fired at the release would fail its case:
 
 | Feature (analyzer name) | From | Syntax nishfmt checks |
 | --- | --- | --- |

@@ -1,3 +1,4 @@
 void f() {
   if (x case 1) {}
 }
+var   unformatted  =   [1,2,  3];

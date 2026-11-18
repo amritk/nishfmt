@@ -102,8 +102,11 @@ export const formatDart = (e: DartEngine, path: string, src: u8[], n: i32, out: 
     return true;
   }
   // Syntax of a feature the version does not enable is an error dart format reports.
+  // Nothing newer than 3.13 is gated, so from 3.13 on there is nothing to find.
   const feat = new DtFeature();
-  dtFeatures(p.a, toks, unit, feat);
+  if (ver < 3013) {
+    dtFeatures(p.a, toks, unit, feat);
+  }
   if (feat.ver > ver) {
     if (e.debug) {
       console.error(`${path}: ${feat.name} needs language ${toI32(feat.ver / 1000)}.${feat.ver % 1000}`);

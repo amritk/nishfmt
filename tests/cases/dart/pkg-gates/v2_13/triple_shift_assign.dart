@@ -1,3 +1,4 @@
 void f() {
   x >>>= 1;
 }
+var   unformatted  =   [1,2,  3];
