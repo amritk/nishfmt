@@ -1,8 +1,8 @@
 #!/usr/bin/env bash
 # Builds one language's corpus from the clones in $REPOS: $CORPUS/<lang>/raw
 # holds the sources as found, $CORPUS/<lang>/ref the reference tool's output at
-# its default settings (C#: under $CORPUS/cs/.editorconfig, CSharpier's defaults
-# with end_of_line = crlf), and $CORPUS/<lang>/failed.txt the files it rejected
+# its default settings (Kotlin: ktfmt's --kotlinlang-style; C#: under
+# $CORPUS/cs/.editorconfig, CSharpier's defaults with end_of_line = crlf), and $CORPUS/<lang>/failed.txt the files it rejected
 # (left out of comparisons).
 #
 #   mk.sh cpp|java|kt|rb|swift|rust|dart|cs
@@ -62,7 +62,7 @@ case $lang in
   java) find . -type f -print0 | xargs -0 -P"$(nproc)" -n 200 sh -c \
           'java -jar '"$GJF"' --replace "$@" 2>/dev/null || for f; do cp "../raw/$f" "$f"; java -jar '"$GJF"' --replace "$f" 2>/dev/null || echo "$f" >> ../failed.txt; done' _ ;;
   kt) find . -type f -print0 | xargs -0 -P"$(nproc)" -n 300 sh -c \
-        'java -jar '"$KTFMT"' "$@" >/dev/null 2>&1 || for f; do cp "../raw/$f" "$f"; java -jar '"$KTFMT"' "$f" >/dev/null 2>&1 || echo "$f" >> ../failed.txt; done' _ ;;
+        'java -jar '"$KTFMT"' --kotlinlang-style "$@" >/dev/null 2>&1 || for f; do cp "../raw/$f" "$f"; java -jar '"$KTFMT"' --kotlinlang-style "$f" >/dev/null 2>&1 || echo "$f" >> ../failed.txt; done' _ ;;
   rb) printf 'AllCops:\n  TargetRubyVersion: 3.3\n' > ../rubocop.yml
       find . -type f -print0 | xargs -0 -P"$(nproc)" -n 100 sh -c \
         'rubocop -a -c ../rubocop.yml --cache false --format quiet "$@" >/dev/null 2>&1; true' _

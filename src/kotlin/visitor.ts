@@ -11,6 +11,7 @@
 import { GEngine, BL_NO, BL_PRESERVE, BL_YES, FORCED, INDEPENDENT, UNIFIED } from "../gdoc/engine";
 import { KTree } from "./builder";
 import { kIsComment, kIsPsiChild } from "./input";
+import { K_BLOCK_INDENT, K_CONTINUATION_INDENT } from "./options";
 import {
   N_ANNOTATED_EXPRESSION,
   N_ANNOTATION,
@@ -173,7 +174,6 @@ import {
   ktIsModifierKeyword,
 } from "./types";
 
-const CONTINUATION: i32 = 4;
 
 export class KVisitor {
   g: GEngine;
@@ -199,11 +199,11 @@ export class KVisitor {
     const g = this.g;
     this.src = src;
     this.ZERO = g.constIndent(0);
-    this.blockIndent = g.constIndent(2);
-    this.expressionBreakIndent = g.constIndent(CONTINUATION);
-    this.blockPlusExpressionBreakIndent = g.constIndent(2 + CONTINUATION);
-    this.doubleExpressionBreakIndent = g.constIndent(2 * CONTINUATION);
-    this.expressionBreakNegativeIndent = g.constIndent(-CONTINUATION);
+    this.blockIndent = g.constIndent(K_BLOCK_INDENT);
+    this.expressionBreakIndent = g.constIndent(K_CONTINUATION_INDENT);
+    this.blockPlusExpressionBreakIndent = g.constIndent(K_BLOCK_INDENT + K_CONTINUATION_INDENT);
+    this.doubleExpressionBreakIndent = g.constIndent(2 * K_CONTINUATION_INDENT);
+    this.expressionBreakNegativeIndent = g.constIndent(-K_CONTINUATION_INDENT);
     this.inImport = false;
     this.nLists = 0;
   }
@@ -1705,7 +1705,7 @@ export class KVisitor {
   }
 
   shouldGroupPartWithPrevious(np: i32, part: i32, index: i32, previous: i32, current: i32): boolean {
-    if (index === 1 && this.textLen(previous) < CONTINUATION) {
+    if (index === 1 && this.textLen(previous) < K_CONTINUATION_INDENT) {
       return true;
     }
     const pt = this.ty(previous);

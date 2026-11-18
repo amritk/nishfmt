@@ -2,7 +2,10 @@
 // de-duplicating imports, dropping unused imports and redundant
 // semicolons, and adding trailing commas to multi-line lists. Each reads
 // the tree of the current text and writes the new text into `out`,
-// answering whether anything changed.
+// answering whether anything changed. In kotlinlang style
+// (trailingCommaManagementStrategy COMPLETE) dropping redundant elements
+// also drops every managed list's trailing comma, and adding them puts one
+// back where the list is on more than one line.
 //
 // Ported from ktfmt 0.65's Formatter.sortedAndDistinctImports,
 // RedundantElementManager, RedundantImportDetector,
@@ -13,6 +16,7 @@ import { Out } from "../core/out";
 import { KTree } from "./builder";
 import { kIsComment, kIsPsiChild } from "./input";
 import { kdocReferences } from "./kdoclinks";
+import { K_REMOVE_REDUNDANT_TRAILING_COMMAS } from "./options";
 import {
   N_ARRAY_ACCESS_EXPRESSION,
   N_CALL_EXPRESSION,
@@ -51,7 +55,9 @@ import {
   N_VALUE_ARGUMENT_LIST,
   N_VALUE_PARAMETER,
   N_VALUE_PARAMETER_LIST,
+  N_WHEN_ENTRY,
   N_WHILE,
+  T_ARROW,
   T_COMMA,
   T_COMPANION_KEYWORD,
   T_DOC_COMMENT,
@@ -297,7 +303,74 @@ export class KPasses {
       this.edit(this.t.start[s], this.t.end[s], keepLine ? "" : "\n");
     }
     this.redundantImports(root, used);
+    if (K_REMOVE_REDUNDANT_TRAILING_COMMAS) {
+      const commas: i32[] = [];
+      this.detectTrailingCommas(root, commas);
+      for (let i = 0; i < toI32(commas.length); i++) {
+        this.edit(this.t.start[commas[i]], this.t.end[commas[i]], "");
+      }
+    }
     return this.apply(out);
+  }
+
+  /**
+   * TrailingCommas.Detector: every comma that is the trailing comma of the
+   * managed list it belongs to, as RedundantElementManager visits them
+   * (not inside KDoc, whose commas are not tree nodes here).
+   */
+  detectTrailingCommas(n: i32, out: i32[]): void {
+    const t = this.t;
+    if (t.type[n] === T_COMMA) {
+      const p = t.parent[n];
+      if (p >= 0 && this.managedTrailingComma(p) === n) {
+        out.push(n);
+      }
+      return;
+    }
+    if (t.leaf[n] === 1) {
+      return;
+    }
+    for (let c = t.first[n]; c >= 0; c = t.next[c]) {
+      this.detectTrailingCommas(c, out);
+    }
+  }
+
+  /** TrailingCommas.extractManagedList(list)?.trailingComma: the node, or -1. */
+  managedTrailingComma(list: i32): i32 {
+    const t = this.t;
+    const ty = t.type[list];
+    if (ty === N_VALUE_PARAMETER_LIST) {
+      const p = t.parent[list];
+      if (p >= 0 && t.type[p] === N_FUNCTION_LITERAL) {
+        // getTrailingCommaByElementsList: the last child, or before it when that is a comment.
+        let last = t.last[list];
+        if (last >= 0 && kIsComment(t.type[last])) {
+          last = this.prevConcrete(last);
+        }
+        return last >= 0 && t.type[last] === T_COMMA ? last : -1;
+      }
+      return this.trailingCommaNode(list, T_RPAR);
+    }
+    if (ty === N_VALUE_ARGUMENT_LIST) {
+      return this.trailingCommaNode(list, T_RPAR);
+    }
+    if (ty === N_TYPE_ARGUMENT_LIST || ty === N_TYPE_PARAMETER_LIST) {
+      return this.trailingCommaNode(list, T_GT);
+    }
+    if (ty === N_COLLECTION_LITERAL_EXPRESSION) {
+      return this.trailingCommaNode(list, T_RBRACKET);
+    }
+    if (ty === N_WHEN_ENTRY) {
+      return this.trailingCommaNode(list, T_ARROW);
+    }
+    if (ty === N_ENUM_ENTRY) {
+      const body = t.parent[list];
+      return body >= 0 && this.isEnumBody(body) ? this.enumTrailingComma(body) : -1;
+    }
+    if (ty === N_CLASS_BODY) {
+      return this.isEnumBody(list) ? this.enumTrailingComma(list) : -1;
+    }
+    return -1;
   }
 
   thisPackage: string = "";
@@ -402,6 +475,14 @@ export class KPasses {
       this.removed[sm] = 1;
       if (!keepLine) {
         this.nlSemis.push(t.start[sm]);
+      }
+    }
+    if (K_REMOVE_REDUNDANT_TRAILING_COMMAS) {
+      const commas: i32[] = [];
+      this.detectTrailingCommas(root, commas);
+      for (let i = 0; i < toI32(commas.length); i++) {
+        this.edit(t.start[commas[i]], t.end[commas[i]], "");
+        this.removed[commas[i]] = 1;
       }
     }
     this.removedOn = true;
@@ -642,7 +723,7 @@ export class KPasses {
     return c;
   }
 
-  /** Whether the combined passes drop node `c` (a semicolon) before the comma pass reads the tree. */
+  /** Whether the combined passes drop node `c` (a semicolon or a trailing comma) before the comma pass reads the tree. */
   isRemoved(c: i32): boolean {
     return this.removedOn && this.removed[c] === 1;
   }
@@ -675,7 +756,7 @@ export class KPasses {
     }
     if (this.t.type[tok] === T_SEMICOLON) {
       const p = this.prevConcrete(tok);
-      return p >= 0 && this.t.type[p] === T_COMMA ? p : -1;
+      return p >= 0 && this.t.type[p] === T_COMMA && !this.isRemoved(p) ? p : -1;
     }
     return -1;
   }
@@ -928,18 +1009,20 @@ export class KPasses {
     this.edit(at, at, ",");
   }
 
+  /** Whether the list has a trailing comma that the combined passes keep. */
   trailingCommaBefore(list: i32, close: i32): boolean {
-    let last = -1;
-    for (let c = this.t.first[list]; c >= 0; c = this.t.next[c]) {
-      if (this.t.type[c] === close) {
-        last = c;
-      }
+    const c = this.trailingCommaNode(list, close);
+    return c >= 0 && !this.isRemoved(c);
+  }
+
+  /** getTrailingCommaByClosingElement of the list's first `close` child: the comma node, or -1. */
+  trailingCommaNode(list: i32, close: i32): i32 {
+    const cl = this.child(list, close);
+    if (cl < 0) {
+      return -1;
     }
-    if (last < 0) {
-      return false;
-    }
-    const p = this.prevConcrete(last);
-    return p >= 0 && this.t.type[p] === T_COMMA;
+    const p = this.prevConcrete(cl);
+    return p >= 0 && this.t.type[p] === T_COMMA ? p : -1;
   }
 
   /** leftLeafIgnoringCommentsAndWhitespace. */
@@ -950,7 +1033,7 @@ export class KPasses {
         return x;
       }
       let c = this.t.last[x];
-      while (c >= 0 && this.isWsOrComment(c)) {
+      while (c >= 0 && (this.isWsOrComment(c) || this.isRemoved(c))) {
         c = this.t.prev[c];
       }
       if (c < 0) {
