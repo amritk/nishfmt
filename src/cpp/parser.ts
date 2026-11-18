@@ -11,6 +11,7 @@ import { requiresIsClause } from "./classify";
 import {
   isIdentKind,
   CW_FINAL,
+  TT_CLASS_HEAD_NAME,
   P_HASHHASH,
   KW_NOEXCEPT,
   P_LESSLESSEQUAL,
@@ -3030,6 +3031,10 @@ export class Parser {
     if (this.cur() !== P_LBRACE) {
       this.addLine();
       return false;
+    }
+    if (className >= 0) {
+      d.type[className] = TT_CLASS_HEAD_NAME;
+      d.final[className] = 1;
     }
     const tt = kw === KW_CLASS ? TT_CLASS_LBRACE : kw === KW_STRUCT ? TT_STRUCT_LBRACE : TT_UNION_LBRACE;
     this.parseBlock(1, true, tt);

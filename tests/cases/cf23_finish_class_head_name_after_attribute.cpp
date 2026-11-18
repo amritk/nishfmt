@@ -1,0 +1,10 @@
+template <typename T>
+class [[nodiscard]]
+now_task final : public base<T> {
+public:
+  int x;
+};
+class PROTOBUF_EXPORT [[deprecated("Legacy internal class. Use Reflection::GetMap instead.")]]
+ConstMapIterator final {
+  int y;
+};

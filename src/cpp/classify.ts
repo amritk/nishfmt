@@ -160,6 +160,7 @@ import {
   TT_POINTER_OR_REFERENCE,
   TT_RANGE_BASED_FOR_LOOP_COLON,
   TT_START_OF_NAME,
+  TT_CLASS_HEAD_NAME,
   TT_TEMPLATE_CLOSER,
   TT_TEMPLATE_OPENER,
   TT_TRAILING_ANNOTATION,
@@ -1844,7 +1845,14 @@ export class Classifier {
       return false;
     }
     const n = this.next(t);
-    if ((n < 0 && d.lPP[this.line] === 0) || (n >= 0 && (this.isPtrKind(n) || this.k(n) === K_STRING))) {
+    if (
+      (n < 0 && d.lPP[this.line] === 0) ||
+      (n >= 0 && (this.isPtrKind(n) || this.k(n) === K_STRING || this.ty(n) === TT_CLASS_HEAD_NAME))
+    ) {
+      return false;
+    }
+    // `class Name final`: `final` names nothing.
+    if (this.k(t) === CW_FINAL && this.ty(this.prev(t)) === TT_CLASS_HEAD_NAME) {
       return false;
     }
     let p = this.prev(t);
@@ -2176,6 +2184,7 @@ export class Classifier {
         nk === P_SEMI ||
         nk === P_COLON ||
         nk === P_LBRACE ||
+        nk === P_LPAREN ||
         nk === P_COMMA ||
         nk === P_PERIOD ||
         nk === P_ARROW ||
