@@ -5,8 +5,10 @@
 
 import {
   F_BEGIN,
+  F_DOT,
   F_SELECTOR,
   NT_AND,
+  NT_ARRAY,
   NT_BEGIN,
   NT_BLOCK,
   NT_CSEND,
@@ -45,13 +47,17 @@ import {
   ssxAssignment,
   ssxFE,
   ssxFS,
+  ssxHas,
   ssxIs,
+  ssxIsAnyBlock,
   ssxIsCall,
   ssxLocIs,
   ssxMeth,
   ssxOperatorName,
   ssxParenthesized,
+  ssxSetter,
 } from "./style_syntax_help";
+import { sbhOperatorMethod } from "./style_body_help";
 
 /** require_argument_parentheses? */
 const siwsRequireArgParens = (src: RbSource, n: i32): boolean => {
@@ -59,10 +65,71 @@ const siwsRequireArgParens = (src: RbSource, n: i32): boolean => {
     return false;
   }
   const m = ssxMeth(src, n);
-  if (m === "+" || m === "-" || m === "*" || m === "/" || m === "%" || m === "**") {
+  if (m === "+" || m === "-" || m === "*" || m === "/" || m === "%" || m === "**" || ssxSetter(src, n)) {
     return false;
   }
   return !ssxParenthesized(src, n) && src.a.nKid(n) > 2 && m !== "[]" && m !== "[]=";
+};
+
+/** keyword_command? */
+const siwsKeywordCommand = (src: RbSource, n: i32): boolean => {
+  const t = src.a.type(n);
+  return (t === NT_YIELD || t === NT_SUPER || t === NT_DEFINED_P) && src.a.nKid(n) > 0 && !ssxParenthesized(src, n);
+};
+
+/** binary_operator_call? */
+const siwsBinaryOperatorCall = (src: RbSource, n: i32): boolean =>
+  sbhOperatorMethod(src, n) &&
+  ssxHas(src, n, F_SELECTOR) &&
+  src.a.exS(n) !== ssxFS(src, n, F_SELECTOR) &&
+  !ssxHas(src, n, F_DOT);
+
+/** command_value? */
+const siwsCommandValue = (src: RbSource, n0: i32): boolean => {
+  let n = n0;
+  if (ssxIsAnyBlock(src, n)) {
+    n = src.a.kid(n, 0);
+  }
+  if (!src.a.isNode(n)) {
+    return false;
+  }
+  if (siwsCommandAssignment(src, n)) {
+    return true;
+  }
+  if (src.a.type(n) === NT_DEFINED_P) {
+    return false;
+  }
+  if (siwsKeywordCommand(src, n)) {
+    return true;
+  }
+  if (siwsBinaryOperatorCall(src, n)) {
+    return false;
+  }
+  return siwsRequireArgParens(src, n);
+};
+
+/** command_assignment? */
+const siwsCommandAssignment = (src: RbSource, n: i32): boolean => {
+  const a = src.a;
+  if (!ssxAssignment(src, n) || a.nKid(n) === 0) {
+    return false;
+  }
+  // node.call_type? ? node.last_argument : node.expression
+  let v = a.kid(n, -1);
+  if (!a.isNode(v)) {
+    return false;
+  }
+  if (
+    a.type(v) === NT_ARRAY &&
+    !ssxLocIs(src, v, F_BEGIN, "[") &&
+    !(ssxHas(src, v, F_BEGIN) && src.at(ssxFS(src, v, F_BEGIN)) === 37)
+  ) {
+    return true;
+  }
+  if (a.type(v) === NT_RESCUE) {
+    v = a.kid(v, 0);
+  }
+  return siwsCommandValue(src, v);
 };
 
 /** lower_precedence_than_ternary? */
@@ -94,12 +161,11 @@ const siwsLowerPrecedence = (src: RbSource, n: i32): boolean => {
         return true;
       }
     }
-    return false;
   }
-  if (t === NT_YIELD || t === NT_SUPER || t === NT_DEFINED_P) {
-    return a.nKid(n) > 0 && !ssxParenthesized(src, n);
+  if (siwsCommandAssignment(src, n)) {
+    return true;
   }
-  return false;
+  return siwsKeywordCommand(src, n);
 };
 
 /** build_expression. */
