@@ -13,15 +13,29 @@ import {
   NT_BEGIN,
   NT_BLOCK,
   NT_BREAK,
+  NT_CASE,
+  NT_CASE_MATCH,
+  NT_CLASS,
   NT_DEF,
   NT_DEFS,
+  NT_ENSURE,
+  NT_FOR,
   NT_IF,
+  NT_IN_PATTERN,
+  NT_KWBEGIN,
   NT_LVAR,
   NT_LVASGN,
+  NT_MODULE,
   NT_NEXT,
   NT_NUMBLOCK,
+  NT_RESBODY,
+  NT_RESCUE,
   NT_RETURN,
+  NT_SCLASS,
   NT_SEND,
+  NT_UNTIL,
+  NT_WHEN,
+  NT_WHILE,
   V_NIL,
 } from "../ast";
 import { RbCop } from "../cop";
@@ -47,7 +61,6 @@ import {
   scnWholeS,
 } from "./style_cond_help";
 import {
-  ssxAssignment,
   ssxDefBody,
   ssxDescendants,
   ssxFE,
@@ -55,6 +68,7 @@ import {
   ssxIs,
   ssxIsCall,
   ssxMeth,
+  ssxRescueModifier,
 } from "./style_syntax_help";
 
 /** match_guard_clause?: raise/fail without receiver, return, break or next, on one line. */
@@ -69,6 +83,25 @@ const sgcMatch = (src: RbSource, n: i32): boolean => {
     ok = m === "raise" || m === "fail";
   }
   return ok && src.line(src.a.exS(n)) === src.line(src.a.exE(n));
+};
+
+/** Ruby's \s, on one byte. */
+const sgcSpace = (c: i32): boolean => c === 32 || (c >= 9 && c <= 13);
+
+/** range_by_whole_lines(range).source.strip == range.source. */
+const sgcAloneOnLine = (src: RbSource, s: i32, e: i32): boolean => {
+  for (let p = src.lineStart(src.line(s)); p < s; p++) {
+    if (!sgcSpace(src.at(p)) && src.at(p) !== 0) {
+      return false;
+    }
+  }
+  const le = src.lineEnd(src.line(e));
+  for (let p = e; p < le; p++) {
+    if (!sgcSpace(src.at(p)) && src.at(p) !== 0) {
+      return false;
+    }
+  }
+  return true;
 };
 
 /** Node#guard_clause?: the guard node (the rhs of an and/or), or V_NIL. */
@@ -173,7 +206,7 @@ export class CopStyleGuardClause {
     if (k === null) {
       return;
     }
-    if (scnElse(src, n) && guard === 0) {
+    if ((scnElse(src, n) && guard === 0) || this.codeAfterEndNeedsConditional(src, n, guard)) {
       return;
     }
     this.autocorrect(src, n, example, multi, guard, k);
@@ -201,7 +234,7 @@ export class CopStyleGuardClause {
       }
     }
     if (heredoc !== V_NIL) {
-      this.removeWholeLines(src, k, ssxFS(src, n, F_END), ssxFE(src, n, F_END));
+      this.removeEnd(src, k, ssxFS(src, n, F_END), ssxFE(src, n, F_END));
       if (!scnElse(src, n)) {
         return;
       }
@@ -225,6 +258,34 @@ export class CopStyleGuardClause {
     k.remove(ssxFS(src, n, F_ELSE), ssxFE(src, n, F_ELSE));
     const b = guard === 1 ? ib : eb;
     k.remove(a.exS(b), a.exE(b));
+  }
+
+  /** remove_end: the whole line when `end` is alone on it, else only the keyword. */
+  private removeEnd(src: RbSource, k: RbRewriter, s: i32, e: i32): void {
+    if (sgcAloneOnLine(src, s, e)) {
+      this.removeWholeLines(src, k, s, e);
+    } else {
+      k.remove(s, e);
+    }
+  }
+
+  /** code_after_end_needs_conditional?: a heredoc guard with code after `end` on its line. */
+  private codeAfterEndNeedsConditional(src: RbSource, n: i32, guard: i32): boolean {
+    const guardBranch = guard === 2 ? scnElseBranch(src, n) : scnIfBranch(src, n);
+    if (this.findHeredocArgument(src, guardBranch) === V_NIL) {
+      return false;
+    }
+    // !source_line[last_column..].match?(/\A\s*(?:\z|[#;)\]}])/)
+    let p = ssxFE(src, n, F_END);
+    const le = src.lineEnd(src.line(p));
+    while (p < le && sgcSpace(src.at(p))) {
+      p++;
+    }
+    if (p >= le) {
+      return false;
+    }
+    const c = src.at(p);
+    return !(c === 35 || c === 59 || c === 41 || c === 93 || c === 125);
   }
 
   private removeWholeLines(src: RbSource, k: RbRewriter, s: i32, e: i32): void {
@@ -283,8 +344,54 @@ export class CopStyleGuardClause {
     if (src.line(a.exS(cond)) !== src.line(a.exE(cond))) {
       return true;
     }
+    return !this.statement(src, n);
+  }
+
+  /** statement?: n stands where statements go, so a guard clause and the rest can follow. */
+  private statement(src: RbSource, n: i32): boolean {
+    const a = src.a;
     const p = src.parent(n);
-    return p !== V_NIL && (ssxAssignment(src, p) || scnEndlessDef(src, p));
+    if (p === V_NIL) {
+      return true;
+    }
+    const t = a.type(p);
+    if (
+      t === NT_BEGIN ||
+      t === NT_KWBEGIN ||
+      t === NT_BLOCK ||
+      t === NT_NUMBLOCK ||
+      t === NT_CLASS ||
+      t === NT_MODULE ||
+      t === NT_SCLASS ||
+      t === NT_ENSURE
+    ) {
+      return true;
+    }
+    if (t === NT_DEF || t === NT_DEFS) {
+      return !scnEndlessDef(src, p);
+    }
+    if (t === NT_RESBODY) {
+      return !ssxRescueModifier(src, p);
+    }
+    if (t === NT_RESCUE) {
+      for (let i = 0; i < a.nKid(p); i++) {
+        if (ssxIs(src, a.kid(p, i), NT_RESBODY)) {
+          return !ssxRescueModifier(src, a.kid(p, i));
+        }
+      }
+      return true;
+    }
+    // statement_branch?
+    if (t === NT_IF) {
+      return !scnTernary(src, p) && n !== a.kid(p, 0);
+    }
+    if (t === NT_WHEN || t === NT_IN_PATTERN || t === NT_WHILE || t === NT_UNTIL || t === NT_FOR) {
+      return n === a.kid(p, -1);
+    }
+    if (t === NT_CASE || t === NT_CASE_MATCH) {
+      return n === a.kid(p, -1);
+    }
+    return false;
   }
 
   private acceptedIf(src: RbSource, n: i32, ending: boolean): boolean {
