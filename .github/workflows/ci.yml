@@ -53,7 +53,7 @@ jobs:
         run: npm run lint
 
       - name: The pinned nish, and the LLVM toolchain it links with
-        uses: amritk/workflows/actions/setup-nish@c20c512afd4838c8c2a4e1de48df727e699f6e58
+        uses: amritk/workflows/actions/setup-nish@d0672b6994cc142bccf836ab1e185b9be990e832
 
       - name: Build
         run: npm run build

@@ -1,33 +1,35 @@
 {
-  "$schema": "https://biomejs.dev/schemas/1.8.3/schema.json",
+  "$schema": "https://biomejs.dev/schemas/2.6.8/schema.json",
   "files": {
     "maxSize": 4194304,
-    "ignore": [
-      ".nish/**",
-      "dist/**",
-      "build/**",
-      "node_modules/**",
-      "tests/cases/**",
-      "bench/work/**",
-      ".github/.release-please-manifest.json"
+    "includes": [
+      "**",
+      "!**/.nish",
+      "!**/dist",
+      "!**/build",
+      "!**/node_modules",
+      "!**/tests/cases",
+      "!**/bench/work",
+      "!.github/.release-please-manifest.json"
     ]
   },
-  "organizeImports": {
-    "enabled": false
-  },
+  "assist": { "actions": { "source": { "organizeImports": "off" } } },
   "linter": {
     "enabled": true,
     "rules": {
-      "recommended": true,
+      "preset": "recommended",
       "correctness": {
         "noUnusedVariables": "warn",
         "noConstantCondition": "off",
-        "noUnnecessaryContinue": "off"
+        "noUnusedFunctionParameters": "off",
+        "useParseIntRadix": "off"
       },
       "complexity": {
         "useOptionalChain": "off",
         "noUselessConstructor": "off",
-        "noUselessTernary": "warn"
+        "noUselessTernary": "warn",
+        "noUselessContinue": "off",
+        "useMathMinMax": "off"
       },
       "style": {
         "noInferrableTypes": "off",
@@ -36,20 +38,28 @@
         "noParameterAssign": "off",
         "noNonNullAssertion": "off",
         "useConst": "error",
-        "noVar": "error",
         "useTemplate": "off",
         "noUselessElse": "off"
       },
       "suspicious": {
         "noShadowRestrictedNames": "warn",
-        "noAssignInExpressions": "warn"
+        "noAssignInExpressions": "warn",
+        "noVar": "error"
       }
     }
   },
+  "overrides": [
+    {
+      "includes": ["src/ruby/lexer.ts"],
+      "linter": { "rules": { "suspicious": { "noDuplicateElseIf": "off" } } }
+    }
+  ],
   "formatter": {
     "enabled": true,
     "indentStyle": "space",
     "indentWidth": 2,
     "lineWidth": 120
-  }
+  },
+  "markdown": { "formatter": { "enabled": false }, "linter": { "enabled": false } },
+  "yaml": { "formatter": { "enabled": false }, "linter": { "enabled": false } }
 }
