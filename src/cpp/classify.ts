@@ -1595,6 +1595,30 @@ export class Classifier {
     if (n < 0) {
       return;
     }
+    // A conversion function, `operator T()` or a macro's `operator OP(`:
+    // a word that is no operator first (clang-format 23's annotator).
+    const nk0 = this.k(n);
+    if (isWordKind(nk0) && nk0 !== KW_NEW && nk0 !== KW_DELETE && nk0 !== KW_CO_AWAIT) {
+      let lp = d.nxt[n];
+      const a = lp >= 0 ? d.nxt[lp] : -1;
+      const c = a >= 0 ? d.nxt[a] : -1;
+      if (nk0 === KW_DECLTYPE && this.k(lp) === P_LPAREN && this.k(a) === KW_AUTO && this.k(c) === P_RPAREN) {
+        lp = d.nxt[c]; // `decltype(auto)`
+      } else {
+        while (lp >= 0 && this.k(lp) !== P_LPAREN) {
+          if (this.isPtrKind(lp)) {
+            this.set(lp, TT_POINTER_OR_REFERENCE);
+          }
+          lp = d.nxt[lp];
+        }
+      }
+      if (lp >= 0 && this.k(lp) === P_LPAREN) {
+        if (this.expr[this.depth] !== 1) {
+          this.set(t, TT_FUNCTION_DECLARATION_NAME);
+        }
+        return;
+      }
+    }
     if (this.k(n) === P_LPAREN && d.nxt[n] >= 0 && this.k(d.nxt[n]) === P_RPAREN) {
       const after = d.nxt[d.nxt[n]];
       if (after >= 0 && this.k(after) === P_LESS) {
@@ -2378,7 +2402,7 @@ export class Classifier {
         continue;
       }
       const nn = d.nxt[n];
-      if (k === KW_NEW || k === KW_DELETE) {
+      if (k === KW_NEW || k === KW_DELETE || k === KW_CO_AWAIT) {
         if (nn >= 0 && this.k(nn) === P_LSQUARE && d.nxt[nn] >= 0 && this.k(d.nxt[nn]) === P_RSQUARE) {
           n = d.nxt[nn];
         }
@@ -2388,7 +2412,7 @@ export class Classifier {
         n = nn;
         continue;
       }
-      if ((isSimpleTypeKind(k) || k === K_IDENT) && nn >= 0 && this.isPtrKind(nn)) {
+      if ((isTypeName(d, n) || k === K_IDENT) && nn >= 0 && this.isPtrKind(nn)) {
         n = nn;
         continue;
       }
@@ -2403,11 +2427,20 @@ export class Classifier {
 
   isFunctionName(t: i32): boolean {
     const d = this.d;
+    if (this.ty(t) === TT_FUNCTION_DECLARATION_NAME) {
+      this.fnEarly = true; // (a conversion function's `operator`)
+      return true;
+    }
     let next = d.nxt[t];
     if (this.k(t) === KW_OPERATOR) {
-      // clang-format's isFunctionDeclarationName: the token right before
-      // (a comment counts) decides, then skipOperatorName.
-      const p = d.prv[t];
+      // clang-format's isFunctionDeclarationName: a friend, or the token
+      // before decides, then skipOperatorName.
+      const f = this.k(this.first) === K_COMMENT ? this.next(this.first) : this.first;
+      if (f >= 0 && this.k(f) === KW_FRIEND) {
+        this.fnEarly = true;
+        return true;
+      }
+      const p = this.prev(t);
       if (p < 0) {
         return false;
       }
@@ -2434,6 +2467,10 @@ export class Classifier {
     } else {
       if (this.ty(t) !== TT_START_OF_NAME) {
         return false;
+      }
+      // `name##suffix(`
+      while (next >= 0 && this.k(next) === P_HASHHASH && d.nxt[next] >= 0 && this.k(d.nxt[next]) === K_IDENT) {
+        next = d.nxt[d.nxt[next]];
       }
       while (next >= 0) {
         if (this.ty(next) === TT_TEMPLATE_OPENER && d.match[next] >= 0) {
@@ -2490,7 +2527,7 @@ export class Classifier {
       }
       if (
         this.k(q) === KW_CONST ||
-        isSimpleTypeKind(this.k(q)) ||
+        isTypeName(d, q) ||
         this.ty(q) === TT_POINTER_OR_REFERENCE ||
         this.ty(q) === TT_START_OF_NAME ||
         this.k(q) === P_ELLIPSIS
