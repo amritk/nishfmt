@@ -503,11 +503,11 @@ export const stripTrailingJ = (s: string): string => {
   return s.substring(0, end);
 };
 
-/** The leading Character.isWhitespace characters of `l`: their count, and in `jwsBytes` their bytes. */
-const javaLeadingWs = (l: string, max: i32): i32 => {
+/** How many Character.isWhitespace characters `l` starts with. */
+const javaLeadingWsChars = (l: string): i32 => {
   let k = 0;
   let i = 0;
-  while (k < max && i < toI32(l.length)) {
+  while (i < toI32(l.length)) {
     const w = javaWsLen(l, i);
     if (w === 0) {
       break;
@@ -515,11 +515,17 @@ const javaLeadingWs = (l: string, max: i32): i32 => {
     i += w;
     k++;
   }
-  jwsBytes[0] = i;
   return k;
 };
 
-const jwsBytes = new Int32Array(1);
+/** The byte length of the first `chars` characters of `l`, all whitespace. */
+const javaLeadingWsBytes = (l: string, chars: i32): i32 => {
+  let i = 0;
+  for (let k = 0; k < chars && i < toI32(l.length); k++) {
+    i += javaWsLen(l, i);
+  }
+  return i;
+};
 
 /**
  * String.stripIndent over lines joined without a trailing terminator, split
@@ -530,8 +536,8 @@ export const stripIndentLines = (lines: string[]): string[] => {
   let min = 2147483647;
   for (let i = 0; i < toI32(lines.length); i++) {
     const l = lines[i];
-    const k = javaLeadingWs(l, 2147483647);
-    const blank = jwsBytes[0] === toI32(l.length);
+    const k = javaLeadingWsChars(l);
+    const blank = javaLeadingWsBytes(l, k) === toI32(l.length);
     if (!blank || i === toI32(lines.length) - 1) {
       if (k < min) {
         min = k;
@@ -543,8 +549,7 @@ export const stripIndentLines = (lines: string[]): string[] => {
   }
   const out: string[] = [];
   for (const l of lines) {
-    javaLeadingWs(l, min);
-    out.push(stripTrailingJ(l.substring(jwsBytes[0], toI32(l.length))));
+    out.push(stripTrailingJ(l.substring(javaLeadingWsBytes(l, min), toI32(l.length))));
   }
   return out;
 };

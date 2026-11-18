@@ -415,6 +415,18 @@ export class JParser {
     return ok;
   }
 
+  /** Whether type `n` is the restricted identifier `var`. */
+  private isVarType(n: i32): boolean {
+    // A speculative parse that already failed can leave an identifier without its name.
+    return (
+      !this.err &&
+      n >= 0 &&
+      this.t.kind[n] === N_IDENTIFIER &&
+      this.t.name[n] >= 0 &&
+      this.inp.is(this.t.name[n], "var")
+    );
+  }
+
   /** The implicitly declared class the top-level members go in. */
   private implicitClass(): i32 {
     const t = this.t;
@@ -916,6 +928,10 @@ export class JParser {
       return;
     }
     const type = this.type();
+    // A field's or a method's type: "'var' is not allowed here".
+    if (this.isVarType(type)) {
+      this.fail();
+    }
     if (this.kindAt(0) === JK_IDENT && this.isAt(1, "(")) {
       t.push(this.method(mods, start, typarams, type, false));
       return;
@@ -999,7 +1015,7 @@ export class JParser {
   }
 
   /** A formal parameter; a receiver parameter sets slot d (its name expression). */
-  private formalParameter(allowReceiver: boolean): i32 {
+  private formalParameter(allowReceiver: boolean, allowVar: boolean = false): i32 {
     const t = this.t;
     const mods = this.modifiers();
     const start = t.start[mods] >= 0 ? t.start[mods] : this.pos();
@@ -1007,6 +1023,10 @@ export class JParser {
     t.a[v] = mods;
     t.parent[mods] = v;
     let type = this.type();
+    // `var` types only a lambda's parameters here: "'var' is not allowed here".
+    if (!allowVar && this.isVarType(type)) {
+      this.fail();
+    }
     let varAnnos = -1;
     if (this.is("@") && this.varargsAnnotationsAhead()) {
       const am = t.mark();
@@ -1245,7 +1265,12 @@ export class JParser {
     const m = t.mark();
     if (!this.is(">")) {
       while (!this.err) {
-        t.push(this.type());
+        const a = this.type();
+        // "'var' is not allowed here".
+        if (this.isVarType(a)) {
+          this.fail();
+        }
+        t.push(a);
         if (!this.accept(",")) {
           break;
         }
@@ -1732,6 +1757,9 @@ export class JParser {
       t.a[v] = mods;
       t.parent[mods] = v;
       const first = this.type();
+      if (this.isVarType(first)) {
+        this.fail();
+      }
       if (this.is("|")) {
         const u = t.node(N_UNION_TYPE, t.start[first]);
         const um = t.mark();
@@ -2001,7 +2029,7 @@ export class JParser {
       while (!this.is(")") && !this.err) {
         const explicit = !(this.kindAt(0) === JK_IDENT && (this.isAt(1, ",") || this.isAt(1, ")")));
         if (explicit) {
-          t.push(this.formalParameter(false));
+          t.push(this.formalParameter(false, true));
         } else {
           const v = t.node(N_VARIABLE, this.pos());
           const mods = t.node(N_MODIFIERS, -1);
