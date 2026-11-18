@@ -9,6 +9,7 @@
 set -uo pipefail
 here=$(cd "$(dirname "$0")" && pwd)
 bin=${1:-$here/../dist/nishfmt}
+bin=$(cd "$(dirname "$bin")" && pwd)/$(basename "$bin")
 work=$(mktemp -d)
 trap 'rm -rf "$work"' EXIT
 fail=0 pass=0
@@ -56,6 +57,51 @@ for src in "$here"/cases/*/*; do
     echo "FAIL $label: formatting $name.expected changes it"
     fail=$((fail + 1))
   fi
+done
+
+# Dart projects: each tests/cases/dart/pkg-<name>/ is copied to a scratch
+# directory, where nishfmt formats each <f>.dart inside it by a relative path,
+# so that it reads the copy's package config and analysis_options.yaml. A
+# <f>.expected beside it (dart format 3.14.1's output in the copy) must match,
+# and formatting it must change nothing; a <f>.untouched beside it means the
+# file must be skipped and left as it is.
+for pkg in "$here"/cases/dart/pkg-*/; do
+  [ -d "$pkg" ] || continue
+  pname=$(basename "$pkg")
+  rm -rf "$work/pkg" && cp -r "$pkg" "$work/pkg"
+  while IFS= read -r rel; do
+    rel=${rel#./}
+    base=${rel%.dart}
+    label="dart/$pname/$rel"
+    if [ -f "$work/pkg/$base.untouched" ]; then
+      cp "$work/pkg/$rel" "$work/orig"
+      msg=$(cd "$work/pkg" && "$bin" -i "$rel" 2>&1)
+      skipped=0
+      case $msg in *"nishfmt: skipped $rel "*) skipped=1 ;; esac
+      if [ "$skipped" -eq 1 ] && cmp -s "$work/pkg/$rel" "$work/orig"; then
+        pass=$((pass + 1))
+      else
+        echo "FAIL $label: not left untouched"
+        fail=$((fail + 1))
+      fi
+      continue
+    fi
+    [ -f "$work/pkg/$base.expected" ] || continue
+    if (cd "$work/pkg" && "$bin" "$rel") > "$work/out" && cmp -s "$work/out" "$work/pkg/$base.expected"; then
+      pass=$((pass + 1))
+    else
+      echo "FAIL $label: output differs from $base.expected"
+      diff "$work/out" "$work/pkg/$base.expected" | head -20
+      fail=$((fail + 1))
+    fi
+    # Idempotence, in the same directory and so the same project.
+    cp "$work/pkg/$base.expected" "$work/pkg/$base.idem.dart"
+    if ! (cd "$work/pkg" && "$bin" --check -q "$base.idem.dart" > /dev/null); then
+      echo "FAIL $label: formatting $base.expected changes it"
+      fail=$((fail + 1))
+    fi
+    rm -f "$work/pkg/$base.idem.dart"
+  done < <(cd "$work/pkg" && find . -name '*.dart' -type f | sort)
 done
 
 # Unbalanced input is skipped, not mangled.

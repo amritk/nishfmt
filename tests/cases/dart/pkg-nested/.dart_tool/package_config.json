@@ -1,0 +1,25 @@
+{
+  "configVersion": 2,
+  "packages": [
+    {
+      "name": "outer",
+      "rootUri": "../",
+      "packageUri": "lib/",
+      "languageVersion": "3.13"
+    },
+    {
+      "name": "inner",
+      "rootUri": "../inner/",
+      "packageUri": "lib/",
+      "languageVersion": "3.6"
+    },
+    {
+      "name": "dep",
+      "rootUri": "file:///nonexistent/pub-cache/dep-1.0.0/",
+      "packageUri": "lib/",
+      "languageVersion": "3.0"
+    }
+  ],
+  "generator": "pub",
+  "generatorVersion": "3.14.1"
+}

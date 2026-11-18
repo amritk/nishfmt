@@ -1,0 +1,2 @@
+enum E with M { a }
+var   unformatted  =   [1,2,  3];

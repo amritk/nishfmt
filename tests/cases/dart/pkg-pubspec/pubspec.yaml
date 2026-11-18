@@ -1,0 +1,3 @@
+name: pubspec_only
+environment:
+  sdk: ^3.6.0

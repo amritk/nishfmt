@@ -1,0 +1,2 @@
+Foo f = .new();
+var unformatted = [1, 2, 3];
