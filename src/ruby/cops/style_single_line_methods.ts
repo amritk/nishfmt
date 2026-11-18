@@ -63,7 +63,7 @@ import { RbCop } from "../cop";
 import { RbRewriter } from "../rewriter";
 import { RbSource } from "../source";
 import { LalIgnored } from "./layout_align_help";
-import { rbLayCommentAtLine } from "./layout_empty_help";
+import { rbLayCommentAtLine, rbLayStripWs } from "./layout_empty_help";
 import { rmlAsgnType, rmlSpaces } from "./layout_multiline_help";
 import {
   sbhAssignmentMethod,
@@ -446,11 +446,7 @@ export class CopStyleSingleLineMethods {
       // From the end of `def` to the name, which keeps a parenthesized receiver's parentheses.
       // String#lstrip
       let rs = ssxFE(src, n, F_KEYWORD);
-      while (rs < ssxFS(src, n, F_NAME)) {
-        const c = src.at(rs);
-        if (c !== 0 && c !== 32 && (c < 9 || c > 13)) {
-          break;
-        }
+      while (rs < ssxFS(src, n, F_NAME) && rbLayStripWs(src.at(rs))) {
         rs++;
       }
       receiver = src.src(rs, ssxFS(src, n, F_NAME));

@@ -19,7 +19,6 @@ import { lalIsWs } from "./layout_align_help";
 /** Whether c is Ruby's \w. */
 const lrceWord = (c: i32): boolean => (c >= 48 && c <= 57) || (c >= 65 && c <= 90) || (c >= 97 && c <= 122) || c === 95;
 
-/** Whether c is Ruby's \s. */
 /** The first position of `name` (not followed by \w) within [s, e), or -1. */
 export const lrceIndex = (src: RbSource, s: i32, e: i32, name: string): i32 => {
   const n = toI32(name.length);

@@ -63,7 +63,6 @@ const rmlBenOverlapsInner = (src: RbSource, n: i32): boolean => {
   return false;
 };
 
-/** Ruby's String#strip / #rstrip set: whitespace and NUL. */
 /** code_end_pos: the end of the code on the range's last line, before a comment and trailing whitespace. */
 const rmlBenCodeEnd = (src: RbSource, rs: i32, re: i32): i32 => {
   const l = src.line(re);

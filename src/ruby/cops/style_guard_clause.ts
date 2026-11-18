@@ -86,7 +86,6 @@ const sgcMatch = (src: RbSource, n: i32): boolean => {
   return ok && src.line(src.a.exS(n)) === src.line(src.a.exE(n));
 };
 
-/** Ruby's \s, on one byte. */
 /** range_by_whole_lines(range).source.strip == range.source. */
 const sgcAloneOnLine = (src: RbSource, s: i32, e: i32): boolean => {
   for (let p = src.lineStart(src.line(s)); p < s; p++) {
