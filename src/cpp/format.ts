@@ -5200,8 +5200,10 @@ export class Formatter {
     }
     const c0 = d.at(a);
     const c1 = d.at(a + 1);
+    // (`@`, and since clang-format 23 `\`, commonly have special meaning.)
     if (
       c0 === 64 ||
+      c0 === 92 ||
       this.textAt(a, "TODO") ||
       this.textAt(a, "FIXME") ||
       this.textAt(a, "XXX") ||
@@ -5784,8 +5786,8 @@ export class Formatter {
       bc--;
     }
     let ac = sp;
-    // Don't trim the blanks if that would put `*/` right after the break.
-    if (!(this.splitDecoStar && e - sp > 1 && d.at(sp + 1) === 47)) {
+    // (clang-format 23 keeps the blanks after a decoration ending in `*`.)
+    if (!this.splitDecoStar) {
       while (ac < e && isBlankByte(d.at(ac))) {
         ac++;
       }
