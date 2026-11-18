@@ -3,7 +3,7 @@
 // Ported from RuboCop 1.92.3 (MIT License, Copyright (c) 2012-24 Bozhidar
 // Batsov).
 
-import { NT_SEND, V_NIL } from "../ast";
+import { NT_BEGIN, NT_KWBEGIN, NT_SEND, V_NIL } from "../ast";
 import { RbCop } from "../cop";
 import { RbSource } from "../source";
 import { lbhAnyConst, lbhSexp } from "./lint_batch_help";
@@ -36,6 +36,10 @@ export class CopLintDuplicateRequire {
         continue;
       }
       const p = src.parent(n);
+      // statement_sequence?(node.parent)
+      if (p === V_NIL || (a.type(p) !== NT_BEGIN && a.type(p) !== NT_KWBEGIN)) {
+        continue;
+      }
       const got = required.get(p);
       const set = got === undefined ? new Set<string>() : got;
       if (got === undefined) {

@@ -1,0 +1,4 @@
+require 'uri'
+
+do_something(require('enumerator'))
+require 'enumerator' and do_something
