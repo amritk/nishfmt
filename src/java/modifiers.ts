@@ -7,11 +7,11 @@
 import { Out } from "../core/out";
 import { GInput } from "../gdoc/input";
 
-/** The Modifier ordinal of a token's text, or -1: public protected private abstract default static sealed non-sealed final transient volatile synchronized native strictfp. */
 /** Modifier.SEALED's and Modifier.NON_SEALED's ordinals. */
 export const RANK_SEALED: i32 = 6;
 export const RANK_NON_SEALED: i32 = 7;
 
+/** The Modifier ordinal of a token's text, or -1: public protected private abstract default static sealed non-sealed final transient volatile synchronized native strictfp. */
 export const modifierRank = (inp: GInput, t: i32): i32 => {
   if (inp.is(t, "public")) return 0;
   if (inp.is(t, "protected")) return 1;

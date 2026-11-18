@@ -1674,7 +1674,7 @@ export class JParser {
       const n = t.node(N_SWITCH, start);
       this.next();
       t.a[n] = this.parExpression();
-      t.b[n] = this.switchBody();
+      t.b[n] = this.switchBody(true);
       return this.finish(n);
     }
     if (this.is("synchronized")) {
@@ -1738,9 +1738,30 @@ export class JParser {
       return this.classDecl(mods);
     }
     const n = t.node(N_EXPRESSION_STATEMENT, start);
-    t.a[n] = this.expression();
+    t.a[n] = this.checkExprStat(this.expression());
     this.expect(";");
     return this.finish(n);
+  }
+
+  /**
+   * javac's checkExprStat (TreeInfo.isExpressionStatement): an expression
+   * statement is an assignment, `++` / `--`, a method call or a class instance
+   * creation; anything else (`x;`, `int[].class;`, `(f());`) is "not a statement".
+   */
+  private checkExprStat(e: i32): i32 {
+    const t = this.t;
+    const k = t.kind[e];
+    const ok =
+      k === N_ASSIGNMENT ||
+      k === N_COMPOUND_ASSIGNMENT ||
+      k === N_METHOD_INVOCATION ||
+      k === N_NEW_CLASS ||
+      (k === N_UNARY &&
+        (t.op[e] === OP_PREINC || t.op[e] === OP_PREDEC || t.op[e] === OP_POSTINC || t.op[e] === OP_POSTDEC));
+    if (!ok) {
+      this.rejected = true;
+    }
+    return e;
   }
 
   private parExpression(): i32 {
@@ -1789,7 +1810,7 @@ export class JParser {
       } else {
         while (!this.err) {
           const es = t.node(N_EXPRESSION_STATEMENT, this.pos());
-          t.a[es] = this.expression();
+          t.a[es] = this.checkExprStat(this.expression());
           t.push(this.finish(es));
           if (!this.accept(",")) {
             break;
@@ -1807,7 +1828,7 @@ export class JParser {
     if (!this.is(")")) {
       while (!this.err) {
         const es = t.node(N_EXPRESSION_STATEMENT, this.pos());
-        t.a[es] = this.expression();
+        t.a[es] = this.checkExprStat(this.expression());
         t.push(this.finish(es));
         if (!this.accept(",")) {
           break;
@@ -1913,18 +1934,19 @@ export class JParser {
   }
 
   /** `{ case ...: ... }` of a switch statement or expression. */
-  private switchBody(): i32 {
+  /** A switch's `{ cases }`; `statement`: a switch statement's, not a switch expression's. */
+  private switchBody(statement: boolean): i32 {
     const t = this.t;
     this.expect("{");
     const m = t.mark();
     while (!this.is("}") && !this.atEof() && !this.err) {
-      t.push(this.switchCase());
+      t.push(this.switchCase(statement));
     }
     this.expect("}");
     return t.list(m);
   }
 
-  private switchCase(): i32 {
+  private switchCase(statement: boolean): i32 {
     const t = this.t;
     const n = t.node(N_CASE, this.pos());
     const lm = t.mark();
@@ -1960,6 +1982,11 @@ export class JParser {
         t.push(s);
       } else {
         const e = this.expression();
+        // A switch statement's rule body is javac's parseStatementAsBlock, an
+        // expression statement; a switch expression's is the case's value.
+        if (statement) {
+          this.checkExprStat(e);
+        }
         t.d[n] = e;
         this.expect(";");
       }
@@ -2668,7 +2695,7 @@ export class JParser {
       const n = t.node(N_SWITCH_EXPRESSION, start);
       this.next();
       t.a[n] = this.parExpression();
-      t.b[n] = this.switchBody();
+      t.b[n] = this.switchBody(false);
       return this.finish(n);
     }
     if (this.isPrimitive(0)) {
