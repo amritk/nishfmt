@@ -3,7 +3,7 @@
 // rustc would refuse to parse; formatting is then skipped.
 //
 // Ported from rustc_parse (MIT OR Apache-2.0, Copyright The Rust Project
-// Developers), for rustfmt 1.9.0 (MIT OR Apache-2.0, Copyright The Rust
+// Developers), for rustfmt 1.10.0 (MIT OR Apache-2.0, Copyright The Rust
 // Project Developers).
 
 import { growI32 } from "../core/arr";
@@ -960,11 +960,7 @@ export class RsParser {
       }
       if (k1 === KW_IMPL) {
         this.bump();
-        const im = this.parseImpl(lo);
-        if (im >= 0) {
-          this.ast.fl[im] = this.ast.fl[im] | IT_UNSAFE | (def ? IT_DEFAULT : 0);
-        }
-        return im;
+        return this.parseImpl(lo, IT_UNSAFE | (def ? IT_DEFAULT : 0));
       }
       if (k1 === KW_TRAIT || (k1 === KW_AUTO && this.laKw(2) === KW_TRAIT)) {
         this.bump();
@@ -985,24 +981,21 @@ export class RsParser {
       return -1;
     }
     if (kk === KW_IMPL) {
-      const im = this.parseImpl(lo);
-      if (im >= 0 && def) {
-        this.ast.fl[im] = this.ast.fl[im] | IT_DEFAULT;
-      }
-      return im;
+      return this.parseImpl(lo, def ? IT_DEFAULT : 0);
     }
     if (kk === KW_CONST) {
       const k1 = this.la(1);
       if (k1 === T_LBRACE || k1 === T_OR || k1 === T_OROR || this.laKw(1) === KW_MOVE) {
         return -1; // a const block or const closure
       }
-      if (this.laKw(1) === KW_IMPL) {
+      // check_impl_frontmatter, then `const` and `unsafe` in that order.
+      const unsafeToo = this.laKw(1) === KW_UNSAFE && this.laKw(2) === KW_IMPL;
+      if (this.laKw(1) === KW_IMPL || unsafeToo) {
         this.bump();
-        const im = this.parseImpl(lo);
-        if (im >= 0) {
-          this.ast.fl[im] = this.ast.fl[im] | IT_CONST;
+        if (unsafeToo) {
+          this.bump();
         }
-        return im;
+        return this.parseImpl(lo, IT_CONST | (unsafeToo ? IT_UNSAFE : 0) | (def ? IT_DEFAULT : 0));
       }
       if (this.laKw(1) === KW_TRAIT) {
         this.bump();
@@ -1998,8 +1991,10 @@ export class RsParser {
     return false;
   }
 
-  parseImpl(lo: i32): i32 {
+  /** parse_item_impl at `impl`; `quals` holds the IT_DEFAULT, IT_CONST and IT_UNSAFE written before it. */
+  parseImpl(lo: i32, quals: i32): i32 {
     const n = this.nd(N_IMPL, lo);
+    this.ast.fl[n] = quals;
     this.bump(); // impl
     let g = -1;
     if (this.chooseGenerics()) {
@@ -2008,9 +2003,11 @@ export class RsParser {
       g = this.parseGenerics();
     }
     this.ast.a[n] = g;
-    if (this.isKw(KW_CONST)) {
-      this.bump();
-      this.ast.fl[n] = this.ast.fl[n] | IT_CONST;
+    // rustc 1.99 reads no `const` here: `impl const S` is an impl of the
+    // bare trait object type `const S`, and `impl const Tr for T` an error
+    // (the trait is not a path). A stray `impl async` is an error (AsyncImpl).
+    if (this.isKw(KW_ASYNC)) {
+      return this.fail();
     }
     if (this.is(T_NOT) && this.la(1) !== T_LBRACE) {
       this.bump();
@@ -2021,10 +2018,19 @@ export class RsParser {
       return -1;
     }
     if (this.eatKw(KW_FOR)) {
+      // The trait must be a path (ExpectedTraitInTraitImplFoundType).
+      if (this.ast.kind[ty1] !== N_TY_PATH || this.ast.a[ty1] >= 0) {
+        return this.fail();
+      }
       this.ast.b[n] = ty1;
       const gv38 = this.parseTy();
       this.ast.c[n] = gv38;
     } else {
+      // An inherent impl takes no `unsafe`, `!` or `default`
+      // (TraitImplModifierInInherentImpl, E0197).
+      if ((this.ast.fl[n] & (IT_UNSAFE | IT_NEGATIVE | IT_DEFAULT)) !== 0) {
+        return this.fail();
+      }
       this.ast.c[n] = ty1;
     }
     this.parseWhereInto(g);
@@ -2359,9 +2365,16 @@ export class RsParser {
       this.ast.kind[g] = N_GARGS_ELIDED;
       return this.fin(g);
     }
+    // rustc 1.99 parses the inputs as params with an optional name (the
+    // feature gate named_fn_trait_parameters is checked after parsing);
+    // attributes and `...` there are errors.
     const mark = this.sp;
     while (!this.failed && !this.is(T_RPAREN)) {
-      this.push(this.parseTy());
+      if (this.is(T_POUND) || this.is(T_DOTDOTDOT)) {
+        this.fail();
+        return -1;
+      }
+      this.push(this.parseParam(false, false));
       if (!this.eat(T_COMMA)) {
         break;
       }
@@ -2581,6 +2594,14 @@ export class RsParser {
       return this.parseBareTraitObject(lo, allowPlus);
     }
     if (k === T_LIFETIME && allowPlus) {
+      return this.parseBareTraitObject(lo, allowPlus);
+    }
+    if (kk === KW_CONST || kk === KW_ASYNC) {
+      // can_begin_bound: `const Trait` and `async Fn()` start a bare trait
+      // object (`const *T` is the pointer error recovery, rejected here).
+      if (kk === KW_CONST && this.la(1) === T_STAR) {
+        return this.fail();
+      }
       return this.parseBareTraitObject(lo, allowPlus);
     }
     if (this.isPathStart()) {
@@ -4175,10 +4196,9 @@ export class RsParser {
       const gv113 = this.parsePatTopAlt();
       this.ast.a[arm] = gv113;
       if (this.eatKw(KW_IF)) {
+        // expect_match_arm_guard_cond: let chains are allowed in a guard at
+        // every edition (LetChainsPolicy::AlwaysAllowed).
         const gv114 = this.parseExprRes(R_ALLOW_LET);
-        if (!this.failed && this.ast.kind[gv114] === N_EX_BINARY && this.hasLetInAndChain(gv114)) {
-          return this.fail();
-        }
         this.ast.b[arm] = gv114;
       }
       if (this.failed) {

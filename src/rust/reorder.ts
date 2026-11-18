@@ -149,7 +149,8 @@ const rewriteReorderable = (ctx: RsCtx, items: i32[], shape: RsShape, lo: i32, h
     for (let i = 0; i < trees.length; i++) {
       pairs.push(new Pair(listItems[i], items[i], trees[i]));
     }
-    pairs.sort((x: Pair, y: Pair): i32 => rsCmpUseTree(x.tree, y.tree));
+    const se = ctx.cfg.styleEdition;
+    pairs.sort((x: Pair, y: Pair): i32 => rsCmpUseTree(x.tree, y.tree, se));
     const s0 = shape.offsetLeft(4);
     if (s0 === null) {
       return null;

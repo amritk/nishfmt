@@ -17,7 +17,7 @@ fn f() {
         #![allow(clippy::indexing_slicing)]
         y();
     }
-    let y = X { a: 1_000, b: 1_000, .. };
+    let y = X { a: 1_000, b: 1_000, c: 1_000, .. };
 }
 
 /*

@@ -102,6 +102,7 @@ import {
 } from "./comment";
 import { RsCtx } from "./context";
 import { rsRewriteStructField, rsRewriteLocal } from "./items";
+import { T_STR } from "./lexer";
 import {
   RsListItem,
   ST_ALWAYS,
@@ -209,7 +210,7 @@ export const rsFormatExpr = (ctx: RsCtx, e: i32, exprType: i32, shape0: RsShape)
   }
   const k = ast.kind[e];
   let sh = shape0;
-  if (exprType === EXPR_STMT && semicolonForExpr(ctx, e)) {
+  if (exprType === EXPR_STMT && rsSemicolonForExpr(ctx, e)) {
     const s1 = shape0.subWidth(1);
     if (s1 === null) {
       return null;
@@ -420,7 +421,7 @@ export const listOf = (ast: RsAst, n: i32): i32[] => {
 };
 
 /** semicolon_for_expr: trailing_semicolon is on. */
-const semicolonForExpr = (ctx: RsCtx, e: i32): boolean => {
+export const rsSemicolonForExpr = (ctx: RsCtx, e: i32): boolean => {
   if (ctx.isMacroDef) {
     return false;
   }
@@ -1024,15 +1025,34 @@ export const rsRewriteElseKwWithComments = (
 
 // ---------------------------------------------------------------- literals, calls, parens, index
 
-/** rewrite_literal for token `tok`. */
-/** rewrite_literal. */
-export const rsRewriteLiteralTok = (ctx: RsCtx, tok: i32, shape: RsShape): string | null =>
-  rsWrapStr(ctx.tokStr(tok), ctx.cfg, shape);
+/** Whether every line of `s` but the last ends with `\\`. */
+const continuedLines = (s: string): boolean => {
+  const n = toI32(s.length);
+  for (let i = 0; i < n; i++) {
+    if (s.charCodeAt(i) === 10 && (i === 0 || s.charCodeAt(i - 1) !== 92)) {
+      return false;
+    }
+  }
+  return true;
+};
+
+/**
+ * rewrite_literal for token `tok` (format_strings is off): at style edition
+ * 2024 a string whose lines are all continued with `\\` (a one-line string
+ * among them) is kept as written, whatever its width.
+ */
+export const rsRewriteLiteralTok = (ctx: RsCtx, tok: i32, shape: RsShape): string | null => {
+  const s = ctx.tokStr(tok);
+  if (ctx.f.t.kind[tok] === T_STR && ctx.cfg.styleEdition >= 2024 && continuedLines(s)) {
+    return s;
+  }
+  return rsWrapStr(s, ctx.cfg, shape);
+};
 
 /** A literal expression: rewrite_literal, or a raw string kept as written. */
 export const rsRewriteLiteral = (ctx: RsCtx, tok: i32, shape: RsShape): string | null => {
   const s = ctx.tokStr(tok);
-  const r = rsWrapStr(s, ctx.cfg, shape);
+  const r = rsRewriteLiteralTok(ctx, tok, shape);
   if (r !== null) {
     return r;
   }
@@ -1727,14 +1747,12 @@ export const rsFormatStmt = (ctx: RsCtx, shape: RsShape, s: i32, isLast: boolean
         suffix = ";";
       }
     }
-    if (isLastExpr) {
-      // (unused in style edition 2021)
-    }
+    const exprType = ctx.cfg.styleEdition >= 2024 && isLastExpr ? EXPR_SUB : EXPR_STMT;
     const sh = shape.subWidth(toI32(suffix.length));
     if (sh === null) {
       return null;
     }
-    const r = rsFormatExpr(ctx, ex, EXPR_STMT, sh);
+    const r = rsFormatExpr(ctx, ex, exprType, sh);
     result = r === null ? null : r + suffix;
   } else {
     return null;

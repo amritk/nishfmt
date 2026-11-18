@@ -19,7 +19,7 @@ Where the two goals pull apart, matching wins, then speed.
 | Kotlin | `src/kotlin` | ktfmt 0.65, `--kotlinlang-style` | `java -jar $KTFMT --kotlinlang-style - < f` parses as a script, so only for `.kts`; a `.kt` file goes by name, `java -jar $KTFMT --kotlinlang-style f` (in place) |
 | Ruby | `src/ruby` | `rubocop -a` 1.92.3, `TargetRubyVersion: 3.3` | `bench/corpus/mk.sh` shows the invocation |
 | Swift | `src/swift` | SwiftFormat 0.64.7, default rules | `swiftformat stdin --quiet < f` |
-| Rust | `src/rust` | rustfmt 1.10.0, default config, edition 2021 | `rustfmt +1.99.1 --edition 2021 < f` |
+| Rust | `src/rust` | rustfmt 1.10.0, edition 2024, style edition 2024, `max_width = 120` | `rustfmt +1.99.1 --edition 2024 --config style_edition=2024,max_width=120 < f` |
 | Dart | `src/dart` | `dart format` (Dart 3.14.1) | `dart format < f` (outside a package; inside one, `dart format -o show f` reads its project) |
 | C# | `src/csharp` | CSharpier 1.4.0, default options except `end_of_line = crlf` | `csharpier format --write-stdout < f`, run below the `.editorconfig` that `mk.sh cs` writes ([README](../README.md#settings)) |
 
@@ -75,6 +75,7 @@ for a binary). The traps that cost the most in earlier ports:
   naming the project, version and license, as `src/ruby/run.ts` does:
   - SwiftFormat 0.64.7 (MIT License, Copyright (c) 2016 Nick Lockwood)
   - rustfmt 1.10.0 (MIT OR Apache-2.0, Copyright The Rust Project Developers)
+  - unicode-width 0.1.14, rustfmt's width measure (MIT OR Apache-2.0, Copyright The Rust Project Developers)
   - dart_style 3.1.14-wip at 5a9534fad9ff, the commit Dart SDK 3.14.1 pins (BSD-3-Clause, Copyright the Dart project authors)
   - CSharpier 1.4.0 (MIT License, Copyright (c) 2021 Bela VanderVoort)
   - A parser ported from Roslyn / the Dart analyzer / rustc_parse also

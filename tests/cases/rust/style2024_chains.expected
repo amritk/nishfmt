@@ -1,0 +1,8 @@
+// Style edition 2024 writes a tuple field of a tuple field without the space
+// rustfmt used to add (chains.rs): `x.0.1`, not `x.0 .1`.
+fn f() {
+    let a = x.0.1;
+    let b = (x.0).1;
+    let c = x.0.1.2;
+    let d = self.pair.0.1.method().0.1;
+}

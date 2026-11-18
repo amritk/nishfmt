@@ -198,7 +198,7 @@ const rewriteItem = (ctx: RsCtx, it: ChainItem, shape0: RsShape): string | null 
   } else if (k === CI_FIELD) {
     rw = "." + rsFieldName(ctx, it.expr);
   } else if (k === CI_TUPLE_FIELD) {
-    rw = (it.nested ? " " : "") + "." + rsFieldName(ctx, it.expr);
+    rw = (it.nested && ctx.cfg.styleEdition <= 2021 ? " " : "") + "." + rsFieldName(ctx, it.expr);
   } else if (k === CI_AWAIT) {
     rw = ".await";
   } else {

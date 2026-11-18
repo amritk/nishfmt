@@ -54,7 +54,7 @@ import {
   rsWriteList,
 } from "./lists";
 import { rsMacroPosPat, rsRewriteMacro } from "./macros";
-import { OC_TUPLE_PAT, rsRewriteWithParens } from "./overflow";
+import { OC_PAT, OC_TUPLE_PAT, rsRewriteWithParens, rsRewriteWithSquareBrackets } from "./overflow";
 import { RsShape, rsIndentStr, rsIndentStrNl, rsShapeLegacy } from "./shape";
 import { rsHasByte } from "./str";
 import { PC_EXPR, rsRewritePath } from "./types";
@@ -167,6 +167,13 @@ export const rsRewritePat = (ctx: RsCtx, p: i32, shape: RsShape): string | null 
   }
   if (k === N_PAT_LIT) {
     return rsRewriteExpr(ctx, ast.a[p], shape);
+  }
+  if (k === N_PAT_SLICE && ctx.cfg.styleEdition > 2021) {
+    const items: i32[] = [];
+    for (let i = 0; i < ast.ln[p]; i++) {
+      items.push(ast.kid(p, i));
+    }
+    return rsRewriteWithSquareBrackets(ctx, "", items, OC_PAT, shape, ast.lo[p], ast.hi[p], -1, -1);
   }
   if (k === N_PAT_SLICE) {
     const parts: string[] = [];

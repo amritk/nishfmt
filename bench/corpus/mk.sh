@@ -1,9 +1,10 @@
 #!/usr/bin/env bash
 # Builds one language's corpus from the clones in $REPOS: $CORPUS/<lang>/raw
 # holds the sources as found, $CORPUS/<lang>/ref the reference tool's output at
-# its default settings (Kotlin: ktfmt's --kotlinlang-style; C#: under
-# $CORPUS/cs/.editorconfig, CSharpier's defaults with end_of_line = crlf), and
-# $CORPUS/<lang>/failed.txt the files it rejected (left out of comparisons).
+# its default settings (Kotlin: ktfmt's --kotlinlang-style; Rust: edition
+# 2024, style_edition 2024, max_width 120; C#: under $CORPUS/cs/.editorconfig,
+# CSharpier's defaults with end_of_line = crlf), and $CORPUS/<lang>/failed.txt
+# the files it rejected (left out of comparisons).
 #
 #   mk.sh cpp|java|kt|rb|swift|rust|dart|cs
 #
@@ -74,7 +75,7 @@ case $lang in
   swift) "$SWIFTFORMAT" . --quiet 2> ../swiftformat.log; grep -o '[^ ]*\.swift' ../swiftformat.log | sed "s|^$PWD|.|" | sort -u >> ../failed.txt ;;
   # Through stdin, so rustfmt formats only that file, not its out-of-line modules.
   rust) find . -type f -print0 | xargs -0 -P"$(nproc)" -I{} sh -c \
-          '$RUSTFMT --edition 2021 < "$1" > "$1.o" 2>/dev/null && mv "$1.o" "$1" || { rm -f "$1.o"; echo "$1" >> ../failed.txt; }' _ {} ;;
+          '$RUSTFMT --edition 2024 --config style_edition=2024,max_width=120 < "$1" > "$1.o" 2>/dev/null && mv "$1.o" "$1" || { rm -f "$1.o"; echo "$1" >> ../failed.txt; }' _ {} ;;
   dart) "$DART" format . > /dev/null 2> ../dartformat.log; grep -o '[^ ]*\.dart' ../dartformat.log | sort -u >> ../failed.txt ;;
   # The style's .editorconfig and an empty .git (a .gitignore boundary) sit
   # above ref/, so cmp.sh does not count them; see tools/csharp/NOTES.md.

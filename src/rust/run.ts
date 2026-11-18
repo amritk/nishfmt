@@ -1,23 +1,25 @@
 // The Rust entry point: rustfmt's pipeline over one file.
 //
-// Ported from rustfmt 1.9.0 (MIT OR Apache-2.0, Copyright The Rust Project
+// Ported from rustfmt 1.10.0 (MIT OR Apache-2.0, Copyright The Rust Project
 // Developers): formatting.rs, source_file.rs.
 
 import { Out } from "../core/out";
 import { RsAst } from "./ast";
 import { rsDump } from "./dump";
-import { rsFormatSource } from "./format";
+import { rsFormatSource, rsHasTrailingWhitespaceError } from "./format";
 import { RsTokens, rsLex } from "./lexer";
 import { RsParser } from "./parser";
-import { RsConfig } from "./shape";
+import { rsConfigWithMaxWidth } from "./shape";
 
 /** One file's Rust state; a fresh one formats each file, in a region of its own. */
 export class RustEngine {
   debug: boolean = false;
   dump: boolean = false;
   parseOnly: boolean = false;
-  // The edition files are parsed at; nishfmt formats at 2021.
-  edition: i32 = 2021;
+  // nishfmt's Rust style: edition 2024, style_edition 2024, max_width 120.
+  edition: i32 = 2024;
+  styleEdition: i32 = 2024;
+  maxWidth: i32 = 120;
   constructor() {}
 }
 
@@ -66,8 +68,9 @@ export const formatRust = (e: RustEngine, path: string, src0: u8[], n0: i32, out
     }
     return true;
   }
-  const cfg = new RsConfig();
+  const cfg = rsConfigWithMaxWidth(e.maxWidth);
   cfg.edition = e.edition;
+  cfg.styleEdition = e.styleEdition;
   const r = rsFormatSource(src, n, cfg, false);
   if (r.parseFailed || r.unsupported || r.broken) {
     if (e.debug) {
@@ -80,6 +83,13 @@ export const formatRust = (e: RustEngine, path: string, src0: u8[], n0: i32, out
       const where = r.parseFailed ? `:${line}` : "";
       const what = r.unsupported ? "unsupported: " + r.why : r.broken ? "span lookup failed: " + r.why : r.why;
       console.error(`${path}${where}: ${what}`);
+    }
+    return false;
+  }
+  // format_lines: trailing whitespace rustfmt could not remove is an error.
+  if (rsHasTrailingWhitespaceError(r.text, r.skipped, false)) {
+    if (e.debug) {
+      console.error(`${path}: trailing whitespace left`);
     }
     return false;
   }

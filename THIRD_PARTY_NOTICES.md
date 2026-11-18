@@ -19,6 +19,9 @@ nishfmt is MIT licensed ([LICENSE](LICENSE)). Its formatters for Java, Kotlin, R
 | Swift | the Unicode Character Database 15.0 and 15.1 | Unicode-3.0 | Copyright © Unicode, Inc. | `src/swift/unicode_data.ts` (generated tables) |
 | Rust | rustfmt 1.10.0 | MIT OR Apache-2.0 | Copyright The Rust Project Developers | `src/rust/` |
 | Rust | rustc_lexer and rustc_parse | MIT OR Apache-2.0 | Copyright The Rust Project Developers | `src/rust/` (lexer and parser) |
+| Rust | unicode-ident 1.0.24 | (MIT OR Apache-2.0) AND Unicode-3.0 | Copyright David Tolnay; Unicode data Copyright © Unicode, Inc. | `src/rust/uident_table.ts` (generated tables) |
+| Rust | unicode-properties 0.1.4 | MIT OR Apache-2.0 | Copyright The Rust Project Developers | `src/rust/uident_table.ts` (generated tables) |
+| Rust | unicode-width 0.1.14 | MIT OR Apache-2.0 | Copyright 2012-2022 The Rust Project Developers | `src/rust/uwidth.ts`, `src/rust/uwidth_table.ts` (generated tables) |
 | Dart | dart_style 3.1.14-wip at 5a9534fad9ff (Dart SDK 3.14.1) and _fe_analyzer_shared; package_config 3.0.1-wip and yaml 3.2.0-wip (dart-lang/tools at d87eaf7946e7) | BSD-3-Clause | Copyright the Dart project authors | `src/dart/` |
 | C# | CSharpier 1.4.0 | MIT | Copyright (c) 2021 Bela VanderVoort | `src/csharp/` |
 | C# | Roslyn | MIT | Copyright the .NET Foundation and Contributors | `src/csharp/` (lexer and parser) |
@@ -27,7 +30,7 @@ nishfmt uses the reference tools only to check its output. None of them is bundl
 
 ## MIT License
 
-Applies to RuboCop, rubocop-ast, the parser gem, regexp_parser, unicode-display_width, SwiftFormat, CSharpier and Roslyn, with the copyright lines in the table above, and to rustfmt and rustc at the user's choice of MIT or Apache-2.0.
+Applies to RuboCop, rubocop-ast, the parser gem, regexp_parser, unicode-display_width, SwiftFormat, CSharpier and Roslyn, with the copyright lines in the table above, and to rustfmt, rustc, unicode-ident, unicode-properties and unicode-width at the user's choice of MIT or Apache-2.0.
 
 ```text
 Copyright (c) <year> <copyright holders>
@@ -53,7 +56,7 @@ SOFTWARE.
 
 ## Apache License 2.0
 
-Applies to google-java-format, ktfmt, the Kotlin compiler and the IntelliJ platform, and to rustfmt and rustc at the user's choice of MIT or Apache-2.0. nishfmt's ports of these are derivative works: the modules that hold them say what was ported and from where, and nishfmt's own changes are its translation into Nish.
+Applies to google-java-format, ktfmt, the Kotlin compiler and the IntelliJ platform, and to rustfmt, rustc, unicode-ident, unicode-properties and unicode-width at the user's choice of MIT or Apache-2.0. nishfmt's ports of these are derivative works: the modules that hold them say what was ported and from where, and nishfmt's own changes are its translation into Nish.
 
 ```text
 Apache License
@@ -324,7 +327,7 @@ SUCH DAMAGE.
 
 ## Unicode License V3
 
-Applies to the Unicode Character Database tables generated into `src/swift/unicode_data.ts`.
+Applies to the Unicode Character Database tables generated into `src/swift/unicode_data.ts`, and to the Unicode data in unicode-ident, generated into `src/rust/uident_table.ts`.
 
 ```text
 UNICODE LICENSE V3

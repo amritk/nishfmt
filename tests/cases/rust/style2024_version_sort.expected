@@ -1,0 +1,36 @@
+// Style edition 2024 sorts imports by the style guide's version sort
+// (sort.rs version_sort): uppercase before lowercase, `_` before every other
+// char, digit runs by value, raw identifiers by their name.
+use super::{Z as z2, Z as z10, Z as z1};
+use crate::utils::{CamelCase, Mixed_Case, UPPER_SNAKE, snake_case};
+use crate::{self as here, Thing as other, Thing as another, thing as zed};
+use std::{
+    __private, _private, Beta, CONST, r#Struct, Zeta, a__b, a_b, a1b, ab, alpha,
+    fmt::Display,
+    gamma,
+    io::{BufRead, Read, Write},
+    r#type, u2, u8, u16, u128, v009, v09, v9, v010, x86_8, x86_64, x86_128,
+};
+
+use Apple::Tart;
+use Zebra::Stripe as ZStripe;
+use abc9::X as Y;
+use abc10::X;
+use apple::Pie;
+use r#async::Runtime;
+use zebra::Stripe;
+
+mod Alpha;
+mod beta10;
+mod beta2;
+mod zed;
+
+extern crate Alloc;
+extern crate core10 as c10;
+extern crate core2 as c2;
+extern crate zlib;
+
+fn main() {
+    use self::{A, B, a, b};
+    use std::{Cell, cell, collections::HashMap};
+}
