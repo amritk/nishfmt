@@ -18,6 +18,12 @@ grammar's reduce actions translated from the generated ruby33.rb:
 
     python3 genparser.py $G/ruby33.rb ../../src/ruby/parser.ts
 
+`src/ruby/registry.ts` (the enabled cops in registry order and each one's
+`autocorrect_incompatible_with`) is read from the RuboCop that is loaded:
+
+    ruby genregistry.rb > ../../src/ruby/registry.ts
+    npx biome format --write ../../src/ruby/registry.ts
+
 `src/ruby/builder.ts` (Builders::Default with RuboCop's flags) and
 `src/ruby/ast.ts` are hand-written. RuboCop parses TargetRubyVersion 3.3
 through Prism's parser-gem translation, so where Prism builds a different
