@@ -3024,8 +3024,12 @@ const spaceBeforeCode = (d: Doc, l: i32, r: i32): boolean => {
     if (rt === TT_OVERLOADED_OPERATOR_LPAREN) {
       return false;
     }
-    if ((lk === KW_NEW || lk === KW_DELETE) && d.lMightFn[l] === 0) {
-      return true;
+    // `new (p) T`, `::new (p) T`; not `x.new(` or `x->new(`.
+    if (lk === KW_NEW || lk === KW_DELETE) {
+      const bl = d.prv[left];
+      if (!(bl >= 0 && (d.kind[bl] === P_PERIOD || d.kind[bl] === P_ARROW))) {
+        return true;
+      }
     }
     // `delete[] (p)`
     if (
