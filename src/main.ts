@@ -115,7 +115,7 @@ const usage = (): string =>
     "  Kotlin (.kt .kts)                   ktfmt 0.64",
     "  Ruby (.rb, Gemfile, .gemspec, ...)  rubocop -a 1.92.2",
     "  Swift (.swift)                      SwiftFormat 0.64.7",
-    "  Rust (.rs)                          rustfmt 1.9.0, edition 2021",
+    "  Rust (.rs)                          rustfmt 1.10.0, edition 2021",
     "  Dart (.dart)                        dart format 3.14",
     "  C# (.cs)                            CSharpier 1.4.0",
     "",

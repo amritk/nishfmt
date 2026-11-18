@@ -1,10 +1,10 @@
 // Formatting types, paths, generic arguments and parameters, bounds and
 // where predicates.
 //
-// Ported from rustfmt 1.9.0 (MIT OR Apache-2.0, Copyright The Rust Project
+// Ported from rustfmt 1.10.0 (MIT OR Apache-2.0, Copyright The Rust Project
 // Developers): types.rs.
 
-import { rsRewriteParam } from "./items";
+import { rsParamSpannedLo, rsRewriteParam } from "./items";
 import {
   AT_DOC,
   FN_EXTERN,
@@ -171,7 +171,7 @@ const rewriteSegment = (ctx: RsCtx, pc: i32, seg: i32, st: SegState, spanHi: i32
     if (gs === null) {
       return null;
     }
-    // rustfmt 1.9 drops empty generic args, inside macros too.
+    // rustfmt 1.10 drops empty generic args, inside macros too.
     if (ast.kind[args] === N_GARGS && ast.ln[args] > 0) {
       const sepSnippet = rsTrim(ctx.snippet(ctx.f.t.hi[ast.d[seg]], ast.lo[args]));
       const force = ctx.insideMacro && sepSnippet.startsWith("::");
@@ -306,7 +306,7 @@ const formatFunctionType = (
       n,
       ")",
       ",",
-      (i: i32): i32 => (isFnDecl ? paramLo(ast, ast.kid(decl, i)) : ast.lo[ast.kid(decl, i)]),
+      (i: i32): i32 => (isFnDecl ? rsParamSpannedLo(ast, ast.kid(decl, i)) : ast.lo[ast.kid(decl, i)]),
       (i: i32): i32 => (isFnDecl ? ast.hi[ast.b[ast.kid(decl, i)]] : ast.hi[ast.kid(decl, i)]),
       (i: i32): string | null =>
         isFnDecl ? rsRewriteParam(ctx, ast.kid(decl, i), listShape) : rsRewriteTy(ctx, ast.kid(decl, i), listShape),
@@ -339,16 +339,6 @@ const formatFunctionType = (
 };
 
 // The Spanned lo of a param of a fn pointer type.
-const paramLo = (ast: RsAst, p: i32): i32 => {
-  if (ast.atn[p] > 0) {
-    return ast.lo[ast.attr(p, 0)];
-  }
-  if (ast.a[p] >= 0) {
-    return ast.lo[ast.a[p]];
-  }
-  return ast.lo[ast.b[p]];
-};
-
 const getTactics = (items: RsListItem[], output: string, shape: RsShape): i32 => {
   if (rsHasByte(output, 10)) {
     return DLT_VERTICAL;
@@ -875,7 +865,7 @@ const rewriteFnPtr = (ctx: RsCtx, ty: i32, shape: RsShape): string | null => {
   const decl = ast.b[ty];
   const n = ast.ln[decl];
   const variadic = n > 0 && ast.kind[ast.b[ast.kid(decl, n - 1)]] === N_TY_CVARARGS;
-  // rustfmt 1.9 looks for the parameter list from the start of the whole type.
+  // rustfmt 1.10 looks for the parameter list from the start of the whole type.
   const rw = formatFunctionType(ctx, decl, ast.a[decl], variadic, ast.lo[ty], ast.hi[ty], fs);
   if (rw === null) {
     return null;

@@ -1,7 +1,7 @@
 // RewriteContext and the snippet/span helpers rustfmt gets from its
 // SnippetProvider and SpanUtils.
 //
-// Ported from rustfmt 1.9.0 (MIT OR Apache-2.0, Copyright The Rust Project
+// Ported from rustfmt 1.10.0 (MIT OR Apache-2.0, Copyright The Rust Project
 // Developers): rewrite.rs, source_map.rs, visitor.rs (SnippetProvider).
 
 import { RsAst } from "./ast";

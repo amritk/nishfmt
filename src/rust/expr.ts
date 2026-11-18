@@ -1,6 +1,6 @@
 // Formatting expressions, blocks, control flow, assignments and statements.
 //
-// Ported from rustfmt 1.9.0 (MIT OR Apache-2.0, Copyright The Rust Project
+// Ported from rustfmt 1.10.0 (MIT OR Apache-2.0, Copyright The Rust Project
 // Developers): expr.rs, stmt.rs, range.rs.
 
 import { rsRewriteTraitAliasBounds } from "./items";
@@ -331,7 +331,7 @@ export const rsFormatExpr = (ctx: RsCtx, e: i32, exprType: i32, shape0: RsShape)
   } else if (k === N_EX_REPEAT) {
     rw = rsRewritePair(ctx, ast.a[e], ast.b[e], new RsPairParts("[", "; ", "]"), sh, SPB_BACK);
   } else if (k === N_EX_RANGE) {
-    rw = rewriteRange(ctx, sh, ast.a[e], ast.b[e], (ast.fl[e] & RANGE_CLOSED) !== 0 ? "..=" : "..");
+    rw = rsRewriteRange(ctx, sh, ast.a[e], ast.b[e], (ast.fl[e] & RANGE_CLOSED) !== 0 ? "..=" : "..");
   } else if (k === N_EX_TRY_BLOCK) {
     const block = ast.a[e];
     const sl = rewriteSingleLineBlock(ctx, "try ", block, true, -1, sh);
@@ -767,7 +767,7 @@ class ControlFlow {
     const lo = this.label >= 0 ? ctx.f.t.hi[this.label] : this.lo;
     const keyword = this.keyword;
     let afterKwd = 0;
-    // rustfmt 1.9 finds the whole keyword, `for await` included (a panic when
+    // rustfmt 1.10 finds the whole keyword, `for await` included (a panic when
     // spaced otherwise: the span lookup fails and the file is skipped).
     afterKwd = ctx.spanAfter(lo, this.hi, rsTrim(this.keyword));
     const offset = rsLastLineWidth(keyword, cfg.tabSpaces) + toI32(labelString.length) + 1;
@@ -921,7 +921,7 @@ const toControlFlow = (ctx: RsCtx, e: i32, exprType: i32): ControlFlow | null =>
   const cf = new ControlFlow();
   cf.lo = ast.lo[e];
   cf.hi = ast.hi[e];
-  // rustfmt 1.9 rewrites a loop body without its inner attributes, which
+  // rustfmt 1.10 rewrites a loop body without its inner attributes, which
   // trim_spaces_after_opening_brace then skips over: they are dropped.
   cf.withInner = false;
   cf.isLoop = true;
@@ -1192,7 +1192,7 @@ export const rsRewriteParen = (ctx: RsCtx, sub0: i32, shape: RsShape, lo0: i32, 
     if (pre === null || post === null) {
       return null;
     }
-    // rustfmt 1.9 removes the nested parentheses even when they carry attributes, dropping those.
+    // rustfmt 1.10 removes the nested parentheses even when they carry attributes, dropping those.
     if (ast.kind[sub] === N_EX_PAREN && pre.length === 0 && post.length === 0) {
       lo = ast.lo[sub];
       hi = ast.hi[sub];
@@ -1685,7 +1685,8 @@ const needsSpaceBeforeRange = (ctx: RsCtx, lhs: i32): boolean => {
 
 const needsSpaceAfterRange = (ast: RsAst, rhs: i32): boolean => ast.kind[rhs] === N_EX_RANGE && ast.a[rhs] < 0;
 
-const rewriteRange = (ctx: RsCtx, shape: RsShape, lhs: i32, rhs: i32, delim: string): string | null => {
+/** range.rs rewrite_range, for range expressions and (since rustfmt 1.10.0) range patterns. */
+export const rsRewriteRange = (ctx: RsCtx, shape: RsShape, lhs: i32, rhs: i32, delim: string): string | null => {
   const ast = ctx.ast;
   const before = lhs >= 0 && needsSpaceBeforeRange(ctx, lhs) ? " " : "";
   const after = rhs >= 0 && needsSpaceAfterRange(ast, rhs) ? " " : "";

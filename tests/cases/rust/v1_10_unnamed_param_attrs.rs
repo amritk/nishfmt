@@ -1,0 +1,11 @@
+// rustfmt 1.10.0 keeps the attributes of an unnamed param.
+type A = fn(a: u8, #[cfg(x)] b: u16, #[cfg(y)] i32);
+type B = fn(#[a] #[b] u8, #[a] // c
+    i32);
+type C = fn(#[cfg(x)]
+    i32);
+type D = fn(#[cfg(xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx)] i32, #[cfg(yyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyyy)] u8);
+type F = fn(#[a] /* c */ x: i32);
+extern "C" {
+    fn f(x: i32, #[attr] ...);
+}

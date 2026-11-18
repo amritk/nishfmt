@@ -2,7 +2,7 @@
 // display width. Strings are UTF-8 bytes; every offset is a byte offset, as
 // in Rust.
 //
-// For rustfmt 1.9.0 (MIT OR Apache-2.0, Copyright The Rust Project Developers).
+// For rustfmt 1.10.0 (MIT OR Apache-2.0, Copyright The Rust Project Developers).
 
 import { Out } from "../core/out";
 import { cpWidth } from "../core/uwidth";

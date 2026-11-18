@@ -55,7 +55,7 @@ Files the reference rejects at their version are left out.
 
 ## Rust
 
-The Rust side ports rustfmt 1.9.0 onto a lexer and parser modelled on
+The Rust side ports rustfmt 1.10.0 onto a lexer and parser modelled on
 rustc_parse (a struct-of-arrays AST with rustc's spans): its items,
 expressions, chains, patterns, types, comments, imports and macros, with
 `macro_rules!` bodies formatted as rustfmt does by default. The corpus is cargo, tokio,

@@ -1,19 +1,12 @@
-// Behaviors of the rustfmt 1.9.0 binary that later rustfmt sources changed.
-impl const Bar for () {}
-impl const S {}
+// Behaviors of rustfmt 1.10.0 that look like bugs, kept by the port.
 
 impl Bar {
     pub type Iter<'a> = impl Iterator<Item = u8> + 'a;
 }
 
-type A = fn(a: u8, #[cfg(x)] b: u16, #[cfg(y)] i32);
 type FnNo = for<#[cfg_attr(FALSE, unknown)] 'a> fn();
 
 pub const SORT<T:Copy+'static>:  &[T]= const { 4};
-
-macro_rules! /* c */ foo {
-    () => {};
-}
 
 fn f() {
     let a = (#[allow(arithmetic_overflow)]

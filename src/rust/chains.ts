@@ -1,7 +1,7 @@
 // Formatting chained expressions: field accesses, method calls, `.await`
 // and `?`, collected into one chain and laid out together.
 //
-// Ported from rustfmt 1.9.0 (MIT OR Apache-2.0, Copyright The Rust Project
+// Ported from rustfmt 1.10.0 (MIT OR Apache-2.0, Copyright The Rust Project
 // Developers): chains.rs.
 
 import {
@@ -340,7 +340,7 @@ const chainFromAst = (ctx: RsCtx, e0: i32): Chain => {
     if (k === N_EX_METHOD || k === N_EX_FIELD || k === N_EX_AWAIT) {
       e = ast.a[e];
       exprs.push(e);
-      // rustfmt 1.9 adds parentheses (should_add_parens) only before a method call.
+      // rustfmt 1.10 adds parentheses (should_add_parens) only before a method call.
       postfix.push(k === N_EX_METHOD);
     } else if (k === N_EX_TRY) {
       e = ast.a[e];

@@ -1,0 +1,25 @@
+// rustfmt 1.10.0 keeps a comment between `macro_rules!` and the name, with
+// the whitespace around it as written (header.rs, rust-lang/rustfmt#6457).
+macro_rules! /* c */ foo {
+    () => {};
+}
+macro_rules!   /* c */   foo2 {
+    () => {};
+}
+macro_rules! /* c */
+  // d
+   foo3 {
+    () => {};
+}
+macro_rules!// e
+foo4 {
+    () => {};
+}
+macro_rules!
+  foo5 {
+    () => {};
+}
+macro_rules ! foo6 {
+    () => {};
+}
+macro_rules! r#foo7 { () => {} }
