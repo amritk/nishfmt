@@ -36,9 +36,9 @@ the three versions' sources for what `src/gdoc/` ports:
 
 | `src/gdoc/` | Ports | 1.23.0 to 1.28.0 | 1.28.0 to 2.0.0 |
 | --- | --- | --- | --- |
-| `engine.ts` | `OpsBuilder`, `DocBuilder`, `Doc`, `Indent`, `Output`, `JavaOutput` | comments and formatting only | rewritten (2.0.0's `layout/`); Java does not run `engine.ts` |
-| `input.ts` | `Input`, `InputOutput`, `JavaInput`'s toks | only how javac's diagnostics are read | `///` is javadoc on JDK 23 or newer only; range formatting, which `src/java/partial.ts` handles |
-| `comments.ts` | `JavaCommentsHelper`'s line-comment, block-comment and javadoc re-indentation | none in these helpers (1.28.0 trims `//` lines at both ends, in `src/java/comments.ts`) | the `noinspection` / `$NON-NLS-n$` test is split in two with the same result; widths and indents come from options whose defaults are the old constants; Markdown javadoc positions, empty on JDK 21 |
+| `engine.ts` | `OpsBuilder`, `DocBuilder`, `Doc`, `Indent`, `Output`, `JavaOutput`, `CommentsHelper`, `Newlines` | comments and formatting only | the engine is rewritten as 2.0.0's `layout/`, which Java runs (`src/java/layout/`); what Java still takes from `engine.ts` (its constants, the failure flag, `CommentsHelper.reformatParameterComment`, an identifier test) is unchanged, and `Newlines` only gains methods |
+| `input.ts` | `Input`, `InputOutput`, `JavaInput`'s toks | only how javac's diagnostics are read | none in these classes' toks; `JavaInput`'s javadoc test (`///` only on JDK 23 or newer) is in `src/java/lexer.ts` and its range formatting in `src/java/partial.ts`, both credited to 2.0.0 |
+| `comments.ts` | `JavaCommentsHelper`'s line-comment, block-comment and javadoc re-indentation, `Newlines` | none in these helpers (1.28.0 trims `//` lines at both ends, in `src/java/comments.ts`) | the `noinspection` / `$NON-NLS-n$` test is split in two with the same result; widths and indents come from options whose defaults are the old constants; Markdown javadoc positions, empty on JDK 21 |
 
 So under nishfmt's fixed settings (Google style, 100 columns, JDK 21) the
 ported parts give the same output in all three versions, and one credit,
