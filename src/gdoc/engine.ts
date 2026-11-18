@@ -5,9 +5,9 @@
 //
 // Ported from google-java-format 1.28.0's OpsBuilder, DocBuilder, Doc,
 // Indent, Output.BreakTag, JavaOutput, CommentsHelper and Newlines (Apache
-// License 2.0, Copyright 2015, 2016 Google Inc.); 1.23.0 (ktfmt 0.65's) has
-// the same code, as tools/kotlin/NOTES.md says. The tree is kept in columns;
-// each `Doc` subclass is a kind.
+// License 2.0, Copyright 2015, 2016 Google Inc.); tools/kotlin/NOTES.md says
+// why that credit holds for ktfmt's 1.23.0 and Java's 2.0.0. The tree is kept
+// in columns; each `Doc` subclass is a kind.
 
 import { growI32, strUtf16Len } from "../core/arr";
 import { Out } from "../core/out";

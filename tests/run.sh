@@ -5,9 +5,8 @@
 #
 # Each tests/cases/<name>.cpp with a <name>.expected (clang-format 23.1.5, LLVM
 # style, ColumnLimit 120) must format to it, and formatting the expected file
-# must leave it unchanged. unbalanced.cpp and each tests/cases/rust/skip_*.rs
-# and tests/cases/java/skip_*.java (a file the reference tool rejects) must be
-# skipped and left untouched.
+# must leave it unchanged. unbalanced.cpp and each tests/cases/<lang>/skip_*
+# (a file the reference tool rejects) must be skipped and left untouched.
 set -uo pipefail
 here=$(cd "$(dirname "$0")" && pwd)
 bin=${1:-$here/../dist/nishfmt}
@@ -116,14 +115,15 @@ else
   fail=$((fail + 1))
 fi
 
-# Files the reference tool rejects (rustfmt for tests/cases/rust/skip_*.rs,
-# google-java-format for tests/cases/java/skip_*.java) are skipped, not
-# formatted: each must be reported skipped by -i and left byte for byte as it
-# is, and --check must find nothing to change. Such a case has no .expected.
-for src in "$here"/cases/rust/skip_*.rs "$here"/cases/java/skip_*.java; do
+# Files the reference tool rejects are skipped, not formatted: each
+# tests/cases/<lang>/skip_<name>.<ext>, which has no .expected, must be
+# reported skipped by -i and left byte for byte as it is, and --check must find
+# nothing to change.
+for src in "$here"/cases/*/skip_*; do
   [ -f "$src" ] || continue
-  file=$(basename "$src")
-  label="$(basename "$(dirname "$src")")/${file%.*}"
+  file=${src##*/}
+  label=${src#"$here"/cases/}
+  label=${label%.*}
   cp "$src" "$work/$file"
   msg=$("$bin" -i "$work/$file" 2>&1)
   case $msg in
@@ -136,7 +136,6 @@ for src in "$here"/cases/rust/skip_*.rs "$here"/cases/java/skip_*.java; do
     echo "FAIL $label: not skipped and left untouched"
     fail=$((fail + 1))
   fi
-  rm -f "$work/$file"
 done
 
 # `// nishfmt off` keeps a region verbatim (clang-format has no such pragma).
