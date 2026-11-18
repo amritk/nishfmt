@@ -126,9 +126,9 @@ import {
   OP_USR,
 } from "./ast";
 
-// A MODIFIERS node's op: whether `sealed` is among its words (javac's
-// Flags.SEALED, which permitsClause reads).
-const MODS_SEALED: i32 = 1;
+// A MODIFIERS node's flag: `sealed` is among its words (javac's Flags.SEALED,
+// which permitsClause reads). Above ast.ts's FL_* bits; only the parser reads it.
+const FL_MODS_SEALED: i32 = 65536;
 
 /** A saved parser position for speculation. */
 class Mark {
@@ -542,12 +542,7 @@ export class JParser {
         t.a[d] = this.qualident(false);
         if (this.is("to")) {
           this.next();
-          const mm = t.mark();
-          t.push(this.qualident(false));
-          while (this.accept(",")) {
-            t.push(this.qualident(false));
-          }
-          t.b[d] = t.list(mm);
+          t.b[d] = this.qualidentList();
         }
         this.expect(";");
         t.push(this.finish(d));
@@ -556,12 +551,7 @@ export class JParser {
         this.next();
         t.a[d] = this.qualident(false);
         this.expect("with");
-        const mm = t.mark();
-        t.push(this.qualident(false));
-        while (this.accept(",")) {
-          t.push(this.qualident(false));
-        }
-        t.b[d] = t.list(mm);
+        t.b[d] = this.qualidentList();
         this.expect(";");
         t.push(this.finish(d));
       } else if (this.is("uses")) {
@@ -640,7 +630,7 @@ export class JParser {
           this.skip(3);
         } else {
           if (this.is("sealed")) {
-            t.op[n] = MODS_SEALED;
+            t.flags[n] = t.flags[n] | FL_MODS_SEALED;
           }
           this.next();
         }
@@ -832,10 +822,16 @@ export class JParser {
     if (!this.is("permits")) {
       return t.empty();
     }
-    if (t.op[mods] !== MODS_SEALED) {
+    if ((t.flags[mods] & FL_MODS_SEALED) === 0) {
       this.rejected = true;
     }
     this.next();
+    return this.qualidentList();
+  }
+
+  /** javac's qualidentList(false): `a.B, C`, names without type arguments or annotations. */
+  private qualidentList(): i32 {
+    const t = this.t;
     const m = t.mark();
     t.push(this.qualident(false));
     while (this.accept(",") && !this.err) {
@@ -959,17 +955,15 @@ export class JParser {
   /** Variable declarators after the type: `a = 1, b[] = {}`; pushes each VARIABLE. */
   private declarators(mods: i32, start: i32, type: i32, field: boolean): void {
     const t = this.t;
-    let compound = false;
     while (!this.err) {
       const v = t.node(N_VARIABLE, start);
       t.a[v] = mods;
       t.name[v] = this.ident();
       if (type >= 0) {
         t.b[v] = this.bracketsOpt(type);
-      } else if (compound || this.is("[") || this.is("@")) {
-        // `var` (type -1): javac's variableDeclaratorRest, "'var' is not
-        // allowed in a compound declaration" (`var x = 1, y = 2`) or "as an
-        // element type of an array" (`var x[]`).
+      } else if (this.is("[") || this.is("@")) {
+        // `var x[]` (`var` is type -1): javac's variableDeclaratorRest, "'var'
+        // is not allowed as an element type of an array".
         this.fail();
       } else {
         t.b[v] = -1;
@@ -981,8 +975,12 @@ export class JParser {
       if (!this.is(",")) {
         break;
       }
+      if (type < 0) {
+        // `var x = 1, y = 2`: "'var' is not allowed in a compound declaration".
+        this.fail();
+        break;
+      }
       this.next();
-      compound = true;
     }
   }
 
