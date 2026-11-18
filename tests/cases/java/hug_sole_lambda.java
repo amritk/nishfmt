@@ -1,0 +1,12 @@
+class HugSoleLambda {
+  void f() {
+    executor.submit(() -> { doSomethingVeryLongHere(firstArgument, secondArgument); andMore(); });
+    list.forEach(item -> System.out.println("item: " + item + " is a fairly long string here!!"));
+    builder.addListener(event -> { handle(event); }).build();
+    new Thread(() -> { run(); }) { @Override public void start() {} }.start();
+    Stream.of(1, 2, 3).map(x -> { return x * xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx; }).count();
+    if (cache.computeIfAbsent(key, k -> new ArrayList<>()).stream().anyMatch(v -> { return v.isValid(); })) {}
+    while (iterator.hasNextMatching(element -> { return element.isPresent() && element.isValid(); })) {}
+    assertThrows(IllegalArgumentException.class, () -> { Preconditions.checkArgument(false, "nope"); });
+  }
+}

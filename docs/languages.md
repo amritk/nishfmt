@@ -7,11 +7,15 @@ says how to reproduce them.
 
 ## Java
 
-The Java side ports google-java-format 1.28: a lexer and parser shaped like
-javac's tree, its visitor and Doc engine (`src/gdoc/`, shared with Kotlin),
-import ordering and removal, the javadoc formatter, long-string wrapping
-and the partial reformat google-java-format runs after it, modifier
-ordering and text blocks. The corpus is the Java sources of public
+The Java side ports google-java-format 2.0.0, as its CLI runs on JDK 21: a
+lexer and parser shaped like javac 21's tree, its visitor and its layout
+engine (`src/java/layout/`; Kotlin keeps the 1.x Doc engine in
+`src/gdoc/`), the cleanups 2.0.0 turns on by default (redundant
+semicolons, `@Foo()`, `(x) ->`), import removal and ordering, modifier
+ordering, the javadoc formatter, and long-string wrapping with the partial
+reformat google-java-format runs before it. Constructs javac 21 rejects,
+such as module imports and value classes, are left untouched; the notes are
+in `tools/java/NOTES.md`. The corpus is the Java sources of public
 repositories as found (`bench/corpus/repos.txt`), 7627 files once the 4
 google-java-format rejects are left out.
 

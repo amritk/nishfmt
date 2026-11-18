@@ -10,7 +10,7 @@ says how to rebuild them and rerun the comparisons.
 | Language | Tool | Version | `mk.sh` finds it as |
 | --- | --- | --- | --- |
 | C++ | clang-format | 18.1.3 | `clang-format` on PATH |
-| Java | google-java-format | 1.28.0, all-dependencies jar | `$GJF` |
+| Java | google-java-format | 2.0.0, all-dependencies jar, on JDK 21 | `$GJF` |
 | Kotlin | ktfmt | 0.65, with-dependencies jar (from the GitHub release; Maven Central stops at 0.64), run with `--kotlinlang-style` | `$KTFMT` |
 | Ruby | RuboCop | 1.92.3 | `rubocop` on PATH |
 | Swift | SwiftFormat | 0.64.7 | `$SWIFTFORMAT`, else `swiftformat` |

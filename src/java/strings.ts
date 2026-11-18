@@ -1,10 +1,11 @@
 // google-java-format's StringWrapper, run on the formatted text: a string
 // literal on a line past 100 columns is split at word boundaries into a `+`
-// chain, and text blocks are re-indented. Before that, the ranges to replace
-// are formatted again (`partial.ts`), and when that changes the text the
-// replacements are found again on the new text.
+// chain. Before that, the ranges to replace are formatted again
+// (`partial.ts`), and when that changes the text the replacements are found
+// again on the new text. (Text blocks are indented by the formatter itself;
+// the String.lines and stripIndent helpers here serve its visitTextBlock.)
 //
-// Ported from google-java-format 1.28 (Apache License 2.0, Copyright 2018 Google Inc.).
+// Ported from google-java-format 2.0.0 (Apache License 2.0, Copyright 2019 Google Inc.).
 
 import { utf16Len, strUtf16Len } from "../core/arr";
 import { Out } from "../core/out";
@@ -62,11 +63,6 @@ export const needWrapping = (src: u8[], n: i32): boolean => {
       a = i + 1;
     }
   }
-  for (let i = 0; i + 2 < n; i++) {
-    if (toI32(src[i]) === 34 && toI32(src[i + 1]) === 34 && toI32(src[i + 2]) === 34) {
-      return true;
-    }
-  }
   return false;
 };
 
@@ -84,23 +80,14 @@ export class StringWrapper {
     this.selected = [];
   }
 
-  /** The column (0-based, tabs to multiples of 8 as javac's LineMap) of position `pos`. */
+  /** Reflower.visualColumn: the 0-based column of `pos`, in UTF-16 units (a tab is one, without --use-tabs). */
   private column(pos: i32): i32 {
     const src = this.inp.src;
     let a = pos;
     while (a > 0 && toI32(src[a - 1]) !== 10 && toI32(src[a - 1]) !== 13) {
       a--;
     }
-    let col = 0;
-    for (let i = a; i < pos; i++) {
-      const c = toI32(src[i]);
-      if (c === 9) {
-        col = (col / 8) * 8 + 8;
-      } else if (c < 0x80 || c >= 0xc0) {
-        col += c >= 0xf0 ? 2 : 1;
-      }
-    }
-    return col;
+    return utf16Len(src, a, pos);
   }
 
   private lineEnd(pos: i32): i32 {
@@ -138,14 +125,10 @@ export class StringWrapper {
       }
     }
     const repls: Repl[] = [];
-    // Text blocks first, in tree order; then the long strings.
     const longs: i32[] = [];
     for (let x = 0; x < nn; x++) {
-      if (!this.isStringLit(x)) {
-        continue;
-      }
-      if (this.isTextBlock(x)) {
-        repls.push(this.indentTextBlock(x));
+      // Text blocks are indented by the formatter itself.
+      if (!this.isStringLit(x) || this.isTextBlock(x)) {
         continue;
       }
       if (this.selected[x] === 1) {
@@ -272,6 +255,7 @@ export class StringWrapper {
     return true;
   }
 
+  /** stringComponents: the literals' texts, split before whitespace and after runs of escaped newlines. */
   private components(flat: i32[], a: i32, b: i32): string[] {
     const t = this.t;
     const src = this.inp.src;
@@ -282,25 +266,36 @@ export class StringWrapper {
       const text = String.fromBytes(src, t.start[x] + 1, t.end[x] - 1);
       const n = toI32(text.length);
       let start = 0;
-      for (let idx = 0; idx < n; idx++) {
-        const c = text.charCodeAt(idx);
-        if (guavaWsLen(text, idx) > 0) {
-          // split before
-        } else if (c === 92 && idx + 1 < n && text.charCodeAt(idx + 1) === 116) {
-          // an escaped tab
+      let next = 0;
+      for (let idx = 0; idx < n; idx = next) {
+        let splitAt = idx;
+        const ws = guavaWsLen(text, idx);
+        if (ws > 0) {
+          // Before whitespace.
+          next = idx + ws;
+        } else if (text.charCodeAt(idx) === 92 && idx + 1 < n && text.charCodeAt(idx + 1) === 116) {
+          // Before an escaped tab.
+          next = idx + 2;
         } else if (escapedNewlineAt(text, idx) !== -1) {
-          let len = escapedNewlineAt(text, idx);
+          // After a run of escaped newlines, so that they end the piece before.
+          next = idx;
+          let len = escapedNewlineAt(text, next);
           while (len !== -1) {
-            idx += len;
-            len = escapedNewlineAt(text, idx);
+            next += len;
+            len = escapedNewlineAt(text, next);
           }
+          splitAt = next;
         } else {
+          // The whole of an escape: the second character of `\\` starts no other.
+          next = idx + (text.charCodeAt(idx) === 92 ? 2 : 1);
           continue;
         }
-        piece = piece + text.substring(start, idx);
-        result.push(piece);
-        piece = "";
-        start = idx;
+        if (splitAt > start || piece.length > 0) {
+          piece = piece + text.substring(start, splitAt);
+          result.push(piece);
+          piece = "";
+          start = splitAt;
+        }
       }
       if (piece.length > 0) {
         result.push(piece);
@@ -314,60 +309,6 @@ export class StringWrapper {
       result.push(piece);
     }
     return result;
-  }
-
-  private indentTextBlock(x: i32): Repl {
-    const t = this.t;
-    const src = this.inp.src;
-    let lineStart = t.start[x];
-    while (lineStart > 0 && toI32(src[lineStart - 1]) !== 10 && toI32(src[lineStart - 1]) !== 13) {
-      lineStart--;
-    }
-    const end = t.end[x];
-    const text = String.fromBytes(src, lineStart, end);
-    let leadingWhitespace = 0;
-    while (leadingWhitespace < toI32(text.length) && isSwWs(text.charCodeAt(leadingWhitespace))) {
-      leadingWhitespace++;
-    }
-    const initialLines = javaLines(text);
-    // stripIndent over the lines after the first.
-    const rest: string[] = [];
-    for (let i = 1; i < toI32(initialLines.length); i++) {
-      rest.push(initialLines[i]);
-    }
-    const lines = stripIndentLines(rest);
-    const lastInitial = stripTrailingJ(initialLines[initialLines.length - 1]);
-    const lastStripped = lines.length > 0 ? stripTrailingJ(lines[lines.length - 1]) : "";
-    const deindent = strUtf16Len(lastInitial) === strUtf16Len(lastStripped);
-    let prefix = "";
-    if (!deindent) {
-      for (let i = 0; i < leadingWhitespace; i++) {
-        prefix = `${prefix} `;
-      }
-    }
-    let o = prefix + stripLeadingJ(initialLines[0]);
-    for (let i = 0; i < toI32(lines.length); i++) {
-      const line = lines[i];
-      const trimmed = stripTrailingJ(line);
-      o = o + this.sep;
-      if (trimmed.length > 0) {
-        o = o + prefix;
-      }
-      if (i === toI32(lines.length) - 1) {
-        const withoutDelimiter = stripTrailingJ(trimmed.substring(0, toI32(trimmed.length) - 3));
-        if (stripLeadingJ(withoutDelimiter).length > 0) {
-          o = `${o}${withoutDelimiter}\\${this.sep}${prefix}`;
-        }
-        o = `${o}"""`;
-      } else {
-        o = o + line;
-      }
-    }
-    const r = new Repl();
-    r.start = lineStart;
-    r.end = end;
-    r.text = o;
-    return r;
   }
 }
 
@@ -489,7 +430,7 @@ const reflowStr = (
 };
 
 /** String.lines(): split at \n, \r, \r\n; no empty last line. */
-const javaLines = (s: string): string[] => {
+export const javaLines = (s: string): string[] => {
   const out: string[] = [];
   let a = 0;
   const n = toI32(s.length);
@@ -509,32 +450,94 @@ const javaLines = (s: string): string[] => {
   return out;
 };
 
-const stripTrailingJ = (s: string): string => {
-  let b = toI32(s.length);
-  while (b > 0 && isSwWs(s.charCodeAt(b - 1))) {
-    b--;
+/**
+ * The byte length of a Character.isWhitespace character at byte `i` of `s`,
+ * or 0: ASCII tab to carriage return, U+001C to U+001F and the space, and the
+ * Unicode space, line and paragraph separators but the no-break ones
+ * (U+00A0, U+2007, U+202F).
+ */
+const javaWsLen = (s: string, i: i32): i32 => {
+  const c = s.charCodeAt(i);
+  if (c < 0x80) {
+    return (c >= 9 && c <= 13) || (c >= 28 && c <= 32) ? 1 : 0;
   }
-  return s.substring(0, b);
+  const n = toI32(s.length);
+  if (i + 2 >= n) {
+    return 0;
+  }
+  const c1 = s.charCodeAt(i + 1);
+  const c2 = s.charCodeAt(i + 2);
+  if (c === 0xe1 && c1 === 0x9a && c2 === 0x80) {
+    return 3; // U+1680
+  }
+  if (c === 0xe2 && c1 === 0x80 && ((c2 >= 0x80 && c2 <= 0x8a && c2 !== 0x87) || c2 === 0xa8 || c2 === 0xa9)) {
+    return 3; // U+2000-2006, U+2008-200A, U+2028, U+2029
+  }
+  if (c === 0xe2 && c1 === 0x81 && c2 === 0x9f) {
+    return 3; // U+205F
+  }
+  if (c === 0xe3 && c1 === 0x80 && c2 === 0x80) {
+    return 3; // U+3000
+  }
+  return 0;
 };
 
-const stripLeadingJ = (s: string): string => {
-  let a = 0;
-  while (a < toI32(s.length) && isSwWs(s.charCodeAt(a))) {
-    a++;
+/** String.stripTrailing: `s` without its trailing Character.isWhitespace characters. */
+export const stripTrailingJ = (s: string): string => {
+  let end = 0;
+  let i = 0;
+  const n = toI32(s.length);
+  while (i < n) {
+    const w = javaWsLen(s, i);
+    if (w > 0) {
+      i += w;
+    } else {
+      i++;
+      // Past the rest of a multi-byte character.
+      while (i < n && (s.charCodeAt(i) & 0xc0) === 0x80) {
+        i++;
+      }
+      end = i;
+    }
   }
-  return s.substring(a, toI32(s.length));
+  return s.substring(0, end);
 };
 
-/** String.stripIndent over lines joined without a trailing terminator, split again. */
-const stripIndentLines = (lines: string[]): string[] => {
+/** How many Character.isWhitespace characters `l` starts with. */
+const javaLeadingWsChars = (l: string): i32 => {
+  let k = 0;
+  let i = 0;
+  while (i < toI32(l.length)) {
+    const w = javaWsLen(l, i);
+    if (w === 0) {
+      break;
+    }
+    i += w;
+    k++;
+  }
+  return k;
+};
+
+/** The byte length of the first `chars` characters of `l`, all whitespace. */
+const javaLeadingWsBytes = (l: string, chars: i32): i32 => {
+  let i = 0;
+  for (let k = 0; k < chars && i < toI32(l.length); k++) {
+    i += javaWsLen(l, i);
+  }
+  return i;
+};
+
+/**
+ * String.stripIndent over lines joined without a trailing terminator, split
+ * again: the least indentation (in characters) of the non-blank lines and
+ * the last line goes from every line, and so does trailing whitespace.
+ */
+export const stripIndentLines = (lines: string[]): string[] => {
   let min = 2147483647;
   for (let i = 0; i < toI32(lines.length); i++) {
     const l = lines[i];
-    let k = 0;
-    while (k < toI32(l.length) && isSwWs(l.charCodeAt(k))) {
-      k++;
-    }
-    const blank = k === toI32(l.length);
+    const k = javaLeadingWsChars(l);
+    const blank = javaLeadingWsBytes(l, k) === toI32(l.length);
     if (!blank || i === toI32(lines.length) - 1) {
       if (k < min) {
         min = k;
@@ -546,15 +549,7 @@ const stripIndentLines = (lines: string[]): string[] => {
   }
   const out: string[] = [];
   for (const l of lines) {
-    let k = 0;
-    while (k < toI32(l.length) && isSwWs(l.charCodeAt(k))) {
-      k++;
-    }
-    if (k === toI32(l.length)) {
-      out.push("");
-    } else {
-      out.push(stripTrailingJ(l.substring(min, toI32(l.length))));
-    }
+    out.push(stripTrailingJ(l.substring(javaLeadingWsBytes(l, min), toI32(l.length))));
   }
   return out;
 };

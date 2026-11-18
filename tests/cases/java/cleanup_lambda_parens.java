@@ -1,0 +1,9 @@
+class CleanupLambdaParens {
+  void f() {
+    list.forEach((x) -> use(x));
+    map.forEach((k, v) -> use(k, v));
+    run((/* keep */ y) -> y);
+    apply((String s) -> s.length(), (var t) -> t);
+    consumer = (value) -> { use(value); };
+  }
+}

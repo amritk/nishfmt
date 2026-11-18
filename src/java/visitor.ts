@@ -1,9 +1,11 @@
-// google-java-format's JavaInputAstVisitor (and its Java 21 subclass), over
-// the JTree: each visit emits the ops for one construct. Ported from
-// google-java-format 1.28 (Apache License 2.0, Copyright 2015 Google Inc.);
-// the order of every op matches the original, since the layout depends on it.
+// google-java-format's JavaInputAstVisitor, over the JTree: each visit emits
+// the layout events for one construct. Ported from google-java-format 2.0.0
+// (Apache License 2.0, Copyright 2015 Google Inc.); the order of every event
+// matches the original, since the layout depends on it.
 
-import { GEngine, INDEPENDENT, UNIFIED, FORCED, BL_NO, BL_PRESERVE, BL_YES } from "../gdoc/engine";
+import { INDEPENDENT, UNIFIED, FORCED, BL_NO, BL_PRESERVE, BL_YES } from "../gdoc/engine";
+import { JlEngine } from "./layout/engine";
+import { growI32 } from "../core/arr";
 import { GInput } from "../gdoc/input";
 import {
   CK_ANNOTATION,
@@ -13,6 +15,7 @@ import {
   FL_COMPACT_CTOR,
   FL_CTOR,
   FL_ENUM,
+  FL_IMPLICIT,
   FL_NEW_REF,
   FL_OPEN_MODULE,
   FL_RULE,
@@ -93,6 +96,7 @@ import {
   opName,
   opPrec,
 } from "./ast";
+import { javaLines, stripIndentLines, stripTrailingJ } from "./strings";
 
 // Declaration kinds and directions.
 const DK_NONE: i32 = 0;
@@ -149,7 +153,7 @@ class SplitMods {
 }
 
 export class JVisitor {
-  g: GEngine;
+  g: JlEngine;
   t: JTree;
   inp: GInput;
   ZERO: i32 = 0;
@@ -161,13 +165,17 @@ export class JVisitor {
   nPath: i32 = 0;
   typeAnnotationSimpleNames: string[];
   exprDepth: i32 = 0; // scans of ExpressionTrees open (JavaInputAstVisitor.inExpression)
+  hugPoints: i32[]; // node -> the hug point of a construct that may be hugged, or -1
+  notHuggable: i32[]; // node -> 1 for a lambda its call must not hug
 
-  constructor(g: GEngine, t: JTree) {
+  constructor(g: JlEngine, t: JTree) {
     this.g = g;
     this.t = t;
     this.inp = g.inp;
     this.path = new Array<i32>(256);
     this.typeAnnotationSimpleNames = [];
+    this.hugPoints = new Array<i32>(0);
+    this.notHuggable = new Array<i32>(0);
   }
 
   reset(): void {
@@ -180,6 +188,15 @@ export class JVisitor {
     this.nPath = 0;
     this.exprDepth = 0;
     this.typeAnnotationSimpleNames = [];
+    const nn = this.t.n;
+    if (toI32(this.hugPoints.length) < nn) {
+      this.hugPoints = growI32(this.hugPoints, nn * 2);
+      this.notHuggable = growI32(this.notHuggable, nn * 2);
+    }
+    for (let i = 0; i < nn; i++) {
+      this.hugPoints[i] = -1;
+      this.notHuggable[i] = 0;
+    }
   }
 
   /** JavaInputAstVisitor.markForPartialFormat: a region boundary, outside expressions only. */
@@ -305,7 +322,9 @@ export class JVisitor {
         this.token("while");
         this.g.space();
         this.token("(");
+        this.g.headerStart();
         this.scan(t.a[t.a[n]]);
+        this.g.headerEnd();
         this.token(")");
         this.visitStatement(t.b[n], true, true, false);
         break;
@@ -328,10 +347,12 @@ export class JVisitor {
         this.token("synchronized");
         this.g.space();
         this.token("(");
+        this.g.headerStart();
         this.g.open(this.plusFour);
         this.g.brk();
         this.scan(t.a[t.a[n]]);
         this.g.close();
+        this.g.headerEnd();
         this.token(")");
         this.g.space();
         this.scan(t.b[n]);
@@ -400,6 +421,7 @@ export class JVisitor {
         this.token("assert");
         this.g.space();
         this.g.open(t.b[n] < 0 ? this.ZERO : this.plusFour);
+        this.g.fence();
         this.scan(t.a[n]);
         if (t.b[n] >= 0) {
           this.g.brkSp();
@@ -661,9 +683,6 @@ export class JVisitor {
     const types = t.d[n];
     for (let i = 0; i < this.len(types); i++) {
       const ty = this.at(types, i);
-      if (t.kind[ty] === N_IMPORT) {
-        continue;
-      }
       if (afterFirstToken) {
         g.blankLineWanted(BL_YES);
       }
@@ -722,7 +741,6 @@ export class JVisitor {
     }
     this.visitQualifiedName(t.a[n]);
     this.token(";");
-    this.dropEmptyDeclarations();
   }
 
   private checkForTypeAnnotation(n: i32): void {
@@ -771,6 +789,13 @@ export class JVisitor {
   // ---- Classes ---------------------------------------------------------------
 
   visitClass(n: i32): void {
+    if ((this.t.flags[n] & FL_IMPLICIT) !== 0) {
+      // visitImplicitClass: the members at the top level, without braces.
+      this.g.open(this.minusTwo);
+      this.addBodyDeclarations(this.listItems(this.t.f[n]), false, true);
+      this.g.close();
+      return;
+    }
     switch (this.t.op[n]) {
       case CK_ANNOTATION:
         this.visitAnnotationType(n);
@@ -981,6 +1006,7 @@ export class JVisitor {
       g.close();
       if (g.peekIs(";")) {
         g.open(this.plusTwo);
+        g.fence();
         this.token(";");
         g.forcedBreak();
         this.dropEmptyDeclarations();
@@ -990,6 +1016,7 @@ export class JVisitor {
       this.addBodyDeclarations(members, false, false);
       g.forcedBreak();
       g.blankLineWanted(BL_NO);
+      this.markForPartialFormat();
       this.tokenInd("}", this.plusTwo);
       g.close();
     }
@@ -1010,7 +1037,10 @@ export class JVisitor {
       g.guessToken("(");
       g.guessToken(")");
     } else {
-      this.addArguments(t.d[init], this.plusFour);
+      if (t.e[init] >= 0) {
+        this.doNotHug(init);
+      }
+      this.addArguments(t.d[init], this.plusFour, this.ZERO);
     }
     if (t.e[init] >= 0) {
       this.addBodyDeclarations(this.listItems(t.f[t.e[init]]), true, true);
@@ -1217,13 +1247,56 @@ export class JVisitor {
     return q + 1;
   }
 
+  /**
+   * JavaInputAstVisitor.isModifier(token, flags): tok `tk` is a modifier
+   * keyword the modifiers `mods` hold (ModifiersTree.getFlags), so a type
+   * named `sealed` is not taken for one.
+   */
+  private isModifierOf(mods: i32, tk: i32): boolean {
+    const inp = this.inp;
+    if (!isModifier(inp, tk)) {
+      return false;
+    }
+    const nonSealed = this.modsHave(mods, tk, "non");
+    if (inp.is(tk, "non") || inp.is(tk, "-")) {
+      return nonSealed;
+    }
+    if (inp.is(tk, "sealed")) {
+      return nonSealed || this.modsHave(mods, tk, "sealed");
+    }
+    return this.modsHave(mods, tk, "");
+  }
+
+  /** Whether the modifiers `mods` hold a modifier keyword with the text of `word`, or of tok `tk` when it is "". */
+  private modsHave(mods: i32, tk: i32, word: string): boolean {
+    const inp = this.inp;
+    const t = this.t;
+    if (mods < 0 || t.start[mods] < 0) {
+      return false;
+    }
+    for (let k = inp.tokenAt(t.start[mods]); k >= 0 && k < inp.nTokens; k++) {
+      const x = inp.kTok[k];
+      if (inp.tPos[x] >= t.end[mods]) {
+        break;
+      }
+      if (
+        inp.tPos[x] >= t.start[mods] &&
+        isModifier(inp, x) &&
+        (word.length === 0 ? inp.sameText(x, tk) : inp.is(x, word))
+      ) {
+        return true;
+      }
+    }
+    return false;
+  }
+
   splitModifiers(mods: i32, annotations: i32[]): SplitMods {
     const g = this.g;
     const inp = this.inp;
     const t = this.t;
     const out = new SplitMods();
     const pt = g.peekTok(0);
-    if (annotations.length === 0 && (pt < 0 || !isModifier(inp, pt))) {
+    if (annotations.length === 0 && (pt < 0 || !this.isModifierOf(mods, pt))) {
       return out;
     }
     // Toks from the modifiers' start while they are in an annotation or a modifier.
@@ -1238,7 +1311,7 @@ export class JVisitor {
           break;
         }
       }
-      if (!inAnno && !isModifier(inp, tk)) {
+      if (!inAnno && !this.isModifierOf(mods, tk)) {
         break;
       }
       if (!inAnno) {
@@ -1783,15 +1856,15 @@ export class JVisitor {
       g.open(this.ZERO);
       g.open(this.ZERO);
       this.visitAnnotations(annotations, false, true);
-      if (hasDims && dimBase >= 0) {
+      if (isVar) {
+        this.token("var");
+      } else if (hasDims && dimBase >= 0) {
         this.scan(dimBase);
         const totalDims = dims.size();
         g.open(this.plusFour);
         this.maybeAddDims(null, dims);
         g.close();
         baseDims = totalDims - dims.size();
-      } else if (isVar) {
-        this.token("var");
       } else {
         this.scan(type);
       }
@@ -2180,7 +2253,9 @@ export class JVisitor {
       this.token("if");
       g.space();
       this.token("(");
+      g.headerStart();
       this.scan(t.a[exprs[i]]);
+      g.headerEnd();
       this.token(")");
       const onlyClause = en === 1 && t.c[n] < 0;
       const trailingClauses = i < en - 1 || t.c[n] >= 0;
@@ -2207,7 +2282,9 @@ export class JVisitor {
     this.token("for");
     g.space();
     this.token("(");
+    g.headerStart();
     g.open(this.plusFour);
+    g.fence();
     const init = t.a[n];
     g.open(this.len(init) > 1 && t.kind[this.at(init, 0)] === N_EXPRESSION_STATEMENT ? this.plusFour : this.ZERO);
     if (this.len(init) > 0) {
@@ -2259,6 +2336,7 @@ export class JVisitor {
       g.space();
     }
     g.close();
+    g.headerEnd();
     this.token(")");
     this.visitStatement(t.d[n], true, true, false);
   }
@@ -2271,9 +2349,11 @@ export class JVisitor {
     this.token("for");
     g.space();
     this.token("(");
+    g.headerStart();
     g.open(this.ZERO);
     this.visitToDeclare(DK_NONE, HORIZONTAL, t.a[n], t.b[n], ":", "");
     g.close();
+    g.headerEnd();
     this.token(")");
     g.close();
     this.visitStatement(t.c[n], true, true, false);
@@ -2308,7 +2388,9 @@ export class JVisitor {
     const res = t.a[n];
     if (this.len(res) > 0) {
       this.token("(");
+      g.headerStart();
       g.open(this.len(res) > 1 ? this.plusFour : this.ZERO);
+      g.fence();
       for (let i = 0; i < this.len(res); i++) {
         const r = this.at(res, i);
         if (i > 0) {
@@ -2343,6 +2425,7 @@ export class JVisitor {
       }
       this.token(")");
       g.close();
+      g.headerEnd();
       g.space();
     }
     const catches = t.c[n];
@@ -2370,6 +2453,7 @@ export class JVisitor {
     g.space();
     this.token("(");
     g.open(this.plusFour);
+    g.fence();
     const ex = t.a[n];
     if (t.kind[t.b[ex]] === N_UNION_TYPE) {
       g.open(this.ZERO);
@@ -2416,7 +2500,9 @@ export class JVisitor {
     this.token("switch");
     g.space();
     this.token("(");
+    g.headerStart();
     this.scan(this.t.a[selector]);
+    g.headerEnd();
     this.token(")");
     g.space();
     this.tokenBreakTrailingComment("{", this.plusTwo);
@@ -2431,6 +2517,9 @@ export class JVisitor {
     g.close();
     g.forcedBreak();
     g.blankLineWanted(BL_NO);
+    if (this.len(cases) > 0) {
+      this.markForPartialFormat();
+    }
     this.tokenInd("}", this.plusFour);
   }
 
@@ -2499,10 +2588,7 @@ export class JVisitor {
     const a = this.t.start[n];
     const e = this.t.end[n];
     if (e - a >= 3 && toI32(inp.src[a]) === 34 && toI32(inp.src[a + 1]) === 34 && toI32(inp.src[a + 2]) === 34) {
-      if (this.textBlockDeindents(a, e)) {
-        g.brkInd(g.constIndent(-1073741824));
-      }
-      g.tokLike(this.t.name[n]);
+      this.visitTextBlock(n);
       return;
     }
     if (toI32(inp.src[a]) === 45) {
@@ -2512,68 +2598,32 @@ export class JVisitor {
   }
 
   /**
-   * Whether a text block's closing line, stripped, is as long as the last line
-   * of its stripped content (visitLiteral's `deindent`).
+   * visitTextBlock: the text block with its incidental whitespace removed,
+   * as lines the layout indents to the line the block starts on.
    */
-  private textBlockDeindents(a: i32, e: i32): boolean {
-    const src = this.inp.src;
-    // Lines of the literal.
-    const starts: i32[] = [a];
-    for (let i = a; i < e; i++) {
-      const c = toI32(src[i]);
-      if (c === 10 || c === 13) {
-        if (c === 13 && i + 1 < e && toI32(src[i + 1]) === 10) {
-          i++;
-        }
-        starts.push(i + 1);
-      }
+  private visitTextBlock(n: i32): void {
+    const g = this.g;
+    const initialLines = javaLines(String.fromBytes(this.inp.src, this.t.start[n], this.t.end[n]));
+    // The first line is always """ and does not affect incidental whitespace.
+    const strippedLines = stripIndentLines(initialLines.slice(1, initialLines.length));
+    const lastLine = strippedLines[strippedLines.length - 1];
+    // The block is deindented to column 0 when stripping its indentation
+    // leaves its last line as long as it was.
+    if (stripTrailingJ(initialLines[initialLines.length - 1]).length === lastLine.length) {
+      g.brkInd(g.constIndent(-1073741824));
     }
-    const nl = toI32(starts.length);
-    // stripIndent over lines 1..: the minimum indentation of non-blank lines,
-    // and of the last line even when blank.
-    let minIndent = 2147483647;
-    for (let k = 1; k < nl; k++) {
-      const s = starts[k];
-      const le = this.tbLineEnd(starts, k, e);
-      let i = s;
-      while (i < le && (toI32(src[i]) === 32 || toI32(src[i]) === 9)) {
-        i++;
-      }
-      const blank = i === le;
-      if (!blank || k === nl - 1) {
-        if (i - s < minIndent) {
-          minIndent = i - s;
-        }
-      }
+    const lines: string[] = [stripTrailingJ(initialLines[0])];
+    for (let i = 0; i < toI32(strippedLines.length) - 1; i++) {
+      lines.push(strippedLines[i]);
     }
-    if (minIndent === 2147483647) {
-      minIndent = 0;
+    const withoutDelimiter = stripTrailingJ(lastLine.substring(0, toI32(lastLine.length) - 3));
+    if (withoutDelimiter.length > 0) {
+      lines.push(`${withoutDelimiter}\\`);
     }
-    // The last line of the stripped text, trailing-stripped.
-    const lastK = nl - 1;
-    const ls = starts[lastK];
-    const le = this.tbLineEnd(starts, lastK, e);
-    let lastTrim = le;
-    while (lastTrim > ls && (toI32(src[lastTrim - 1]) === 32 || toI32(src[lastTrim - 1]) === 9)) {
-      lastTrim--;
-    }
-    const lastOrigLen = lastTrim - ls;
-    // The stripped version of the last line: indentation removed.
-    let strippedLen = lastTrim - ls - minIndent;
-    if (strippedLen < 0) {
-      strippedLen = 0;
-    }
-    return lastOrigLen === strippedLen;
-  }
-
-  /** The end of text-block line `k`, without its terminator. */
-  private tbLineEnd(starts: i32[], k: i32, e: i32): i32 {
-    const src = this.inp.src;
-    let x = k + 1 < toI32(starts.length) ? starts[k + 1] : e;
-    while (x > starts[k] && (toI32(src[x - 1]) === 10 || toI32(src[x - 1]) === 13)) {
-      x--;
-    }
-    return x;
+    // A trailing line of just """ indented more than the incidental
+    // whitespace would only make javac warn that trailing white space is removed.
+    lines.push(`"""`);
+    g.multilineTokenLike(this.t.name[n], lines);
   }
 
   private splitToken(s: string): void {
@@ -2686,6 +2736,7 @@ export class JVisitor {
     g.close();
     g.space();
     g.op("->");
+    this.markHugPoint(n);
     g.open(statementBody ? this.ZERO : this.plusFour);
     if (statementBody) {
       g.space();
@@ -2716,9 +2767,10 @@ export class JVisitor {
     if (t.e[n] >= 0) {
       const annos = this.visitModifiersOf(t.a[t.e[n]], HORIZONTAL, -1);
       this.visitAnnotations(annos, false, true);
+      this.doNotHug(n);
     }
     this.scan(t.c[n]);
-    this.addArguments(t.d[n], this.plusFour);
+    this.addArguments(t.d[n], this.plusFour, this.ZERO);
     g.close();
     if (t.e[n] >= 0) {
       this.addBodyDeclarations(this.listItems(t.f[t.e[n]]), true, true);
@@ -2852,6 +2904,7 @@ export class JVisitor {
     }
     this.token("<");
     g.open(plusIndent);
+    g.fence();
     for (let i = 0; i < this.len(targs); i++) {
       if (i > 0) {
         this.token(",");
@@ -2863,14 +2916,25 @@ export class JVisitor {
     this.token(">");
   }
 
-  addArguments(args: i32, plusIndent: i32): void {
+  addArguments(args: i32, plusIndent: i32, huggedPlusIndent: i32): void {
     const g = this.g;
-    g.open(plusIndent);
-    this.token("(");
     const na = this.len(args);
+    const items = this.listItems(args);
+    const tabular = na % 2 === 0 && this.argumentsAreTabular(items) === 2;
+    const hug = this.canHugOnlyArgument(items);
+    if (hug) {
+      g.openHuggable(
+        plusIndent,
+        this.hasHuggedBlockLambda(args) ? this.ZERO : huggedPlusIndent,
+        this.hugPointOf(items[0]),
+        true,
+      );
+    } else {
+      g.open(plusIndent);
+    }
+    this.token("(");
     if (na > 0) {
-      const items = this.listItems(args);
-      if (na % 2 === 0 && this.argumentsAreTabular(items) === 2) {
+      if (tabular) {
         g.forcedBreak();
         g.open(this.ZERO);
         for (let i = 0; i < na - 1; i += 2) {
@@ -2893,21 +2957,68 @@ export class JVisitor {
         this.token(",");
         g.brkSp();
         g.open(this.ZERO);
-        this.argList(items.slice(1, items.length));
+        this.argList(items.slice(1, items.length), false);
         g.close();
         g.close();
       } else {
         g.brk();
-        this.argList(items);
+        this.argList(items, hug);
       }
     }
     this.token(")");
     g.close();
   }
 
-  private argList(args: i32[]): void {
+  /** The hug point of `n`, created on first use; it is marked when `n` is visited. */
+  private hugPointOf(n: i32): i32 {
+    if (this.hugPoints[n] < 0) {
+      this.hugPoints[n] = this.g.newHugPoint();
+    }
+    return this.hugPoints[n];
+  }
+
+  private markHugPoint(n: i32): void {
+    const h = this.hugPoints[n];
+    if (h >= 0) {
+      this.hugPoints[n] = -1;
+      this.g.hugPoint(h);
+    }
+  }
+
+  private isHuggable(n: i32): boolean {
+    return this.t.kind[n] === N_LAMBDA;
+  }
+
+  private canHugOnlyArgument(args: i32[]): boolean {
+    return args.length === 1 && this.isHuggable(args[0]) && this.notHuggable[args[0]] === 0;
+  }
+
+  /** Keeps the call `call0` from hugging its block lambda argument. */
+  private doNotHug(call0: i32): void {
+    const t = this.t;
+    const call = this.getArrayBase(call0);
+    const k = t.kind[call];
+    const args = k === N_METHOD_INVOCATION ? t.c[call] : k === N_NEW_CLASS ? t.d[call] : -1;
+    if (args >= 0 && this.hasHuggedBlockLambda(args)) {
+      this.notHuggable[this.at(args, 0)] = 1;
+    }
+  }
+
+  private hasHuggedBlockLambda(args: i32): boolean {
+    if (this.len(args) !== 1) {
+      return false;
+    }
+    const a = this.at(args, 0);
+    return this.t.kind[a] === N_LAMBDA && (this.t.flags[a] & FL_STATEMENT_BODY) !== 0;
+  }
+
+  private argList(args: i32[], hug: boolean): void {
     const g = this.g;
-    g.open(this.ZERO);
+    if (hug) {
+      g.openHuggedArguments();
+    } else {
+      g.open(this.ZERO);
+    }
     const fill = this.hasOnlyShortItems(args) ? INDEPENDENT : UNIFIED;
     for (let i = 0; i < toI32(args.length); i++) {
       if (i > 0) {
@@ -3139,6 +3250,9 @@ export class JVisitor {
         this.token(".");
       } else {
         g.open(this.plusFour);
+        if (items.length > 0) {
+          this.doNotHug(node);
+        }
         this.scan(this.getArrayBase(node));
         g.brk();
         needDot = true;
@@ -3206,7 +3320,8 @@ export class JVisitor {
 
   private handleLogStatement(n: i32): boolean {
     const t = this.t;
-    if (!this.inp.is(this.methodName(n), "log")) {
+    const methodName = this.methodName(n);
+    if (!this.inp.is(methodName, "log") && !this.inp.is(methodName, "logVarargs")) {
       return false;
     }
     const rev: i32[] = [];
@@ -3239,19 +3354,33 @@ export class JVisitor {
     }
     const minLength = 4;
     let length = needDot0 ? minLength : 0;
-    for (const e of items) {
+    let hasBroken = needDot0;
+    for (let i = 0; i < toI32(items.length); i++) {
+      const e = items[i];
       if (needDot) {
         if (length > minLength) {
           g.breakOp(UNIFIED, "", this.ZERO, -1);
+          hasBroken = true;
         }
         this.token(".");
         length++;
+      }
+      const onFirstLine = !hasBroken && i < toI32(items.length) - 1;
+      if (onFirstLine) {
+        this.doNotHug(e);
       }
       if (!this.fillFirstArgument(e, items, trailingDereferences ? this.ZERO : this.minusFour)) {
         const tyargTag = g.genSym();
         this.dotExpressionUpToArgs(e, tyargTag);
         const tyargIndent = g.ifIndent(tyargTag, this.plusFour, this.ZERO);
-        this.dotExpressionArgsAndParen(e, tyargIndent, trailingDereferences || needDot ? this.plusFour : this.ZERO);
+        // Calls that stay on the first line of the chain indent hugged
+        // arguments by an extra +4, to tell them from the trailing dereferences.
+        this.dotExpressionArgsAndParen(
+          e,
+          tyargIndent,
+          trailingDereferences || needDot ? this.plusFour : this.ZERO,
+          onFirstLine ? this.plusFour : this.ZERO,
+        );
       }
       length += this.inp.width(this.t.start[e], this.t.end[e]);
       needDot = true;
@@ -3275,7 +3404,9 @@ export class JVisitor {
       t.kind[t.b[e]] !== N_IDENTIFIER ||
       this.inp.width(this.inp.tPos[name], this.inp.tEnd[name]) > 4 ||
       this.len(t.a[e]) > 0 ||
-      this.len(t.c[e]) !== 1
+      this.len(t.c[e]) !== 1 ||
+      // Huggable arguments are handled by addArguments, see canHugOnlyArgument.
+      this.isHuggable(this.at(t.c[e], 0))
     ) {
       return false;
     }
@@ -3317,6 +3448,11 @@ export class JVisitor {
     const nameTag = g.genSym();
     for (let i = 0; i < toI32(items.length); i++) {
       const e = items[i];
+      // Don't hug a block lambda if its call stays on the first line of the
+      // chain and has trailing dereferences.
+      if (!needDot0 && (i === 0 || prefixes0.indexOf(i) >= 0) && i < toI32(items.length) - 1) {
+        this.doNotHug(e);
+      }
       if (needDot) {
         let fill = UNIFIED;
         if (up < toI32(sorted.length) && i <= sorted[up]) {
@@ -3333,7 +3469,8 @@ export class JVisitor {
       }
       const tyargIndent = g.ifIndent(tyargTag, this.plusFour, this.ZERO);
       const argsIndent = g.ifIndent(nameTag, this.plusFour, trailingDereferences ? this.plusFour : this.ZERO);
-      this.dotExpressionArgsAndParen(e, tyargIndent, argsIndent);
+      const huggedArgsIndent = g.ifIndent(nameTag, this.ZERO, trailingDereferences ? this.plusFour : this.ZERO);
+      this.dotExpressionArgsAndParen(e, tyargIndent, argsIndent, huggedArgsIndent);
       needDot = true;
     }
     g.close();
@@ -3410,14 +3547,14 @@ export class JVisitor {
     }
   }
 
-  private dotExpressionArgsAndParen(e0: i32, tyargIndent: i32, indent: i32): void {
+  private dotExpressionArgsAndParen(e0: i32, tyargIndent: i32, indent: i32, huggedIndent: i32): void {
     const t = this.t;
     const g = this.g;
     const indices = this.getArrayIndices(e0);
     const e = this.getArrayBase(e0);
     if (t.kind[e] === N_METHOD_INVOCATION) {
       g.open(tyargIndent);
-      this.addArguments(t.c[e], indent);
+      this.addArguments(t.c[e], indent, huggedIndent);
       g.close();
     }
     this.formatArrayIndices(indices);
@@ -3487,6 +3624,7 @@ export class JVisitor {
       }
       g.close();
       g.forcedBreak();
+      this.markForPartialFormat();
       this.token("}");
     }
   }
@@ -3569,7 +3707,7 @@ const isLogMethod = (inp: GInput, t: i32): boolean =>
   inp.is(t, "withCause") ||
   inp.is(t, "withStackTrace");
 
-/** JavaInputAstVisitor.isModifier on a tok's text. */
+/** The modifier keywords JavaInputAstVisitor.isModifier knows. */
 const isModifier = (inp: GInput, t: i32): boolean =>
   inp.is(t, "public") ||
   inp.is(t, "protected") ||

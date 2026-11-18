@@ -1,8 +1,8 @@
 // google-java-format's ModifierOrderer: each run of modifiers is sorted into
 // javax.lang.model's Modifier order, keeping the whitespace and comments
-// between the positions.
+// between the positions. (2.0.0's `value` is not a Modifier on JDK 21.)
 //
-// Ported from google-java-format 1.28 (Apache License 2.0, Copyright 2016 Google Inc.).
+// Ported from google-java-format 2.0.0 (Apache License 2.0, Copyright 2016 Google Inc.).
 
 import { Out } from "../core/out";
 import { GInput } from "../gdoc/input";
