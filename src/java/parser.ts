@@ -1275,10 +1275,6 @@ export class JParser {
   }
 
   allowVarType: boolean = false;
-  // The next qualifiedType is read in javac's EXPR mode (term3 after an
-  // expression's leading type annotations), where an annotation after a `.`
-  // is "<identifier> expected". Nested types (type arguments) are TYPE mode.
-  exprModeType: boolean = false;
   // javac reported an error and parsed on: a restricted name as a type ("'var'
   // is not allowed here"), a declared name or a constructor-shaped member's
   // name, a `permits` clause without `sealed`, an unqualified `yield(...)`, a
@@ -1290,9 +1286,6 @@ export class JParser {
   /** A type with dims; annotations before it become an ANNOTATED_TYPE. */
   private typeAnnotated(): i32 {
     const t = this.t;
-    // Not consumed by an annotation's arguments.
-    const exprMode = this.exprModeType;
-    this.exprModeType = false;
     if (this.is("@")) {
       const start = this.pos();
       const am = t.mark();
@@ -1300,7 +1293,6 @@ export class JParser {
         t.push(this.annotation());
       }
       const annos = t.list(am);
-      this.exprModeType = exprMode;
       const under = this.typeNoDims();
       const at = t.node(N_ANNOTATED_TYPE, start);
       t.a[at] = annos;
@@ -1311,7 +1303,6 @@ export class JParser {
       }
       return this.bracketsOpt(at);
     }
-    this.exprModeType = exprMode;
     return this.bracketsOpt(this.typeNoDims());
   }
 
@@ -1342,8 +1333,6 @@ export class JParser {
   qualifiedType(): i32 {
     const t = this.t;
     const start = this.pos();
-    const exprMode = this.exprModeType;
-    this.exprModeType = false;
     // A reserved word is javac's "illegal start of type" (`return` in a record
     // body that was a method `record f() { return null; }`).
     if (!this.isIdent()) {
@@ -1362,10 +1351,6 @@ export class JParser {
         break;
       }
       if (this.isAt(1, "@")) {
-        // javac's term3 reads the annotations after a `.` only in TYPE mode.
-        if (exprMode) {
-          this.rejected = true;
-        }
         this.next();
         const am = t.mark();
         while (this.is("@")) {
@@ -2754,10 +2739,8 @@ export class JParser {
       // google-java-format fails ("did not generate token"). The type after the
       // annotations is read in EXPR mode: `@A Outer.@B Inner::new` is
       // "<identifier> expected".
-      this.exprModeType = true;
       const ty = this.type();
-      this.exprModeType = false;
-      if (!this.op2(":", ":") || t.kind[ty] === N_ARRAY_TYPE) {
+      if (!this.op2(":", ":") || t.kind[ty] === N_ARRAY_TYPE || this.hasDotAnnotation(ty)) {
         this.rejected = true;
       }
       return ty;
@@ -2809,6 +2792,32 @@ export class JParser {
   }
 
   /**
+   * Whether an annotated type's qualified name has an annotation after a `.`
+   * (`@A Outer.@B Inner`), which javac's term3 reads only in TYPE mode.
+   */
+  private hasDotAnnotation(ty: i32): boolean {
+    const t = this.t;
+    let e = ty;
+    // Past the dims and their annotations to the leading annotations' type.
+    while (t.kind[e] === N_ARRAY_TYPE || (t.kind[e] === N_ANNOTATED_TYPE && t.kind[t.b[e]] === N_ARRAY_TYPE)) {
+      e = t.kind[e] === N_ARRAY_TYPE ? t.a[e] : t.b[e];
+    }
+    if (t.kind[e] !== N_ANNOTATED_TYPE) {
+      return false;
+    }
+    for (e = t.b[e]; e >= 0; e = t.a[e]) {
+      const k = t.kind[e];
+      if (k === N_ANNOTATED_TYPE) {
+        return true;
+      }
+      if (k !== N_MEMBER_SELECT && k !== N_PARAMETERIZED_TYPE) {
+        return false;
+      }
+    }
+    return false;
+  }
+
+  /**
    * javac's bracketsSuffix in EXPR mode, after an array type: `.class` is a
    * class literal, where a type annotation on a dimension is "no annotations
    * are allowed in the type of a class literal"; else the type is left for `::`.
@@ -2818,12 +2827,12 @@ export class JParser {
     if (!this.is(".") || !this.isAt(1, "class")) {
       return ty;
     }
-    for (let e = ty; t.kind[e] === N_ARRAY_TYPE || t.kind[e] === N_ANNOTATED_TYPE; ) {
-      if (t.kind[e] === N_ANNOTATED_TYPE) {
-        this.rejected = true;
-        break;
-      }
+    let e = ty;
+    while (t.kind[e] === N_ARRAY_TYPE) {
       e = t.a[e];
+    }
+    if (t.kind[e] === N_ANNOTATED_TYPE) {
+      this.rejected = true;
     }
     this.next();
     const s = t.node(N_MEMBER_SELECT, start);
