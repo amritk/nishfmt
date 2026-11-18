@@ -25,8 +25,8 @@ pinned to one core:
 | Java | google-java-format 1.28 | 100% of 7,627 | 75.2 s / 252.9 s | **2.17 s / 8.64 s** |
 | Kotlin | ktfmt 0.64, default style | 100% of 9,602 | 92.9 s / not run | **2.03 s / 7.02 s** |
 | C# | CSharpier 1.4.0, default options | 100% of 13,988 | 63.0 s / 122.7 s | **3.10 s / 6.63 s** |
-| Dart, tall style | `dart format` 3.14 | 100% of 10,313 | 55.2 s / 59.9 s | **3.08 s / 8.50 s** |
-| Dart, short style (below 3.7) | `dart format` 3.14 | 100% of 8,218 | 25.4 s / 25.6 s | **3.76 s / 6.27 s** |
+| Dart, tall style | `dart format` 3.14.1 | 100% of 10,313 | 55.2 s / 59.9 s | **3.08 s / 8.50 s** |
+| Dart, short style (below 3.7) | `dart format` 3.14.1 | 100% of 8,218 | 25.4 s / 25.6 s | **3.76 s / 6.27 s** |
 | Swift | SwiftFormat 0.64.7, default rules | 100% of 6,710 | 131.7 s / 262.5 s | **10.2 s / 29.4 s** |
 | Rust | rustfmt 1.9.0, default config, edition 2021 | 100% of 7,899 | 7.6 s / 29.1 s | **1.35 s / 5.0 s** |
 | Ruby | `rubocop -a` 1.92.2, default config, `TargetRubyVersion: 3.3` | 100% of 1,998 | 303.9 s / 289.6 s | **4.00 s / 12.7 s** |
@@ -61,9 +61,15 @@ so a file comes out the same in any repository.
 - **Java, Kotlin, C#, Swift, Rust:** the tool's defaults: google-java-format's
   Google style, ktfmt's default style, CSharpier's default options,
   SwiftFormat's default rules, and rustfmt's default config with edition 2021.
-- **Dart:** `dart format`'s defaults. The language version, which picks the
-  style, comes from a file's `// @dart=` comment, else 3.14; package configs
-  are not read.
+- **Dart:** `dart format`'s defaults, and the project around each file as
+  `dart format` reads it: the language version, which picks the style, comes
+  from the file's `// @dart=` comment, else its package in the nearest
+  `.dart_tool/package_config.json`, else 3.13 (the newest dart_style knows);
+  `pubspec.yaml` is not read. The page width comes from `// dart format
+  width=N` (tall style), else `formatter: page_width` in the nearest
+  `analysis_options.yaml` (with its includes), else 80. Where `dart format`
+  would warn and fall back, or a project file is beyond nishfmt's reader, or
+  `trailing_commas: preserve` is set, the file is left untouched.
 - **Ruby:** `rubocop -a`: every cop RuboCop enables by default, with its safe
   corrections only, targeting Ruby 3.3.
 - **C++:** the one exception. clang-format's own default is LLVM style at 80

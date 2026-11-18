@@ -920,7 +920,7 @@ class DtYaml {
     while (j > p && this.at(j - 1) === 32) {
       j--;
     }
-    if (j === p || !this.plainStart(p, e, false)) {
+    if (i >= e || j === p || !this.plainStart(p, e, false)) {
       this.failed = true;
       return "";
     }
