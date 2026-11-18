@@ -179,5 +179,18 @@ javac's term3. Most rejections set the parser's `rejected` flag rather than
 failing at once, because javac reports them and parses on, and a lookahead
 that parses past them must still succeed.
 
-Known gap, not a restricted-name check: gjf 2.0.0 rejects a type annotation
-on an array constructor reference, `@A String[]::new`, and nishfmt formats it.
+Expressions follow term3's modes. After an expression's leading type
+annotations the type is read in EXPR mode, so `@A Outer.@B Inner::new` is
+"<identifier> expected" (`exprModeType`), and on an array type (`@A
+String[]::new`) gjf fails ("did not generate token"); `@Foo
+java.lang.String::length` fails the same way and stays skipped. Type
+arguments before `this(...)` or `super(...)` make an explicit constructor
+call, and before anything else an illegal start. After an identifier only
+dims take annotations, `String @A []::new`, and bracketsSuffix rejects an
+annotated dim on a class literal. `isUnboundMemberRef` decides whether `<`
+after a name starts a method reference's type: its type arguments must close
+before `.`, `[` or `::`, so `List<String> @A []::new` is a less-than. And
+blockStatement has no case for `static`: a local `static class` or `static
+int x` is an illegal start of expression, also after ModifierOrderer turns
+`final static` into `static final` (`abstract static class` and `@A static
+class` stay legal).
