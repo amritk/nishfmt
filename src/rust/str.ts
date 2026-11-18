@@ -5,7 +5,7 @@
 // For rustfmt 1.10.0 (MIT OR Apache-2.0, Copyright The Rust Project Developers).
 
 import { Out } from "../core/out";
-import { cpWidth } from "../core/uwidth";
+import { rsUnicodeStrWidth } from "./uwidth";
 
 /** A growing string: appends in place instead of copying the whole result each time. */
 export class RsStrBuf {
@@ -359,68 +359,19 @@ export const rsLastLine = (s: string): string => {
   return i < 0 ? s : s.slice(i + 1, toI32(s.length));
 };
 
-// cpWidth + 2 for the code points below 0x10000 seen so far (0: not yet).
-const rsCpWidthCache = new Int32Array(65536);
-
-/** cpWidth, memoized for the Basic Multilingual Plane. */
-const rsCpWidth = (cp: i32): i32 => {
-  if (cp >= 65536) {
-    return cpWidth(cp);
-  }
-  const c = rsCpWidthCache[cp];
-  if (c !== 0) {
-    return c - 2;
-  }
-  const w = cpWidth(cp);
-  rsCpWidthCache[cp] = w + 2;
-  return w;
-};
-
 /** The display width of `s`, as unicode-width's `UnicodeWidthStr::width` counts it. */
 export const rsWidth = (s: string): i32 => {
   const n = toI32(s.length);
-  let ascii = true;
-  for (let i = 0; i < n; i++) {
-    if (s.charCodeAt(i) >= 128) {
-      ascii = false;
-      break;
-    }
-  }
-  if (ascii) {
-    return n;
-  }
   let w = 0;
-  let i = 0;
-  while (i < n) {
+  for (let i = 0; i < n; i++) {
     const c = s.charCodeAt(i);
-    if (c < 128) {
+    if (c >= 128) {
+      return rsUnicodeStrWidth(s);
+    }
+    // A line feed takes no column, nor a carriage return before one.
+    if (c !== 10 && !(c === 13 && i + 1 < n && s.charCodeAt(i + 1) === 10)) {
       w++;
-      i++;
-      continue;
     }
-    let k = 0;
-    let cp = 0;
-    if (c >= 0xf0) {
-      k = 4;
-      cp = c & 7;
-    } else if (c >= 0xe0) {
-      k = 3;
-      cp = c & 15;
-    } else if (c >= 0xc0) {
-      k = 2;
-      cp = c & 31;
-    } else {
-      i++;
-      continue;
-    }
-    for (let j = 1; j < k && i + j < n; j++) {
-      cp = (cp << 6) | (s.charCodeAt(i + j) & 63);
-    }
-    const cw = rsCpWidth(cp);
-    if (cw > 0) {
-      w += cw;
-    }
-    i += k;
   }
   return w;
 };
