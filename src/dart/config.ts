@@ -20,8 +20,8 @@ export class DtFileConfig {
   /** The package's language version, or -1: no package, the newest. */
   verMajor: i32 = -1;
   verMinor: i32 = -1;
-  /** `formatter: page_width`, or -1: none configured. */
-  pageWidth: i32 = -1;
+  /** `formatter: page_width`, else dart_style's default, 80. */
+  pageWidth: i32 = 80;
   /** Why the project could not be read, when it could not. */
   why: string = "";
   constructor() {}
@@ -37,14 +37,14 @@ export class DtFileConfig {
 const DTC_SLOTS: i32 = 65536;
 const DTC_POOL_BYTES: i32 = 8388608;
 const DTC_PKGS: i32 = 65536;
-const DTC_KOFF = new Int32Array(65536);
-const DTC_KLEN = new Int32Array(65536);
-const DTC_VAL = new Int32Array(262144);
-const DTC_POOL = new Array<u8>(8388608);
+const DTC_KOFF = new Int32Array(DTC_SLOTS);
+const DTC_KLEN = new Int32Array(DTC_SLOTS);
+const DTC_VAL = new Int32Array(DTC_SLOTS * 4);
+const DTC_POOL = new Array<u8>(DTC_POOL_BYTES);
 // Per package: root, package URI root and name (offset, length in the pool each), major, minor.
-const DTC_PKG = new Int32Array(524288);
-/** [0] pool bytes used, [1] slots used, [2] packages kept, [3] package configs read, [4] analysis options read. */
-export const DTC_META = new Int32Array(8);
+const DTC_PKG = new Int32Array(DTC_PKGS * 8);
+/** [0] pool bytes used, [1] slots used, [2] packages kept, [3] and [4] the working directory's offset and length + 1 in the pool. */
+const DTC_META = new Int32Array(8);
 
 const dtcHash = (k: string): i32 => {
   let h = 5381;
@@ -155,14 +155,6 @@ const dtParentOf = (p: string): string => {
   return ".";
 };
 
-/** FileSystemEntity.absolute: the working directory joined on, nothing resolved. */
-const dtAbsolute = (p: string, cwd: string): string => {
-  if (p.startsWith("/")) {
-    return p;
-  }
-  return cwd.endsWith("/") ? cwd + p : `${cwd}/${p}`;
-};
-
 /** Uri's _removeDotSegments, on an absolute path. */
 const dtRemoveDots = (p: string): string => {
   const out: string[] = [];
@@ -230,7 +222,7 @@ const dtDirname = (p: string): string => {
   return i <= 0 ? "/" : p.substring(0, i);
 };
 
-/** package:path's join of two parts. */
+/** package:path's join of two parts; also dart:io's FileSystemEntity.absolute, `dtJoin(cwd, p)`, which resolves nothing. */
 const dtJoin = (a: string, b: string): string => {
   if (b.startsWith("/")) {
     return b;
@@ -286,14 +278,7 @@ const dtValGet = (m: DtVal, key: string): DtVal | null => {
   return null;
 };
 
-const dtValHas = (m: DtVal, key: string): boolean => {
-  for (const k of m.keys) {
-    if (k === key) {
-      return true;
-    }
-  }
-  return false;
-};
+const dtValHas = (m: DtVal, key: string): boolean => dtValGet(m, key) !== null;
 
 /** Valid UTF-8, with no byte-order mark: Dart's UTF-8 decoder would otherwise fail or differ. */
 const dtUtf8Ok = (b: u8[], n: i32): boolean => {
@@ -471,7 +456,6 @@ class DtJson {
 
   /** A JSON number: an int when it has no fraction or exponent. */
   num(): DtVal {
-    const a = this.p;
     let neg = false;
     if (this.at(this.p) === 45) {
       neg = true;
@@ -526,9 +510,6 @@ class DtJson {
         x = x * 10 + toI32(this.b[i]) - 48;
       }
       v.n = x;
-    }
-    if (a === this.p) {
-      return this.fail();
     }
     return v;
   }
@@ -1215,18 +1196,10 @@ const dtYamlFloat = (s: string): boolean => {
 
 // merge_options.dart.
 
-const dtAllStrings = (l: DtVal): boolean => {
-  for (const x of l.items) {
-    if (x.kind !== V_STR) {
-      return false;
-    }
-  }
-  return true;
-};
-
-const dtToBools = (m: DtVal): boolean => {
-  for (const x of m.items) {
-    if (x.kind !== V_BOOL) {
+/** Whether every item (a list's elements, a map's values) is of `kind`: isAllStrings, isToBools. */
+const dtAllKind = (v: DtVal, kind: i32): boolean => {
+  for (const x of v.items) {
+    if (x.kind !== kind) {
       return false;
     }
   }
@@ -1247,10 +1220,10 @@ const dtPromote = (l: DtVal): DtVal => {
 };
 
 const dtMerge = (d: DtVal, o: DtVal): DtVal => {
-  if (d.kind === V_LIST && dtAllStrings(d) && o.kind === V_MAP && dtToBools(o)) {
+  if (d.kind === V_LIST && dtAllKind(d, V_STR) && o.kind === V_MAP && dtAllKind(o, V_BOOL)) {
     return dtMerge(dtPromote(d), o);
   }
-  if (d.kind === V_MAP && dtToBools(d) && o.kind === V_LIST && dtAllStrings(o)) {
+  if (d.kind === V_MAP && dtAllKind(d, V_BOOL) && o.kind === V_LIST && dtAllKind(o, V_STR)) {
     return dtMerge(d, dtPromote(o));
   }
   if (d.kind === V_MAP && o.kind === V_MAP) {
@@ -1424,7 +1397,7 @@ const dtParsePackageConfig = (file: string, b: u8[], n: i32): DtPkgs | null => {
     return null;
   }
   const base = dtDirname(file);
-  const baseDir = base === "/" ? "/" : `${base}/`;
+  const baseDir = dtSlash(base);
   const ps = new DtPkgs();
   for (const e of list.items) {
     if (e.kind !== V_MAP) {
@@ -1512,16 +1485,12 @@ const dtPackageConfig = (file: string): DtPkgs | null => {
     }
     return ps;
   }
-  DTC_META[3] = DTC_META[3] + 1;
   const read = readFileBytesSync(file);
   if (read === null) {
     dtcPut(key, 2, 0, 0, 0);
     return null;
   }
-  const n = toI32(read.length);
-  const b = new Array<u8>(n);
-  b.set(read);
-  const ps = dtParsePackageConfig(file, b, n);
+  const ps = dtParsePackageConfig(file, read, toI32(read.length));
   if (ps === null) {
     dtcPut(key, 2, 0, 0, 0);
     return null;
@@ -1530,7 +1499,7 @@ const dtPackageConfig = (file: string): DtPkgs | null => {
   const first = DTC_META[2];
   if (count <= DTC_PKGS - first) {
     let kept = true;
-    for (let i = 0; i < count && kept; i++) {
+    for (let i = 0; i < count; i++) {
       const r = dtcKeep(ps.roots[i]);
       const u = dtcKeep(ps.purs[i]);
       const m = dtcKeep(ps.names[i]);
@@ -1580,12 +1549,12 @@ const dtPackageOf = (ps: DtPkgs, file: string): i32 => {
 
 /** findPackageConfig(file.parent): the nearest `.dart_tool/package_config.json`, as dart:io walks; "" when there is none. */
 const dtFindPackageConfig = (dir: string, cwd: string): string => {
-  let d = dtAbsolute(dir, cwd);
+  let d = dtJoin(cwd, dir);
   if (!isDirectorySync(d)) {
     return "";
   }
   while (true) {
-    const f = d.endsWith("/") ? `${d}.dart_tool/package_config.json` : `${d}/.dart_tool/package_config.json`;
+    const f = dtJoin(d, ".dart_tool/package_config.json");
     if (dtIsFile(f)) {
       return f;
     }
@@ -1602,9 +1571,8 @@ const dtFindPackageConfig = (dir: string, cwd: string): string => {
 class DtOptions {
   failed: boolean = false;
   why: string = "";
-  /** The package config for `package:` includes, or null; and whether one was found but could not be read. */
+  /** The package config for `package:` includes, or null. */
   pkgs: DtPkgs | null = null;
-  pkgsBad: boolean = false;
   constructor() {}
 }
 
@@ -1619,14 +1587,12 @@ const dtReadOptions = (o: DtOptions, path: string, depth: i32): DtVal => {
   if (depth > 16) {
     return dtOptFail(o, `${path}: includes nest too deep`);
   }
-  DTC_META[4] = DTC_META[4] + 1;
   const read = readFileBytesSync(path);
   if (read === null) {
     return dtOptFail(o, `cannot read ${path}`);
   }
+  const b = read;
   const n = toI32(read.length);
-  const b = new Array<u8>(n);
-  b.set(read);
   if (!dtUtf8Ok(b, n)) {
     return dtOptFail(o, `${path}: not UTF-8`);
   }
@@ -1746,9 +1712,26 @@ export const dtConfigFor = (path: string, r: DtFileConfig): boolean => {
   return ok;
 };
 
-const dtConfigRead = (path: string, dir: string, r: DtFileConfig): boolean => {
+/** The working directory (getcwd, as Directory.current), read once per process. */
+const dtCwd = (): string => {
+  if (DTC_META[4] > 0) {
+    return dtcString(DTC_META[3], DTC_META[4] - 1);
+  }
   const cwd = realpathSync(".");
   if (cwd === null) {
+    return "";
+  }
+  const off = dtcKeep(cwd);
+  if (off >= 0) {
+    DTC_META[3] = off;
+    DTC_META[4] = toI32(cwd.length) + 1;
+  }
+  return cwd;
+};
+
+const dtConfigRead = (path: string, dir: string, r: DtFileConfig): boolean => {
+  const cwd = dtCwd();
+  if (cwd.length === 0) {
     r.why = "no working directory";
     return false;
   }
@@ -1763,14 +1746,14 @@ const dtConfigRead = (path: string, dir: string, r: DtFileConfig): boolean => {
       r.why = `${cfgFile}: a package config dart format would report`;
       return false;
     }
-    const k = dtPackageOf(ps, dtRemoveDots(dtAbsolute(path, cwd)));
+    const k = dtPackageOf(ps, dtRemoveDots(dtJoin(cwd, path)));
     if (k >= 0) {
       r.verMajor = ps.maj[k];
       r.verMinor = ps.min[k];
     }
   }
   // ConfigCache._findFormatterOptions: findAnalysisOptions from the file up.
-  let d = dtDirname(dtNormalize(dtAbsolute(path, cwd)));
+  let d = dtDirname(dtNormalize(dtJoin(cwd, path)));
   while (true) {
     const f = dtJoin(d, "analysis_options.yaml");
     if (dtIsFile(f)) {
