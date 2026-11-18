@@ -490,16 +490,53 @@ export class Classifier {
     return rq >= 0 && !requiresIsClause(this.d, rq);
   }
 
-  inRequiresClause(t: i32, dep: i32): boolean {
+  /**
+   * Whether `t` (`*`, `&` or `&&`) sits in a requires clause's parentheses,
+   * at any depth, with no `<` left open before it at any of their levels:
+   * a binary operator (clang-format 23's parseParens, StarAndAmpTokenType).
+   */
+  inRequiresParens(t: i32, dep: i32): boolean {
     const d = this.d;
-    // Inside a requires clause's parentheses, at any depth, `&&` is binary.
     for (let x = dep; x > 0; x--) {
       const o = this.open[x];
       const op = this.prev(o);
       if (d.kind[o] === P_LPAREN && op >= 0 && this.k(op) === KW_REQUIRES && !this.requiresExprParen(o)) {
+        // Each level from here in: its `<`s (less any `>`s) before the next
+        // level's `(`, or before `t`.
+        for (let y = x; y <= dep; y++) {
+          if (d.kind[this.open[y]] !== P_LPAREN) {
+            continue;
+          }
+          let end = t;
+          for (let z = y + 1; z <= dep; z++) {
+            if (d.kind[this.open[z]] === P_LPAREN) {
+              end = this.open[z];
+              break;
+            }
+          }
+          let excess = 0;
+          for (let q = d.nxt[this.open[y]]; q >= 0 && q !== end; q = d.nxt[q]) {
+            const k = this.k(q);
+            if (k === P_LPAREN && d.match[q] > q && d.match[q] < end) {
+              q = d.match[q];
+            } else if (k === P_LESS) {
+              excess++;
+            } else if (k === P_GREATER && excess > 0) {
+              excess--;
+            }
+          }
+          if (excess > 0) {
+            return false;
+          }
+        }
         return true;
       }
     }
+    return false;
+  }
+
+  inRequiresClause(t: i32, dep: i32): boolean {
+    const d = this.d;
     for (let q = this.prev(t); q >= 0; q = this.prev(q)) {
       const k = this.k(q);
       if (d.match[q] >= 0 && d.match[q] < q) {
@@ -1242,7 +1279,7 @@ export class Classifier {
         case P_AMP:
         case P_AMPAMP:
           if (this.ty(t) === TT_UNKNOWN) {
-            if (k === P_AMPAMP && this.inRequiresClause(t, dep)) {
+            if (this.inRequiresParens(t, dep) || (k === P_AMPAMP && this.inRequiresClause(t, dep))) {
               this.set(t, TT_BINARY_OPERATOR);
             } else {
               this.set(t, this.starRole(t, this.expr[dep] === 1 && this.afterNew[dep] === 0, this.tmpl[dep] === 1));
