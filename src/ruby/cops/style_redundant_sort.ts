@@ -126,7 +126,7 @@ export class CopStyleRedundantSort {
       return false;
     }
     const c = rest.charCodeAt(i);
-    if (c === 35 || c === 46 || c === 41 || c === 93 || c === 125 || c === 44) {
+    if (c === 35 || c === 46 || c === 41 || c === 93 || c === 125) {
       return false;
     }
     if (c === 38 && i + 1 < toI32(rest.length) && rest.charCodeAt(i + 1) === 46) {
