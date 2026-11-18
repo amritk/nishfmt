@@ -2635,11 +2635,12 @@ export class JParser {
       return this.type();
     }
     if (k === JK_IDENT) {
-      // Generic type before `::`: `List<String>::new`.
+      // Generic type before `::`: `List<String>::new`. As in javac's term3, no
+      // restricted-name check on a type in expression position (see below).
       if (this.isAt(1, "<")) {
         const m = new Mark();
         this.save(m);
-        const ty = this.type();
+        const ty = this.typeAnnotated();
         if (!this.err && this.op2(":", ":")) {
           return ty;
         }

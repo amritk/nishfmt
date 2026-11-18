@@ -164,3 +164,20 @@ it.
 `empty_file`, `javadoc_leading_block` and `javadoc_moe_strip` are files gjf
 2.0.0 accepts and leaves as they are, so their `.expected` is their input and
 they pass whether nishfmt formats them or skips them.
+
+`javac_*` and `skip_javac_*` pin javac 21's parse-time rejections (#28),
+ported at JavacParser's own sites in `src/java/parser.ts`: `typeName()` for
+declared class, interface, enum, record, annotation and type parameter names;
+`permitsClause` (a class or interface that is not `sealed`) and its
+`qualidentList`, which takes names, so `permits var` is valid but `permits
+B<T>` and `permits @A B` are not; `isInvalidUnqualifiedMethodIdentifier` for
+`yield(1)` (`this.yield(1)` and `A.yield(1)` are calls); the explicit lambda
+parameter check on `var x[]`; and `variableDeclaratorRest` for `var x[]` and
+`var x = 1, y = 2`, which crashed the visitor before. A type in expression
+position (`var[].class`, `record[]::new`) has no restricted-name check, as in
+javac's term3. Most rejections set the parser's `rejected` flag rather than
+failing at once, because javac reports them and parses on, and a lookahead
+that parses past them must still succeed.
+
+Known gap, not a restricted-name check: gjf 2.0.0 rejects a type annotation
+on an array constructor reference, `@A String[]::new`, and nishfmt formats it.
