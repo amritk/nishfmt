@@ -3,8 +3,8 @@
 // each type (states, constraints, allowed child shapes, page width pinning)
 // as functions over the kind.
 //
-// Ported from dart_style (Dart SDK 3.14) (BSD-3-Clause, Copyright the Dart
-// project authors).
+// Ported from dart_style 3.1.14-wip at 5a9534fad9ff, the commit Dart SDK
+// 3.14.1 pins (BSD-3-Clause, Copyright the Dart project authors).
 
 // Piece kinds.
 export const PK_ADJACENT: i32 = 1;

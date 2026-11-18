@@ -240,7 +240,9 @@ const dtJoin = (a: string, b: string): string => {
 
 /** File.exists: there, and not a directory. */
 const dtIsFile = (p: string): boolean => {
+  // statMtimeSync answers NaN for a path it cannot stat.
   const m = statMtimeSync(p);
+  // biome-ignore lint/suspicious/noSelfCompare: the NaN test Nish documents.
   return m === m && !isDirectorySync(p);
 };
 
