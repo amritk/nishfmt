@@ -188,14 +188,9 @@ export const formatCSharp = (e: CSharpEngine, path: string, src: u8[], n: i32, o
     }
     return false;
   }
-  // the line ending: the first line break's
-  let eolCr = false;
-  for (let i = s; i < n; i++) {
-    if (toI32(src[i]) === 10) {
-      eolCr = i > s && toI32(src[i - 1]) === 13;
-      break;
-    }
-  }
+  // PrinterOptions.GetLineEnding: the style's end_of_line = crlf gives "\r\n",
+  // whatever the input's line breaks are
+  const eolCr = true;
   const tree = first.t;
   if (tree === null) {
     return false;

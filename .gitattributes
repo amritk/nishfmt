@@ -1,0 +1,2 @@
+# The C# cases are byte-exact CRLF and LF files: no checkout may convert them.
+tests/cases/csharp/* -text
