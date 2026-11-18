@@ -71,7 +71,10 @@ corpus gates, which need the reference tools.
 reports success when lint fails. Run it bare, or check `$?` / `PIPESTATUS`.
 
 **A fix lands with a regression case** in `tests/cases/` that fails without
-it, its `.expected` file taken from the reference tool.
+it, its `.expected` file taken from the reference tool. The case's input must
+differ from its `.expected`: nishfmt writes a skipped file back verbatim, so
+an already-formatted input passes whether the file was formatted or skipped,
+and cannot catch a formatter that wrongly gives up.
 
 **A performance change says what it measured**: a `Measured:` line in the
 commit body, before and after, on the same machine.
