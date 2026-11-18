@@ -430,11 +430,18 @@ export class Classifier {
   /** `(*name)(...)`: marks `(` at `o` (closed by `c`) as a function type's. */
   markFunctionType(o: i32, c: i32): void {
     const d = this.d;
-    if (this.expr[this.depth] === 1) {
-      return;
-    }
     const f = this.next(o);
     if (f < 0 || f === c) {
+      return;
+    }
+    // `(&)`, `(*)`, `(C::*)` make a function or array type whatever the
+    // context (clang-format 23's parseParens; a pointer, not a block's `^`).
+    const last = d.prv[c];
+    const lk = this.k(last);
+    const bare =
+      (lk === P_STAR || lk === P_AMP || lk === P_AMPAMP) &&
+      (d.prv[last] === o || this.k(d.prv[last]) === P_COLONCOLON);
+    if (this.expr[this.depth] === 1 && !bare) {
       return;
     }
     // A `*`/`&` first, or after a `::` (a pointer to member: `(C::*)`).
@@ -456,7 +463,7 @@ export class Classifier {
     if (!ptr) {
       return;
     }
-    for (let q = f; q >= 0 && q !== c; q = this.next(q)) {
+    for (let q = f; q >= 0 && q !== c && !bare; q = this.next(q)) {
       if (d.match[q] > q) {
         q = d.match[q];
         continue;
@@ -467,7 +474,11 @@ export class Classifier {
     }
     // (The token right after `)`: a comment there hides what follows.)
     const n = d.nxt[c];
-    if (n >= 0 && (this.k(n) === P_LPAREN || (this.k(n) === P_LSQUARE && d.lMustDecl[this.line] === 1))) {
+    if (
+      n >= 0 &&
+      (this.k(n) === P_LPAREN ||
+        (this.k(n) === P_LSQUARE && (d.lMustDecl[this.line] === 1 || isTypeName(d, this.prev(o)))))
+    ) {
       this.set(o, TT_FUNCTION_TYPE_LPAREN);
     }
   }
