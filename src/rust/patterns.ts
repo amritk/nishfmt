@@ -1,6 +1,6 @@
 // Formatting patterns.
 //
-// Ported from rustfmt 1.9.0 (MIT OR Apache-2.0, Copyright The Rust Project
+// Ported from rustfmt 1.10.0 (MIT OR Apache-2.0, Copyright The Rust Project
 // Developers): patterns.rs.
 
 import {
@@ -35,13 +35,7 @@ import {
 import { rsRewriteNodeAttrs } from "./attr";
 import { rsCombineStrsWithMissingComments } from "./comment";
 import { RsCtx } from "./context";
-import {
-  rsCanBeOverflowedExpr,
-  rsRewriteExpr,
-  rsRewriteNode,
-  rsRewriteUnaryPrefix,
-  rsRewriteUnarySuffix,
-} from "./expr";
+import { rsCanBeOverflowedExpr, rsRewriteExpr, rsRewriteNode, rsRewriteRange, rsRewriteUnaryPrefix } from "./expr";
 import {
   DLT_MIXED,
   LT_HORIZONTAL_VERTICAL,
@@ -61,7 +55,6 @@ import {
 } from "./lists";
 import { rsMacroPosPat, rsRewriteMacro } from "./macros";
 import { OC_TUPLE_PAT, rsRewriteWithParens } from "./overflow";
-import { RsPairParts, SPB_FRONT, rsRewritePair } from "./pairs";
 import { RsShape, rsIndentStr, rsIndentStrNl, rsShapeLegacy } from "./shape";
 import { rsHasByte } from "./str";
 import { PC_EXPR, rsRewritePath } from "./types";
@@ -149,7 +142,8 @@ export const rsRewritePat = (ctx: RsCtx, p: i32, shape: RsShape): string | null 
   if (k === N_PAT_RANGE) {
     const f = ast.fl[p];
     const delim = (f & RANGE_CLOSED) !== 0 ? "..=" : (f & RANGE_DOTDOTDOT) !== 0 ? "..." : "..";
-    return rewritePatRange(ctx, shape, ast.a[p], ast.b[p], delim);
+    // rustfmt 1.10.0 formats range patterns with range.rs, as range expressions.
+    return rsRewriteRange(ctx, shape, ast.a[p], ast.b[p], delim);
   }
   if (k === N_PAT_REF) {
     const prefix = (ast.fl[p] & MUT) !== 0 ? "&mut " : "&";
@@ -203,20 +197,6 @@ export const rsRewritePat = (ctx: RsCtx, p: i32, shape: RsShape): string | null 
   }
   ctx.unsupported("pattern kind");
   return null;
-};
-
-const rewritePatRange = (ctx: RsCtx, shape: RsShape, lhs: i32, rhs: i32, delim: string): string | null => {
-  // rewrite_range: the bounds are expressions; no spaces are needed around the delimiter here.
-  if (lhs >= 0 && rhs >= 0) {
-    return rsRewritePair(ctx, lhs, rhs, new RsPairParts("", delim, ""), shape, SPB_FRONT);
-  }
-  if (rhs >= 0) {
-    return rsRewriteUnaryPrefix(ctx, delim, rhs, shape);
-  }
-  if (lhs >= 0) {
-    return rsRewriteUnarySuffix(ctx, delim, lhs, shape);
-  }
-  return delim;
 };
 
 const rewriteIdentPat = (ctx: RsCtx, p: i32, shape: RsShape): string | null => {
@@ -391,7 +371,7 @@ const rewritePatField = (ctx: RsCtx, f: i32, shape: RsShape): string | null => {
     }
     s = `${idStr}:\n${rsIndentStr(ctx.cfg, nested.bi, nested.al)}${r}`;
   }
-  // rustfmt 1.9 takes the missing span up to the pattern, so it covers `ident:` too.
+  // rustfmt 1.10 takes the missing span up to the pattern, so it covers `ident:` too.
   return rsCombineStrsWithMissingComments(ctx, attrsStr, s, hiPos, ast.lo[pat], nested, false);
 };
 

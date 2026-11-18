@@ -3,7 +3,7 @@
 // format_code_in_doc_comments off, so comments are re-indented, not
 // rewrapped), with its char classifier, line classes and comment/code slices.
 //
-// Ported from rustfmt 1.9.0 (MIT OR Apache-2.0, Copyright The Rust Project
+// Ported from rustfmt 1.10.0 (MIT OR Apache-2.0, Copyright The Rust Project
 // Developers): comment.rs, utils.rs.
 
 import { growI32 } from "../core/arr";
@@ -137,7 +137,7 @@ export class RsCharScan {
       kind = K_IN_STRING;
       if (chr === 34) {
         if (arg === 0) {
-          // rustfmt 1.9: the closing quote of a raw string without `#`s is normal code.
+          // rustfmt 1.10: the closing quote of a raw string without `#`s is normal code.
           kind = K_NORMAL;
           st = S_NORMAL;
         } else {
@@ -201,7 +201,7 @@ export class RsCharScan {
           st = S_RAW_STRING_PREFIX;
           arg = 0;
         } else if (c1 === 35) {
-          // rustfmt 1.9 takes any `r#` for a raw string prefix (raw identifiers too).
+          // rustfmt 1.10 takes any `r#` for a raw string prefix (raw identifiers too).
           const isRaw = true;
           if (isRaw) {
             kind = K_IN_STRING;
@@ -799,7 +799,7 @@ const lightRewriteComment = (orig: string, bi: i32, al: i32, cfg: RsConfig, isDo
     const fnw = rsTrimStartLen(l);
     let left = "";
     if (fnw < toI32(l.length)) {
-      // rustfmt 1.9 keeps the whitespace char before a leading `*` (none at column 0).
+      // rustfmt 1.10 keeps the whitespace char before a leading `*` (none at column 0).
       if (l.charCodeAt(fnw) === 42 && fnw > 0) {
         left = l.slice(fnw - 1, toI32(l.length));
       } else {

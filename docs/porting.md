@@ -18,7 +18,7 @@ Where the two goals pull apart, matching wins, then speed.
 | Kotlin | `src/kotlin` | ktfmt 0.65, default style | `java -jar $KTFMT - < f` parses as a script, so only for `.kts`; a `.kt` file goes by name, `java -jar $KTFMT f` (in place) |
 | Ruby | `src/ruby` | `rubocop -a` 1.92.3, `TargetRubyVersion: 3.3` | `bench/corpus/mk.sh` shows the invocation |
 | Swift | `src/swift` | SwiftFormat 0.64.7, default rules | `swiftformat stdin --quiet < f` |
-| Rust | `src/rust` | rustfmt 1.9.0, default config, edition 2021 | `rustfmt --edition 2021 < f` |
+| Rust | `src/rust` | rustfmt 1.10.0, default config, edition 2021 | `rustfmt +1.99.1 --edition 2021 < f` |
 | Dart | `src/dart` | `dart format` (Dart 3.14.1) | `dart format < f` (outside a package; inside one, `dart format -o show f` reads its project) |
 | C# | `src/csharp` | CSharpier 1.4.0, default options except `end_of_line = crlf` | `csharpier format --write-stdout < f`, run below the `.editorconfig` that `mk.sh cs` writes ([README](../README.md#settings)) |
 
@@ -72,14 +72,15 @@ for a binary). The traps that cost the most in earlier ports:
 - Ported code keeps its license: each ported module starts with a comment
   naming the project, version and license, as `src/ruby/run.ts` does:
   - SwiftFormat 0.64.7 (MIT License, Copyright (c) 2016 Nick Lockwood)
-  - rustfmt 1.9.0 (MIT OR Apache-2.0, Copyright The Rust Project Developers)
+  - rustfmt 1.10.0 (MIT OR Apache-2.0, Copyright The Rust Project Developers)
   - dart_style 3.1.14-wip at 5a9534fad9ff, the commit Dart SDK 3.14.1 pins (BSD-3-Clause, Copyright the Dart project authors)
   - CSharpier 1.4.0 (MIT License, Copyright (c) 2021 Bela VanderVoort)
   - A parser ported from Roslyn / the Dart analyzer / rustc_parse also
     names its source (MIT / BSD-3-Clause / MIT OR Apache-2.0).
 - Port from the reference tool's source at the version in the table: clone
-  it at that tag. The rustfmt port found that a source tree of another
-  version differs in about 15 places (`tools/rust/NOTES.md`).
+  it at that tag. rustfmt's is the `src/tools/rustfmt` of the Rust release
+  that ships the binary (`tools/rust/NOTES.md`), not a rustfmt repository
+  tag.
 
 ## Building and checking
 

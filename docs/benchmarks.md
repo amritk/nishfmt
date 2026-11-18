@@ -14,7 +14,7 @@ says how to rebuild them and rerun the comparisons.
 | Kotlin | ktfmt | 0.65, with-dependencies jar (from the GitHub release; Maven Central stops at 0.64) | `$KTFMT` |
 | Ruby | RuboCop | 1.92.3 | `rubocop` on PATH |
 | Swift | SwiftFormat | 0.64.7 | `$SWIFTFORMAT`, else `swiftformat` |
-| Rust | rustfmt | 1.9.0 | `rustfmt` on PATH |
+| Rust | rustfmt | 1.10.0 (Rust 1.99.1) | `$RUSTFMT`, else `rustfmt +1.99.1` |
 | Dart | `dart format` | Dart SDK 3.14.1 (dart_style 3.1.14-wip at 5a9534fad9ff) | `$DART`, else `dart` |
 | C# | CSharpier | 1.4.0 | `$CSHARPIER`, else `csharpier` |
 

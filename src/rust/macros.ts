@@ -3,7 +3,7 @@
 // format_macro_bodies are off, so `macro_rules!` branches are kept as
 // written).
 //
-// Ported from rustfmt 1.9.0 (MIT OR Apache-2.0, Copyright The Rust Project
+// Ported from rustfmt 1.10.0 (MIT OR Apache-2.0, Copyright The Rust Project
 // Developers): macros.rs, header.rs, parse/macros/mod.rs,
 // parse/macros/lazy_static.rs.
 
@@ -785,9 +785,16 @@ export const rsRewriteMacroDef = (ctx: RsCtx, shape: RsShape, bi: i32, al: i32, 
     }
     branches.push(new Branch(blo, bhi, argsOpen, argsKind, bo, bc));
   }
-  // The header: rustfmt 1.9 writes `macro_rules! name`, dropping comments between.
+  // The header (header.rs format_header): `macro_rules!`, then the name. A
+  // comment between them is kept as written, with the whitespace around it.
   const identTok = ast.d[item];
-  let result = "macro_rules! " + rsIdentStr(ctx, identTok);
+  const identStr = rsIdentStr(ctx, identTok);
+  const bangHi = ctx.spanAfter(lo, hi, "!");
+  const identLo = t.lo[identTok];
+  const between = ctx.snippet(bangHi, identLo);
+  // Without a comment, combine_strs_with_missing_comments at infinite width
+  // always joins the two with one space.
+  let result = rsContainsComment(between) ? "macro_rules!" + between + identStr : "macro_rules! " + identStr;
   const armShape = shape.blockIndent(cfg.tabSpaces).withMaxWidth(cfg);
   if (branches.length === 0) {
     const blo = ctx.spanBefore(lo, hi, "{");

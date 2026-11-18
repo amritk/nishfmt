@@ -1,7 +1,7 @@
 // Rewriting a list of items in delimiters, with the last item allowed to
 // overflow (calls, generics, tuples, arrays, attribute lists, macro args).
 //
-// Ported from rustfmt 1.9.0 (MIT OR Apache-2.0, Copyright The Rust Project
+// Ported from rustfmt 1.10.0 (MIT OR Apache-2.0, Copyright The Rust Project
 // Developers): overflow.rs.
 
 import {

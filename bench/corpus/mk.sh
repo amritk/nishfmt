@@ -10,7 +10,8 @@
 # Tools, each from the environment or PATH: clang-format 18; $GJF and $KTFMT,
 # the google-java-format 1.28 and ktfmt 0.65 all-dependencies jars (required
 # for java and kt); rubocop 1.92.3; $SWIFTFORMAT (swiftformat 0.64.7);
-# rustfmt 1.9.0; $DART (Dart SDK 3.14.1); $CSHARPIER (csharpier 1.4.0).
+# $RUSTFMT (rustfmt 1.10.0, default `rustfmt +1.99.1`); $DART (Dart SDK 3.14.1);
+# $CSHARPIER (csharpier 1.4.0).
 set -uo pipefail
 here=$(cd "$(dirname "$0")" && pwd)
 lang=$1
@@ -23,6 +24,7 @@ if { [ "$lang" = java ] && [ -z "$GJF" ]; } || { [ "$lang" = kt ] && [ -z "$KTFM
 fi
 DART=${DART:-dart}
 CSHARPIER=${CSHARPIER:-csharpier}
+export RUSTFMT=${RUSTFMT:-rustfmt +1.99.1}
 case $lang in
   cpp) pat=(-name '*.cpp' -o -name '*.cc' -o -name '*.cxx' -o -name '*.hpp' -o -name '*.hh' -o -name '*.hxx' -o -name '*.h') ;;
   java) pat=(-name '*.java') ;;
@@ -71,7 +73,7 @@ case $lang in
   swift) "$SWIFTFORMAT" . --quiet 2> ../swiftformat.log; grep -o '[^ ]*\.swift' ../swiftformat.log | sed "s|^$PWD|.|" | sort -u >> ../failed.txt ;;
   # Through stdin, so rustfmt formats only that file, not its out-of-line modules.
   rust) find . -type f -print0 | xargs -0 -P"$(nproc)" -I{} sh -c \
-          'rustfmt --edition 2021 < "$1" > "$1.o" 2>/dev/null && mv "$1.o" "$1" || { rm -f "$1.o"; echo "$1" >> ../failed.txt; }' _ {} ;;
+          '$RUSTFMT --edition 2021 < "$1" > "$1.o" 2>/dev/null && mv "$1.o" "$1" || { rm -f "$1.o"; echo "$1" >> ../failed.txt; }' _ {} ;;
   dart) "$DART" format . > /dev/null 2> ../dartformat.log; grep -o '[^ ]*\.dart' ../dartformat.log | sort -u >> ../failed.txt ;;
   # The style's .editorconfig and an empty .git (a .gitignore boundary) sit
   # above ref/, so cmp.sh does not count them; see tools/csharp/NOTES.md.
