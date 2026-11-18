@@ -6,7 +6,8 @@ language it matches one reference formatter byte for byte (clang-format,
 google-java-format, ktfmt, RuboCop, SwiftFormat, rustfmt, `dart format` and
 CSharpier), and it is 4 to 76 times faster than that formatter, depending on
 the language and the number of cores. It uses each tool's default settings
-and reads no configuration files; see [Settings](#settings).
+(for Kotlin, ktfmt's `--kotlinlang-style`; for C#, CRLF line endings) and
+reads no configuration files; see [Settings](#settings).
 
 nishfmt is written in [Nish](https://github.com/amritk/nish), a static subset
 of TypeScript compiled ahead of time to a native binary. Each formatter

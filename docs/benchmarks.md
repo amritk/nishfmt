@@ -32,7 +32,8 @@ writes `bench/work/corpus/<lang>` (or `$CORPUS/<lang>`):
 
 - `raw/`, the sources as found (C++ files over 250 KB and Ruby beyond a
   2000-file sample are left out, as are hidden directories);
-- `ref/`, the reference tool's output at its default settings (for C#, the
+- `ref/`, the reference tool's output at its default settings (for Kotlin,
+  ktfmt's `--kotlinlang-style`; for C#, the
   [README](../README.md#settings)'s `.editorconfig`, which `mk.sh cs` writes
   above `ref/` with an empty `.git`; see `tools/csharp/NOTES.md`);
 - `failed.txt`, the files the reference rejected, which every comparison
@@ -89,7 +90,8 @@ fresh copy each run:
 - **1 core**: `taskset -c 0 nishfmt -i -q -j 1 <dir>`.
 - nishfmt's time is the best of three; each reference tool's is one run (they
   take minutes). clang-format ran 50 files a process; google-java-format as
-  one JVM over all the files; RuboCop with `--parallel` on 4 cores; rustfmt
+  one JVM over all the files; ktfmt with `--kotlinlang-style`, 300 files a
+  process, 4 at a time, as `mk.sh` runs it; RuboCop with `--parallel` on 4 cores; rustfmt
   100 files a process; CSharpier on .NET 10 with `--no-cache`.
 
 ## Rust reimplementations

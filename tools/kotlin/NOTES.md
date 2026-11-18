@@ -43,7 +43,10 @@ nishfmt skips the other 3. One is a `.kt` file with a top-level statement,
 which ktfmt 0.65 rejects too. The other two are enum entries ending in
 `;` with nothing after it (`enum class A { X; }`), which nishfmt rejected
 before this port as well: the passes around the pretty printer leave text
-that does not parse, so the file is skipped, never mis-formatted.
+that does not parse, so the file is skipped, never mis-formatted. That was
+true of the Meta-style port only: in kotlinlang style the trailing-comma
+pass reads the `;` as dropped, and nishfmt formats `enum class A { X; }` as
+`enum class A {\n    X,\n}`, as `ktfmt --kotlinlang-style` does.
 
 ## What 0.65 changed, and where it is ported
 
