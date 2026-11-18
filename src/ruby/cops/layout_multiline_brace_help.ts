@@ -20,6 +20,7 @@ import {
   rmlIsCall,
   rmlIsChained,
   rmlIsHeredoc,
+  rmlLastArg,
   rmlLastLine,
   rmlSingleLine,
 } from "./layout_multiline_help";
@@ -49,17 +50,6 @@ const rmlMlbLastElementEnd = (src: RbSource, last: i32): i32 => {
   return src.at(p) === 44 ? p + 1 : e;
 };
 
-/** Whether the comment `ci` is the first thing on its line. */
-const rmlMlbOwnLineComment = (src: RbSource, ci: i32): boolean => {
-  const l = src.line(src.commS[ci]);
-  let i = src.lineStart(l);
-  const e = src.lineEnd(l);
-  while (i < e && (lspIsWs(src.at(i)) || src.at(i) === 0)) {
-    i++;
-  }
-  return src.at(i) === 35;
-};
-
 /** closing_bracket_on_own_line?(descendant, line). */
 const rmlMlbClosingOwnLine = (src: RbSource, d: i32, line: i32): boolean => {
   if (!rnHas(src, d, F_END)) {
@@ -83,6 +73,43 @@ const rmlMlbClosingOwnLine = (src: RbSource, d: i32, line: i32): boolean => {
     }
   }
   return true;
+};
+
+/** comment_before_closing_brace?(literal, last_element): a comment on the lines from the last element's to the brace's, that one excluded. */
+const rmlMlbCommentBefore = (src: RbSource, lit: i32, last: i32): boolean => {
+  const from = rmlLastLine(src, last);
+  const to = src.line(rnS(src, lit, F_END));
+  for (let i = 0; i < toI32(src.commS.length); i++) {
+    const cl = src.line(src.commS[i]);
+    if (cl >= from && cl < to) {
+      return true;
+    }
+  }
+  return false;
+};
+
+/** new_line_needed_before_closing_brace?(lit) with `last` its children.last. */
+const rmlMlbNewLineNeeded = (src: RbSource, lit: i32, last: i32): boolean => {
+  const lee = rmlMlbLastElementEnd(src, last);
+  return rbLayCommentAtLine(src, src.line(lee)) >= 0 && (rmlIsChained(src, lit) || rmlIsArgument(src, lit));
+};
+
+/** closing_bracket_moved_before_comment?(literal). */
+const rmlMlbMovedBeforeComment = (src: RbSource, lit: i32): boolean => {
+  const a = src.a;
+  let last = V_NIL;
+  if (rmlIsCall(src, lit)) {
+    last = rmlLastArg(src, lit);
+  } else if (a.nKid(lit) > 0) {
+    last = a.kid(lit, -1);
+  }
+  if (last === V_NIL || !a.isNode(last)) {
+    return false;
+  }
+  if (rmlMlbNewLineNeeded(src, lit, last)) {
+    return false;
+  }
+  return rmlMlbCommentBefore(src, lit, last);
 };
 
 /**
@@ -147,34 +174,28 @@ const rmlBraceCorrect = (src: RbSource, k: RbRewriter, node: i32): void => {
   }
   // new_line_needed_before_closing_brace?
   const lee = rmlMlbLastElementEnd(src, last);
-  if (rbLayCommentAtLine(src, src.line(lee)) >= 0 && (rmlIsChained(src, node) || rmlIsArgument(src, node))) {
+  if (rmlMlbNewLineNeeded(src, node, last)) {
     return;
   }
   // nested_closing_bracket_moved_before_comment?
-  const ci = rbLayCommentAtLine(src, rmlLastLine(src, last) - 1);
-  if (ci >= 0) {
-    const cands: i32[] = [last];
-    rmlDescendants(src, last, cands);
-    let nested = V_NIL;
-    const ll = rmlLastLine(src, last);
-    for (const d of cands) {
-      const same = a.type(d) === a.type(node) || (rmlIsCall(src, d) && rmlIsCall(src, node));
-      if (same && rmlMlbClosingOwnLine(src, d, ll)) {
-        nested = d;
-        break;
-      }
-    }
-    if (
-      nested !== V_NIL &&
-      (rmlMlbOwnLineComment(src, ci) || !(rmlIsChained(src, nested) || rmlIsArgument(src, nested)))
-    ) {
+  const ll = rmlLastLine(src, last);
+  const ds: i32[] = [];
+  rmlDescendants(src, node, ds);
+  for (const d of ds) {
+    // nested_closing_bracket_to_move?
+    const same = a.type(d) === a.type(node) || (rmlIsCall(src, d) && rmlIsCall(src, node));
+    if (same && rmlMlbClosingOwnLine(src, d, ll) && rmlMlbMovedBeforeComment(src, d)) {
       return;
     }
   }
-  // correct_next_line_brace
-  k.remove(rbSpaceBegin(src, es, 1, true, false, false), ee);
+  // correct_next_line_brace: remove space_before_closing_brace(end_range)
+  let rb = rbSpaceBegin(src, es, 1, true, false, true);
+  if (rb < lee) {
+    rb = lee;
+  }
+  k.remove(rb, ee);
   let content = src.src(es, ee);
-  if (rbLayCommentAtLine(src, rmlLastLine(src, last)) >= 0) {
+  if (rmlMlbCommentBefore(src, node, last)) {
     const re = src.lineEnd(rmlLastLine(src, node));
     content = src.src(es, re);
     k.remove(es, re);
