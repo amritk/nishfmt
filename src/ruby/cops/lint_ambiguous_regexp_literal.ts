@@ -132,10 +132,11 @@ export class CopLintAmbiguousRegexpLiteral {
     const a = src.a;
     const par = src.parent(node);
     // first_argument_is_regexp?
-    if ((rbArlIs(src, node, NT_SEND) && rbArlIs(src, a.kid(node, 2), NT_REGEXP)) || par === V_NIL) {
+    const call = rbArlIs(src, node, NT_SEND) || rbArlIs(src, node, NT_CSEND);
+    if ((call && rbArlIs(src, a.kid(node, 2), NT_REGEXP)) || par === V_NIL) {
       return node;
     }
-    let up = rbArlIs(src, par, NT_SEND) && rbArlReceiver(src, node) !== V_NIL;
+    let up = (rbArlIs(src, par, NT_SEND) || rbArlIs(src, par, NT_CSEND)) && rbArlReceiver(src, node) !== V_NIL;
     if (!up) {
       // method_chain_to_regexp_receiver?
       const pr = rbArlReceiver(src, par);
