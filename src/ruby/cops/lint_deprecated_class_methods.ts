@@ -63,12 +63,14 @@ export class CopLintDeprecatedClassMethods {
       }
       if (m === "freeze") {
         k.replace(a.exS(n), a.exE(n), "ENV");
+      } else if (m === "attr") {
+        // correct_attr: rename the selector, drop `, true`.
+        const acc = ssxIs(src, a.kid(n, 3), NT_TRUE) ? "attr_accessor" : "attr_reader";
+        k.replace(ssxFS(src, n, F_SELECTOR), ssxFE(src, n, F_SELECTOR), acc);
+        k.remove(a.exE(a.kid(n, 2)), a.exE(a.kid(n, 3)));
       } else {
         let prefer = ldcmPreferred(m);
-        if (m === "attr") {
-          const acc = src.nodeSrc(a.kid(n, 3)) === "true" ? "attr_accessor" : "attr_reader";
-          prefer = `${acc} ${src.nodeSrc(a.kid(n, 2))}`;
-        } else if (dirEnvFile) {
+        if (dirEnvFile) {
           prefer = prefer.length > 0 ? `${src.nodeSrc(r)}.${prefer}` : "ENV";
         }
         k.replace(s, e, prefer);
