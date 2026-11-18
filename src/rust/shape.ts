@@ -20,6 +20,8 @@ export class RsConfig {
   singleLineLetElseMaxWidth: i32 = 50;
   shortArrayElementWidthThreshold: i32 = 10;
   commentWidth: i32 = 80;
+  // The Rust edition the source is parsed at (rustfmt's `edition`).
+  edition: i32 = 2021;
   constructor() {}
 }
 

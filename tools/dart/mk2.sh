@@ -1,9 +1,9 @@
 #!/usr/bin/env bash
-# Builds the harder Dart corpus $CORPUS/dart2 from $CORPUS/dart/raw: each
-# file is first reformatted with non-default settings, chosen by a hash of
-# its path (page width 40, page width 120, or the short style of language
-# 3.6), which gives dart2/raw; dart2/ref is then plain `dart format` of that,
-# and dart2/failed.txt lists the files it rejects.
+# Builds the harder Dart corpus $CORPUS/dart2 from $CORPUS/dart/raw, with
+# Dart SDK 3.14.1 ($DART): each file is first reformatted with non-default
+# settings, chosen by a hash of its path (page width 40, page width 120, or
+# the short style of language 3.6), which gives dart2/raw; dart2/ref is then
+# plain `dart format` of that, and dart2/failed.txt lists the files it rejects.
 #
 #   mk2.sh
 set -uo pipefail
