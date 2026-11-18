@@ -94,6 +94,7 @@ import {
   opName,
   opPrec,
 } from "./ast";
+import { javaLines, stripIndentLines, stripTrailingJ } from "./strings";
 
 // Declaration kinds and directions.
 const DK_NONE: i32 = 0;
@@ -996,6 +997,7 @@ export class JVisitor {
       g.close();
       if (g.peekIs(";")) {
         g.open(this.plusTwo);
+        g.fence();
         this.token(";");
         g.forcedBreak();
         this.dropEmptyDeclarations();
@@ -1005,6 +1007,7 @@ export class JVisitor {
       this.addBodyDeclarations(members, false, false);
       g.forcedBreak();
       g.blankLineWanted(BL_NO);
+      this.markForPartialFormat();
       this.tokenInd("}", this.plusTwo);
       g.close();
     }
@@ -2198,7 +2201,9 @@ export class JVisitor {
       this.token("if");
       g.space();
       this.token("(");
+      g.headerStart();
       this.scan(t.a[exprs[i]]);
+      g.headerEnd();
       this.token(")");
       const onlyClause = en === 1 && t.c[n] < 0;
       const trailingClauses = i < en - 1 || t.c[n] >= 0;
@@ -2225,7 +2230,9 @@ export class JVisitor {
     this.token("for");
     g.space();
     this.token("(");
+    g.headerStart();
     g.open(this.plusFour);
+    g.fence();
     const init = t.a[n];
     g.open(this.len(init) > 1 && t.kind[this.at(init, 0)] === N_EXPRESSION_STATEMENT ? this.plusFour : this.ZERO);
     if (this.len(init) > 0) {
@@ -2277,6 +2284,7 @@ export class JVisitor {
       g.space();
     }
     g.close();
+    g.headerEnd();
     this.token(")");
     this.visitStatement(t.d[n], true, true, false);
   }
@@ -2289,9 +2297,11 @@ export class JVisitor {
     this.token("for");
     g.space();
     this.token("(");
+    g.headerStart();
     g.open(this.ZERO);
     this.visitToDeclare(DK_NONE, HORIZONTAL, t.a[n], t.b[n], ":", "");
     g.close();
+    g.headerEnd();
     this.token(")");
     g.close();
     this.visitStatement(t.c[n], true, true, false);
@@ -2326,7 +2336,9 @@ export class JVisitor {
     const res = t.a[n];
     if (this.len(res) > 0) {
       this.token("(");
+      g.headerStart();
       g.open(this.len(res) > 1 ? this.plusFour : this.ZERO);
+      g.fence();
       for (let i = 0; i < this.len(res); i++) {
         const r = this.at(res, i);
         if (i > 0) {
@@ -2361,6 +2373,7 @@ export class JVisitor {
       }
       this.token(")");
       g.close();
+      g.headerEnd();
       g.space();
     }
     const catches = t.c[n];
@@ -2388,6 +2401,7 @@ export class JVisitor {
     g.space();
     this.token("(");
     g.open(this.plusFour);
+    g.fence();
     const ex = t.a[n];
     if (t.kind[t.b[ex]] === N_UNION_TYPE) {
       g.open(this.ZERO);
@@ -2434,7 +2448,9 @@ export class JVisitor {
     this.token("switch");
     g.space();
     this.token("(");
+    g.headerStart();
     this.scan(this.t.a[selector]);
+    g.headerEnd();
     this.token(")");
     g.space();
     this.tokenBreakTrailingComment("{", this.plusTwo);
@@ -2449,6 +2465,9 @@ export class JVisitor {
     g.close();
     g.forcedBreak();
     g.blankLineWanted(BL_NO);
+    if (this.len(cases) > 0) {
+      this.markForPartialFormat();
+    }
     this.tokenInd("}", this.plusFour);
   }
 
@@ -2517,10 +2536,7 @@ export class JVisitor {
     const a = this.t.start[n];
     const e = this.t.end[n];
     if (e - a >= 3 && toI32(inp.src[a]) === 34 && toI32(inp.src[a + 1]) === 34 && toI32(inp.src[a + 2]) === 34) {
-      if (this.textBlockDeindents(a, e)) {
-        g.brkInd(g.constIndent(-1073741824));
-      }
-      g.tokLike(this.t.name[n]);
+      this.visitTextBlock(n);
       return;
     }
     if (toI32(inp.src[a]) === 45) {
@@ -2530,68 +2546,32 @@ export class JVisitor {
   }
 
   /**
-   * Whether a text block's closing line, stripped, is as long as the last line
-   * of its stripped content (visitLiteral's `deindent`).
+   * visitTextBlock: the text block with its incidental whitespace removed,
+   * as lines the layout indents to the line the block starts on.
    */
-  private textBlockDeindents(a: i32, e: i32): boolean {
-    const src = this.inp.src;
-    // Lines of the literal.
-    const starts: i32[] = [a];
-    for (let i = a; i < e; i++) {
-      const c = toI32(src[i]);
-      if (c === 10 || c === 13) {
-        if (c === 13 && i + 1 < e && toI32(src[i + 1]) === 10) {
-          i++;
-        }
-        starts.push(i + 1);
-      }
+  private visitTextBlock(n: i32): void {
+    const g = this.g;
+    const initialLines = javaLines(String.fromBytes(this.inp.src, this.t.start[n], this.t.end[n]));
+    // The first line is always """ and does not affect incidental whitespace.
+    const strippedLines = stripIndentLines(initialLines.slice(1, initialLines.length));
+    const lastLine = strippedLines[strippedLines.length - 1];
+    // The block is deindented to column 0 when stripping its indentation
+    // leaves its last line as long as it was.
+    if (stripTrailingJ(initialLines[initialLines.length - 1]).length === lastLine.length) {
+      g.brkInd(g.constIndent(-1073741824));
     }
-    const nl = toI32(starts.length);
-    // stripIndent over lines 1..: the minimum indentation of non-blank lines,
-    // and of the last line even when blank.
-    let minIndent = 2147483647;
-    for (let k = 1; k < nl; k++) {
-      const s = starts[k];
-      const le = this.tbLineEnd(starts, k, e);
-      let i = s;
-      while (i < le && (toI32(src[i]) === 32 || toI32(src[i]) === 9)) {
-        i++;
-      }
-      const blank = i === le;
-      if (!blank || k === nl - 1) {
-        if (i - s < minIndent) {
-          minIndent = i - s;
-        }
-      }
+    const lines: string[] = [stripTrailingJ(initialLines[0])];
+    for (let i = 0; i < toI32(strippedLines.length) - 1; i++) {
+      lines.push(strippedLines[i]);
     }
-    if (minIndent === 2147483647) {
-      minIndent = 0;
+    const withoutDelimiter = stripTrailingJ(lastLine.substring(0, toI32(lastLine.length) - 3));
+    if (withoutDelimiter.length > 0) {
+      lines.push(`${withoutDelimiter}\\`);
     }
-    // The last line of the stripped text, trailing-stripped.
-    const lastK = nl - 1;
-    const ls = starts[lastK];
-    const le = this.tbLineEnd(starts, lastK, e);
-    let lastTrim = le;
-    while (lastTrim > ls && (toI32(src[lastTrim - 1]) === 32 || toI32(src[lastTrim - 1]) === 9)) {
-      lastTrim--;
-    }
-    const lastOrigLen = lastTrim - ls;
-    // The stripped version of the last line: indentation removed.
-    let strippedLen = lastTrim - ls - minIndent;
-    if (strippedLen < 0) {
-      strippedLen = 0;
-    }
-    return lastOrigLen === strippedLen;
-  }
-
-  /** The end of text-block line `k`, without its terminator. */
-  private tbLineEnd(starts: i32[], k: i32, e: i32): i32 {
-    const src = this.inp.src;
-    let x = k + 1 < toI32(starts.length) ? starts[k + 1] : e;
-    while (x > starts[k] && (toI32(src[x - 1]) === 10 || toI32(src[x - 1]) === 13)) {
-      x--;
-    }
-    return x;
+    // A trailing line of just """ indented more than the incidental
+    // whitespace would only make javac warn that trailing white space is removed.
+    lines.push(`"""`);
+    g.multilineTokenLike(this.t.name[n], lines);
   }
 
   private splitToken(s: string): void {
@@ -2872,6 +2852,7 @@ export class JVisitor {
     }
     this.token("<");
     g.open(plusIndent);
+    g.fence();
     for (let i = 0; i < this.len(targs); i++) {
       if (i > 0) {
         this.token(",");
@@ -3590,6 +3571,7 @@ export class JVisitor {
       }
       g.close();
       g.forcedBreak();
+      this.markForPartialFormat();
       this.token("}");
     }
   }
