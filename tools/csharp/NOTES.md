@@ -108,7 +108,7 @@ and a BOM the test harness adds.
 
 ## Timings
 
-13992 files, 164 MB, 4 cores:
+13992 files, 164 MB, 4 cores (measured on the LF corpus, before the change to CRLF output):
 
 | | 4 cores | 1 core (`taskset -c 0`, `-j 1`) |
 | --- | --- | --- |

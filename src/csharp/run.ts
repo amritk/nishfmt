@@ -1,7 +1,8 @@
 // The CSharp entry point: CSharpier's pipeline over one file.
 //
 // After CSharpier 1.4.0 (MIT License, Copyright (c) 2021 Bela VanderVoort):
-// CSharpFormatter.cs, GeneratedCodeUtilities.cs and PrinterOptions.cs.
+// CSharpFormatter.cs, GeneratedCodeUtilities.cs and PrinterOptions.cs
+// (GetLineEnding for the style's end_of_line = crlf: always "\r\n").
 
 import { K_MultiLineCommentTrivia, K_SingleLineCommentTrivia } from "./kinds";
 import { Out } from "../core/out";

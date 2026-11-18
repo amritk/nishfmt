@@ -38,7 +38,9 @@ pinned to one core:
 - One core is `taskset -c 0`, with `-j 1` for nishfmt. nishfmt's times are
   the best of three. The C++, Java and Ruby rows were measured together on
   an otherwise idle machine, the reference tools one run each; the others
-  during porting on a busier shared machine, so compare within a row.
+  during porting on a busier shared machine, so compare within a row. The
+  C# times predate the change to CRLF output and were taken on the LF
+  corpus.
 - How the reference tools ran: clang-format 50 files a process; one
   google-java-format JVM over all files; CSharpier on .NET 10 with
   `--no-cache`; rustfmt 100 files a process; RuboCop with `--parallel` on 4

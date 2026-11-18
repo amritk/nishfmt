@@ -16,6 +16,10 @@ d=$CORPUS/cs2
 rm -rf "$d" && mkdir -p "$d" && cp -r "$CORPUS/cs/raw" "$d/raw"
 # An empty .git: a .gitignore boundary (tools/csharp/NOTES.md).
 mkdir -p "$d/.git"
+if [ ! -f "$CORPUS/cs/.editorconfig" ]; then
+  echo "mkcs2.sh: $CORPUS/cs/.editorconfig is missing; build cs with bench/corpus/mk.sh cs first" >&2
+  exit 1
+fi
 cp "$CORPUS/cs/.editorconfig" "$d/.editorconfig"
 cd "$d/raw" || exit 1
 opts=("max_line_length = 40" "max_line_length = 150" "indent_style = tab" "indent_size = 2")
