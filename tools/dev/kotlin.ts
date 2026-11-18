@@ -17,6 +17,7 @@ export const main = (): i32 => {
   const out = new Out(n + 1024);
   const e = new KotlinEngine();
   e.debug = getenv("FFDEBUG") !== null;
+  e.dump = getenv("FFKTDUMP") !== null;
   if (!formatKotlin(e, path, src, n, out)) {
     return 1;
   }

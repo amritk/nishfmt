@@ -12,6 +12,7 @@ import {
   TF_JAVADOC,
   TF_LINE_COMMENT,
   TF_NEWLINE,
+  TF_OTHER_COMMENT,
   TF_PARAM_COMMENT,
   TF_SPACES,
   TF_TOKEN,
@@ -108,6 +109,10 @@ const kAddComment = (inp: GInput, tr: KTree, node: i32): void => {
     ) {
       f = TF_TOKEN;
     }
+  }
+  // KotlinTok.isComment: a shebang is a comment too, so it stays in the output.
+  if (tr.type[node] === T_SHEBANG_COMMENT) {
+    f = TF_OTHER_COMMENT;
   }
   inp.addTok(a, b, f, tr.type[node], 0);
 };

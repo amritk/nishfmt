@@ -1426,18 +1426,16 @@ export class KVisitor {
     this.sync(n);
     const t = this.t;
     let typeElement = -1;
-    let modifierList = -1;
     for (let c = t.first[n]; c >= 0; c = t.next[c]) {
-      const ct = t.type[c];
-      if (ct === N_MODIFIER_LIST && modifierList < 0) {
-        modifierList = c;
-      } else if (typeElement < 0 && kIsTypeElement(ct)) {
+      if (typeElement < 0 && kIsTypeElement(t.type[c])) {
         typeElement = c;
       }
     }
+    // A type can have a modifier list inside its parentheses, outside them,
+    // or both: `@Composable (suspend (x) -> Unit)`.
     for (let c = t.first[n]; c >= 0; c = t.next[c]) {
       const ct = t.type[c];
-      if (c === modifierList) {
+      if (ct === N_MODIFIER_LIST) {
         this.visit(c);
       } else if (c === typeElement) {
         this.visit(c);
@@ -2190,14 +2188,13 @@ export class KVisitor {
     const root = parts[0];
     const forceBreakBeforeChain = this.isMultilineScopingFunction(root);
     this.visitLambdaOrScopingFunction(root, emitLeadingBreak);
-    this.open(this.expressionBreakIndent);
+    // The break before each selector is outside its block, at the level of
+    // the lambda, so it is taken exactly when the lambda breaks (#640).
+    const fillMode = forceBreakBeforeChain ? FORCED : UNIFIED;
     for (let i = 1; i < toI32(parts.length); i++) {
       const part = parts[i];
-      if (forceBreakBeforeChain) {
-        this.forced();
-      } else {
-        this.brk(UNIFIED, "", this.ZERO);
-      }
+      this.brk(fillMode, "", this.expressionBreakIndent);
+      this.open(this.expressionBreakIndent);
       this.tokN(this.opSign(part));
       const sel = this.selectorOf(part);
       if (this.ty(sel) === N_CALL_EXPRESSION) {
@@ -2214,8 +2211,8 @@ export class KVisitor {
       } else {
         this.visit(sel);
       }
+      this.close();
     }
-    this.close();
     this.pop();
   }
 
@@ -2380,25 +2377,16 @@ export class KVisitor {
     this.open(this.ZERO);
     const base = this.firstExpr(n);
     this.open(this.ZERO);
+    // topLevelAnnotations: the `@[A B]` groups and the `@C` entries, in order.
     let first = true;
     for (let c = this.t.first[n]; c >= 0; c = this.t.next[c]) {
       const ct = this.t.type[c];
-      if (ct === N_ANNOTATION_ENTRY) {
+      if (ct === N_ANNOTATION_ENTRY || ct === N_ANNOTATION) {
         if (!first) {
           this.brk(UNIFIED, " ", this.ZERO);
         }
         first = false;
         this.visit(c);
-      } else if (ct === N_ANNOTATION) {
-        for (let d = this.t.first[c]; d >= 0; d = this.t.next[d]) {
-          if (this.t.type[d] === N_ANNOTATION_ENTRY) {
-            if (!first) {
-              this.brk(UNIFIED, " ", this.ZERO);
-            }
-            first = false;
-            this.visit(d);
-          }
-        }
       }
     }
     this.close();
@@ -2721,59 +2709,52 @@ export class KVisitor {
   }
 
   visitKtFile(n: i32): void {
-    const t = this.t;
-    const il = this.child(n, N_IMPORT_LIST);
-    const importListEmpty = il < 0 || this.isBlank(il);
-    let isFirst = true;
-    for (let c = t.first[n]; c >= 0; c = t.next[c]) {
-      if (this.isBlank(c)) {
-        continue;
-      }
-      if (isFirst) {
-        this.g.blankLineWanted(BL_NO);
-      } else if (kIsComment(t.type[c])) {
-        continue;
-      } else if (t.type[c] === N_SCRIPT && importListEmpty) {
-        this.g.blankLineWanted(BL_PRESERVE);
-      } else {
-        this.g.blankLineWanted(BL_YES);
-      }
-      this.visit(c);
-      isFirst = false;
-    }
+    this.formatFile(n, true);
   }
 
   visitScript(n: i32): void {
+    this.formatFile(this.child(n, N_BLOCK), false);
+  }
+
+  /**
+   * FileFormatter.formatFile: the children of a file, or of a script's
+   * block. A file's children include its leaves; a block's are its
+   * composites (and KDoc).
+   */
+  formatFile(n: i32, isFile: boolean): void {
     const t = this.t;
-    let lastChildHadBlankLineBefore = false;
-    let lastChildIsContextReceiver = false;
-    let first = true;
-    const block = this.child(n, N_BLOCK);
-    for (let c = t.first[block]; c >= 0; c = t.next[c]) {
-      if (!kIsPsiChild(t, c) || this.isBlank(c)) {
+    let prev = -1;
+    for (let c = t.first[n]; c >= 0; c = t.next[c]) {
+      if ((!isFile && !kIsPsiChild(t, c)) || this.isBlank(c) || kIsComment(t.type[c])) {
         continue;
       }
       this.forced();
-      const childGetsBlankLineBefore = t.type[c] !== N_PROPERTY;
-      if (first) {
-        this.g.blankLineWanted(BL_PRESERVE);
-      } else if (lastChildIsContextReceiver) {
-        this.g.blankLineWanted(BL_NO);
-      } else if (!kIsComment(t.type[c]) && (childGetsBlankLineBefore || lastChildHadBlankLineBefore)) {
-        this.g.blankLineWanted(BL_YES);
-      }
+      this.g.blankLineWanted(this.shouldPreserveLineBreak(prev, c));
       this.visit(c);
       this.g.guessToken(";");
-      lastChildHadBlankLineBefore = childGetsBlankLineBefore;
-      lastChildIsContextReceiver = false;
-      if (t.type[c] === N_SCRIPT_INITIALIZER) {
-        const a = t.first[c];
-        const b = a >= 0 ? t.first[a] : -1;
-        const d = b >= 0 ? t.first[b] : -1;
-        lastChildIsContextReceiver = d >= 0 && this.textIs(d, "context");
-      }
-      first = false;
+      prev = c;
     }
+  }
+
+  shouldPreserveLineBreak(prev: i32, curr: i32): i32 {
+    const t = this.t;
+    if (prev < 0) {
+      return BL_PRESERVE;
+    }
+    // Context receivers on a top-level function parse as a script
+    // initializer of their own, kept next to the function.
+    if (t.type[prev] === N_SCRIPT_INITIALIZER) {
+      const a = t.first[prev];
+      const b = a >= 0 ? t.first[a] : -1;
+      const d = b >= 0 ? t.first[b] : -1;
+      if (d >= 0 && this.textIs(d, "context")) {
+        return BL_NO;
+      }
+    }
+    if (t.type[prev] === N_PROPERTY && t.type[curr] === N_PROPERTY) {
+      return BL_PRESERVE;
+    }
+    return BL_YES;
   }
 
   emitKeywordWithCondition(keyword: string, condition: i32, parens: boolean): void {

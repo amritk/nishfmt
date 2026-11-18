@@ -161,7 +161,9 @@ import {
   T_COLON,
   T_COLONCOLON,
   T_COMMA,
+  T_BLOCK_COMMENT,
   T_COMPANION_KEYWORD,
+  T_DOC_COMMENT,
   T_CONSTRUCTOR_KEYWORD,
   T_CONST_KEYWORD,
   T_CONTEXT_KEYWORD,
@@ -1066,6 +1068,55 @@ export class KParser {
   }
 
   // ---- KotlinParsing: files --------------------------------------------------
+
+  parseFile(): void {
+    const fileMarker = this.mark();
+    this.parsePreamble();
+    while (!this.eof()) {
+      this.parseTopLevelDeclaration();
+    }
+    this.checkUnclosedBlockComment();
+    this.b.done(fileMarker, N_KT_FILE);
+  }
+
+  private checkUnclosedBlockComment(): void {
+    const last = this.b.rawLookup(-1);
+    if (last === T_BLOCK_COMMENT || last === T_DOC_COMMENT) {
+      const a = this.b.rawTokenTypeStart(-1);
+      const e = this.b.rawTokenTypeStart(0);
+      const src = this.b.lx.src;
+      if (!(e - a > 2 && toI32(src[e - 2]) === 42 && toI32(src[e - 1]) === 47)) {
+        // The file does not parse; the marker's binders do not matter.
+        this.error();
+      }
+    }
+  }
+
+  private parseTopLevelDeclaration(): void {
+    if (this.at(T_SEMICOLON)) {
+      this.advance();
+      return;
+    }
+    const decl = this.mark();
+    const detector = new ModDetector();
+    this.parseModifierList(detector, this.EMPTY, false);
+    let declType = this.parseCommonDeclaration(detector, NPM_REQUIRED, DPM_MEMBER_OR_TOPLEVEL);
+    if (declType < 0 && this.at(T_LBRACE)) {
+      this.error();
+      this.parseBlock();
+      declType = N_FUN;
+    }
+    if (declType < 0 && this.at(T_IMPORT_KEYWORD)) {
+      this.error();
+      this.parseImportDirectives();
+      this.b.drop(decl);
+    } else if (declType < 0) {
+      this.errorAndAdvance(1);
+      this.b.drop(decl);
+    } else {
+      this.closeDeclarationWithCommentBinders(decl, declType, true);
+    }
+  }
 
   parseScript(): void {
     const fileMarker = this.mark();

@@ -920,7 +920,7 @@ export class KPasses {
     } else {
       return;
     }
-    if (count <= 1 || hasComma || !this.listHasNewline(n)) {
+    if (count === 0 || hasComma || !this.listHasNewline(n)) {
       return;
     }
     const leaf = this.leftLeaf(last);
