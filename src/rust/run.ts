@@ -16,6 +16,8 @@ export class RustEngine {
   debug: boolean = false;
   dump: boolean = false;
   parseOnly: boolean = false;
+  // The edition files are parsed at; nishfmt formats at 2021.
+  edition: i32 = 2021;
   constructor() {}
 }
 
@@ -48,6 +50,7 @@ export const formatRust = (e: RustEngine, path: string, src0: u8[], n0: i32, out
   }
   if (e.dump || e.parseOnly) {
     const t = new RsTokens(src, n);
+    t.edition = e.edition;
     rsLex(t);
     if (t.failed) {
       return false;
@@ -64,7 +67,9 @@ export const formatRust = (e: RustEngine, path: string, src0: u8[], n0: i32, out
     }
     return true;
   }
-  const r = rsFormatSource(src, n, new RsConfig(), false);
+  const cfg = new RsConfig();
+  cfg.edition = e.edition;
+  const r = rsFormatSource(src, n, cfg, false);
   if (r.parseFailed || r.unsupported || r.broken) {
     if (e.debug) {
       let line = 1;

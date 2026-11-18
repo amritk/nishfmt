@@ -34,6 +34,7 @@ export class RsFormatted {
 export const rsFormatSource = (src: u8[], n: i32, cfg: RsConfig, isMacroDef: boolean): RsFormatted => {
   const r = new RsFormatted();
   const t = new RsTokens(src, n);
+  t.edition = cfg.edition;
   rsLex(t);
   if (t.failed) {
     r.parseFailed = true;

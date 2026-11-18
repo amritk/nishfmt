@@ -4050,7 +4050,7 @@ export class RsParser {
 
   parseCond(): i32 {
     const e = this.parseExprRes(R_NO_STRUCT | R_ALLOW_LET);
-    if (!this.failed && this.ast.kind[e] === N_EX_BINARY && this.hasLetInAndChain(e)) {
+    if (!this.failed && this.t.edition < 2024 && this.ast.kind[e] === N_EX_BINARY && this.hasLetInAndChain(e)) {
       // CondChecker: let chains are only allowed in Rust 2024 or later.
       return this.fail();
     }

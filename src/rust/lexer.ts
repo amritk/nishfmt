@@ -134,6 +134,8 @@ export const KW_TYPEOF: i32 = 49;
 export const KW_UNSIZED: i32 = 50;
 export const KW_VIRTUAL: i32 = 51;
 export const KW_TRY: i32 = 52;
+// `gen`, reserved from edition 2024 (KW_GEN before it).
+export const KW_GEN_2024: i32 = 53;
 // Weak keywords: identifiers that some positions read as keywords.
 export const KW_UNION: i32 = 60;
 export const KW_DEFAULT: i32 = 61;
@@ -319,6 +321,8 @@ export class RsTokens {
   failed: boolean = false;
   // The end of a shebang line (0 when there is none).
   shebang: i32 = 0;
+  // The edition the source is lexed and parsed at.
+  edition: i32 = 2021;
 
   constructor(src: u8[], n: i32) {
     this.src = src;
@@ -718,7 +722,12 @@ export const rsLex = (t: RsTokens): void => {
         t.failed = true;
         return;
       }
-      t.add(T_IDENT, a, b, rsKeywordOf(src, a, b), b);
+      let kw = rsKeywordOf(src, a, b);
+      // Symbol::is_unused_keyword_conditional: `gen` is reserved from edition 2024.
+      if (kw === KW_GEN && t.edition >= 2024) {
+        kw = KW_GEN_2024;
+      }
+      t.add(T_IDENT, a, b, kw, b);
       i = b;
       continue;
     }
@@ -846,6 +855,12 @@ export const rsLex = (t: RsTokens): void => {
     } else if (c === 64) {
       k = T_AT;
     } else if (c === 35) {
+      // rustc_lexer's GuardedStrPrefix, `#"` or `##`: reserved syntax from
+      // edition 2024 (maybe_report_guarded_str), separate tokens before it.
+      if (t.edition >= 2024 && (d === 34 || d === 35)) {
+        t.failed = true;
+        return;
+      }
       k = T_POUND;
     } else if (c === 126) {
       k = T_TILDE;
