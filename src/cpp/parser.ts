@@ -10,6 +10,7 @@ import { Doc } from "./doc";
 import { requiresIsClause } from "./classify";
 import {
   isIdentKind,
+  CW_FINAL,
   P_HASHHASH,
   KW_NOEXCEPT,
   P_LESSLESSEQUAL,
@@ -2833,7 +2834,10 @@ export class Parser {
           continue;
         }
         if (this.classHasBody()) {
-          this.parseRecord();
+          if (this.parseRecord()) {
+            // A braced initializer (`struct stat st{};`): the statement goes on.
+            continue;
+          }
           return;
         }
         this.push();
@@ -2945,18 +2949,54 @@ export class Parser {
     }
   }
 
-  /** `class|struct|union Name ... { members } declarators ;` */
-  parseRecord(): void {
+  /**
+   * `class|struct|union Name ... { members } declarators ;`. Answers true
+   * when the `{` is a braced initializer instead (`struct stat st{};`): the
+   * list is parsed and the statement continues.
+   */
+  parseRecord(): boolean {
     const d = this.d;
     const kw = this.cur();
+    const kwTok = this.pos;
     this.push();
     let baseOrArgs = false; // past a `:` or `<`: clang-format's base-clause loop
+    // clang-format 23's parseRecord: the class name and whether a base
+    // clause was seen decide IsListInitialization at the `{`.
+    let className = -1;
+    let derived = false;
+    let angle = 0;
     while (true) {
       const k = this.cur();
+      if (!baseOrArgs && k !== P_LPAREN && k !== P_COLONCOLON && k !== P_HASHHASH && className < 0) {
+        // The head word before this token names the class unless it is a
+        // macro (all capitals, more than one character).
+        const p = this.lastCode();
+        if (p > kwTok && isIdentKind(d.kind[p]) && (d.end[p] - d.start[p] === 1 || this.isNonMacroIdent(p))) {
+          className = p;
+        }
+      }
       if (k === P_COLON || k === P_LESS) {
         baseOrArgs = true;
       }
+      if (baseOrArgs) {
+        if (k === P_LESS) {
+          angle++;
+        } else if (k === P_GREATER) {
+          angle--;
+        }
+        if (angle === 0) {
+          if (k === P_COLON) {
+            derived = true;
+          } else if (!derived && isIdentKind(k) && this.lastCode() >= 0 && d.kind[this.lastCode()] === P_COLONCOLON) {
+            className = this.pos;
+          }
+        }
+      }
       if (k === P_LBRACE) {
+        if (angle === 0 && this.isListInitialization(className, derived)) {
+          this.parseBracedList();
+          return true;
+        }
         if (!baseOrArgs) {
           break;
         }
@@ -2989,7 +3029,7 @@ export class Parser {
     }
     if (this.cur() !== P_LBRACE) {
       this.addLine();
-      return;
+      return false;
     }
     const tt = kw === KW_CLASS ? TT_CLASS_LBRACE : kw === KW_STRUCT ? TT_STRUCT_LBRACE : TT_UNION_LBRACE;
     this.parseBlock(1, true, tt);
@@ -3044,6 +3084,37 @@ export class Parser {
       this.parseExprToken();
     }
     this.addLine();
+    return false;
+  }
+
+  /**
+   * clang-format 23's parseRecord `IsListInitialization`: with a class name,
+   * no base clause, and a word other than that name or `final` before the
+   * `{`, a `{` that is not a block is a braced initializer.
+   */
+  isListInitialization(className: i32, derived: boolean): boolean {
+    const d = this.d;
+    if (className < 0 || derived) {
+      return false;
+    }
+    const p = this.lastCode();
+    if (p < 0 || p === className || !isIdentKind(d.kind[p]) || d.kind[p] === CW_FINAL) {
+      return false;
+    }
+    if (d.bk[this.pos] === BK_UNKNOWN) {
+      this.calculateBraceTypes();
+    }
+    return d.bk[this.pos] !== BK_BLOCK;
+  }
+
+  /** The last token of the line being built that is not a comment, or -1. */
+  lastCode(): i32 {
+    const d = this.d;
+    let t = this.first < 0 ? -1 : this.last;
+    while (t >= 0 && d.kind[t] === K_COMMENT) {
+      t = d.prv[t];
+    }
+    return t;
   }
 
   /** `enum [class] Name [: type] { list };` — the list stays in the line. */
