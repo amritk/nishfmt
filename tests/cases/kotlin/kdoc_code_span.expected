@@ -1,0 +1,20 @@
+package p
+
+import foo.Baz
+
+/**
+ * Uses `[Bar]` in a code span, and [Baz] as a link.
+ *
+ * ````
+ * ```
+ *
+ * [Qux] inside a four-backtick fence
+ *
+ * ```
+ * ````
+ *
+ * ~~~~ [Quux] inside a tilde fence ~~~~
+ *
+ * A ``code span with ` and [Corge]`` ends here.
+ */
+class A

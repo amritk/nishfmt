@@ -1,0 +1,18 @@
+fun foo(
+    someParameter: String
+) = Unit
+
+class A(
+  val x: Int
+)
+
+fun g() {
+  call(
+    argument
+  )
+  val l = listOf<
+    Int
+  >()
+}
+
+fun shortSingle(a: Int) = bar(aVeryLongArgumentNameThatIsLongEnoughToBreakTheLineWhenCombinedWithOthers1234)

@@ -1,0 +1,2 @@
+enum E<T> { a }
+var   unformatted  =   [1,2,  3];

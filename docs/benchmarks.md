@@ -11,11 +11,11 @@ says how to rebuild them and rerun the comparisons.
 | --- | --- | --- | --- |
 | C++ | clang-format | 18.1.3 | `clang-format` on PATH |
 | Java | google-java-format | 1.28.0, all-dependencies jar | `$GJF` |
-| Kotlin | ktfmt | 0.64, with-dependencies jar | `$KTFMT` |
+| Kotlin | ktfmt | 0.65, with-dependencies jar (from the GitHub release; Maven Central stops at 0.64) | `$KTFMT` |
 | Ruby | RuboCop | 1.92.2 | `rubocop` on PATH |
 | Swift | SwiftFormat | 0.64.7 | `$SWIFTFORMAT`, else `swiftformat` |
 | Rust | rustfmt | 1.10.0 (Rust 1.99.1) | `$RUSTFMT`, else `rustfmt +1.99.1` |
-| Dart | `dart format` | Dart SDK 3.14 | `$DART`, else `dart` |
+| Dart | `dart format` | Dart SDK 3.14.1 (dart_style 3.1.14-wip at 5a9534fad9ff) | `$DART`, else `dart` |
 | C# | CSharpier | 1.4.0 | `$CSHARPIER`, else `csharpier` |
 
 ## Building a corpus
@@ -46,6 +46,8 @@ The harder corpora are built from a language's `raw/`:
 | `dart2` | `tools/dart/mk2.sh` | each file first formatted at width 40 or 120, or in the short style |
 | `dart3` | `tools/dart/mk3.sh dart3` | each file marked `// @dart=2.19` or `3.6`, for the short style |
 | `dart4` | `tools/dart/mk3.sh dart4` | each file marked `3.7`, `3.8` or `3.12`, for the older tall styles |
+| `dart5` | `tools/dart/mk5.sh` | each repository a package at `sdk: ^3.8.0` with the package config `dart pub get` writes, so the version comes from the project |
+| `dart6` | `tools/dart/mk3.sh dart6` | each file marked with one of every version from 2.12 to 3.14 |
 | `cs2` | `tools/csharp/mkcs2.sh` | each directory first formatted with non-default CSharpier options, layered on the `cs` style's `.editorconfig` |
 
 ## Corpus results
@@ -61,6 +63,10 @@ for byte as it does, on the corpora the README's table is measured on:
 | C# | 13988 | 13988 |
 | Dart, tall style | 10313 | 10313 |
 | Dart, short style (below 3.7) | 8218 | 8218 |
+| Dart, `dart2` (other widths and styles first) | 10313 | 10313 |
+| Dart, `dart4` (3.7, 3.8, 3.12) | 8663 | 8663 |
+| Dart, `dart5` (a package at 3.8) | 8571 | 8571 |
+| Dart, `dart6` (every version) | 7849 | 7849 |
 | Swift | 6710 | 6710 |
 | Rust | 7899 | 7899 |
 | Ruby | 1998 | 1998 |
@@ -101,6 +107,9 @@ them on the whole corpus. nishfmt is faster than both, on 4 cores and on 1:
 | --- | ---: | ---: | ---: |
 | Kotlin | 9602 | ktrs 0.5.1: 2.43 s / 8.96 s | 2.03 s / 7.02 s |
 | Ruby | 1998 | rbcop 0.1.4: 6.55 s / 20.4 s | 4.00 s / 12.7 s |
+
+The Kotlin row was measured against the ktfmt 0.64 corpus, before nishfmt
+moved to ktfmt 0.65; ktrs follows ktfmt 0.64.
 
 nitrocop, another Rust reimplementation of RuboCop, matched on fewer than a
 quarter of the files of an earlier sample and is left out. rustfmt is itself

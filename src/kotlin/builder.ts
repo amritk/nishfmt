@@ -5,8 +5,9 @@
 // Kotlin compiler's SemanticWhitespaceAwarePsiBuilderImpl, which joins `?.`,
 // `?:` and `!!` and answers whether a newline precedes the current token.
 //
-// Ported from the IntelliJ platform's PsiBuilderImpl and the Kotlin
-// compiler's parser support (Apache License 2.0, Copyright JetBrains s.r.o.).
+// Ported from the IntelliJ platform's PsiBuilderImpl (SDK 251.27812.49, the
+// one the Kotlin compiler 2.4.10 builds with) and the Kotlin compiler
+// 2.4.10's parser support (Apache License 2.0, Copyright JetBrains s.r.o.).
 
 import { growI32 } from "../core/arr";
 import { KLexemes } from "./lexer";

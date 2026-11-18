@@ -1,4 +1,7 @@
 // The Kotlin entry point: ktfmt's pipeline over one file.
+//
+// Ported from ktfmt 0.65's Formatter and KotlinCode (Apache License 2.0,
+// Copyright (c) Meta Platforms, Inc. and affiliates).
 
 import { growI32 } from "../core/arr";
 import { guessSep } from "../core/files";
@@ -52,6 +55,8 @@ export class KotlinEngine {
   cur: u8[];
   curN: i32 = 0;
   parsed: boolean = false;
+  // Whether the text parses as a script (KtScript) rather than a file.
+  script: boolean = true;
   debug: boolean = false;
   dump: boolean = false;
   prof: boolean = false;
@@ -77,6 +82,14 @@ export class KotlinEngine {
   }
 }
 
+const kParse = (e: KotlinEngine): void => {
+  if (e.script) {
+    e.p.parseScript();
+  } else {
+    e.p.parseFile();
+  }
+};
+
 /** Parses `src[0, n)` into the engine's tree; answers false when it does not parse. */
 export const parseKotlin = (e: KotlinEngine, src: u8[], n: i32): boolean => {
   if (!e.prof) {
@@ -85,7 +98,7 @@ export const parseKotlin = (e: KotlinEngine, src: u8[], n: i32): boolean => {
       return false;
     }
     e.b.reset();
-    e.p.parseScript();
+    kParse(e);
     e.b.build();
     return !e.b.failed;
   }
@@ -96,7 +109,7 @@ export const parseKotlin = (e: KotlinEngine, src: u8[], n: i32): boolean => {
   }
   const t1 = monotonicNanos();
   e.b.reset();
-  e.p.parseScript();
+  kParse(e);
   const t2 = monotonicNanos();
   e.b.build();
   const t3 = monotonicNanos();
@@ -181,18 +194,12 @@ export const formatKotlin = (e: KotlinEngine, path: string, src0: u8[], n0: i32,
 };
 
 const formatKotlin0 = (e: KotlinEngine, path: string, src0: u8[], n0: i32, out: Out): boolean => {
-  // A shebang line is set aside and put back in front.
-  let start = 0;
-  if (n0 >= 2 && toI32(src0[0]) === 35 && toI32(src0[1]) === 33) {
-    while (start < n0 && toI32(src0[start]) !== 10) {
-      start++;
-    }
-    start = start < n0 ? start + 1 : n0;
-  }
-  const shebangEnd = start > 0 && toI32(src0[start - 1]) === 10 ? start - 1 : start;
-  const sep = start > 0 ? guessSep(src0.slice(start, n0), n0 - start) : guessSep(src0, n0);
+  // KotlinCode: a `.kt` file parses as a regular file, anything else (a
+  // `.kts` file, standard input) as a script. A shebang is a comment tok.
+  e.script = !path.endsWith(".kt");
+  const sep = guessSep(src0, n0);
   // Tombstones and comment escapes ktfmt reserves.
-  for (let i = start; i < n0; i++) {
+  for (let i = 0; i < n0; i++) {
     const c = toI32(src0[i]);
     if (c === 3 || c === 4 || c === 5) {
       if (e.debug) {
@@ -204,8 +211,8 @@ const formatKotlin0 = (e: KotlinEngine, path: string, src0: u8[], n0: i32, out: 
   // convertLineSeparators: every \r\n and \r becomes \n.
   const b1 = e.buf1;
   b1.n = 0;
-  let a = start;
-  for (let i = start; i < n0; i++) {
+  let a = 0;
+  for (let i = 0; i < n0; i++) {
     if (toI32(src0[i]) === 13) {
       b1.range(src0, a, i);
       b1.byte(10);
@@ -273,35 +280,47 @@ const formatKotlin0 = (e: KotlinEngine, path: string, src0: u8[], n0: i32, out: 
       setCur(e, b2.buf, b2.n);
     }
   }
-  if (!ensureParsed(e, path)) {
-    return false;
-  }
-  if (!prettyPrint(e, e.cur, e.curN)) {
-    if (e.debug) {
-      console.error(`${path}: ${e.g.failure}`);
+  // prettyPrintAndManageTrailingCommas: pretty print, and again while
+  // addRedundantElements adds trailing commas to the result, so a comma
+  // added after the layout is laid out too. Adding only ever adds, so it
+  // converges.
+  for (let round = 0; ; round++) {
+    if (round === 16) {
+      if (e.debug) {
+        console.error(`${path}: trailing commas do not converge`);
+      }
+      return false;
     }
-    return false;
-  }
-  // WhitespaceTombstones: back to spaces.
-  const po = e.g.out;
-  for (let i = 0; i < po.n; i++) {
-    if (toI32(po.buf[i]) === 3) {
-      po.buf[i] = toU8(32);
+    if (!ensureParsed(e, path)) {
+      return false;
     }
-  }
-  // addRedundantElements again, read through the tree of the text before
-  // pretty printing (whose code tokens the output keeps), unless that fails.
-  let mapped = 0;
-  if (!sameText(po.buf, po.n, e.cur, e.curN)) {
-    const tm = e.prof ? monotonicNanos() : toI64(0);
-    mapped = addCommasMapped(e, po.buf, po.n);
-    if (e.prof) {
-      KPROF[12] = KPROF[12] + (monotonicNanos() - tm);
+    if (!prettyPrint(e, e.cur, e.curN)) {
+      if (e.debug) {
+        console.error(`${path}: ${e.g.failure}`);
+      }
+      return false;
     }
-  }
-  if (mapped === 1) {
-    setCur(e, e.buf2.buf, e.buf2.n);
-  } else {
+    // WhitespaceTombstones: back to spaces.
+    const po = e.g.out;
+    for (let i = 0; i < po.n; i++) {
+      if (toI32(po.buf[i]) === 3) {
+        po.buf[i] = toU8(32);
+      }
+    }
+    // addRedundantElements, read through the tree of the text before
+    // pretty printing (whose code tokens the output keeps), unless that fails.
+    let mapped = 0;
+    if (!sameText(po.buf, po.n, e.cur, e.curN)) {
+      const tm = e.prof ? monotonicNanos() : toI64(0);
+      mapped = addCommasMapped(e, po.buf, po.n);
+      if (e.prof) {
+        KPROF[12] = KPROF[12] + (monotonicNanos() - tm);
+      }
+    }
+    if (mapped === 1) {
+      setCur(e, e.buf2.buf, e.buf2.n);
+      continue;
+    }
     setCur(e, po.buf, po.n);
     if (mapped === -1 || e.parsed) {
       if (!ensureParsed(e, path)) {
@@ -310,8 +329,10 @@ const formatKotlin0 = (e: KotlinEngine, path: string, src0: u8[], n0: i32, out: 
       e.passes.reset(e.cur, e.curN);
       if (e.passes.addTrailingCommas(0, e.buf2)) {
         setCur(e, e.buf2.buf, e.buf2.n);
+        continue;
       }
     }
+    break;
   }
   if (e.prof && !e.parsed && kHasTrimCall(e.cur, e.curN)) {
     KPROF[13] = KPROF[13] + toI64(1);
@@ -328,10 +349,6 @@ const formatKotlin0 = (e: KotlinEngine, path: string, src0: u8[], n0: i32, out: 
   }
   const res = e.cur;
   out.n = 0;
-  if (start > 0) {
-    out.range(src0, 0, shebangEnd);
-    out.str("\n");
-  }
   if (sep === "\n") {
     out.range(res, 0, e.curN);
   } else {
@@ -547,7 +564,10 @@ const ensureParsed = (e: KotlinEngine, path: string): boolean => {
 /** Formatter.prettyPrint over the parsed tree: the result is left in `e.g.out`. */
 const prettyPrint = (e: KotlinEngine, src: u8[], n: i32): boolean => {
   const t0 = e.prof ? monotonicNanos() : toI64(0);
-  tokenizeKotlin(e.inp, e.b.tree, 0, src, n);
+  if (!tokenizeKotlin(e.inp, e.b.tree, 0, src, n)) {
+    e.g.failure = "unclosed comment";
+    return false;
+  }
   const t1 = e.prof ? monotonicNanos() : toI64(0);
   const g = e.g;
   g.reset();

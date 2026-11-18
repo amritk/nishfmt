@@ -7,8 +7,8 @@
 // solve states it believes cannot be equal), DTS_FAIL is set and the file is
 // left alone, as `dart format` reports an error for it.
 //
-// Ported from dart_style (Dart SDK 3.14) (BSD-3-Clause, Copyright the Dart
-// project authors).
+// Ported from dart_style 3.1.14-wip at 5a9534fad9ff, the commit Dart SDK
+// 3.14.1 pins (BSD-3-Clause, Copyright the Dart project authors).
 
 // Cost.
 export const DTS_COST_ARROW: i32 = 0;

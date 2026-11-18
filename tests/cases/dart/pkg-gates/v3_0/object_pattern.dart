@@ -1,0 +1,4 @@
+void f() {
+  if (x case Point(x: var px)) {}
+}
+var   unformatted  =   [1,2,  3];

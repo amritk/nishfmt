@@ -3,8 +3,8 @@
 // AST's tokens and comments to a chunk builder for language versions up to
 // 3.6.
 //
-// Ported from dart_style (Dart SDK 3.14) (BSD-3-Clause, Copyright the Dart
-// project authors).
+// Ported from dart_style 3.1.14-wip at 5a9534fad9ff, the commit Dart SDK
+// 3.14.1 pins (BSD-3-Clause, Copyright the Dart project authors).
 
 import {
   N_ADJACENT_STRINGS,

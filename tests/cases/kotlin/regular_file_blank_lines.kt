@@ -1,0 +1,10 @@
+@file:JvmName("Main")
+package p
+val x = 1
+val y = 2
+
+
+val z = 3
+fun main() {}
+;
+fun g() = x

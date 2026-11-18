@@ -15,11 +15,11 @@ Where the two goals pull apart, matching wins, then speed.
 | --- | --- | --- | --- |
 | C++ | `src/cpp` | clang-format 18, `{BasedOnStyle: LLVM, ColumnLimit: 120}` | `clang-format --style='{BasedOnStyle: LLVM, ColumnLimit: 120}' < f` |
 | Java | `src/java` | google-java-format 1.28 | `java -jar $GJF - < f` |
-| Kotlin | `src/kotlin` | ktfmt 0.64, default style | `java -jar $KTFMT - < f` |
+| Kotlin | `src/kotlin` | ktfmt 0.65, default style | `java -jar $KTFMT - < f` parses as a script, so only for `.kts`; a `.kt` file goes by name, `java -jar $KTFMT f` (in place) |
 | Ruby | `src/ruby` | `rubocop -a` 1.92.2, `TargetRubyVersion: 3.3` | `bench/corpus/mk.sh` shows the invocation |
 | Swift | `src/swift` | SwiftFormat 0.64.7, default rules | `swiftformat stdin --quiet < f` |
 | Rust | `src/rust` | rustfmt 1.10.0, default config, edition 2021 | `rustfmt +1.99.1 --edition 2021 < f` |
-| Dart | `src/dart` | `dart format` (Dart 3.14) | `dart format < f` |
+| Dart | `src/dart` | `dart format` (Dart 3.14.1) | `dart format < f` (outside a package; inside one, `dart format -o show f` reads its project) |
 | C# | `src/csharp` | CSharpier 1.4.0, default options except `end_of_line = crlf` | `csharpier format --write-stdout < f`, run below the `.editorconfig` that `mk.sh cs` writes ([README](../README.md#settings)) |
 
 A new language takes a directory of its own, a prefix for its names (below),
@@ -59,6 +59,12 @@ for a binary). The traps that cost the most in earlier ports:
 - Each file is formatted with a fresh engine in a region of its own
   (`runJob` in `src/main.ts`), so allocate freely per file. The region is
   freed afterwards.
+- A port that reads the project around a file (Dart's package config and
+  `analysis_options.yaml`, `src/dart/config.ts`) reads it from its
+  `format<Lang>`, by the file's path, and caches what it learns in module
+  storage (fixed numeric arrays), the only state that outlives a file's
+  region: one cache per worker process, keyed by directory. A project file
+  the port cannot read exactly leaves the file untouched.
 - `src/core/` (`Out`, `growI32`, `utf16Len`, file walking) and
   `src/gdoc/` (google-java-format's Doc engine, used by Java and Kotlin) are
   shared. Don't change them in a way that alters the C++, Java, Kotlin or
@@ -67,7 +73,7 @@ for a binary). The traps that cost the most in earlier ports:
   naming the project, version and license, as `src/ruby/run.ts` does:
   - SwiftFormat 0.64.7 (MIT License, Copyright (c) 2016 Nick Lockwood)
   - rustfmt 1.10.0 (MIT OR Apache-2.0, Copyright The Rust Project Developers)
-  - dart_style (Dart SDK 3.14) (BSD-3-Clause, Copyright the Dart project authors)
+  - dart_style 3.1.14-wip at 5a9534fad9ff, the commit Dart SDK 3.14.1 pins (BSD-3-Clause, Copyright the Dart project authors)
   - CSharpier 1.4.0 (MIT License, Copyright (c) 2021 Bela VanderVoort)
   - A parser ported from Roslyn / the Dart analyzer / rustc_parse also
     names its source (MIT / BSD-3-Clause / MIT OR Apache-2.0).

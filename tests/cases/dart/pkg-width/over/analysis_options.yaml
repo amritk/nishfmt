@@ -1,0 +1,3 @@
+include: ../conf/base.yaml
+formatter:
+  page_width: 100
