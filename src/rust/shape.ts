@@ -1,7 +1,7 @@
 // rustfmt's Config (the default configuration, with the width heuristics
 // `use_small_heuristics = Default` derives from max_width), Indent and Shape.
 //
-// Ported from rustfmt 1.9.0 (MIT OR Apache-2.0, Copyright The Rust Project
+// Ported from rustfmt 1.10.0 (MIT OR Apache-2.0, Copyright The Rust Project
 // Developers): config/, shape.rs.
 
 import { rsRepeat, rsSpaces } from "./str";

@@ -23,3 +23,15 @@ fn h() -> u32 {
     /* on the line */ let z = 3;
     if some_condition_holds { first_value_returned_here } else { second_value_returned }
 }
+
+fn ctrl_c() {
+    match x {
+        _ => {
+            log::info!("Skipping installing `Ctrl+C` handler as one was already installed. Please call `gracefully_exit` yourself.");
+        }
+    }
+}
+
+fn last_expr(sort: Sort, ordering: Ordering) -> Ordering {
+    if sort.reverse { ordering.reverse() } else { ordering }
+}

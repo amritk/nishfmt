@@ -1,7 +1,7 @@
 // Formatting a whole source (a file, or a snippet such as a macro body) and
 // the snippet helpers built on it: format_snippet and format_code_block.
 //
-// Ported from rustfmt 1.9.0 (MIT OR Apache-2.0, Copyright The Rust Project
+// Ported from rustfmt 1.10.0 (MIT OR Apache-2.0, Copyright The Rust Project
 // Developers): formatting.rs, lib.rs.
 
 import { Out } from "../core/out";

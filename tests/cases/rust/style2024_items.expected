@@ -21,3 +21,26 @@ where
     U: Copy,
 {
 }
+
+trait AssetWriter {
+    fn write_meta_bytes<'a>(&'a self, path: &'a Path, bytes: &'a [u8])
+    -> BoxedFuture<'a, Result<(), AssetWriterError>>;
+}
+
+impl<
+    F: FnOnce(&mut T, &mut ResolveContext) + Send + Sync + 'static,
+    T: Template<Output: Component> + Send + Sync + Default + 'static,
+> Scene for TemplatePatch<F, T>
+{
+}
+
+impl MapInfo {
+    pub fn new<TMap: Map + TypePath, TKey: Reflect + MaybeTyped + TypePath, TValue: Reflect + MaybeTyped + TypePath>()
+    -> Self {
+    }
+}
+
+enum WorldError {
+    #[error("Cannot get access to the resource with ID {0:?} in the world as it conflicts with an on going operation.")]
+    Conflict,
+}

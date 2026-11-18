@@ -16,6 +16,7 @@ fn g(x: u32) {
             1 => /* goes => there */ 3,
             2 if matches!(x, 2 => 3) => // after the arrow
                 4,
+            3 => return Err(WriteDefaultMetaError::HttpErrorFromExistingMetaCheck(err_value_with_a_long_name_x)),
             _ => return some_function_with_a_long_name(first_argument_here, second_argument, third_arg_long),
         };
         match x {

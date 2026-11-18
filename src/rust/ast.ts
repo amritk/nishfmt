@@ -6,7 +6,7 @@
 // comment by its constant.
 //
 // Ported from rustc_ast (MIT OR Apache-2.0, Copyright The Rust Project
-// Developers), for rustfmt 1.9.0 (MIT OR Apache-2.0, Copyright The Rust
+// Developers), for rustfmt 1.10.0 (MIT OR Apache-2.0, Copyright The Rust
 // Project Developers).
 
 import { growI32 } from "../core/arr";

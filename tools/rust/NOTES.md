@@ -169,7 +169,7 @@ reads.
 | `reorder.rs` `compare_items` | (`mod` and `extern crate` keep the plain order until 2027) | `reorder.ts` | `style2024_version_sort` |
 | `matches.rs` `rewrite_match` | inner attributes at the arms' indent | `matches.ts` `rsRewriteMatch` | `style2024_match` |
 | `matches.rs` `rewrite_match_body` | arrow comment after the last uncommented `=>`; `;` after a wrapped `return`/`break`/`continue` body | `matches.ts` `rewriteMatchBody`, `combineNextLine` | `style2024_match` |
-| `utils.rs` `trim_left_preserve_layout`, `indent_next_line` | lines of a string inside a comment are not re-indented | `comment.ts` `rsTrimLeftPreserveLayout`, `rsIndentNextLine` | |
+| `utils.rs` `trim_left_preserve_layout`, `indent_next_line` | lines of a string inside a comment are not re-indented | `comment.ts` `rsTrimLeftPreserveLayout`, `rsIndentNextLine` | `style2024_commented_strings` |
 | `macros.rs` `MacroBranch::rewrite` | a block-bodied branch reserves ` => {{` (6) | `macros.ts` `rewriteBranch` | `style2024_macros` |
 | `overflow.rs` `special_cases` | `trace!` is a special-case macro | `overflow.ts` `specialCaseArgs` | `style2024_macros` |
 | `overflow.rs` `try_overflow_last_item` | a method chain as a macro's last arg is forced onto one line | `overflow.ts` `tryOverflowLastItem` | `style2024_macros` |
@@ -190,6 +190,18 @@ reads.
 | `items.rs` `FnRetTy::rewrite` | the return type is shaped after `-> ` | `items.ts` `rsRewriteFnRetTy` | `style2024_types` |
 | `items.rs` `rewrite_fn_base` | the `)` and return type of an overlong param-less fn (#6840); the return type indent | `items.ts` `rewriteFnBase` | `style2024_items` |
 | `items.rs` `rewrite_bounds_on_where_clause` | blank lines between predicates go | `items.ts` `rewriteWhereClause` | `style2024_items` |
+
+Each case fails when its branch is put back on the 2021 path, except three
+branches no input can show at this configuration, ported all the same:
+
+- the version sort of an alias (`a as b`, `self as b`): `Ord for UseTree`
+  returns a segment's order only when the segments also differ with their
+  aliases removed, so an alias never decides;
+- the 6-column ` => {{` reserve of a block-bodied `macro_rules!` branch: it
+  differs from 5 only when the shape is 5 wide, and with 4-space indents at
+  width 120 a shape is a multiple of 4 wide;
+- `FnRetTy::rewrite`'s shape after `-> ` (`offset_left` for `Shape::legacy`):
+  types break at `shape.block()`, which drops the alignment the two differ in.
 
 ## Speed
 
