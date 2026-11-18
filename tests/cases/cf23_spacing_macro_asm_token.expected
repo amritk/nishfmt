@@ -1,0 +1,3 @@
+void f() { X(vld3.8 {d0 - d2}, d0) }
+#pragma optimization_parameter target_arch = SSE4.2
+[[gsl::suppress(type.5)]] int x = y.5;
