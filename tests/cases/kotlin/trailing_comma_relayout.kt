@@ -1,0 +1,3 @@
+fun f() {
+  functionCall(shortArg, namedArgument = "xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx")
+}

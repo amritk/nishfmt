@@ -1,0 +1,4 @@
+void f() {
+  (a, b) = (b, a);
+}
+var   unformatted  =   [1,2,  3];

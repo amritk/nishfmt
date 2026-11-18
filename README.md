@@ -23,10 +23,10 @@ pinned to one core:
 | --- | --- | ---: | ---: | ---: |
 | C++ | clang-format 18, `{BasedOnStyle: LLVM, ColumnLimit: 120}` | 99.6% of 10,344 | 87.0 s / 212.9 s | **7.07 s / 28.9 s** |
 | Java | google-java-format 1.28 | 100% of 7,627 | 75.2 s / 252.9 s | **2.17 s / 8.64 s** |
-| Kotlin | ktfmt 0.64, default style | 100% of 9,602 | 92.9 s / not run | **2.03 s / 7.02 s** |
+| Kotlin | ktfmt 0.65, default style | 100% of 9,602 | 92.9 s / not run | **2.03 s / 7.02 s** |
 | C# | CSharpier 1.4.0, default options except `end_of_line = crlf` | 100% of 13,988 | 63.0 s / 122.7 s | **3.10 s / 6.63 s** |
-| Dart, tall style | `dart format` 3.14 | 100% of 10,313 | 55.2 s / 59.9 s | **3.08 s / 8.50 s** |
-| Dart, short style (below 3.7) | `dart format` 3.14 | 100% of 8,218 | 25.4 s / 25.6 s | **3.76 s / 6.27 s** |
+| Dart, tall style | `dart format` 3.14.1 | 100% of 10,313 | 55.2 s / 59.9 s | **3.08 s / 8.50 s** |
+| Dart, short style (below 3.7) | `dart format` 3.14.1 | 100% of 8,218 | 25.4 s / 25.6 s | **3.76 s / 6.27 s** |
 | Swift | SwiftFormat 0.64.7, default rules | 100% of 6,710 | 131.7 s / 262.5 s | **10.2 s / 29.4 s** |
 | Rust | rustfmt 1.9.0, default config, edition 2021 | 100% of 7,899 | 7.6 s / 29.1 s | **1.35 s / 5.0 s** |
 | Ruby | `rubocop -a` 1.92.3, default config, `TargetRubyVersion: 3.3` | 100% of 1,999 | 303.9 s / 289.6 s | **4.00 s / 12.7 s** |
@@ -44,7 +44,8 @@ pinned to one core:
 - How the reference tools ran: clang-format 50 files a process; one
   google-java-format JVM over all files; CSharpier on .NET 10 with
   `--no-cache`; rustfmt 100 files a process; RuboCop with `--parallel` on 4
-  cores. ktfmt was not run on one core.
+  cores. ktfmt was not run on one core. The Kotlin row's times were
+  measured with ktfmt 0.64, before nishfmt moved to 0.65.
 - nishfmt picks the language from the file name: `.cpp .cc .cxx .hpp .hh
   .hxx .h`, `.java`, `.kt .kts`, `.cs`, `.dart`, `.swift`, `.rs`, and
   RuboCop's default `Include` for Ruby (`.rb`, `Gemfile`, `.gemspec`, ...).
@@ -55,10 +56,11 @@ rerun every number.
 ## Settings
 
 nishfmt formats each language the way its reference tool does at that
-tool's default settings, and only those. It reads no configuration file:
+tool's default settings, and only those. It reads no style configuration:
 `.clang-format`, `rustfmt.toml`, `.rubocop.yml`, `.swiftformat`,
-`.csharpierrc`, `.editorconfig` and `analysis_options.yaml` are all ignored,
-so a file comes out the same in any repository.
+`.csharpierrc` and `.editorconfig` are all ignored. The one exception is
+Dart, whose language version and page width `dart format` takes from the
+project (below).
 
 - **Java, Kotlin, Swift, Rust:** the tool's defaults: google-java-format's
   Google style, ktfmt's default style, SwiftFormat's default rules, and
@@ -81,9 +83,16 @@ so a file comes out the same in any repository.
   Only `end_of_line` differs from CSharpier's defaults. Line breaks that
   CSharpier copies from the source as they are (disabled `#if` text, an
   interpolated string whose holes span lines) keep their endings.
-- **Dart:** `dart format`'s defaults. The language version, which picks the
-  style, comes from a file's `// @dart=` comment, else 3.14; package configs
-  are not read.
+- **Dart:** `dart format`'s defaults, and the project around each file as
+  `dart format` reads it: the language version, which picks the style, comes
+  from the file's `// @dart=` comment, else its package in the nearest
+  `.dart_tool/package_config.json`, else 3.13 (the newest dart_style knows);
+  `pubspec.yaml` is not read. The page width comes from `// dart format
+  width=N` (tall style), else `formatter: page_width` in the nearest
+  `analysis_options.yaml` (with its includes), else 80. Where `dart format`
+  would warn and fall back or reject the file (syntax its language version
+  does not enable), or a project file is beyond nishfmt's reader, or
+  `trailing_commas: preserve` is set, the file is left untouched.
 - **Ruby:** `rubocop -a`: every cop RuboCop enables by default, with its safe
   corrections only, targeting Ruby 3.3.
 - **C++:** the one exception. clang-format's own default is LLVM style at 80

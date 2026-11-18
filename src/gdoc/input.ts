@@ -17,8 +17,10 @@ export const TF_JAVADOC: i32 = 16; // starts with /** and is not /**/ or /***
 export const TF_PARAM_COMMENT: i32 = 32; // /* name= */ by JavaInput's pattern
 export const TF_SPACES: i32 = 64; // a run of spaces or tabs
 export const TF_TOMB: i32 = 128; // a token whose line-ending spaces are written as tombstones (ktfmt)
+export const TF_OTHER_COMMENT: i32 = 256; // a comment that is neither // nor /* (ktfmt's shebang)
 
-export const TF_COMMENT: i32 = 12;
+// Tok.isComment.
+export const TF_COMMENT: i32 = 268; // TF_LINE_COMMENT | TF_BLOCK_COMMENT | TF_OTHER_COMMENT
 
 export class GInput {
   src: u8[];

@@ -1,5 +1,5 @@
 // Kotlin token and node types, as the Kotlin compiler's KtTokens and KtNodeTypes.
-// Generated from the Kotlin 2.3.20 sources (Apache License 2.0, Copyright JetBrains s.r.o.).
+// Generated from the Kotlin 2.4.10 sources (Apache License 2.0, Copyright JetBrains s.r.o.).
 
 export const T_INVALID: i32 = 0;
 export const T_EOF: i32 = 1;
@@ -279,7 +279,8 @@ export const N_COLLECTION_LITERAL_EXPRESSION: i32 = 279;
 export const N_TYPE_CODE_FRAGMENT: i32 = 280;
 export const N_EXPRESSION_CODE_FRAGMENT: i32 = 281;
 export const N_BLOCK_CODE_FRAGMENT: i32 = 282;
-export const N_COUNT: i32 = 283;
+export const N_COMPANION_BLOCK: i32 = 283;
+export const N_COUNT: i32 = 284;
 
 /** The PSI debug name of a type, as the PSI dump prints it. */
 export const ktTypeName = (t: i32): string => {
@@ -836,6 +837,8 @@ export const ktTypeName = (t: i32): string => {
       return "EXPRESSION_CODE_FRAGMENT";
     case 282:
       return "BLOCK_CODE_FRAGMENT";
+    case 283:
+      return "COMPANION_BLOCK";
     default:
       return "?";
   }

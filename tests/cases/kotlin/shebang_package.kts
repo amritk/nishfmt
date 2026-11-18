@@ -1,0 +1,6 @@
+#!/usr/bin/env kotlin
+
+package scripts
+val a = 1
+val b = 2
+println(a + b)

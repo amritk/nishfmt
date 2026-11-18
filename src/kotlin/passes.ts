@@ -4,7 +4,7 @@
 // the tree of the current text and writes the new text into `out`,
 // answering whether anything changed.
 //
-// Ported from ktfmt's Formatter.sortedAndDistinctImports,
+// Ported from ktfmt 0.65's Formatter.sortedAndDistinctImports,
 // RedundantElementManager, RedundantImportDetector,
 // RedundantSemicolonDetector, TrailingCommas and EnumEntryList (Apache
 // License 2.0, Copyright (c) Meta Platforms, Inc. and affiliates).
@@ -920,7 +920,7 @@ export class KPasses {
     } else {
       return;
     }
-    if (count <= 1 || hasComma || !this.listHasNewline(n)) {
+    if (count === 0 || hasComma || !this.listHasNewline(n)) {
       return;
     }
     const leaf = this.leftLeaf(last);

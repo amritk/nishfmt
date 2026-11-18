@@ -3,7 +3,7 @@
 // rest is the re-indentation google-java-format does, without its
 // parameter-comment rewrite.
 //
-// Ported from ktfmt's KDocCommentsHelper (Apache License 2.0, Copyright (c)
+// Ported from ktfmt 0.65's KDocCommentsHelper (Apache License 2.0, Copyright (c)
 // Meta Platforms, Inc. and affiliates).
 
 import {

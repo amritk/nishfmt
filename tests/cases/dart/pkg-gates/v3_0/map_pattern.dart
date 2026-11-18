@@ -1,0 +1,4 @@
+void f() {
+  var {'a': a} = m;
+}
+var   unformatted  =   [1,2,  3];

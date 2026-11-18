@@ -4,7 +4,7 @@
 // `@property` tag. The lexer is the Kotlin compiler's KDoc.flex, reduced to
 // the tokens the KDoc parser's sections and tags are made of.
 //
-// Ported from the Kotlin compiler's KDoc.flex, KDocParser and
+// Ported from the Kotlin compiler 2.4.10's KDoc.flex, KDocParser and
 // KDocLinkParser (Apache License 2.0, Copyright JetBrains s.r.o.).
 
 // Token kinds.
@@ -17,6 +17,7 @@ const KD_CODE_BLOCK_TEXT: i32 = 6;
 const KD_TAG_NAME: i32 = 7;
 const KD_LINK: i32 = 8;
 const KD_OTHER: i32 = 9; // escaped char, parens, bad character
+const KD_CODE_SPAN_TEXT: i32 = 10;
 
 // Lexer states.
 const KS_INITIAL: i32 = 0;
@@ -29,6 +30,8 @@ const KS_CODE_BLOCK: i32 = 6;
 const KS_CODE_BLOCK_LINE_BEGINNING: i32 = 7;
 const KS_CODE_BLOCK_CONTENTS_BEGINNING: i32 = 8;
 const KS_INDENTED_CODE_BLOCK: i32 = 9;
+const KS_CODE_SPAN_CONTENTS: i32 = 10;
+const KS_CODE_SPAN_LINE_BEGINNING: i32 = 11;
 
 const BT_NONE: i32 = 0;
 const BT_PARAGRAPH: i32 = 1;
@@ -42,6 +45,10 @@ class KDocLexer {
   state: i32 = 0;
   breaks: i32 = 0;
   block: i32 = 0;
+  // The character and length of the fence that opened the current code
+  // block or code span.
+  fenceChar: i32 = 0;
+  fenceLen: i32 = -1;
   kinds: i32[];
   starts: i32[];
   ends: i32[];
@@ -140,6 +147,51 @@ class KDocLexer {
       this.beginAndUpdate(KS_CONTENTS);
       return;
     }
+    if (s === KS_CODE_SPAN_CONTENTS) {
+      if (endLen > 0) {
+        this.emit(p + endLen === this.e ? KD_END : KD_TEXT, endLen);
+        return;
+      }
+      if (c === 10 || c === 13) {
+        this.emit(KD_WS, 1);
+        this.beginAndUpdate(KS_CODE_SPAN_LINE_BEGINNING);
+        return;
+      }
+      if (c === 96) {
+        const k = kdRun(this, p, 96);
+        if (k === this.fenceLen && c === this.fenceChar) {
+          // The code span's end.
+          this.fenceLen = -1;
+          this.fenceChar = 0;
+          this.emit(KD_TEXT, k);
+          this.beginAndUpdate(KS_CONTENTS);
+        } else {
+          this.emit(KD_CODE_SPAN_TEXT, k);
+        }
+        return;
+      }
+      this.emit(KD_CODE_SPAN_TEXT, kdCharLen(c));
+      return;
+    }
+    if (s === KS_CODE_SPAN_LINE_BEGINNING) {
+      if (ws > 0) {
+        this.emit(KD_WS, ws);
+        return;
+      }
+      if (endLen > 0) {
+        this.emit(p + endLen === this.e ? KD_END : KD_TEXT, endLen);
+        return;
+      }
+      if (stars > 0) {
+        this.emit(KD_LEADING_ASTERISK, stars);
+        this.beginAndUpdate(KS_CODE_SPAN_CONTENTS);
+        return;
+      }
+      // [\s\S]: a bad character, in the same state.
+      this.block = BT_PARAGRAPH;
+      this.emit(KD_OTHER, kdCharLen(c));
+      return;
+    }
     if (s === KS_LINE_BEGINNING || s === KS_CONTENTS_BEGINNING || s === KS_CONTENTS) {
       if (s === KS_CONTENTS_BEGINNING && c === 64) {
         const id = kdPlainIdent(this, p + 1);
@@ -168,21 +220,32 @@ class KDocLexer {
         this.emit(KD_TEXT, ws);
         return;
       }
-      // A code fence runs to the end of the line.
-      if (
-        (c === 96 && this.at(p + 1) === 96 && this.at(p + 2) === 96) ||
-        (c === 126 && this.at(p + 1) === 126 && this.at(p + 2) === 126)
-      ) {
-        let q = p + 3;
-        while (q < this.e && this.at(q) !== 10 && this.at(q) !== 13) {
+      // CODE_FENCE_START / LINE_BREAK_CHAR, at the start of a line only:
+      // three or more backticks (and no backtick after them) or tildes, to
+      // the end of the line.
+      if (s === KS_CONTENTS_BEGINNING && (c === 96 || c === 126)) {
+        const k = kdRun(this, p, c);
+        let q = p + k;
+        while (q < this.e && this.at(q) !== 10 && this.at(q) !== 13 && !(c === 96 && this.at(q) === 96)) {
           q++;
         }
-        if (q - p >= endLen) {
+        if (k >= 3 && (this.at(q) === 10 || this.at(q) === 13)) {
           this.block = BT_CODE;
+          this.fenceChar = c;
+          this.fenceLen = k;
           this.emit(KD_TEXT, q - p);
           this.beginAndUpdate(KS_CODE_BLOCK_LINE_BEGINNING);
           return;
         }
+      }
+      // BACKTICK_STRING opens a code span.
+      if (c === 96 && s !== KS_LINE_BEGINNING) {
+        const k = kdRun(this, p, 96);
+        this.fenceChar = c;
+        this.fenceLen = k;
+        this.emit(KD_TEXT, k);
+        this.beginAndUpdate(KS_CODE_SPAN_CONTENTS);
+        return;
       }
       const link = kdCodeLink(this, p);
       if (link > 0 && link >= endLen) {
@@ -199,7 +262,7 @@ class KDocLexer {
         return;
       }
       this.block = BT_PARAGRAPH;
-      if (c === 92 && (this.at(p + 1) === 91 || this.at(p + 1) === 93)) {
+      if (c === 92 && kdIsEscapable(this.at(p + 1))) {
         this.emit(KD_OTHER, 2);
       } else {
         this.emit(c === 40 || c === 41 ? KD_OTHER : KD_TEXT, kdCharLen(c));
@@ -222,17 +285,23 @@ class KDocLexer {
       return;
     }
     if (s === KS_CODE_BLOCK_LINE_BEGINNING || s === KS_CODE_BLOCK_CONTENTS_BEGINNING) {
-      if (
-        (c === 96 && this.at(p + 1) === 96 && this.at(p + 2) === 96) ||
-        (c === 126 && this.at(p + 1) === 126 && this.at(p + 2) === 126)
-      ) {
-        let q = p + 3;
+      // CODE_FENCE_END / [ \t\f]* [\n]: the fence that opened the block
+      // closes it; any other run is code.
+      if (c === 96 || c === 126) {
+        const k = kdRun(this, p, c);
+        let q = p + k;
         while (this.at(q) === 32 || this.at(q) === 9 || this.at(q) === 12) {
           q++;
         }
-        if (this.at(q) === 10 && 3 >= endLen) {
-          this.emit(KD_TEXT, 3);
-          this.beginAndUpdate(KS_CONTENTS);
+        if (this.at(q) === 10) {
+          if (k === this.fenceLen && c === this.fenceChar) {
+            this.fenceChar = 0;
+            this.fenceLen = -1;
+            this.emit(KD_TEXT, k);
+            this.beginAndUpdate(KS_CONTENTS);
+          } else {
+            this.emit(KD_CODE_BLOCK_TEXT, k);
+          }
           return;
         }
       }
@@ -268,6 +337,19 @@ const kdWsRun = (lx: KDocLexer, p: i32): i32 => {
   }
   return q - p;
 };
+
+/** The length of the run of byte `c` at `p` (countRepeating). */
+const kdRun = (lx: KDocLexer, p: i32, c: i32): i32 => {
+  let q = p;
+  while (lx.at(q) === c) {
+    q++;
+  }
+  return q - p;
+};
+
+/** ESCAPED_CHARS: a backslash before any ASCII punctuation. */
+const kdIsEscapable = (c: i32): boolean =>
+  (c >= 33 && c <= 47) || (c >= 58 && c <= 64) || (c >= 91 && c <= 96) || (c >= 123 && c <= 126);
 
 /** UTF-8 sequence length of a lead byte (a lexer step consumes one character). */
 const kdCharLen = (c: i32): i32 => (c < 0xc0 ? 1 : c < 0xe0 ? 2 : c < 0xf0 ? 3 : 4);
