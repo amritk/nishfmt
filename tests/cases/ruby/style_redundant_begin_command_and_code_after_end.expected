@@ -1,0 +1,36 @@
+# frozen_string_literal: true
+
+def m(a = (foo bar), b: (foo bar))
+  a + b
+end
+
+do_something @var ||= (foo bar)
+
+case x
+when @var = (foo bar)
+
+  1
+end
+
+@a = @b = foo bar
+
+do_something(@x = @var = (foo bar))
+
+@memo ||= begin
+  foo if bar &&
+         baz
+end
+
+[
+
+  foo, 1
+]
+
+values = [
+  begin
+    foo # comment
+  end, 2
+]
+puts values
+
+@c = foo bar if cond
