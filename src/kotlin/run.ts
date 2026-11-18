@@ -564,7 +564,10 @@ const ensureParsed = (e: KotlinEngine, path: string): boolean => {
 /** Formatter.prettyPrint over the parsed tree: the result is left in `e.g.out`. */
 const prettyPrint = (e: KotlinEngine, src: u8[], n: i32): boolean => {
   const t0 = e.prof ? monotonicNanos() : toI64(0);
-  tokenizeKotlin(e.inp, e.b.tree, 0, src, n);
+  if (!tokenizeKotlin(e.inp, e.b.tree, 0, src, n)) {
+    e.g.failure = "unclosed comment";
+    return false;
+  }
   const t1 = e.prof ? monotonicNanos() : toI64(0);
   const g = e.g;
   g.reset();

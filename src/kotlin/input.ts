@@ -37,13 +37,31 @@ export const kIsComment = (t: i32): boolean =>
 /** Whether `getChildren()` lists the node: composites, and KDoc (a lazily parsed composite). */
 export const kIsPsiChild = (tr: KTree, c: i32): boolean => tr.leaf[c] === 0 || tr.type[c] === T_DOC_COMMENT;
 
-/** Fills `inp` with the toks of the tree under `root`. */
-export const tokenizeKotlin = (inp: GInput, tr: KTree, root: i32, src: u8[], n: i32): void => {
+/**
+ * Fills `inp` with the toks of the tree under `root`; answers false when a
+ * comment opens with `/*` and does not close (Tokenizer's "Unclosed
+ * comment", for scripts and files alike).
+ */
+export const tokenizeKotlin = (inp: GInput, tr: KTree, root: i32, src: u8[], n: i32): boolean => {
+  for (let i = 0; i < tr.n; i++) {
+    if (kIsComment(tr.type[i]) && kIsUnclosed(src, tr.start[i], tr.end[i])) {
+      return false;
+    }
+  }
   inp.reset(src, n);
   kVisitTok(inp, tr, root);
   inp.addEof(n, 0);
   inp.buildTokens();
+  return true;
 };
+
+// Whether src[a, b) starts with a slash and a star and does not end with a
+// star and a slash.
+const kIsUnclosed = (src: u8[], a: i32, b: i32): boolean =>
+  b - a >= 2 &&
+  toI32(src[a]) === 47 &&
+  toI32(src[a + 1]) === 42 &&
+  !(toI32(src[b - 2]) === 42 && toI32(src[b - 1]) === 47);
 
 const kVisitTok = (inp: GInput, tr: KTree, node: i32): void => {
   const ty = tr.type[node];
