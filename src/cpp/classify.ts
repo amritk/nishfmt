@@ -3236,7 +3236,6 @@ const isPossibleMacro = (d: Doc, t: i32): boolean => {
 };
 
 /** The token before `t`, comments skipped, or -1. */
-
 const prevCode = (d: Doc, t: i32): i32 => {
   let p = d.prv[t];
   while (p >= 0 && d.kind[p] === K_COMMENT) {
