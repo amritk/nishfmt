@@ -5,7 +5,7 @@
 // output) depends on them. Lazy blocks and lambdas are parsed eagerly,
 // which builds the same tree their reparse would.
 //
-// Ported from the Kotlin compiler 2.3.20 (Apache License 2.0, Copyright
+// Ported from the Kotlin compiler 2.4.10 (Apache License 2.0, Copyright
 // JetBrains s.r.o. and Kotlin Programming Language contributors).
 
 import {
@@ -42,6 +42,7 @@ import {
   N_CLASS,
   N_CLASS_BODY,
   N_CLASS_INITIALIZER,
+  N_COMPANION_BLOCK,
   N_CLASS_LITERAL_EXPRESSION,
   N_COLLECTION_LITERAL_EXPRESSION,
   N_CONDITION,
@@ -428,7 +429,7 @@ export class KParser {
   PROPERTY_NAME_FOLLOW_MULTI_DECLARATION_RECOVERY_SET: i32[];
   PROPERTY_NAME_FOLLOW_FUNCTION_OR_PROPERTY_RECOVERY_SET: i32[];
   IDENTIFIER_EQ_COLON_SEMICOLON_SET: i32[];
-  COMMA_RPAR_COLON_EQ_SET: i32[];
+  COMMA_RPAR_RBRACKET_COLON_EQ_SET: i32[];
   ACCESSOR_FIRST_OR_PROPERTY_END: i32[];
   RPAR_IDENTIFIER_COLON_LBRACE_EQ_SET: i32[];
   COMMA_COLON_RPAR_SET: i32[];
@@ -611,7 +612,7 @@ export class KParser {
       this.TOP_LEVEL_DECLARATION_FIRST,
     );
     this.IDENTIFIER_EQ_COLON_SEMICOLON_SET = tsNew([T_IDENTIFIER, T_EQ, T_COLON, T_SEMICOLON]);
-    this.COMMA_RPAR_COLON_EQ_SET = tsNew([T_COMMA, T_RPAR, T_COLON, T_EQ]);
+    this.COMMA_RPAR_RBRACKET_COLON_EQ_SET = tsNew([T_COMMA, T_RPAR, T_RBRACKET, T_COLON, T_EQ]);
     this.ACCESSOR_FIRST_OR_PROPERTY_END = tsOr(
       this.MODIFIER_KEYWORDS,
       tsNew([T_AT, T_GET_KEYWORD, T_SET_KEYWORD, T_FIELD_KEYWORD, T_EOL_OR_SEMICOLON, T_RBRACE]),
@@ -1740,15 +1741,21 @@ export class KParser {
       return;
     }
     const decl = this.mark();
+    const isCompanionBlock = this.at(T_COMPANION_KEYWORD) && this.lookahead(1) === T_LBRACE;
     const detector = new ModDetector();
     this.parseModifierList(detector, this.EMPTY, false);
-    const declType = this.parseMemberDeclarationRest(detector);
+    const declType = isCompanionBlock ? this.parseCompanionBlock() : this.parseMemberDeclarationRest(detector);
     if (declType < 0) {
       this.errorWithRecovery(this.EMPTY);
       this.b.drop(decl);
     } else {
       this.closeDeclarationWithCommentBinders(decl, declType, true);
     }
+  }
+
+  private parseCompanionBlock(): i32 {
+    this.parseClassBody();
+    return N_COMPANION_BLOCK;
   }
 
   private parseMemberDeclarationRest(detector: ModDetector): i32 {
@@ -1961,7 +1968,7 @@ export class KParser {
             this.errorWithRecovery(recoverySet);
           }
         } else {
-          this.parseModifierListSimple(this.COMMA_RPAR_COLON_EQ_SET);
+          this.parseModifierListSimple(this.COMMA_RPAR_RBRACKET_COLON_EQ_SET);
         }
         this.expectRec(T_IDENTIFIER, recoverySet);
         if (this.at(T_COLON)) {

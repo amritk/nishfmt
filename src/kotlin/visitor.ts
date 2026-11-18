@@ -526,7 +526,7 @@ export class KVisitor {
         this.declareOne(
           false,
           this.child(n, N_MODIFIER_LIST),
-          -1,
+          this.valOrVar(n),
           -1,
           -1,
           id,
@@ -1360,6 +1360,13 @@ export class KVisitor {
 
   visitDestructuringDeclaration(n: i32): void {
     this.sync(n);
+    // A destructuring declaration's only modifiers are annotations, each
+    // block on lines of their own.
+    const mods = this.child(n, N_MODIFIER_LIST);
+    if (mods >= 0) {
+      this.visitModifierList(mods);
+      this.forced();
+    }
     const vv = this.valOrVar(n);
     if (vv >= 0) {
       this.tokN(vv);
