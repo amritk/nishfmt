@@ -303,16 +303,15 @@ export class JParser {
       this.restore(m);
       t.a[cu] = t.empty();
     }
-    // javac (since JDK 21) rejects semicolons after the package or an
-    // import declaration that are followed by another import: "extraneous
-    // semicolon". After the last import they are empty type declarations.
-    const seenPackage = t.b[cu] >= 0;
+    // javac (since JDK 21) rejects semicolons before an import declaration:
+    // "extraneous semicolon". After the last import they are empty type
+    // declarations.
     let semis = false;
     while (this.is(";")) {
       this.next();
       semis = true;
     }
-    if (semis && seenPackage && this.is("import")) {
+    if (semis && this.is("import")) {
       this.fail();
     }
     const im = t.mark();

@@ -296,6 +296,8 @@ export class JlEngine {
   reset(): void {
     this.failed = false;
     this.failure = "";
+    this.commentsEngine.failed = false;
+    this.commentsEngine.failure = "";
     this.nInd = 0;
     for (let i = 0; i < 513; i++) {
       this.constCache[i] = -1;
@@ -406,10 +408,6 @@ export class JlEngine {
     this.tagTaken[t] = -1;
     this.nTags = t + 1;
     return t;
-  }
-
-  wasBreakTaken(tag: i32): boolean {
-    return this.tagTaken[tag] === 1;
   }
 
   flatId(s: string): i32 {
@@ -536,10 +534,6 @@ export class JlEngine {
     this.addOp(K_BREAK, FORCED, 0, 0, -1);
   }
 
-  forcedBreakInd(plusIndent: i32): void {
-    this.addOp(K_BREAK, FORCED, 0, plusIndent, -1);
-  }
-
   depthNow(): i32 {
     return this.depth;
   }
@@ -573,29 +567,6 @@ export class JlEngine {
 
   tok(s: string): void {
     this.token(s, true, 0, -1);
-  }
-
-  /** token(text of src[a, b)): outputs the next input token when its text is those bytes. */
-  tokBytes(a: i32, b: i32, plusIndentCommentsBefore: i32): void {
-    const p = this.peekTok(0);
-    const inp = this.inp;
-    let same = p >= 0 && inp.tEnd[p] - inp.tPos[p] === b - a;
-    if (same && inp.tPos[p] !== a) {
-      for (let i = 0; i < b - a; i++) {
-        if (inp.src[inp.tPos[p] + i] !== inp.src[a + i]) {
-          same = false;
-          break;
-        }
-      }
-    }
-    if (same) {
-      this.addOp(K_TOKEN, this.tokenI, 1, plusIndentCommentsBefore, -1);
-      this.tokenI = this.tokenI + 1;
-    } else {
-      this.fail(
-        `expected token '${p >= 0 ? inp.text(p) : "EOF"}'; generated ${String.fromBytes(inp.src, a, b)} instead`,
-      );
-    }
   }
 
   /** token(text of tok `t`): outputs the next input token when its text is the same. */
@@ -1503,7 +1474,7 @@ export class JlEngine {
         this.savedTag = growI32(this.savedTag, s * 2 + 16);
         this.savedVal = growI32(this.savedVal, s * 2 + 16);
       }
-      // SavedBreakTag keeps wasBreakTaken(), which reads an unset tag as not taken.
+      // SavedBreakTag keeps BreakTag.wasBreakTaken(), which reads an unset tag as not taken.
       this.savedTag[s] = tag;
       this.savedVal[s] = this.tagTaken[tag] === 1 ? 1 : 0;
       this.nSaved = s + 1;
@@ -1669,6 +1640,10 @@ export class JlEngine {
     }
     if (kind === D_TOK) {
       const text = this.rewrite(this.commentsEngine, this.dA[d], this.maxWidth, col);
+      // The rewriter reports a comment it cannot format on the engine it was given.
+      if (this.commentsEngine.failed) {
+        this.fail(this.commentsEngine.failure);
+      }
       const nl = jlFirstBreak(text);
       if (nl >= 0) {
         this.endLine(col + nl);
