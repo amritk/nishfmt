@@ -52,6 +52,7 @@ import {
   rsTrimmedLastLineWidth,
 } from "./comment";
 import { RsCtx } from "./context";
+import { KW_CONST, T_NOT } from "./lexer";
 import {
   RHS_BOUNDS,
   RHS_EXPR,
@@ -1924,21 +1925,28 @@ export const rsFormatImpl = (ctx: RsCtx, item: i32, bi: i32, al: i32): string | 
   return result + "}";
 };
 
-/** Whether the impl's `const` is written after `impl`, right before the first type in [lo, tyLo). */
-const isConstAfterImpl = (ctx: RsCtx, lo: i32, tyLo: i32): boolean => {
-  let s = rsTrimEnd(ctx.snippet(lo, tyLo));
-  if (s.endsWith("!")) {
-    s = rsTrimEnd(s.slice(0, toI32(s.length) - 1));
+/**
+ * Whether the impl's `const` is written after `impl`: the token before the
+ * first type (`!` aside) is `const`. Tokens hold no comments, so a comment
+ * anywhere in between does not hide it.
+ */
+const isConstAfterImpl = (ctx: RsCtx, tyLo: i32): boolean => {
+  const t = ctx.f.t;
+  let l = 0;
+  let h = t.nt;
+  while (l < h) {
+    const m = (l + h) >> 1;
+    if (t.lo[m] < tyLo) {
+      l = m + 1;
+    } else {
+      h = m;
+    }
   }
-  if (!s.endsWith("const")) {
-    return false;
+  let i = l - 1;
+  if (i >= 0 && t.kind[i] === T_NOT) {
+    i--;
   }
-  const n = toI32(s.length);
-  if (n === 5) {
-    return true;
-  }
-  const c = s.charCodeAt(n - 6);
-  return !(c === 95 || (c >= 48 && c <= 57) || (c >= 65 && c <= 90) || (c >= 97 && c <= 122));
+  return i >= 0 && t.kw[i] === KW_CONST;
 };
 
 const formatImplRefAndType = (ctx: RsCtx, item: i32, bi: i32, al: i32): string | null => {
@@ -1949,10 +1957,10 @@ const formatImplRefAndType = (ctx: RsCtx, item: i32, bi: i32, al: i32): string |
   const selfTy = ast.c[item];
   const f = ast.fl[item];
   const firstTy = ofTrait >= 0 ? ofTrait : selfTy;
-  if ((f & IT_CONST) !== 0 && isConstAfterImpl(ctx, ast.lo[item], ast.lo[firstTy])) {
+  if ((f & IT_CONST) !== 0 && isConstAfterImpl(ctx, ast.lo[firstTy])) {
     // rustc 1.99 rejects `impl const Tr for T` and parses an inherent
-    // `impl const S` as an impl of the type `const S`, which rustfmt keeps as
-    // written. The parser still takes both the 1.9 way, so skip the file.
+    // `impl const S` as an impl of the type `const S`. The parser still takes
+    // both the 1.9 way, so skip the file, whatever comments sit in between.
     ctx.unsupported("impl const");
     return null;
   }

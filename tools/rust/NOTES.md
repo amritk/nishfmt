@@ -62,7 +62,8 @@ Behaviors of rustfmt 1.10.0 that look like bugs, which the port keeps
   whole type (so a `(` in a `for<#[attr] 'a>` binder is taken for it);
 - a fn pointer type's list item for an unnamed param starts at its type, so
   a block comment after the param's attributes makes them a pre-comment
-  too and they are printed twice (the output is not a fixed point);
+  too and they are printed twice (`fn(#[a] /* c */ i32)`; the output is
+  not a fixed point, so `tests/run.sh` cannot hold it as a case);
 - a struct pattern field's missing-comment span runs up to the pattern, so
   `ident:` is duplicated after a comment between attribute and field;
 - loop bodies drop their inner attributes;
@@ -100,14 +101,18 @@ Not ported, and why:
   style edition 2024 path in `rewrite_fn_base`; the long-return-type fix
   (#6835) is style edition 2027 only.
 - The parser changes of rustc 1.99: `impl const Tr for T` is an error and an
-  inherent `impl const S` parses `const S` as a type that rustfmt keeps as
-  written. The port's parser still takes both the 1.9 way, so
-  `formatImplRefAndType` skips a file with `const` after `impl`
-  (`v1_10_inherent_impl_const`) until the parser follows rustc. It also
-  rejects `const unsafe impl`, which rustc accepts.
+  inherent `impl const S` parses `const S` as a type (rustfmt prints
+  `impl const S`, dropping a comment after `const`). The port's parser still
+  takes both the 1.9 way, so `formatImplRefAndType` skips a file whose
+  token before the first type (`!` aside) is `const`, whatever comments sit
+  around it (`v1_10_inherent_impl_const`; the trait forms, which the
+  reference rejects, cannot have an `.expected`), until the parser follows
+  rustc. It also rejects `const unsafe impl`, which rustc accepts.
 - Unstable syntax: `super let`, field representing types, `mut`/`impl`
-  restrictions, try blocks, fn delegation, pattern types, direct const args,
-  `cfg_select!` (formatted on nightly only). Such files stay skipped.
+  restrictions, fn delegation, pattern types, direct const args,
+  `cfg_select!` (formatted on nightly only). Such files stay skipped. Try
+  blocks are formatted: the `expr.rs` try-block arms are the same in 1.9.0
+  and 1.10.0, so the forms the parser takes need no change.
 - Options nishfmt does not read: `--file-lines` (the `missed_spans.rs`,
   `visitor.rs` and `formatting.rs` changes), `hex_literal_case` (now
   stable, default `Preserve`), `doc_comment_code_block_small_heuristics`,
