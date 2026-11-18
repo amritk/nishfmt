@@ -37,7 +37,7 @@ references the Ruby front end is compared against.
 
 ## Upgrading RuboCop
 
-The 1.92.2 to 1.92.3 upgrade (rubocop-ast 1.52.0, regexp_parser 2.13.4,
+The upgrade to 1.92.3 (rubocop-ast 1.52.0, regexp_parser 2.13.4,
 racc 1.8.1; parser 3.3.13.0 and prism 2.1.0 unchanged) was found by testing
 rather than by reading alone:
 

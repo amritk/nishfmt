@@ -159,7 +159,7 @@ export const srdFindEndLine = (src: RbSource, n: i32): i32 => {
     }
     return src.line(a.exS(p));
   }
-  // node.source_range.last_line (1.92.3; 1.92.2 took node.loc.end.line, which
+  // node.source_range.last_line (before 1.92.3 it took node.loc.end.line, which
   // raised for a node without an end).
   return src.line(a.exE(n));
 };
