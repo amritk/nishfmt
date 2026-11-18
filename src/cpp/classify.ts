@@ -161,6 +161,8 @@ import {
   TT_RANGE_BASED_FOR_LOOP_COLON,
   TT_START_OF_NAME,
   TT_CLASS_HEAD_NAME,
+  TT_ENUM_LBRACE,
+  TT_ENUM_EQUAL,
   TT_TEMPLATE_CLOSER,
   TT_TEMPLATE_OPENER,
   TT_TRAILING_ANNOTATION,
@@ -1423,6 +1425,18 @@ export class Classifier {
             const p = this.prev(t);
             if (!(p >= 0 && this.k(p) === P_LSQUARE)) {
               this.set(t, TT_BINARY_OPERATOR);
+            }
+          }
+          // clang-format 23: a `=` whose innermost brace is an enum's is
+          // TT_EnumEqual (consumeToken, `Scopes.back() == ST_Enum`).
+          if (k === P_EQUAL && this.ty(t) !== TT_OVERLOADED_OPERATOR) {
+            let x = dep;
+            while (x > 0 && this.k(this.open[x]) !== P_LBRACE) {
+              x--;
+            }
+            if (x > 0 && this.ty(this.open[x]) === TT_ENUM_LBRACE) {
+              d.type[t] = TT_ENUM_EQUAL;
+              d.final[t] = 1;
             }
           }
           break;
@@ -2899,7 +2913,7 @@ const spaceBeforeCode = (d: Doc, l: i32, r: i32): boolean => {
   }
   if (
     (rt === TT_BINARY_OPERATOR && lk !== P_LPAREN) ||
-    ((lt === TT_BINARY_OPERATOR || lt === TT_CONDITIONAL_EXPR) && rk !== P_RPAREN)
+    ((lt === TT_BINARY_OPERATOR || lt === TT_ENUM_EQUAL || lt === TT_CONDITIONAL_EXPR) && rk !== P_RPAREN)
   ) {
     return true;
   }

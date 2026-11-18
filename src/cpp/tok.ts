@@ -240,6 +240,7 @@ export const TT_INLINE_ASM_BRACE: i32 = 59; // the braces of `__asm { ... }`
 export const TT_OBJC_METHOD_SPECIFIER: i32 = 60; // the `-` or `+` starting an Objective-C method declaration
 export const TT_SELECTOR_NAME: i32 = 61; // a part of an Objective-C selector (`initWithX` in `initWithX:`)
 export const TT_OBJC_METHOD_EXPR: i32 = 62; // the `:` after a selector part
+export const TT_ENUM_EQUAL: i32 = 64; // an enumerator's `=`: no binary operator
 export const TT_CLASS_HEAD_NAME: i32 = 63; // the name of a record with a body (`class [[a]] Name {`)
 
 // Brace kinds.
