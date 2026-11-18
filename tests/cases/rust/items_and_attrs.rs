@@ -4,7 +4,7 @@ mod relative_to;
 mod parse;
 
 #[case::long(
-	r#"$in | detect columns | get data | any {|line| ($line | str contains "+") and ($line | str contains "-")}"#,
+	r#"$in | detect columns | get data | any {|line| ($line | str contains "+") and ($line | str contains "-") and ($line | str contains "*")}"#,
 	true
 )]
 fn f(#[case] code: &str) {}

@@ -1,0 +1,22 @@
+// Style edition 2024 formats a slice pattern as an overflowable list, as an
+// array expression is (patterns.rs), instead of joining its items with ", ".
+fn f(x: &[u32]) {
+    match x {
+        [
+            first_element_name,
+            second_element_name,
+            third_element_name,
+            fourth_element,
+            fifth,
+            sixth,
+        ] => {}
+        [a, b, .., c] => {}
+        [a, b] => {}
+        [
+            single_element_with_a_really_long_name_that_goes_on,
+            ref other @ ..,
+            last_element_name_here,
+        ] => {}
+        _ => {}
+    }
+}

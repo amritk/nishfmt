@@ -28,7 +28,7 @@ pinned to one core:
 | Dart, tall style | `dart format` 3.14.1 | 100% of 10,313 | 55.2 s / 59.9 s | **3.08 s / 8.50 s** |
 | Dart, short style (below 3.7) | `dart format` 3.14.1 | 100% of 8,218 | 25.4 s / 25.6 s | **3.76 s / 6.27 s** |
 | Swift | SwiftFormat 0.64.7, default rules | 100% of 6,710 | 131.7 s / 262.5 s | **10.2 s / 29.4 s** |
-| Rust | rustfmt 1.10.0, default config, edition 2021 | 100% of 7,899 | 7.6 s / 29.1 s | **1.35 s / 5.0 s** |
+| Rust | rustfmt 1.10.0, edition 2024, `style_edition = "2024"`, `max_width = 120` | 100% of 8,321 | TIMEREF | **TIMENISH** |
 | Ruby | `rubocop -a` 1.92.3, default config, `TargetRubyVersion: 3.3` | 100% of 1,999 | 303.9 s / 289.6 s | **4.00 s / 12.7 s** |
 
 - **Identical** is the share of the corpus files the reference tool accepts
@@ -62,9 +62,18 @@ tool's default settings, and only those. It reads no style configuration:
 Dart, whose language version and page width `dart format` takes from the
 project (below).
 
-- **Java, Kotlin, Swift, Rust:** the tool's defaults: google-java-format's
-  Google style, ktfmt's default style, SwiftFormat's default rules, and
-  rustfmt's default config with edition 2021.
+- **Java, Kotlin, Swift:** the tool's defaults: google-java-format's
+  Google style, ktfmt's default style and SwiftFormat's default rules.
+- **Rust:** rustfmt with three settings, as
+  `rustfmt --edition 2024 --config style_edition=2024,max_width=120`
+  formats (everything else, such as the width heuristics derived from
+  `max_width`, at its default):
+
+  ```toml
+  edition = "2024"
+  style_edition = "2024"
+  max_width = 120
+  ```
 - **C#:** CSharpier's default options, except that every line break is CRLF
   whatever the input's line endings are, as CSharpier writes under this
   `.editorconfig`:
@@ -150,7 +159,7 @@ Formats each file to match its language's reference formatter:
   Kotlin (.kt .kts)                   ktfmt 0.64
   Ruby (.rb, Gemfile, .gemspec, ...)  rubocop -a 1.92.3
   Swift (.swift)                      SwiftFormat 0.64.7
-  Rust (.rs)                          rustfmt 1.10.0, edition 2021
+  Rust (.rs)                          rustfmt 1.10.0, edition 2024, max_width 120
   Dart (.dart)                        dart format 3.14
   C# (.cs)                            CSharpier 1.4.0
 

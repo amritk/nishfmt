@@ -1015,7 +1015,7 @@ const identifyComment = (orig: string, shape: RsShape, cfg: RsConfig, isDoc: boo
 
 /** rewrite_comment(orig, block_style, shape, config). */
 export const rsRewriteComment = (orig: string, shape: RsShape, cfg: RsConfig): string | null =>
-  identifyComment(rsTrimStart(orig), shape, cfg, false);
+  identifyComment(orig, shape, cfg, false);
 
 /** rewrite_doc_comment. */
 export const rsRewriteDocComment = (orig: string, shape: RsShape, cfg: RsConfig): string | null =>

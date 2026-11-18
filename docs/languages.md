@@ -62,13 +62,15 @@ Files the reference rejects at their version are left out.
 The Rust side ports rustfmt 1.10.0 onto a lexer and parser modelled on
 rustc_parse (a struct-of-arrays AST with rustc's spans): its items,
 expressions, chains, patterns, types, comments, imports and macros, with
-`macro_rules!` bodies formatted as rustfmt does by default. The corpus is cargo, tokio,
-serde, ripgrep, clap, hyper, alacritty, diesel, bevy, regex, fd, bat and
-nushell; the 450 files rustfmt
-rejects under edition 2021 (mostly let chains) are left out. `rust2`, the
-same files first formatted with five other rustfmt configs, also matches on
-all 7899, as do the 3306 crates of a cargo registry and rustfmt's own test
-inputs. Macros 2.0 bodies and `rustfmt::skip::macros` are not ported; such
+`macro_rules!` bodies formatted as rustfmt does by default. It formats at
+edition 2024, style edition 2024 (version-sorted imports and the other
+style-guide changes) and `max_width = 120`, and measures width as rustfmt
+does, with unicode-width 0.1.14. The corpus is cargo, tokio, serde, ripgrep,
+clap, hyper, alacritty, diesel, bevy, regex, fd, bat and nushell: 8321 of its
+8349 files match, and the 28 rustfmt rejects (unstable syntax, mostly) are
+left out of the comparison and left untouched by nishfmt. `rust2`, the same
+files first formatted with five other rustfmt configs, also matches on all
+8321. Macros 2.0 bodies and `rustfmt::skip::macros` are not ported; such
 files are left unchanged.
 
 ## Swift

@@ -1,27 +1,38 @@
 # Rust port notes
 
 rustfmt 1.10.0 (the rustfmt of Rust 1.99.1, `rustfmt 1.10.0-stable (58cf8f9c35
-2026-10-13)`), default configuration, `--edition 2021` (style edition 2021),
-as `rustfmt +1.99.1 --edition 2021 < file` formats one file.
+2026-10-13)`) with `edition = "2024"`, `style_edition = "2024"` and
+`max_width = 120`, everything else at its default, as
+`rustfmt +1.99.1 --edition 2024 --config style_edition=2024,max_width=120 < file`
+formats one file. (`--edition 2024` alone implies style edition 2024.)
+
+`RsConfig` (`shape.ts`) carries `edition`, `styleEdition` and the widths
+`rsConfigWithMaxWidth` derives from `max_width`; `run.ts` sets them, and the
+dev driver takes `FFEDITION`, `FFSTYLE` and `FFWIDTH` to try others. The
+style edition 2021 paths stay in the port, as rustfmt keeps them.
 
 ## Status
 
-The first two rows are against rustfmt 1.10.0; the others were measured
-against rustfmt 1.9.0, which formats the two corpora identically.
+The first two rows are against the configuration above. The others were
+measured against rustfmt 1.9.0 at the default configuration and edition
+2021, before the move to edition 2024, and have not been re-run.
 
 | Corpus | Identical (cmp.sh) | Skipped by the port |
 | --- | --- | --- |
-| `/work/c/rust` (sources as found) | 7899 / 7899 | 0 |
-| `/work/c/rust2` (sources reformatted first, see below) | 7899 / 7899 | 0 |
+| `bench/work/corpus/rust` (sources as found) | 8321 / 8321 | 0 |
+| `bench/work/corpus/rust2` (sources reformatted first, see below) | 8321 / 8321 | 0 |
 | rustfmt's own `tests/source` and `tests/target` inputs (dev driver) | 1850 / 1850 | 53 |
 | the same, given the rust2 treatment | 1839 / 1839 | 51 |
 | the crates in `~/.cargo/registry/src` | 3306 / 3306 | 0 |
 | the same, given the rust2 treatment | 3306 / 3306 | 0 |
 | a third of `rust/raw` with every line's indentation removed | 2647 / 2647 | 0 |
 
-Both corpora leave out the 450 files rustfmt itself rejects (`failed.txt`),
-mostly for edition 2024 syntax such as let chains, an error under
-`--edition 2021`.
+Both corpora leave out the 28 files rustfmt itself rejects (`failed.txt`):
+unstable syntax rustc's parser does not take, `gen` used as an identifier
+(reserved in 2024), and the trailing whitespace rustfmt leaves on a
+frontmatter fence (`format_lines`). nishfmt leaves every one of them
+untouched; `cmp.sh` does not look at them, so check it with
+`nishfmt --check` over each path in `failed.txt`.
 
 `rust2` is built by `tools/rust/mk2.sh`: each file of `rust/raw` is first
 formatted with one of five non-default rustfmt configurations (narrow and
@@ -29,7 +40,9 @@ wide `max_width`, hard tabs, 2/3/8-space indents, `Max`/`Off` heuristics,
 vertical params, leading match pipes, CRLF, no import reordering, …) and the
 reference is then the default rustfmt run over that. Raw files there are
 far from their formatted form, so far more of the formatter is exercised
-than on `rust` (where 81% of the files are already formatted).
+than on `rust`. Each of the five configurations is the base
+(`style_edition=2024,max_width=120`) followed by its own options, which
+override it, and every run is at `--edition 2024`.
 
 The third set is every `.rs` under `/opt/ref/rustfmt-src/tests/{source,target}`
 that the reference binary formats at the default config through stdin (the
@@ -85,6 +98,18 @@ Behaviors of rustfmt 1.10.0 that look like bugs, which the port keeps
 The source diff from Rust 1.97.0 (rustfmt 1.9.0) to 1.99.1, and where each
 change that reaches the default config went (`tests/cases/rust/v1_10_*`):
 
+- rustc 1.99 reads `const` and `unsafe` only before `impl`
+  (`check_impl_frontmatter`, then `const` then `unsafe`): `impl const S` is
+  an impl of the bare trait object type `const S` (`parseTyCommon`, whose
+  rewrite drops a comment after `const`, as rustfmt does), a trait impl
+  whose trait is not a plain path is an error (`impl const Tr for T`), and
+  `const unsafe impl` and `const impl !Tr` are trait impls: `parser.ts`
+  `parseImpl` and the item dispatch (`v1_10_inherent_impl_const`,
+  `skip_impl_const_trait`);
+- rustc 1.99 parses the inputs of parenthesized generic args as params with
+  an optional name (`Fn(a: u32)`, feature-gated after parsing), and rustfmt
+  formats them as params: `parser.ts` `parseParenArgs`, `types.ts`
+  `formatFunctionType` (`v1_10_named_fn_params`);
 - range patterns are formatted by `range.rs` `rewrite_range`, as range
   expressions are (#6871): `expr.ts` `rsRewriteRange`, from `patterns.ts`;
 - a trait impl's `const` comes before `unsafe` and `impl`
@@ -97,17 +122,9 @@ change that reaches the default config went (`tests/cases/rust/v1_10_*`):
 
 Not ported, and why:
 
-- #6840 (a commented single fn parameter) only swaps two branches of the
-  style edition 2024 path in `rewrite_fn_base`; the long-return-type fix
-  (#6835) is style edition 2027 only.
-- The parser changes of rustc 1.99: `impl const Tr for T` is an error and an
-  inherent `impl const S` parses `const S` as a type (rustfmt prints
-  `impl const S`, dropping a comment after `const`). The port's parser still
-  takes both the 1.9 way, so `formatImplRefAndType` skips a file whose
-  token before the first type (`!` aside) is `const`, whatever comments sit
-  around it (`v1_10_inherent_impl_const`; the trait forms, which the
-  reference rejects, cannot have an `.expected`), until the parser follows
-  rustc. It also rejects `const unsafe impl`, which rustc accepts.
+- The long-return-type fix (#6835) is style edition 2027 only. (#6840, a
+  commented single fn parameter, is in the style edition 2024 path of
+  `rewrite_fn_base`, ported below.)
 - Unstable syntax: `super let`, field representing types, `mut`/`impl`
   restrictions, fn delegation, pattern types, direct const args,
   `cfg_select!` (formatted on nightly only). Such files stay skipped. Try
@@ -120,6 +137,59 @@ Not ported, and why:
   `format_strings` and `wrap_comments`.
 - `modules.rs` skipping a missing out-of-line module with a custom
   attribute: formatting through stdin resolves no modules.
+
+## Edition 2024
+
+Parsing (rustc_lexer, rustc_parse at 1.99.1): `gen` is reserved, guarded
+string prefixes (`#"`, `##`) are lexing errors, and let chains parse in `if`
+and `while` conditions; before 2024 a let chain there is an error. Let
+chains in match guards parse at every edition
+(`expect_match_arm_guard_cond`, `LetChainsPolicy::AlwaysAllowed`).
+
+Formatting: `pairs.rs` `rewrite_all_pairs` writes a `&&` chain holding a
+`let` one operand per line unless it is exactly `ident_or_bool && let …`
+(`let_chain_count`, `can_rewrite_let_chain_single_line`): `pairs.ts`
+`rsRewriteAllPairs` (`edition2024_let_chains`). A global path (`::a`) is
+not an ident there: rustc gives it a `{{root}}` segment.
+
+Not ported (the file is skipped): `gen` blocks, `gen fn` and `async gen`
+(the unstable gen_blocks), which rustc parses at 2024.
+
+## Style edition 2024
+
+Every `StyleEdition` branch of rustfmt 1.10.0 outside `config/`, and where
+it went. Branches on `Edition2027` keep their pre-2027 path; the
+`config_option_with_style_edition_default!` defaults that change at 2024
+are `style_edition` itself and `version` (Two), which no formatting code
+reads.
+
+| rustfmt | What changes at 2024 | Port | Case |
+| --- | --- | --- | --- |
+| `sort.rs` `version_sort`; `imports.rs` `Ord for UseSegment` | imports sort by version sort, raw identifiers by name | `sort.ts` `rsVersionSort`; `imports.ts` `cmpSeg` | `style2024_version_sort` |
+| `reorder.rs` `compare_items` | (`mod` and `extern crate` keep the plain order until 2027) | `reorder.ts` | `style2024_version_sort` |
+| `matches.rs` `rewrite_match` | inner attributes at the arms' indent | `matches.ts` `rsRewriteMatch` | `style2024_match` |
+| `matches.rs` `rewrite_match_body` | arrow comment after the last uncommented `=>`; `;` after a wrapped `return`/`break`/`continue` body | `matches.ts` `rewriteMatchBody`, `combineNextLine` | `style2024_match` |
+| `utils.rs` `trim_left_preserve_layout`, `indent_next_line` | lines of a string inside a comment are not re-indented | `comment.ts` `rsTrimLeftPreserveLayout`, `rsIndentNextLine` | |
+| `macros.rs` `MacroBranch::rewrite` | a block-bodied branch reserves ` => {{` (6) | `macros.ts` `rewriteBranch` | `style2024_macros` |
+| `overflow.rs` `special_cases` | `trace!` is a special-case macro | `overflow.ts` `specialCaseArgs` | `style2024_macros` |
+| `overflow.rs` `try_overflow_last_item` | a method chain as a macro's last arg is forced onto one line | `overflow.ts` `tryOverflowLastItem` | `style2024_macros` |
+| `overflow.rs` `wrap_items` | args inside a macro are not forced onto one line | `overflow.ts` `wrapItems` | `style2024_macros` |
+| `visitor.rs` `close_block` | a comment after a block's last line stays on that line | `visitor.ts` `closeBlock` | `style2024_strings_comments` |
+| `missed_spans.rs` `process_comment` | a comment on the line of the code before it keeps the block indent | `visitor.ts` `processComment` | `style2024_strings_comments` |
+| `chains.rs` `ChainItem::rewrite` | no space in `x.0.1` | `chains.ts` | `style2024_chains` |
+| `closures.rs` `is_block_closure_forced_inner` | a `loop` body forces a block | `closures.ts` `forcedInner` | `style2024_closures` |
+| `patterns.rs` `Pat::rewrite` | a slice pattern is an overflowable list | `patterns.ts` `rsRewritePat` | `style2024_patterns` |
+| `patterns.rs` `is_short_pattern_inner` | (unchanged until 2027) | | |
+| `types.rs` `Ty::rewrite` | a paren type that does not fit is broken; `impl Trait` bounds are joined without the extra indent | `types.ts` `rsRewriteTy` | `style2024_types` |
+| `types.rs` `join_bounds_inner` | one bound with a multi-item list is retried on new lines | `types.ts` `joinBounds` | `style2024_types` |
+| `stmt.rs` `Stmt::rewrite` | a block's last expression is a sub-expression | `expr.ts` `rsFormatStmt` | `style2024_strings_comments` |
+| `expr.rs` `rewrite_string_lit` | a string whose lines all end in `\` is kept as written | `expr.ts` `rsRewriteLiteralTok` | `style2024_strings_comments` |
+| `items.rs` `Local::rewrite` | a let-else is measured from `let` (#5901) | `items.ts` `rsRewriteLocal` | `style2024_let_else` |
+| `items.rs` `format_variant` | variant attributes get the full width (#5801) | `items.ts` `formatVariant` | `style2024_items` |
+| `items.rs` `format_impl_ref_and_type` | impl generics are not shaped as a block | `items.ts` `formatImplRefAndType` | `style2024_items` |
+| `items.rs` `FnRetTy::rewrite` | the return type is shaped after `-> ` | `items.ts` `rsRewriteFnRetTy` | `style2024_types` |
+| `items.rs` `rewrite_fn_base` | the `)` and return type of an overlong param-less fn (#6840); the return type indent | `items.ts` `rewriteFnBase` | `style2024_items` |
+| `items.rs` `rewrite_bounds_on_where_clause` | blank lines between predicates go | `items.ts` `rewriteWhereClause` | `style2024_items` |
 
 ## Speed
 
@@ -211,26 +281,34 @@ None of these occur in the two corpora.
 
 None on the corpora. Approximations that could show elsewhere:
 
-- Unicode: identifier classes and whitespace are ASCII plus the common
-  Unicode whitespace code points; widths use `src/core/uwidth.ts`.
+- Unicode: identifier classes are ASCII plus the common Unicode whitespace
+  code points. Widths are unicode-width 0.1.14's (`uwidth.ts`, from the
+  tables `tools/rust/uwidth/mk.py` generates out of the crate's source).
 - `replace_names` treats non-ASCII bytes as alphanumeric.
 
 ## Tests
 
-`tests/cases/rust/*.rs` with `*.expected` from `rustfmt +1.99.1 --edition 2021`:
+`tests/cases/rust/*.rs` with `*.expected` from
+`rustfmt +1.99.1 --edition 2024 --config style_edition=2024,max_width=120`:
 macro_rules bodies, macro arguments rustc rejects or recovers from, a
 frontmatter after a shebang, raw-ident mod order, long attribute literals,
 where clauses that grow the AST arrays, the rustfmt 1.10.0 behaviors
-above (`binary_quirks`) and the 1.10.0 changes (`v1_10_*`). Every
-`.expected` is a fixed point of the reference; `tests/run.sh` formats each
-`.rs` and each `.expected` and compares.
+above (`binary_quirks`), the 1.10.0 changes (`v1_10_*`), each style
+edition 2024 branch group (`style2024_*`), let chains
+(`edition2024_let_chains`), the widths max_width 120 derives
+(`width120_lines`) and display width (`unicode_width`). Every `.expected`
+is a fixed point of the reference; `tests/run.sh` formats each `.rs` and
+each `.expected` and compares. Each `skip_*.rs` (no `.expected`) is a file
+the reference rejects, which nishfmt must report skipped and leave byte for
+byte as it is.
 
 ## Iterating
 
 ```bash
-NISH=/opt/nishpkg/node_modules/.bin/nish
-$NISH tools/dev/rust.ts --no-warn-performance --json --link /tmp/rustdev
+NISH=.nish/bin/nish
+$NISH tools/dev/rust.ts --no-warn-performance --link /tmp/rustdev
 FFDEBUG=1 /tmp/rustdev file.rs     # reason on stderr when skipped
+FFSTYLE=2021 FFEDITION=2021 FFWIDTH=100 /tmp/rustdev file.rs   # another config
 FFDUMP=1 /tmp/rustdev file.rs      # the AST
 FFPARSE=1 /tmp/rustdev file.rs     # parse only
 /tmp/rustdev a.rs b.rs ...         # format all, print nothing (profiling)
