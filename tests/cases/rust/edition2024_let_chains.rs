@@ -11,6 +11,15 @@ fn f(x: Option<u32>, flag: bool) {
     if a.b && let Some(a) = x {}
     if let Some(a) = x && let Some(b) = y && a == b { work(); }
     while let Some(a) = it.next() && a < 10 {}
+    if (flag) && let Some(a) = x {}
+    if *flag && let Some(a) = x {}
+    if &flag && let Some(a) = x {}
+    if flag? && let Some(a) = x {}
+    if false && let Some(a) = x {}
+    if flag && let Some(a) = x && cond {}
+    if let Some(a) = x && flag {}
+    if a::b && let Some(a) = x {}
+    if f() && let Some(a) = x {}
     match x {
         Some(a) if let Some(b) = f(a) && b > 2 => {}
         _ => {}

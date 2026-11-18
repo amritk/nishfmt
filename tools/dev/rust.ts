@@ -3,7 +3,7 @@
 // prints the formatted file, or exits 1 when it cannot be formatted. With
 // more than one file it formats each and prints nothing (for profiling).
 // It formats as nishfmt does (edition 2024, style edition 2024, width 120);
-// FFEDITION, FFSTYLE (2015 to 2024) and FFWIDTH override each.
+// FFEDITION, FFSTYLE (2015, 2018, 2021 or 2024) and FFWIDTH override each.
 
 import { Out } from "../../src/core/out";
 import { RustEngine, formatRust } from "../../src/rust/run";
@@ -27,7 +27,13 @@ const rsDevOne = (path: string, print: boolean): i32 => {
   }
   const style = getenv("FFSTYLE");
   if (style !== null) {
-    e.styleEdition = parseInt(style);
+    // The port has the 2015-2021 and 2024 paths, not 2027's.
+    const se = parseInt(style);
+    if (se !== 2015 && se !== 2018 && se !== 2021 && se !== 2024) {
+      console.error(`FFSTYLE=${style}: the port implements style editions 2015, 2018, 2021 and 2024`);
+      return 2;
+    }
+    e.styleEdition = se;
   }
   const width = getenv("FFWIDTH");
   if (width !== null) {

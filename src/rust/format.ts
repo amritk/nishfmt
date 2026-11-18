@@ -127,12 +127,14 @@ const anyLineEndsInWhitespace = (s: string): boolean => {
 };
 
 /**
- * FormatLines' TrailingWhitespace error over a formatted file, with
- * error_on_unformatted off: a line outside the skipped lines whose last char
- * is whitespace, unless its newline is in a comment or the line holds a
- * string literal. rustfmt then exits with an error.
+ * FormatLines' TrailingWhitespace error over formatted text: a line outside
+ * the skipped lines whose last char is whitespace. With
+ * `errorOnUnformatted` off (a file) a line whose newline is in a comment or
+ * that holds a string literal does not count; format_snippet turns it on for
+ * a macro_rules! body. A file with the error makes rustfmt exit with an
+ * error; a macro body with it keeps the definition as written.
  */
-export const rsHasTrailingWhitespaceError = (s: string, skipped: RsRanges): boolean => {
+export const rsHasTrailingWhitespaceError = (s: string, skipped: RsRanges, errorOnUnformatted: boolean): boolean => {
   if (!anyLineEndsInWhitespace(s)) {
     return false;
   }
@@ -148,7 +150,8 @@ export const rsHasTrailingWhitespaceError = (s: string, skipped: RsRanges): bool
       continue;
     }
     if (b === 10) {
-      if (lastWasSpace && !rsKindIsComment(kind) && !hasString && !skipped.contains(line)) {
+      const allowed = errorOnUnformatted || (!rsKindIsComment(kind) && !hasString);
+      if (lastWasSpace && allowed && !skipped.contains(line)) {
         return true;
       }
       line++;
@@ -159,28 +162,6 @@ export const rsHasTrailingWhitespaceError = (s: string, skipped: RsRanges): bool
     lastWasSpace = rsWsLenAt(s, a) > 0;
     if (rsKindIsString(kind)) {
       hasString = true;
-    }
-  }
-  return false;
-};
-
-/** FormatLines' trailing-whitespace check, outside the skipped lines. */
-const hasTrailingWhitespace = (s: string, skipped: RsRanges): boolean => {
-  let line = 1;
-  let ws = false;
-  for (let i = 0; i < toI32(s.length); i++) {
-    const c = s.charCodeAt(i);
-    if (c === 13) {
-      continue;
-    }
-    if (c === 10) {
-      if (ws && !skipped.contains(line)) {
-        return true;
-      }
-      ws = false;
-      line++;
-    } else {
-      ws = c === 32 || c === 9 || c === 11 || c === 12;
     }
   }
   return false;
@@ -200,7 +181,7 @@ export const rsFormatSnippet = (parent: RsCtx, code: string, cfg: RsConfig, isMa
   if (r.macroFailure || (r.text.length === 0 && n !== 0)) {
     return null;
   }
-  if (isMacroDef && (r.lostComment || hasTrailingWhitespace(r.text, r.skipped))) {
+  if (isMacroDef && (r.lostComment || rsHasTrailingWhitespaceError(r.text, r.skipped, true))) {
     return null;
   }
   return new RsSnippet(r.text, r.skipped);

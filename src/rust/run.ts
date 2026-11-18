@@ -87,7 +87,7 @@ export const formatRust = (e: RustEngine, path: string, src0: u8[], n0: i32, out
     return false;
   }
   // format_lines: trailing whitespace rustfmt could not remove is an error.
-  if (rsHasTrailingWhitespaceError(r.text, r.skipped)) {
+  if (rsHasTrailingWhitespaceError(r.text, r.skipped, false)) {
     if (e.debug) {
       console.error(`${path}: trailing whitespace left`);
     }

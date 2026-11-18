@@ -296,9 +296,15 @@ None of these occur in the two corpora.
 
 None on the corpora. Approximations that could show elsewhere:
 
-- Unicode: identifier classes are ASCII plus the common Unicode whitespace
-  code points. Widths are unicode-width 0.1.14's (`uwidth.ts`, from the
-  tables `tools/rust/uwidth/mk.py` generates out of the crate's source).
+- Unicode is taken from the crates rustc and rustfmt use, through tables
+  generated from their sources (read as data, never compiled):
+  identifiers are rustc_lexer's (XID_Start / XID_Continue from
+  unicode-ident 1.0.24, emoji from unicode-properties 0.1.4, rustc_parse's
+  confusables; `uident_table.ts`, `tools/rust/uident/mk.py`), whitespace its
+  Pattern_White_Space, and widths unicode-width 0.1.14's (`uwidth.ts`,
+  `tools/rust/uwidth/mk.py`). A non-ASCII char outside literals and comments
+  that rustc_lexer makes an Unknown token, or a lone confusable emoji, fails
+  the lex, as rustc reports it.
 - `replace_names` treats non-ASCII bytes as alphanumeric.
 
 ## Tests
@@ -313,7 +319,9 @@ edition 2024 branch group (`style2024_*`), let chains
 (`edition2024_let_chains`), the widths max_width 120 derives
 (`width120_lines`) and display width (`unicode_width`). Every `.expected`
 is a fixed point of the reference; `tests/run.sh` formats each `.rs` and
-each `.expected` and compares. Each `skip_*.rs` (no `.expected`) is a file
+each `.expected` and compares (`unicode_idents` and
+`macro_unicode_trailing_ws` cover the Unicode tables). Each `skip_*.rs` (no
+`.expected`) is a file
 the reference rejects, which nishfmt must report skipped and leave byte for
 byte as it is.
 
