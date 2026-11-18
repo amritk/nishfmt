@@ -22,7 +22,7 @@ pinned to one core:
 | Language | Matches | Identical | Reference tool, 4 cores / 1 core | nishfmt, 4 cores / 1 core |
 | --- | --- | ---: | ---: | ---: |
 | C++ | clang-format 18, `{BasedOnStyle: LLVM, ColumnLimit: 120}` | 99.6% of 10,344 | 87.0 s / 212.9 s | **7.07 s / 28.9 s** |
-| Java | google-java-format 1.28 | 100% of 7,627 | 75.2 s / 252.9 s | **2.17 s / 8.64 s** |
+| Java | google-java-format 2.0.0 | 100% of 7,627 | 32.1 s / 113.6 s | **1.66 s / 6.10 s** |
 | Kotlin | ktfmt 0.64, default style | 100% of 9,602 | 92.9 s / not run | **2.03 s / 7.02 s** |
 | C# | CSharpier 1.4.0, default options | 100% of 13,988 | 63.0 s / 122.7 s | **3.10 s / 6.63 s** |
 | Dart, tall style | `dart format` 3.14 | 100% of 10,313 | 55.2 s / 59.9 s | **3.08 s / 8.50 s** |
@@ -36,9 +36,10 @@ pinned to one core:
   [Benchmarks](docs/benchmarks.md#corpus-results). Times cover the whole
   corpus directory, including the few files the reference rejects.
 - One core is `taskset -c 0`, with `-j 1` for nishfmt. nishfmt's times are
-  the best of three. The C++, Java and Ruby rows were measured together on
-  an otherwise idle machine, the reference tools one run each; the others
-  during porting on a busier shared machine, so compare within a row.
+  the best of three. The C++ and Ruby rows were measured together on an
+  otherwise idle machine, the reference tools one run each; the Java row
+  alone on another idle machine, with google-java-format on JDK 21; the
+  others during porting on a busier shared machine, so compare within a row.
 - How the reference tools ran: clang-format 50 files a process; one
   google-java-format JVM over all files; CSharpier on .NET 10 with
   `--no-cache`; rustfmt 100 files a process; RuboCop with `--parallel` on 4
