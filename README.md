@@ -63,7 +63,10 @@ so a file comes out the same in any repository.
 
 - **Java, Kotlin, Swift, Rust:** the tool's defaults: google-java-format's
   Google style, ktfmt's default style, SwiftFormat's default rules, and
-  rustfmt's default config with edition 2021.
+  rustfmt's default config with edition 2021. google-java-format 2.0.0 runs
+  as on JDK 21, with its cleanups on (redundant semicolons, `@Foo()`,
+  `(x) ->`); there `///` is a line comment, not Markdown javadoc (that needs
+  JDK 23).
 - **C#:** CSharpier's default options, except that every line break is CRLF
   whatever the input's line endings are, as CSharpier writes under this
   `.editorconfig`:
