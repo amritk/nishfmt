@@ -1861,7 +1861,7 @@ export class Classifier {
     if (m < 0 || n < 0 || d.prv[t] === m) {
       return false;
     }
-    if (this.ty(m) === TT_OVERLOADED_OPERATOR_LPAREN) {
+    if (this.ty(m) === TT_OVERLOADED_OPERATOR_LPAREN || this.ty(m) === TT_FUNCTION_TYPE_LPAREN) {
       return false;
     }
     let lop = this.prev(m);
@@ -1900,7 +1900,8 @@ export class Classifier {
       }
     }
     const nk = this.k(n);
-    if (nk === P_QUESTION || nk === P_AMPAMP) {
+    const tp = d.prv[t];
+    if (nk === P_QUESTION || (nk === P_AMPAMP && !isTypeName(d, tp))) {
       return false;
     }
     if (
@@ -1921,9 +1922,11 @@ export class Classifier {
     if (nk === KW_SIZEOF || nk === KW_ALIGNOF || (isLiteralKind(nk) && nk !== K_STRING)) {
       return true;
     }
-    const tp = d.prv[t];
+    // (clang-format's IsNonVariableTemplate: a `>` whose `<` follows a token.)
     const parensAreType =
-      this.ty(tp) === TT_TEMPLATE_CLOSER || isSimpleTypeKind(this.k(tp)) || this.qualifiedPointer(tp);
+      (this.ty(tp) === TT_TEMPLATE_CLOSER && d.match[tp] >= 0 && this.prev(d.match[tp]) >= 0) ||
+      isTypeName(d, tp) ||
+      this.qualifiedPointer(tp);
     const couldEndDecl = nk === P_EQUAL || nk === P_SEMI || nk === P_LBRACE || nk === P_GREATER;
     if (parensAreType && !couldEndDecl) {
       return true;
@@ -1940,12 +1943,25 @@ export class Classifier {
     if ((isIdentKind(nk) && !isReservedKeyword(d, n)) || nk === KW_THIS) {
       return true;
     }
-    if (nk === P_LPAREN && tp >= 0 && d.prv[tp] >= 0 && isIdentKind(this.k(tp)) && this.k(d.prv[tp]) === P_LPAREN) {
-      return true;
+    // `(x)(` and `(a::x)(`: a name, maybe qualified, cast to.
+    if (nk === P_LPAREN) {
+      for (let q = tp; q >= 0 && isIdentKind(this.k(q)); ) {
+        q = d.prv[q];
+        if (q >= 0 && this.k(q) === P_COLONCOLON) {
+          q = d.prv[q];
+        }
+        if (q === m) {
+          return true;
+        }
+      }
     }
     const nn = d.nxt[n];
     if (nn < 0) {
       return false;
+    }
+    // `(T){...}`: a compound literal.
+    if (nk === P_LBRACE && d.bk[n] === BK_BRACED_INIT) {
+      return true;
     }
     const ampOrStar = nk === P_AMP || nk === P_STAR;
     const unary =
@@ -1967,6 +1983,14 @@ export class Classifier {
     }
     if (inPP && nk === P_MINUS) {
       return false;
+    }
+    // `(*)(int)`: a function pointer type.
+    if (this.k(tp) === P_RPAREN) {
+      if (this.ty(tp) === TT_CAST_RPAREN || d.match[tp] < 0) {
+        return false;
+      }
+      const pp = d.prv[d.match[tp]];
+      return pp >= 0 && this.k(pp) === P_RPAREN && d.match[pp] >= 0 && this.ty(d.match[pp]) === TT_FUNCTION_TYPE_LPAREN;
     }
     for (let q = tp; q >= 0 && q !== m; q = d.prv[q]) {
       const qk = this.k(q);
@@ -3149,6 +3173,43 @@ export const isReservedKeyword = (d: Doc, t: i32): boolean => {
     }
   }
   return false;
+};
+
+/**
+ * clang-format's FormatToken::isTypeName: a simple type specifier, or one of
+ * the C library's type names it lists (CppNonKeywordTypes).
+ */
+export const isTypeName = (d: Doc, t: i32): boolean => {
+  if (t < 0) {
+    return false;
+  }
+  const k = d.kind[t];
+  if (isSimpleTypeKind(k)) {
+    return true;
+  }
+  if (k !== K_IDENT) {
+    return false;
+  }
+  const w = d.len(t);
+  if (w < 6 || w > 9 || d.at(d.end[t] - 2) !== 95 || d.at(d.end[t] - 1) !== 116) {
+    return false; // every one ends in `_t`
+  }
+  return (
+    d.is(t, "clock_t") ||
+    d.is(t, "int16_t") ||
+    d.is(t, "int32_t") ||
+    d.is(t, "int64_t") ||
+    d.is(t, "int8_t") ||
+    d.is(t, "intptr_t") ||
+    d.is(t, "ptrdiff_t") ||
+    d.is(t, "size_t") ||
+    d.is(t, "time_t") ||
+    d.is(t, "uint16_t") ||
+    d.is(t, "uint32_t") ||
+    d.is(t, "uint64_t") ||
+    d.is(t, "uint8_t") ||
+    d.is(t, "uintptr_t")
+  );
 };
 
 /** Whether identifier `t` is a string literal prefix (`L`, `u`, `U`, `u8`, and their `R` forms). */
