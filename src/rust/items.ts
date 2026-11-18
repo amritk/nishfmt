@@ -1968,30 +1968,6 @@ export const rsFormatImpl = (ctx: RsCtx, item: i32, bi: i32, al: i32): string | 
   return result + "}";
 };
 
-/**
- * Whether the impl's `const` is written after `impl`: the token before the
- * first type (`!` aside) is `const`. Tokens hold no comments, so a comment
- * anywhere in between does not hide it.
- */
-const isConstAfterImpl = (ctx: RsCtx, tyLo: i32): boolean => {
-  const t = ctx.f.t;
-  let l = 0;
-  let h = t.nt;
-  while (l < h) {
-    const m = (l + h) >> 1;
-    if (t.lo[m] < tyLo) {
-      l = m + 1;
-    } else {
-      h = m;
-    }
-  }
-  let i = l - 1;
-  if (i >= 0 && t.kind[i] === T_NOT) {
-    i--;
-  }
-  return i >= 0 && t.kw[i] === KW_CONST;
-};
-
 const formatImplRefAndType = (ctx: RsCtx, item: i32, bi: i32, al: i32): string | null => {
   const ast = ctx.ast;
   const cfg = ctx.cfg;
@@ -1999,14 +1975,6 @@ const formatImplRefAndType = (ctx: RsCtx, item: i32, bi: i32, al: i32): string |
   const ofTrait = ast.b[item];
   const selfTy = ast.c[item];
   const f = ast.fl[item];
-  const firstTy = ofTrait >= 0 ? ofTrait : selfTy;
-  if ((f & IT_CONST) !== 0 && isConstAfterImpl(ctx, ast.lo[firstTy])) {
-    // rustc 1.99 rejects `impl const Tr for T` and parses an inherent
-    // `impl const S` as an impl of the type `const S`. The parser still takes
-    // both the 1.9 way, so skip the file, whatever comments sit in between.
-    ctx.unsupported("impl const");
-    return null;
-  }
   let result = rsFormatVisibility(ctx, ast.e[item]);
   if (ofTrait >= 0) {
     if ((f & IT_DEFAULT) !== 0) {

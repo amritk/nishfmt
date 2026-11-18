@@ -7,11 +7,12 @@
 import { Out } from "../core/out";
 import { RsAst } from "./ast";
 import { rsAttrsContainSkip } from "./attr";
-import { rsIndentNextLine, rsLineClasses } from "./comment";
+import { rsCharClasses, rsIndentNextLine, rsKindIsComment, rsKindIsString, rsLineClasses } from "./comment";
 import { RsCtx, RsFile, RsRanges } from "./context";
 import { RsTokens, rsLex } from "./lexer";
 import { RsParser } from "./parser";
 import { RsConfig, rsIndentStr } from "./shape";
+import { rsCharAt, rsIsUnicodeWhitespace } from "./str";
 import { RsVisitor } from "./visitor";
 
 /** What formatting one source gave. */
@@ -99,6 +100,41 @@ const strBytes = (s: string): u8[] => {
     b[i] = toU8(s.charCodeAt(i));
   }
   return b;
+};
+
+/**
+ * FormatLines' TrailingWhitespace error over a formatted file, with
+ * error_on_unformatted off: a line outside the skipped lines whose last char
+ * is whitespace, unless its newline is in a comment or the line holds a
+ * string literal. rustfmt then exits with an error.
+ */
+export const rsHasTrailingWhitespaceError = (s: string, skipped: RsRanges): boolean => {
+  const cc = rsCharClasses(s);
+  let line = 1;
+  let lastWasSpace = false;
+  let hasString = false;
+  for (let ci = 0; ci < cc.nc; ci++) {
+    const a = cc.starts[ci];
+    const kind = cc.kinds[a];
+    const b = s.charCodeAt(a);
+    if (b === 13) {
+      continue;
+    }
+    if (b === 10) {
+      if (lastWasSpace && !rsKindIsComment(kind) && !hasString && !skipped.contains(line)) {
+        return true;
+      }
+      line++;
+      lastWasSpace = false;
+      hasString = false;
+      continue;
+    }
+    lastWasSpace = rsIsUnicodeWhitespace(rsCharAt(s, a));
+    if (rsKindIsString(kind)) {
+      hasString = true;
+    }
+  }
+  return false;
 };
 
 /** FormatLines' trailing-whitespace check, outside the skipped lines. */

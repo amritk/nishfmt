@@ -6,7 +6,7 @@
 import { Out } from "../core/out";
 import { RsAst } from "./ast";
 import { rsDump } from "./dump";
-import { rsFormatSource } from "./format";
+import { rsFormatSource, rsHasTrailingWhitespaceError } from "./format";
 import { RsTokens, rsLex } from "./lexer";
 import { RsParser } from "./parser";
 import { rsConfigWithMaxWidth } from "./shape";
@@ -83,6 +83,13 @@ export const formatRust = (e: RustEngine, path: string, src0: u8[], n0: i32, out
       const where = r.parseFailed ? `:${line}` : "";
       const what = r.unsupported ? "unsupported: " + r.why : r.broken ? "span lookup failed: " + r.why : r.why;
       console.error(`${path}${where}: ${what}`);
+    }
+    return false;
+  }
+  // format_lines: trailing whitespace rustfmt could not remove is an error.
+  if (rsHasTrailingWhitespaceError(r.text, r.skipped)) {
+    if (e.debug) {
+      console.error(`${path}: trailing whitespace left`);
     }
     return false;
   }

@@ -45,6 +45,34 @@ export class RsStrBuf {
 }
 
 /** Whether byte `c` is ASCII whitespace as Rust's `char::is_whitespace` sees it. */
+/** The code point of the UTF-8 char that starts at byte `i` of `s`. */
+export const rsCharAt = (s: string, i: i32): i32 => {
+  const b = s.charCodeAt(i);
+  if (b < 0xc0) {
+    return b;
+  }
+  const k = b >= 0xf0 ? 4 : b >= 0xe0 ? 3 : 2;
+  let cp = b & (b >= 0xf0 ? 7 : b >= 0xe0 ? 15 : 31);
+  for (let m = 1; m < k && i + m < toI32(s.length); m++) {
+    cp = (cp << 6) | (s.charCodeAt(i + m) & 63);
+  }
+  return cp;
+};
+
+/** `char::is_whitespace` for code point `c`. */
+export const rsIsUnicodeWhitespace = (c: i32): boolean =>
+  (c >= 9 && c <= 13) ||
+  c === 32 ||
+  c === 0x85 ||
+  c === 0xa0 ||
+  c === 0x1680 ||
+  (c >= 0x2000 && c <= 0x200a) ||
+  c === 0x2028 ||
+  c === 0x2029 ||
+  c === 0x202f ||
+  c === 0x205f ||
+  c === 0x3000;
+
 export const rsIsWsByte = (c: i32): boolean => c === 32 || (c >= 9 && c <= 13);
 
 /** The length of a Unicode whitespace character starting at `i` (0 if none). */

@@ -75,7 +75,16 @@ import {
 import { rsMacroPosItem, rsMacroPosStatement, rsMacroStyleIsBraces, rsRewriteMacro, rsRewriteMacroDef } from "./macros";
 import { rsVisitItemsWithReordering } from "./reorder";
 import { RsShape, rsIndentFromWidth, rsIndentStr, rsIndentStrNl, rsShapeIndented } from "./shape";
-import { rsCountNewlines, rsHasByte, rsIndexOfByte, rsIsBlank, rsTrim, rsTrimEnd } from "./str";
+import {
+  rsCharAt,
+  rsCountNewlines,
+  rsHasByte,
+  rsIndexOfByte,
+  rsIsBlank,
+  rsIsUnicodeWhitespace,
+  rsTrim,
+  rsTrimEnd,
+} from "./str";
 import { rsFormatVisibility, rsIdentStr } from "./utils";
 
 export class RsVisitor {
@@ -296,11 +305,12 @@ export class RsVisitor {
               this.pushStr(snippet.slice(lineStart, i + 1));
             }
             lineStart = i + 1;
-          } else if (c === 32 || c === 9 || c === 13 || c === 11 || c === 12) {
-            if (lastWs < 0) {
-              lastWs = i;
-            }
+          } else if ((c & 0xc0) === 0x80) {
+            // (inside a char)
+          } else if (lastWs < 0 && rsIsUnicodeWhitespace(rsCharAt(sub, k))) {
+            lastWs = i;
           } else {
+            // A second whitespace char in a row clears it too, as rustfmt does.
             lastWs = -1;
           }
         }

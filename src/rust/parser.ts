@@ -996,11 +996,16 @@ export class RsParser {
       if (k1 === T_LBRACE || k1 === T_OR || k1 === T_OROR || this.laKw(1) === KW_MOVE) {
         return -1; // a const block or const closure
       }
-      if (this.laKw(1) === KW_IMPL) {
+      // check_impl_frontmatter, then `const` and `unsafe` in that order.
+      const unsafeToo = this.laKw(1) === KW_UNSAFE && this.laKw(2) === KW_IMPL;
+      if (this.laKw(1) === KW_IMPL || unsafeToo) {
         this.bump();
+        if (unsafeToo) {
+          this.bump();
+        }
         const im = this.parseImpl(lo);
         if (im >= 0) {
-          this.ast.fl[im] = this.ast.fl[im] | IT_CONST;
+          this.ast.fl[im] = this.ast.fl[im] | IT_CONST | (unsafeToo ? IT_UNSAFE : 0) | (def ? IT_DEFAULT : 0);
         }
         return im;
       }
@@ -2008,10 +2013,9 @@ export class RsParser {
       g = this.parseGenerics();
     }
     this.ast.a[n] = g;
-    if (this.isKw(KW_CONST)) {
-      this.bump();
-      this.ast.fl[n] = this.ast.fl[n] | IT_CONST;
-    }
+    // rustc 1.99 reads no `const` here: `impl const S` is an impl of the
+    // bare trait object type `const S`, and `impl const Tr for T` an error
+    // (the trait is not a path).
     if (this.is(T_NOT) && this.la(1) !== T_LBRACE) {
       this.bump();
       this.ast.fl[n] = this.ast.fl[n] | IT_NEGATIVE;
@@ -2021,6 +2025,10 @@ export class RsParser {
       return -1;
     }
     if (this.eatKw(KW_FOR)) {
+      // The trait must be a path (ExpectedTraitInTraitImplFoundType).
+      if (this.ast.kind[ty1] !== N_TY_PATH || this.ast.a[ty1] >= 0) {
+        return this.fail();
+      }
       this.ast.b[n] = ty1;
       const gv38 = this.parseTy();
       this.ast.c[n] = gv38;
@@ -2588,6 +2596,14 @@ export class RsParser {
       return this.parseBareTraitObject(lo, allowPlus);
     }
     if (k === T_LIFETIME && allowPlus) {
+      return this.parseBareTraitObject(lo, allowPlus);
+    }
+    if (kk === KW_CONST || kk === KW_ASYNC) {
+      // can_begin_bound: `const Trait` and `async Fn()` start a bare trait
+      // object (`const *T` is the pointer error recovery, rejected here).
+      if (kk === KW_CONST && this.la(1) === T_STAR) {
+        return this.fail();
+      }
       return this.parseBareTraitObject(lo, allowPlus);
     }
     if (this.isPathStart()) {
