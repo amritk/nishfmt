@@ -4,7 +4,6 @@
 // Batsov).
 
 import {
-  F_ELSE,
   F_END,
   F_HEREDOC_BODY,
   F_HEREDOC_END,
@@ -18,15 +17,14 @@ import {
   NT_DEFINED_P,
   NT_DEFS,
   NT_DSTR,
-  NT_ENSURE,
   NT_IF,
   NT_INDEX,
   NT_INDEXASGN,
+  NT_KWBEGIN,
   NT_LAMBDA,
   NT_NEXT,
   NT_NUMBLOCK,
   NT_OR,
-  NT_RESCUE,
   NT_RETURN,
   NT_SEND,
   NT_STR,
@@ -158,10 +156,10 @@ export class CopLayoutEmptyLineAfterGuardClause {
     if (this.correctStyle(src, node)) {
       return;
     }
-    // multiple_statements_on_line?
-    const par = src.parent(node);
+    // multiple_statements_on_line? (correct_style? leaves only a begin or
+    // kwbegin parent, with a right sibling).
     const sib = this.rightSibling(src, node);
-    if (par !== V_NIL && a.type(par) === NT_BEGIN && a.isNode(sib) && src.line(a.exS(node)) === src.line(a.exS(sib))) {
+    if (src.line(a.exE(node)) === src.line(a.exS(sib))) {
       return;
     }
     const kw = rnHas(src, node, F_KEYWORD) ? rnFieldSrc(src, node, F_KEYWORD) : "";
@@ -236,17 +234,12 @@ export class CopLayoutEmptyLineAfterGuardClause {
     if (br === V_NIL || !rbGuardClause(src, br)) {
       return true;
     }
-    // next_line_rescue_or_ensure?
     const par = src.parent(node);
-    if (par === V_NIL || a.type(par) === NT_RESCUE || a.type(par) === NT_ENSURE) {
+    if (par === V_NIL || (a.type(par) !== NT_BEGIN && a.type(par) !== NT_KWBEGIN)) {
       return true;
     }
-    // next_sibling_parent_empty_or_else?
     const sib = this.rightSibling(src, node);
     if (!a.isNode(sib)) {
-      return true;
-    }
-    if (a.type(par) === NT_IF && rnHas(src, par, F_ELSE)) {
       return true;
     }
     // next_sibling_empty_or_guard_clause?
