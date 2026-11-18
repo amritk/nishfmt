@@ -1275,6 +1275,10 @@ export class JParser {
   }
 
   allowVarType: boolean = false;
+  // The next qualifiedType is read in javac's EXPR mode (term3 after an
+  // expression's leading type annotations), where an annotation after a `.`
+  // is "<identifier> expected". Nested types (type arguments) are TYPE mode.
+  exprModeType: boolean = false;
   // javac reported an error and parsed on: a restricted name as a type ("'var'
   // is not allowed here"), a declared name or a constructor-shaped member's
   // name, a `permits` clause without `sealed`, an unqualified `yield(...)`, a
@@ -1286,6 +1290,9 @@ export class JParser {
   /** A type with dims; annotations before it become an ANNOTATED_TYPE. */
   private typeAnnotated(): i32 {
     const t = this.t;
+    // Not consumed by an annotation's arguments.
+    const exprMode = this.exprModeType;
+    this.exprModeType = false;
     if (this.is("@")) {
       const start = this.pos();
       const am = t.mark();
@@ -1293,6 +1300,7 @@ export class JParser {
         t.push(this.annotation());
       }
       const annos = t.list(am);
+      this.exprModeType = exprMode;
       const under = this.typeNoDims();
       const at = t.node(N_ANNOTATED_TYPE, start);
       t.a[at] = annos;
@@ -1303,6 +1311,7 @@ export class JParser {
       }
       return this.bracketsOpt(at);
     }
+    this.exprModeType = exprMode;
     return this.bracketsOpt(this.typeNoDims());
   }
 
@@ -1333,6 +1342,8 @@ export class JParser {
   qualifiedType(): i32 {
     const t = this.t;
     const start = this.pos();
+    const exprMode = this.exprModeType;
+    this.exprModeType = false;
     // A reserved word is javac's "illegal start of type" (`return` in a record
     // body that was a method `record f() { return null; }`).
     if (!this.isIdent()) {
@@ -1351,6 +1362,10 @@ export class JParser {
         break;
       }
       if (this.isAt(1, "@")) {
+        // javac's term3 reads the annotations after a `.` only in TYPE mode.
+        if (exprMode) {
+          this.rejected = true;
+        }
         this.next();
         const am = t.mark();
         while (this.is("@")) {
@@ -1491,11 +1506,13 @@ export class JParser {
   /** One block statement, pushed (a declaration pushes one node per declarator). */
   private blockStatement(): void {
     const t = this.t;
-    // Local classes and declarations with modifiers.
+    // Local classes and declarations with modifiers. javac's blockStatement
+    // has no case for `static`: it falls through to an expression, "illegal
+    // start of expression" (also after google-java-format's ModifierOrderer
+    // has moved `final static` to `static final`).
     if (
       this.is("final") ||
       this.is("abstract") ||
-      this.is("static") ||
       this.is("strictfp") ||
       (this.is("@") && !this.isAt(1, "interface"))
     ) {
@@ -2690,6 +2707,25 @@ export class JParser {
     if (this.is("new")) {
       return this.creator(-1);
     }
+    if (this.is("<")) {
+      // javac's term3 reads typeArgumentsOpt(EXPR) first, and only `this` and
+      // `super` then take them, with arguments: `<String>this(1)`,
+      // `<String>super()`. Anything else is an illegal start of expression.
+      const targs = this.typeArgs();
+      if ((!this.is("this") && !this.is("super")) || !this.isAt(1, "(")) {
+        this.fail();
+        return t.node(N_IDENTIFIER, start);
+      }
+      const id = t.node(N_IDENTIFIER, this.pos());
+      t.name[id] = this.tokAt(0);
+      this.next();
+      this.finish(id);
+      const mi = t.node(N_METHOD_INVOCATION, start);
+      t.a[mi] = targs;
+      t.b[mi] = id;
+      t.c[mi] = this.args();
+      return this.finish(mi);
+    }
     if (this.is("switch")) {
       const n = t.node(N_SWITCH_EXPRESSION, start);
       this.next();
@@ -2704,12 +2740,7 @@ export class JParser {
         return ty;
       }
       if (this.is(".") && this.isAt(1, "class")) {
-        this.next();
-        const s = t.node(N_MEMBER_SELECT, start);
-        t.a[s] = ty;
-        t.name[s] = this.tokAt(0);
-        this.next();
-        return this.finish(s);
+        return this.arrayTypeSuffix(ty, start);
       }
       this.fail();
       return ty;
@@ -2720,8 +2751,12 @@ export class JParser {
       // class literal is "no annotations are allowed in the type of a class
       // literal" and anything else an illegal start of expression. On an
       // array type (`@A String[]::new`) javac drops the annotations, and
-      // google-java-format fails ("did not generate token").
+      // google-java-format fails ("did not generate token"). The type after the
+      // annotations is read in EXPR mode: `@A Outer.@B Inner::new` is
+      // "<identifier> expected".
+      this.exprModeType = true;
       const ty = this.type();
+      this.exprModeType = false;
       if (!this.op2(":", ":") || t.kind[ty] === N_ARRAY_TYPE) {
         this.rejected = true;
       }
@@ -2730,7 +2765,7 @@ export class JParser {
     if (k === JK_IDENT) {
       // Generic type before `::`: `List<String>::new`. As in javac's term3, no
       // restricted-name check on a type in expression position (see below).
-      if (this.isAt(1, "<")) {
+      if (this.isAt(1, "<") && this.isUnboundMemberRef(1)) {
         const m = new Mark();
         this.save(m);
         const ty = this.typeAnnotated();
@@ -2743,16 +2778,12 @@ export class JParser {
       // javac's bracketsSuffix, which does not check for a restricted name:
       // `var[].class` is a class literal.
       if (this.isAt(1, "[") && this.isAt(2, "]")) {
-        const ty = this.typeAnnotated();
-        if (this.is(".") && this.isAt(1, "class")) {
-          this.next();
-          const s = t.node(N_MEMBER_SELECT, start);
-          t.a[s] = ty;
-          t.name[s] = this.tokAt(0);
-          this.next();
-          return this.finish(s);
-        }
-        return ty;
+        return this.arrayTypeSuffix(this.typeAnnotated(), start);
+      }
+      // javac's term3 reads type annotations after an identifier, and only
+      // dims may follow them: `String @A []::new`.
+      if (this.isAt(1, "@")) {
+        return this.annotatedDimsRef(this.typeAnnotated());
       }
       // Qualified names with array types: a.b.C[].class
       const id = t.node(N_IDENTIFIER, start);
@@ -2777,6 +2808,111 @@ export class JParser {
     return t.node(N_IDENTIFIER, start);
   }
 
+  /**
+   * javac's bracketsSuffix in EXPR mode, after an array type: `.class` is a
+   * class literal, where a type annotation on a dimension is "no annotations
+   * are allowed in the type of a class literal"; else the type is left for `::`.
+   */
+  private arrayTypeSuffix(ty: i32, start: i32): i32 {
+    const t = this.t;
+    if (!this.is(".") || !this.isAt(1, "class")) {
+      return ty;
+    }
+    for (let e = ty; t.kind[e] === N_ARRAY_TYPE || t.kind[e] === N_ANNOTATED_TYPE; ) {
+      if (t.kind[e] === N_ANNOTATED_TYPE) {
+        this.rejected = true;
+        break;
+      }
+      e = t.a[e];
+    }
+    this.next();
+    const s = t.node(N_MEMBER_SELECT, start);
+    t.a[s] = ty;
+    t.name[s] = this.tokAt(0);
+    this.next();
+    return this.finish(s);
+  }
+
+  /**
+   * An expression's type with annotated dims, `String @A []`: javac's term3
+   * takes annotations after an identifier only before `[` `]`, and its
+   * bracketsSuffix then needs `::` (`.class` is "no annotations are allowed in
+   * the type of a class literal", anything else "'.class' expected").
+   */
+  private annotatedDimsRef(ty: i32): i32 {
+    if (this.t.kind[ty] !== N_ANNOTATED_TYPE || !this.op2(":", ":")) {
+      this.rejected = true;
+    }
+    return ty;
+  }
+
+  /**
+   * javac's isUnboundMemberRef, from the `<` at token p+i: whether the type
+   * arguments there close before `.`, `[` or `::` (a generic type before a
+   * method reference) rather than being a less-than.
+   */
+  private isUnboundMemberRef(i: i32): boolean {
+    let k = i;
+    let depth = 0;
+    while (this.p + k < this.nT) {
+      if (this.isAt(k, "(")) {
+        // Annotation values.
+        let nesting = 0;
+        while (true) {
+          if (this.p + k >= this.nT) {
+            return false;
+          }
+          if (this.isAt(k, "(")) {
+            nesting++;
+          } else if (this.isAt(k, ")")) {
+            nesting--;
+            if (nesting === 0) {
+              break;
+            }
+          }
+          k++;
+        }
+      } else if (this.isAt(k, "<")) {
+        if (this.adjAt(k + 1) && (this.isAt(k + 1, "<") || this.isAt(k + 1, "="))) {
+          return false; // `<<`, `<=`
+        }
+        depth++;
+      } else if (this.isAt(k, ">")) {
+        // javac's GT, GTGT or GTGTGT: one token of adjacent `>`s.
+        let n = 1;
+        while (n < 3 && this.isAt(k + n, ">") && this.adjAt(k + n)) {
+          n++;
+        }
+        if (this.isAt(k + n, "=") && this.adjAt(k + n)) {
+          return false; // `>=`, `>>=`, `>>>=`
+        }
+        k += n - 1;
+        depth -= n;
+        if (depth === 0) {
+          return this.isAt(k + 1, ".") || this.isAt(k + 1, "[") || this.op2At(k + 1, ":", ":");
+        }
+      } else if (this.isAt(k, ".")) {
+        if (this.op3At(k, ".", ".", ".")) {
+          return false;
+        }
+      } else if (
+        !this.isIdentAt(k) &&
+        !this.isPrimitive(k) &&
+        !this.isAt(k, "extends") &&
+        !this.isAt(k, "super") &&
+        !this.isAt(k, "?") &&
+        !this.isAt(k, "[") &&
+        !this.isAt(k, "]") &&
+        !this.isAt(k, ",") &&
+        !this.isAt(k, "@")
+      ) {
+        return false;
+      }
+      k++;
+    }
+    return false;
+  }
+
   /** After an identifier: `a.b.C[].class`, `a.b.C[]::new`, else the identifier. */
   private qualifiedArrayType(id: i32): i32 {
     const t = this.t;
@@ -2785,7 +2921,8 @@ export class JParser {
     while (this.isAt(i, ".") && this.kindAt(i + 1) === JK_IDENT && !isJavaKeyword(this.inp, this.tokAt(i + 1))) {
       i += 2;
     }
-    if (i > 0 && this.isAt(i, "[") && this.isAt(i + 1, "]")) {
+    const annotated = this.isAt(i, "@");
+    if (i > 0 && ((this.isAt(i, "[") && this.isAt(i + 1, "]")) || annotated)) {
       let e = id;
       for (let q = 0; q < i; q += 2) {
         this.next();
@@ -2795,18 +2932,10 @@ export class JParser {
         e = this.finish(s);
       }
       const ty = this.bracketsOpt(e);
-      if (this.is(".") && this.isAt(1, "class")) {
-        this.next();
-        const s = t.node(N_MEMBER_SELECT, t.start[id]);
-        t.a[s] = ty;
-        t.name[s] = this.tokAt(0);
-        this.next();
-        return this.finish(s);
-      }
-      return ty;
+      return annotated ? this.annotatedDimsRef(ty) : this.arrayTypeSuffix(ty, t.start[id]);
     }
     // A generic qualified type before `::`: a.b.C<T>::new.
-    if (i > 0 && this.isAt(i, "<")) {
+    if (i > 0 && this.isAt(i, "<") && this.isUnboundMemberRef(i)) {
       const m = new Mark();
       this.save(m);
       let e = id;

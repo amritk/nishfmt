@@ -1,0 +1,1 @@
+class A { void f() {  Object o = String @A []::new;  Object p = String @A [] @B []::new;  Object q = java.lang.String @A []::new; } }
