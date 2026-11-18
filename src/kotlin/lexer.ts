@@ -1,4 +1,4 @@
-// The Kotlin lexer, ported from the Kotlin compiler's Kotlin.flex (Apache
+// The Kotlin lexer, ported from the Kotlin compiler 2.4.10's Kotlin.flex (Apache
 // License 2.0, Copyright JetBrains s.r.o. and Kotlin Programming Language
 // contributors). Longest match wins and ties go to the earlier rule, as in
 // JFlex; string templates and comments keep JFlex's state stack.

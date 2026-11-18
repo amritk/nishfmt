@@ -6,8 +6,8 @@ nishfmt is MIT licensed ([LICENSE](LICENSE)). Its formatters for Java, Kotlin, R
 | --- | --- | --- | --- | --- |
 | C++ | clang-format 18 (LLVM) | Apache-2.0 WITH LLVM-exception | — | Not ported: nishfmt's C++ formatter is its own code, written to make clang-format's decisions. No LLVM code is included. |
 | Java | google-java-format 1.28 | Apache-2.0 | Copyright 2015, 2016, 2018 Google Inc.; Copyright 2022 Google LLC | `src/java/`, `src/gdoc/` |
-| Kotlin | ktfmt 0.64 | Apache-2.0 | Copyright (c) Meta Platforms, Inc. and affiliates | `src/kotlin/` |
-| Kotlin | the Kotlin compiler 2.3.20 and the IntelliJ platform's PsiBuilderImpl | Apache-2.0 | Copyright JetBrains s.r.o. and Kotlin Programming Language contributors | `src/kotlin/` (lexer and parser) |
+| Kotlin | ktfmt 0.65 | Apache-2.0 | Copyright (c) Meta Platforms, Inc. and affiliates | `src/kotlin/` |
+| Kotlin | the Kotlin compiler 2.4.10 and the IntelliJ platform's PsiBuilderImpl | Apache-2.0 | Copyright JetBrains s.r.o. and Kotlin Programming Language contributors | `src/kotlin/` (lexer and parser) |
 | Ruby | RuboCop 1.92.2 | MIT | Copyright (c) 2012-24 Bozhidar Batsov | `src/ruby/`, `src/ruby/cops/` |
 | Ruby | rubocop-ast 1.51.0 | MIT | Copyright (c) 2012-24 Bozhidar Batsov | `src/ruby/` |
 | Ruby | the parser gem 3.3.13.0 | MIT | Copyright (c) 2013-2024 parser contributors | `src/ruby/` (lexer, grammar, AST builder) |

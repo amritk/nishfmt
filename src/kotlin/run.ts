@@ -1,4 +1,7 @@
 // The Kotlin entry point: ktfmt's pipeline over one file.
+//
+// Ported from ktfmt 0.65's Formatter and KotlinCode (Apache License 2.0,
+// Copyright (c) Meta Platforms, Inc. and affiliates).
 
 import { growI32 } from "../core/arr";
 import { guessSep } from "../core/files";

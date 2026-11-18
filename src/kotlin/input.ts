@@ -3,7 +3,7 @@
 // comment is a comment tok, a whole string template is one token, and
 // whitespace splits into newlines and runs of spaces (tabs are dropped).
 //
-// Ported from ktfmt's Tokenizer, KotlinInput and KotlinTok (Apache License
+// Ported from ktfmt 0.65's Tokenizer, KotlinInput and KotlinTok (Apache License
 // 2.0, Copyright (c) Meta Platforms, Inc. and affiliates).
 
 import {

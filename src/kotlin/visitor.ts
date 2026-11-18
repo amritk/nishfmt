@@ -4,8 +4,9 @@
 // `typeReference`, ...) are the helpers at the end, read off the tree the
 // way the Kotlin PSI classes compute them.
 //
-// Ported from ktfmt's KotlinInputAstVisitor (Apache License 2.0, Copyright
-// (c) Meta Platforms, Inc. and affiliates).
+// Ported from ktfmt 0.65's KotlinInputAstVisitor and the formatters it
+// delegates to in format/visitor/ (Apache License 2.0, Copyright (c) Meta
+// Platforms, Inc. and affiliates).
 
 import { GEngine, BL_NO, BL_PRESERVE, BL_YES, FORCED, INDEPENDENT, UNIFIED } from "../gdoc/engine";
 import { KTree } from "./builder";

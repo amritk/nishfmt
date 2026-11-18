@@ -4,7 +4,7 @@
 // ktfmt's KDocCommentsHelper configures is ported: KDoc comments, greedy
 // line breaking, no markup conversion, nested lists indented by 4.
 //
-// Ported from ktfmt's kdoc package: KDocFormatter, ParagraphListBuilder,
+// Ported from ktfmt 0.65's kdoc package: KDocFormatter, ParagraphListBuilder,
 // Paragraph, Table and Utilities (Apache License 2.0, Copyright (c) Meta
 // Platforms, Inc. and affiliates; originally from the kdoc-formatter
 // project, Copyright 2022 Google LLC).
