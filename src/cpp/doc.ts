@@ -48,7 +48,7 @@ export class Doc {
   // Classification.
   type: i32[];
   final: i32[];
-  eqList: i32[]; // 1: a brace clang-format never gives the braced-list kind (a `{` reached through `=`, a `}`)
+  eqList: i32[]; // 1: a brace clang-format never gives the braced-list kind (a braced list's `}`)
   asmFin: i32[]; // 1: a token inside `__asm { ... }`, kept as written
   hidSemi: i32[]; // 1: tokens another #if pass sees, after this one, hold a `;` for the brace scan
   // Passes so far (this one included) that saw the token; 0 outside passes.

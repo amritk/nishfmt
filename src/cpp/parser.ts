@@ -2865,10 +2865,8 @@ export class Parser {
           }
         }
         if (this.cur() === P_LBRACE) {
-          // clang-format reads this `{` past without working out its kind.
-          if (d.bk[this.pos] === BK_UNKNOWN) {
-            d.eqList[this.pos] = 1;
-          }
+          // clang-format 23 makes a `{` after `=` a braced list (any
+          // language but JavaScript).
           this.parseBracedList();
         }
         continue;
@@ -3073,9 +3071,6 @@ export class Parser {
       if (k === P_LBRACE) {
         // `} name = {...};` (clang-format: a braced list after `=`) or `} name{...};`.
         if (afterEq) {
-          if (d.bk[this.pos] === BK_UNKNOWN) {
-            d.eqList[this.pos] = 1;
-          }
           d.bk[this.pos] = BK_BRACED_INIT;
         } else if (d.bk[this.pos] === BK_UNKNOWN) {
           this.calculateBraceTypes();
