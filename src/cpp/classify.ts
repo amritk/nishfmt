@@ -2075,7 +2075,7 @@ export class Classifier {
         continue;
       }
       const b = d.prv[d.match[t]];
-      if (b < 0 || d.kind[b] !== K_IDENT || !this.noLower(b)) {
+      if (b < 0 || d.kind[b] !== K_IDENT || !noLower(d, b)) {
         continue;
       }
       const bp = d.prv[b];
@@ -2130,18 +2130,6 @@ export class Classifier {
         d.lRetWrap[this.line] = 1;
       }
     }
-  }
-
-  /** Whether identifier `t` has no lower-case letter. */
-  noLower(t: i32): boolean {
-    const d = this.d;
-    for (let i = d.start[t]; i < d.end[t]; i++) {
-      const c = d.at(i);
-      if (c >= 97 && c <= 122) {
-        return false;
-      }
-    }
-    return true;
   }
 
   /** Whether the `->` at `t` is a deduction guide's: `A(...) -> A<...>;`. */
@@ -2746,7 +2734,10 @@ const spaceBeforeCode = (d: Doc, l: i32, r: i32): boolean => {
   }
   if (rk === P_COLONCOLON) {
     if (isIdentKind(lk)) {
-      return d.ws[r] === 1;
+      // `ALWAYS_INLINE ::std::string`: a name that may be a macro keeps the
+      // space (clang-format's isPossibleMacro).
+      const lp = prevCode(d, left);
+      return d.ws[r] === 1 && d.len(left) > 1 && !(lp >= 0 && d.kind[lp] === P_COLONCOLON) && noLower(d, left);
     }
     // (After a block comment: clang-format's rule for those, `/*x=*/` hugging.)
     if (lk === K_COMMENT) {
@@ -2988,6 +2979,17 @@ export const CLASSIFY_KINDS: i32 =
   P_LPAREN;
 
 /** The token before `t`, comments skipped, or -1. */
+/** Whether identifier `t` has no lower-case letter. */
+const noLower = (d: Doc, t: i32): boolean => {
+  for (let i = d.start[t]; i < d.end[t]; i++) {
+    const c = d.at(i);
+    if (c >= 97 && c <= 122) {
+      return false;
+    }
+  }
+  return true;
+};
+
 const prevCode = (d: Doc, t: i32): i32 => {
   let p = d.prv[t];
   while (p >= 0 && d.kind[p] === K_COMMENT) {
