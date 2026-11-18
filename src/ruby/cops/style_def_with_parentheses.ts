@@ -3,10 +3,29 @@
 // Ported from RuboCop 1.92.3 (MIT License, Copyright (c) 2012-24 Bozhidar
 // Batsov).
 
-import { NT_DEF, NT_DEFS } from "../ast";
+import { F_ASSIGNMENT, NT_DEF, NT_DEFS } from "../ast";
 import { RbCop } from "../cop";
 import { RbSource } from "../source";
-import { ssxDefArgs, ssxEndless, ssxSingleLine } from "./style_syntax_help";
+import { ssxDefArgs, ssxEndless, ssxFS, ssxSingleLine } from "./style_syntax_help";
+
+/** spaces_before_assignment?: /\A(?:[ \t]|\\\n)+\z/ matches the source from s to e. */
+const sdpSpacesBeforeAssignment = (src: RbSource, s: i32, e: i32): boolean => {
+  if (e <= s) {
+    return false;
+  }
+  let p = s;
+  while (p < e) {
+    const c = src.at(p);
+    if (c === 32 || c === 9) {
+      p++;
+    } else if (c === 92 && p + 1 < e && src.at(p + 1) === 10) {
+      p += 2;
+    } else {
+      return false;
+    }
+  }
+  return true;
+};
 
 export class CopStyleDefWithParentheses {
   c: RbCop;
@@ -32,10 +51,11 @@ export class CopStyleDefWithParentheses {
       // parentheses_required?
       const after = src.at(e);
       if (after !== 59) {
-        if (ssxSingleLine(src, n) && !ssxEndless(src, n)) {
-          continue;
-        }
-        if (after === 61) {
+        if (!ssxEndless(src, n)) {
+          if (ssxSingleLine(src, n)) {
+            continue;
+          }
+        } else if (!sdpSpacesBeforeAssignment(src, e, ssxFS(src, n, F_ASSIGNMENT))) {
           continue;
         }
       }
