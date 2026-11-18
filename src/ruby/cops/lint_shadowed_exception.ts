@@ -3,7 +3,7 @@
 // ancestors. RuboCop resolves each rescued exception with Kernel.const_get
 // in its own process; lint_exception_table.ts lists what that resolves.
 //
-// Ported from RuboCop 1.92.2 (MIT License, Copyright (c) 2012-24 Bozhidar
+// Ported from RuboCop 1.92.3 (MIT License, Copyright (c) 2012-24 Bozhidar
 // Batsov).
 
 import { NT_RESCUE } from "../ast";

@@ -113,7 +113,7 @@ const usage = (): string =>
     "  C++ (.cpp .cc .cxx .hpp .hh .hxx .h)  clang-format 18, LLVM style",
     "  Java (.java)                        google-java-format 1.28",
     "  Kotlin (.kt .kts)                   ktfmt 0.64",
-    "  Ruby (.rb, Gemfile, .gemspec, ...)  rubocop -a 1.92.2",
+    "  Ruby (.rb, Gemfile, .gemspec, ...)  rubocop -a 1.92.3",
     "  Swift (.swift)                      SwiftFormat 0.64.7",
     "  Rust (.rs)                          rustfmt 1.9.0, edition 2021",
     "  Dart (.dart)                        dart format 3.14",

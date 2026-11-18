@@ -1,6 +1,6 @@
 // Layout/EndAlignment (EnforcedStyleAlignWith: keyword).
 //
-// Ported from RuboCop 1.92.2 (MIT License, Copyright (c) 2012-24 Bozhidar
+// Ported from RuboCop 1.92.3 (MIT License, Copyright (c) 2012-24 Bozhidar
 // Batsov).
 
 import {
@@ -11,6 +11,7 @@ import {
   NT_CASE,
   NT_CASE_MATCH,
   NT_CLASS,
+  NT_CSEND,
   NT_IF,
   NT_MODULE,
   NT_OR,
@@ -84,7 +85,7 @@ export class CopLayoutEndAlignment {
         } else {
           this.check(src, n);
         }
-      } else if (rmlAsgnType(t) || t === NT_SEND) {
+      } else if (rmlAsgnType(t) || t === NT_SEND || t === NT_CSEND) {
         const rhs0 = rmlExtractRhs(src, n);
         if (rhs0 === V_NIL) {
           continue;

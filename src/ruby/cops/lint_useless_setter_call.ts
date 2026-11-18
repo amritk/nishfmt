@@ -1,7 +1,7 @@
 // Lint/UselessSetterCall (unsafe; detection only): a method that ends with a
 // setter call on a local variable holding an object it made itself.
 //
-// Ported from RuboCop 1.92.2 (MIT License, Copyright (c) 2012-24 Bozhidar
+// Ported from RuboCop 1.92.3 (MIT License, Copyright (c) 2012-24 Bozhidar
 // Batsov).
 
 import {

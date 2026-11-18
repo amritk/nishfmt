@@ -1,0 +1,9 @@
+# frozen_string_literal: true
+
+a = <<-'SQL"X'
+  foo
+SQL"X
+b = <<-'SQL"X'
+  foo
+SQL"X
+puts a, b

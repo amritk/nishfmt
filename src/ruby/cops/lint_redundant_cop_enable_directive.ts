@@ -5,7 +5,7 @@
 // --only` the registry holds only the cops asked for, so that count starts
 // empty there; this port follows a full run.
 //
-// Ported from RuboCop 1.92.2 (MIT License, Copyright (c) 2012-24 Bozhidar
+// Ported from RuboCop 1.92.3 (MIT License, Copyright (c) 2012-24 Bozhidar
 // Batsov).
 
 import { V_NIL } from "../ast";
@@ -14,6 +14,7 @@ import { rbSpaceEnd } from "../help";
 import { RbRewriter } from "../rewriter";
 import { RbSource } from "../source";
 import { LdhConfig, LdhDirective, LdhRegistry } from "./lint_directive_help";
+import { lalIsWs } from "./layout_align_help";
 
 /** Whether c is Ruby's \w. */
 const lrceWord = (c: i32): boolean => (c >= 48 && c <= 57) || (c >= 65 && c <= 90) || (c >= 97 && c <= 122) || c === 95;
@@ -65,17 +66,65 @@ export class CopLintRedundantCopEnableDirective {
     if (src.root === V_NIL) {
       return;
     }
-    let has = false;
-    for (let i = 0; i + 6 <= src.n && !has; i++) {
-      if (src.at(i) === 101 && src.src(i, i + 6) === "enable") {
-        has = true;
+    let hasEnable = false;
+    let hasPop = false;
+    for (let i = 0; i + 3 <= src.n && !(hasEnable && hasPop); i++) {
+      if (src.at(i) === 101 && i + 6 <= src.n && src.src(i, i + 6) === "enable") {
+        hasEnable = true;
+      } else if (src.at(i) === 112 && src.at(i + 1) === 111 && src.at(i + 2) === 112) {
+        hasPop = true;
       }
     }
-    if (!has) {
+    if (!hasEnable && !hasPop) {
       return;
     }
     const reg = this.registry();
     const cfg = new LdhConfig(src, reg);
+    if (hasEnable) {
+      this.checkExtraEnables(src, reg, cfg);
+    }
+    if (hasPop) {
+      this.checkOrphanPops(src, cfg);
+    }
+  }
+
+  /** check_orphan_pops. */
+  private checkOrphanPops(src: RbSource, cfg: LdhConfig): void {
+    let depth = 0;
+    for (const d of cfg.dirs) {
+      if (d.mode === "push") {
+        depth++;
+      } else if (d.mode === "pop") {
+        if (depth > 0) {
+          depth--;
+          continue;
+        }
+        const k = this.c.offense(d.ms, d.me);
+        if (k !== null) {
+          this.removeDirective(src, k, d);
+          this.c.commit(k);
+        }
+      }
+    }
+  }
+
+  /** remove_directive(corrector, directive.range_with_reason, directive.comment). */
+  private removeDirective(src: RbSource, k: RbRewriter, d: LdhDirective): void {
+    const re = d.reasonEnd(src);
+    // range.end.join(comment.source_range.end).source.match?(/\A\s*(?:#|\z)/)
+    let p = re;
+    while (p < d.ce && lalIsWs(src.at(p))) {
+      p++;
+    }
+    if (p >= d.ce || src.at(p) === 35) {
+      k.remove(d.ms, rbSpaceEnd(src, re, 2, true, false, false));
+    } else {
+      k.replace(d.ms, re, "#");
+    }
+  }
+
+  /** check_extra_enables. */
+  private checkExtraEnables(src: RbSource, reg: LdhRegistry, cfg: LdhConfig): void {
     // extra_enabled_comments
     const count = new Map<string, i32>();
     const keys: string[] = [];
@@ -146,7 +195,7 @@ export class CopLintRedundantCopEnableDirective {
         continue;
       }
       if (d.matchNames(reg, names)) {
-        k.remove(d.ms, rbSpaceEnd(src, d.reasonEnd(src), 2, true, false, false));
+        this.removeDirective(src, k, d);
       } else {
         this.removeWithComma(src, k, d, p, p + toI32(name.length));
       }

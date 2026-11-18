@@ -1,6 +1,6 @@
 // Style/ExplicitBlockArgument.
 //
-// Ported from RuboCop 1.92.2 (MIT License, Copyright (c) 2012-24 Bozhidar
+// Ported from RuboCop 1.92.3 (MIT License, Copyright (c) 2012-24 Bozhidar
 // Batsov).
 
 import {
@@ -37,7 +37,17 @@ import { RbRewriter } from "../rewriter";
 import { RbSource } from "../source";
 import { sbhMethodName } from "./style_body_help";
 import { ssxAstEqual } from "./style_syntax_reparse";
-import { ssxDefArgs, ssxDescendants, ssxFE, ssxFS, ssxHas, ssxParenthesized } from "./style_syntax_help";
+import {
+  ssxDefArgs,
+  ssxDescendants,
+  ssxFE,
+  ssxFS,
+  ssxHas,
+  ssxMeth,
+  ssxOperatorName,
+  ssxParenthesized,
+  ssxSetter,
+} from "./style_syntax_help";
 
 const sbhEbIs = (src: RbSource, n: i32, t: i32): boolean => src.a.isNode(n) && src.a.type(n) === t;
 
@@ -197,6 +207,18 @@ export class CopStyleExplicitBlockArgument {
     if (args.length > 0) {
       // insert_argument
       const last = args[args.length - 1];
+      const lt = sbhEbIs(src, last, NT_SEND) || sbhEbIs(src, last, NT_CSEND);
+      if (
+        lt &&
+        a.nKid(last) > 2 &&
+        !ssxParenthesized(src, last) &&
+        !ssxOperatorName(ssxMeth(src, last)) &&
+        !ssxSetter(src, last)
+      ) {
+        // parenthesize_arguments of a command call as the last argument.
+        k.replace(ssxFE(src, last, F_SELECTOR), a.exS(a.kid(last, 2)), "(");
+        k.insertAfter(a.exS(a.kid(last, -1)), a.exE(a.kid(last, -1)), ")");
+      }
       let e = a.exE(last);
       while (src.at(e) === 44) {
         e++;

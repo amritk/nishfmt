@@ -1,6 +1,6 @@
 // Style/TrailingUnderscoreVariable (AllowNamedUnderscoreVariables: true).
 //
-// Ported from RuboCop 1.92.2 (MIT License, Copyright (c) 2012-24 Bozhidar
+// Ported from RuboCop 1.92.3 (MIT License, Copyright (c) 2012-24 Bozhidar
 // Batsov).
 
 import { F_BEGIN, F_END, F_OPERATOR, NT_ARRAY, NT_LVASGN, NT_MASGN, NT_MLHS, NT_SPLAT, V_NIL } from "../ast";

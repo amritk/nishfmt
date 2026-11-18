@@ -1,0 +1,3 @@
+private memoize def foo
+    bar
+  end

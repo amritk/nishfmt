@@ -1,7 +1,7 @@
 // Naming/HeredocDelimiterNaming (detection only; ForbiddenDelimiters:
 // [/(^|\s)(EO[A-Z]{1}|END)(\s|$)/i]).
 //
-// Ported from RuboCop 1.92.2 (MIT License, Copyright (c) 2012-24 Bozhidar
+// Ported from RuboCop 1.92.3 (MIT License, Copyright (c) 2012-24 Bozhidar
 // Batsov).
 
 import { F_HEREDOC_END, NT_DSTR, NT_STR, NT_XSTR } from "../ast";

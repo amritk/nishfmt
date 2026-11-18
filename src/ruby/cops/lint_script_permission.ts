@@ -2,7 +2,7 @@
 // changes no source text): a file that starts with `#!` but that its user
 // cannot execute. The offense is the shebang comment.
 //
-// Ported from RuboCop 1.92.2 (MIT License, Copyright (c) 2012-24 Bozhidar
+// Ported from RuboCop 1.92.3 (MIT License, Copyright (c) 2012-24 Bozhidar
 // Batsov).
 
 import { RbCop } from "../cop";

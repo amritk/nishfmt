@@ -1,7 +1,7 @@
 // Style/RedundantBegin (Layout/LineLength Max: 120, Layout/SpaceInsideParens
 // no_space).
 //
-// Ported from RuboCop 1.92.2 (MIT License, Copyright (c) 2012-24 Bozhidar
+// Ported from RuboCop 1.92.3 (MIT License, Copyright (c) 2012-24 Bozhidar
 // Batsov).
 
 import {
@@ -13,44 +13,62 @@ import {
   F_QUESTION,
   F_SELECTOR,
   NT_AND,
+  NT_BEGIN,
   NT_BLOCK,
   NT_BREAK,
   NT_CASE,
   NT_CASE_MATCH,
+  NT_CLASS,
+  NT_CSEND,
   NT_DEF,
   NT_DEFS,
   NT_EMPTY_ELSE,
   NT_ENSURE,
+  NT_FOR,
   NT_IF,
+  NT_IN_PATTERN,
   NT_KWBEGIN,
+  NT_KWOPTARG,
   NT_LAMBDA,
+  NT_MODULE,
   NT_NEXT,
   NT_NUMBLOCK,
+  NT_OPTARG,
   NT_OR,
+  NT_OR_ASGN,
+  NT_RESBODY,
   NT_RESCUE,
   NT_RETURN,
+  NT_SCLASS,
   NT_SEND,
+  NT_SUPER,
   NT_UNTIL,
   NT_UNTIL_POST,
+  NT_WHEN,
   NT_WHILE,
   NT_WHILE_POST,
+  NT_YIELD,
   V_NIL,
 } from "../ast";
 import { RbCop } from "../cop";
 import { rbSpaceBegin, rbSpaceEnd } from "../help";
 import { RbRewriter } from "../rewriter";
 import { RbSource } from "../source";
+import { rmlBeginsItsLine } from "./layout_multiline_help";
 import { sbhSlmAssignment } from "./style_single_line_methods";
-import { sbhLambdaLiteral, sbhMethodName } from "./style_body_help";
+import { sbhCallArgs, sbhLambdaLiteral, sbhMethodName, sbhOperatorMethod } from "./style_body_help";
 import {
   ssxCharLen,
   ssxDescendants,
   ssxFE,
   ssxFS,
   ssxHas,
+  ssxIsAnyBlock,
   ssxIsSpace,
   ssxLocIs,
   ssxMultiline,
+  ssxParenthesized,
+  ssxSetter,
   ssxSingleLine,
   ssxWholeLinesE,
   ssxWholeLinesS,
@@ -120,6 +138,10 @@ const sbhRbAllowable = (src: RbSource, n: i32): boolean => {
     if (k !== 1) {
       return true;
     }
+    // multiline_memoization? (Style/MultilineMemoization is enabled)
+    if (a.type(p) === NT_OR_ASGN && ssxMultiline(src, first) && sbhRbLowPrecedence(src, first)) {
+      return true;
+    }
     // too_long_when_joined?
     if (ssxSingleLine(src, first)) {
       let len = ssxCharLen(src.nodeSrc(first));
@@ -138,6 +160,121 @@ const sbhRbAllowable = (src: RbSource, n: i32): boolean => {
     }
   }
   return sbhRbTernaryOperand(src, n);
+};
+
+/** RedundantBegin#command_call? */
+const sbhRbCommandCall = (src: RbSource, n0: i32): boolean => {
+  let n = n0;
+  if (ssxIsAnyBlock(src, n)) {
+    n = src.a.kid(n, 0);
+  }
+  if (!src.a.isNode(n)) {
+    return false;
+  }
+  const t = src.a.type(n);
+  if (t !== NT_SEND && t !== NT_CSEND && t !== NT_SUPER && t !== NT_YIELD) {
+    return false;
+  }
+  if (sbhCallArgs(src, n).length === 0 || ssxParenthesized(src, n) || sbhOperatorMethod(src, n)) {
+    return false;
+  }
+  // !setter_method?
+  return !ssxSetter(src, n);
+};
+
+/** statement_position? */
+const sbhRbStatementPosition = (src: RbSource, n: i32): boolean => {
+  const a = src.a;
+  const p = src.parent(n);
+  if (p === V_NIL) {
+    return true;
+  }
+  const t = a.type(p);
+  if (
+    t === NT_BEGIN ||
+    t === NT_KWBEGIN ||
+    t === NT_BLOCK ||
+    t === NT_NUMBLOCK ||
+    t === NT_DEF ||
+    t === NT_DEFS ||
+    t === NT_CLASS ||
+    t === NT_MODULE ||
+    t === NT_SCLASS ||
+    t === NT_RESCUE ||
+    t === NT_RESBODY ||
+    t === NT_ENSURE
+  ) {
+    return true;
+  }
+  if (t === NT_WHEN) {
+    return a.kid(p, -1) === n;
+  }
+  if (t === NT_IN_PATTERN || t === NT_FOR) {
+    return a.kid(p, 2) === n;
+  }
+  if (t === NT_IF && ssxHas(src, p, F_QUESTION)) {
+    return false;
+  }
+  return (t === NT_IF || t === NT_WHILE || t === NT_UNTIL || t === NT_CASE || t === NT_CASE_MATCH) && a.kid(p, 0) !== n;
+};
+
+/** parentheses_required? */
+const sbhRbParensRequired = (src: RbSource, st: i32, p0: i32): boolean => {
+  if (sbhRbLowPrecedence(src, st)) {
+    return true;
+  }
+  if (!sbhRbCommandCall(src, st)) {
+    return false;
+  }
+  let p = p0;
+  if (!sbhSlmAssignment(src, p)) {
+    return src.a.type(p) === NT_OPTARG || src.a.type(p) === NT_KWOPTARG;
+  }
+  while (src.parent(p) !== V_NIL && sbhSlmAssignment(src, src.parent(p))) {
+    p = src.parent(p);
+  }
+  return !sbhRbStatementPosition(src, p);
+};
+
+/** use_modifier_form_after_multiline_begin_block? */
+const sbhRbModifierAfter = (src: RbSource, n: i32): boolean => {
+  const p = src.parent(n);
+  if (p === V_NIL) {
+    return false;
+  }
+  return ssxMultiline(src, n) && src.a.type(p) === NT_IF && sbhRbModifierForm(src, p) && src.a.kid(p, 0) !== n;
+};
+
+/** code_after_end_on_its_own_line? */
+const sbhRbCodeAfterEnd = (src: RbSource, n: i32): boolean => {
+  const es = ssxFS(src, n, F_END);
+  if (!rmlBeginsItsLine(src, es)) {
+    return false;
+  }
+  const le = src.lineEnd(src.line(es));
+  let i = ssxFE(src, n, F_END);
+  while (i < le) {
+    const c = src.at(i);
+    if (c !== 32 && (c < 9 || c > 13) && c !== 0) {
+      break;
+    }
+    i++;
+  }
+  return i < le && src.at(i) !== 35;
+};
+
+/** range_with_end_line_break: the begin of `end` with the space and line breaks before it. */
+const sbhRbEndLineBreak = (src: RbSource, n: i32): i32 =>
+  rbSpaceBegin(src, ssxFS(src, n, F_END), 1, true, false, false);
+
+/** end_cannot_join_statement_line? */
+const sbhRbEndCannotJoin = (src: RbSource, n: i32): boolean => {
+  if (sbhRbModifierAfter(src, n) || !sbhRbCodeAfterEnd(src, n)) {
+    return false;
+  }
+  const a = src.a;
+  const stEnd = a.nKid(n) === 0 ? ssxFE(src, n, F_BEGIN) : a.exE(a.kid(n, -1));
+  return sbhRbEndLineBreak(src, n) !== stEnd;
 };
 
 /** IfNode#branches. */
@@ -242,6 +379,9 @@ export class CopStyleRedundantBegin {
   /** register_offense. */
   private register(src: RbSource, n: i32): void {
     const a = src.a;
+    if (sbhRbEndCannotJoin(src, n)) {
+      return;
+    }
     const bs = ssxFS(src, n, F_BEGIN);
     const be = ssxFE(src, n, F_BEGIN);
     const k = this.c.offense(bs, be);
@@ -250,7 +390,15 @@ export class CopStyleRedundantBegin {
     }
     const p = src.parent(n);
     const pt = p === V_NIL ? -1 : a.type(p);
-    if (p !== V_NIL && (sbhSlmAssignment(src, p) || pt === NT_RETURN || pt === NT_NEXT || pt === NT_BREAK)) {
+    if (
+      p !== V_NIL &&
+      (sbhSlmAssignment(src, p) ||
+        pt === NT_RETURN ||
+        pt === NT_NEXT ||
+        pt === NT_BREAK ||
+        pt === NT_OPTARG ||
+        pt === NT_KWOPTARG)
+    ) {
       this.replaceWithStatement(src, k, bs, be, n);
     } else {
       // remove_begin
@@ -260,15 +408,18 @@ export class CopStyleRedundantBegin {
         k.remove(bs, be);
       }
     }
-    // use_modifier_form_after_multiline_begin_block?
-    if (p !== V_NIL && ssxMultiline(src, n) && pt === NT_IF && sbhRbModifierForm(src, p) && a.kid(p, 0) !== n) {
+    // correct_end
+    if (sbhRbModifierAfter(src, n)) {
       const cs = ssxFS(src, p, F_KEYWORD);
       const ce = a.exE(a.kid(p, 0));
       const first = a.kid(n, 0);
       k.insertAfter(a.exS(first), a.exE(first), ` ${src.src(cs, ce)}`);
       k.remove(ssxWholeLinesS(src, cs), ssxWholeLinesE(src, ce, true));
+    } else if (sbhRbCodeAfterEnd(src, n)) {
+      k.remove(sbhRbEndLineBreak(src, n), ssxFE(src, n, F_END));
+    } else {
+      k.remove(ssxFS(src, n, F_END), ssxFE(src, n, F_END));
     }
-    k.remove(ssxFS(src, n, F_END), ssxFE(src, n, F_END));
     this.c.commit(k);
   }
 
@@ -277,7 +428,7 @@ export class CopStyleRedundantBegin {
     const a = src.a;
     const first = a.kid(n, 0);
     let s = src.nodeSrc(first);
-    if (sbhRbLowPrecedence(src, first)) {
+    if (sbhRbParensRequired(src, first, src.parent(n))) {
       s = `(${s})`;
     }
     k.replace(bs, be, s);

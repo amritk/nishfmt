@@ -1,0 +1,35 @@
+{ key: if something
+         work
+       else
+         raise 'error'
+       end }
+do_something(if something
+               work
+             else
+               raise 'error'
+             end)
+if foo
+  bar
+else
+  raise 'error' unless something
+
+  work
+
+end
+[if something
+   work
+ else
+   raise 'error'
+ end]
+begin
+  foo
+rescue StandardError
+  raise 'error' unless something
+
+  work
+end
+condition && if something
+               raise 'error'
+             else
+               work
+             end

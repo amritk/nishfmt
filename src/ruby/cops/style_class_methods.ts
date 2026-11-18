@@ -1,6 +1,6 @@
 // Style/ClassMethods.
 //
-// Ported from RuboCop 1.92.2 (MIT License, Copyright (c) 2012-24 Bozhidar
+// Ported from RuboCop 1.92.3 (MIT License, Copyright (c) 2012-24 Bozhidar
 // Batsov).
 
 import { F_NAME, NT_BEGIN, NT_CLASS, NT_DEFS, NT_MODULE, V_NIL } from "../ast";

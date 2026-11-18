@@ -1,0 +1,8 @@
+# frozen_string_literal: true
+
+a = ['a b', "tab\there#{x}", "q\"#{y}"]
+b = [:'a b', :"tab\there#{x}", :"q\"#{y}"]
+c = [:"a b#{x}\"q", :c]
+d = ["#{@foo}", 'bar', 'a b']
+e = [:"#{@foo}", :bar, :'a b']
+puts a, b, c, d, e

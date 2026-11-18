@@ -1,7 +1,7 @@
 // Style/AndOr (EnforcedStyle: conditionals; its correction is unsafe:
 // detection only).
 //
-// Ported from RuboCop 1.92.2 (MIT License, Copyright (c) 2012-24 Bozhidar
+// Ported from RuboCop 1.92.3 (MIT License, Copyright (c) 2012-24 Bozhidar
 // Batsov).
 
 import { F_OPERATOR, NT_AND, NT_IF, NT_OR, NT_UNTIL, NT_UNTIL_POST, NT_WHILE, NT_WHILE_POST } from "../ast";

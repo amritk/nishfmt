@@ -3,7 +3,7 @@
 // ruby33.rb; edit the generator, not the actions).
 //
 // Ported from the parser gem 3.3.13.0 (MIT License, Copyright (c) 2013-2024
-// parser contributors) and racc 1.7.3 (Ruby License / BSD-2-Clause,
+// parser contributors) and racc 1.8.1 (Ruby License / BSD-2-Clause,
 // Copyright (c) 1999-2006 Minero Aoki).
 
 import {

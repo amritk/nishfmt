@@ -1,0 +1,12 @@
+# frozen_string_literal: true
+
+[Foo.extend(Bar)]
+baz(Foo.include(Bar, Qux), 1)
+cond ? Foo.include(Bar) : nil
+Foo.include(Bar).tap {}
+bar if Foo.include(Bar)
+private def e = Foo.prepend(Bar)
+
+class Foo
+  Foo.include Bar
+end
