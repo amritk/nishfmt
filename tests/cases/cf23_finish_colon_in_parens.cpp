@@ -1,0 +1,8 @@
+#define A(name)  \
+  class X {  \
+   public:   \
+    explicit X(D) \
+        IFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFF(EMPTYYYYYYYYYYYYYYYYYYYYYYYYYYYYYYYYYYYYYYY(C), \
+           = default;\
+           , : impl_(xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx){}) \
+  };

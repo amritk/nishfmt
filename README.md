@@ -23,7 +23,7 @@ pinned to one core:
 
 | Language | Matches | Identical | Reference tool, 4 cores / 1 core | nishfmt, 4 cores / 1 core |
 | --- | --- | ---: | ---: | ---: |
-| C++ | clang-format 18, `{BasedOnStyle: LLVM, ColumnLimit: 120}` | 99.6% of 10,344 | 87.0 s / 212.9 s | **7.07 s / 28.9 s** |
+| C++ | clang-format 23.1.5, `{BasedOnStyle: LLVM, ColumnLimit: 120}` | 99.7% of 10,343 | 87.0 s / 212.9 s | **7.07 s / 28.9 s** |
 | Java | google-java-format 2.0.0 | 100% of 7,627 | 32.1 s / 113.6 s | **1.66 s / 6.10 s** |
 | Kotlin | ktfmt 0.65, `--kotlinlang-style` | 100% of 9,602 | 89.5 s / not run | **2.00 s / 7.48 s** |
 | C# | CSharpier 1.4.0, default options except `end_of_line = crlf` | 100% of 13,988 | 63.0 s / 122.7 s | **3.10 s / 6.63 s** |
@@ -43,7 +43,8 @@ pinned to one core:
   alone on another idle machine, with google-java-format on JDK 21; the
   others during porting on a busier shared machine, so compare within a row.
   The C# times predate the change to CRLF output and were taken on the LF
-  corpus.
+  corpus. The C++ times were taken against clang-format 18.1.3 on the
+  10,344-file corpus, before the move to 23.1.5, and not measured again.
 - How the reference tools ran: clang-format 50 files a process; one
   google-java-format JVM over all files; CSharpier on .NET 10 with
   `--no-cache`; rustfmt 100 files a process; RuboCop with `--parallel` on 4
@@ -167,7 +168,7 @@ $ nishfmt --help
 usage: nishfmt [options] <file-or-dir>...
 
 Formats each file to match its language's reference formatter:
-  C++ (.cpp .cc .cxx .hpp .hh .hxx .h)  clang-format 18, LLVM style
+  C++ (.cpp .cc .cxx .hpp .hh .hxx .h)  clang-format 23.1.5, LLVM style
   Java (.java)                        google-java-format 2.0.0
   Kotlin (.kt .kts)                   ktfmt 0.65, kotlinlang style
   Ruby (.rb, Gemfile, .gemspec, ...)  rubocop -a 1.92.3

@@ -7,9 +7,12 @@
 // own and the code around it is parsed straight through.
 
 import { Doc } from "./doc";
-import { requiresIsClause } from "./classify";
+import { prevCode, requiresIsClause } from "./classify";
 import {
   isIdentKind,
+  CW_FINAL,
+  TT_CLASS_HEAD_NAME,
+  TT_TEMPLATE_CLOSER,
   P_HASHHASH,
   KW_NOEXCEPT,
   P_LESSLESSEQUAL,
@@ -1584,6 +1587,13 @@ export class Parser {
         return;
       }
       if (k === P_RPAREN) {
+        // clang-format 23: a `>` right before `()` closes a template.
+        if (this.lastCode() === open) {
+          const p = prevCode(d, open);
+          if (p >= 0 && d.kind[p] === P_GREATER) {
+            this.markFinal(p, TT_TEMPLATE_CLOSER);
+          }
+        }
         d.match[open] = this.pos;
         d.match[this.pos] = open;
         this.push();
@@ -1791,7 +1801,7 @@ export class Parser {
   }
 
   /** Parses a braced list whose `{` is the current token. */
-  parseBracedList(): void {
+  parseBracedList(isEnum: boolean = false): void {
     const d = this.d;
     const open = this.pos;
     d.bk[open] = BK_BRACED_INIT;
@@ -1817,6 +1827,11 @@ export class Parser {
       }
       if (k === P_LBRACE) {
         d.bk[this.pos] = BK_BRACED_INIT;
+        // clang-format 23: a `>` right before a braced list closes a template.
+        const p = this.lastCode();
+        if (p >= 0 && d.kind[p] === P_GREATER) {
+          this.markFinal(p, TT_TEMPLATE_CLOSER);
+        }
         this.parseBracedList();
         continue;
       }
@@ -1825,7 +1840,11 @@ export class Parser {
         continue;
       }
       if (k === P_SEMI) {
-        // Not a list after all; let the statement end here.
+        // Not a list after all (clang-format's parseBracedList returns at
+        // the `;`, which ends the statement; an enum's list goes on).
+        if (!isEnum) {
+          return;
+        }
         this.push();
         continue;
       }
@@ -2782,7 +2801,15 @@ export class Parser {
       const atEnd = this.outsideBody(q) || (nt === q && this.outsideBody(nt));
       // (For `MACRO(...)` OneTokenSoFar is asked before the parentheses.)
       const trailed = q !== this.pos && !atEnd && !functionLike;
-      if ((n >= 5 || functionLike) && d.nl[q] > 0 && this.canStartNewLine(nt) && !atEnd && !trailed) {
+      // (clang-format 23: a function-like macro shorter than 5 characters
+      // ends its line only when no `(` follows its arguments.)
+      if (
+        (n >= 5 || (functionLike && d.kind[nt] !== P_LPAREN)) &&
+        d.nl[q] > 0 &&
+        this.canStartNewLine(nt) &&
+        !atEnd &&
+        !trailed
+      ) {
         while (d.kind[this.pos] === K_COMMENT && d.nl[this.pos] === 0) {
           this.push();
         }
@@ -2833,7 +2860,10 @@ export class Parser {
           continue;
         }
         if (this.classHasBody()) {
-          this.parseRecord();
+          if (this.parseRecord()) {
+            // A braced initializer (`struct stat st{};`): the statement goes on.
+            continue;
+          }
           return;
         }
         this.push();
@@ -2860,10 +2890,8 @@ export class Parser {
           }
         }
         if (this.cur() === P_LBRACE) {
-          // clang-format reads this `{` past without working out its kind.
-          if (d.bk[this.pos] === BK_UNKNOWN) {
-            d.eqList[this.pos] = 1;
-          }
+          // clang-format 23 makes a `{` after `=` a braced list (any
+          // language but JavaScript).
           this.parseBracedList();
         }
         continue;
@@ -2871,6 +2899,12 @@ export class Parser {
       if (k === KW_TRY && this.last >= 0) {
         this.parseFunctionTry();
         return;
+      }
+      if (k === P_CARET && this.lastCode() >= 0 && isIdentKind(d.kind[this.lastCode()])) {
+        // clang-format 23: after an identifier a `^` starts no block literal
+        // (`String ^ NAME { ... }`, a C++/CX handle).
+        this.push();
+        continue;
       }
       if (k === P_CARET && !(this.last >= 0 && d.kind[this.last] === KW_OPERATOR)) {
         // clang-format's statement loop reads `^ type (args) { ... }` as a
@@ -2941,22 +2975,83 @@ export class Parser {
         this.addLine();
         return;
       }
+      if (k === P_GREATER) {
+        // clang-format 23's parseStructuralElement: a `>` before `{` closes
+        // a template.
+        const gt = this.pos;
+        this.push();
+        if (d.kind[this.nextNonComment(gt)] === P_LBRACE) {
+          this.markFinal(gt, TT_TEMPLATE_CLOSER);
+        }
+        continue;
+      }
       this.parseExprToken();
     }
   }
 
-  /** `class|struct|union Name ... { members } declarators ;` */
-  parseRecord(): void {
+  /** Gives token `t` type `tt` for good, as clang-format's setFinalizedType. */
+  markFinal(t: i32, tt: i32): void {
+    this.d.type[t] = tt;
+    this.d.final[t] = 1;
+  }
+
+  /**
+   * `class|struct|union Name ... { members } declarators ;`. Answers true
+   * when the `{` is a braced initializer instead (`struct stat st{};`): the
+   * list is parsed and the statement continues.
+   */
+  parseRecord(): boolean {
     const d = this.d;
     const kw = this.cur();
+    const kwTok = this.pos;
     this.push();
     let baseOrArgs = false; // past a `:` or `<`: clang-format's base-clause loop
+    // clang-format 23's parseRecord: the class name and whether a base
+    // clause was seen decide IsListInitialization at the `{`.
+    let className = -1;
+    let derived = false;
+    let angle = 0;
     while (true) {
       const k = this.cur();
+      if (!baseOrArgs && k !== P_LPAREN && k !== P_COLONCOLON && k !== P_HASHHASH && className < 0) {
+        // The head word before this token names the class unless it is a
+        // macro (all capitals, more than one character) or an attribute
+        // macro (LLVM style's AttributeMacros: `__capability`).
+        const p = this.lastCode();
+        if (
+          p > kwTok &&
+          isIdentKind(d.kind[p]) &&
+          !d.is(p, "__capability") &&
+          (d.len(p) === 1 || this.isNonMacroIdent(p))
+        ) {
+          className = p;
+        }
+      }
       if (k === P_COLON || k === P_LESS) {
         baseOrArgs = true;
       }
+      if (baseOrArgs) {
+        if (k === P_LESS) {
+          angle++;
+        } else if (k === P_GREATER) {
+          angle--;
+        }
+        if (angle === 0) {
+          if (k === P_COLON) {
+            derived = true;
+          } else if (!derived && isIdentKind(k)) {
+            const p = this.lastCode();
+            if (p >= 0 && d.kind[p] === P_COLONCOLON) {
+              className = this.pos;
+            }
+          }
+        }
+      }
       if (k === P_LBRACE) {
+        if (angle === 0 && this.isListInitialization(className, derived)) {
+          this.parseBracedList();
+          return true;
+        }
         if (!baseOrArgs) {
           break;
         }
@@ -2989,7 +3084,10 @@ export class Parser {
     }
     if (this.cur() !== P_LBRACE) {
       this.addLine();
-      return;
+      return false;
+    }
+    if (className >= 0) {
+      this.markFinal(className, TT_CLASS_HEAD_NAME);
     }
     const tt = kw === KW_CLASS ? TT_CLASS_LBRACE : kw === KW_STRUCT ? TT_STRUCT_LBRACE : TT_UNION_LBRACE;
     this.parseBlock(1, true, tt);
@@ -3028,9 +3126,6 @@ export class Parser {
       if (k === P_LBRACE) {
         // `} name = {...};` (clang-format: a braced list after `=`) or `} name{...};`.
         if (afterEq) {
-          if (d.bk[this.pos] === BK_UNKNOWN) {
-            d.eqList[this.pos] = 1;
-          }
           d.bk[this.pos] = BK_BRACED_INIT;
         } else if (d.bk[this.pos] === BK_UNKNOWN) {
           this.calculateBraceTypes();
@@ -3044,6 +3139,36 @@ export class Parser {
       this.parseExprToken();
     }
     this.addLine();
+    return false;
+  }
+
+  /**
+   * clang-format 23's parseRecord `IsListInitialization`: with a class name,
+   * no base clause, and a word other than that name or `final` before the
+   * `{`, a `{` that is not a block is a braced initializer.
+   */
+  isListInitialization(className: i32, derived: boolean): boolean {
+    const d = this.d;
+    if (className < 0 || derived) {
+      return false;
+    }
+    const p = this.lastCode();
+    if (p < 0 || p === className || !isIdentKind(d.kind[p]) || d.kind[p] === CW_FINAL) {
+      return false;
+    }
+    if (d.bk[this.pos] === BK_UNKNOWN) {
+      this.calculateBraceTypes();
+    }
+    return d.bk[this.pos] !== BK_BLOCK;
+  }
+
+  /** The last token of the line being built that is not a comment, or -1. */
+  lastCode(): i32 {
+    const d = this.d;
+    if (this.first < 0) {
+      return -1;
+    }
+    return d.kind[this.last] === K_COMMENT ? prevCode(d, this.last) : this.last;
   }
 
   /** `enum [class] Name [: type] { list };` — the list stays in the line. */
@@ -3063,7 +3188,7 @@ export class Parser {
     const lb = this.pos;
     d.type[lb] = TT_ENUM_LBRACE;
     d.final[lb] = 1;
-    this.parseBracedList();
+    this.parseBracedList(true);
     d.bk[lb] = BK_BLOCK;
     const rb = d.match[lb];
     if (rb >= 0) {

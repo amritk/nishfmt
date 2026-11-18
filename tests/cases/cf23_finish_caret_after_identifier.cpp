@@ -1,0 +1,19 @@
+namespace Sample
+{
+    public value struct Item
+    {
+        Platform::String^ Name;
+    };
+
+    partial ref class Page
+    {
+    public:
+        static property Platform::String^ TITLE
+        {
+            Platform::String^ get()
+            {
+                return ref new Platform::String(L"A sample title");
+            }
+        }
+    };
+}

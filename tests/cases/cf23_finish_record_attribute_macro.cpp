@@ -1,0 +1,2 @@
+struct __capability T {  };
+struct __capability S { int x; };

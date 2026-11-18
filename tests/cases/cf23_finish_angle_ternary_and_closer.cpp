@@ -1,0 +1,14 @@
+void f() {
+  test_##name##3 < type > ();
+  x = 3 < type > ();
+  x = a3 < type > ();
+  one = test_I_##name##3 < type > () || one;
+}
+int f(int64 v) {
+  int64 iv = cvRound64(v);
+  return iv < 0 ? 0u : iv > (int64)UINT_MAX ? UINT_MAX : (unsigned)iv;
+}
+void g() {
+  slot = to_slot(GrowSooTableToNextCapacityAndPrepareInsert<kUseMemcpy ? OptimalMemcpySizeForSooSlotTransfer(sizeof(slot_type)) : 0, kUseMemcpy>(common(), GetPolicyFunctions(), hash_key.data(), Hasher::get_hash_fn(), force_sampling));
+  auto v = std::vector<int>{1, 2};
+}

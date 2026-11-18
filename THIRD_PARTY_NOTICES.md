@@ -4,7 +4,7 @@ nishfmt is MIT licensed ([LICENSE](LICENSE)). Its formatters for Java, Kotlin, R
 
 | Language | Project | License | Copyright | Where |
 | --- | --- | --- | --- | --- |
-| C++ | clang-format 18 (LLVM) | Apache-2.0 WITH LLVM-exception | — | Not ported: nishfmt's C++ formatter is its own code, written to make clang-format's decisions. No LLVM code is included. |
+| C++ | clang-format 23.1.5 (LLVM) | Apache-2.0 WITH LLVM-exception | — | Not ported: nishfmt's C++ formatter is its own code, written to make clang-format's decisions. No LLVM code is included. |
 | Java | google-java-format 2.0.0 | Apache-2.0 | Copyright 2015, 2016, 2019, 2026 Google Inc. | `src/java/` |
 | Kotlin, Java | google-java-format 1.28 (the sources ported; ktfmt 0.65 bundles 1.23.0, and the Kotlin gate matches it): the Doc engine ktfmt runs on, and the token input and comment re-indentation both languages share | Apache-2.0 | Copyright 2015, 2016 Google Inc. | `src/gdoc/` |
 | Kotlin | ktfmt 0.65 | Apache-2.0 | Copyright (c) Meta Platforms, Inc. and affiliates | `src/kotlin/` |

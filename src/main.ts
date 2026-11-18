@@ -110,7 +110,7 @@ const usage = (): string =>
     "usage: nishfmt [options] <file-or-dir>...",
     "",
     "Formats each file to match its language's reference formatter:",
-    "  C++ (.cpp .cc .cxx .hpp .hh .hxx .h)  clang-format 18, LLVM style",
+    "  C++ (.cpp .cc .cxx .hpp .hh .hxx .h)  clang-format 23.1.5, LLVM style",
     "  Java (.java)                        google-java-format 2.0.0",
     "  Kotlin (.kt .kts)                   ktfmt 0.65, kotlinlang style",
     "  Ruby (.rb, Gemfile, .gemspec, ...)  rubocop -a 1.92.3",

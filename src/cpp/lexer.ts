@@ -872,6 +872,18 @@ export const lex = (d: Doc): boolean => {
             j--;
           }
           if (j > a + 1 && d.at(j) === 92) {
+            // clang-format 23's FormatTokenLexer cuts the comment after a
+            // backslash right before the newline when the next line is a
+            // line comment too: that comment is a token of its own.
+            if (j === i - 1) {
+              let q = i + 1;
+              while (q < n && (d.at(q) === 32 || d.at(q) === 9 || d.at(q) === 11 || d.at(q) === 12 || d.at(q) === 13)) {
+                q++;
+              }
+              if (q + 1 < n && d.at(q) === 47 && d.at(q + 1) === 47) {
+                break;
+              }
+            }
             i++;
             continue;
           }

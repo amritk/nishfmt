@@ -160,6 +160,9 @@ import {
   TT_POINTER_OR_REFERENCE,
   TT_RANGE_BASED_FOR_LOOP_COLON,
   TT_START_OF_NAME,
+  TT_CLASS_HEAD_NAME,
+  TT_ENUM_LBRACE,
+  TT_ENUM_EQUAL,
   TT_TEMPLATE_CLOSER,
   TT_TEMPLATE_OPENER,
   TT_TRAILING_ANNOTATION,
@@ -312,72 +315,87 @@ export class Classifier {
     return isLiteralKind(this.k(t));
   }
 
-  /** The `>` closing the template bracket at `lt`, or -1 if `<` compares. */
+  /**
+   * The `>` closing the template bracket at `lt`, or -1 if `<` compares
+   * (clang-format 23's parseAngle). A `>` the parser already made a closer
+   * (before `{` or an empty `()`) closes whatever the checks below say.
+   */
   findCloser(lt: i32, inExpr: boolean, parentLess: boolean, saFirst: boolean): i32 {
     const d = this.d;
     let depth = 0;
+    let seenTernary = false;
+    let maybeAngles = true;
+    // (A line starting with `template` never gives the angles up for `&&` or `||`.)
+    const angleOps = inExpr && d.kind[this.first] !== KW_TEMPLATE;
     let t = d.nxt[lt];
     while (t >= 0) {
       const k = d.kind[t];
       if (depth === 0) {
         if (k === P_GREATER) {
           const n = d.nxt[t];
+          if (!(d.final[t] === 1 && d.type[t] === TT_TEMPLATE_CLOSER)) {
+            // `a < b >> 2`: a `>` right against another closes nothing unless
+            // the `<` sits in template arguments.
+            if (n >= 0 && d.kind[n] === P_GREATER && d.ws[n] === 0 && !parentLess) {
+              return -1;
+            }
+            // `a < b ? c : d > e`: after a `?:` in an expression, only a `>`
+            // before `(` or `{` closes.
+            if (inExpr && seenTernary && (n < 0 || (d.kind[n] !== P_LPAREN && d.kind[n] !== P_LBRACE))) {
+              return -1;
+            }
+            if (!maybeAngles) {
+              return -1;
+            }
+            // `static_assert(N < M > -1)`: nor in a static_assert's first
+            // argument before `-` or a name.
+            if (saFirst && n >= 0 && (d.kind[n] === P_MINUS || isIdentKind(d.kind[n]))) {
+              return -1;
+            }
+          }
           if (n >= 0 && isLiteralKind(d.kind[n])) {
             return -1;
           }
-          // `a < b >> 2`: a `>` right against another closes nothing unless
-          // the `<` sits in template arguments (clang-format's parseAngle).
-          if (n >= 0 && d.kind[n] === P_GREATER && d.ws[n] === 0 && !parentLess) {
-            return -1;
-          }
-          // `static_assert(N < M > -1)`: nor in a static_assert's first
-          // argument before `-` or a name.
-          if (saFirst && n >= 0 && (d.kind[n] === P_MINUS || isIdentKind(d.kind[n]))) {
-            return -1;
-          }
           return t;
-        }
-        if (k === P_LESS) {
-          // clang-format's parseAngle: after a literal, `}` or `)` a `<`
-          // opens nothing; one whose angle fails to close is an operator too.
-          const p = this.prev(t);
-          const pk = p >= 0 ? this.k(p) : -1;
-          const binary =
-            p >= 0 &&
-            (this.isLit(p) ||
-              pk === P_RBRACE ||
-              (pk === P_RPAREN && !(d.match[p] >= 0 && this.ty(d.match[p]) === TT_OVERLOADED_OPERATOR_LPAREN)));
-          if (!binary) {
-            const c = this.findCloser(t, false, true, false);
-            if (c >= 0) {
-              t = d.nxt[c];
-              continue;
-            }
-          }
-          t = d.nxt[t];
-          continue;
         }
         // (A `{` is nested, as in `X<T{}>`: clang-format bails only on closers.)
         if (k === P_SEMI || k === P_RBRACE || k === P_RPAREN || k === P_RSQUARE) {
           return -1;
         }
-        // (clang-format does not bail out on a line starting with `template`.)
-        if (
-          inExpr &&
-          d.kind[this.first] !== KW_TEMPLATE &&
-          (k === P_AMPAMP || k === P_PIPEPIPE || k === P_QUESTION || k === P_COLON)
-        ) {
-          // An `&&` right before `>`, `,` or `...` is a reference type, not a binary operator.
-          const n = d.nxt[t];
-          if (
-            !(
-              k === P_AMPAMP &&
-              n >= 0 &&
-              (d.kind[n] === P_GREATER || d.kind[n] === P_COMMA || d.kind[n] === P_ELLIPSIS)
-            )
-          ) {
+        // An `&&` or `||` that is a binary operator, in an expression, makes
+        // these angles a comparison unless an earlier closer settles it.
+        // (An `&&` right before `>`, `,` or `...` is a reference type.)
+        const p = d.prv[t];
+        if (maybeAngles && angleOps && p >= 0 && p !== lt) {
+          const pk = d.kind[p];
+          if (pk === P_PIPEPIPE) {
+            maybeAngles = false;
+          } else if (pk === P_AMPAMP && !(k === P_GREATER || k === P_COMMA || k === P_ELLIPSIS)) {
+            maybeAngles = false;
+          }
+        }
+        // (A `?` is read with its conditional below: only its `:` is seen here.)
+        if (p >= 0 && p !== lt && d.kind[p] === P_COLON) {
+          seenTernary = true;
+        }
+        if (k === P_LESS) {
+          const c = this.nestedCloser(t);
+          if (c >= 0) {
+            t = d.nxt[c];
+            continue;
+          }
+          t = d.nxt[t];
+          continue;
+        }
+        if (k === P_QUESTION) {
+          // parseConditional: everything up to the `:` is read as an
+          // expression, a `>` among it a comparison.
+          const c = this.conditionalColon(t);
+          if (c < 0) {
             return -1;
           }
+          t = d.nxt[c];
+          continue;
         }
       }
       if (k === P_LPAREN || k === P_LSQUARE || k === P_LBRACE) {
@@ -387,6 +405,64 @@ export class Classifier {
         if (depth < 0) {
           return -1;
         }
+      }
+      t = d.nxt[t];
+    }
+    return -1;
+  }
+
+  /**
+   * The closer of a `<` met inside template arguments or a conditional, or
+   * -1: after a literal, `}` or `)` a `<` opens nothing.
+   */
+  nestedCloser(t: i32): i32 {
+    const d = this.d;
+    const p = this.prev(t);
+    const pk = p >= 0 ? this.k(p) : -1;
+    const binary =
+      p >= 0 &&
+      (this.isLit(p) ||
+        pk === P_RBRACE ||
+        (pk === P_RPAREN && !(d.match[p] >= 0 && this.ty(d.match[p]) === TT_OVERLOADED_OPERATOR_LPAREN)));
+    return binary ? -1 : this.findCloser(t, false, true, false);
+  }
+
+  /**
+   * The `:` ending the conditional whose `?` is `q` (clang-format's
+   * parseConditional), or -1 when a closing bracket comes first.
+   */
+  conditionalColon(q: i32): i32 {
+    const d = this.d;
+    let depth = 0;
+    let t = d.nxt[q];
+    while (t >= 0) {
+      const k = d.kind[t];
+      if (depth === 0) {
+        if (k === P_COLON) {
+          return t;
+        }
+        if (k === P_SEMI || k === P_RBRACE || k === P_RPAREN || k === P_RSQUARE) {
+          return -1;
+        }
+        if (k === P_LESS) {
+          const c = this.nestedCloser(t);
+          if (c >= 0) {
+            t = d.nxt[c];
+            continue;
+          }
+        } else if (k === P_QUESTION) {
+          const c = this.conditionalColon(t);
+          if (c < 0) {
+            return -1;
+          }
+          t = d.nxt[c];
+          continue;
+        }
+      }
+      if (k === P_LPAREN || k === P_LSQUARE || k === P_LBRACE) {
+        depth++;
+      } else if (k === P_RPAREN || k === P_RSQUARE || k === P_RBRACE) {
+        depth--;
       }
       t = d.nxt[t];
     }
@@ -1373,6 +1449,11 @@ export class Classifier {
           if (d.lMustDecl[l] === 1 && !this.ctorSeen) {
             this.expr[dep] = 0;
           }
+          // A braced list's comma starts an expression again (parseBrace's
+          // IsBracedListComma).
+          if (dep > 0 && this.k(this.open[dep]) === P_LBRACE && d.bk[this.open[dep]] === BK_BRACED_INIT) {
+            this.expr[dep] = 1;
+          }
           // A foreach macro's arguments after the first are expressions.
           if (
             dep > 0 &&
@@ -1424,6 +1505,18 @@ export class Classifier {
               this.set(t, TT_BINARY_OPERATOR);
             }
           }
+          // clang-format 23: a `=` whose innermost brace is an enum's is
+          // TT_EnumEqual (consumeToken, `Scopes.back() == ST_Enum`).
+          if (k === P_EQUAL && this.ty(t) !== TT_OVERLOADED_OPERATOR) {
+            let x = dep;
+            while (x > 0 && this.k(this.open[x]) !== P_LBRACE) {
+              x--;
+            }
+            if (x > 0 && this.ty(this.open[x]) === TT_ENUM_LBRACE) {
+              d.type[t] = TT_ENUM_EQUAL;
+              d.final[t] = 1;
+            }
+          }
           break;
       }
       // The first selector part, right after the return type.
@@ -1463,7 +1556,7 @@ export class Classifier {
         if (
           p >= 0 &&
           (this.k(p) === KW_NOEXCEPT ||
-            this.k(p) === P_RBRACE ||
+            (this.k(p) === P_RBRACE && d.bk[p] === BK_BLOCK) ||
             (autoFound &&
               d.lMightFn[l] === 1 &&
               d.nest[t] === 0 &&
@@ -1493,18 +1586,21 @@ export class Classifier {
     this.operatorCallOperands();
     this.keepBreakAfterAttributes();
     // A function declaration line ending in `};` has a body, not a braced
-    // list, before its `;` (clang-format re-marks those braces).
+    // list, before its `;` (clang-format re-marks those braces). The line
+    // declares a function when its first word is a constructor's or
+    // destructor's name, or a later name before any braced list is a
+    // declaration's (TokenAnnotator::annotate).
     const last = d.lLast[l];
     const lp = d.prv[last];
     if (d.kind[last] === P_SEMI && lp >= 0 && d.kind[lp] === P_RBRACE && d.match[lp] >= 0 && d.match[lp] < lp) {
-      let fn = false;
-      for (let q = this.first; q >= 0 && q !== lp; q = d.nxt[q]) {
-        if (d.type[q] === TT_FUNCTION_DECLARATION_NAME) {
+      const fnc = d.kind[this.first] === K_COMMENT ? this.next(this.first) : this.first;
+      let fn = fnc >= 0 && d.type[fnc] === TT_CTOR_DTOR_DECL_NAME;
+      for (let q = fnc >= 0 ? d.nxt[fnc] : -1; !fn && q >= 0 && d.bk[q] !== BK_BRACED_INIT; q = d.nxt[q]) {
+        if (d.type[q] === TT_FUNCTION_DECLARATION_NAME || d.type[q] === TT_CTOR_DTOR_DECL_NAME) {
           fn = true;
-          break;
         }
       }
-      if (fn) {
+      if (fn && d.type[d.match[lp]] === TT_UNKNOWN) {
         const lb = d.match[lp];
         d.bk[lb] = BK_BLOCK;
         d.bk[lp] = BK_BLOCK;
@@ -1779,22 +1875,18 @@ export class Classifier {
         return;
       }
       // Any other colon right inside parentheses: an inline assembly
-      // operand separator (unless it reads as an Objective-C selector's).
+      // operand separator on an `asm` line (clang-format 23 asks
+      // `Line.First->is(tok::kw_asm)`), else a bit field's before a number,
+      // else nothing.
       if (this.k(o) === P_LPAREN && !(d.lType[this.line] === LT_PREPROCESSOR && d.ppKind[this.first] === PP_PRAGMA)) {
+        if (this.lineStartsWithAsm()) {
+          this.set(t, TT_INLINE_ASM_COLON);
+          return;
+        }
         const n = this.next(t);
         if (n >= 0 && this.k(n) === K_NUMBER) {
           this.set(t, TT_BIT_FIELD_COLON);
-          return;
         }
-        const p = this.prev(t);
-        if (p >= 0 && isWordKind(this.k(p)) && n >= 0) {
-          const nk = this.k(n);
-          const nn = this.next(n);
-          if (nk === P_RPAREN || nk === P_COMMA || (isWordKind(nk) && nn >= 0 && this.k(nn) === P_COLON)) {
-            return;
-          }
-        }
-        this.set(t, TT_INLINE_ASM_COLON);
       }
       return;
     }
@@ -1838,7 +1930,14 @@ export class Classifier {
       return false;
     }
     const n = this.next(t);
-    if ((n < 0 && d.lPP[this.line] === 0) || (n >= 0 && (this.isPtrKind(n) || this.k(n) === K_STRING))) {
+    if (
+      (n < 0 && d.lPP[this.line] === 0) ||
+      (n >= 0 && (this.isPtrKind(n) || this.k(n) === K_STRING || this.ty(n) === TT_CLASS_HEAD_NAME))
+    ) {
+      return false;
+    }
+    // `class Name final`: `final` names nothing.
+    if (this.k(t) === CW_FINAL && this.ty(this.prev(t)) === TT_CLASS_HEAD_NAME) {
       return false;
     }
     let p = this.prev(t);
@@ -2170,6 +2269,7 @@ export class Classifier {
         nk === P_SEMI ||
         nk === P_COLON ||
         nk === P_LBRACE ||
+        nk === P_LPAREN ||
         nk === P_COMMA ||
         nk === P_PERIOD ||
         nk === P_ARROW ||
@@ -2309,7 +2409,18 @@ export class Classifier {
   /** Marks the function declaration name, or the ctor/dtor name, of line `l`. */
   markDeclName(l: i32): void {
     const d = this.d;
+    // clang-format's annotate marks a constructor or destructor name first;
+    // the search for a declaration name stops there.
+    const ctor = this.markCtorDtorName(l);
     for (let t = d.nxt[this.first]; t >= 0; t = d.nxt[t]) {
+      if (t === ctor) {
+        return;
+      }
+      // clang-format's search stops at the first braced list, nested or not
+      // (calculateFormattingInformation).
+      if (d.bk[t] === BK_BRACED_INIT && (d.kind[t] === P_LBRACE || d.kind[t] === P_RBRACE)) {
+        break;
+      }
       // (An `operator` counts at any depth, as for clang-format.)
       if (d.nest[t] !== 0 && d.kind[t] !== KW_OPERATOR) {
         continue;
@@ -2327,7 +2438,17 @@ export class Classifier {
         return;
       }
     }
-    // A constructor or destructor: no return type.
+  }
+
+  /**
+   * clang-format 23's getFunctionName and isCtorOrDtorName: past `friend`,
+   * `inline` and their kin, `[[...]]` and a `template <...>` prefix, the
+   * unqualified name before a `(` names a constructor or destructor in a
+   * class, on a line ending in a function body, or after its own class name
+   * (`A::A`, `A<T>::A`). Answers that token, or -1.
+   */
+  markCtorDtorName(l: i32): i32 {
+    const d = this.d;
     let t = this.first;
     while (t >= 0) {
       const k = this.k(t);
@@ -2347,26 +2468,42 @@ export class Classifier {
         t = d.match[t] >= 0 ? d.nxt[d.match[t]] : -1;
         continue;
       }
+      if (k === KW_TEMPLATE) {
+        const o = this.next(t);
+        if (o < 0 || this.ty(o) !== TT_TEMPLATE_OPENER || d.match[o] < 0) {
+          return -1;
+        }
+        t = this.next(d.match[o]);
+        continue;
+      }
       break;
     }
     if (t < 0) {
-      return;
+      return -1;
     }
     if (this.k(t) === P_COLONCOLON) {
       t = d.nxt[t];
     }
-    while (t >= 0 && this.k(t) === K_IDENT && d.nxt[t] >= 0 && this.k(d.nxt[t]) === P_COLONCOLON) {
-      t = d.nxt[d.nxt[t]];
+    // skipNameQualifier: `A::`, `A<T>::`.
+    while (t >= 0 && this.k(t) === K_IDENT) {
+      let n = this.next(t);
+      if (n >= 0 && this.ty(n) === TT_TEMPLATE_OPENER && d.match[n] >= 0) {
+        n = this.next(d.match[n]);
+      }
+      if (n < 0 || this.k(n) !== P_COLONCOLON) {
+        break;
+      }
+      t = this.next(n);
     }
     if (t >= 0 && this.k(t) === P_TILDE) {
       t = d.nxt[t];
     }
-    if (t < 0 || this.k(t) !== K_IDENT) {
-      return;
+    if (t < 0 || this.k(t) !== K_IDENT || this.ty(t) !== TT_UNKNOWN) {
+      return -1;
     }
     const lp = this.next(t);
-    if (lp < 0 || this.k(lp) !== P_LPAREN || d.match[lp] < 0) {
-      return;
+    if (lp < 0 || this.k(lp) !== P_LPAREN || this.ty(lp) !== TT_UNKNOWN || d.match[lp] < 0) {
+      return -1;
     }
     let qualified = false;
     const p = this.prev(t);
@@ -2376,7 +2513,10 @@ export class Classifier {
         q = this.prev(q);
       }
       if (q >= 0 && this.k(q) === P_COLONCOLON) {
-        const qq = this.prev(q);
+        let qq = this.prev(q);
+        if (qq >= 0 && this.ty(qq) === TT_TEMPLATE_CLOSER && d.match[qq] >= 0) {
+          qq = this.prev(d.match[qq]);
+        }
         qualified = qq >= 0 && d.sameText(qq, t);
       }
     }
@@ -2385,7 +2525,9 @@ export class Classifier {
       if (d.lMustDecl[l] === 1) {
         d.lMightFn[l] = 1;
       }
+      return t;
     }
+    return -1;
   }
 
   /**
@@ -2610,6 +2752,7 @@ export const isTrailingComment = (d: Doc, t: i32): boolean => {
 /** Spacing inside a directive: `#word`, then its arguments; `#define` bodies as code. */
 const ppSpace = (d: Doc, l: i32, r: i32): boolean => {
   const f = d.lFirst[l];
+  const pk = d.ppKind[f];
   const left = d.prv[r];
   if (left === f) {
     return false; // `#include`
@@ -2622,9 +2765,12 @@ const ppSpace = (d: Doc, l: i32, r: i32): boolean => {
     if (d.kind[r] === P_LPAREN && (d.is(left, "if") || d.is(left, "elif"))) {
       return true;
     }
+    // The first token after `#error` or `#warning` is TT_AfterPPDirective.
+    if (pk === PP_ERROR) {
+      return true;
+    }
     return d.ws[r] === 1 || d.lType[l] === LT_IMPORT; // the directive's first argument
   }
-  const pk = d.ppKind[f];
   if (pk === PP_DEFINE && d.len(d.nxt[f]) === 6 && d.at(d.start[d.nxt[f]]) === 100) {
     // `#define NAME(params) body`: params hug the name, the body is code.
     const name = d.nxt[d.nxt[f]];
@@ -2880,7 +3026,7 @@ const spaceBeforeCode = (d: Doc, l: i32, r: i32): boolean => {
   }
   if (
     (rt === TT_BINARY_OPERATOR && lk !== P_LPAREN) ||
-    ((lt === TT_BINARY_OPERATOR || lt === TT_CONDITIONAL_EXPR) && rk !== P_RPAREN)
+    ((lt === TT_BINARY_OPERATOR || lt === TT_ENUM_EQUAL || lt === TT_CONDITIONAL_EXPR) && rk !== P_RPAREN)
   ) {
     return true;
   }
@@ -3123,8 +3269,7 @@ const isPossibleMacro = (d: Doc, t: i32): boolean => {
 };
 
 /** The token before `t`, comments skipped, or -1. */
-
-const prevCode = (d: Doc, t: i32): i32 => {
+export const prevCode = (d: Doc, t: i32): i32 => {
   let p = d.prv[t];
   while (p >= 0 && d.kind[p] === K_COMMENT) {
     p = d.prv[p];

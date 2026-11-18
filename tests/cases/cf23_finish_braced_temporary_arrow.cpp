@@ -1,0 +1,8 @@
+void f() {
+  static_assert(std::is_same<decltype(it{}->first), int>::value);
+  static_assert(std::is_same<decltype(cit{} -> second), const int &>::value);
+}
+template <typename T>
+concept C = requires(T t) {
+  { t.f() } -> std::same_as<int>;
+};

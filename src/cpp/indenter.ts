@@ -1490,12 +1490,14 @@ export class Indenter {
         }
         this.setTop(R_IND, ind);
       }
-      // A `_Generic` selection's associations indent from the keyword's
-      // line, not under the parenthesis.
-      if (prev >= 0 && d.kind[prev] === P_LPAREN) {
+      // A `_Generic` selection's associations are continuation-indented
+      // from the state around the keyword's parenthesis, not under it
+      // (clang-format 23: `Stack[size - 2].Indent + ContinuationIndentWidth`;
+      // `dupTop` has pushed the new state, so that one is `sp - 3`).
+      if (prev >= 0 && d.kind[prev] === P_LPAREN && this.sp > 2) {
         const gk = a.prevNonComment(prev);
         if (gk >= 0 && d.kind[gk] === KW_GENERIC) {
-          this.setTop(R_IND, topLs);
+          this.setTop(R_IND, this.at(this.sp - 3, R_IND) + d.opts.continuationIndent);
         }
       }
       if (

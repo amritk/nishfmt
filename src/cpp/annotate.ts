@@ -102,6 +102,7 @@ import {
   TT_POINTER_OR_REFERENCE,
   TT_RANGE_BASED_FOR_LOOP_COLON,
   TT_START_OF_NAME,
+  TT_CLASS_HEAD_NAME,
   TT_TEMPLATE_CLOSER,
   TT_TEMPLATE_OPENER,
   TT_TRAILING_ANNOTATION,
@@ -1666,8 +1667,9 @@ export class Annot {
           return true;
         }
       }
+      // (clang's FirstAfterPPLine: a directive read just before `q`.)
       if (q === first) {
-        return false;
+        return d.fap[q] === 1;
       }
       if (this.directiveBefore(q)) {
         return true;
@@ -1701,7 +1703,12 @@ export class Annot {
     if (lk === P_HASHHASH || rk === P_HASHHASH) {
       return false;
     }
-    if (rt === TT_START_OF_NAME || rt === TT_FUNCTION_DECLARATION_NAME || rk === KW_OPERATOR) {
+    if (
+      rt === TT_START_OF_NAME ||
+      rt === TT_FUNCTION_DECLARATION_NAME ||
+      rt === TT_CLASS_HEAD_NAME ||
+      rk === KW_OPERATOR
+    ) {
       return true;
     }
     if (lt === TT_POINTER_OR_REFERENCE) {

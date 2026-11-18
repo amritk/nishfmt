@@ -1,0 +1,7 @@
+struct S {
+  template <typename A, if_<std::is_assignable<value_type &, A>{}> = 0>
+  thread_cached_synchronized &operator=(A &&a) noexcept(false) {
+    store(static_cast<A &&>(a));
+    return *this;
+  }
+};

@@ -1,0 +1,15 @@
+void f() {
+  struct sigaction act{}, oldact{};
+  struct stat st{};
+  struct ::msghdr msg{};
+  struct linger sl{
+      .l_onoff = 0,
+      .l_linger = 0,
+  };
+  struct iovec riov{a.data(), a.size()};
+}
+struct S final {};
+struct A : B {};
+struct FOO bar {
+  int x;
+};

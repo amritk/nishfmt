@@ -1,0 +1,8 @@
+void f() {
+  FOO(x)
+  (y) int g();
+  FOOBAR(x)
+  (y) int h();
+  BAR(x)
+  int i;
+}

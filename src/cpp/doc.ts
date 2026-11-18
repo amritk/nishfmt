@@ -48,9 +48,10 @@ export class Doc {
   // Classification.
   type: i32[];
   final: i32[];
-  eqList: i32[]; // 1: a brace clang-format never gives the braced-list kind (a `{` reached through `=`, a `}`)
+  eqList: i32[]; // 1: a brace clang-format never gives the braced-list kind (a braced list's `}`)
   asmFin: i32[]; // 1: a token inside `__asm { ... }`, kept as written
   hidSemi: i32[]; // 1: tokens another #if pass sees, after this one, hold a `;` for the brace scan
+  fap: i32[]; // 1: clang's FirstAfterPPLine, set in any #if pass (see Formatter.scanAfterDirective)
   // Passes so far (this one included) that saw the token; 0 outside passes.
   // clang-format's parameter counts on a bracket are never reset between
   // passes, so they grow with every pass that annotates the bracket again.
@@ -134,6 +135,7 @@ export class Doc {
     this.final = new Array<i32>(cap);
     this.eqList = new Array<i32>(cap);
     this.hidSemi = new Array<i32>(cap);
+    this.fap = new Array<i32>(cap);
     this.asmFin = new Array<i32>(cap);
     this.passMul = new Array<i32>(cap);
     this.keepWs = new Array<i32>(cap);
@@ -207,6 +209,7 @@ export class Doc {
     this.final = growI32(this.final, n);
     this.eqList = growI32(this.eqList, n);
     this.hidSemi = growI32(this.hidSemi, n);
+    this.fap = growI32(this.fap, n);
     this.asmFin = growI32(this.asmFin, n);
     this.passMul = growI32(this.passMul, n);
     this.keepWs = growI32(this.keepWs, n);
