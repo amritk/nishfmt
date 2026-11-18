@@ -1,9 +1,9 @@
 // Layout/AccessModifierIndentation (EnforcedStyle: indent).
 //
-// Ported from RuboCop 1.92.2 (MIT License, Copyright (c) 2012-24 Bozhidar
+// Ported from RuboCop 1.92.3 (MIT License, Copyright (c) 2012-24 Bozhidar
 // Batsov).
 
-import { F_END, NT_BEGIN, NT_BLOCK, NT_CLASS, NT_MODULE, NT_SCLASS, NT_SEND } from "../ast";
+import { F_END, F_KEYWORD, NT_BEGIN, NT_BLOCK, NT_CLASS, NT_MODULE, NT_SCLASS, NT_SEND } from "../ast";
 import { RbCop } from "../cop";
 import { rnHas, rnS } from "../node";
 import { RbSource } from "../source";
@@ -35,7 +35,8 @@ export class CopLayoutAccessModifierIndentation {
       if (!lalIsType(src, body, NT_BEGIN) || !rnHas(src, n, F_END)) {
         continue;
       }
-      const endPos = rnS(src, n, F_END);
+      // indentation_base_range: a block's `end`, else the class, module or sclass keyword.
+      const basePos = t === NT_BLOCK ? rnS(src, n, F_END) : rnS(src, n, F_KEYWORD);
       for (let i = 0; i < a.nKid(body); i++) {
         const m = a.kid(body, i);
         if (!lalIsType(src, m, NT_SEND) || !lalBareAccessModifier(src, m)) {
@@ -44,7 +45,7 @@ export class CopLayoutAccessModifierIndentation {
         if (lalFirstLine(src, n) === lalFirstLine(src, m)) {
           continue;
         }
-        const offset = lalEffCol(src, a.exS(m)) - lalEffCol(src, endPos);
+        const offset = lalEffCol(src, a.exS(m)) - lalEffCol(src, basePos);
         const delta = 2 - offset;
         if (delta === 0) {
           continue;

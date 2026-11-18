@@ -1,6 +1,6 @@
 // Layout/EmptyLinesAroundAccessModifier (EnforcedStyle: around).
 //
-// Ported from RuboCop 1.92.2 (MIT License, Copyright (c) 2012-24 Bozhidar
+// Ported from RuboCop 1.92.3 (MIT License, Copyright (c) 2012-24 Bozhidar
 // Batsov).
 
 import {
@@ -190,18 +190,18 @@ export class CopLayoutEmptyLinesAroundAccessModifier {
     this.c.commit(k);
   }
 
-  /** inside_block?: the parent (or the begin's parent) is a block. */
+  /** inside_block?: the parent (or the begin's parent) is any block type. */
   private insideBlock(src: RbSource, node: i32): boolean {
     const a = src.a;
     const par = src.parent(node);
-    if (a.type(par) === NT_BLOCK) {
+    if (rbAccModBlockType(a.type(par))) {
       return true;
     }
     if (a.type(par) !== NT_BEGIN) {
       return false;
     }
     const gp = src.parent(par);
-    return gp !== V_NIL && a.type(gp) === NT_BLOCK;
+    return gp !== V_NIL && rbAccModBlockType(a.type(gp));
   }
 
   /** previous_line_empty?: the nearest earlier non-comment line is blank (or a body starts above). */

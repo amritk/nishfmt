@@ -1,0 +1,25 @@
+test do
+  foo(<<~EOS)
+    Heredoc text.
+  EOS
+    .bar
+end
+test do
+  foo(<<~EOS)
+    Heredoc text.
+  EOS
+end
+bar
+test do
+  foo(<<~EOS) # comment
+    Heredoc text.
+  EOS
+end
+bar
+test do
+  do_something do
+    foo(<<~EOS)
+      Heredoc text.
+    EOS
+  end
+end

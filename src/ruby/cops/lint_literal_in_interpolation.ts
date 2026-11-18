@@ -4,12 +4,13 @@
 // when the literal has at most 15 significant digits; a longer float literal
 // is left alone (no offense) rather than risk a wrong value.
 //
-// Ported from RuboCop 1.92.2 (MIT License, Copyright (c) 2012-24 Bozhidar
+// Ported from RuboCop 1.92.3 (MIT License, Copyright (c) 2012-24 Bozhidar
 // Batsov).
 
 import {
   F_BEGIN,
   F_END,
+  M_HEREDOC,
   NT_ARRAY,
   NT_BEGIN,
   NT_DSTR,
@@ -347,7 +348,7 @@ export class CopLintLiteralInInterpolation {
     return s;
   }
 
-  /** prints_as_self?; null children make RuboCop raise (treated as not offending). */
+  /** prints_as_self?. */
   private printsAsSelf(src: RbSource, n: i32): boolean {
     const a = src.a;
     if (!a.isNode(n)) {
@@ -359,6 +360,22 @@ export class CopLintLiteralInInterpolation {
     const t = a.type(n);
     if (!(t === NT_ARRAY || t === NT_HASH || t === NT_PAIR || t === NT_IRANGE || t === NT_ERANGE)) {
       return false;
+    }
+    // numeric_open_range?: a nil child (a beginless or endless range) needs numeric others.
+    let open = false;
+    for (let i = 0; i < a.nKid(n); i++) {
+      if (a.kid(n, i) === V_NIL) {
+        open = true;
+      }
+    }
+    if (open) {
+      for (let i = 0; i < a.nKid(n); i++) {
+        const ch = a.kid(n, i);
+        if (ch !== V_NIL && !ssxIs(src, ch, NT_INT) && !ssxIs(src, ch, NT_FLOAT)) {
+          return false;
+        }
+      }
+      return true;
     }
     for (let i = 0; i < a.nKid(n); i++) {
       if (!this.printsAsSelf(src, a.kid(n, i))) {
@@ -473,7 +490,61 @@ export class CopLintLiteralInInterpolation {
         }
       }
     }
+    if (this.breaksDelimiters(src, b, v)) {
+      return null;
+    }
     return v;
+  }
+
+  /** breaks_delimiters?: the value holds a delimiter of the enclosing literal. */
+  private breaksDelimiters(src: RbSource, b: i32, v: string): boolean {
+    const a = src.a;
+    // delimited_literal
+    const p = src.parent(b);
+    let lit = p;
+    const pt = a.type(p);
+    if (pt === NT_DSTR || pt === NT_DSYM) {
+      const g = src.parent(p);
+      if (g !== V_NIL && a.type(g) === NT_ARRAY && ssxHas(src, g, F_BEGIN) && src.at(ssxFS(src, g, F_BEGIN)) === 37) {
+        lit = g;
+      }
+    }
+    if (a.mapKind(a.map(lit)) === M_HEREDOC || !ssxHas(src, lit, F_BEGIN) || !ssxHas(src, lit, F_END)) {
+      return false;
+    }
+    const opening = src.at(ssxFE(src, lit, F_BEGIN) - 1);
+    const closing = src.at(ssxFS(src, lit, F_END));
+    const k = toI32(v.length);
+    if (opening !== closing) {
+      // !balanced?
+      let depth = 0;
+      for (let i = 0; i < k; i++) {
+        const c = v.charCodeAt(i);
+        if (c === opening) {
+          depth++;
+        }
+        if (c === closing) {
+          depth--;
+        }
+        if (depth < 0) {
+          return true;
+        }
+      }
+      return depth !== 0;
+    }
+    // escaped_delimiter?
+    if (closing === 34) {
+      return false;
+    }
+    if (closing === 47 && a.type(lit) === NT_REGEXP && src.at(ssxFS(src, lit, F_BEGIN)) === 47) {
+      return false;
+    }
+    for (let i = 0; i < k; i++) {
+      if (v.charCodeAt(i) === closing) {
+        return true;
+      }
+    }
+    return false;
   }
 
   /** unescaped_hash_sign?(source[0...pos]): a `#` just before pos after an even run of backslashes. */
@@ -543,29 +614,16 @@ export class CopLintLiteralInInterpolation {
 
   /** autocorrected_value_for_array. */
   private arrayValue(src: RbSource, n: i32): string {
+    const a = src.a;
     if (!(ssxHas(src, n, F_BEGIN) && src.at(ssxFS(src, n, F_BEGIN)) === 37)) {
-      return rbReplaceAll(src.nodeSrc(n), '"', '\\"');
+      return lliEscape(src.nodeSrc(n));
     }
-    // contents_range(node).source.split.to_s
-    const body = src.src(ssxFE(src, n, F_BEGIN), ssxFS(src, n, F_END));
+    // node.values.map { |value| value.value.to_s }.to_s
     const words: string[] = [];
-    const k = toI32(body.length);
-    let i = 0;
-    while (i < k) {
-      while (i < k && (body.charCodeAt(i) === 32 || (body.charCodeAt(i) >= 9 && body.charCodeAt(i) <= 13))) {
-        i++;
-      }
-      if (i >= k) {
-        break;
-      }
-      let j = i;
-      while (j < k && !(body.charCodeAt(j) === 32 || (body.charCodeAt(j) >= 9 && body.charCodeAt(j) <= 13))) {
-        j++;
-      }
-      words.push(rbInspectStr(body.substring(i, j)));
-      i = j;
+    for (let i = 0; i < a.nKid(n); i++) {
+      words.push(rbInspectStr(a.text(a.kid(a.kid(n, i), 0))));
     }
-    return rbReplaceAll(`[${words.join(", ")}]`, '"', '\\"');
+    return lliEscape(`[${words.join(", ")}]`);
   }
 
   /** autocorrected_value_for_hash. */

@@ -7,7 +7,7 @@
 // AST that is an unparenthesized call whose first argument starts right
 // after the blank run that follows the name, with one of those characters.
 //
-// Ported from RuboCop 1.92.2 (MIT License, Copyright (c) 2012-24 Bozhidar
+// Ported from RuboCop 1.92.3 (MIT License, Copyright (c) 2012-24 Bozhidar
 // Batsov).
 
 import {

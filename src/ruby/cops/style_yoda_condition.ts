@@ -1,7 +1,7 @@
 // Style/YodaCondition (EnforcedStyle: forbid_for_all_comparison_operators;
 // unsafe: detection only).
 //
-// Ported from RuboCop 1.92.2 (MIT License, Copyright (c) 2012-24 Bozhidar
+// Ported from RuboCop 1.92.3 (MIT License, Copyright (c) 2012-24 Bozhidar
 // Batsov).
 
 import { NT_BEGIN, NT_CONST, NT_DSTR, NT_GVAR, NT_REGEXP, NT_SEND, V_NIL } from "../ast";

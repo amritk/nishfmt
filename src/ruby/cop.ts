@@ -2,7 +2,7 @@
 // corrections collect in, and add_offense's rules — one offense per range,
 // none on lines a rubocop:disable directive covers.
 //
-// Ported from RuboCop 1.92.2 (MIT License, Copyright (c) 2012-24 Bozhidar
+// Ported from RuboCop 1.92.3 (MIT License, Copyright (c) 2012-24 Bozhidar
 // Batsov).
 
 import { RbRewriter } from "./rewriter";

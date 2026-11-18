@@ -2,7 +2,7 @@
 // IgnoreEmptyMethods: true, IgnoreNotImplementedMethods: true,
 // NotImplementedExceptions: [NotImplementedError]), on the VariableForce.
 //
-// Ported from RuboCop 1.92.2 (MIT License, Copyright (c) 2012-24 Bozhidar
+// Ported from RuboCop 1.92.3 (MIT License, Copyright (c) 2012-24 Bozhidar
 // Batsov).
 
 import { F_NAME, NT_BLOCKARG, NT_CBASE, NT_CONST, NT_SEND, NT_YIELD, V_NIL } from "../ast";

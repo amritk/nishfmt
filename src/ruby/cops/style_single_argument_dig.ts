@@ -1,6 +1,6 @@
 // Style/SingleArgumentDig (Style/DigChain counts as enabled; unsafe: detection only).
 //
-// Ported from RuboCop 1.92.2 (MIT License, Copyright (c) 2012-24 Bozhidar
+// Ported from RuboCop 1.92.3 (MIT License, Copyright (c) 2012-24 Bozhidar
 // Batsov).
 
 import { NT_BLOCK_PASS, NT_FORWARDED_ARGS, NT_FORWARDED_RESTARG, NT_HASH, NT_SEND, NT_SPLAT, V_NIL } from "../ast";

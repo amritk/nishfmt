@@ -1,0 +1,3 @@
+def m(&block)
+  foo Bar.new(1, 2), &block
+end

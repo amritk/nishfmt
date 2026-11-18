@@ -3,44 +3,57 @@
 // EnforcedStyle allow_single_line: the correction makes an endless method
 // where EndlessMethodBodyHelp allows one.
 //
-// Ported from RuboCop 1.92.2 (MIT License, Copyright (c) 2012-24 Bozhidar
+// Ported from RuboCop 1.92.3 (MIT License, Copyright (c) 2012-24 Bozhidar
 // Batsov).
 
 import {
   F_BEGIN,
+  F_ELSE,
   F_END,
   F_KEYWORD,
+  F_NAME,
   F_OPERATOR,
   F_QUESTION,
   F_SELECTOR,
   NT_AND,
   NT_ARRAY,
   NT_BEGIN,
+  NT_BLOCK,
   NT_BLOCK_PASS,
   NT_BREAK,
+  NT_CASE,
+  NT_CASE_MATCH,
+  NT_CLASS,
   NT_CSEND,
   NT_DEF,
   NT_DEFS,
   NT_ENSURE,
   NT_ERANGE,
+  NT_FOR,
   NT_FORWARDED_KWRESTARG,
   NT_FORWARDED_RESTARG,
   NT_IF,
+  NT_IN_PATTERN,
   NT_IRANGE,
   NT_KWBEGIN,
   NT_LAMBDA,
   NT_MASGN,
   NT_MATCH_PATTERN,
   NT_MATCH_PATTERN_P,
+  NT_MODULE,
   NT_NEXT,
+  NT_NUMBLOCK,
   NT_OR,
   NT_PAIR,
+  NT_RESBODY,
   NT_RESCUE,
   NT_RETURN,
+  NT_SCLASS,
   NT_SEND,
   NT_SUPER,
   NT_UNTIL,
   NT_UNTIL_POST,
+  NT_WHEN,
   NT_WHILE,
   NT_WHILE_POST,
   NT_YIELD,
@@ -49,7 +62,8 @@ import {
 import { RbCop } from "../cop";
 import { RbRewriter } from "../rewriter";
 import { RbSource } from "../source";
-import { rbLayCommentAtLine } from "./layout_empty_help";
+import { LalIgnored } from "./layout_align_help";
+import { rbLayCommentAtLine, rbLayStripWs } from "./layout_empty_help";
 import { rmlAsgnType, rmlSpaces } from "./layout_multiline_help";
 import {
   sbhAssignmentMethod,
@@ -107,6 +121,15 @@ const sbhSlmCommandCall = (src: RbSource, n0: i32): boolean => {
     return false;
   }
   const t = src.a.type(n);
+  // `return foo` is a command too, even as `return(foo)`.
+  if (t === NT_RETURN) {
+    // WrappedArguments#arguments: `return(foo)` holds its arguments in a begin.
+    const f = src.a.kid(n, 0);
+    if (src.a.nKid(n) === 1 && src.a.isNode(f) && src.a.type(f) === NT_BEGIN) {
+      return src.a.nKid(f) > 0;
+    }
+    return src.a.nKid(n) > 0;
+  }
   if (t !== NT_SEND && t !== NT_CSEND && t !== NT_SUPER && t !== NT_YIELD) {
     return false;
   }
@@ -144,6 +167,59 @@ const sbhSlmArgCall = (src: RbSource, def: i32): i32 => {
   return V_NIL;
 };
 
+/** EndlessMethodBodyHelp#statement_body? */
+const sbhSlmStatementBody = (src: RbSource, def: i32, p: i32): boolean => {
+  const a = src.a;
+  const t = a.type(p);
+  if (t === NT_WHEN) {
+    return a.kid(p, -1) === def;
+  }
+  if (
+    t === NT_RESBODY ||
+    t === NT_IN_PATTERN ||
+    t === NT_FOR ||
+    t === NT_CLASS ||
+    t === NT_BLOCK ||
+    t === NT_NUMBLOCK
+  ) {
+    return a.kid(p, 2) === def;
+  }
+  if (t === NT_WHILE || t === NT_UNTIL || t === NT_MODULE || t === NT_SCLASS) {
+    return a.kid(p, 1) === def;
+  }
+  if (t === NT_IF) {
+    return !ssxHas(src, p, F_QUESTION) && a.kid(p, 0) !== def;
+  }
+  if (t === NT_CASE || t === NT_CASE_MATCH) {
+    return ssxHas(src, p, F_ELSE) && a.kid(p, -1) === def;
+  }
+  return false;
+};
+
+/** EndlessMethodBodyHelp#command_position? */
+const sbhSlmCommandPosition = (src: RbSource, def: i32): boolean => {
+  const a = src.a;
+  const p = src.parent(def);
+  if (p === V_NIL) {
+    return true;
+  }
+  const t = a.type(p);
+  if (t === NT_BEGIN || t === NT_KWBEGIN || t === NT_RESCUE || t === NT_ENSURE) {
+    return true;
+  }
+  if (t === NT_MASGN) {
+    return false;
+  }
+  if (sbhSlmAssignment(src, p)) {
+    return true;
+  }
+  if (ssxIsCall(src, p) && sbhAssignmentMethod(sbhMethodName(src, p))) {
+    const args = sbhCallArgs(src, p);
+    return args.length > 0 && args[args.length - 1] === def;
+  }
+  return sbhSlmStatementBody(src, def, p);
+};
+
 /** SingleLineMethods#require_parentheses? */
 const sbhSlmRequireParens = (src: RbSource, body: i32): boolean => {
   if (!src.a.isNode(body) || src.a.type(body) !== NT_SEND) {
@@ -156,7 +232,7 @@ const sbhSlmRequireParens = (src: RbSource, body: i32): boolean => {
   return src.a.nKid(body) > 2 && !sbhComparisonName(m);
 };
 
-/** EndlessMethodBodyHelp#endless_method_body? (with SingleLineMethods#command_body_in_argument?). */
+/** EndlessMethodBodyHelp#endless_method_body? (with SingleLineMethods#command_body_outside_statement?). */
 const sbhSlmEndlessBody = (src: RbSource, body: i32): boolean => {
   const a = src.a;
   const t = a.type(body);
@@ -212,8 +288,17 @@ const sbhSlmEndlessBody = (src: RbSource, body: i32): boolean => {
   if (sbhSlmAssignment(src, body) && sbhSlmCommandCall(src, sbhSlmAssignedValue(src, body))) {
     return false;
   }
+  // body_disallowed_outside_statement?: endless_method_with_command_body?
+  if ((t === NT_DEF || t === NT_DEFS) && ssxEndless(src, body) && sbhSlmCommandCall(src, ssxDefBody(src, body))) {
+    return false;
+  }
+  // command_body_outside_statement? (argument_receiving_call: TargetRubyVersion is below 4.0)
   const call = sbhSlmArgCall(src, src.parent(body));
-  if (!sbhSlmRequireParens(src, body) && sbhSlmCommandCall(src, body) && call !== V_NIL) {
+  if (
+    !sbhSlmRequireParens(src, body) &&
+    sbhSlmCommandCall(src, body) &&
+    !sbhSlmCommandPosition(src, src.parent(body))
+  ) {
     return false;
   }
   if (call !== V_NIL && !ssxParenthesized(src, call)) {
@@ -288,13 +373,16 @@ const sbhSlmToEndless = (src: RbSource, def: i32, body: i32): boolean => {
 /** Style/SingleLineMethods. */
 export class CopStyleSingleLineMethods {
   c: RbCop;
+  ign: LalIgnored;
 
   constructor() {
     this.c = new RbCop("Style/SingleLineMethods");
+    this.ign = new LalIgnored();
   }
 
   run(src: RbSource): void {
     this.c.begin(src);
+    this.ign.reset();
     const a = src.a;
     for (const n of src.pre) {
       const t = a.type(n);
@@ -309,11 +397,12 @@ export class CopStyleSingleLineMethods {
         continue;
       }
       const k = this.c.offense(a.exS(n), a.exE(n));
-      if (k === null) {
+      if (k === null || this.ign.partOf(src, n)) {
         continue;
       }
       if (sbhSlmToEndless(src, n, body)) {
         this.toEndless(src, k, n, body);
+        this.ign.add(n);
       } else {
         this.toMultiline(src, k, n, body);
       }
@@ -354,7 +443,13 @@ export class CopStyleSingleLineMethods {
     const a = src.a;
     let receiver = "";
     if (a.type(n) === NT_DEFS) {
-      receiver = `${src.nodeSrc(a.kid(n, 0))}.`;
+      // From the end of `def` to the name, which keeps a parenthesized receiver's parentheses.
+      // String#lstrip
+      let rs = ssxFE(src, n, F_KEYWORD);
+      while (rs < ssxFS(src, n, F_NAME) && rbLayStripWs(src.at(rs))) {
+        rs++;
+      }
+      receiver = src.src(rs, ssxFS(src, n, F_NAME));
     }
     // method_body_source
     let bodySrc = src.nodeSrc(body);

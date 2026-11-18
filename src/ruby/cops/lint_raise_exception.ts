@@ -1,7 +1,7 @@
 // Lint/RaiseException (unsafe; detection only; AllowedImplicitNamespaces:
 // [Gem]): `raise Exception` / `raise Exception.new(...)`.
 //
-// Ported from RuboCop 1.92.2 (MIT License, Copyright (c) 2012-24 Bozhidar
+// Ported from RuboCop 1.92.3 (MIT License, Copyright (c) 2012-24 Bozhidar
 // Batsov).
 
 import { NT_CBASE, NT_CONST, NT_MODULE, NT_SEND, V_NIL } from "../ast";

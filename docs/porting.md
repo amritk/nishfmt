@@ -16,7 +16,7 @@ Where the two goals pull apart, matching wins, then speed.
 | C++ | `src/cpp` | clang-format 18, `{BasedOnStyle: LLVM, ColumnLimit: 120}` | `clang-format --style='{BasedOnStyle: LLVM, ColumnLimit: 120}' < f` |
 | Java | `src/java` | google-java-format 1.28 | `java -jar $GJF - < f` |
 | Kotlin | `src/kotlin` | ktfmt 0.65, default style | `java -jar $KTFMT - < f` parses as a script, so only for `.kts`; a `.kt` file goes by name, `java -jar $KTFMT f` (in place) |
-| Ruby | `src/ruby` | `rubocop -a` 1.92.2, `TargetRubyVersion: 3.3` | `bench/corpus/mk.sh` shows the invocation |
+| Ruby | `src/ruby` | `rubocop -a` 1.92.3, `TargetRubyVersion: 3.3` | `bench/corpus/mk.sh` shows the invocation |
 | Swift | `src/swift` | SwiftFormat 0.64.7, default rules | `swiftformat stdin --quiet < f` |
 | Rust | `src/rust` | rustfmt 1.10.0, default config, edition 2021 | `rustfmt +1.99.1 --edition 2021 < f` |
 | Dart | `src/dart` | `dart format` (Dart 3.14.1) | `dart format < f` (outside a package; inside one, `dart format -o show f` reads its project) |

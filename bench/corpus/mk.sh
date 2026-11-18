@@ -9,7 +9,7 @@
 #
 # Tools, each from the environment or PATH: clang-format 18; $GJF and $KTFMT,
 # the google-java-format 1.28 and ktfmt 0.65 all-dependencies jars (required
-# for java and kt); rubocop 1.92.2; $SWIFTFORMAT (swiftformat 0.64.7);
+# for java and kt); rubocop 1.92.3; $SWIFTFORMAT (swiftformat 0.64.7);
 # $RUSTFMT (rustfmt 1.10.0, default `rustfmt +1.99.1`); $DART (Dart SDK 3.14.1);
 # $CSHARPIER (csharpier 1.4.0).
 set -uo pipefail

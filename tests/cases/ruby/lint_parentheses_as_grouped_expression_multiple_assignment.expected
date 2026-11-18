@@ -1,0 +1,4 @@
+obj.do_something (_ = 1
+                  _ = 2)
+obj.do_something (x.y = 1, 2)
+obj.do_something (x[0] = 1, 2)

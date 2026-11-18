@@ -1,0 +1,4 @@
+# frozen_string_literal: true
+
+def (Object.new).some_rather_long_method_name_here(argument_one, argument_two) = argument_one.combine_with(argument_two, 1, 2)
+def self.another_rather_long_method_name_here(argument_one, argument_two) = argument_one.combine_with(argument_two, 1, 2, 3)

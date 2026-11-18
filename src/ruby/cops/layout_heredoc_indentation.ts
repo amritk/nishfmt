@@ -1,7 +1,7 @@
 // Layout/HeredocIndentation (Layout/LineLength's AllowHeredoc: true, so no
 // line is too long; no ActiveSupport extensions).
 //
-// Ported from RuboCop 1.92.2 (MIT License, Copyright (c) 2012-24 Bozhidar
+// Ported from RuboCop 1.92.3 (MIT License, Copyright (c) 2012-24 Bozhidar
 // Batsov).
 
 import { F_HEREDOC_BODY, F_HEREDOC_END } from "../ast";

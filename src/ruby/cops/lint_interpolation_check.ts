@@ -1,13 +1,14 @@
 // Lint/InterpolationCheck. Its correction is unsafe, so it only detects; the
 // interpolated source is still reparsed (valid_syntax?).
 //
-// Ported from RuboCop 1.92.2 (MIT License, Copyright (c) 2012-24 Bozhidar
+// Ported from RuboCop 1.92.3 (MIT License, Copyright (c) 2012-24 Bozhidar
 // Batsov).
 
-import { F_BEGIN, F_END, M_HEREDOC, NT_DSTR, NT_REGEXP, NT_STR, V_NIL } from "../ast";
+import { F_BEGIN, F_END, M_HEREDOC, NT_DSTR, NT_REGEXP, NT_STR, NT_YIELD, V_NIL } from "../ast";
 import { RbCop } from "../cop";
 import { RbSource } from "../source";
 import { lbhSiblingIndex } from "./lint_batch_help";
+import { ldhAncestorDef } from "./lint_detect_help";
 import { ssxFE, ssxFS, ssxHas, ssxIs } from "./style_syntax_help";
 
 export class CopLintInterpolationCheck {
@@ -91,7 +92,24 @@ export class CopLintInterpolationCheck {
     if (!rs.valid || rs.root === V_NIL || !ssxIs(rs, rs.root, NT_DSTR)) {
       return;
     }
+    if (this.yieldOutsideMethod(src, rs, n)) {
+      return;
+    }
     this.c.offense(a.exS(n), a.exE(n));
+  }
+
+  /** yield_outside_method?: the interpolation yields and n is in no def. */
+  private yieldOutsideMethod(src: RbSource, rs: RbSource, n: i32): boolean {
+    let yields = false;
+    for (const m of rs.pre) {
+      if (rs.a.type(m) === NT_YIELD) {
+        yields = true;
+      }
+    }
+    if (!yields) {
+      return false;
+    }
+    return ldhAncestorDef(src, n) === V_NIL;
   }
 
   /** interpolated_source. */

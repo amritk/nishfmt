@@ -2,7 +2,7 @@
 // correction): a rescue clause with an empty body and no comment line between
 // it and its enclosing begin/def/block's end.
 //
-// Ported from RuboCop 1.92.2 (MIT License, Copyright (c) 2012-24 Bozhidar
+// Ported from RuboCop 1.92.3 (MIT License, Copyright (c) 2012-24 Bozhidar
 // Batsov).
 
 import { F_END, NT_BLOCK, NT_DEF, NT_DEFS, NT_KWBEGIN, NT_NUMBLOCK, NT_RESBODY, V_NIL } from "../ast";

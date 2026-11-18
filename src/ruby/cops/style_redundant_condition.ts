@@ -1,7 +1,7 @@
 // Style/RedundantCondition (AllowedMethods: infinite?, nonzero?), with
 // CommentsHelp#contains_comments?.
 //
-// Ported from RuboCop 1.92.2 (MIT License, Copyright (c) 2012-24 Bozhidar
+// Ported from RuboCop 1.92.3 (MIT License, Copyright (c) 2012-24 Bozhidar
 // Batsov).
 
 import {
@@ -137,7 +137,7 @@ export const srdFindEndLine = (src: RbSource, n: i32): i32 => {
         return src.line(ssxFS(src, p, F_END));
       }
     }
-    return src.line(ssxFS(src, n, F_END));
+    return src.line(a.exE(n));
   }
   if (ssxIs(src, n, NT_BLOCK) || ssxIs(src, n, NT_NUMBLOCK)) {
     return src.line(ssxFS(src, n, F_END));
@@ -159,7 +159,9 @@ export const srdFindEndLine = (src: RbSource, n: i32): i32 => {
     }
     return src.line(a.exS(p));
   }
-  return ssxHas(src, n, F_END) ? src.line(ssxFS(src, n, F_END)) : src.line(a.exS(n));
+  // node.source_range.last_line (before 1.92.3 it took node.loc.end.line, which
+  // raised for a node without an end).
+  return src.line(a.exE(n));
 };
 
 /** CommentsHelp#contains_comments? */

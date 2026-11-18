@@ -29,7 +29,7 @@ pinned to one core:
 | Dart, short style (below 3.7) | `dart format` 3.14.1 | 100% of 8,218 | 25.4 s / 25.6 s | **3.76 s / 6.27 s** |
 | Swift | SwiftFormat 0.64.7, default rules | 100% of 6,710 | 131.7 s / 262.5 s | **10.2 s / 29.4 s** |
 | Rust | rustfmt 1.10.0, default config, edition 2021 | 100% of 7,899 | 7.6 s / 29.1 s | **1.35 s / 5.0 s** |
-| Ruby | `rubocop -a` 1.92.2, default config, `TargetRubyVersion: 3.3` | 100% of 1,998 | 303.9 s / 289.6 s | **4.00 s / 12.7 s** |
+| Ruby | `rubocop -a` 1.92.3, default config, `TargetRubyVersion: 3.3` | 100% of 1,999 | 303.9 s / 289.6 s | **4.00 s / 12.7 s** |
 
 - **Identical** is the share of the corpus files the reference tool accepts
   that nishfmt formats byte for byte as it does; the exact counts are in
@@ -148,7 +148,7 @@ Formats each file to match its language's reference formatter:
   C++ (.cpp .cc .cxx .hpp .hh .hxx .h)  clang-format 18, LLVM style
   Java (.java)                        google-java-format 1.28
   Kotlin (.kt .kts)                   ktfmt 0.64
-  Ruby (.rb, Gemfile, .gemspec, ...)  rubocop -a 1.92.2
+  Ruby (.rb, Gemfile, .gemspec, ...)  rubocop -a 1.92.3
   Swift (.swift)                      SwiftFormat 0.64.7
   Rust (.rs)                          rustfmt 1.10.0, edition 2021
   Dart (.dart)                        dart format 3.14

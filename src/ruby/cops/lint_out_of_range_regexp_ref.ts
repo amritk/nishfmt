@@ -2,7 +2,7 @@
 // count of the regexp last matched, tracked along the Commissioner's walk
 // (on_* on the way down, after_send on the way up).
 //
-// Ported from RuboCop 1.92.2 (MIT License, Copyright (c) 2012-24 Bozhidar
+// Ported from RuboCop 1.92.3 (MIT License, Copyright (c) 2012-24 Bozhidar
 // Batsov).
 
 import {

@@ -1,7 +1,7 @@
 // Lint/Loop. The cop is unsafe, so its correction never runs under
 // `rubocop -a`: it only detects.
 //
-// Ported from RuboCop 1.92.2 (MIT License, Copyright (c) 2012-24 Bozhidar
+// Ported from RuboCop 1.92.3 (MIT License, Copyright (c) 2012-24 Bozhidar
 // Batsov).
 
 import { F_KEYWORD, NT_UNTIL_POST, NT_WHILE_POST } from "../ast";

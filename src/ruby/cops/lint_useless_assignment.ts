@@ -1,35 +1,121 @@
 // Lint/UselessAssignment, on the VariableForce.
 //
-// Ported from RuboCop 1.92.2 (MIT License, Copyright (c) 2012-24 Bozhidar
+// Ported from RuboCop 1.92.3 (MIT License, Copyright (c) 2012-24 Bozhidar
 // Batsov).
 
 import {
   F_BEGIN,
+  F_END,
   F_KEYWORD,
   F_NAME,
   F_OPERATOR,
+  F_SELECTOR,
   NT_AND_ASGN,
   NT_ARRAY,
+  NT_BEGIN,
+  NT_CONST,
+  NT_CSEND,
+  NT_CVAR,
   NT_DEF,
   NT_DEFS,
+  NT_DSTR,
+  NT_DSYM,
   NT_FOR,
+  NT_GVAR,
+  NT_HASH,
+  NT_IVAR,
+  NT_KWBEGIN,
   NT_LVAR,
   NT_LVASGN,
   NT_MASGN,
   NT_MATCH_WITH_LVASGN,
   NT_MLHS,
+  NT_OP_ASGN,
   NT_OR_ASGN,
+  NT_REGEXP,
   NT_RESBODY,
+  NT_SELF,
   NT_SEND,
   NT_SPLAT,
+  NT_SUPER,
+  NT_XSTR,
+  NT_YIELD,
+  NT_ZSUPER,
   V_NIL,
 } from "../ast";
 import { RbCop } from "../cop";
 import { RbRewriter } from "../rewriter";
 import { RbSource } from "../source";
 import { LalIgnored } from "./layout_align_help";
+import { ldhAssignmentMethod } from "./lint_detect_help";
 import { VfForce, vfLoopType, vfOpAsgnType, vfSameNode } from "./lint_variable_force";
-import { ssxAssignment, ssxFE, ssxFS, ssxHas, ssxIs, ssxSiblingIndex } from "./style_syntax_help";
+import {
+  ssxAssignment,
+  ssxBasicLiteral,
+  ssxFE,
+  ssxFS,
+  ssxHas,
+  ssxIs,
+  ssxIsAnyBlock,
+  ssxLocIs,
+  ssxMeth,
+  ssxParenthesized,
+  ssxSiblingIndex,
+} from "./style_syntax_help";
+
+/** call_requires_parentheses?: a send, csend, yield or super operand. */
+const luaCallRequiresParens = (src: RbSource, n: i32): boolean => {
+  const a = src.a;
+  const t = a.type(n);
+  const call = t === NT_SEND || t === NT_CSEND;
+  const m = ssxMeth(src, n);
+  // prefix_not?
+  if (call && m === "!" && ssxLocIs(src, n, F_SELECTOR, "not")) {
+    return true;
+  }
+  if (call && ldhAssignmentMethod(m)) {
+    return false;
+  }
+  const args = call ? a.nKid(n) > 2 : a.nKid(n) > 0;
+  return args && !ssxParenthesized(src, n) && m !== "[]";
+};
+
+/** operand_requires_parentheses?: the value of an operator assignment needs parentheses as an operand. */
+const luaOperandRequiresParens = (src: RbSource, n0: i32): boolean => {
+  const a = src.a;
+  let n = n0;
+  if (ssxIsAnyBlock(src, n)) {
+    if (!ssxLocIs(src, n, F_END, "}")) {
+      return true;
+    }
+    n = a.kid(n, 0);
+  }
+  const t = a.type(n);
+  if (t === NT_SEND || t === NT_CSEND || t === NT_YIELD || t === NT_SUPER) {
+    return luaCallRequiresParens(src, n);
+  }
+  if (ssxAssignment(src, n)) {
+    return t === NT_OP_ASGN;
+  }
+  return !(
+    ssxBasicLiteral(src, n) ||
+    t === NT_IVAR ||
+    t === NT_GVAR ||
+    t === NT_CVAR ||
+    t === NT_LVAR ||
+    t === NT_CONST ||
+    t === NT_SELF ||
+    t === NT_BEGIN ||
+    t === NT_KWBEGIN ||
+    t === NT_ZSUPER ||
+    t === NT_ARRAY ||
+    t === NT_HASH ||
+    t === NT_DSTR ||
+    t === NT_DSYM ||
+    t === NT_XSTR ||
+    t === NT_REGEXP
+  );
+};
 
 /** Assignment#meta_assignment_node: the op-asgn, masgn, splat or for node, or V_NIL. */
 const luaMetaNode = (src: RbSource, node: i32): i32 => {
@@ -203,6 +289,10 @@ export class CopLintUselessAssignment {
     if (meta !== V_NIL && vfOpAsgnType(mt)) {
       const oe = ssxFE(src, p, F_OPERATOR);
       k.remove(oe - 1, oe);
+      const value = a.kid(p, a.nKid(p) - 1);
+      if (luaOperandRequiresParens(src, value)) {
+        k.wrap(a.exS(value), a.exE(value), "(", ")");
+      }
       return;
     }
     if (a.type(node) === NT_MATCH_WITH_LVASGN) {

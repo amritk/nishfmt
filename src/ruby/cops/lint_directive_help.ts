@@ -7,7 +7,7 @@
 // The push, pop and *-next directives are analysed as CommentConfig's
 // PushPop and DisableNext do.
 //
-// Ported from RuboCop 1.92.2 (MIT License, Copyright (c) 2012-24 Bozhidar
+// Ported from RuboCop 1.92.3 (MIT License, Copyright (c) 2012-24 Bozhidar
 // Batsov).
 
 import { RbSource, TK_COMMENT } from "../source";

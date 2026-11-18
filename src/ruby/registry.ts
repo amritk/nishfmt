@@ -1,6 +1,6 @@
 // Cop facts the team needs: RuboCop's registry order (corrections merge in
-// it) and autocorrect_incompatible_with. Generated from RuboCop 1.92.2's
-// registry with the default configuration.
+// it) and autocorrect_incompatible_with. Generated from RuboCop 1.92.3's
+// registry with the default configuration by tools/ruby/genregistry.rb.
 
 /** Every enabled cop, in registry order (for rubocop:disable all and departments). */
 export const RB_COP_NAMES: string =
@@ -10,6 +10,16 @@ export const RB_COP_NAMES: string =
 export const rbIncompatible = (a: string, b: string): boolean => rbIncompatibleWith(a, b) || rbIncompatibleWith(b, a);
 
 const rbIncompatibleWith = (a: string, b: string): boolean => {
+  if (a === "Layout/BlockEndNewline") {
+    return (
+      b === "Lint/AmbiguousBlockAssociation" ||
+      b === "Style/MethodCallWithArgsParentheses" ||
+      b === "Style/NestedParenthesizedCalls" ||
+      b === "Style/TrailingCommaInArguments" ||
+      b === "Style/TrailingCommaInArrayLiteral" ||
+      b === "Style/TrailingCommaInHashLiteral"
+    );
+  }
   if (a === "Layout/EmptyLineBetweenDefs") {
     return b === "Layout/EmptyLines";
   }
@@ -26,7 +36,8 @@ const rbIncompatibleWith = (a: string, b: string): boolean => {
     return (
       b === "Layout/MultilineHashBraceLayout" ||
       b === "Layout/MultilineMethodCallBraceLayout" ||
-      b === "Style/ConcatArrayLiterals"
+      b === "Style/ConcatArrayLiterals" ||
+      b === "Style/MethodCallWithArgsParentheses"
     );
   }
   if (a === "Layout/MultilineBlockLayout") {
@@ -36,14 +47,15 @@ const rbIncompatibleWith = (a: string, b: string): boolean => {
     return (
       b === "Layout/MultilineMethodCallBraceLayout" ||
       b === "Style/HashAsLastArrayItem" ||
-      b === "Style/RedundantDoubleSplatHashBraces"
+      b === "Style/RedundantDoubleSplatHashBraces" ||
+      b === "Style/MethodCallWithArgsParentheses"
     );
   }
   if (a === "Layout/MultilineMethodCallBraceLayout") {
     return b === "Style/MethodCallWithArgsParentheses";
   }
   if (a === "Layout/MultilineMethodDefinitionBraceLayout") {
-    return b === "Style/MultilineMethodSignature";
+    return b === "Style/MethodDefParentheses" || b === "Style/MultilineMethodSignature";
   }
   if (a === "Layout/SpaceAroundOperators") {
     return b === "Style/SelfAssignment";
@@ -57,8 +69,20 @@ const rbIncompatibleWith = (a: string, b: string): boolean => {
   if (a === "Layout/SpaceInsideBlockBraces") {
     return b === "Layout/BlockAlignment" || b === "Style/BlockDelimiters";
   }
+  if (a === "Lint/AmbiguousBlockAssociation") {
+    return b === "Style/AndOr";
+  }
   if (a === "Lint/AmbiguousOperator") {
     return b === "Naming/BlockForwarding" || b === "Style/ArgumentsForwarding";
+  }
+  if (a === "Lint/LiteralInInterpolation") {
+    return b === "Style/PercentLiteralDelimiters" || b === "Style/RegexpLiteral";
+  }
+  if (a === "Lint/ParenthesesAsGroupedExpression") {
+    return b === "Style/RedundantParentheses";
+  }
+  if (a === "Lint/TrailingCommaInAttributeDeclaration") {
+    return b === "Style/MethodCallWithArgsParentheses";
   }
   if (a === "Lint/UnusedMethodArgument") {
     return b === "Style/ExplicitBlockArgument";
@@ -77,7 +101,8 @@ const rbIncompatibleWith = (a: string, b: string): boolean => {
     return (
       b === "Layout/SpaceBeforeBlockBraces" ||
       b === "Style/MethodCallWithArgsParentheses" ||
-      b === "Style/RedundantBegin"
+      b === "Style/RedundantBegin" ||
+      b === "Style/RescueStandardError"
     );
   }
   if (a === "Style/CaseLikeIf") {
@@ -90,16 +115,30 @@ const rbIncompatibleWith = (a: string, b: string): boolean => {
     return b === "Style/RedundantSelf";
   }
   if (a === "Style/CombinableLoops") {
-    return b === "Layout/BlockEndNewline" || b === "Layout/RedundantLineBreak";
+    return (
+      b === "Layout/BlockEndNewline" ||
+      b === "Layout/RedundantLineBreak" ||
+      b === "Style/ItBlockParameter" ||
+      b === "Style/SymbolProc"
+    );
   }
   if (a === "Style/ConditionalAssignment") {
     return b === "Style/MethodCallWithArgsParentheses";
   }
+  if (a === "Style/EmptyLiteral") {
+    return b === "Style/MethodCallWithArgsParentheses";
+  }
   if (a === "Style/ExplicitBlockArgument") {
-    return b === "Lint/UnusedMethodArgument" || b === "Style/LambdaCall" || b === "Style/TrailingCommaInArguments";
+    return (
+      b === "Lint/UnusedMethodArgument" ||
+      b === "Style/LambdaCall" ||
+      b === "Style/MethodCallWithArgsParentheses" ||
+      b === "Style/NestedParenthesizedCalls" ||
+      b === "Style/TrailingCommaInArguments"
+    );
   }
   if (a === "Style/For") {
-    return b === "Style/RedundantBegin" || b === "Style/ItBlockParameter";
+    return b === "Style/BlockDelimiters" || b === "Style/RedundantBegin" || b === "Style/ItBlockParameter";
   }
   if (a === "Style/GuardClause") {
     return b === "Style/MissingElse";
@@ -108,13 +147,17 @@ const rbIncompatibleWith = (a: string, b: string): boolean => {
     return b === "Layout/MultilineArrayBraceLayout" || b === "Style/TrailingCommaInArrayLiteral";
   }
   if (a === "Style/HashSyntax") {
-    return b === "Style/MethodCallWithArgsParentheses" || b === "Style/SuperWithArgsParentheses";
+    return (
+      b === "Style/MethodCallWithArgsParentheses" ||
+      b === "Style/RedundantReturn" ||
+      b === "Style/SuperWithArgsParentheses"
+    );
   }
   if (a === "Style/IfUnlessModifier") {
-    return b === "Style/Next" || b === "Style/SoleNestedConditional";
+    return b === "Style/MethodCallWithArgsParentheses" || b === "Style/Next" || b === "Style/SoleNestedConditional";
   }
   if (a === "Style/IfUnlessModifierOfIfUnless") {
-    return b === "Style/SoleNestedConditional";
+    return b === "Style/MethodCallWithArgsParentheses" || b === "Style/SoleNestedConditional";
   }
   if (a === "Style/InverseMethods") {
     return b === "Style/Not" || b === "Style/SymbolProc";
@@ -123,7 +166,7 @@ const rbIncompatibleWith = (a: string, b: string): boolean => {
     return b === "Style/SymbolProc";
   }
   if (a === "Style/LineEndConcatenation") {
-    return b === "Style/RedundantInterpolation";
+    return b === "Style/RedundantInterpolation" || b === "Lint/AmbiguousOperatorPrecedence";
   }
   if (a === "Style/SoleNestedConditional") {
     return b === "Style/NegatedIf" || b === "Style/NegatedUnless";
@@ -145,16 +188,28 @@ const rbIncompatibleWith = (a: string, b: string): boolean => {
     return b === "Style/SafeNavigation";
   }
   if (a === "Style/RedundantBegin") {
-    return b === "Style/BlockDelimiters";
+    return (
+      b === "Style/BlockDelimiters" ||
+      b === "Style/TrailingCommaInArguments" ||
+      b === "Style/TrailingCommaInArrayLiteral" ||
+      b === "Style/TrailingCommaInHashLiteral"
+    );
   }
   if (a === "Style/RedundantInterpolation") {
-    return b === "Style/LineEndConcatenation";
+    return b === "Style/LineEndConcatenation" || b === "Style/MethodCallWithArgsParentheses";
   }
   if (a === "Style/RedundantRegexpEscape") {
     return b === "Style/RegexpLiteral";
   }
   if (a === "Style/RedundantSelf") {
     return b === "Style/ColonMethodCall" || b === "Layout/DotPosition";
+  }
+  if (a === "Style/RedundantSort") {
+    return (
+      b === "Style/TrailingCommaInArguments" ||
+      b === "Style/TrailingCommaInArrayLiteral" ||
+      b === "Style/TrailingCommaInHashLiteral"
+    );
   }
   if (a === "Style/RescueModifier") {
     return b === "Style/MethodCallWithArgsParentheses";
@@ -163,7 +218,11 @@ const rbIncompatibleWith = (a: string, b: string): boolean => {
     return b === "Layout/SpaceAroundOperators";
   }
   if (a === "Style/Semicolon") {
-    return b === "Style/SingleLineMethods";
+    return (
+      b === "Style/MethodCallWithArgsParentheses" ||
+      b === "Style/SingleLineMethods" ||
+      b === "Style/SuperWithArgsParentheses"
+    );
   }
   if (a === "Style/StructInheritance") {
     return b === "Style/MethodCallWithArgsParentheses";

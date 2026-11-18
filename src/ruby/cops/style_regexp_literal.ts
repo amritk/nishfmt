@@ -1,6 +1,6 @@
 // Style/RegexpLiteral (EnforcedStyle: slashes, AllowInnerSlashes: false).
 //
-// Ported from RuboCop 1.92.2 (MIT License, Copyright (c) 2012-24 Bozhidar
+// Ported from RuboCop 1.92.3 (MIT License, Copyright (c) 2012-24 Bozhidar
 // Batsov).
 
 import { F_BEGIN, F_END, F_OPERATOR, NT_CSEND, NT_REGEXP, NT_REGOPT, NT_SEND, NT_STR, V_NIL } from "../ast";
