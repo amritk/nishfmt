@@ -2797,7 +2797,15 @@ export class Parser {
       const atEnd = this.outsideBody(q) || (nt === q && this.outsideBody(nt));
       // (For `MACRO(...)` OneTokenSoFar is asked before the parentheses.)
       const trailed = q !== this.pos && !atEnd && !functionLike;
-      if ((n >= 5 || functionLike) && d.nl[q] > 0 && this.canStartNewLine(nt) && !atEnd && !trailed) {
+      // (clang-format 23: a function-like macro shorter than 5 characters
+      // ends its line only when no `(` follows its arguments.)
+      if (
+        (n >= 5 || (functionLike && d.kind[nt] !== P_LPAREN)) &&
+        d.nl[q] > 0 &&
+        this.canStartNewLine(nt) &&
+        !atEnd &&
+        !trailed
+      ) {
         while (d.kind[this.pos] === K_COMMENT && d.nl[this.pos] === 0) {
           this.push();
         }
@@ -2997,9 +3005,15 @@ export class Parser {
       const k = this.cur();
       if (!baseOrArgs && k !== P_LPAREN && k !== P_COLONCOLON && k !== P_HASHHASH && className < 0) {
         // The head word before this token names the class unless it is a
-        // macro (all capitals, more than one character).
+        // macro (all capitals, more than one character) or an attribute
+        // macro (LLVM style's AttributeMacros: `__capability`).
         const p = this.lastCode();
-        if (p > kwTok && isIdentKind(d.kind[p]) && (d.len(p) === 1 || this.isNonMacroIdent(p))) {
+        if (
+          p > kwTok &&
+          isIdentKind(d.kind[p]) &&
+          !d.is(p, "__capability") &&
+          (d.len(p) === 1 || this.isNonMacroIdent(p))
+        ) {
           className = p;
         }
       }

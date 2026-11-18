@@ -43,7 +43,8 @@ pinned to one core:
   alone on another idle machine, with google-java-format on JDK 21; the
   others during porting on a busier shared machine, so compare within a row.
   The C# times predate the change to CRLF output and were taken on the LF
-  corpus.
+  corpus. The C++ times were taken against clang-format 18.1.3 on the
+  10,344-file corpus, before the move to 23.1.5, and not measured again.
 - How the reference tools ran: clang-format 50 files a process; one
   google-java-format JVM over all files; CSharpier on .NET 10 with
   `--no-cache`; rustfmt 100 files a process; RuboCop with `--parallel` on 4
