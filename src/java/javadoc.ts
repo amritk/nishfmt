@@ -1,10 +1,14 @@
-// google-java-format's javadoc formatter: JavadocLexer's tokens, its four
-// cleanup passes, and JavadocWriter's filling. The regular expressions of
-// the original are hand-written matchers here.
+// google-java-format's javadoc formatter: JavadocFormatter's preparation of
+// the comment text, JavadocLexer's tokens and its four cleanup passes, and
+// JavadocWriter's filling. The regular expressions of the original are
+// hand-written matchers here. Only classic `/** */` javadoc is ported: the
+// reference treats `///` as javadoc only when it runs on JDK 23 or newer, and
+// the corpus runs it on JDK 21, where `///` is a line comment.
 //
-// Ported from google-java-format 1.28 (Apache License 2.0, Copyright 2016 Google Inc.).
+// Ported from google-java-format 2.0.0 (Apache License 2.0, Copyright 2016 Google Inc.).
 
 import { strUtf16Len } from "../core/arr";
+import { splitLines } from "../gdoc/comments";
 
 // Token types.
 const T_BEGIN: i32 = 1;
@@ -37,11 +41,21 @@ const T_FORCED_NEWLINE: i32 = 27;
 const T_OPTIONAL_BREAK: i32 = 28;
 const T_LITERAL: i32 = 29;
 
+// JavadocLexer.NestingContext, for the classic contexts.
+const NC_PRE: i32 = 1;
+const NC_CODE: i32 = 2;
+const NC_TABLE: i32 = 3;
+const NC_SNIPPET: i32 = 4;
+const NC_BRACE: i32 = 5;
+const NC_INLINE_TAG: i32 = 6;
+
 const MAX_LINE_LENGTH: i32 = 100;
 
 class JdToks {
   types: i32[];
   values: string[];
+  /** A decision needed Character.isLetterOrDigit on a character this port cannot classify. */
+  undecidable: boolean = false;
   constructor() {
     this.types = [];
     this.values = [];
@@ -74,42 +88,82 @@ const isWordChar = (c: i32): boolean =>
 
 const jdLower = (c: i32): i32 => (c >= 65 && c <= 90 ? c + 32 : c);
 
+const isJdSpaceOrTab = (c: i32): boolean => c === 32 || c === 9;
+
+/** BRACE_CONTEXTS: contexts a left brace opens and the matching right brace closes. */
+const isJdBraceContext = (c: i32): boolean => c === NC_SNIPPET || c === NC_INLINE_TAG || c === NC_BRACE;
+
+/** JavadocLexer's NestingStack<NestingContext>; the top is the last element. */
 class JdLexer {
   s: string = "";
   pos: i32 = 0;
   n: i32 = 0;
-  braceDepth: i32 = 0;
-  preDepth: i32 = 0;
-  codeDepth: i32 = 0;
-  tableDepth: i32 = 0;
-  outerInlineTagIsSnippet: boolean = false;
+  stack: i32[];
   somethingSinceNewline: boolean = false;
   failed: boolean = false;
+  /** The end of the token `next` read. */
+  end: i32 = 0;
+
+  constructor() {
+    this.stack = [];
+  }
 
   at(i: i32): i32 {
     return i < this.n ? this.s.charCodeAt(i) : -1;
   }
 
-  /** NEWLINE_PATTERN: [ \t]*\n[ \t]*[*]?[ \t]? ; answers the end or -1. */
+  contains(v: i32): boolean {
+    return this.stack.indexOf(v) >= 0;
+  }
+
+  /** containsAny(BRACE_CONTEXTS). */
+  inBraceContext(): boolean {
+    return this.stack.some(isJdBraceContext);
+  }
+
+  /** containsAny(TAG_CONTEXTS). */
+  inTagContext(): boolean {
+    return this.contains(NC_SNIPPET) || this.contains(NC_INLINE_TAG);
+  }
+
+  /** containsAny(PRESERVE_FORMATTING_CONTEXTS). */
+  preserve(): boolean {
+    return this.contains(NC_PRE) || this.contains(NC_TABLE) || this.contains(NC_CODE) || this.contains(NC_SNIPPET);
+  }
+
+  /** NestingStack.popUntil: if `v` is on the stack, pop it and everything above it. */
+  popUntil(v: i32): void {
+    if (!this.contains(v)) {
+      return;
+    }
+    let popped = -1;
+    while (popped !== v) {
+      popped = this.stack[this.stack.length - 1];
+      this.stack.pop();
+    }
+  }
+
+  /** NestingStack.popIfIn(BRACE_CONTEXTS): the context popped, or 0. */
+  popIfBrace(): i32 {
+    const k = toI32(this.stack.length);
+    if (k === 0) {
+      return 0;
+    }
+    const top = this.stack[k - 1];
+    if (!isJdBraceContext(top)) {
+      return 0;
+    }
+    this.stack.pop();
+    return top;
+  }
+
+  /** NEWLINE_PATTERN: [ \t]*\n ; answers the end or -1. */
   newline(): i32 {
     let i = this.pos;
-    while (this.at(i) === 32 || this.at(i) === 9) {
+    while (isJdSpaceOrTab(this.at(i))) {
       i++;
     }
-    if (this.at(i) !== 10) {
-      return -1;
-    }
-    i++;
-    while (this.at(i) === 32 || this.at(i) === 9) {
-      i++;
-    }
-    if (this.at(i) === 42) {
-      i++;
-    }
-    if (this.at(i) === 32 || this.at(i) === 9) {
-      i++;
-    }
-    return i;
+    return this.at(i) === 10 ? i + 1 : -1;
   }
 
   /** FOOTER_TAG_PATTERN: @(param\s+<\w+>|[a-z]\w*). */
@@ -148,7 +202,7 @@ class JdLexer {
     return -1;
   }
 
-  /** ^<(?:names)\b[^>]*> (case-insensitive); `close` adds the slash. */
+  /** <(?:names)\b[^>]*> (case-insensitive); `close` adds the slash. */
   tag(names: string[], close: boolean): i32 {
     let i = this.pos;
     if (this.at(i) !== 60) {
@@ -196,7 +250,7 @@ class JdLexer {
     return j + 1;
   }
 
-  /** LITERAL_PATTERN: .[^ \t\n@<{}*]* */
+  /** CLASSIC_LITERAL_PATTERN: .[^ \t\n@<{}*]* */
   literal(): i32 {
     let i = this.pos + 1;
     while (i < this.n) {
@@ -209,7 +263,7 @@ class JdLexer {
     return i;
   }
 
-  /** ^<!--.*?--> */
+  /** <!--.*?--> */
   htmlComment(): i32 {
     if (!startsAt(this.s, "<!--", this.pos)) {
       return -1;
@@ -240,13 +294,24 @@ class JdLexer {
     return i + 3;
   }
 
-  preserve(): boolean {
-    return this.preDepth > 0 || this.tableDepth > 0 || this.codeDepth > 0 || this.outerInlineTagIsSnippet;
+  /** An open or close tag that pushes or pops `ctx`; answers its token type, or 0. */
+  contextTag(name: string, ctx: i32, open: i32, close: i32, preserving: boolean): i32 {
+    let e = this.tag([name], false);
+    if (e >= 0) {
+      this.end = e;
+      this.stack.push(ctx);
+      return preserving ? T_LITERAL : open;
+    }
+    e = this.tag([name], true);
+    if (e >= 0) {
+      this.end = e;
+      this.popUntil(ctx);
+      return this.preserve() ? T_LITERAL : close;
+    }
+    return 0;
   }
 
-  /** One token: answers its type and sets `end`. */
-  end: i32 = 0;
-
+  /** JavadocLexer.consumeToken for classic javadoc: answers its type and sets `end`. */
   next(): i32 {
     const preserving = this.preserve();
     let e = this.newline();
@@ -256,14 +321,15 @@ class JdLexer {
       return preserving ? T_FORCED_NEWLINE : T_WS;
     }
     const c = this.at(this.pos);
-    if (c === 32 || c === 9) {
+    if (isJdSpaceOrTab(c)) {
       this.end = this.pos + 1;
       return preserving ? T_LITERAL : T_WS;
     }
     if (!this.somethingSinceNewline) {
       e = this.footer();
       if (e >= 0) {
-        if (this.braceDepth > 0 || this.preDepth > 0 || this.tableDepth > 0 || this.codeDepth > 0) {
+        // checkMatchingTags
+        if (this.stack.length !== 0) {
           this.failed = true;
         }
         this.end = e;
@@ -273,90 +339,48 @@ class JdLexer {
     }
     this.somethingSinceNewline = true;
     if (c === 123 && this.at(this.pos + 1) === 64) {
-      // {@snippet\b or {@\w*
       if (startsAt(this.s, "snippet", this.pos + 2) && !isWordChar(this.at(this.pos + 9))) {
         this.end = this.pos + 9;
-        if (this.braceDepth === 0) {
-          this.braceDepth = this.braceDepth + 1;
-          this.outerInlineTagIsSnippet = true;
-          return T_SNIPPET_BEGIN;
+        if (this.inBraceContext()) {
+          this.stack.push(NC_BRACE);
+          return T_LITERAL;
         }
-        this.braceDepth = this.braceDepth + 1;
-        return T_LITERAL;
+        this.stack.push(NC_SNIPPET);
+        return T_SNIPPET_BEGIN;
       }
       let i = this.pos + 2;
       while (isWordChar(this.at(i))) {
         i++;
       }
       this.end = i;
-      this.braceDepth = this.braceDepth + 1;
+      this.stack.push(NC_INLINE_TAG);
       return T_LITERAL;
     }
     if (c === 123) {
       this.end = this.pos + 1;
-      if (this.braceDepth > 0) {
-        this.braceDepth = this.braceDepth + 1;
+      if (this.inBraceContext()) {
+        this.stack.push(NC_BRACE);
       }
       return T_LITERAL;
     }
     if (c === 125) {
       this.end = this.pos + 1;
-      if (this.outerInlineTagIsSnippet && this.braceDepth === 1) {
-        this.braceDepth = this.braceDepth - 1;
-        this.outerInlineTagIsSnippet = false;
-        return T_SNIPPET_END;
-      }
-      if (this.braceDepth > 0) {
-        this.braceDepth = this.braceDepth - 1;
-      }
-      return T_LITERAL;
+      return this.popIfBrace() === NC_SNIPPET ? T_SNIPPET_END : T_LITERAL;
     }
-    if (this.braceDepth > 0) {
+    if (this.inTagContext()) {
       this.end = this.literal();
       return T_LITERAL;
     }
     if (c === 60) {
-      e = this.tag(["pre"], false);
-      if (e >= 0) {
-        this.end = e;
-        this.preDepth = this.preDepth + 1;
-        return preserving ? T_LITERAL : T_PRE_OPEN;
+      let t = this.contextTag("pre", NC_PRE, T_PRE_OPEN, T_PRE_CLOSE, preserving);
+      if (t === 0) {
+        t = this.contextTag("code", NC_CODE, T_CODE_OPEN, T_CODE_CLOSE, preserving);
       }
-      e = this.tag(["pre"], true);
-      if (e >= 0) {
-        this.end = e;
-        if (this.preDepth > 0) {
-          this.preDepth = this.preDepth - 1;
-        }
-        return this.preserve() ? T_LITERAL : T_PRE_CLOSE;
+      if (t === 0) {
+        t = this.contextTag("table", NC_TABLE, T_TABLE_OPEN, T_TABLE_CLOSE, preserving);
       }
-      e = this.tag(["code"], false);
-      if (e >= 0) {
-        this.end = e;
-        this.codeDepth = this.codeDepth + 1;
-        return preserving ? T_LITERAL : T_CODE_OPEN;
-      }
-      e = this.tag(["code"], true);
-      if (e >= 0) {
-        this.end = e;
-        if (this.codeDepth > 0) {
-          this.codeDepth = this.codeDepth - 1;
-        }
-        return this.preserve() ? T_LITERAL : T_CODE_CLOSE;
-      }
-      e = this.tag(["table"], false);
-      if (e >= 0) {
-        this.end = e;
-        this.tableDepth = this.tableDepth + 1;
-        return preserving ? T_LITERAL : T_TABLE_OPEN;
-      }
-      e = this.tag(["table"], true);
-      if (e >= 0) {
-        this.end = e;
-        if (this.tableDepth > 0) {
-          this.tableDepth = this.tableDepth - 1;
-        }
-        return this.preserve() ? T_LITERAL : T_TABLE_CLOSE;
+      if (t !== 0) {
+        return t;
       }
     }
     if (preserving) {
@@ -444,25 +468,103 @@ const countNewlines = (s: string): i32 => {
   return n;
 };
 
-/** JavadocLexer.lex; answers null when the comment does not lex (unbalanced tags). */
-const lexJavadoc = (input0: string): JdToks | null => {
-  // Strip /** and */, normalize line endings.
-  let body = input0.substring(3, toI32(input0.length) - 2);
-  if (body.indexOf("\r") >= 0) {
-    let o = "";
-    for (let i = 0; i < toI32(body.length); i++) {
-      const c = body.charCodeAt(i);
-      if (c === 13) {
-        o = `${o}\n`;
-        if (i + 1 < toI32(body.length) && body.charCodeAt(i + 1) === 10) {
-          i++;
-        }
-      } else {
-        o = o + body.substring(i, i + 1);
+/** NOT_SPACE_OR_TAB.indexIn: the first character that is not a space or tab, or -1. */
+const jdFirstNonSpaceOrTab = (s: string): i32 => {
+  for (let i = 0; i < toI32(s.length); i++) {
+    if (!isJdSpaceOrTab(s.charCodeAt(i))) {
+      return i;
+    }
+  }
+  return -1;
+};
+
+/** CLASSIC_PREFIX_PATTERN ^[ \t]*[*][ \t]? : the end of the match, or -1. */
+const jdClassicPrefixEnd = (s: string): i32 => {
+  const n = toI32(s.length);
+  let i = 0;
+  while (i < n && isJdSpaceOrTab(s.charCodeAt(i))) {
+    i++;
+  }
+  if (i >= n || s.charCodeAt(i) !== 42) {
+    return -1;
+  }
+  i++;
+  if (i < n && isJdSpaceOrTab(s.charCodeAt(i))) {
+    i++;
+  }
+  return i;
+};
+
+/*
+ * Lengths below are compared in bytes where the reference compares UTF-16 units. That is
+ * exact: a line is cut only inside its leading spaces and tabs, and a line shorter than the
+ * cut is all spaces and tabs.
+ */
+
+/** JavadocFormatter.jdStripCommonLeadingWhitespace. */
+const jdStripCommonLeadingWhitespace = (lines: string[]): string => {
+  let leading = -1;
+  for (const l of lines) {
+    const i = jdFirstNonSpaceOrTab(l);
+    if (i >= 0 && (leading < 0 || i < leading)) {
+      leading = i;
+    }
+  }
+  if (leading < 0) {
+    leading = 0;
+  }
+  const out: string[] = [];
+  for (const l of lines) {
+    out.push(toI32(l.length) < leading ? "" : l.substring(leading, toI32(l.length)));
+  }
+  return out.join("\n");
+};
+
+/**
+ * JavadocFormatter.jdClassicCommentText: the comment without its leading slash-star-star and
+ * trailing star-slash (and any stars before that), each line's leading star, and the
+ * whitespace every line shares.
+ */
+const jdClassicCommentText = (input: string): string => {
+  let end = toI32(input.length) - 2;
+  while (end > 3 && input.charCodeAt(end - 1) === 42) {
+    end--;
+  }
+  const lines = splitLines(input.substring(3, end));
+  // The first line keeps a leading `*`, as in `/** * foo\n * bar\n */`.
+  let starPrefixLength = -1;
+  let nonStarMinLeading = -1;
+  for (let i = 1; i < toI32(lines.length); i++) {
+    const p = jdClassicPrefixEnd(lines[i]);
+    if (p >= 0) {
+      if (starPrefixLength < 0 || p < starPrefixLength) {
+        starPrefixLength = p;
+      }
+    } else {
+      const k = jdFirstNonSpaceOrTab(lines[i]);
+      if (k >= 0 && (nonStarMinLeading < 0 || k < nonStarMinLeading)) {
+        nonStarMinLeading = k;
       }
     }
-    body = o;
   }
+  const starLen = starPrefixLength < 0 ? 0 : starPrefixLength;
+  const nonStarLen = nonStarMinLeading < 0 ? 0 : nonStarMinLeading;
+  const nonStarStripCount = starLen < nonStarLen ? starLen : nonStarLen;
+  const processed: string[] = [lines[0]];
+  for (let i = 1; i < toI32(lines.length); i++) {
+    const l = lines[i];
+    const p = jdClassicPrefixEnd(l);
+    if (p >= 0) {
+      processed.push(l.substring(p, toI32(l.length)));
+    } else {
+      processed.push(toI32(l.length) >= nonStarStripCount ? l.substring(nonStarStripCount, toI32(l.length)) : "");
+    }
+  }
+  return jdStripCommonLeadingWhitespace(processed);
+};
+
+/** JavadocLexer.lex for classic javadoc, on jdClassicCommentText's output; null when it does not lex. */
+const lexJavadoc = (body: string): JdToks | null => {
   const lx = new JdLexer();
   lx.s = body;
   lx.n = toI32(body.length);
@@ -473,13 +575,62 @@ const lexJavadoc = (input0: string): JdToks | null => {
     raw.add(type, body.substring(lx.pos, lx.end));
     lx.pos = lx.end;
   }
-  if (lx.failed || lx.braceDepth > 0 || lx.preDepth > 0 || lx.tableDepth > 0 || lx.codeDepth > 0) {
+  if (lx.failed || lx.stack.length !== 0) {
     return null;
   }
   raw.add(T_END, "*/");
-  return deindentPreCodeBlocks(optionalizeSpacesAfterLinks(inferParagraphTags(joinAdjacent(raw))));
+  const joined = joinAdjacent(raw);
+  if (joined.undecidable) {
+    return joined;
+  }
+  return deindentPreCodeBlocks(optionalizeSpacesAfterLinks(inferParagraphTags(joined)));
 };
 
+/**
+ * Character.isLetterOrDigit on the UTF-16 unit that holds the code point at byte `i`: 1, 0,
+ * or -1 where this port cannot tell (a letter or digit above U+00FF is not classified).
+ */
+const jdLetterOrDigitAt = (s: string, i: i32): i32 => {
+  const c = s.charCodeAt(i);
+  if (c < 0x80) {
+    return (c >= 65 && c <= 90) || (c >= 97 && c <= 122) || (c >= 48 && c <= 57) ? 1 : 0;
+  }
+  if (c >= 0xf0) {
+    // A supplementary code point: charAt sees a surrogate, which is neither.
+    return 0;
+  }
+  if (c >= 0xc2 && c <= 0xc3 && i + 1 < toI32(s.length)) {
+    const cp = ((c & 0x1f) << 6) | (s.charCodeAt(i + 1) & 0x3f);
+    // Latin-1: ª µ º and À-ÿ except × and ÷ are letters; nothing in it is a digit.
+    if (cp === 0xaa || cp === 0xb5 || cp === 0xba) {
+      return 1;
+    }
+    return cp >= 0xc0 && cp !== 0xd7 && cp !== 0xf7 ? 1 : 0;
+  }
+  return -1;
+};
+
+/** isWordChar (letter, digit or `_`) at byte `i`, as jdLetterOrDigitAt answers. */
+const jdWordCharAt = (s: string, i: i32): i32 => (s.charCodeAt(i) === 95 ? 1 : jdLetterOrDigitAt(s, i));
+
+/** jdIsHyphenatedWordEnd: ends in `-` after a word character. */
+const jdIsHyphenatedWordEnd = (s: string): i32 => {
+  let k = toI32(s.length) - 1;
+  if (k < 1 || s.charCodeAt(k) !== 45) {
+    return 0;
+  }
+  // The start of the code point before the hyphen.
+  k--;
+  while (k > 0 && (s.charCodeAt(k) & 0xc0) === 0x80) {
+    k--;
+  }
+  return jdWordCharAt(s, k);
+};
+
+/** jdIsWordStart. */
+const jdIsWordStart = (s: string): i32 => (s.length === 0 ? 0 : jdWordCharAt(s, 0));
+
+/** joinAdjacentLiteralsAndAdjacentWhitespace. */
 const joinAdjacent = (input: JdToks): JdToks => {
   const out = new JdToks();
   let acc = "";
@@ -492,8 +643,17 @@ const joinAdjacent = (input: JdToks): JdToks => {
       continue;
     }
     if (acc.length === 0) {
-      out.add(input.types[i], input.values[i]);
-      i++;
+      if (input.types[i] === T_WS) {
+        let ws = "";
+        while (i < n && input.types[i] === T_WS) {
+          ws = ws + input.values[i];
+          i++;
+        }
+        out.add(T_WS, ws);
+      } else {
+        out.add(input.types[i], input.values[i]);
+        i++;
+      }
       continue;
     }
     let ws = "";
@@ -501,10 +661,24 @@ const joinAdjacent = (input: JdToks): JdToks => {
       ws = ws + input.values[i];
       i++;
     }
-    if (i < n && input.types[i] === T_LITERAL && input.values[i].startsWith("@")) {
+    const nextLiteral = i < n && input.types[i] === T_LITERAL;
+    if (nextLiteral && input.values[i].startsWith("@")) {
       acc = `${acc} ${input.values[i]}`;
       i++;
       continue;
+    }
+    // A word hyphenated across a line break is joined back together (but not "pre- and post-").
+    if (nextLiteral && countNewlines(ws) === 1 && input.values[i] !== "and" && input.values[i] !== "or") {
+      const end = jdIsHyphenatedWordEnd(acc);
+      const start = end === 0 ? 0 : jdIsWordStart(input.values[i]);
+      if (end === 1 && start === 1) {
+        acc = acc + input.values[i];
+        i++;
+        continue;
+      }
+      if (end !== 0 && start !== 0) {
+        out.undecidable = true;
+      }
     }
     out.add(T_LITERAL, acc);
     acc = "";
@@ -694,14 +868,20 @@ const RW_WHITESPACE: i32 = 1;
 const RW_NEWLINE: i32 = 2;
 const RW_BLANK_LINE: i32 = 3;
 
+// JavadocWriter's Indent kinds (classic javadoc has no block quote indent).
+const IND_LIST: i32 = 1;
+const IND_LIST_ITEM: i32 = 2;
+
 class JdWriter {
   blockIndent: i32 = 0;
   out: string[];
   continuingListItemOfInnermostList: boolean = false;
   continuingFooterTag: boolean = false;
-  continuingListItemCount: i32 = 0;
-  continuingListCount: i32 = 0;
-  postWriteModifiedContinuingListCount: i32 = 0;
+  /** indentStack, bottom first: each entry's kind and width. */
+  indentKinds: i32[];
+  indentWidths: i32[];
+  /** postWriteModifiedContinuingListStack: it only ever holds 1s, so its depth. */
+  postWriteModifiedContinuingListDepth: i32 = 0;
   remainingOnLine: i32 = 0;
   atStartOfLine: boolean = false;
   requested: i32 = 0;
@@ -713,6 +893,8 @@ class JdWriter {
   constructor(blockIndent: i32) {
     this.blockIndent = blockIndent;
     this.out = [];
+    this.indentKinds = [];
+    this.indentWidths = [];
   }
 
   append(s: string): void {
@@ -733,12 +915,31 @@ class JdWriter {
     }
   }
 
+  /** innerIndentString, as a width: classic indents are all spaces. */
   innerIndent(): i32 {
-    let ii = this.continuingListItemCount * 4 + this.continuingListCount * 2;
-    if (this.continuingFooterTag) {
-      ii += 4;
+    let ii = this.continuingFooterTag ? 4 : 0;
+    for (const w of this.indentWidths) {
+      ii += w;
     }
     return ii;
+  }
+
+  pushIndent(kind: i32, width: i32): void {
+    this.indentKinds.push(kind);
+    this.indentWidths.push(width);
+  }
+
+  /** indentStack.popUntil(kind): pop the topmost `kind` entry and everything above it. */
+  popIndentUntil(kind: i32): void {
+    if (this.indentKinds.indexOf(kind) < 0) {
+      return;
+    }
+    let popped = -1;
+    while (popped !== kind) {
+      popped = this.indentKinds[this.indentKinds.length - 1];
+      this.indentKinds.pop();
+      this.indentWidths.pop();
+    }
   }
 
   newline(auto: boolean): void {
@@ -761,13 +962,16 @@ class JdWriter {
     this.newline(true);
   }
 
-  writeToken(type: i32, value: string): void {
+  flushWhitespace(): void {
     if (this.hasMoeBegin) {
       this.request(RW_NEWLINE);
     }
+    if (!this.wroteAnythingSignificant) {
+      this.requested = RW_NONE;
+    }
     if (
       this.requested === RW_BLANK_LINE &&
-      (this.postWriteModifiedContinuingListCount > 0 || this.continuingFooterTag)
+      (this.postWriteModifiedContinuingListDepth > 0 || this.continuingFooterTag)
     ) {
       this.requested = RW_NEWLINE;
     }
@@ -778,6 +982,13 @@ class JdWriter {
       this.newline(true);
       this.requested = RW_NONE;
     }
+  }
+
+  writeToken(type: i32, value: string): void {
+    if (value.length === 0) {
+      return;
+    }
+    this.flushWhitespace();
     const needWhitespace = this.requested === RW_WHITESPACE;
     const len = strUtf16Len(value);
     if (!this.atStartOfLine && len + (needWhitespace ? 1 : 0) > this.remainingOnLine) {
@@ -791,12 +1002,14 @@ class JdWriter {
       this.append(this.moeBegin);
       this.hasMoeBegin = false;
       this.indentForMoeEnd = this.innerIndent();
+      this.wroteAnythingSignificant = true;
       this.request(RW_NEWLINE);
       this.writeToken(type, value);
       return;
     }
     this.append(value);
-    if (type !== T_LI_OPEN && type !== T_P_OPEN && type !== T_H_OPEN) {
+    // StartOfLineToken
+    if (type !== T_LI_OPEN && type !== T_P_OPEN && type !== T_H_OPEN && type !== T_BQ_OPEN) {
       this.atStartOfLine = false;
     }
     this.remainingOnLine -= len;
@@ -812,12 +1025,10 @@ class JdWriter {
         break;
       case T_FOOTER:
         this.continuingListItemOfInnermostList = false;
-        this.continuingListItemCount = 0;
-        this.continuingListCount = 0;
-        this.postWriteModifiedContinuingListCount = 0;
-        if (!this.wroteAnythingSignificant) {
-          // nothing
-        } else if (!this.continuingFooterTag) {
+        this.indentKinds = [];
+        this.indentWidths = [];
+        this.postWriteModifiedContinuingListDepth = 0;
+        if (!this.continuingFooterTag) {
           this.request(RW_BLANK_LINE);
         } else {
           this.continuingFooterTag = false;
@@ -838,21 +1049,16 @@ class JdWriter {
         this.request(RW_BLANK_LINE);
         this.writeToken(type, value);
         this.continuingListItemOfInnermostList = false;
-        this.continuingListCount = this.continuingListCount + 1;
-        this.postWriteModifiedContinuingListCount = this.postWriteModifiedContinuingListCount + 1;
+        this.pushIndent(IND_LIST, 2);
+        this.postWriteModifiedContinuingListDepth = this.postWriteModifiedContinuingListDepth + 1;
         this.request(RW_NEWLINE);
         break;
       case T_LIST_CLOSE:
         this.request(RW_NEWLINE);
-        if (this.continuingListItemCount > 0) {
-          this.continuingListItemCount = this.continuingListItemCount - 1;
-        }
-        if (this.continuingListCount > 0) {
-          this.continuingListCount = this.continuingListCount - 1;
-        }
+        this.popIndentUntil(IND_LIST);
         this.writeToken(type, value);
-        if (this.postWriteModifiedContinuingListCount > 0) {
-          this.postWriteModifiedContinuingListCount = this.postWriteModifiedContinuingListCount - 1;
+        if (this.postWriteModifiedContinuingListDepth > 0) {
+          this.postWriteModifiedContinuingListDepth = this.postWriteModifiedContinuingListDepth - 1;
         }
         this.request(RW_BLANK_LINE);
         break;
@@ -860,13 +1066,12 @@ class JdWriter {
         this.request(RW_NEWLINE);
         if (this.continuingListItemOfInnermostList) {
           this.continuingListItemOfInnermostList = false;
-          if (this.continuingListItemCount > 0) {
-            this.continuingListItemCount = this.continuingListItemCount - 1;
-          }
+          this.popIndentUntil(IND_LIST_ITEM);
         }
         this.writeToken(type, value);
         this.continuingListItemOfInnermostList = true;
-        this.continuingListItemCount = this.continuingListItemCount + 1;
+        // The item's continuation lines line up after the tag as written (`<li>` is 4).
+        this.pushIndent(IND_LIST_ITEM, strUtf16Len(value));
         break;
       case T_H_OPEN:
       case T_PRE_OPEN:
@@ -888,8 +1093,12 @@ class JdWriter {
         this.writeToken(type, standardizeTag(value, "<p>"));
         break;
       case T_BQ_OPEN:
-      case T_BQ_CLOSE:
         this.request(RW_BLANK_LINE);
+        this.writeToken(type, value);
+        this.request(RW_NEWLINE);
+        break;
+      case T_BQ_CLOSE:
+        this.request(RW_NEWLINE);
         this.writeToken(type, value);
         this.request(RW_BLANK_LINE);
         break;
@@ -903,16 +1112,25 @@ class JdWriter {
         this.hasMoeBegin = true;
         break;
       case T_MOE_END:
+        this.requested = RW_NONE;
         this.newline(false);
         this.spaces(this.indentForMoeEnd);
         this.writeToken(type, value);
         this.request(RW_NEWLINE);
         break;
-      case T_HTML_COMMENT:
+      case T_HTML_COMMENT: {
         this.request(RW_NEWLINE);
-        this.writeToken(type, value);
+        // A comment over several lines keeps their text, each after a bare ` * `.
+        const lines = splitLines(value);
+        this.writeToken(type, lines[0]);
+        for (let i = 1; i < toI32(lines.length); i++) {
+          this.newline(false);
+          this.append(lines[i]);
+          this.remainingOnLine -= strUtf16Len(lines[i]);
+        }
         this.request(RW_NEWLINE);
         break;
+      }
       case T_BR:
         this.writeToken(type, standardizeTag(value, "<br>"));
         this.request(RW_NEWLINE);
@@ -959,11 +1177,18 @@ const standardizeTag = (value: string, std: string): string => {
   return value;
 };
 
-/** JavadocFormatter.formatJavadoc. */
-export const formatJavadoc = (input: string, blockIndent: i32): string => {
-  const toks = lexJavadoc(input);
+/**
+ * JavadocFormatter.formatJavadoc for a classic javadoc comment. A comment that does not lex
+ * (an unclosed tag) comes back unchanged, as in the reference; null means the answer turned on
+ * a character this port cannot classify, so the file must be left alone.
+ */
+export const formatJavadoc = (input: string, blockIndent: i32): string | null => {
+  const toks = lexJavadoc(jdClassicCommentText(input));
   if (toks === null) {
     return input;
+  }
+  if (toks.undecidable) {
+    return null;
   }
   const w = new JdWriter(blockIndent);
   for (let i = 0; i < toks.size(); i++) {

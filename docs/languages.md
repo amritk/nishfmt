@@ -34,12 +34,13 @@ The C# side ports CSharpier's whole pipeline onto a Roslyn-shaped syntax tree
 of its own: the lexer with Roslyn's trivia, the parser (C# 14), every node
 printer, Prettier's Doc printer, member chains, using and modifier sorting,
 `csharpier-ignore`, generated-code detection and the reprint for each set of
-preprocessor symbols. The corpus is Newtonsoft.Json, AutoMapper, MediatR,
-Polly, Serilog, Dapper, NUnit, xUnit, CSharpier, Humanizer,
-CleanArchitecture, EF Core, NLog, RestSharp and FluentValidation; a second
-corpus of the same files first formatted with other widths and indents
-(`cs2`) also matches on all 13988. The 4 files CSharpier refuses are left
-out.
+preprocessor symbols. Its output is CRLF, as CSharpier writes with
+`end_of_line = crlf` (the [README](../README.md#settings) gives the style).
+The corpus is Newtonsoft.Json, AutoMapper, MediatR, Polly, Serilog, Dapper,
+NUnit, xUnit, CSharpier, Humanizer, CleanArchitecture, EF Core, NLog,
+RestSharp and FluentValidation; a second corpus of the same files first
+formatted with other widths and indents (`cs2`) also matches on all 13988.
+The 4 files CSharpier refuses are left out.
 
 ## Dart
 

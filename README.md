@@ -24,7 +24,7 @@ pinned to one core:
 | C++ | clang-format 18, `{BasedOnStyle: LLVM, ColumnLimit: 120}` | 99.6% of 10,344 | 87.0 s / 212.9 s | **7.07 s / 28.9 s** |
 | Java | google-java-format 1.28 | 100% of 7,627 | 75.2 s / 252.9 s | **2.17 s / 8.64 s** |
 | Kotlin | ktfmt 0.65, default style | 100% of 9,602 | 92.9 s / not run | **2.03 s / 7.02 s** |
-| C# | CSharpier 1.4.0, default options | 100% of 13,988 | 63.0 s / 122.7 s | **3.10 s / 6.63 s** |
+| C# | CSharpier 1.4.0, default options except `end_of_line = crlf` | 100% of 13,988 | 63.0 s / 122.7 s | **3.10 s / 6.63 s** |
 | Dart, tall style | `dart format` 3.14 | 100% of 10,313 | 55.2 s / 59.9 s | **3.08 s / 8.50 s** |
 | Dart, short style (below 3.7) | `dart format` 3.14 | 100% of 8,218 | 25.4 s / 25.6 s | **3.76 s / 6.27 s** |
 | Swift | SwiftFormat 0.64.7, default rules | 100% of 6,710 | 131.7 s / 262.5 s | **10.2 s / 29.4 s** |
@@ -38,7 +38,9 @@ pinned to one core:
 - One core is `taskset -c 0`, with `-j 1` for nishfmt. nishfmt's times are
   the best of three. The C++, Java and Ruby rows were measured together on
   an otherwise idle machine, the reference tools one run each; the others
-  during porting on a busier shared machine, so compare within a row.
+  during porting on a busier shared machine, so compare within a row. The
+  C# times predate the change to CRLF output and were taken on the LF
+  corpus.
 - How the reference tools ran: clang-format 50 files a process; one
   google-java-format JVM over all files; CSharpier on .NET 10 with
   `--no-cache`; rustfmt 100 files a process; RuboCop with `--parallel` on 4
@@ -59,9 +61,27 @@ tool's default settings, and only those. It reads no configuration file:
 `.csharpierrc`, `.editorconfig` and `analysis_options.yaml` are all ignored,
 so a file comes out the same in any repository.
 
-- **Java, Kotlin, C#, Swift, Rust:** the tool's defaults: google-java-format's
-  Google style, ktfmt's default style, CSharpier's default options,
-  SwiftFormat's default rules, and rustfmt's default config with edition 2021.
+- **Java, Kotlin, Swift, Rust:** the tool's defaults: google-java-format's
+  Google style, ktfmt's default style, SwiftFormat's default rules, and
+  rustfmt's default config with edition 2021.
+- **C#:** CSharpier's default options, except that every line break is CRLF
+  whatever the input's line endings are, as CSharpier writes under this
+  `.editorconfig`:
+
+  ```ini
+  root = true
+  [*]
+  indent_style = space
+  [*.cs]
+  indent_size = 4
+  tab_width = 4
+  end_of_line = crlf
+  insert_final_newline = true
+  ```
+
+  Only `end_of_line` differs from CSharpier's defaults. Line breaks that
+  CSharpier copies from the source as they are (disabled `#if` text, an
+  interpolated string whose holes span lines) keep their endings.
 - **Dart:** `dart format`'s defaults. The language version, which picks the
   style, comes from a file's `// @dart=` comment, else 3.14; package configs
   are not read.
