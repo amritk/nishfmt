@@ -322,11 +322,12 @@ export class RsTokens {
   // The end of a shebang line (0 when there is none).
   shebang: i32 = 0;
   // The edition the source is lexed and parsed at.
-  edition: i32 = 2021;
+  edition: i32;
 
-  constructor(src: u8[], n: i32) {
+  constructor(src: u8[], n: i32, edition: i32) {
     this.src = src;
     this.n = n;
+    this.edition = edition;
     const c = n / 3 + 16;
     this.kind = new Array<i32>(c);
     this.lo = new Array<i32>(c);

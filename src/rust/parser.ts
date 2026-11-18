@@ -1,6 +1,6 @@
-// A Rust parser for edition 2021: rustc_parse's grammar and spans, building
-// the RsAst table. It fails (sets `failed`) where rustc would refuse to
-// parse; formatting is then skipped.
+// A Rust parser for editions 2021 and 2024 (`RsTokens.edition`): rustc_parse's
+// grammar and spans, building the RsAst table. It fails (sets `failed`) where
+// rustc would refuse to parse; formatting is then skipped.
 //
 // Ported from rustc_parse (MIT OR Apache-2.0, Copyright The Rust Project
 // Developers), for rustfmt 1.9.0 (MIT OR Apache-2.0, Copyright The Rust

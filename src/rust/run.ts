@@ -49,8 +49,7 @@ export const formatRust = (e: RustEngine, path: string, src0: u8[], n0: i32, out
     n = k;
   }
   if (e.dump || e.parseOnly) {
-    const t = new RsTokens(src, n);
-    t.edition = e.edition;
+    const t = new RsTokens(src, n, e.edition);
     rsLex(t);
     if (t.failed) {
       return false;
