@@ -436,6 +436,9 @@ export class Parser {
    * it is inside (UnbracedBodyLevel), braces and child blocks included.
    */
   flushDirectiveComments(): boolean {
+    if (this.macro >= 0) {
+      return this.flushComments(); // (a macro body ends before any directive)
+    }
     const save = this.level;
     this.level = this.level > this.unbracedLevel ? this.level - this.unbracedLevel : 0;
     const any = this.flushComments();
@@ -2178,13 +2181,14 @@ export class Parser {
             }
             // clang-format 23: a macro body that is one nonempty `{...}`, the
             // first token of its line, is a braced list unless its last token
-            // ends a statement (`;`, a block's brace, a label's `:`).
+            // ends a statement (`;`, a block's brace, a label's `:`). (The
+            // next non-comment token ends the macro, trailing comment or not.)
             if (
               this.macro >= 0 &&
               top === this.pos &&
               this.first < 0 &&
               prevTok !== this.pos &&
-              nk === K_EOF &&
+              d.ppId[next] !== this.macro &&
               pk !== P_SEMI &&
               pk !== P_COLON &&
               d.bk[prevTok] !== BK_BLOCK

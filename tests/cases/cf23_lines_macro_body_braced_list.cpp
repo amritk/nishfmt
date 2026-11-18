@@ -7,3 +7,6 @@
 #define E {}
 #define L { x: }
 #define N { {a} }
+#define Y \
+  { a, b } /* d */
+#define X { 1, 2 } // c

@@ -18,3 +18,5 @@
       a                                                                                                                \
     }                                                                                                                  \
   }
+#define Y {a, b} /* d */
+#define X {1, 2} // c
