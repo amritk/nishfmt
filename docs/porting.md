@@ -14,7 +14,7 @@ Where the two goals pull apart, matching wins, then speed.
 
 | Language | Directory | Reference | One file, through stdin |
 | --- | --- | --- | --- |
-| C++ | `src/cpp` | clang-format 18, `{BasedOnStyle: LLVM, ColumnLimit: 120}` | `clang-format --style='{BasedOnStyle: LLVM, ColumnLimit: 120}' < f` |
+| C++ | `src/cpp` | clang-format 23.1.5, `{BasedOnStyle: LLVM, ColumnLimit: 120}` | `clang-format --style='{BasedOnStyle: LLVM, ColumnLimit: 120}' < f` |
 | Java | `src/java` | google-java-format 2.0.0 (on JDK 21) | `java -jar $GJF - < f` |
 | Kotlin | `src/kotlin` | ktfmt 0.65, `--kotlinlang-style` | `java -jar $KTFMT --kotlinlang-style - < f` parses as a script, so only for `.kts`; a `.kt` file goes by name, `java -jar $KTFMT --kotlinlang-style f` (in place) |
 | Ruby | `src/ruby` | `rubocop -a` 1.92.3, `TargetRubyVersion: 3.3` | `bench/corpus/mk.sh` shows the invocation |

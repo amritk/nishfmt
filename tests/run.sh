@@ -3,7 +3,7 @@
 #
 #   tests/run.sh [nishfmt-binary]
 #
-# Each tests/cases/<name>.cpp with a <name>.expected (clang-format 18, LLVM
+# Each tests/cases/<name>.cpp with a <name>.expected (clang-format 23.1.5, LLVM
 # style, ColumnLimit 120) must format to it, and formatting the expected file
 # must leave it unchanged. unbalanced.cpp must be skipped and left untouched.
 set -uo pipefail

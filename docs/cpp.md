@@ -1,7 +1,8 @@
 # C++
 
-nishfmt's C++ formatter matches `clang-format` 18 with
-`{BasedOnStyle: LLVM, ColumnLimit: 120}` byte for byte. It is a rewrite, not
+nishfmt's C++ formatter matches `clang-format` 23.1.5 with
+`{BasedOnStyle: LLVM, ColumnLimit: 120}` byte for byte (23.1.6 has the same
+`clang/lib/Format` and formats identically; PyPI has no 23.1.6 wheel). It is a rewrite, not
 a port: its own lexer, parser, classifier and data layout, written to make
 the same decisions clang-format makes, with its rules and penalties checked
 against clang-format's behaviour and source.
@@ -20,7 +21,8 @@ for C++ only; every other language uses its reference tool's defaults.
 
 ## Results by repository
 
-Measured on a 4-core cloud container against clang-format 18.1.3. The
+Measured on a 4-core cloud container against clang-format 18.1.3, before
+the move to 23.1.5, and not measured again since. The
 reference for each file is clang-format's fixed point: its output on the
 repository's original source, rerun until it stops changing (one run is not
 always stable; a few files never settle and are left out, as are files
@@ -52,13 +54,14 @@ declarations and their selector wrapping) and leaves a header with other
 Objective-C (literals, `@implementation`, method bodies) untouched. Times
 and memory are for the whole tree.
 
-The regression corpus (`bench/corpus`, 10344 files from the same kind of
-repositories, each capped at 250 KB, the reference one `clang-format -i`
-run) matches on 10306. Of the 38 left, 26 are files on which a second
+The regression corpus (`bench/corpus`, 10343 files from the same kind of
+repositories, each capped at 250 KB, the reference one clang-format 23.1.5
+`-i` run) matches on 10298. Of the 45 left, 27 are files on which a second
 clang-format run changes its own output; nishfmt gives the settled output
 there, as above. Its times are in the [README](../README.md#languages-and-speed).
 
-On a generated corpus of 30,194 files (108.8 MB) of SDK code, every file
+On a generated corpus of 30,194 files (108.8 MB) of SDK code (measured
+against clang-format 18.1.3), every file
 matches clang-format's output (2 of its files are still unstable under
 clang-format itself), in 2.9 s against clang-format's 23.4 s.
 

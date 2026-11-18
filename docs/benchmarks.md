@@ -9,7 +9,7 @@ says how to rebuild them and rerun the comparisons.
 
 | Language | Tool | Version | `mk.sh` finds it as |
 | --- | --- | --- | --- |
-| C++ | clang-format | 18.1.3 | `clang-format` on PATH |
+| C++ | clang-format | 23.1.5 (23.1.6 has the same `clang/lib/Format` and formats identically; PyPI has no 23.1.6 wheel) | `clang-format` on PATH |
 | Java | google-java-format | 2.0.0, all-dependencies jar, on JDK 21 | `$GJF` |
 | Kotlin | ktfmt | 0.65, with-dependencies jar (from the GitHub release; Maven Central stops at 0.64), run with `--kotlinlang-style` | `$KTFMT` |
 | Ruby | RuboCop | 1.92.3 | `rubocop` on PATH |
@@ -58,7 +58,7 @@ for byte as it does, on the corpora the README's table is measured on:
 
 | Corpus | Files | Identical |
 | --- | ---: | ---: |
-| C++ | 10344 | 10306 |
+| C++ | 10343 | 10298 |
 | Java | 7627 | 7627 |
 | Kotlin | 9602 | 9602 |
 | C# | 13988 | 13988 |
