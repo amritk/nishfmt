@@ -18,6 +18,9 @@ import { LdhConfig, LdhDirective, LdhRegistry } from "./lint_directive_help";
 /** Whether c is Ruby's \w. */
 const lrceWord = (c: i32): boolean => (c >= 48 && c <= 57) || (c >= 65 && c <= 90) || (c >= 97 && c <= 122) || c === 95;
 
+/** Whether c is Ruby's \s. */
+const lrceSpace = (c: i32): boolean => c === 32 || (c >= 9 && c <= 13);
+
 /** The first position of `name` (not followed by \w) within [s, e), or -1. */
 export const lrceIndex = (src: RbSource, s: i32, e: i32, name: string): i32 => {
   const n = toI32(name.length);
@@ -65,17 +68,65 @@ export class CopLintRedundantCopEnableDirective {
     if (src.root === V_NIL) {
       return;
     }
-    let has = false;
-    for (let i = 0; i + 6 <= src.n && !has; i++) {
-      if (src.at(i) === 101 && src.src(i, i + 6) === "enable") {
-        has = true;
+    let hasEnable = false;
+    let hasPop = false;
+    for (let i = 0; i + 3 <= src.n && !(hasEnable && hasPop); i++) {
+      if (src.at(i) === 101 && i + 6 <= src.n && src.src(i, i + 6) === "enable") {
+        hasEnable = true;
+      } else if (src.at(i) === 112 && src.src(i, i + 3) === "pop") {
+        hasPop = true;
       }
     }
-    if (!has) {
+    if (!hasEnable && !hasPop) {
       return;
     }
     const reg = this.registry();
     const cfg = new LdhConfig(src, reg);
+    if (hasEnable) {
+      this.checkExtraEnables(src, reg, cfg);
+    }
+    if (hasPop) {
+      this.checkOrphanPops(src, cfg);
+    }
+  }
+
+  /** check_orphan_pops. */
+  private checkOrphanPops(src: RbSource, cfg: LdhConfig): void {
+    let depth = 0;
+    for (const d of cfg.dirs) {
+      if (d.mode === "push") {
+        depth++;
+      } else if (d.mode === "pop") {
+        if (depth > 0) {
+          depth--;
+          continue;
+        }
+        const k = this.c.offense(d.ms, d.me);
+        if (k !== null) {
+          this.removeDirective(src, k, d);
+          this.c.commit(k);
+        }
+      }
+    }
+  }
+
+  /** remove_directive(corrector, directive.range_with_reason, directive.comment). */
+  private removeDirective(src: RbSource, k: RbRewriter, d: LdhDirective): void {
+    const re = d.reasonEnd(src);
+    // range.end.join(comment.source_range.end).source.match?(/\A\s*(?:#|\z)/)
+    let p = re;
+    while (p < d.ce && lrceSpace(src.at(p))) {
+      p++;
+    }
+    if (p >= d.ce || src.at(p) === 35) {
+      k.remove(d.ms, rbSpaceEnd(src, re, 2, true, false, false));
+    } else {
+      k.replace(d.ms, re, "#");
+    }
+  }
+
+  /** check_extra_enables. */
+  private checkExtraEnables(src: RbSource, reg: LdhRegistry, cfg: LdhConfig): void {
     // extra_enabled_comments
     const count = new Map<string, i32>();
     const keys: string[] = [];
@@ -146,7 +197,7 @@ export class CopLintRedundantCopEnableDirective {
         continue;
       }
       if (d.matchNames(reg, names)) {
-        k.remove(d.ms, rbSpaceEnd(src, d.reasonEnd(src), 2, true, false, false));
+        this.removeDirective(src, k, d);
       } else {
         this.removeWithComma(src, k, d, p, p + toI32(name.length));
       }
