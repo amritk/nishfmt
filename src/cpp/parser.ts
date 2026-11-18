@@ -1801,7 +1801,7 @@ export class Parser {
   }
 
   /** Parses a braced list whose `{` is the current token. */
-  parseBracedList(): void {
+  parseBracedList(isEnum: boolean = false): void {
     const d = this.d;
     const open = this.pos;
     d.bk[open] = BK_BRACED_INIT;
@@ -1840,7 +1840,11 @@ export class Parser {
         continue;
       }
       if (k === P_SEMI) {
-        // Not a list after all; let the statement end here.
+        // Not a list after all (clang-format's parseBracedList returns at
+        // the `;`, which ends the statement; an enum's list goes on).
+        if (!isEnum) {
+          return;
+        }
         this.push();
         continue;
       }
@@ -3184,7 +3188,7 @@ export class Parser {
     const lb = this.pos;
     d.type[lb] = TT_ENUM_LBRACE;
     d.final[lb] = 1;
-    this.parseBracedList();
+    this.parseBracedList(true);
     d.bk[lb] = BK_BLOCK;
     const rb = d.match[lb];
     if (rb >= 0) {
