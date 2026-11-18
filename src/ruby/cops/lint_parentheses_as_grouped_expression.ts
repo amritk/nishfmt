@@ -5,15 +5,19 @@
 
 import {
   F_BEGIN,
+  F_END,
   F_OPERATOR,
   F_QUESTION,
   F_SELECTOR,
   NT_AND,
+  NT_ARRAY,
   NT_BEGIN,
   NT_ERANGE,
   NT_HASH,
   NT_IF,
   NT_IRANGE,
+  NT_MASGN,
+  NT_MATCH_PATTERN_P,
   NT_OR,
   NT_RESCUE,
   NT_SEND,
@@ -25,6 +29,7 @@ import {
 } from "../ast";
 import { RbCop } from "../cop";
 import { RbSource } from "../source";
+import { TK_tSEMI } from "../tables";
 import { lrrsModifierForm } from "./lint_redundant_require_statement";
 import {
   ssxArgc,
@@ -86,12 +91,66 @@ const lpgeOperand = (src: RbSource, n: i32): boolean => {
     const r = a.kid(n, 0);
     return lpgeCommandCall(src, r) || lpgeOperand(src, r);
   }
+  return lpgeCommandCallWithDoBlock(src, n);
+};
+
+/** command_call_with_do_block?: the receiver chain starts at a command call with a do block. */
+const lpgeCommandCallWithDoBlock = (src: RbSource, n0: i32): boolean => {
+  const a = src.a;
+  let n = n0;
+  while (ssxIsCall(src, n) && a.kid(n, 0) !== V_NIL) {
+    n = a.kid(n, 0);
+  }
+  if (!ssxIsAnyBlock(src, n)) {
+    return false;
+  }
+  return ssxLocIs(src, n, F_END, "end") && lpgeCommandCall(src, n);
+};
+
+/** multiple_statements? || not_a_single_expression?. */
+const lpgeNotSingle = (src: RbSource, n: i32): boolean => {
+  const a = src.a;
+  if (a.type(n) !== NT_BEGIN) {
+    return false;
+  }
+  if (a.nKid(n) > 1) {
+    return true;
+  }
+  const e = a.nKid(n) === 1 ? a.kid(n, 0) : V_NIL;
+  if (e === V_NIL) {
+    return true;
+  }
+  // processed_source.tokens_within(node): a `;` outside the expression.
+  for (let i = 0; i < toI32(src.tokT.length); i++) {
+    if (src.tokT[i] !== TK_tSEMI || src.tokS[i] < a.exS(n) || src.tokE[i] > a.exE(n)) {
+      continue;
+    }
+    if (src.tokS[i] < a.exS(e) || src.tokE[i] > a.exE(e)) {
+      return true;
+    }
+  }
   return false;
+};
+
+/** multiple_values_assignment?. */
+const lpgeMultipleValues = (src: RbSource, n: i32): boolean => {
+  const a = src.a;
+  if (a.type(n) === NT_MASGN) {
+    return true;
+  }
+  if (!ssxAssignment(src, n) && !(ssxIsCall(src, n) && lpgeAssignmentMethod(ssxMeth(src, n)))) {
+    return false;
+  }
+  const v = a.kid(n, -1);
+  return a.isNode(v) && a.type(v) === NT_ARRAY && !ssxHas(src, v, F_BEGIN);
 };
 
 /** invalid_bare_argument?. */
 const lpgeInvalidBare = (src: RbSource, n0: i32): boolean => {
   const a = src.a;
+  if (lpgeNotSingle(src, n0)) {
+    return true;
+  }
   let n = n0;
   while (n !== V_NIL && a.type(n) === NT_BEGIN && a.nKid(n) === 1) {
     n = a.kid(n, 0);
@@ -99,12 +158,19 @@ const lpgeInvalidBare = (src: RbSource, n0: i32): boolean => {
   if (n === V_NIL) {
     return false;
   }
+  if (lpgeMultipleValues(src, n)) {
+    return true;
+  }
   const t = a.type(n);
   // keyword_operator?
   if ((t === NT_AND || t === NT_OR) && (ssxLocIs(src, n, F_OPERATOR, "and") || ssxLocIs(src, n, F_OPERATOR, "or"))) {
     return true;
   }
-  if (t === NT_RESCUE || (t === NT_SEND && ssxMeth(src, n) === "!" && ssxLocIs(src, n, F_SELECTOR, "not"))) {
+  if (
+    t === NT_RESCUE ||
+    t === NT_MATCH_PATTERN_P ||
+    (t === NT_SEND && ssxMeth(src, n) === "!" && ssxLocIs(src, n, F_SELECTOR, "not"))
+  ) {
     return true;
   }
   // modifier_expression?
