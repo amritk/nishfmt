@@ -1249,7 +1249,7 @@ export class Formatter {
     this.emit(f, nl, 0);
     this.emit(w, 0, 1);
     // (The first word is TT_AfterPPDirective: a space before it, `(` too.)
-    let col = 1 + d.width[w] + 1;
+    let col = 2 + d.width[w];
     let fnl = 0;
     if (col + d.width[first] > d.opts.columnLimit && d.multi[first] === 0) {
       fnl = 1;

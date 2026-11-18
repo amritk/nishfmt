@@ -7,7 +7,7 @@
 // own and the code around it is parsed straight through.
 
 import { Doc } from "./doc";
-import { requiresIsClause } from "./classify";
+import { prevCode, requiresIsClause } from "./classify";
 import {
   isIdentKind,
   CW_FINAL,
@@ -1589,12 +1589,9 @@ export class Parser {
       if (k === P_RPAREN) {
         // clang-format 23: a `>` right before `()` closes a template.
         if (this.lastCode() === open) {
-          let p = d.prv[open];
-          while (p >= 0 && d.kind[p] === K_COMMENT) {
-            p = d.prv[p];
-          }
+          const p = prevCode(d, open);
           if (p >= 0 && d.kind[p] === P_GREATER) {
-            this.markTemplateCloser(p);
+            this.markFinal(p, TT_TEMPLATE_CLOSER);
           }
         }
         d.match[open] = this.pos;
@@ -1833,7 +1830,7 @@ export class Parser {
         // clang-format 23: a `>` right before a braced list closes a template.
         const p = this.lastCode();
         if (p >= 0 && d.kind[p] === P_GREATER) {
-          this.markTemplateCloser(p);
+          this.markFinal(p, TT_TEMPLATE_CLOSER);
         }
         this.parseBracedList();
         continue;
@@ -2966,7 +2963,7 @@ export class Parser {
         const gt = this.pos;
         this.push();
         if (d.kind[this.nextNonComment(gt)] === P_LBRACE) {
-          this.markTemplateCloser(gt);
+          this.markFinal(gt, TT_TEMPLATE_CLOSER);
         }
         continue;
       }
@@ -2974,9 +2971,9 @@ export class Parser {
     }
   }
 
-  /** Finalizes `>` at `t` as a template closer, as clang-format's parser does. */
-  markTemplateCloser(t: i32): void {
-    this.d.type[t] = TT_TEMPLATE_CLOSER;
+  /** Gives token `t` type `tt` for good, as clang-format's setFinalizedType. */
+  markFinal(t: i32, tt: i32): void {
+    this.d.type[t] = tt;
     this.d.final[t] = 1;
   }
 
@@ -3002,7 +2999,7 @@ export class Parser {
         // The head word before this token names the class unless it is a
         // macro (all capitals, more than one character).
         const p = this.lastCode();
-        if (p > kwTok && isIdentKind(d.kind[p]) && (d.end[p] - d.start[p] === 1 || this.isNonMacroIdent(p))) {
+        if (p > kwTok && isIdentKind(d.kind[p]) && (d.len(p) === 1 || this.isNonMacroIdent(p))) {
           className = p;
         }
       }
@@ -3018,8 +3015,11 @@ export class Parser {
         if (angle === 0) {
           if (k === P_COLON) {
             derived = true;
-          } else if (!derived && isIdentKind(k) && this.lastCode() >= 0 && d.kind[this.lastCode()] === P_COLONCOLON) {
-            className = this.pos;
+          } else if (!derived && isIdentKind(k)) {
+            const p = this.lastCode();
+            if (p >= 0 && d.kind[p] === P_COLONCOLON) {
+              className = this.pos;
+            }
           }
         }
       }
@@ -3063,8 +3063,7 @@ export class Parser {
       return false;
     }
     if (className >= 0) {
-      d.type[className] = TT_CLASS_HEAD_NAME;
-      d.final[className] = 1;
+      this.markFinal(className, TT_CLASS_HEAD_NAME);
     }
     const tt = kw === KW_CLASS ? TT_CLASS_LBRACE : kw === KW_STRUCT ? TT_STRUCT_LBRACE : TT_UNION_LBRACE;
     this.parseBlock(1, true, tt);
@@ -3142,11 +3141,10 @@ export class Parser {
   /** The last token of the line being built that is not a comment, or -1. */
   lastCode(): i32 {
     const d = this.d;
-    let t = this.first < 0 ? -1 : this.last;
-    while (t >= 0 && d.kind[t] === K_COMMENT) {
-      t = d.prv[t];
+    if (this.first < 0) {
+      return -1;
     }
-    return t;
+    return d.kind[this.last] === K_COMMENT ? prevCode(d, this.last) : this.last;
   }
 
   /** `enum [class] Name [: type] { list };` — the list stays in the line. */

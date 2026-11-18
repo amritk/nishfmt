@@ -325,6 +325,8 @@ export class Classifier {
     let depth = 0;
     let seenTernary = false;
     let maybeAngles = true;
+    // (A line starting with `template` never gives the angles up for `&&` or `||`.)
+    const angleOps = inExpr && d.kind[this.first] !== KW_TEMPLATE;
     let t = d.nxt[lt];
     while (t >= 0) {
       const k = d.kind[t];
@@ -364,7 +366,7 @@ export class Classifier {
         // these angles a comparison unless an earlier closer settles it.
         // (An `&&` right before `>`, `,` or `...` is a reference type.)
         const p = d.prv[t];
-        if (maybeAngles && inExpr && d.kind[this.first] !== KW_TEMPLATE && p >= 0 && p !== lt) {
+        if (maybeAngles && angleOps && p >= 0 && p !== lt) {
           const pk = d.kind[p];
           if (pk === P_PIPEPIPE) {
             maybeAngles = false;
@@ -372,7 +374,8 @@ export class Classifier {
             maybeAngles = false;
           }
         }
-        if (p >= 0 && p !== lt && (d.kind[p] === P_QUESTION || d.kind[p] === P_COLON)) {
+        // (A `?` is read with its conditional below: only its `:` is seen here.)
+        if (p >= 0 && p !== lt && d.kind[p] === P_COLON) {
           seenTernary = true;
         }
         if (k === P_LESS) {
@@ -1590,10 +1593,7 @@ export class Classifier {
     const last = d.lLast[l];
     const lp = d.prv[last];
     if (d.kind[last] === P_SEMI && lp >= 0 && d.kind[lp] === P_RBRACE && d.match[lp] >= 0 && d.match[lp] < lp) {
-      let fnc = this.first;
-      while (fnc >= 0 && d.kind[fnc] === K_COMMENT) {
-        fnc = d.nxt[fnc];
-      }
+      const fnc = d.kind[this.first] === K_COMMENT ? this.next(this.first) : this.first;
       let fn = fnc >= 0 && d.type[fnc] === TT_CTOR_DTOR_DECL_NAME;
       for (let q = fnc >= 0 ? d.nxt[fnc] : -1; !fn && q >= 0 && d.bk[q] !== BK_BRACED_INIT; q = d.nxt[q]) {
         if (d.type[q] === TT_FUNCTION_DECLARATION_NAME || d.type[q] === TT_CTOR_DTOR_DECL_NAME) {
@@ -2719,6 +2719,7 @@ export const isTrailingComment = (d: Doc, t: i32): boolean => {
 /** Spacing inside a directive: `#word`, then its arguments; `#define` bodies as code. */
 const ppSpace = (d: Doc, l: i32, r: i32): boolean => {
   const f = d.lFirst[l];
+  const pk = d.ppKind[f];
   const left = d.prv[r];
   if (left === f) {
     return false; // `#include`
@@ -2732,12 +2733,11 @@ const ppSpace = (d: Doc, l: i32, r: i32): boolean => {
       return true;
     }
     // The first token after `#error` or `#warning` is TT_AfterPPDirective.
-    if (d.ppKind[f] === PP_ERROR) {
+    if (pk === PP_ERROR) {
       return true;
     }
     return d.ws[r] === 1 || d.lType[l] === LT_IMPORT; // the directive's first argument
   }
-  const pk = d.ppKind[f];
   if (pk === PP_DEFINE && d.len(d.nxt[f]) === 6 && d.at(d.start[d.nxt[f]]) === 100) {
     // `#define NAME(params) body`: params hug the name, the body is code.
     const name = d.nxt[d.nxt[f]];
@@ -3236,7 +3236,7 @@ const isPossibleMacro = (d: Doc, t: i32): boolean => {
 };
 
 /** The token before `t`, comments skipped, or -1. */
-const prevCode = (d: Doc, t: i32): i32 => {
+export const prevCode = (d: Doc, t: i32): i32 => {
   let p = d.prv[t];
   while (p >= 0 && d.kind[p] === K_COMMENT) {
     p = d.prv[p];
