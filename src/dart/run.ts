@@ -4,6 +4,7 @@
 // project authors).
 
 import { Out } from "../core/out";
+import { DtFileConfig, dtConfigFor } from "./config";
 import { DtAst, dtNodeName, dtSig, N_NAMED_TYPE } from "./ast";
 import { DtParser } from "./parser";
 import { DT_STYLE, DtPiece, dtFixedState, dtKids, dtPin } from "./pieces";
@@ -46,9 +47,22 @@ export const formatDart = (e: DartEngine, path: string, src: u8[], n: i32, out: 
     return true;
   }
   const t1 = monotonicNanos();
+  // The project: the package's language version, the configured page width.
+  // dart format reads it for every file, `// @dart=` comment or not.
+  const cfg = new DtFileConfig();
+  if (!dtConfigFor(path, cfg)) {
+    if (e.debug) {
+      console.error(`${path}: project: ${cfg.why}`);
+    }
+    return false;
+  }
+  // The language version: the `// @dart=` comment, else the package's, else
+  // the newest (-1). The analyzer parses at it and the style follows it.
+  const verMajor = toks.verMajor >= 0 ? toks.verMajor : cfg.verMajor;
+  const verMinor = toks.verMajor >= 0 ? toks.verMinor : cfg.verMinor;
   // Patterns (and so pattern `case`s) arrived in language 3.0.
-  const patterns = !(toks.verMajor >= 0 && toks.verMajor < 3);
-  const primaryCtors = !(toks.verMajor >= 0 && (toks.verMajor < 3 || (toks.verMajor === 3 && toks.verMinor < 13)));
+  const patterns = !(verMajor >= 0 && verMajor < 3);
+  const primaryCtors = !(verMajor >= 0 && (verMajor < 3 || (verMajor === 3 && verMinor < 13)));
   let p = new DtParser(toks);
   p.patterns = patterns;
   p.primaryCtors = primaryCtors;
@@ -82,11 +96,12 @@ export const formatDart = (e: DartEngine, path: string, src: u8[], n: i32, out: 
     return true;
   }
   // The language version picks the style: the short style up to 3.6.
-  if (toks.verMajor >= 0 && (toks.verMajor < 3 || (toks.verMajor === 3 && toks.verMinor <= 6))) {
+  if (verMajor >= 0 && (verMajor < 3 || (verMajor === 3 && verMinor <= 6))) {
     DTS_STATE[0] = 0;
     DTS_STATE[1] = 0;
     DTS_STATE[2] = 0;
-    const sv = new DtsVisitor(toks, p.a, 80);
+    // The short style takes the configured width; `// dart format width=` is the tall style's.
+    const sv = new DtsVisitor(toks, p.a, cfg.pageWidth > 0 ? cfg.pageWidth : 80);
     const text = sv.run(unit, dtLineEnding(src, n));
     if (sv.failed || DTS_STATE[2] !== 0) {
       if (e.debug) {
@@ -98,8 +113,8 @@ export const formatDart = (e: DartEngine, path: string, src: u8[], n: i32, out: 
     return true;
   }
   // The tall style's language-versioned switches (FormattingStyle).
-  DT_STYLE[0] = toks.verMajor === 3 && toks.verMinor === 7 ? 1 : 0;
-  DT_STYLE[1] = toks.verMajor >= 0 && toks.verMajor === 3 && toks.verMinor < 13 ? 0 : 1;
+  DT_STYLE[0] = verMajor === 3 && verMinor === 7 ? 1 : 0;
+  DT_STYLE[1] = verMajor === 3 && verMinor < 13 ? 0 : 1;
   const v = new DtVisitor(toks, p.a);
   const root = v.buildUnit(unit);
   const t3 = monotonicNanos();
@@ -109,7 +124,7 @@ export const formatDart = (e: DartEngine, path: string, src: u8[], n: i32, out: 
     }
     return false;
   }
-  const pageWidth = dtPageWidth(toks);
+  const pageWidth = dtPageWidth(toks, cfg.pageWidth > 0 ? cfg.pageWidth : 80);
   if (DT_STYLE[1] !== 0) {
     // pinStateByPageWidthBeforeSolving (3.13 on); before that the writer
     // binds by page width while formatting.
@@ -137,8 +152,8 @@ export const DT_PROF = new Float64Array(8);
 export const dtProfReport = (): string =>
   `scan ${DT_PROF[0] / 1e6} ms, parse ${DT_PROF[1] / 1e6} ms, pieces ${DT_PROF[2] / 1e6} ms, solve ${DT_PROF[3] / 1e6} ms, output ${DT_PROF[4] / 1e6} ms`;
 
-/** A `// dart format width=N` comment before the first token, or 80. */
-const dtPageWidth = (t: DtTokens): i32 => {
+/** A `// dart format width=N` comment before the first token, or `dflt`. */
+const dtPageWidth = (t: DtTokens, dflt: i32): i32 => {
   const first = t.cFirst[1];
   for (let k = 0; k < t.cCount[1]; k++) {
     const ci = first + k;
@@ -176,7 +191,7 @@ const dtPageWidth = (t: DtTokens): i32 => {
       return w;
     }
   }
-  return 80;
+  return dflt;
 };
 
 /** "\r\n" when the first line ends with one, else "\n". */
