@@ -9,14 +9,4 @@ class PreCode {
    * }</pre>
    */
   void f() {}
-
-  /**
-   * Shared indentation:
-   *
-   * <pre>
-   *   first
-   *     second
-   * </pre>
-   */
-  void g() {}
 }
