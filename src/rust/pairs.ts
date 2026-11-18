@@ -3,10 +3,22 @@
 // Ported from rustfmt 1.10.0 (MIT OR Apache-2.0, Copyright The Rust Project
 // Developers): pairs.rs.
 
-import { N_EX_BINARY } from "./ast";
+import {
+  N_EX_ADDR_OF,
+  N_EX_BINARY,
+  N_EX_LET,
+  N_EX_LIT,
+  N_EX_PAREN,
+  N_EX_PATH,
+  N_EX_TRY,
+  N_EX_UNARY,
+  PATH_GLOBAL,
+  RsAst,
+} from "./ast";
 import { rsFirstLineWidth, rsIsSingleLine, rsLastLineWidth, rsTrimmedLastLineWidth, rsWrapStr } from "./comment";
 import { RsCtx } from "./context";
 import { rsRewriteExpr, rsRewriteNode } from "./expr";
+import { KW_FALSE, KW_TRUE, T_IDENT } from "./lexer";
 import { RsShape, rsIndentStrNl, rsShapeIndented } from "./shape";
 import { rsHasByte, rsLines, rsTrimEnd, rsTrimStart } from "./str";
 
@@ -104,12 +116,48 @@ export const rsRewriteAllPairs = (ctx: RsCtx, e: i32, shape: RsShape): string | 
   if (list === null) {
     return null;
   }
+  // A chain with a `let` goes one operand per line, unless it is
+  // `ident_or_bool && let ...`.
+  if (letChainCount(ctx.ast, list) > 0 && !canRewriteLetChainSingleLine(ctx, list)) {
+    return rewritePairsMultiline(ctx, list, shape);
+  }
   const one = rewritePairsOneLine(ctx, list, shape);
   if (one !== null) {
     return one;
   }
   return rewritePairsMultiline(ctx, list, shape);
 };
+
+const isIdentOrBoolLit = (ctx: RsCtx, e: i32): boolean => {
+  const ast = ctx.ast;
+  const k = ast.kind[e];
+  if (k === N_EX_PATH) {
+    // A global path (`::a`) has rustc's `{{root}}` segment too.
+    const path = ast.b[e];
+    return ast.a[e] < 0 && ast.ln[path] === 1 && (ast.fl[path] & PATH_GLOBAL) === 0;
+  }
+  if (k === N_EX_LIT) {
+    const kw = ctx.f.t.kw[ast.d[e]];
+    return ctx.f.t.kind[ast.d[e]] === T_IDENT && (kw === KW_TRUE || kw === KW_FALSE);
+  }
+  if (k === N_EX_UNARY || k === N_EX_ADDR_OF || k === N_EX_PAREN || k === N_EX_TRY) {
+    return isIdentOrBoolLit(ctx, ast.a[e]);
+  }
+  return false;
+};
+
+const letChainCount = (ast: RsAst, list: PairList): i32 => {
+  let n = 0;
+  for (const e of list.nodes) {
+    if (ast.kind[e] === N_EX_LET) {
+      n++;
+    }
+  }
+  return n;
+};
+
+const canRewriteLetChainSingleLine = (ctx: RsCtx, list: PairList): boolean =>
+  list.nodes.length === 2 && isIdentOrBoolLit(ctx, list.nodes[0]) && ctx.ast.kind[list.nodes[1]] === N_EX_LET;
 
 const flatten = (ctx: RsCtx, e: i32, shape: RsShape): PairList | null => {
   const ast = ctx.ast;

@@ -1,3 +1,10 @@
-// rustc 1.99 parses `impl const S` as an impl of the type `const S`;
-// nishfmt leaves the file untouched.
+// rustc 1.99 reads `const`/`unsafe` only before `impl`: `impl const S` is an
+// impl of the bare trait object type `const S`, whose rewrite drops a comment
+// after `const` as rustfmt does. `const unsafe impl` and `const impl !Tr`
+// are trait impls.
 impl const S {}
+impl const S {}
+impl<T> const S<T> {}
+const unsafe impl Tr for T {}
+const impl !Tr for T {}
+default const impl Tr for T {}

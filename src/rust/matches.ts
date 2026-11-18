@@ -28,6 +28,7 @@ import { rsAttrsContainSkip, rsRewriteAttrs } from "./attr";
 import {
   rsCombineStrsWithMissingComments,
   rsFirstLineWidth,
+  rsFindLastUncommented,
   rsRewriteComment,
   rsTrimmedLastLineWidth,
 } from "./comment";
@@ -41,6 +42,7 @@ import {
   rsPreferNextLine,
   rsRewriteCond,
   rsRewriteExpr,
+  rsSemicolonForExpr,
 } from "./expr";
 import { RsListFormatting, rsItemizeList, rsWriteList } from "./lists";
 import { RsShape, rsIndentStr, rsIndentStrNl, rsShapeIndented } from "./shape";
@@ -85,7 +87,8 @@ export const rsRewriteMatch = (ctx: RsCtx, e: i32, shape: RsShape): string | nul
   }
   let innerStr = "";
   if (inner.length > 0) {
-    const s = rsRewriteAttrs(ctx, inner, shape);
+    // match_arm_indent is on.
+    const s = rsRewriteAttrs(ctx, inner, cfg.styleEdition <= 2021 ? shape : shape.blockIndent(cfg.tabSpaces));
     if (s === null) {
       return null;
     }
@@ -371,7 +374,8 @@ const rewriteMatchBody = (
   const forbidSameLine = (hasGuard && rsHasByte(patsStr, 10) && !isEmptyBlock) || rsExprHasAttrs(ast, body);
   // The comment after `=>`.
   const arrowSnippet = rsTrim(ctx.snippet(arrowLo, arrowHi));
-  const ai = rsLastIndexOf(arrowSnippet, "=>");
+  // From the end, since the guard may hold a match expression.
+  const ai = cfg.styleEdition <= 2021 ? rsLastIndexOf(arrowSnippet, "=>") : rsFindLastUncommented(arrowSnippet, "=>");
   const commentStr = ai < 0 ? "" : rsTrim(arrowSnippet.slice(ai + 2, toI32(arrowSnippet.length)));
   let arrowComment = "";
   if (commentStr.length !== 0) {
@@ -408,6 +412,7 @@ const rewriteMatchBody = (
       comma,
       forbidSameLine,
       altBlockSep,
+      body,
     );
   }
   if (origBody !== null && extend && rsFirstLineWidth(origBody) <= origBudget) {
@@ -425,6 +430,7 @@ const rewriteMatchBody = (
       comma,
       forbidSameLine,
       altBlockSep,
+      body,
     );
   }
   if (origBody === null && nextLine !== null) {
@@ -439,6 +445,7 @@ const rewriteMatchBody = (
       comma,
       forbidSameLine,
       altBlockSep,
+      body,
     );
   }
   if (origBody === null) {
@@ -458,6 +465,7 @@ const combineNextLine = (
   comma: string,
   forbidSameLine: boolean,
   altBlockSep: string,
+  body: i32,
 ): string => {
   const cfg = ctx.cfg;
   const nested = rsIndentStrNl(cfg, nbi, shape.al);
@@ -470,7 +478,8 @@ const combineNextLine = (
   }
   const indentStr = rsIndentStrNl(cfg, shape.bi, shape.al);
   const bodyPrefix = ctx.insideMacro ? "" : "{";
-  const bodySuffix = ctx.insideMacro ? "," : indentStr + "}";
+  const semicolon = cfg.styleEdition > 2021 && rsSemicolonForExpr(ctx, body) ? ";" : "";
+  const bodySuffix = ctx.insideMacro ? "," : semicolon + indentStr + "}";
   let blockSep = "";
   if (bodyPrefix.length === 0) {
     blockSep = "";

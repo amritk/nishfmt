@@ -1,0 +1,14 @@
+// rustfmt measures display width with unicode-width 0.1.14: an emoji ZWJ
+// sequence, a modifier sequence or a flag counts as one wide glyph, which
+// trailing comments are aligned by.
+fn f() {
+    let examples = [
+        "x 😄 y", // single emoji
+        "x 👨‍👩‍👧‍👦 y", // ZWJ family emoji
+        "x 👍🏽 y", // emoji modifier
+        "x 🇯🇵 y", // flag
+        "x ❤️ y", // VS16
+        "x 中 y", // CJK character
+        "x a\u{0301} y", // decomposed accent
+    ];
+}

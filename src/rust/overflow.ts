@@ -69,7 +69,11 @@ export const OC_TY: i32 = 7;
 export const OC_PAT: i32 = 8;
 export const OC_PRECISE: i32 = 9;
 
-const specialCaseArgs = (name: string): i32 => {
+/** special_cases for a macro: SPECIAL_CASE_MACROS, then SPECIAL_CASE_MACROS_V2 at style edition 2024. */
+const specialCaseArgs = (name: string, styleEdition: i32): i32 => {
+  if (styleEdition >= 2024 && name === "trace!") {
+    return 0;
+  }
   if (
     name === "eprint!" ||
     name === "eprintln!" ||
@@ -341,7 +345,14 @@ class OvContext {
     let placeholder: string | null = null;
     if (overflowLast) {
       const old = ctx.forceOneLineChain;
-      if (n > 0 && this.oc === OC_EXPR && !combineArgWithCallee && rsIsMethodCall(ast, this.items[n - 1])) {
+      const last = n > 0 ? this.items[n - 1] : -1;
+      if (
+        last >= 0 &&
+        !combineArgWithCallee &&
+        (this.oc === OC_EXPR ||
+          (this.oc === OC_MACRO_ARG && ctx.cfg.styleEdition >= 2024 && rsIsExprKind(ast.kind[last]))) &&
+        rsIsMethodCall(ast, last)
+      ) {
         ctx.forceOneLineChain = true;
       }
       const argShape = lastItemShape(ctx, this.oc, this.items, listItems, this.oneLineShape, this.itemMaxWidth);
@@ -382,7 +393,7 @@ class OvContext {
         if (tactic === DLT_VERTICAL) {
           const numBefore =
             this.oc === OC_MACRO_ARG
-              ? specialCaseArgs(this.ident)
+              ? specialCaseArgs(this.ident, ctx.cfg.styleEdition)
               : this.oc === OC_META && this.ident === "fail"
                 ? 0
                 : -1;
@@ -466,9 +477,13 @@ class OvContext {
     const nestedIndentStr = rsIndentStrNl(cfg, this.nestedShape.bi, this.nestedShape.al);
     const indentStr = rsIndentStrNl(cfg, shape.bi, 0);
     let result = this.ident + prefix;
-    const fitsOneLine = toI32(itemsStr.length) + 2 <= shape.width;
-    const forceSingleLine =
-      (ctx.insideMacro && !rsHasByte(itemsStr, 10) && fitsOneLine) || (isExtendable && extendWidth <= shape.width);
+    // use_block_indent is always true here (indent_style Block).
+    let forceSingleLine = isExtendable && extendWidth <= shape.width;
+    if (cfg.styleEdition < 2024) {
+      // 2 = `()`
+      const fitsOneLine = toI32(itemsStr.length) + 2 <= shape.width;
+      forceSingleLine = forceSingleLine || (ctx.insideMacro && !rsHasByte(itemsStr, 10) && fitsOneLine);
+    }
     if (forceSingleLine) {
       result = result + itemsStr;
     } else {

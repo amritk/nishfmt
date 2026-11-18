@@ -33,7 +33,8 @@ writes `bench/work/corpus/<lang>` (or `$CORPUS/<lang>`):
 - `raw/`, the sources as found (C++ files over 250 KB and Ruby beyond a
   2000-file sample are left out, as are hidden directories);
 - `ref/`, the reference tool's output at its default settings (for Kotlin,
-  ktfmt's `--kotlinlang-style`; for C#, the
+  ktfmt's `--kotlinlang-style`; for Rust, nishfmt's style:
+  `--edition 2024 --config style_edition=2024,max_width=120`; for C#, the
   [README](../README.md#settings)'s `.editorconfig`, which `mk.sh cs` writes
   above `ref/` with an empty `.git`; see `tools/csharp/NOTES.md`);
 - `failed.txt`, the files the reference rejected, which every comparison
@@ -43,7 +44,7 @@ The harder corpora are built from a language's `raw/`:
 
 | Corpus | Script | What it holds |
 | --- | --- | --- |
-| `rust2` | `tools/rust/mk2.sh` | each file first formatted with one of five non-default rustfmt configs |
+| `rust2` | `tools/rust/mk2.sh` | each file first formatted with one of five non-default rustfmt configs, each layered on the Rust style (edition 2024, `style_edition=2024,max_width=120`) |
 | `dart2` | `tools/dart/mk2.sh` | each file first formatted at width 40 or 120, or in the short style |
 | `dart3` | `tools/dart/mk3.sh dart3` | each file marked `// @dart=2.19` or `3.6`, for the short style |
 | `dart4` | `tools/dart/mk3.sh dart4` | each file marked `3.7`, `3.8` or `3.12`, for the older tall styles |
@@ -69,7 +70,8 @@ for byte as it does, on the corpora the README's table is measured on:
 | Dart, `dart5` (a package at 3.8) | 8571 | 8571 |
 | Dart, `dart6` (every version) | 7849 | 7849 |
 | Swift | 6710 | 6710 |
-| Rust | 7899 | 7899 |
+| Rust | 8321 | 8321 |
+| Rust, `rust2` (other configs first) | 8321 | 8321 |
 | Ruby | 1999 | 1999 |
 
 The 38 C++ files left are described in [C++](cpp.md#results-by-repository).

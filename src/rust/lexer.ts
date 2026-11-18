@@ -5,10 +5,11 @@
 // since rustc turns them into attributes.
 //
 // Ported from rustc_lexer and rustc_parse (MIT OR Apache-2.0, Copyright The
-// Rust Project Developers), for rustfmt 1.9.0 (MIT OR Apache-2.0, Copyright
+// Rust Project Developers), for rustfmt 1.10.0 (MIT OR Apache-2.0, Copyright
 // The Rust Project Developers).
 
 import { growI32 } from "../core/arr";
+import { RS_UIDENT_NRUNS, RS_UIDENT_RUNS } from "./uident_table";
 
 export const T_EOF: i32 = 0;
 export const T_IDENT: i32 = 1;
@@ -150,10 +151,119 @@ export const KW_GEN: i32 = 68;
 /** Whether keyword id `k` is a strict or reserved keyword (never a plain identifier). */
 export const rsIsReserved = (k: i32): boolean => k > 0 && k < 60;
 
-export const rsIsIdStart = (c: i32): boolean => (c >= 97 && c <= 122) || (c >= 65 && c <= 90) || c === 95 || c >= 128;
+// The identifier runs decoded on first use (uident_table.ts).
+const rsIdStarts = new Int32Array(RS_UIDENT_NRUNS);
+const rsIdBits = new Int32Array(RS_UIDENT_NRUNS);
+const rsIdDecoded = new Int32Array(1);
 
-export const rsIsIdContinue = (c: i32): boolean =>
-  (c >= 97 && c <= 122) || (c >= 65 && c <= 90) || c === 95 || (c >= 48 && c <= 57) || c >= 128;
+/** The classes of code point `cp`: 1 XID_Start, 2 XID_Continue, 4 emoji (`is_emoji_char`), 8 a confusable of UNICODE_ARRAY. */
+const rsXidBits = (cp: i32): i32 => {
+  if (rsIdDecoded[0] === 0) {
+    for (let k = 0; k < RS_UIDENT_NRUNS; k++) {
+      let v = 0;
+      for (let m = k * 7; m < k * 7 + 6; m++) {
+        const c = RS_UIDENT_RUNS.charCodeAt(m);
+        v = v * 16 + (c <= 57 ? c - 48 : c - 87);
+      }
+      rsIdStarts[k] = v;
+      const c = RS_UIDENT_RUNS.charCodeAt(k * 7 + 6);
+      rsIdBits[k] = c <= 57 ? c - 48 : c - 87;
+    }
+    rsIdDecoded[0] = 1;
+  }
+  let lo = 0;
+  let hi = RS_UIDENT_NRUNS - 1;
+  while (lo < hi) {
+    const mid = (lo + hi + 1) >> 1;
+    if (rsIdStarts[mid] <= cp) {
+      lo = mid;
+    } else {
+      hi = mid - 1;
+    }
+  }
+  return rsIdBits[lo];
+};
+
+/** The byte length of the UTF-8 char at `src[i]` (1 for a stray byte). */
+const rsCharLenAt = (src: u8[], n: i32, i: i32): i32 => {
+  const b = toI32(src[i]);
+  const k = b >= 0xf0 ? 4 : b >= 0xe0 ? 3 : b >= 0xc0 ? 2 : 1;
+  return i + k <= n ? k : 1;
+};
+
+/** The classes (rsXidBits) of the non-ASCII char at `src[i]`, 0 for a stray byte. */
+const rsCharBitsAt = (src: u8[], n: i32, i: i32): i32 => {
+  const k = rsCharLenAt(src, n, i);
+  if (k === 1) {
+    return 0;
+  }
+  const c = toI32(src[i]);
+  let cp = c & (k === 4 ? 7 : k === 3 ? 15 : 31);
+  for (let m = 1; m < k; m++) {
+    cp = (cp << 6) | (toI32(src[i + m]) & 63);
+  }
+  return rsXidBits(cp);
+};
+
+/**
+ * The byte length of the char at `src[i]` if it is an identifier char
+ * (rustc_lexer is_id_start, XID_Start or `_`; with `start` false,
+ * is_id_continue, XID_Continue), else 0.
+ */
+const rsIdCharLen = (src: u8[], n: i32, i: i32, start: boolean): i32 => {
+  if (i >= n) {
+    return 0;
+  }
+  const c = toI32(src[i]);
+  if (c < 128) {
+    const ok = (c >= 97 && c <= 122) || (c >= 65 && c <= 90) || c === 95 || (!start && c >= 48 && c <= 57);
+    return ok ? 1 : 0;
+  }
+  return (rsCharBitsAt(src, n, i) & (start ? 1 : 2)) !== 0 ? rsCharLenAt(src, n, i) : 0;
+};
+
+/** Whether `src[i]` starts a non-ASCII emoji char (`!c.is_ascii() && c.is_emoji_char()`). */
+const rsIsEmojiAt = (src: u8[], n: i32, i: i32): boolean =>
+  i < n && toI32(src[i]) >= 128 && (rsCharBitsAt(src, n, i) & 4) !== 0;
+
+/**
+ * rustc_lexer's invalid_ident from `i`: eats identifier chars, emoji and
+ * zero width joiners. rustc_parse takes the result as an identifier (the
+ * emoji are reported after parsing, which rustfmt does not run).
+ */
+const eatInvalidIdent = (src: u8[], n: i32, i0: i32): i32 => {
+  let i = i0;
+  for (;;) {
+    let k = rsIdCharLen(src, n, i, false);
+    if (k === 0 && rsIsEmojiAt(src, n, i)) {
+      k = rsCharLenAt(src, n, i);
+    }
+    if (k === 0 && i + 2 < n && toI32(src[i]) === 0xe2 && toI32(src[i + 1]) === 0x80 && toI32(src[i + 2]) === 0x8d) {
+      k = 3; // U+200D
+    }
+    if (k === 0) {
+      return i;
+    }
+    i += k;
+  }
+};
+
+export const rsIsIdStartAt = (src: u8[], n: i32, i: i32): boolean => rsIdCharLen(src, n, i, true) > 0;
+
+/** The byte length of a non-ASCII Pattern_White_Space char at `src[i]` (U+0085, U+200E, U+200F, U+2028, U+2029), else 0. */
+const rsUnicodeWsLen = (src: u8[], n: i32, i: i32): i32 => {
+  const c = toI32(src[i]);
+  if (c === 0xc2 && i + 1 < n && toI32(src[i + 1]) === 0x85) {
+    return 2;
+  }
+  if (c === 0xe2 && i + 2 < n && toI32(src[i + 1]) === 0x80) {
+    const e = toI32(src[i + 2]);
+    if (e === 0x8e || e === 0x8f || e === 0xa8 || e === 0xa9) {
+      return 3;
+    }
+  }
+  return 0;
+};
 
 export const rsIsWs = (c: i32): boolean => c === 32 || c === 9 || c === 10 || c === 13 || c === 11 || c === 12;
 
@@ -375,10 +485,13 @@ const eatDigits = (src: u8[], n: i32, i0: i32, hex: boolean): i32 => {
 
 const eatIdent = (src: u8[], n: i32, i0: i32): i32 => {
   let i = i0;
-  while (i < n && rsIsIdContinue(toI32(src[i]))) {
-    i++;
+  for (;;) {
+    const k = rsIdCharLen(src, n, i, false);
+    if (k === 0) {
+      return i;
+    }
+    i += k;
   }
-  return i;
 };
 
 // Eats a double-quoted string body after its opening quote; answers the offset after the closing quote, or -1.
@@ -457,8 +570,9 @@ const eatSq = (src: u8[], n: i32, i0: i32): i32 => {
 };
 
 const suffixEnd = (src: u8[], n: i32, i: i32): i32 => {
-  if (i < n && rsIsIdStart(toI32(src[i]))) {
-    return eatIdent(src, n, i + 1);
+  const k = rsIdCharLen(src, n, i, true);
+  if (k > 0) {
+    return eatIdent(src, n, i + k);
   }
   return i;
 };
@@ -494,10 +608,18 @@ const skipFrontmatter = (t: RsTokens, src: u8[], n: i32, i0: i32): i32 => {
   while (k < n && isHorizontalWs(toI32(src[k]))) {
     k++;
   }
-  if (k < n && rsIsIdStart(toI32(src[k]))) {
-    k++;
-    while (k < n && (rsIsIdContinue(toI32(src[k])) || toI32(src[k]) === 45 || toI32(src[k]) === 46)) {
-      k++;
+  const sk = rsIdCharLen(src, n, k, true);
+  if (sk > 0) {
+    k += sk;
+    for (;;) {
+      const ck = rsIdCharLen(src, n, k, false);
+      if (ck > 0) {
+        k += ck;
+      } else if (k < n && (toI32(src[k]) === 45 || toI32(src[k]) === 46)) {
+        k++;
+      } else {
+        break;
+      }
     }
   }
   while (k < n && isHorizontalWs(toI32(src[k]))) {
@@ -658,10 +780,38 @@ export const rsLex = (t: RsTokens): void => {
       i++;
       continue;
     }
-    if (rsIsIdStart(c)) {
+    if (c >= 128) {
+      // Outside literals and comments a non-ASCII char is whitespace or
+      // starts an identifier; anything else is rustc's Unknown or
+      // InvalidIdent token, an error.
+      const w = rsUnicodeWsLen(src, n, i);
+      if (w > 0) {
+        i += w;
+        continue;
+      }
+      if (!rsIsIdStartAt(src, n, i)) {
+        // An emoji starts an invalid identifier, unless it stands alone and
+        // is a confusable rustc substitutes (`➖`), which is an error.
+        const k = rsCharLenAt(src, n, i);
+        if (!rsIsEmojiAt(src, n, i)) {
+          t.failed = true;
+          return;
+        }
+        const b = eatInvalidIdent(src, n, i + k);
+        if (b === i + k && (rsCharBitsAt(src, n, i) & 8) !== 0) {
+          t.failed = true;
+          return;
+        }
+        t.add(T_IDENT, a, b, 0, b);
+        i = b;
+        continue;
+      }
+    }
+    const idLen = rsIdCharLen(src, n, i, true);
+    if (idLen > 0) {
       const d = at(src, n, i + 1);
       // Raw identifiers and string prefixes.
-      if (c === 114 && d === 35 && rsIsIdStart(at(src, n, i + 2))) {
+      if (c === 114 && d === 35 && rsIsIdStartAt(src, n, i + 2)) {
         const b = eatIdent(src, n, i + 2);
         t.add(T_IDENT, a, b, 0, b);
         i = b;
@@ -716,12 +866,19 @@ export const rsLex = (t: RsTokens): void => {
           }
         }
       }
-      const b = eatIdent(src, n, i + 1);
+      const b = eatIdent(src, n, i + idLen);
       const e = at(src, n, b);
       if (e === 35 || e === 34 || e === 39) {
         // An unknown prefix: reserved syntax in edition 2021.
         t.failed = true;
         return;
+      }
+      if (rsIsEmojiAt(src, n, b)) {
+        // An identifier running into an emoji: an invalid identifier.
+        const bi = eatInvalidIdent(src, n, b);
+        t.add(T_IDENT, a, bi, 0, bi);
+        i = bi;
+        continue;
       }
       let kw = rsKeywordOf(src, a, b);
       // Symbol::is_unused_keyword_conditional: `gen` is reserved from edition 2024.
@@ -744,7 +901,7 @@ export const rsLex = (t: RsTokens): void => {
         j = eatDigits(src, n, j, false);
       }
       const e = at(src, n, j);
-      if (e === 46 && at(src, n, j + 1) !== 46 && !rsIsIdStart(at(src, n, j + 1))) {
+      if (e === 46 && at(src, n, j + 1) !== 46 && !rsIsIdStartAt(src, n, j + 1)) {
         isFloat = true;
         j++;
         const f = at(src, n, j);
@@ -771,7 +928,9 @@ export const rsLex = (t: RsTokens): void => {
     if (c === 39) {
       // Lifetime or character literal.
       const d = at(src, n, i + 1);
-      const canBeLifetime = at(src, n, i + 2) !== 39 && (rsIsIdStart(d) || (d >= 48 && d <= 57));
+      // The char after the first one (rustc_lexer looks at chars, not bytes).
+      const second = i + 1 < n ? at(src, n, i + 1 + rsCharLenAt(src, n, i + 1)) : -1;
+      const canBeLifetime = second !== 39 && (rsIsIdStartAt(src, n, i + 1) || (d >= 48 && d <= 57));
       if (!canBeLifetime) {
         const b = eatSq(src, n, i + 1);
         if (b < 0) {
@@ -783,13 +942,13 @@ export const rsLex = (t: RsTokens): void => {
         i = s;
         continue;
       }
-      if (d === 114 && at(src, n, i + 2) === 35 && rsIsIdStart(at(src, n, i + 3))) {
+      if (d === 114 && at(src, n, i + 2) === 35 && rsIsIdStartAt(src, n, i + 3)) {
         const b = eatIdent(src, n, i + 3);
         t.add(T_LIFETIME, a, b, 0, b);
         i = b;
         continue;
       }
-      const b = eatIdent(src, n, i + 2);
+      const b = eatIdent(src, n, i + 1);
       if (at(src, n, b) === 39) {
         const s = suffixEnd(src, n, b + 1);
         t.add(T_CHAR, a, s, 0, b + 1);

@@ -42,6 +42,18 @@ export const rsKindIsString = (k: i32): boolean => k === K_IN_STRING || k === K_
 export const rsKindIsCommentedString = (k: i32): boolean =>
   k === K_IN_STRING_COMMENTED || k === K_START_STRING_COMMENTED;
 
+/**
+ * indent_next_line (utils.rs): whether the line after one of kind `k` may be
+ * indented when a separately formatted block is put back (format_strings is
+ * off, so never inside a string).
+ */
+export const rsIndentNextLine = (k: i32, cfg: RsConfig): boolean => {
+  if (rsKindIsString(k)) {
+    return false;
+  }
+  return cfg.styleEdition < 2024 || !rsKindIsCommentedString(k);
+};
+
 // CodeCharKind.
 export const CK_NORMAL: i32 = 0;
 export const CK_COMMENT: i32 = 1;
@@ -875,7 +887,9 @@ export const rsTrimLeftPreserveLayout = (orig: string, bi: i32, al: i32, cfg: Rs
     if (!rsIsBlank(line)) {
       pw = rsPrefixSpaceWidth(line, cfg.tabSpaces);
     }
-    const newVeto = kind === K_IN_STRING && !line.endsWith("\\");
+    // Only InString{Commented}, so the start of a string may be indented.
+    const newVeto =
+      (kind === K_IN_STRING || (cfg.styleEdition >= 2024 && kind === K_IN_STRING_COMMENTED)) && !line.endsWith("\\");
     if (veto || newVeto) {
       veto = newVeto;
       tr = false;
@@ -885,7 +899,11 @@ export const rsTrimLeftPreserveLayout = (orig: string, bi: i32, al: i32, cfg: Rs
     trimmed.push(tr);
     lines.push(line);
     widths.push(pw);
+    // Lines inside a string are not trimmed, so they do not count.
     if (kind === K_IN_STRING || kind === K_END_STRING) {
+      continue;
+    }
+    if (cfg.styleEdition >= 2024 && (kind === K_IN_STRING_COMMENTED || kind === K_END_STRING_COMMENTED)) {
       continue;
     }
     if (pw >= 0 && (minPrefix < 0 || pw < minPrefix)) {
@@ -997,7 +1015,7 @@ const identifyComment = (orig: string, shape: RsShape, cfg: RsConfig, isDoc: boo
 
 /** rewrite_comment(orig, block_style, shape, config). */
 export const rsRewriteComment = (orig: string, shape: RsShape, cfg: RsConfig): string | null =>
-  identifyComment(rsTrimStart(orig), shape, cfg, false);
+  identifyComment(orig, shape, cfg, false);
 
 /** rewrite_doc_comment. */
 export const rsRewriteDocComment = (orig: string, shape: RsShape, cfg: RsConfig): string | null =>

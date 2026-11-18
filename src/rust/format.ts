@@ -1,17 +1,18 @@
 // Formatting a whole source (a file, or a snippet such as a macro body) and
 // the snippet helpers built on it: format_snippet and format_code_block.
 //
-// Ported from rustfmt 1.9.0 (MIT OR Apache-2.0, Copyright The Rust Project
+// Ported from rustfmt 1.10.0 (MIT OR Apache-2.0, Copyright The Rust Project
 // Developers): formatting.rs, lib.rs.
 
 import { Out } from "../core/out";
 import { RsAst } from "./ast";
 import { rsAttrsContainSkip } from "./attr";
-import { K_IN_STRING, K_START_STRING, rsLineClasses } from "./comment";
+import { rsCharClasses, rsIndentNextLine, rsKindIsComment, rsKindIsString, rsLineClasses } from "./comment";
 import { RsCtx, RsFile, RsRanges } from "./context";
 import { RsTokens, rsLex } from "./lexer";
 import { RsParser } from "./parser";
 import { RsConfig, rsIndentStr } from "./shape";
+import { rsWsLenAt } from "./str";
 import { RsVisitor } from "./visitor";
 
 /** What formatting one source gave. */
@@ -101,23 +102,66 @@ const strBytes = (s: string): u8[] => {
   return b;
 };
 
-/** FormatLines' trailing-whitespace check, outside the skipped lines. */
-const hasTrailingWhitespace = (s: string, skipped: RsRanges): boolean => {
-  let line = 1;
-  let ws = false;
-  for (let i = 0; i < toI32(s.length); i++) {
-    const c = s.charCodeAt(i);
-    if (c === 13) {
+/** Whether a line of `s` ends in a whitespace char (the error's precondition, without classifying chars). */
+const anyLineEndsInWhitespace = (s: string): boolean => {
+  const n = toI32(s.length);
+  let lineStart = 0;
+  for (let i = 0; i < n; i++) {
+    if (s.charCodeAt(i) !== 10) {
       continue;
     }
-    if (c === 10) {
-      if (ws && !skipped.contains(line)) {
+    // The last char of the line, a carriage return aside.
+    let j = i - 1;
+    while (j >= lineStart && s.charCodeAt(j) === 13) {
+      j--;
+    }
+    while (j > lineStart && (s.charCodeAt(j) & 0xc0) === 0x80) {
+      j--;
+    }
+    if (j >= lineStart && rsWsLenAt(s, j) > 0) {
+      return true;
+    }
+    lineStart = i + 1;
+  }
+  return false;
+};
+
+/**
+ * FormatLines' TrailingWhitespace error over formatted text: a line outside
+ * the skipped lines whose last char is whitespace. With
+ * `errorOnUnformatted` off (a file) a line whose newline is in a comment or
+ * that holds a string literal does not count; format_snippet turns it on for
+ * a macro_rules! body. A file with the error makes rustfmt exit with an
+ * error; a macro body with it keeps the definition as written.
+ */
+export const rsHasTrailingWhitespaceError = (s: string, skipped: RsRanges, errorOnUnformatted: boolean): boolean => {
+  if (!anyLineEndsInWhitespace(s)) {
+    return false;
+  }
+  const cc = rsCharClasses(s);
+  let line = 1;
+  let lastWasSpace = false;
+  let hasString = false;
+  for (let ci = 0; ci < cc.nc; ci++) {
+    const a = cc.starts[ci];
+    const kind = cc.kinds[a];
+    const b = s.charCodeAt(a);
+    if (b === 13) {
+      continue;
+    }
+    if (b === 10) {
+      const allowed = errorOnUnformatted || (!rsKindIsComment(kind) && !hasString);
+      if (lastWasSpace && allowed && !skipped.contains(line)) {
         return true;
       }
-      ws = false;
       line++;
-    } else {
-      ws = c === 32 || c === 9 || c === 11 || c === 12;
+      lastWasSpace = false;
+      hasString = false;
+      continue;
+    }
+    lastWasSpace = rsWsLenAt(s, a) > 0;
+    if (rsKindIsString(kind)) {
+      hasString = true;
     }
   }
   return false;
@@ -126,8 +170,6 @@ const hasTrailingWhitespace = (s: string, skipped: RsRanges): boolean => {
 /** format_snippet: null when the snippet does not parse or formats with errors. */
 export const rsFormatSnippet = (parent: RsCtx, code: string, cfg: RsConfig, isMacroDef: boolean): RsSnippet | null => {
   const n = toI32(code.length);
-  // A snippet is a part of its parent's source, at its parent's edition.
-  cfg.edition = parent.cfg.edition;
   const r = rsFormatSource(strBytes(code), n, cfg, isMacroDef);
   if (r.unsupported) {
     parent.unsupported(r.why);
@@ -139,15 +181,13 @@ export const rsFormatSnippet = (parent: RsCtx, code: string, cfg: RsConfig, isMa
   if (r.macroFailure || (r.text.length === 0 && n !== 0)) {
     return null;
   }
-  if (isMacroDef && (r.lostComment || hasTrailingWhitespace(r.text, r.skipped))) {
+  if (isMacroDef && (r.lostComment || rsHasTrailingWhitespaceError(r.text, r.skipped, true))) {
     return null;
   }
   return new RsSnippet(r.text, r.skipped);
 };
 
 const FN_MAIN_PREFIX: string = "fn main() {\n";
-
-const isStringKind = (k: i32): boolean => k === K_IN_STRING || k === K_START_STRING;
 
 /** format_code_block: the code wrapped in `fn main() {}`, formatted, then unwrapped. */
 export const rsFormatCodeBlock = (
@@ -165,7 +205,7 @@ export const rsFormatCodeBlock = (
       wrapped = wrapped + indent;
     }
     wrapped = wrapped + lc.lines[i] + "\n";
-    needIndent = !isStringKind(lc.kinds[i]);
+    needIndent = rsIndentNextLine(lc.kinds[i], cfg);
   }
   wrapped = wrapped + "}";
   const fm = rsFormatSnippet(parent, wrapped, cfg, isMacroDef);
@@ -214,7 +254,7 @@ export const rsFormatCodeBlock = (
       }
     }
     result = result + trimmed;
-    isIndented = !isStringKind(inner.kinds[i]);
+    isIndented = rsIndentNextLine(inner.kinds[i], cfg);
   }
   return new RsSnippet(result, fm.skipped);
 };

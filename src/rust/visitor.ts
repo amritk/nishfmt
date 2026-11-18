@@ -75,7 +75,7 @@ import {
 import { rsMacroPosItem, rsMacroPosStatement, rsMacroStyleIsBraces, rsRewriteMacro, rsRewriteMacroDef } from "./macros";
 import { rsVisitItemsWithReordering } from "./reorder";
 import { RsShape, rsIndentFromWidth, rsIndentStr, rsIndentStrNl, rsShapeIndented } from "./shape";
-import { rsCountNewlines, rsHasByte, rsIndexOfByte, rsIsBlank, rsTrim, rsTrimEnd } from "./str";
+import { rsCountNewlines, rsHasByte, rsIndexOfByte, rsIsBlank, rsTrim, rsTrimEnd, rsWsLenAt } from "./str";
 import { rsFormatVisibility, rsIdentStr } from "./utils";
 
 export class RsVisitor {
@@ -296,11 +296,12 @@ export class RsVisitor {
               this.pushStr(snippet.slice(lineStart, i + 1));
             }
             lineStart = i + 1;
-          } else if (c === 32 || c === 9 || c === 13 || c === 11 || c === 12) {
-            if (lastWs < 0) {
-              lastWs = i;
-            }
+          } else if ((c & 0xc0) === 0x80) {
+            // (inside a char)
+          } else if (lastWs < 0 && rsWsLenAt(sub, k) > 0) {
+            lastWs = i;
           } else {
+            // A second whitespace char in a row clears it too, as rustfmt does.
             lastWs = -1;
           }
         }
@@ -315,6 +316,27 @@ export class RsVisitor {
     }
     const last = snippet.slice(lineStart, toI32(snippet.length));
     this.processLast(mode, last, snippet, lineStart === 0);
+  }
+
+  /**
+   * A comment that starts on the line of the code before it (style edition
+   * 2024): its first line as is (wrapped, it could mix with the others), the
+   * other lines below at the block indent, rewritten at `shape`.
+   */
+  pushCommentFromSameLine(sub: string, shape: RsShape): void {
+    const nl = rsIndexOfByte(sub, 10, 0);
+    if (nl < 0) {
+      this.pushStr(sub);
+      return;
+    }
+    this.pushStr(sub.slice(0, nl));
+    if (nl + 1 === toI32(sub.length)) {
+      return;
+    }
+    this.pushStr(this.indentStrNl());
+    const other = sub.slice(nl + 1, toI32(sub.length));
+    const r = rsRewriteComment(other, shape, this.f.cfg);
+    this.pushStr(r === null ? other : r);
   }
 
   /** process_comment; `abs` is the comment's absolute offset in the source. */
@@ -332,11 +354,16 @@ export class RsVisitor {
     const fixIndent = lastChar < 0 || lastChar === 123 || lastChar === 10;
     let cbi = this.bi;
     let cal = this.al;
+    let onSameLine = false;
     if (fixIndent) {
       if (lastChar === 123) {
         this.pushStr("\n");
       }
       this.pushStr(this.indentStr());
+    } else if (this.f.cfg.styleEdition >= 2024 && !snippet.startsWith("\n")) {
+      // On the line of the code before it: kept at the block's indent.
+      onSameLine = true;
+      this.pushStr(" ");
     } else {
       this.pushStr(" ");
       const ind = rsIndentFromWidth(this.f.cfg, this.bufLastLineWidth());
@@ -344,8 +371,12 @@ export class RsVisitor {
       cal = ind.al;
     }
     const cs = rsShapeIndented(cbi, cal, this.f.cfg).comment(this.f.cfg);
-    const r = rsRewriteComment(sub, cs, this.f.cfg);
-    this.pushStr(r === null ? sub : r);
+    if (onSameLine) {
+      this.pushCommentFromSameLine(sub, cs);
+    } else {
+      const r = rsRewriteComment(sub, cs, this.f.cfg);
+      this.pushStr(r === null ? sub : r);
+    }
     const ls = offset + toI32(sub.length);
     if (ls <= toI32(snippet.length)) {
       let k = ls;
@@ -730,6 +761,16 @@ export class RsVisitor {
         const between = this.snippet(lastHi, lo + offset);
         let sameLine = !rsHasByte(between, 10);
         let commentShape = rsShapeIndented(this.bi, this.al, cfg).comment(cfg);
+        if (cfg.styleEdition >= 2024 && sameLine) {
+          // The comment's first line goes on the block's last line, the
+          // other lines below it.
+          this.pushStr(" ");
+          this.pushCommentFromSameLine(sub, commentShape);
+          prevEndsWithNewline = sub.endsWith("\n");
+          extraNewline = false;
+          lastHi = lo + offset + toI32(sub.length);
+          continue;
+        }
         if (sameLine) {
           let w = this.bufLastLineWidth() - (this.bi + this.al);
           if (w < 0) {

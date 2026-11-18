@@ -1,7 +1,7 @@
 // rustfmt's Config (the default configuration, with the width heuristics
 // `use_small_heuristics = Default` derives from max_width), Indent and Shape.
 //
-// Ported from rustfmt 1.9.0 (MIT OR Apache-2.0, Copyright The Rust Project
+// Ported from rustfmt 1.10.0 (MIT OR Apache-2.0, Copyright The Rust Project
 // Developers): config/, shape.rs.
 
 import { rsRepeat, rsSpaces } from "./str";
@@ -22,6 +22,9 @@ export class RsConfig {
   commentWidth: i32 = 80;
   // The Rust edition the source is parsed at (rustfmt's `edition`).
   edition: i32 = 2021;
+  // The style edition (rustfmt's `style_edition`): the formatting rules of
+  // that edition of the Rust Style Guide.
+  styleEdition: i32 = 2021;
   constructor() {}
 }
 
@@ -47,6 +50,14 @@ export const rsConfigWithMaxWidth = (maxWidth: i32): RsConfig => {
   c.chainWidth = scale(60, maxWidth);
   c.singleLineIfElseMaxWidth = scale(50, maxWidth);
   c.singleLineLetElseMaxWidth = scale(50, maxWidth);
+  return c;
+};
+
+/** `parent` cloned with `max_width` set (`config.set().max_width(w)`, which rescales the heuristics). */
+export const rsConfigWithMaxWidthOf = (parent: RsConfig, maxWidth: i32): RsConfig => {
+  const c = rsConfigWithMaxWidth(maxWidth);
+  c.edition = parent.edition;
+  c.styleEdition = parent.styleEdition;
   return c;
 };
 

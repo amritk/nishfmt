@@ -1,0 +1,14 @@
+// Style edition 2024 forces a block around a closure whose body is a `loop`
+// (closures.rs, is_block_closure_forced_inner).
+fn f() {
+    let a = || loop {};
+    let b = move |x| loop {
+        break x;
+    };
+    let c = || &loop {};
+    thread::spawn(move || {
+        loop {
+            work();
+        }
+    });
+}

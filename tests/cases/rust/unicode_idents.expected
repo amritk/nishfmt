@@ -1,0 +1,14 @@
+// rustc_lexer's identifiers are XID_Start / XID_Continue (unicode-ident
+// 1.0.24); an emoji starts or continues an invalid identifier, which
+// rustc_parse accepts as an identifier (rustfmt formats it), unless it is a
+// lone confusable. U+2028 and U+0085 are whitespace (Pattern_White_Space).
+fn é() {
+    let 中 = 'é';
+    let x: &'é u8 = y;
+}
+fn f() {
+    m!(a  😀  b, x👨‍👩y, ➖➖, ©);
+    let a😀 = 1;
+    let b = 2;
+    let d = 3;
+}
