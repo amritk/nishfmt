@@ -4,6 +4,8 @@
 // Runs of code points: 6 hex digits of the run's first code point, then
 // 6 of the packed value width | info << 2 | flags << 18 (see uwidth.ts).
 
+export const RS_UWIDTH_NRUNS: i32 = 1420;
+
 export const RS_UWIDTH_RUNS: string =
   "00000000000100000a00000500000b00000100002310000100002400000100002a10000100002b000001000030100001" +
   "00003a0000010000a91000010000aa0000010000ad0400000000ae1000010000af00000100030004000000034f0c0000" +

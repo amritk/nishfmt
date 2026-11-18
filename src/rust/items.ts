@@ -189,12 +189,14 @@ export const rsRewriteLocal = (ctx: RsCtx, s: i32, shape: RsShape): string | nul
       const ekHi = ast.lo[block];
       // At style edition 2024 the attributes and comments before `let` do
       // not count (#5901).
-      const fromLet = cfg.styleEdition >= 2024 ? result.slice(letKwOffset, toI32(result.length)) : result;
-      const forceNewlineElse = rsHasByte(patStr, 10) || !sameLineElseKwAndBrace(ctx, fromLet, ekLo, ekHi, nested);
+      const fromLo = cfg.styleEdition >= 2024 ? letKwOffset : 0;
+      const forceNewlineElse =
+        rsHasByte(patStr, 10) ||
+        !sameLineElseKwAndBrace(ctx, result.slice(fromLo, toI32(result.length)), ekLo, ekHi, nested);
       const elseKw = rsRewriteElseKwWithComments(forceNewlineElse, true, ctx, ekLo, ekHi, shape);
       result = result + elseKw;
       const maxWidth = shape.width < cfg.singleLineLetElseMaxWidth ? shape.width : cfg.singleLineLetElseMaxWidth;
-      const withElseKw = cfg.styleEdition >= 2024 ? result.slice(letKwOffset, toI32(result.length)) : result;
+      const withElseKw = result.slice(fromLo, toI32(result.length));
       let avail = maxWidth - toI32(withElseKw.length);
       if (avail < 0) {
         avail = 0;

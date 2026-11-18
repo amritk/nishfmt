@@ -49,7 +49,7 @@ import {
 } from "./lexer";
 import { OC_MACRO_ARG, rsRewriteWithParens } from "./overflow";
 import { RsParser } from "./parser";
-import { RsShape, rsConfigWithMaxWidth, rsIndentStr, rsIndentStrNl } from "./shape";
+import { RsShape, rsConfigWithMaxWidthOf, rsIndentStr, rsIndentStrNl } from "./shape";
 import { RsStrBuf, rsHasByte, rsLines, rsTrim, rsTrimEnd } from "./str";
 import { K_IN_STRING, K_NORMAL, rsCharClasses, rsFilteredStrFits, rsIndentNextLine, rsLineClasses } from "./comment";
 import { rsFormatCodeBlock, rsFormatSnippet } from "./format";
@@ -682,13 +682,13 @@ const rewriteBranch = (ctx: RsCtx, br: Branch, shape: RsShape, multi: boolean): 
   const bbi = hasBlockBody ? shape.bi : shape.bi + cfg.tabSpaces;
   const bal = shape.al;
   const newWidth = cfg.maxWidth - (bbi + bal);
-  let bodyCfg = rsConfigWithMaxWidth(newWidth);
+  let bodyCfg = rsConfigWithMaxWidthOf(cfg, newWidth);
   let fm0 = rsFormatSnippet(ctx, bodyStr, bodyCfg, true);
   if (fm0 === null) {
     if (ctx.f.unsupported) {
       return null;
     }
-    bodyCfg = rsConfigWithMaxWidth(newWidth + cfg.tabSpaces);
+    bodyCfg = rsConfigWithMaxWidthOf(cfg, newWidth + cfg.tabSpaces);
     fm0 = rsFormatCodeBlock(ctx, bodyStr, bodyCfg, true);
   }
   const fm = fm0;

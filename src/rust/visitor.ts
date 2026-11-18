@@ -75,16 +75,7 @@ import {
 import { rsMacroPosItem, rsMacroPosStatement, rsMacroStyleIsBraces, rsRewriteMacro, rsRewriteMacroDef } from "./macros";
 import { rsVisitItemsWithReordering } from "./reorder";
 import { RsShape, rsIndentFromWidth, rsIndentStr, rsIndentStrNl, rsShapeIndented } from "./shape";
-import {
-  rsCharAt,
-  rsCountNewlines,
-  rsHasByte,
-  rsIndexOfByte,
-  rsIsBlank,
-  rsIsUnicodeWhitespace,
-  rsTrim,
-  rsTrimEnd,
-} from "./str";
+import { rsCountNewlines, rsHasByte, rsIndexOfByte, rsIsBlank, rsTrim, rsTrimEnd, rsWsLenAt } from "./str";
 import { rsFormatVisibility, rsIdentStr } from "./utils";
 
 export class RsVisitor {
@@ -307,7 +298,7 @@ export class RsVisitor {
             lineStart = i + 1;
           } else if ((c & 0xc0) === 0x80) {
             // (inside a char)
-          } else if (lastWs < 0 && rsIsUnicodeWhitespace(rsCharAt(sub, k))) {
+          } else if (lastWs < 0 && rsWsLenAt(sub, k) > 0) {
             lastWs = i;
           } else {
             // A second whitespace char in a row clears it too, as rustfmt does.
@@ -325,6 +316,27 @@ export class RsVisitor {
     }
     const last = snippet.slice(lineStart, toI32(snippet.length));
     this.processLast(mode, last, snippet, lineStart === 0);
+  }
+
+  /**
+   * A comment that starts on the line of the code before it (style edition
+   * 2024): its first line as is (wrapped, it could mix with the others), the
+   * other lines below at the block indent, rewritten at `shape`.
+   */
+  pushCommentFromSameLine(sub: string, shape: RsShape): void {
+    const nl = rsIndexOfByte(sub, 10, 0);
+    if (nl < 0) {
+      this.pushStr(sub);
+      return;
+    }
+    this.pushStr(sub.slice(0, nl));
+    if (nl + 1 === toI32(sub.length)) {
+      return;
+    }
+    this.pushStr(this.indentStrNl());
+    const other = sub.slice(nl + 1, toI32(sub.length));
+    const r = rsRewriteComment(other, shape, this.f.cfg);
+    this.pushStr(r === null ? other : r);
   }
 
   /** process_comment; `abs` is the comment's absolute offset in the source. */
@@ -359,18 +371,8 @@ export class RsVisitor {
       cal = ind.al;
     }
     const cs = rsShapeIndented(cbi, cal, this.f.cfg).comment(this.f.cfg);
-    const nl = onSameLine ? rsIndexOfByte(sub, 10, 0) : -1;
-    if (onSameLine && nl < 0) {
-      this.pushStr(sub);
-    } else if (onSameLine && nl + 1 === toI32(sub.length)) {
-      this.pushStr(sub.slice(0, nl));
-    } else if (onSameLine) {
-      // The first line as is: wrapped, it could mix with the other lines.
-      this.pushStr(sub.slice(0, nl));
-      this.pushStr(rsIndentStrNl(this.f.cfg, cbi, cal));
-      const other = sub.slice(nl + 1, toI32(sub.length));
-      const r = rsRewriteComment(other, cs, this.f.cfg);
-      this.pushStr(r === null ? other : r);
+    if (onSameLine) {
+      this.pushCommentFromSameLine(sub, cs);
     } else {
       const r = rsRewriteComment(sub, cs, this.f.cfg);
       this.pushStr(r === null ? sub : r);
@@ -763,18 +765,7 @@ export class RsVisitor {
           // The comment's first line goes on the block's last line, the
           // other lines below it.
           this.pushStr(" ");
-          const nl = rsIndexOfByte(sub, 10, 0);
-          if (nl < 0) {
-            this.pushStr(sub);
-          } else if (nl + 1 === toI32(sub.length)) {
-            this.pushStr(sub.slice(0, nl));
-          } else {
-            this.pushStr(sub.slice(0, nl));
-            this.pushStr(this.indentStrNl());
-            const other = sub.slice(nl + 1, toI32(sub.length));
-            const r = rsRewriteComment(other, commentShape, cfg);
-            this.pushStr(r === null ? other : r);
-          }
+          this.pushCommentFromSameLine(sub, commentShape);
           prevEndsWithNewline = sub.endsWith("\n");
           extraNewline = false;
           lastHi = lo + offset + toI32(sub.length);

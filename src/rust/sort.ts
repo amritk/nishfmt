@@ -98,6 +98,9 @@ const rsCmpBytes = (a: string, a0: i32, a1: i32, b: string, b0: i32, b1: i32): i
 
 /** version_sort: -1, 0 or 1 as `a` sorts before, with or after `b`. */
 export const rsVersionSort = (a: string, b: string): i32 => {
+  if (a === b) {
+    return 0;
+  }
   const ia = new RsVersionChunks(a);
   const ib = new RsVersionChunks(b);
   // MoreLeadingZeros: 0 equal, -1 left, 1 right.

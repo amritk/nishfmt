@@ -397,16 +397,19 @@ const kindRank = (k: i32): i32 => {
   return 5;
 };
 
+/** Two segments' aliases: version-sorted at style edition 2024 when both have one. */
+const cmpAlias = (x: string | null, y: string | null, se: i32): i32 => {
+  if (se >= 2024 && x !== null && y !== null) {
+    return rsVersionSort(rsTrimRawPrefix(x), rsTrimRawPrefix(y));
+  }
+  return cmpOptStr(x, y);
+};
+
 /** Ord for UseSegment, at style edition `se`. */
 const cmpSeg = (a: RsUseSeg, b: RsUseSeg, se: i32): i32 => {
   if (a.k === b.k) {
     if (a.k === USK_SELF || a.k === USK_SUPER || a.k === USK_CRATE) {
-      const x = a.alias;
-      const y = b.alias;
-      if (se >= 2024 && x !== null && y !== null) {
-        return rsVersionSort(rsTrimRawPrefix(x), rsTrimRawPrefix(y));
-      }
-      return cmpOptStr(x, y);
+      return cmpAlias(a.alias, b.alias, se);
     }
     if (a.k === USK_GLOB) {
       return 0;
@@ -428,12 +431,7 @@ const cmpSeg = (a: RsUseSeg, b: RsUseSeg, se: i32): i32 => {
       if (o !== 0) {
         return o;
       }
-      const x = a.alias;
-      const y = b.alias;
-      if (se >= 2024 && x !== null && y !== null) {
-        return rsVersionSort(rsTrimRawPrefix(x), rsTrimRawPrefix(y));
-      }
-      return cmpOptStr(x, y);
+      return cmpAlias(a.alias, b.alias, se);
     }
     // Lists: lexicographic.
     const n = a.list.length < b.list.length ? a.list.length : b.list.length;

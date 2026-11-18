@@ -12,7 +12,7 @@ import { RsCtx, RsFile, RsRanges } from "./context";
 import { RsTokens, rsLex } from "./lexer";
 import { RsParser } from "./parser";
 import { RsConfig, rsIndentStr } from "./shape";
-import { rsCharAt, rsIsUnicodeWhitespace } from "./str";
+import { rsWsLenAt } from "./str";
 import { RsVisitor } from "./visitor";
 
 /** What formatting one source gave. */
@@ -102,6 +102,30 @@ const strBytes = (s: string): u8[] => {
   return b;
 };
 
+/** Whether a line of `s` ends in a whitespace char (the error's precondition, without classifying chars). */
+const anyLineEndsInWhitespace = (s: string): boolean => {
+  const n = toI32(s.length);
+  let lineStart = 0;
+  for (let i = 0; i < n; i++) {
+    if (s.charCodeAt(i) !== 10) {
+      continue;
+    }
+    // The last char of the line, a carriage return aside.
+    let j = i - 1;
+    while (j >= lineStart && s.charCodeAt(j) === 13) {
+      j--;
+    }
+    while (j > lineStart && (s.charCodeAt(j) & 0xc0) === 0x80) {
+      j--;
+    }
+    if (j >= lineStart && rsWsLenAt(s, j) > 0) {
+      return true;
+    }
+    lineStart = i + 1;
+  }
+  return false;
+};
+
 /**
  * FormatLines' TrailingWhitespace error over a formatted file, with
  * error_on_unformatted off: a line outside the skipped lines whose last char
@@ -109,6 +133,9 @@ const strBytes = (s: string): u8[] => {
  * string literal. rustfmt then exits with an error.
  */
 export const rsHasTrailingWhitespaceError = (s: string, skipped: RsRanges): boolean => {
+  if (!anyLineEndsInWhitespace(s)) {
+    return false;
+  }
   const cc = rsCharClasses(s);
   let line = 1;
   let lastWasSpace = false;
@@ -129,7 +156,7 @@ export const rsHasTrailingWhitespaceError = (s: string, skipped: RsRanges): bool
       hasString = false;
       continue;
     }
-    lastWasSpace = rsIsUnicodeWhitespace(rsCharAt(s, a));
+    lastWasSpace = rsWsLenAt(s, a) > 0;
     if (rsKindIsString(kind)) {
       hasString = true;
     }
@@ -162,9 +189,6 @@ const hasTrailingWhitespace = (s: string, skipped: RsRanges): boolean => {
 /** format_snippet: null when the snippet does not parse or formats with errors. */
 export const rsFormatSnippet = (parent: RsCtx, code: string, cfg: RsConfig, isMacroDef: boolean): RsSnippet | null => {
   const n = toI32(code.length);
-  // A snippet is a part of its parent's source, at its parent's editions.
-  cfg.edition = parent.cfg.edition;
-  cfg.styleEdition = parent.cfg.styleEdition;
   const r = rsFormatSource(strBytes(code), n, cfg, isMacroDef);
   if (r.unsupported) {
     parent.unsupported(r.why);

@@ -53,6 +53,14 @@ export const rsConfigWithMaxWidth = (maxWidth: i32): RsConfig => {
   return c;
 };
 
+/** `parent` cloned with `max_width` set (`config.set().max_width(w)`, which rescales the heuristics). */
+export const rsConfigWithMaxWidthOf = (parent: RsConfig, maxWidth: i32): RsConfig => {
+  const c = rsConfigWithMaxWidth(maxWidth);
+  c.edition = parent.edition;
+  c.styleEdition = parent.styleEdition;
+  return c;
+};
+
 /** An indent: a block indent plus a visual alignment. */
 export class RsIndent {
   bi: i32;

@@ -7,7 +7,7 @@
 // Ported from unicode-width 0.1.14 (MIT OR Apache-2.0, Copyright The Rust
 // Project Developers): src/tables.rs, without the cjk feature.
 
-import { RS_UWIDTH_RUNS } from "./uwidth_table";
+import { RS_UWIDTH_NRUNS, RS_UWIDTH_RUNS } from "./uwidth_table";
 
 // WidthInfo.
 const WI_DEFAULT: i32 = 0;
@@ -62,19 +62,31 @@ const rsUwEntry = (k: i32): i32 => {
   return v;
 };
 
+// The runs decoded on first use: first code points and packed values.
+const rsUwStarts = new Int32Array(RS_UWIDTH_NRUNS);
+const rsUwValues = new Int32Array(RS_UWIDTH_NRUNS);
+const rsUwDecoded = new Int32Array(1);
+
 /** The packed value of `cp` (width | info << 2 | flags << 18), by binary search over the runs. */
 const rsUwSearch = (cp: i32): i32 => {
+  if (rsUwDecoded[0] === 0) {
+    for (let k = 0; k < RS_UWIDTH_NRUNS; k++) {
+      rsUwStarts[k] = rsUwEntry(k * 2);
+      rsUwValues[k] = rsUwEntry(k * 2 + 1);
+    }
+    rsUwDecoded[0] = 1;
+  }
   let lo = 0;
-  let hi = toI32(RS_UWIDTH_RUNS.length) / 12 - 1;
+  let hi = RS_UWIDTH_NRUNS - 1;
   while (lo < hi) {
     const mid = (lo + hi + 1) >> 1;
-    if (rsUwEntry(mid * 2) <= cp) {
+    if (rsUwStarts[mid] <= cp) {
       lo = mid;
     } else {
       hi = mid - 1;
     }
   }
-  return rsUwEntry(lo * 2 + 1);
+  return rsUwValues[lo];
 };
 
 // The packed value + 1 of the BMP code points looked up so far (0: not yet).

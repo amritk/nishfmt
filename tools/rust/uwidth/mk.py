@@ -160,6 +160,7 @@ with open(out, "w") as f:
     f.write("//\n")
     f.write("// Runs of code points: 6 hex digits of the run's first code point, then\n")
     f.write("// 6 of the packed value width | info << 2 | flags << 18 (see uwidth.ts).\n\n")
+    f.write("export const RS_UWIDTH_NRUNS: i32 = %d;\n\n" % len(runs))
     f.write("export const RS_UWIDTH_RUNS: string =\n")
     for i in range(0, len(runs), 8):
         end = ";\n" if i + 8 >= len(runs) else " +\n"
