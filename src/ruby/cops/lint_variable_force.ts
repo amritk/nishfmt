@@ -60,6 +60,7 @@ import {
 import { rbSpaceBegin } from "../help";
 import { RbRewriter } from "../rewriter";
 import { RbSource } from "../source";
+import { LVAR_BAD_START } from "./lint_lvar_start_table";
 import { ssxFE, ssxFS, ssxHas, ssxLocIs, ssxSiblingIndex } from "./style_syntax_help";
 
 /** A local variable (VariableForce::Variable). */
@@ -176,6 +177,87 @@ const vfBranchType = (t: i32): boolean =>
 /** Whether c is a word character of a regexp group name. */
 const vfNameChar = (c: i32): boolean =>
   (c >= 48 && c <= 57) || (c >= 65 && c <= 90) || (c >= 97 && c <= 122) || c === 95 || c >= 128;
+
+/** RESERVED_WORDS. */
+const VF_RESERVED: string =
+  " __ENCODING__ __FILE__ __LINE__ BEGIN END alias and begin break case class def do else elsif end ensure false for if in module next nil not or redo rescue retry return self super then true undef unless until when while yield ";
+
+const vfHex = (s: string, from: i32, to: i32): i32 => {
+  let v = 0;
+  for (let i = from; i < to; i++) {
+    const c = s.charCodeAt(i);
+    v = v * 16 + (c <= 57 ? c - 48 : c - 87);
+  }
+  return v;
+};
+
+/** Whether the non-ASCII code point c is in LVAR_BAD_START (an upper or titlecase letter). */
+const vfBadStart = (c: i32): boolean => {
+  const t = LVAR_BAD_START;
+  const k = toI32(t.length);
+  let i = 0;
+  while (i < k) {
+    let j = i;
+    let dash = -1;
+    while (j < k && t.charCodeAt(j) !== 44) {
+      if (t.charCodeAt(j) === 45) {
+        dash = j;
+      }
+      j++;
+    }
+    const lo = vfHex(t, i, dash < 0 ? j : dash);
+    const hi = dash < 0 ? lo : vfHex(t, dash + 1, j);
+    if (c < lo) {
+      return false;
+    }
+    if (c <= hi) {
+      return true;
+    }
+    i = j + 1;
+  }
+  return false;
+};
+
+/** VariableForce#local_variable_name?: Ruby makes a local variable of a named capture with this name. */
+export const vfLocalVariableName = (name: string): boolean => {
+  const k = toI32(name.length);
+  if (k === 0 || VF_RESERVED.indexOf(` ${name} `) >= 0) {
+    return false;
+  }
+  const b = name.charCodeAt(0);
+  if (b < 128) {
+    if (!((b >= 97 && b <= 122) || b === 95)) {
+      return false;
+    }
+  } else {
+    // the first character's code point, from its UTF-8 bytes
+    let c = 0;
+    let n = 1;
+    if (b >= 0xf0) {
+      c = b & 7;
+      n = 4;
+    } else if (b >= 0xe0) {
+      c = b & 15;
+      n = 3;
+    } else {
+      c = b & 31;
+      n = 2;
+    }
+    for (let i = 1; i < n && i < k; i++) {
+      c = c * 64 + (name.charCodeAt(i) & 63);
+    }
+    if (vfBadStart(c)) {
+      return false;
+    }
+  }
+  for (let i = 1; i < k; i++) {
+    const c = name.charCodeAt(i);
+    if (!(c >= 128 || (c >= 48 && c <= 57) || (c >= 65 && c <= 90) || (c >= 97 && c <= 122) || c === 95)) {
+      return false;
+    }
+  }
+  return true;
+};
 
 /** Regexp#named_captures.keys of a regexp literal (its source text, options). */
 export const vfNamedCaptures = (src: RbSource, re: i32): string[] => {
@@ -805,7 +887,13 @@ export class VfForce {
     }
     if (t === NT_MATCH_WITH_LVASGN) {
       const re = a.kid(n, 0);
-      const names = vfNamedCaptures(src, re);
+      // regexp_captured_names: the names that are local variable names
+      const names: string[] = [];
+      for (const nm of vfNamedCaptures(src, re)) {
+        if (vfLocalVariableName(nm)) {
+          names.push(nm);
+        }
+      }
       for (const nm of names) {
         if (this.findVar(nm) < 0) {
           this.declare(nm, n);
