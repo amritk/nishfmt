@@ -610,11 +610,20 @@ export class Classifier {
     if (p < 0) {
       return TT_UNARY_OPERATOR;
     }
+    if (isTypeName(this.d, p)) {
+      return TT_POINTER_OR_REFERENCE;
+    }
+    if ((this.k(p) === KW_NEW || this.k(p) === KW_DELETE) && this.k(t) === P_AMPAMP) {
+      return TT_BINARY_OPERATOR;
+    }
     const n = this.next(t);
     if (n < 0) {
       return TT_POINTER_OR_REFERENCE;
     }
     const nk = this.k(n);
+    if (nk === P_GREATER) {
+      return TT_POINTER_OR_REFERENCE;
+    }
     if (inTmpl && nk === KW_NOEXCEPT) {
       return TT_BINARY_OPERATOR;
     }
@@ -623,6 +632,7 @@ export class Classifier {
       nk === P_EQUAL ||
       nk === P_COMMA ||
       nk === P_RPAREN ||
+      nk === P_SEMI ||
       (nk === KW_NOEXCEPT && !inExpr) ||
       nk === KW_CONST ||
       nk === KW_VOLATILE ||
@@ -648,7 +658,7 @@ export class Classifier {
     if (nk === P_LSQUARE && this.ty(n) !== TT_LAMBDA_LSQUARE) {
       return TT_POINTER_OR_REFERENCE;
     }
-    if ((nk === KW_OPERATOR && !inExpr) || nk === P_SEMI) {
+    if (nk === KW_OPERATOR && !inExpr) {
       return TT_POINTER_OR_REFERENCE;
     }
     if (pk === P_RBRACE && this.k(t) === P_STAR && this.d.match[p] < 0) {
@@ -685,9 +695,15 @@ export class Classifier {
     if (this.k(t) === P_AMPAMP && (nk === P_LPAREN || nk === P_STAR || nk === P_AMP)) {
       return TT_BINARY_OPERATOR;
     }
+    // `aaa && aaa->f()`; `width * height * length`, which makes the second
+    // `*` a multiplication too.
     if (isIdentKind(nk)) {
       const nn = this.next(n);
       if (nn >= 0 && this.k(nn) === P_ARROW) {
+        return TT_BINARY_OPERATOR;
+      }
+      if (nn >= 0 && this.isPtrKind(nn) && !this.objcLifetimeQualifier(n)) {
+        this.set(nn, TT_BINARY_OPERATOR);
         return TT_BINARY_OPERATOR;
       }
     }
@@ -706,6 +722,15 @@ export class Classifier {
       }
     }
     return TT_POINTER_OR_REFERENCE;
+  }
+
+  /** `__strong`, `__weak`, ...: clang-format's isObjCLifetimeQualifier, in a file it may read as Objective-C. */
+  objcLifetimeQualifier(t: i32): boolean {
+    const d = this.d;
+    return (
+      d.objcLang &&
+      (d.is(t, "__autoreleasing") || d.is(t, "__strong") || d.is(t, "__weak") || d.is(t, "__unsafe_unretained"))
+    );
   }
 
   /** Whether `t` is absent, `&` or a member access (clang-format's IsChainedOperatorAmpOrMember). */
