@@ -446,8 +446,7 @@ export class Classifier {
     const last = d.prv[c];
     const lk = this.k(last);
     const bare =
-      (lk === P_STAR || lk === P_AMP || lk === P_AMPAMP) &&
-      (d.prv[last] === o || this.k(d.prv[last]) === P_COLONCOLON);
+      (lk === P_STAR || lk === P_AMP || lk === P_AMPAMP) && (d.prv[last] === o || this.k(d.prv[last]) === P_COLONCOLON);
     if (this.expr[this.depth] === 1 && !bare) {
       return;
     }
