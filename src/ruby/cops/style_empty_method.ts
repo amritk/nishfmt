@@ -3,7 +3,7 @@
 // Ported from RuboCop 1.92.3 (MIT License, Copyright (c) 2012-24 Bozhidar
 // Batsov).
 
-import { F_END, NT_DEF, NT_DEFS } from "../ast";
+import { F_END, F_KEYWORD, NT_DEF, NT_DEFS } from "../ast";
 import { RbCop } from "../cop";
 import { RbSource } from "../source";
 import {
@@ -12,6 +12,7 @@ import {
   ssxDefArgs,
   ssxDefBody,
   ssxDefName,
+  ssxFE,
   ssxLocIs,
   ssxMultiline,
   ssxSingleLine,
@@ -37,7 +38,7 @@ export class CopStyleEmptyMethod {
       }
       const args = ssxDefArgs(src, n);
       // compact?
-      if (ssxSingleLine(src, n)) {
+      if (ssxSingleLine(src, n) || (t === NT_DEFS && ssxMultiline(src, a.kid(n, 0)))) {
         continue;
       }
       let anyMulti = false;
@@ -53,7 +54,18 @@ export class CopStyleEmptyMethod {
       if (k === null) {
         continue;
       }
-      const scope = t === NT_DEFS ? `${src.nodeSrc(a.kid(n, 0))}.` : "";
+      let scope = "";
+      if (t === NT_DEFS) {
+        // parenthesized_receiver?: a `(` between `def` and the receiver.
+        const recv = a.kid(n, 0);
+        let paren = false;
+        for (let p = ssxFE(src, n, F_KEYWORD); p < a.exS(recv); p++) {
+          if (src.at(p) === 40) {
+            paren = true;
+          }
+        }
+        scope = paren ? `(${src.nodeSrc(recv)}).` : `${src.nodeSrc(recv)}.`;
+      }
       let argStr = "";
       if (a.nKid(args) > 0) {
         const parts: string[] = [];
