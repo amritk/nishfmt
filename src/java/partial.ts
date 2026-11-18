@@ -1,12 +1,12 @@
 // google-java-format's partial formatting, which StringWrapper runs on the
-// ranges it is about to replace (Formatter.formatSource(input, ranges)): the
+// ranges it is about to replace (Formatter.getFormatReplacements): the
 // whole text is formatted again, the character ranges become token ranges,
 // those grow to the regions the visitor marked as formattable alone, and each
 // region's lines are taken from the new output. Formatting is not idempotent
 // everywhere (a trailing comment wrapped onto a second line is a leading
 // comment the next time), so this can change the text.
 //
-// Ported from google-java-format 1.28 (Apache License 2.0, Copyright 2015 Google Inc.):
+// Ported from google-java-format 2.0.0 (Apache License 2.0, Copyright 2015 Google Inc.):
 // Formatter.getFormatReplacements, JavaInput.characterRangesToTokenRanges,
 // JavaOutput.getFormatReplacements, expandToBreakableRegions and
 // applyReplacements, and InputOutput.makeKToIJ.

@@ -2,9 +2,11 @@
 // ImportOrderer (static imports first, then the rest, each sorted, one blank
 // line between the two groups) and RemoveUnusedImports (an import whose
 // simple name is never an identifier in the code or a javadoc reference
-// goes, as do java.lang and same-package imports).
+// goes, as do java.lang and same-package imports). 2.0.0's module imports
+// (`import module m;`, a third group) are left out: javac 21, which the
+// reference runs on, rejects them, and so does the parser.
 //
-// Ported from google-java-format 1.28 (Apache License 2.0, Copyright 2015 Google Inc.).
+// Ported from google-java-format 2.0.0 (Apache License 2.0, Copyright 2015 Google Inc.).
 
 import { Out } from "../core/out";
 import { GInput, TF_JAVADOC, TF_LINE_COMMENT, TF_NEWLINE, TF_SPACES, TF_TOKEN } from "../gdoc/input";

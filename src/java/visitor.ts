@@ -1,7 +1,7 @@
-// google-java-format's JavaInputAstVisitor (and its Java 21 subclass), over
-// the JTree: each visit emits the ops for one construct. Ported from
-// google-java-format 1.28 (Apache License 2.0, Copyright 2015 Google Inc.);
-// the order of every op matches the original, since the layout depends on it.
+// google-java-format's JavaInputAstVisitor, over the JTree: each visit emits
+// the layout events for one construct. Ported from google-java-format 2.0.0
+// (Apache License 2.0, Copyright 2015 Google Inc.); the order of every event
+// matches the original, since the layout depends on it.
 
 import { INDEPENDENT, UNIFIED, FORCED, BL_NO, BL_PRESERVE, BL_YES } from "../gdoc/engine";
 import { JlEngine } from "./layout/engine";
