@@ -116,7 +116,7 @@ const usage = (): string =>
     "  Ruby (.rb, Gemfile, .gemspec, ...)  rubocop -a 1.92.3",
     "  Swift (.swift)                      SwiftFormat 0.64.7",
     "  Rust (.rs)                          rustfmt 1.10.0, edition 2024, max_width 120",
-    "  Dart (.dart)                        dart format 3.14",
+    "  Dart (.dart)                        dart format 3.14.1",
     "  C# (.cs)                            CSharpier 1.4.0",
     "",
     "A single file with no mode prints the result to stdout.",
