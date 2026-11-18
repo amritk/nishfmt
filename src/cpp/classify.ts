@@ -189,6 +189,7 @@ export class Classifier {
   ques: i32[]; // pending `?` count, for matching `:`
   afterNew: i32[]; // 1 past a `new` at this depth: clang-format's CanBeExpression off
   caret: i32[]; // 1 past a unary `^` at this depth: clang-format's CaretFound
+  sa: i32[]; // 1 in a static_assert's first argument: clang-format's InStaticAssertFirstArgument
   bindAt: i32[]; // binding strength of each level
   depth: i32 = 0;
   inClass: boolean = false; // the enclosing scope is a class body
@@ -206,6 +207,7 @@ export class Classifier {
     this.ques = new Array<i32>(MAXD);
     this.afterNew = new Array<i32>(MAXD);
     this.caret = new Array<i32>(MAXD);
+    this.sa = new Array<i32>(MAXD);
     this.bindAt = new Array<i32>(MAXD);
   }
 
@@ -311,7 +313,7 @@ export class Classifier {
   }
 
   /** The `>` closing the template bracket at `lt`, or -1 if `<` compares. */
-  findCloser(lt: i32, inExpr: boolean, parentLess: boolean): i32 {
+  findCloser(lt: i32, inExpr: boolean, parentLess: boolean, saFirst: boolean): i32 {
     const d = this.d;
     let depth = 0;
     let t = d.nxt[lt];
@@ -328,6 +330,11 @@ export class Classifier {
           if (n >= 0 && d.kind[n] === P_GREATER && d.ws[n] === 0 && !parentLess) {
             return -1;
           }
+          // `static_assert(N < M > -1)`: nor in a static_assert's first
+          // argument before `-` or a name.
+          if (saFirst && n >= 0 && (d.kind[n] === P_MINUS || isIdentKind(d.kind[n]))) {
+            return -1;
+          }
           return t;
         }
         if (k === P_LESS) {
@@ -341,7 +348,7 @@ export class Classifier {
               pk === P_RBRACE ||
               (pk === P_RPAREN && !(d.match[p] >= 0 && this.ty(d.match[p]) === TT_OVERLOADED_OPERATOR_LPAREN)));
           if (!binary) {
-            const c = this.findCloser(t, false, true);
+            const c = this.findCloser(t, false, true, false);
             if (c >= 0) {
               t = d.nxt[c];
               continue;
@@ -821,7 +828,6 @@ export class Classifier {
       (pk === KW_CONSTEXPR && this.k(this.prev(p)) === KW_IF) ||
       pk === KW_WHILE ||
       pk === KW_SWITCH ||
-      pk === KW_STATIC_ASSERT ||
       pk === KW_NOEXCEPT ||
       pk === P_LPAREN ||
       pk === P_COMMA ||
@@ -898,6 +904,7 @@ export class Classifier {
     this.ques[0] = 0;
     this.afterNew[0] = 0;
     this.caret[0] = 0;
+    this.sa[0] = 0;
     this.bindAt[0] = 1;
     let sawFnParams = false; // a top-level `(...)` that looks like parameters closed
     let autoFound = false; // an `auto` earlier on the line
@@ -1129,6 +1136,7 @@ export class Classifier {
           this.ques[nd] = 0;
           this.afterNew[nd] = 0;
           this.caret[nd] = 0;
+          this.sa[nd] = k === P_LPAREN && this.k(this.prev(t)) === KW_STATIC_ASSERT ? 1 : 0;
           this.lfd[nd] = k === P_LPAREN && this.conditionParen(t) ? 1 : 0;
           if (k === P_LPAREN) {
             this.expr[nd] = this.parenIsExpr(t, this.expr[dep]);
@@ -1234,6 +1242,7 @@ export class Classifier {
                 t,
                 this.expr[dep] === 1,
                 dep > 0 && this.ty(this.open[dep]) === TT_TEMPLATE_OPENER,
+                this.sa[dep] === 1,
               );
               if (c >= 0) {
                 isTmpl = true;
@@ -1250,6 +1259,7 @@ export class Classifier {
                 this.ques[nd] = 0;
                 this.afterNew[nd] = 0;
                 this.caret[nd] = 0;
+                this.sa[nd] = 0;
                 this.lfd[nd] = 0;
                 this.bindAt[nd] = this.bindAt[dep] + 12;
               }
@@ -1282,7 +1292,8 @@ export class Classifier {
             if (this.inRequiresParens(t, dep) || (k === P_AMPAMP && this.inRequiresClause(t, dep))) {
               this.set(t, TT_BINARY_OPERATOR);
             } else {
-              this.set(t, this.starRole(t, this.expr[dep] === 1 && this.afterNew[dep] === 0, this.tmpl[dep] === 1));
+              const inExpr = (this.expr[dep] === 1 && this.afterNew[dep] === 0) || this.sa[dep] === 1;
+              this.set(t, this.starRole(t, inExpr, this.tmpl[dep] === 1));
             }
           }
           break;
@@ -1346,6 +1357,7 @@ export class Classifier {
           this.classifyColon(t, dep);
           break;
         case P_COMMA:
+          this.sa[dep] = 0;
           this.markPtrRun(t);
           if (this.ty(this.prevCtorColon(t, dep)) === TT_CTOR_INITIALIZER_COLON) {
             this.set(t, TT_CTOR_INITIALIZER_COMMA);
