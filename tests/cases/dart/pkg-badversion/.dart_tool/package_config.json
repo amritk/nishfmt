@@ -1,0 +1,13 @@
+{
+  "configVersion": 2,
+  "packages": [
+    {
+      "name": "badversion",
+      "rootUri": "../",
+      "packageUri": "lib/",
+      "languageVersion": "3.06"
+    }
+  ],
+  "generator": "pub",
+  "generatorVersion": "3.14.1"
+}

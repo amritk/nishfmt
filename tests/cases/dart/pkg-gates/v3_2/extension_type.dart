@@ -1,0 +1,2 @@
+extension type E(int i) {}
+var   unformatted  =   [1,2,  3];

@@ -18,7 +18,7 @@ nishfmt is MIT licensed ([LICENSE](LICENSE)). Its formatters for Java, Kotlin, R
 | Swift | the Unicode Character Database 15.0 and 15.1 | Unicode-3.0 | Copyright © Unicode, Inc. | `src/swift/unicode_data.ts` (generated tables) |
 | Rust | rustfmt 1.9.0 | MIT OR Apache-2.0 | Copyright The Rust Project Developers | `src/rust/` |
 | Rust | rustc_lexer and rustc_parse | MIT OR Apache-2.0 | Copyright The Rust Project Developers | `src/rust/` (lexer and parser) |
-| Dart | dart_style (Dart SDK 3.14) and _fe_analyzer_shared | BSD-3-Clause | Copyright the Dart project authors | `src/dart/` |
+| Dart | dart_style 3.1.14-wip at 5a9534fad9ff (Dart SDK 3.14.1) and _fe_analyzer_shared; package_config 3.0.1-wip and yaml 3.2.0-wip (dart-lang/tools at d87eaf7946e7) | BSD-3-Clause | Copyright the Dart project authors | `src/dart/` |
 | C# | CSharpier 1.4.0 | MIT | Copyright (c) 2021 Bela VanderVoort | `src/csharp/` |
 | C# | Roslyn | MIT | Copyright the .NET Foundation and Contributors | `src/csharp/` (lexer and parser) |
 
@@ -260,7 +260,7 @@ limitations under the License.
 
 ## BSD 3-Clause License
 
-Applies to dart_style and _fe_analyzer_shared.
+Applies to dart_style, _fe_analyzer_shared, package_config and yaml.
 
 ```text
 Copyright 2014, the Dart project authors. 

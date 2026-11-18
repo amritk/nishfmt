@@ -1,0 +1,2 @@
+var h = f<int>;
+var   unformatted  =   [1,2,  3];
