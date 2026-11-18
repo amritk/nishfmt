@@ -11,7 +11,7 @@ says how to rebuild them and rerun the comparisons.
 | --- | --- | --- | --- |
 | C++ | clang-format | 18.1.3 | `clang-format` on PATH |
 | Java | google-java-format | 1.28.0, all-dependencies jar | `$GJF` |
-| Kotlin | ktfmt | 0.64, with-dependencies jar | `$KTFMT` |
+| Kotlin | ktfmt | 0.65, with-dependencies jar (from the GitHub release; Maven Central stops at 0.64) | `$KTFMT` |
 | Ruby | RuboCop | 1.92.2 | `rubocop` on PATH |
 | Swift | SwiftFormat | 0.64.7 | `$SWIFTFORMAT`, else `swiftformat` |
 | Rust | rustfmt | 1.9.0 | `rustfmt` on PATH |
@@ -101,6 +101,9 @@ them on the whole corpus. nishfmt is faster than both, on 4 cores and on 1:
 | --- | ---: | ---: | ---: |
 | Kotlin | 9602 | ktrs 0.5.1: 2.43 s / 8.96 s | 2.03 s / 7.02 s |
 | Ruby | 1998 | rbcop 0.1.4: 6.55 s / 20.4 s | 4.00 s / 12.7 s |
+
+The Kotlin row was measured against the ktfmt 0.64 corpus, before nishfmt
+moved to ktfmt 0.65; ktrs follows ktfmt 0.64.
 
 nitrocop, another Rust reimplementation of RuboCop, matched on fewer than a
 quarter of the files of an earlier sample and is left out. rustfmt is itself

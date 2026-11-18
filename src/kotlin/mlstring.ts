@@ -4,7 +4,7 @@
 // Strings with template expressions, nested strings and one-line strings
 // are left alone. Works on the pretty printer's output, line by line.
 //
-// Ported from ktfmt's MultilineStringFormatter (Apache License 2.0,
+// Ported from ktfmt 0.65's MultilineStringFormatter (Apache License 2.0,
 // Copyright (c) Meta Platforms, Inc. and affiliates).
 
 import { Out } from "../core/out";

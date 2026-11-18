@@ -23,7 +23,7 @@ pinned to one core:
 | --- | --- | ---: | ---: | ---: |
 | C++ | clang-format 18, `{BasedOnStyle: LLVM, ColumnLimit: 120}` | 99.6% of 10,344 | 87.0 s / 212.9 s | **7.07 s / 28.9 s** |
 | Java | google-java-format 1.28 | 100% of 7,627 | 75.2 s / 252.9 s | **2.17 s / 8.64 s** |
-| Kotlin | ktfmt 0.64, default style | 100% of 9,602 | 92.9 s / not run | **2.03 s / 7.02 s** |
+| Kotlin | ktfmt 0.65, default style | 100% of 9,602 | 92.9 s / not run | **2.03 s / 7.02 s** |
 | C# | CSharpier 1.4.0, default options except `end_of_line = crlf` | 100% of 13,988 | 63.0 s / 122.7 s | **3.10 s / 6.63 s** |
 | Dart, tall style | `dart format` 3.14 | 100% of 10,313 | 55.2 s / 59.9 s | **3.08 s / 8.50 s** |
 | Dart, short style (below 3.7) | `dart format` 3.14 | 100% of 8,218 | 25.4 s / 25.6 s | **3.76 s / 6.27 s** |
@@ -44,7 +44,8 @@ pinned to one core:
 - How the reference tools ran: clang-format 50 files a process; one
   google-java-format JVM over all files; CSharpier on .NET 10 with
   `--no-cache`; rustfmt 100 files a process; RuboCop with `--parallel` on 4
-  cores. ktfmt was not run on one core.
+  cores. ktfmt was not run on one core. The Kotlin row's times were
+  measured with ktfmt 0.64, before nishfmt moved to 0.65.
 - nishfmt picks the language from the file name: `.cpp .cc .cxx .hpp .hh
   .hxx .h`, `.java`, `.kt .kts`, `.cs`, `.dart`, `.swift`, `.rs`, and
   RuboCop's default `Include` for Ruby (`.rb`, `Gemfile`, `.gemspec`, ...).
