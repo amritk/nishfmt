@@ -61,6 +61,7 @@ import {
   N_MEMBER,
   N_PNCOK,
   N_LARROW,
+  N_BRSON,
   N_QC,
   N_QCIND,
   N_RPAREN,
@@ -212,6 +213,9 @@ const LAZY_LIMIT: i64 = 1073741824;
 const RC_SIZE: i32 = 8192; // power of two
 const CC_SIZE: i32 = 65536; // power of two
 const IGNORE_AFTER: i32 = 50000;
+
+/** An implicit paren's record has no token: its R_TOK holds its precedence. */
+const fakeTok = (prec: i32): i32 => -2 - prec;
 
 const isHex = (c: i32): boolean => (c >= 48 && c <= 57) || (c >= 97 && c <= 102) || (c >= 65 && c <= 70);
 
@@ -1034,6 +1038,14 @@ export class Indenter {
         return uncheckedGet(rc, b + R_NBI);
       }
       if ((r & N_BRINIT) !== 0) {
+        // At the top level, or right inside an assignment, the brace lines
+        // up with the start of the line (clang-format 23).
+        if (
+          (this.sp === 2 && (r & N_BRSON) !== 0) ||
+          (this.sp === 3 && this.at(1, R_TOK) === fakeTok(PREC_ASSIGNMENT))
+        ) {
+          return this.firstIndent;
+        }
         return uncheckedGet(rc, b + R_LS);
       }
       return this.firstIndent;
@@ -1483,7 +1495,7 @@ export class Indenter {
       if (p > PREC_COMMA) {
         fl = fl & ~F_AVOID;
       }
-      this.setTop(R_TOK, -1);
+      this.setTop(R_TOK, fakeTok(p));
       if (!trailing && (prev < 0 || d.kind[prev] !== KW_RETURN || p > 0)) {
         let ind = this.top(R_IND);
         if (this.col > ind) {

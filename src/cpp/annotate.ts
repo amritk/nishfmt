@@ -53,6 +53,7 @@ import {
   P_COMMA,
   P_EQUAL,
   P_GREATER,
+  P_HASHHASH,
   P_LBRACE,
   P_LESS,
   P_LESSLESS,
@@ -77,6 +78,7 @@ import {
   TT_ATTRIBUTE_LPAREN,
   TT_ATTRIBUTE_SQUARE,
   TT_BINARY_OPERATOR,
+  TT_BLOCK_COMMENT,
   TT_CAST_RPAREN,
   TT_CONDITIONAL_EXPR,
   TT_CTOR_INITIALIZER_COLON,
@@ -163,6 +165,7 @@ export const N_IND: i32 = 65536;
 export const N_CI2: i32 = 131072;
 export const N_PNCOK: i32 = 262144;
 export const N_LARROW: i32 = 524288;
+export const N_BRSON: i32 = 1048576;
 
 // Per-token rules for placing a token on the current line (C_*).
 export const C_NOLB: i32 = 1; // a lambda among other arguments: no breaks on this line
@@ -1160,7 +1163,9 @@ export class Annot {
     if (
       pc >= 0 &&
       d.kind[pc] === P_LPAREN &&
-      !(ck === K_COMMENT || ck === P_LPAREN || d.type[t] === TT_LAMBDA_LSQUARE)
+      !(ck === K_COMMENT || ck === P_LPAREN || d.type[t] === TT_LAMBDA_LSQUARE) &&
+      // (clang-format 23: not right after a `/*name=*/` comment it is glued to.)
+      !(pt === TT_BLOCK_COMMENT && d.spaces[t] === 0)
     ) {
       const bpc = this.bpcnt[pc];
       if (bpc > 1) {
@@ -1321,6 +1326,10 @@ export class Annot {
       // goes to the line's first indent.)
       if (m >= 0 && d.bk[m] === BK_BRACED_INIT && d.eqList[m] === 0) {
         r = r | N_BRINIT;
+        const mp = this.prevNonComment(m);
+        if (mp >= 0 && d.type[mp] === TT_START_OF_NAME) {
+          r = r | N_BRSON;
+        }
       }
     }
     if (ck === P_RPAREN) {
@@ -1616,7 +1625,11 @@ export class Annot {
     const rt = d.type[t];
     if (rt === TT_POINTER_OR_REFERENCE) {
       const n = d.nxt[t];
-      return d.lMultiVar[l] === 1 || n < 0 || d.type[n] !== TT_FUNCTION_DECLARATION_NAME;
+      return d.lMultiVar[l] === 1 || n < 0 || (d.type[n] !== TT_FUNCTION_DECLARATION_NAME && d.kind[n] !== KW_CONST);
+    }
+    // Never next to a `##` (clang-format 23).
+    if (lk === P_HASHHASH || rk === P_HASHHASH) {
+      return false;
     }
     if (rt === TT_START_OF_NAME || rt === TT_FUNCTION_DECLARATION_NAME || rk === KW_OPERATOR) {
       return true;
