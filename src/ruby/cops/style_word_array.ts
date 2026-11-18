@@ -7,7 +7,7 @@ import { F_BEGIN, NT_ARRAY, NT_DSTR, NT_STR, V_NIL } from "../ast";
 import { RbCop } from "../cop";
 import { rnE, rnHas, rnHeredoc, rnS } from "../node";
 import { RbSource } from "../source";
-import { rbReplaceAll, rbToStringLiteral } from "../util";
+import { rbToStringLiteral, rbValidUtf8 } from "../util";
 import {
   rbLitAllowedBracketArray,
   rbLitBracketed,
@@ -15,7 +15,6 @@ import {
   rbLitInterpolatedLiteral,
   rbLitChars,
   rbLitPercentCorrect,
-  rbLitValidUtf8,
 } from "./lit_help";
 import { rbLitUWord } from "./lit_unicode";
 
@@ -54,19 +53,11 @@ const rbWaComplex = (src: RbSource, n: i32, regex: boolean): boolean => {
       continue;
     }
     const v = a.text(a.kid(s, 0));
-    if (!rbLitValidUtf8(v) || (regex && !rbWaWordMatch(v)) || v.indexOf(" ") >= 0) {
+    if (!rbValidUtf8(v) || (regex && !rbWaWordMatch(v)) || v.indexOf(" ") >= 0) {
       return true;
     }
   }
   return false;
-};
-
-/** Util#to_string_literal, with an invalid string not encoding-compatible. */
-const rbWaStringLiteral = (s: string): string => {
-  if (rbLitValidUtf8(s)) {
-    return rbToStringLiteral(s);
-  }
-  return `'${rbReplaceAll(rbReplaceAll(s, "\\", "\\\\"), '\\"', '"')}'`;
 };
 
 export class CopStyleWordArray {
@@ -136,7 +127,7 @@ export class CopStyleWordArray {
             if (a.type(w) === NT_DSTR) {
               words.push(rbLitInterpolatedLiteral(src, w));
             } else {
-              words.push(rbWaStringLiteral(a.text(a.kid(w, 0))));
+              words.push(rbToStringLiteral(a.text(a.kid(w, 0))));
             }
           }
           out = rbLitBracketed(src, n, words);

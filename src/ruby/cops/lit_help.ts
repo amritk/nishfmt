@@ -150,51 +150,6 @@ export const rbLitChars = (s: string): i32[] => {
   return out;
 };
 
-/** Whether a string is valid UTF-8. */
-export const rbLitValidUtf8 = (s: string): boolean => {
-  const n = toI32(s.length);
-  let i = 0;
-  while (i < n) {
-    const c = s.charCodeAt(i);
-    let k = 0;
-    let lo = 0x80;
-    let hi = 0xbf;
-    if (c < 0x80) {
-      i++;
-      continue;
-    } else if (c >= 0xc2 && c < 0xe0) {
-      k = 1;
-    } else if (c >= 0xe0 && c < 0xf0) {
-      k = 2;
-      if (c === 0xe0) {
-        lo = 0xa0;
-      } else if (c === 0xed) {
-        hi = 0x9f;
-      }
-    } else if (c >= 0xf0 && c < 0xf5) {
-      k = 3;
-      if (c === 0xf0) {
-        lo = 0x90;
-      } else if (c === 0xf4) {
-        hi = 0x8f;
-      }
-    } else {
-      return false;
-    }
-    if (i + k >= n) {
-      return false;
-    }
-    for (let j = 1; j <= k; j++) {
-      const d = s.charCodeAt(i + j);
-      if (j === 1 ? d < lo || d > hi : (d & 0xc0) !== 0x80) {
-        return false;
-      }
-    }
-    i += k + 1;
-  }
-  return true;
-};
-
 /** Node#block_literal?: the send of a block (or numblock). */
 export const rbLitBlockLiteral = (src: RbSource, n: i32): boolean => {
   const p = src.parent(n);
