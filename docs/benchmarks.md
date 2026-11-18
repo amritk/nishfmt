@@ -94,16 +94,16 @@ fresh copy each run:
 
 ## Rust reimplementations
 
-Two of the reference tools have a Rust reimplementation that also matches
-them on the whole corpus. nishfmt is faster than both, on 4 cores and on 1:
+RuboCop has a Rust reimplementation that also matches it on the whole
+corpus. nishfmt is faster than it, on 4 cores and on 1:
 
 | Language | Files | Reimplementation, 4 cores / 1 core | nishfmt, 4 cores / 1 core |
 | --- | ---: | ---: | ---: |
-| Kotlin | 9602 | ktrs 0.5.1: 2.43 s / 8.96 s | 2.03 s / 7.02 s |
 | Ruby | 1998 | rbcop 0.1.4: 6.55 s / 20.4 s | 4.00 s / 12.7 s |
 
-The Kotlin row was measured against the ktfmt 0.64 corpus, before nishfmt
-moved to ktfmt 0.65; ktrs follows ktfmt 0.64.
+ktrs 0.5.1, a Rust reimplementation of ktfmt, had a Kotlin row here, measured
+against ktfmt 0.64 in its default (Meta) style; it was not re-measured against
+the kotlinlang corpus, so the row is gone.
 
 nitrocop, another Rust reimplementation of RuboCop, matched on fewer than a
 quarter of the files of an earlier sample and is left out. rustfmt is itself

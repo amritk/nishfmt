@@ -303,14 +303,27 @@ export class KPasses {
       this.edit(this.t.start[s], this.t.end[s], keepLine ? "" : "\n");
     }
     this.redundantImports(root, used);
-    if (K_REMOVE_REDUNDANT_TRAILING_COMMAS) {
-      const commas: i32[] = [];
-      this.detectTrailingCommas(root, commas);
-      for (let i = 0; i < toI32(commas.length); i++) {
-        this.edit(this.t.start[commas[i]], this.t.end[commas[i]], "");
+    this.dropTrailingCommas(root, false);
+    return this.apply(out);
+  }
+
+  /**
+   * RedundantElementManager's trailing-comma removal, which only COMPLETE
+   * runs: an edit dropping each, and with `mark` each marked removed.
+   */
+  dropTrailingCommas(root: i32, mark: boolean): void {
+    if (!K_REMOVE_REDUNDANT_TRAILING_COMMAS) {
+      return;
+    }
+    const commas: i32[] = [];
+    this.detectTrailingCommas(root, commas);
+    for (let i = 0; i < toI32(commas.length); i++) {
+      const c = commas[i];
+      this.edit(this.t.start[c], this.t.end[c], "");
+      if (mark) {
+        this.removed[c] = 1;
       }
     }
-    return this.apply(out);
   }
 
   /**
@@ -477,14 +490,7 @@ export class KPasses {
         this.nlSemis.push(t.start[sm]);
       }
     }
-    if (K_REMOVE_REDUNDANT_TRAILING_COMMAS) {
-      const commas: i32[] = [];
-      this.detectTrailingCommas(root, commas);
-      for (let i = 0; i < toI32(commas.length); i++) {
-        this.edit(t.start[commas[i]], t.end[commas[i]], "");
-        this.removed[commas[i]] = 1;
-      }
-    }
+    this.dropTrailingCommas(root, true);
     this.removedOn = true;
     this.suggest(root);
     this.removedOn = false;

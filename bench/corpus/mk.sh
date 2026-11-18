@@ -2,8 +2,8 @@
 # Builds one language's corpus from the clones in $REPOS: $CORPUS/<lang>/raw
 # holds the sources as found, $CORPUS/<lang>/ref the reference tool's output at
 # its default settings (Kotlin: ktfmt's --kotlinlang-style; C#: under
-# $CORPUS/cs/.editorconfig, CSharpier's defaults with end_of_line = crlf), and $CORPUS/<lang>/failed.txt the files it rejected
-# (left out of comparisons).
+# $CORPUS/cs/.editorconfig, CSharpier's defaults with end_of_line = crlf), and
+# $CORPUS/<lang>/failed.txt the files it rejected (left out of comparisons).
 #
 #   mk.sh cpp|java|kt|rb|swift|rust|dart|cs
 #
