@@ -1,0 +1,6 @@
+class CleanupAnnotationParens {
+  @Override() public String toString() { return ""; }
+  @Deprecated( ) @SuppressWarnings("x") void f(@Nullable() String s) {}
+  @Keep(/* kept: a comment inside */) int x;
+  @Foo()int y;
+}

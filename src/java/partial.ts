@@ -1,18 +1,18 @@
 // google-java-format's partial formatting, which StringWrapper runs on the
-// ranges it is about to replace (Formatter.formatSource(input, ranges)): the
+// ranges it is about to replace (Formatter.getFormatReplacements): the
 // whole text is formatted again, the character ranges become token ranges,
 // those grow to the regions the visitor marked as formattable alone, and each
 // region's lines are taken from the new output. Formatting is not idempotent
 // everywhere (a trailing comment wrapped onto a second line is a leading
 // comment the next time), so this can change the text.
 //
-// Ported from google-java-format 1.28 (Apache License 2.0, Copyright 2015 Google Inc.):
+// Ported from google-java-format 2.0.0 (Apache License 2.0, Copyright 2015 Google Inc.):
 // Formatter.getFormatReplacements, JavaInput.characterRangesToTokenRanges,
 // JavaOutput.getFormatReplacements, expandToBreakableRegions and
 // applyReplacements, and InputOutput.makeKToIJ.
 
 import { Out } from "../core/out";
-import { GEngine } from "../gdoc/engine";
+import { JlEngine } from "./layout/engine";
 import { GInput } from "../gdoc/input";
 
 /** The byte length of a CharMatcher.whitespace() character at `i`, or 0. */
@@ -128,7 +128,7 @@ class JpLines {
   hi: i32 = -1;
 }
 
-const jpKToJ = (g: GEngine, k: i32, r: JpLines): void => {
+const jpKToJ = (g: JlEngine, k: i32, r: JpLines): void => {
   r.lo = -1;
   r.hi = -1;
   const ijN = g.nOutLines;
@@ -149,7 +149,7 @@ const jpKToJ = (g: GEngine, k: i32, r: JpLines): void => {
  * text into `out`; answers 1 when it changed, 0 when not, -1 when
  * google-java-format would fail.
  */
-export const partialFormat = (inp: GInput, g: GEngine, ranges: i32[], out: Out): i32 => {
+export const partialFormat = (inp: GInput, g: JlEngine, ranges: i32[], out: Out): i32 => {
   const text = inp.src;
   const n = inp.n;
   const kN = inp.kN;

@@ -1,0 +1,25 @@
+enum class Color { RED, GREEN, }
+
+enum class Size { S, M; }
+
+enum class Weight { LIGHT, HEAVY,; }
+
+class Point<T, U,>(val x: T, val y: U,)
+
+fun <T,> id(t: T,): T = t
+
+fun use() {
+  val p = Point<Int, Int,>(1, 2,)
+  val f = { a: Int, b: Int, -> a + b }
+  val g = { a: Int, /* c */ -> a }
+  when (p.x) {
+    1, 2, -> println(p)
+    else -> println(f(1, 2,))
+  }
+}
+
+@Target(AnnotationTarget.CLASS)
+annotation class Names(val names: Array<String>)
+
+@Names(names = ["a", "b",])
+class Named

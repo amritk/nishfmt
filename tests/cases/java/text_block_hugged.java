@@ -1,0 +1,11 @@
+class TextBlockHugged {
+  void f() {
+    assertThat(() -> { String json = """
+          {"a": 1,
+           "b": 2}
+        """; return json; });
+    list.forEach(x -> render("""
+        <p>%s</p>
+        """.formatted(x)));
+  }
+}

@@ -1,0 +1,5 @@
+class LogVarargs {
+  void f() {
+    logger.atInfo().withCause(e).logVarargs("aaaaaaaaaaaaaaaaaaaaaaaaaaaaaa %s %s", new Object[] {xxxxxxxxxxxxxxxxx, yyyyyyyyyyyyyy});
+  }
+}

@@ -1,11 +1,11 @@
 class Registry {
-  companion {
-    val instances = mutableListOf<Registry>()
+    companion {
+        val instances = mutableListOf<Registry>()
 
-    fun register(r: Registry) {
-      instances.add(r)
+        fun register(r: Registry) {
+            instances.add(r)
+        }
     }
-  }
 
-  val name = "registry"
+    val name = "registry"
 }

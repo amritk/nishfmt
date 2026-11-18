@@ -1,0 +1,59 @@
+package p
+
+class Box(val size: Int) {
+    var count: Int = 0
+        get() = field
+        private set
+
+    init {
+        count = size
+    }
+
+    companion object {
+        const val ONE = 1
+    }
+
+    fun f(x: Int): Int {
+        if (x > 0) {
+            for (i in 0 until x) {
+                println(i)
+            }
+        } else {
+            while (count < 3) {
+                count++
+            }
+            do {
+                count--
+            } while (count > 0)
+        }
+        try {
+            g()
+        } catch (e: Exception) {
+            // ignored
+        } finally {
+            h()
+        }
+        when (x) {
+            1 -> println("one")
+            else -> {
+                println("other")
+                // trailing comment
+            }
+        }
+        return x
+        // after return
+    }
+}
+
+object O {
+    val v = 1
+}
+
+enum class E(val n: Int) {
+    A(1) {
+        override fun toString() = "a"
+    },
+    B(2);
+
+    fun twice() = n * 2
+}

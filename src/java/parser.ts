@@ -13,6 +13,7 @@ import {
   CK_INTERFACE,
   CK_RECORD,
   FL_COMPACT_CTOR,
+  FL_IMPLICIT,
   FL_CTOR,
   FL_ENUM,
   FL_NEW_REF,
@@ -127,6 +128,7 @@ import {
 
 /** A saved parser position for speculation. */
 class Mark {
+  restricted: boolean = false;
   p: i32 = 0;
   n: i32 = 0;
   nLists: i32 = 0;
@@ -252,6 +254,7 @@ export class JParser {
   }
 
   save(m: Mark): void {
+    m.restricted = this.restrictedType;
     m.p = this.p;
     m.n = this.t.n;
     m.nLists = this.t.nLists;
@@ -261,6 +264,7 @@ export class JParser {
   }
 
   restore(m: Mark): void {
+    this.restrictedType = m.restricted;
     this.p = m.p;
     this.t.n = m.n;
     this.t.nLists = m.nLists;
@@ -282,6 +286,8 @@ export class JParser {
     this.p = 0;
     this.nT = this.inp.nTokens;
     this.err = false;
+    this.restrictedType = false;
+    this.allowVarType = false;
     // At most a few nodes per token (an enum constant makes three of one).
     t.ensure(this.nT * 4 + 1024);
     const cu = t.node(N_COMPILATION_UNIT, 0);
@@ -302,38 +308,136 @@ export class JParser {
       this.restore(m);
       t.a[cu] = t.empty();
     }
+    // javac (since JDK 21) rejects semicolons before an import declaration:
+    // "extraneous semicolon". After the last import they are empty type
+    // declarations.
+    let semis = false;
     while (this.is(";")) {
       this.next();
+      semis = true;
+    }
+    if (semis && this.is("import")) {
+      this.fail();
     }
     const im = t.mark();
     while (this.is("import") && !this.err) {
       t.push(this.importDecl());
+      semis = false;
       while (this.is(";")) {
         this.next();
+        semis = true;
+      }
+      if (semis && this.is("import")) {
+        this.fail();
       }
     }
     t.c[cu] = t.list(im);
     const dm = t.mark();
+    // A field or method at the top level makes every declaration a member
+    // of an implicitly declared class (JEP 445, a preview javac 21 parses).
+    let implicit = -1;
     while (!this.atEof() && !this.err) {
       if (this.is(";")) {
         this.next();
         continue;
       }
       if (this.is("import")) {
-        // javac allows imports after a stray semicolon; keep them as type decls.
-        t.push(this.importDecl());
-        continue;
+        // An import after a type declaration: "class, interface, enum, or record expected".
+        this.fail();
+        break;
       }
       if (this.looksLikeModule()) {
         t.e[cu] = this.moduleDecl();
         continue;
       }
+      const m0 = new Mark();
+      this.save(m0);
       const mods = this.modifiers();
-      t.push(this.classDecl(mods));
+      if (this.isClassStart()) {
+        t.push(this.classDecl(mods));
+        continue;
+      }
+      this.restore(m0);
+      if (implicit < 0) {
+        implicit = this.implicitClass();
+      }
+      const fieldStartOk = this.topLevelFieldStart();
+      const before = t.nTmp;
+      this.member(implicit);
+      // javac 21's topLevelMethodOrFieldDeclaration: a method, or a field
+      // whose first name is followed by `=` or `;` and whose type is not
+      // `var`. Anything else ("class, interface, enum, or record expected"
+      // for an initializer, a constructor-shaped member or `int a, b;`) is
+      // an error.
+      if (!this.err && t.nTmp > before) {
+        const m = t.tmp[before];
+        if (t.kind[m] === N_BLOCK || (t.kind[m] === N_METHOD && (t.flags[m] & FL_CTOR) !== 0)) {
+          this.fail();
+        } else if (t.kind[m] === N_VARIABLE && !fieldStartOk) {
+          this.fail();
+        }
+      }
     }
-    t.d[cu] = t.list(dm);
+    if (implicit >= 0) {
+      if (t.b[cu] >= 0) {
+        // "unnamed class should not have package declaration".
+        this.fail();
+      }
+      t.f[implicit] = t.list(dm);
+      const n = t.len(t.f[implicit]);
+      if (n > 0) {
+        t.start[implicit] = t.start[t.at(t.f[implicit], 0)];
+        t.end[implicit] = t.end[t.at(t.f[implicit], n - 1)];
+      }
+      const im2 = t.mark();
+      t.push(implicit);
+      t.d[cu] = t.list(im2);
+    } else {
+      t.d[cu] = t.list(dm);
+    }
     this.finish(cu);
+    if (this.restrictedType) {
+      this.fail();
+    }
     return cu;
+  }
+
+  /**
+   * Looks ahead over modifiers, type and name: whether `=` or `;` follows
+   * the name, and the type is not `var`, as javac 21 needs of a top-level
+   * field. The position is left as it was.
+   */
+  private topLevelFieldStart(): boolean {
+    const m = new Mark();
+    this.save(m);
+    this.modifiers();
+    let ok = false;
+    if (!this.is("<") && !this.is("var") && !this.is("void")) {
+      this.type();
+      if (!this.err && this.kindAt(0) === JK_IDENT) {
+        this.next();
+        ok = this.is("=") || this.is(";");
+      }
+    }
+    this.restore(m);
+    return ok;
+  }
+
+  /** The implicitly declared class the top-level members go in. */
+  private implicitClass(): i32 {
+    const t = this.t;
+    const c = t.node(N_CLASS, this.pos());
+    t.op[c] = CK_CLASS;
+    t.flags[c] = FL_IMPLICIT;
+    const bm = t.node(N_MODIFIERS, -1);
+    t.a[bm] = t.empty();
+    t.end[bm] = -1;
+    t.a[c] = bm;
+    t.b[c] = t.empty();
+    t.d[c] = t.empty();
+    t.e[c] = t.empty();
+    t.g[c] = t.empty();
+    return c;
   }
 
   private importDecl(): i32 {
@@ -903,13 +1007,14 @@ export class JParser {
   }
 
   /** A formal parameter; a receiver parameter sets slot d (its name expression). */
-  private formalParameter(allowReceiver: boolean): i32 {
+  private formalParameter(allowReceiver: boolean, allowVar: boolean = false): i32 {
     const t = this.t;
     const mods = this.modifiers();
     const start = t.start[mods] >= 0 ? t.start[mods] : this.pos();
     const v = t.node(N_VARIABLE, start);
     t.a[v] = mods;
     t.parent[mods] = v;
+    this.allowVarType = allowVar;
     let type = this.type();
     let varAnnos = -1;
     if (this.is("@") && this.varargsAnnotationsAhead()) {
@@ -1033,7 +1138,46 @@ export class JParser {
   }
 
   /** A type with dims; annotations before it become an ANNOTATED_TYPE. */
+  /**
+   * A type, as javac's unannotatedType: a restricted name (`var`, `yield`,
+   * `record`, `sealed`, `permits`), looked through array types, is "not
+   * allowed here", except `var` where the caller set `allowVarType` (an
+   * explicit lambda parameter). Nested types never allow it.
+   */
   type(): i32 {
+    const allowVar = this.allowVarType;
+    this.allowVarType = false;
+    const ty = this.typeAnnotated();
+    if (!this.err) {
+      let e = ty;
+      while (this.t.kind[e] === N_ARRAY_TYPE) {
+        e = this.t.a[e];
+      }
+      if (this.t.kind[e] === N_IDENTIFIER && this.t.name[e] >= 0) {
+        const w = this.t.name[e];
+        const inp = this.inp;
+        if (
+          (inp.is(w, "var") && !allowVar) ||
+          inp.is(w, "yield") ||
+          inp.is(w, "record") ||
+          inp.is(w, "sealed") ||
+          inp.is(w, "permits")
+        ) {
+          // Not this.fail(): a lookahead that parses a type here must still
+          // succeed, as javac's does, and the file fails once the parse
+          // keeps the type (Mark drops the flag with a lookahead).
+          this.restrictedType = true;
+        }
+      }
+    }
+    return ty;
+  }
+
+  allowVarType: boolean = false;
+  // A restricted name was parsed as a type ("'var' is not allowed here").
+  restrictedType: boolean = false;
+
+  private typeAnnotated(): i32 {
     const t = this.t;
     if (this.is("@")) {
       const start = this.pos();
@@ -1770,7 +1914,7 @@ export class JParser {
   }
 
   /** A binding, record or any pattern. */
-  private pattern(): i32 {
+  private pattern(nested: boolean = false): i32 {
     const t = this.t;
     const start = this.pos();
     if (this.is("_") && !this.isAt(1, "(") && this.kindAt(1) !== JK_IDENT) {
@@ -1782,6 +1926,10 @@ export class JParser {
     const vstart = t.start[mods] >= 0 ? t.start[mods] : this.pos();
     let type = -1;
     if (this.is("var") && this.kindAt(1) === JK_IDENT) {
+      // `var` types only a record pattern's components: "'var' is not allowed here".
+      if (!nested) {
+        this.fail();
+      }
       this.next();
     } else {
       type = this.type();
@@ -1792,7 +1940,7 @@ export class JParser {
       this.next();
       const pm = t.mark();
       while (!this.is(")") && !this.err) {
-        t.push(this.pattern());
+        t.push(this.pattern(true));
         if (!this.accept(",")) {
           break;
         }
@@ -1902,11 +2050,23 @@ export class JParser {
     const pm = t.mark();
     if (this.is("(")) {
       this.next();
+      // javac: the parameters are all `var`, or none is ("invalid lambda
+      // parameter declaration").
+      let nVar = 0;
+      let nOther = 0;
       while (!this.is(")") && !this.err) {
         const explicit = !(this.kindAt(0) === JK_IDENT && (this.isAt(1, ",") || this.isAt(1, ")")));
         if (explicit) {
-          t.push(this.formalParameter(false));
+          const p = this.formalParameter(false, true);
+          const ty = t.b[p];
+          if (ty >= 0 && t.kind[ty] === N_IDENTIFIER && this.inp.is(t.name[ty], "var")) {
+            nVar++;
+          } else {
+            nOther++;
+          }
+          t.push(p);
         } else {
+          nOther++;
           const v = t.node(N_VARIABLE, this.pos());
           const mods = t.node(N_MODIFIERS, -1);
           t.a[mods] = t.empty();
@@ -1919,6 +2079,9 @@ export class JParser {
         if (!this.accept(",")) {
           break;
         }
+      }
+      if (nVar > 0 && nOther > 0) {
+        this.fail();
       }
       this.expect(")");
     } else {

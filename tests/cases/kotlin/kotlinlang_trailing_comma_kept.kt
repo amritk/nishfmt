@@ -1,0 +1,31 @@
+fun call() {
+  foo(
+    1,
+    2,
+  )
+  foo(
+    1, // one
+    2 // two
+  )
+  foo(
+    1,
+    2 /* two */,
+  )
+  bar(firstArgumentWithALongName, secondArgumentWithALongName, thirdArgumentWithALongName,)
+  listOf(
+    1
+  )
+}
+
+enum class E {
+  A,
+  B,
+  ;
+
+  fun f() = 1
+}
+
+enum class F {
+  A,
+  B
+}

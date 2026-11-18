@@ -25,8 +25,10 @@ read `.nish/docs/AI.md` (the language as rules, traps first), then
 - `src/<lang>/` is one language: `run.ts` holds `<Lang>Engine`,
   `format<Lang>(e, path, src, n, out)` and `is<Lang>Name`, and the rest of
   the directory is that formatter. `src/core/` (output buffer, file walk,
-  UTF-16 lengths) and `src/gdoc/` (google-java-format's Doc engine, shared by
-  Java and Kotlin) are shared.
+  UTF-16 lengths) and `src/gdoc/` (google-java-format 1.x's Doc engine,
+  which Kotlin uses, and the token input and comment helpers Java and Kotlin
+  share) are shared. Java runs google-java-format 2.0.0's layout engine, in
+  `src/java/layout/`.
 - `tests/cases/*.cpp` and `tests/cases/<lang>/<name>.<ext>` are regression
   cases, each with `<name>.expected`, the reference tool's output.
 - `bench/corpus/` builds and checks the corpora; `tools/<lang>/` holds each
@@ -71,7 +73,10 @@ corpus gates, which need the reference tools.
 reports success when lint fails. Run it bare, or check `$?` / `PIPESTATUS`.
 
 **A fix lands with a regression case** in `tests/cases/` that fails without
-it, its `.expected` file taken from the reference tool.
+it, its `.expected` file taken from the reference tool. The case's input must
+differ from its `.expected`: nishfmt writes a skipped file back verbatim, so
+an already-formatted input passes whether the file was formatted or skipped,
+and cannot catch a formatter that wrongly gives up.
 
 **A performance change says what it measured**: a `Measured:` line in the
 commit body, before and after, on the same machine.
