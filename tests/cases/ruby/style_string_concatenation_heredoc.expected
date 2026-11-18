@@ -1,0 +1,13 @@
+# frozen_string_literal: true
+
+a = 'Hello' + <<~TEXT
+  world
+TEXT
+b = <<~TEXT + 'x'
+  world
+TEXT
+c = 'foo' + <<~STR.strip + 'bar'
+  text
+STR
+d = 'foo' + bar # rubocop:disable Style/StringConcatenation
+puts a, b, c, d
