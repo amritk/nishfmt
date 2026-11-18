@@ -51,7 +51,7 @@ import { OC_MACRO_ARG, rsRewriteWithParens } from "./overflow";
 import { RsParser } from "./parser";
 import { RsShape, rsConfigWithMaxWidth, rsIndentStr, rsIndentStrNl } from "./shape";
 import { RsStrBuf, rsHasByte, rsLines, rsTrim, rsTrimEnd } from "./str";
-import { K_IN_STRING, K_NORMAL, K_START_STRING, rsCharClasses, rsFilteredStrFits, rsLineClasses } from "./comment";
+import { K_IN_STRING, K_NORMAL, rsCharClasses, rsFilteredStrFits, rsIndentNextLine, rsLineClasses } from "./comment";
 import { rsFormatCodeBlock, rsFormatSnippet } from "./format";
 import { rsRewriteTy } from "./types";
 import { rsFormatVisibility, rsIdentStr } from "./utils";
@@ -663,7 +663,9 @@ const rewriteBranch = (ctx: RsCtx, br: Branch, shape: RsShape, multi: boolean): 
   }
   const oldBody = rsTrim(ctx.snippet(t.hi[br.bodyOpen], t.lo[br.bodyClose]));
   const hasBlockBody = oldBody.startsWith("{");
-  if (shape.subWidth(5) === null) {
+  // 5 = " => {", and at style edition 2024 6 = " => {{" for a block body.
+  const prefixWidth = cfg.styleEdition >= 2024 && hasBlockBody ? 6 : 5;
+  if (shape.subWidth(prefixWidth) === null) {
     return null;
   }
   let result = ctx.snippet(t.lo[br.argsOpen], t.hi[t.match[br.argsOpen]]);
@@ -708,7 +710,7 @@ const rewriteBranch = (ctx: RsCtx, br: Branch, shape: RsShape, multi: boolean): 
     nb.add(l);
     nb.add("\n");
     const k = lc.kinds[i];
-    needIndent = !(k === K_IN_STRING || k === K_START_STRING);
+    needIndent = rsIndentNextLine(k, bodyCfg);
   }
   let newBody = nb.str();
   for (let i = 0; i < olds.length; i++) {

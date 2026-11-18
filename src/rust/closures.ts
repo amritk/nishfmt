@@ -45,7 +45,7 @@ import {
   rsRewriteCond,
   rsRewriteExpr,
 } from "./expr";
-import { rsParamSpanLo, rsRewriteParam } from "./items";
+import { rsParamSpanLo, rsRewriteFnRetTy, rsRewriteParam } from "./items";
 import {
   DLT_HORIZONTAL,
   LT_HORIZONTAL_VERTICAL,
@@ -303,16 +303,12 @@ const rewriteClosureFnDecl = (ctx: RsCtx, e: i32, body: i32, shape: RsShape): Fn
   }
   let paramShape = ps0.visualIndent(0);
   let retStr = "";
-  const out = ast.a[decl];
-  if (out >= 0) {
-    if (paramShape.width < 3) {
-      return null;
-    }
-    const r = rsRewriteTy(ctx, out, rsShapeLegacy(paramShape.width - 3, paramShape.bi, paramShape.al + 3));
+  if (ast.a[decl] >= 0) {
+    const r = rsRewriteFnRetTy(ctx, decl, paramShape);
     if (r === null) {
       return null;
     }
-    retStr = "-> " + r;
+    retStr = r;
   }
   const lo = ast.lo[e];
   const hi = ast.hi[e];
@@ -432,16 +428,19 @@ const isBlockClosureForced = (ctx: RsCtx, e: i32): boolean => {
   if (ctx.insideMacro) {
     return false;
   }
-  return forcedInner(ctx.ast, e);
+  return forcedInner(ctx.ast, e, ctx.cfg.styleEdition);
 };
 
-const forcedInner = (ast: RsAst, e: i32): boolean => {
+const forcedInner = (ast: RsAst, e: i32, styleEdition: i32): boolean => {
   const k = ast.kind[e];
   if (k === N_EX_IF || k === N_EX_WHILE || k === N_EX_FOR) {
     return true;
   }
+  if (k === N_EX_LOOP && styleEdition >= 2024) {
+    return true;
+  }
   if (k === N_EX_ADDR_OF || k === N_EX_TRY || k === N_EX_UNARY || k === N_EX_CAST) {
-    return forcedInner(ast, ast.a[e]);
+    return forcedInner(ast, ast.a[e], styleEdition);
   }
   return false;
 };

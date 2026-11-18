@@ -7,7 +7,7 @@
 import { Out } from "../core/out";
 import { RsAst } from "./ast";
 import { rsAttrsContainSkip } from "./attr";
-import { K_IN_STRING, K_START_STRING, rsLineClasses } from "./comment";
+import { rsIndentNextLine, rsLineClasses } from "./comment";
 import { RsCtx, RsFile, RsRanges } from "./context";
 import { RsTokens, rsLex } from "./lexer";
 import { RsParser } from "./parser";
@@ -148,8 +148,6 @@ export const rsFormatSnippet = (parent: RsCtx, code: string, cfg: RsConfig, isMa
 
 const FN_MAIN_PREFIX: string = "fn main() {\n";
 
-const isStringKind = (k: i32): boolean => k === K_IN_STRING || k === K_START_STRING;
-
 /** format_code_block: the code wrapped in `fn main() {}`, formatted, then unwrapped. */
 export const rsFormatCodeBlock = (
   parent: RsCtx,
@@ -166,7 +164,7 @@ export const rsFormatCodeBlock = (
       wrapped = wrapped + indent;
     }
     wrapped = wrapped + lc.lines[i] + "\n";
-    needIndent = !isStringKind(lc.kinds[i]);
+    needIndent = rsIndentNextLine(lc.kinds[i], cfg);
   }
   wrapped = wrapped + "}";
   const fm = rsFormatSnippet(parent, wrapped, cfg, isMacroDef);
@@ -215,7 +213,7 @@ export const rsFormatCodeBlock = (
       }
     }
     result = result + trimmed;
-    isIndented = !isStringKind(inner.kinds[i]);
+    isIndented = rsIndentNextLine(inner.kinds[i], cfg);
   }
   return new RsSnippet(result, fm.skipped);
 };

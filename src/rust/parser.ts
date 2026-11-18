@@ -2359,9 +2359,16 @@ export class RsParser {
       this.ast.kind[g] = N_GARGS_ELIDED;
       return this.fin(g);
     }
+    // rustc 1.99 parses the inputs as params with an optional name (the
+    // feature gate named_fn_trait_parameters is checked after parsing);
+    // attributes and `...` there are errors.
     const mark = this.sp;
     while (!this.failed && !this.is(T_RPAREN)) {
-      this.push(this.parseTy());
+      if (this.is(T_POUND) || this.is(T_DOTDOTDOT)) {
+        this.fail();
+        return -1;
+      }
+      this.push(this.parseParam(false, false));
       if (!this.eat(T_COMMA)) {
         break;
       }
@@ -4175,10 +4182,9 @@ export class RsParser {
       const gv113 = this.parsePatTopAlt();
       this.ast.a[arm] = gv113;
       if (this.eatKw(KW_IF)) {
+        // expect_match_arm_guard_cond: let chains are allowed in a guard at
+        // every edition (LetChainsPolicy::AlwaysAllowed).
         const gv114 = this.parseExprRes(R_ALLOW_LET);
-        if (!this.failed && this.ast.kind[gv114] === N_EX_BINARY && this.hasLetInAndChain(gv114)) {
-          return this.fail();
-        }
         this.ast.b[arm] = gv114;
       }
       if (this.failed) {

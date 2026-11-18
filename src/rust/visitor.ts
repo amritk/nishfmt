@@ -332,11 +332,16 @@ export class RsVisitor {
     const fixIndent = lastChar < 0 || lastChar === 123 || lastChar === 10;
     let cbi = this.bi;
     let cal = this.al;
+    let onSameLine = false;
     if (fixIndent) {
       if (lastChar === 123) {
         this.pushStr("\n");
       }
       this.pushStr(this.indentStr());
+    } else if (this.f.cfg.styleEdition >= 2024 && !snippet.startsWith("\n")) {
+      // On the line of the code before it: kept at the block's indent.
+      onSameLine = true;
+      this.pushStr(" ");
     } else {
       this.pushStr(" ");
       const ind = rsIndentFromWidth(this.f.cfg, this.bufLastLineWidth());
@@ -344,8 +349,22 @@ export class RsVisitor {
       cal = ind.al;
     }
     const cs = rsShapeIndented(cbi, cal, this.f.cfg).comment(this.f.cfg);
-    const r = rsRewriteComment(sub, cs, this.f.cfg);
-    this.pushStr(r === null ? sub : r);
+    const nl = onSameLine ? rsIndexOfByte(sub, 10, 0) : -1;
+    if (onSameLine && nl < 0) {
+      this.pushStr(sub);
+    } else if (onSameLine && nl + 1 === toI32(sub.length)) {
+      this.pushStr(sub.slice(0, nl));
+    } else if (onSameLine) {
+      // The first line as is: wrapped, it could mix with the other lines.
+      this.pushStr(sub.slice(0, nl));
+      this.pushStr(rsIndentStrNl(this.f.cfg, cbi, cal));
+      const other = sub.slice(nl + 1, toI32(sub.length));
+      const r = rsRewriteComment(other, cs, this.f.cfg);
+      this.pushStr(r === null ? other : r);
+    } else {
+      const r = rsRewriteComment(sub, cs, this.f.cfg);
+      this.pushStr(r === null ? sub : r);
+    }
     const ls = offset + toI32(sub.length);
     if (ls <= toI32(snippet.length)) {
       let k = ls;
@@ -730,6 +749,27 @@ export class RsVisitor {
         const between = this.snippet(lastHi, lo + offset);
         let sameLine = !rsHasByte(between, 10);
         let commentShape = rsShapeIndented(this.bi, this.al, cfg).comment(cfg);
+        if (cfg.styleEdition >= 2024 && sameLine) {
+          // The comment's first line goes on the block's last line, the
+          // other lines below it.
+          this.pushStr(" ");
+          const nl = rsIndexOfByte(sub, 10, 0);
+          if (nl < 0) {
+            this.pushStr(sub);
+          } else if (nl + 1 === toI32(sub.length)) {
+            this.pushStr(sub.slice(0, nl));
+          } else {
+            this.pushStr(sub.slice(0, nl));
+            this.pushStr(this.indentStrNl());
+            const other = sub.slice(nl + 1, toI32(sub.length));
+            const r = rsRewriteComment(other, commentShape, cfg);
+            this.pushStr(r === null ? other : r);
+          }
+          prevEndsWithNewline = sub.endsWith("\n");
+          extraNewline = false;
+          lastHi = lo + offset + toI32(sub.length);
+          continue;
+        }
         if (sameLine) {
           let w = this.bufLastLineWidth() - (this.bi + this.al);
           if (w < 0) {

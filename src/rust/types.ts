@@ -261,7 +261,7 @@ const rewriteConstraint = (ctx: RsCtx, n: i32, shape: RsShape): string | null =>
   return result + rw;
 };
 
-/** format_function_type: `decl` lists the input types (an N_PGARGS or N_FNDECL), `output` is -1 or a type. */
+/** format_function_type: `decl` lists the input params (an N_PGARGS or N_FNDECL), `output` is -1 or a type. */
 const formatFunctionType = (
   ctx: RsCtx,
   decl: i32,
@@ -300,16 +300,14 @@ const formatFunctionType = (
       listStr = comment;
     }
   } else {
-    const isFnDecl = ast.kind[decl] !== N_PGARGS;
     const items = rsItemizeList(
       ctx,
       n,
       ")",
       ",",
-      (i: i32): i32 => (isFnDecl ? rsParamSpannedLo(ast, ast.kid(decl, i)) : ast.lo[ast.kid(decl, i)]),
-      (i: i32): i32 => (isFnDecl ? ast.hi[ast.b[ast.kid(decl, i)]] : ast.hi[ast.kid(decl, i)]),
-      (i: i32): string | null =>
-        isFnDecl ? rsRewriteParam(ctx, ast.kid(decl, i), listShape) : rsRewriteTy(ctx, ast.kid(decl, i), listShape),
+      (i: i32): i32 => rsParamSpannedLo(ast, ast.kid(decl, i)),
+      (i: i32): i32 => ast.hi[ast.b[ast.kid(decl, i)]],
+      (i: i32): string | null => rsRewriteParam(ctx, ast.kid(decl, i), listShape),
       listLo,
       spanHi,
       false,
@@ -481,6 +479,23 @@ const boundHi = (ast: RsAst, b: i32): i32 => ast.hi[b];
 
 const isTraitBound = (ast: RsAst, b: i32): boolean => ast.kind[b] !== N_LIFETIME;
 
+/** join_bounds_inner's is_item_with_multi_items_array. */
+const isItemWithMultiItemsArray = (ast: RsAst, b: i32): boolean => {
+  const k = ast.kind[b];
+  if (k === N_USE_BOUND) {
+    return ast.ln[b] > 1;
+  }
+  if (k !== N_TRAIT_BOUND) {
+    return false;
+  }
+  const path = ast.a[b];
+  if (ast.ln[path] > 1) {
+    return true;
+  }
+  const args = ast.a[ast.kid(path, 0)];
+  return args >= 0 && ast.kind[args] === N_GARGS && ast.ln[args] > 1;
+};
+
 const joinBounds = (
   ctx: RsCtx,
   shape: RsShape,
@@ -565,7 +580,16 @@ const joinBounds = (
     prevTrailingHi = trailingHi;
     prevExtendable = extendable;
   }
-  const retry = !forceNewline && n > 1 && (rsHasByte(strs, 10) || toI32(strs.length) > shape.width);
+  // Retry with a forced newline when the result is multiline or too wide
+  // and, at style edition 2024, it has more than one bound or its one trait
+  // bound holds a list with more than one item.
+  const overflows = rsHasByte(strs, 10) || toI32(strs.length) > shape.width;
+  let retry = false;
+  if (cfg.styleEdition <= 2021) {
+    retry = !forceNewline && n > 1 && overflows;
+  } else if (!forceNewline && overflows) {
+    retry = n > 1 || isItemWithMultiItemsArray(ast, ast.kid(bounds, 0));
+  }
   if (retry) {
     return joinBounds(ctx, shape, bounds, needIndent, true);
   }
@@ -723,11 +747,28 @@ export const rsRewriteTy = (ctx: RsCtx, ty: i32, shape: RsShape): string | null 
     return rewriteRefTy(ctx, ty, shape);
   }
   if (k === N_TY_PAREN) {
-    if (shape.width < 2) {
+    if (ctx.cfg.styleEdition <= 2021) {
+      if (shape.width < 2) {
+        return null;
+      }
+      const s = rsRewriteTy(ctx, ast.a[ty], rsShapeLegacy(shape.width - 2, shape.bi, shape.al + 1));
+      return s === null ? null : `(${s})`;
+    }
+    // 2 = ()
+    const sh = shape.subWidth(2);
+    if (sh !== null) {
+      const s = rsRewriteTy(ctx, ast.a[ty], sh);
+      if (s !== null && !rsHasByte(s, 10)) {
+        return `(${s})`;
+      }
+    }
+    const indentStr = rsIndentStrNl(ctx.cfg, shape.bi, shape.al);
+    const bs = shape.blockIndent(ctx.cfg.tabSpaces).withMaxWidth(ctx.cfg);
+    const rw = rsRewriteTy(ctx, ast.a[ty], bs);
+    if (rw === null) {
       return null;
     }
-    const s = rsRewriteTy(ctx, ast.a[ty], rsShapeLegacy(shape.width - 2, shape.bi, shape.al + 1));
-    return s === null ? null : `(${s})`;
+    return "(" + rsIndentStrNl(ctx.cfg, bs.bi, bs.al) + rw + indentStr + ")";
   }
   if (k === N_TY_SLICE) {
     if (shape.width < 4) {
@@ -769,7 +810,8 @@ export const rsRewriteTy = (ctx: RsCtx, ty: i32, shape: RsShape): string | null 
     if (ast.ln[b] === 0) {
       return "impl";
     }
-    const s = rsRewriteBounds(ctx, b, shape);
+    // At style edition 2024 the bounds are joined without need_indent.
+    const s = ctx.cfg.styleEdition <= 2021 ? rsRewriteBounds(ctx, b, shape) : joinBounds(ctx, shape, b, false, false);
     if (s === null) {
       return null;
     }

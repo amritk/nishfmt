@@ -79,7 +79,7 @@ export const N_TY_PAT: i32 = 66;
 export const N_PATH: i32 = 70; // list: N_SEG; fl: PATH_GLOBAL
 export const N_SEG: i32 = 71; // d: ident token, a: generic args or -1
 export const N_GARGS: i32 = 72; // angle-bracketed; list: tys, N_LIFETIME, const exprs, N_CONSTRAINT
-export const N_PGARGS: i32 = 73; // parenthesized; list: input tys; a: output ty or -1
+export const N_PGARGS: i32 = 73; // parenthesized; list: N_PARAM inputs; a: output ty or -1
 export const N_CONSTRAINT: i32 = 74; // d: ident, a: generic args or -1, b: ty (`= Ty`) or -1, c: N_BOUNDS or -1, e: const expr
 export const N_GARGS_ELIDED: i32 = 75; // `(..)`
 
