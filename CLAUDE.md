@@ -80,6 +80,11 @@ and cannot catch a formatter that wrongly gives up. Run each new case against
 the base commit's binary before committing it: a case the old binary already
 passes pins nothing.
 
+**A skip case is `tests/cases/<lang>/skip_<name>.<ext>`, with no
+`.expected`.** `tests/run.sh` requires the "skipped" message, an unchanged
+file and a clean `--check`, so the case fails on a binary that formats the
+file. Never pin a skip with a `.expected` equal to the input.
+
 **Skip what the reference rejects.** When a port makes a parser accept a new
 form (a new syntax, a top-level member, a module import), port the reference
 parser's rejections for that form in the same change, and probe it with inputs
