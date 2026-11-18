@@ -3123,7 +3123,6 @@ const isPossibleMacro = (d: Doc, t: i32): boolean => {
 };
 
 /** The token before `t`, comments skipped, or -1. */
-
 const prevCode = (d: Doc, t: i32): i32 => {
   let p = d.prv[t];
   while (p >= 0 && d.kind[p] === K_COMMENT) {
@@ -3338,10 +3337,13 @@ export const isTypeName = (d: Doc, t: i32): boolean => {
     return false;
   }
   const w = d.len(t);
-  // (Every one is 6 to 9 bytes and ends in `_t`: 95 `_`, 116 `t`.)
+  // A cheap test first: every name in the list below is 6 to 9 bytes and
+  // ends in `_t` (95 `_`, 116 `t`). A name added to the list must keep that,
+  // or this test must change with it.
   if (w < 6 || w > 9 || d.at(d.end[t] - 2) !== 95 || d.lastByte(t) !== 116) {
     return false;
   }
+  // clang-format 23.1.5's CppNonKeywordTypes, all 14.
   return (
     d.is(t, "clock_t") ||
     d.is(t, "int16_t") ||
