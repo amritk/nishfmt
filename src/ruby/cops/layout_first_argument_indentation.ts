@@ -102,9 +102,7 @@ export class CopLayoutFirstArgumentIndentation {
         if (this.al.dispCol(src, a.exS(send)) < ad && delta <= 0) {
           if (top !== send) {
             target = top;
-          } else if (!rnHas(src, top, F_END)) {
-            continue; // begins_its_line?(nil): RuboCop raises
-          } else if (lalBeginsItsLine(src, rnS(src, top, F_END))) {
+          } else if (rnHas(src, top, F_END) && lalBeginsItsLine(src, rnS(src, top, F_END))) {
             target = top;
           }
         }
