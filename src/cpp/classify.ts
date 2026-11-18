@@ -1493,18 +1493,24 @@ export class Classifier {
     this.operatorCallOperands();
     this.keepBreakAfterAttributes();
     // A function declaration line ending in `};` has a body, not a braced
-    // list, before its `;` (clang-format re-marks those braces).
+    // list, before its `;` (clang-format re-marks those braces). The line
+    // declares a function when its first word is a constructor's or
+    // destructor's name, or a later name before any braced list is a
+    // declaration's (TokenAnnotator::annotate).
     const last = d.lLast[l];
     const lp = d.prv[last];
     if (d.kind[last] === P_SEMI && lp >= 0 && d.kind[lp] === P_RBRACE && d.match[lp] >= 0 && d.match[lp] < lp) {
-      let fn = false;
-      for (let q = this.first; q >= 0 && q !== lp; q = d.nxt[q]) {
-        if (d.type[q] === TT_FUNCTION_DECLARATION_NAME) {
+      let fnc = this.first;
+      while (fnc >= 0 && d.kind[fnc] === K_COMMENT) {
+        fnc = d.nxt[fnc];
+      }
+      let fn = fnc >= 0 && d.type[fnc] === TT_CTOR_DTOR_DECL_NAME;
+      for (let q = fnc >= 0 ? d.nxt[fnc] : -1; !fn && q >= 0 && d.bk[q] !== BK_BRACED_INIT; q = d.nxt[q]) {
+        if (d.type[q] === TT_FUNCTION_DECLARATION_NAME || d.type[q] === TT_CTOR_DTOR_DECL_NAME) {
           fn = true;
-          break;
         }
       }
-      if (fn) {
+      if (fn && d.type[d.match[lp]] === TT_UNKNOWN) {
         const lb = d.match[lp];
         d.bk[lb] = BK_BLOCK;
         d.bk[lp] = BK_BLOCK;
@@ -2620,6 +2626,10 @@ const ppSpace = (d: Doc, l: i32, r: i32): boolean => {
   if (d.prv[left] === f) {
     // `#if (` and `#elif (`: a control statement's parenthesis.
     if (d.kind[r] === P_LPAREN && (d.is(left, "if") || d.is(left, "elif"))) {
+      return true;
+    }
+    // The first token after `#error` or `#warning` is TT_AfterPPDirective.
+    if (d.ppKind[f] === PP_ERROR) {
       return true;
     }
     return d.ws[r] === 1 || d.lType[l] === LT_IMPORT; // the directive's first argument

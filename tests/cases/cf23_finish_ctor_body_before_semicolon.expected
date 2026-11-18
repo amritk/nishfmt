@@ -1,0 +1,7 @@
+struct S {
+  S(int c) : a(c) {};
+  ~S() {};
+  ~S() override {};
+  int a;
+};
+S::S() : a(b) {};
