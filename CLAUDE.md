@@ -73,6 +73,13 @@ reports success when lint fails. Run it bare, or check `$?` / `PIPESTATUS`.
 **A fix lands with a regression case** in `tests/cases/` that fails without
 it, its `.expected` file taken from the reference tool.
 
+**An upgrade's "no case needed" claim is tested, not argued.** A ported
+upstream change that cannot alter the reference tool's output under
+nishfmt's fixed settings needs no regression case, but the PR says so with
+the distinguishing inputs tried against main's binary and the reference.
+"Already matching" needs the same: an input run on main's binary, not only
+the upstream spec examples.
+
 **A performance change says what it measured**: a `Measured:` line in the
 commit body, before and after, on the same machine.
 
