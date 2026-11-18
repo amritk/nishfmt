@@ -1478,7 +1478,7 @@ export class Classifier {
         if (
           p >= 0 &&
           (this.k(p) === KW_NOEXCEPT ||
-            this.k(p) === P_RBRACE ||
+            (this.k(p) === P_RBRACE && d.bk[p] === BK_BLOCK) ||
             (autoFound &&
               d.lMightFn[l] === 1 &&
               d.nest[t] === 0 &&
