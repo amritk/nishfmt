@@ -46,6 +46,23 @@ const rbRpqEscapedNonBackslash = (s: string): boolean => {
   return false;
 };
 
+/**
+ * ESCAPED_QUOTE /(?<!\\)(?:\\\\)*\\"/ (odd) and UNESCAPED_QUOTE
+ * /(?<!\\)(?:\\\\)*"/ (even): a `"` after a run of backslashes of that parity.
+ */
+const rbRpqQuoteAfterBackslashes = (s: string, odd: boolean): boolean => {
+  const n = toI32(s.length);
+  let run = 0;
+  for (let i = 0; i < n; i++) {
+    const c = s.charCodeAt(i);
+    if (c === 34 && (run % 2 === 1) === odd) {
+      return true;
+    }
+    run = c === 92 ? run + 1 : 0;
+  }
+  return false;
+};
+
 export class CopStyleRedundantPercentQ {
   c: RbCop;
 
@@ -75,15 +92,25 @@ export class CopStyleRedundantPercentQ {
         if ((rbRpqInterpolation(source) && sq) || rbRpqEscapedNonBackslash(source)) {
           continue;
         }
-      } else if (dq && (rbRpqInterpolation(source) || (t === NT_STR && rbDoubleQuotesRequired(source)))) {
+      } else if (
+        dq &&
+        (rbRpqInterpolation(source) ||
+          (t === NT_STR && rbDoubleQuotesRequired(source)) ||
+          (rbRpqQuoteAfterBackslashes(source, true) && rbRpqQuoteAfterBackslashes(source, false)))
+      ) {
         continue;
       }
       const k = this.c.offense(a.exS(n), a.exE(n));
       if (k === null) {
         continue;
       }
-      // /\A%Q[^"]+\z|'/
-      const delimiter = (source.startsWith("%Q") && source.length > 2 && !dq) || sq ? '"' : "'";
+      // double_quotes_delimiter?: /\A%Q[^"]+\z|'/, or a %Q string with an escaped double quote
+      const delimiter =
+        (source.startsWith("%Q") && source.length > 2 && !dq) ||
+        sq ||
+        (source.startsWith("%Q") && rbRpqQuoteAfterBackslashes(source, true))
+          ? '"'
+          : "'";
       k.replace(rnS(src, n, F_BEGIN), rnE(src, n, F_BEGIN), delimiter);
       k.replace(rnS(src, n, F_END), rnE(src, n, F_END), delimiter);
       this.c.commit(k);

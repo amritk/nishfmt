@@ -1,0 +1,8 @@
+# frozen_string_literal: true
+
+# rubocop:disable Style/BarePercentLiterals
+puts '"hi"'
+puts %Q("hi\")
+puts '\\"hi\\"'
+puts 'a\"b'
+# rubocop:enable Style/BarePercentLiterals
