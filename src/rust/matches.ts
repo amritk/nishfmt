@@ -375,8 +375,7 @@ const rewriteMatchBody = (
   // The comment after `=>`.
   const arrowSnippet = rsTrim(ctx.snippet(arrowLo, arrowHi));
   // From the end, since the guard may hold a match expression.
-  const ai =
-    cfg.styleEdition <= 2021 ? rsLastIndexOf(arrowSnippet, "=>") : rsFindLastUncommented(arrowSnippet, "=>");
+  const ai = cfg.styleEdition <= 2021 ? rsLastIndexOf(arrowSnippet, "=>") : rsFindLastUncommented(arrowSnippet, "=>");
   const commentStr = ai < 0 ? "" : rsTrim(arrowSnippet.slice(ai + 2, toI32(arrowSnippet.length)));
   let arrowComment = "";
   if (commentStr.length !== 0) {

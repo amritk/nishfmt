@@ -52,7 +52,6 @@ import {
   rsTrimmedLastLineWidth,
 } from "./comment";
 import { RsCtx } from "./context";
-import { KW_CONST, T_NOT } from "./lexer";
 import {
   RHS_BOUNDS,
   RHS_EXPR,

@@ -55,9 +55,9 @@ import {
   rsItemizeList,
   rsWriteList,
 } from "./lists";
-import { RsShape, rsIndentStr, rsShapeLegacy } from "./shape";
+import { RsShape, rsIndentStr } from "./shape";
 import { rsHasByte, rsLines } from "./str";
-import { rsRewriteBoundParams, rsRewriteTy } from "./types";
+import { rsRewriteBoundParams } from "./types";
 import { rsExprHasAttrs, rsLeftMostSubExpr } from "./utils";
 
 /** rewrite_closure for closure expr `e`. */

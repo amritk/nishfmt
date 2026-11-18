@@ -189,7 +189,10 @@ class RsUwState {
     const tagDigit = c >= 0xe0030 && c <= 0xe0039;
     let w = -2;
     let ni = WI_DEFAULT;
-    if (next === WI_JOINING_GROUP_ALEF && (c === 0x644 || (c >= 0x6b5 && c <= 0x6b8) || c === 0x76a || c === 0x8a6 || c === 0x8c7)) {
+    if (
+      next === WI_JOINING_GROUP_ALEF &&
+      (c === 0x644 || (c >= 0x6b5 && c <= 0x6b8) || c === 0x76a || c === 0x8a6 || c === 0x8c7)
+    ) {
       // Arabic Lam-Alef ligature
       w = 0;
     } else if (next === WI_JOINING_GROUP_ALEF && uwHas(v, UF_TRANSPARENT_ZERO_WIDTH)) {
