@@ -6,7 +6,7 @@
 
 import { GInput } from "../gdoc/input";
 import { JK_CHAR, JK_IDENT, JK_NUMBER, JK_STRING, JK_TEXT_BLOCK } from "./lexer";
-import { modifierRank } from "./modifiers";
+import { modifierRank, RANK_NON_SEALED } from "./modifiers";
 import {
   CK_ANNOTATION,
   CK_CLASS,
@@ -183,8 +183,12 @@ export class JParser {
     return this.op2At(0, a, b);
   }
 
+  op3At(i: i32, a: string, b: string, c: string): boolean {
+    return this.op2At(i, a, b) && this.isAt(i + 2, c) && this.adjAt(i + 2);
+  }
+
   op3(a: string, b: string, c: string): boolean {
-    return this.op2(a, b) && this.isAt(2, c) && this.adjAt(2);
+    return this.op3At(0, a, b, c);
   }
 
   kindAt(i: i32): i32 {
@@ -603,24 +607,20 @@ export class JParser {
     // javac's modifiersOpt asks isSealedClassStart(false) and
     // isNonSealedClassStart(false), in a block as well: otherwise the word is
     // an identifier (`sealed int x;` is a field of type `sealed`).
-    if (inp.is(t, "sealed")) {
-      return this.allowedAfterSealedOrNonSealed(1, false, false);
+    return this.isSealedOrNonSealedClassStart(false);
+  }
+
+  /** javac's isSealedClassStart(local) or isNonSealedClassStart(local) at the current token. */
+  private isSealedOrNonSealedClassStart(local: boolean): boolean {
+    if (this.is("sealed")) {
+      return this.allowedAfterSealedOrNonSealed(1, local, false);
     }
-    if (this.isNonSealedAt(0)) {
-      return this.allowedAfterSealedOrNonSealed(3, false, true);
-    }
-    return false;
+    return this.isNonSealedAt(0) && this.allowedAfterSealedOrNonSealed(3, local, true);
   }
 
   /** javac's isNonSealedIdentifier: `non-sealed` at token p+i, its three tokens adjacent. */
   private isNonSealedAt(i: i32): boolean {
-    return (
-      this.isAt(i, "non") &&
-      this.isAt(i + 1, "-") &&
-      this.isAt(i + 2, "sealed") &&
-      this.adjAt(i + 1) &&
-      this.adjAt(i + 2)
-    );
+    return this.op3At(i, "non", "-", "sealed");
   }
 
   /**
@@ -671,12 +671,13 @@ export class JParser {
           t.start[n] = this.pos();
         }
         any = true;
-        const bit = 1 << (this.is("non") ? 7 : modifierRank(this.inp, this.tokAt(0)));
+        const non = this.is("non");
+        const bit = 1 << (non ? RANK_NON_SEALED : modifierRank(this.inp, this.tokAt(0)));
         if ((seen & bit) !== 0) {
           this.rejected = true;
         }
         seen = seen | bit;
-        if (this.is("non")) {
+        if (non) {
           this.skip(3);
         } else {
           if (this.is("sealed")) {
@@ -1275,8 +1276,10 @@ export class JParser {
 
   allowVarType: boolean = false;
   // javac reported an error and parsed on: a restricted name as a type ("'var'
-  // is not allowed here") or a declared name, a `permits` clause without
-  // `sealed`, an unqualified `yield(...)`. The file fails once the parse keeps
+  // is not allowed here"), a declared name or a constructor-shaped member's
+  // name, a `permits` clause without `sealed`, an unqualified `yield(...)`, a
+  // repeated modifier, a sealed or non-sealed local class, annotations before
+  // an expression that is not a method reference. The file fails once the parse keeps
   // that tree; a lookahead that restores a Mark drops the flag with it.
   rejected: boolean = false;
 
@@ -1332,7 +1335,7 @@ export class JParser {
     const start = this.pos();
     // A reserved word is javac's "illegal start of type" (`return` in a record
     // body that was a method `record f() { return null; }`).
-    if (this.kindAt(0) !== JK_IDENT || isJavaKeyword(this.inp, this.tokAt(0))) {
+    if (!this.isIdent()) {
       this.fail();
       return t.node(N_IDENTIFIER, start);
     }
@@ -1513,17 +1516,9 @@ export class JParser {
     // javac's blockStatement: isNonSealedClassStart(true) or
     // isSealedClassStart(true) is "sealed or non-sealed local classes are not
     // allowed", and the class is parsed on.
-    if (
-      (this.is("sealed") && this.allowedAfterSealedOrNonSealed(1, true, false)) ||
-      (this.isNonSealedAt(0) && this.allowedAfterSealedOrNonSealed(3, true, true))
-    ) {
+    if (this.isSealedOrNonSealedClassStart(true)) {
       this.rejected = true;
-      const mods = this.modifiers();
-      if (!this.isClassStart()) {
-        this.fail();
-        return;
-      }
-      t.push(this.classDecl(mods));
+      t.push(this.classDecl(this.modifiers()));
       return;
     }
     if (this.isLocalVarDecl()) {

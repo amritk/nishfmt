@@ -55,8 +55,9 @@ export const guessSeparator = (src: u8[], n: i32): string => {
 const isJavaWs = (c: i32): boolean => c === 32 || c === 9 || c === 10 || c === 13 || c === 12 || c === 11;
 
 /**
- * ImportOrderer.reorderImports over lexed toks. Answers null when the text
- * stays as it is, "" (with `failure` set) when gjf would refuse the file.
+ * ImportOrderer.reorderImports over lexed toks. `reorder` writes the new text
+ * to `out` and answers true, or answers false: with `failure` set when gjf
+ * would refuse the file, with it empty when the text stays as it is.
  */
 export class ImportFixer {
   // Why reorder gave up on the file ("" when it did not): ImportOrderer's
