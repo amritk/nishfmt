@@ -129,6 +129,7 @@ export const FL_RULE: i32 = 64; // a `->` case
 export const FL_STATEMENT_BODY: i32 = 128; // a lambda with a block body
 export const FL_OPEN_MODULE: i32 = 256;
 export const FL_NEW_REF: i32 = 512; // a `::new` reference
+export const FL_IMPLICIT: i32 = 1024; // an implicitly declared class: the file's top-level fields and methods
 
 /** The operator's text. */
 export const opName = (op: i32): string => {

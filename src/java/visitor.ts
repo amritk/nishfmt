@@ -14,6 +14,7 @@ import {
   FL_COMPACT_CTOR,
   FL_CTOR,
   FL_ENUM,
+  FL_IMPLICIT,
   FL_NEW_REF,
   FL_OPEN_MODULE,
   FL_RULE,
@@ -787,6 +788,13 @@ export class JVisitor {
   // ---- Classes ---------------------------------------------------------------
 
   visitClass(n: i32): void {
+    if ((this.t.flags[n] & FL_IMPLICIT) !== 0) {
+      // visitImplicitClass: the members at the top level, without braces.
+      this.g.open(this.minusTwo);
+      this.addBodyDeclarations(this.listItems(this.t.f[n]), false, true);
+      this.g.close();
+      return;
+    }
     switch (this.t.op[n]) {
       case CK_ANNOTATION:
         this.visitAnnotationType(n);
@@ -1238,13 +1246,56 @@ export class JVisitor {
     return q + 1;
   }
 
+  /**
+   * JavaInputAstVisitor.isModifier(token, flags): tok `tk` is a modifier
+   * keyword the modifiers `mods` hold (ModifiersTree.getFlags), so a type
+   * named `sealed` is not taken for one.
+   */
+  private isModifierOf(mods: i32, tk: i32): boolean {
+    const inp = this.inp;
+    if (!isModifier(inp, tk)) {
+      return false;
+    }
+    const nonSealed = this.modsHave(mods, tk, "non");
+    if (inp.is(tk, "non") || inp.is(tk, "-")) {
+      return nonSealed;
+    }
+    if (inp.is(tk, "sealed")) {
+      return nonSealed || this.modsHave(mods, tk, "sealed");
+    }
+    return this.modsHave(mods, tk, "");
+  }
+
+  /** Whether the modifiers `mods` hold a modifier keyword with the text of `word`, or of tok `tk` when it is "". */
+  private modsHave(mods: i32, tk: i32, word: string): boolean {
+    const inp = this.inp;
+    const t = this.t;
+    if (mods < 0 || t.start[mods] < 0) {
+      return false;
+    }
+    for (let k = inp.tokenAt(t.start[mods]); k >= 0 && k < inp.nTokens; k++) {
+      const x = inp.kTok[k];
+      if (inp.tPos[x] >= t.end[mods]) {
+        break;
+      }
+      if (
+        inp.tPos[x] >= t.start[mods] &&
+        isModifier(inp, x) &&
+        (word.length === 0 ? inp.sameText(x, tk) : inp.is(x, word))
+      ) {
+        return true;
+      }
+    }
+    return false;
+  }
+
   splitModifiers(mods: i32, annotations: i32[]): SplitMods {
     const g = this.g;
     const inp = this.inp;
     const t = this.t;
     const out = new SplitMods();
     const pt = g.peekTok(0);
-    if (annotations.length === 0 && (pt < 0 || !isModifier(inp, pt))) {
+    if (annotations.length === 0 && (pt < 0 || !this.isModifierOf(mods, pt))) {
       return out;
     }
     // Toks from the modifiers' start while they are in an annotation or a modifier.
@@ -1259,7 +1310,7 @@ export class JVisitor {
           break;
         }
       }
-      if (!inAnno && !isModifier(inp, tk)) {
+      if (!inAnno && !this.isModifierOf(mods, tk)) {
         break;
       }
       if (!inAnno) {
@@ -1804,15 +1855,15 @@ export class JVisitor {
       g.open(this.ZERO);
       g.open(this.ZERO);
       this.visitAnnotations(annotations, false, true);
-      if (hasDims && dimBase >= 0) {
+      if (isVar) {
+        this.token("var");
+      } else if (hasDims && dimBase >= 0) {
         this.scan(dimBase);
         const totalDims = dims.size();
         g.open(this.plusFour);
         this.maybeAddDims(null, dims);
         g.close();
         baseDims = totalDims - dims.size();
-      } else if (isVar) {
-        this.token("var");
       } else {
         this.scan(type);
       }
@@ -3268,7 +3319,8 @@ export class JVisitor {
 
   private handleLogStatement(n: i32): boolean {
     const t = this.t;
-    if (!this.inp.is(this.methodName(n), "log")) {
+    const methodName = this.methodName(n);
+    if (!this.inp.is(methodName, "log") && !this.inp.is(methodName, "logVarargs")) {
       return false;
     }
     const rev: i32[] = [];
@@ -3654,7 +3706,7 @@ const isLogMethod = (inp: GInput, t: i32): boolean =>
   inp.is(t, "withCause") ||
   inp.is(t, "withStackTrace");
 
-/** JavaInputAstVisitor.isModifier on a tok's text. */
+/** The modifier keywords JavaInputAstVisitor.isModifier knows. */
 const isModifier = (inp: GInput, t: i32): boolean =>
   inp.is(t, "public") ||
   inp.is(t, "protected") ||

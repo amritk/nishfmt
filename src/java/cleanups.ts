@@ -11,7 +11,19 @@
 import { Out } from "../core/out";
 import { gIsIdentPart } from "../gdoc/engine";
 import { GInput } from "../gdoc/input";
-import { CK_ENUM, FL_ENUM, JTree, N_ANNOTATION, N_BLOCK, N_CASE, N_CLASS, N_EMPTY, N_LAMBDA, N_VARIABLE } from "./ast";
+import {
+  CK_ENUM,
+  FL_ENUM,
+  FL_IMPLICIT,
+  JTree,
+  N_ANNOTATION,
+  N_BLOCK,
+  N_CASE,
+  N_CLASS,
+  N_EMPTY,
+  N_LAMBDA,
+  N_VARIABLE,
+} from "./ast";
 
 export class JavaCleanups {
   // activeDeletions, a RangeSet: disjoint [lo, hi) ranges in order, connected ones merged.
@@ -34,7 +46,7 @@ export class JavaCleanups {
     this.topLevelSemicolons(inp, t, root);
     for (let n = 0; n < t.n; n++) {
       const k = t.kind[n];
-      if (k === N_CLASS) {
+      if (k === N_CLASS && (t.flags[n] & FL_IMPLICIT) === 0) {
         this.classSemicolons(inp, t, n);
       } else if (k === N_BLOCK) {
         this.emptyStatements(inp, t, t.a[n]);
@@ -193,9 +205,21 @@ export class JavaCleanups {
       lo.push(t.start[t.e[cu]]);
       hi.push(t.end[t.e[cu]]);
     }
-    for (const l of [t.c[cu], t.d[cu]]) {
-      for (let i = 0; i < t.len(l); i++) {
-        const d = t.at(l, i);
+    for (let i = 0; i < t.len(t.c[cu]); i++) {
+      const d = t.at(t.c[cu], i);
+      lo.push(t.start[d]);
+      hi.push(t.end[d]);
+    }
+    for (let i = 0; i < t.len(t.d[cu]); i++) {
+      const d = t.at(t.d[cu], i);
+      if ((t.flags[d] & FL_IMPLICIT) !== 0) {
+        // An implicitly declared class: its members.
+        for (let j = 0; j < t.len(t.f[d]); j++) {
+          const m = t.at(t.f[d], j);
+          lo.push(t.start[m]);
+          hi.push(memberEnd(inp, t, m));
+        }
+      } else {
         lo.push(t.start[d]);
         hi.push(t.end[d]);
       }
@@ -216,14 +240,7 @@ export class JavaCleanups {
     for (let i = 0; i < t.len(members); i++) {
       const m = t.at(members, i);
       const ms = t.start[m];
-      let me = t.end[m];
-      // javac ends the last declarator of a field at its `;`.
-      if (t.kind[m] === N_VARIABLE && (t.flags[m] & FL_ENUM) === 0) {
-        const k = tokenAtOrAfter(inp, me);
-        if (k < inp.nTokens && inp.is(inp.kTok[k], ";")) {
-          me = inp.tEnd[inp.kTok[k]];
-        }
-      }
+      const me = memberEnd(inp, t, m);
       lo.push(ms);
       hi.push(me);
       if (isEnum) {
@@ -291,6 +308,18 @@ export class JavaCleanups {
     this.addDeletion(inp.tPos[rp], inp.tEnd[rp]);
   }
 }
+
+/** Where member `m` ends: javac ends the last declarator of a field at its `;`. */
+const memberEnd = (inp: GInput, t: JTree, m: i32): i32 => {
+  const me = t.end[m];
+  if (t.kind[m] === N_VARIABLE && (t.flags[m] & FL_ENUM) === 0) {
+    const k = tokenAtOrAfter(inp, me);
+    if (k < inp.nTokens && inp.is(inp.kTok[k], ";")) {
+      return inp.tEnd[inp.kTok[k]];
+    }
+  }
+  return me;
+};
 
 /** The first token (an index into `kTok`) at or after `pos`, or nTokens. */
 const tokenAtOrAfter = (inp: GInput, pos: i32): i32 => {

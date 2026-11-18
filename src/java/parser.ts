@@ -13,6 +13,7 @@ import {
   CK_INTERFACE,
   CK_RECORD,
   FL_COMPACT_CTOR,
+  FL_IMPLICIT,
   FL_CTOR,
   FL_ENUM,
   FL_NEW_REF,
@@ -328,6 +329,9 @@ export class JParser {
     }
     t.c[cu] = t.list(im);
     const dm = t.mark();
+    // A field or method at the top level makes every declaration a member
+    // of an implicitly declared class (JEP 445, a preview javac 21 parses).
+    let implicit = -1;
     while (!this.atEof() && !this.err) {
       if (this.is(";")) {
         this.next();
@@ -342,12 +346,55 @@ export class JParser {
         t.e[cu] = this.moduleDecl();
         continue;
       }
+      const m0 = new Mark();
+      this.save(m0);
       const mods = this.modifiers();
-      t.push(this.classDecl(mods));
+      if (this.isClassStart()) {
+        t.push(this.classDecl(mods));
+        continue;
+      }
+      this.restore(m0);
+      if (implicit < 0) {
+        implicit = this.implicitClass();
+      }
+      this.member(implicit);
     }
-    t.d[cu] = t.list(dm);
+    if (implicit >= 0) {
+      if (t.b[cu] >= 0) {
+        // "unnamed class should not have package declaration".
+        this.fail();
+      }
+      t.f[implicit] = t.list(dm);
+      const n = t.len(t.f[implicit]);
+      if (n > 0) {
+        t.start[implicit] = t.start[t.at(t.f[implicit], 0)];
+        t.end[implicit] = t.end[t.at(t.f[implicit], n - 1)];
+      }
+      const im2 = t.mark();
+      t.push(implicit);
+      t.d[cu] = t.list(im2);
+    } else {
+      t.d[cu] = t.list(dm);
+    }
     this.finish(cu);
     return cu;
+  }
+
+  /** The implicitly declared class the top-level members go in. */
+  private implicitClass(): i32 {
+    const t = this.t;
+    const c = t.node(N_CLASS, this.pos());
+    t.op[c] = CK_CLASS;
+    t.flags[c] = FL_IMPLICIT;
+    const bm = t.node(N_MODIFIERS, -1);
+    t.a[bm] = t.empty();
+    t.end[bm] = -1;
+    t.a[c] = bm;
+    t.b[c] = t.empty();
+    t.d[c] = t.empty();
+    t.e[c] = t.empty();
+    t.g[c] = t.empty();
+    return c;
   }
 
   private importDecl(): i32 {
