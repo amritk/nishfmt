@@ -1,0 +1,1 @@
+class A { void f() { int[].class.foo(2);  int[][].class.foo(2); int[]::new.foo(2); } }

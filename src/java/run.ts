@@ -113,9 +113,9 @@ export const formatJava = (e: JavaEngine, path: string, src0: u8[], n0: i32, out
     if (!lexJava(e.inp, src, n)) {
       return false;
     }
-  } else if (e.imports.failed) {
+  } else if (e.imports.failure !== "") {
     if (e.debug) {
-      console.error(`${path}: imports not contiguous`);
+      console.error(`${path}: ${e.imports.failure}`);
     }
     return false;
   }
