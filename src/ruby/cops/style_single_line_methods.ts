@@ -11,14 +11,15 @@ import {
   F_ELSE,
   F_END,
   F_KEYWORD,
+  F_NAME,
   F_OPERATOR,
   F_QUESTION,
   F_SELECTOR,
   NT_AND,
   NT_ARRAY,
   NT_BEGIN,
-  NT_BLOCK_PASS,
   NT_BLOCK,
+  NT_BLOCK_PASS,
   NT_BREAK,
   NT_CASE,
   NT_CASE_MATCH,
@@ -61,6 +62,7 @@ import {
 import { RbCop } from "../cop";
 import { RbRewriter } from "../rewriter";
 import { RbSource } from "../source";
+import { LalIgnored } from "./layout_align_help";
 import { rbLayCommentAtLine } from "./layout_empty_help";
 import { rmlAsgnType, rmlSpaces } from "./layout_multiline_help";
 import {
@@ -121,6 +123,11 @@ const sbhSlmCommandCall = (src: RbSource, n0: i32): boolean => {
   const t = src.a.type(n);
   // `return foo` is a command too, even as `return(foo)`.
   if (t === NT_RETURN) {
+    // WrappedArguments#arguments: `return(foo)` holds its arguments in a begin.
+    const f = src.a.kid(n, 0);
+    if (src.a.nKid(n) === 1 && src.a.isNode(f) && src.a.type(f) === NT_BEGIN) {
+      return src.a.nKid(f) > 0;
+    }
     return src.a.nKid(n) > 0;
   }
   if (t !== NT_SEND && t !== NT_CSEND && t !== NT_SUPER && t !== NT_YIELD) {
@@ -225,7 +232,7 @@ const sbhSlmRequireParens = (src: RbSource, body: i32): boolean => {
   return src.a.nKid(body) > 2 && !sbhComparisonName(m);
 };
 
-/** EndlessMethodBodyHelp#endless_method_body? (with SingleLineMethods#command_body_in_argument?). */
+/** EndlessMethodBodyHelp#endless_method_body? (with SingleLineMethods#command_body_outside_statement?). */
 const sbhSlmEndlessBody = (src: RbSource, body: i32): boolean => {
   const a = src.a;
   const t = a.type(body);
@@ -366,13 +373,16 @@ const sbhSlmToEndless = (src: RbSource, def: i32, body: i32): boolean => {
 /** Style/SingleLineMethods. */
 export class CopStyleSingleLineMethods {
   c: RbCop;
+  ign: LalIgnored;
 
   constructor() {
     this.c = new RbCop("Style/SingleLineMethods");
+    this.ign = new LalIgnored();
   }
 
   run(src: RbSource): void {
     this.c.begin(src);
+    this.ign.reset();
     const a = src.a;
     for (const n of src.pre) {
       const t = a.type(n);
@@ -387,11 +397,12 @@ export class CopStyleSingleLineMethods {
         continue;
       }
       const k = this.c.offense(a.exS(n), a.exE(n));
-      if (k === null) {
+      if (k === null || this.ign.partOf(src, n)) {
         continue;
       }
       if (sbhSlmToEndless(src, n, body)) {
         this.toEndless(src, k, n, body);
+        this.ign.add(n);
       } else {
         this.toMultiline(src, k, n, body);
       }
@@ -432,7 +443,17 @@ export class CopStyleSingleLineMethods {
     const a = src.a;
     let receiver = "";
     if (a.type(n) === NT_DEFS) {
-      receiver = `${src.nodeSrc(a.kid(n, 0))}.`;
+      // From the end of `def` to the name, which keeps a parenthesized receiver's parentheses.
+      // String#lstrip
+      let rs = ssxFE(src, n, F_KEYWORD);
+      while (rs < ssxFS(src, n, F_NAME)) {
+        const c = src.at(rs);
+        if (c !== 0 && c !== 32 && (c < 9 || c > 13)) {
+          break;
+        }
+        rs++;
+      }
+      receiver = src.src(rs, ssxFS(src, n, F_NAME));
     }
     // method_body_source
     let bodySrc = src.nodeSrc(body);

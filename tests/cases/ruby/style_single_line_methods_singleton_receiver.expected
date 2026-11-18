@@ -1,0 +1,5 @@
+# frozen_string_literal: true
+
+def (foo.bar).some_method = body
+def (foo).bar = 1
+def self.baz = 2
