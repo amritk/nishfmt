@@ -1,9 +1,11 @@
 // google-java-format's JavaCommentsHelper: how a comment is re-indented for
 // the column the layout puts it at. Javadoc goes through the javadoc
 // formatter; line comments get a space after `//` and are wrapped at 100
-// columns; block comments keep their relative indentation.
+// columns; block comments keep their relative indentation. 2.0.0's
+// Markdown (`///`) javadoc never reaches here: the reference treats `///` as
+// javadoc only on JDK 23 or newer, and the corpus runs it on JDK 21.
 //
-// Ported from google-java-format 1.28 (Apache License 2.0, Copyright 2015 Google Inc.).
+// Ported from google-java-format 2.0.0 (Apache License 2.0, Copyright 2015 Google Inc.).
 
 import { GEngine, reformatParameterComment } from "../gdoc/engine";
 import { TF_COMMENT, TF_JAVADOC, TF_LINE_COMMENT } from "../gdoc/input";
@@ -27,7 +29,12 @@ export const rewriteJavaComment = (g: GEngine, tok: i32, maxWidth: i32, column0:
     return text;
   }
   if ((f & TF_JAVADOC) !== 0) {
-    text = formatJavadoc(text, column0);
+    const j = formatJavadoc(text, column0);
+    if (j === null) {
+      g.fail("javadoc needs a character class this port does not have");
+      return text;
+    }
+    text = j;
   }
   const raw = splitLines(text);
   const lines: string[] = [];
