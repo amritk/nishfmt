@@ -60,6 +60,7 @@ import {
   N_MAXLSIND,
   N_MEMBER,
   N_PNCOK,
+  N_LARROW,
   N_QC,
   N_QCIND,
   N_RPAREN,
@@ -143,6 +144,7 @@ import {
   TT_FUNCTION_DECLARATION_NAME,
   TT_INHERITANCE_COLON,
   TT_INHERITANCE_COMMA,
+  TT_LAMBDA_ARROW,
   TT_LAMBDA_LSQUARE,
   TT_LINE_COMMENT,
   TT_OVERLOADED_OPERATOR,
@@ -150,7 +152,6 @@ import {
   TT_START_OF_NAME,
   TT_TEMPLATE_CLOSER,
   TT_TEMPLATE_OPENER,
-  TT_TRAILING_RETURN_ARROW,
   TT_UNARY_OPERATOR,
 } from "./tok";
 
@@ -865,7 +866,12 @@ export class Indenter {
           return true;
         }
       }
-    } else if (ct === TT_BINARY_OPERATOR && a.canB[cur] === 1 && this.topHas(F_BBP)) {
+    } else if (
+      ct === TT_BINARY_OPERATOR &&
+      a.canB[cur] === 1 &&
+      a.prec(cur) !== PREC_ASSIGNMENT &&
+      this.topHas(F_BBP)
+    ) {
       return true;
     }
     if (ck === P_LESSLESS && ct !== TT_OVERLOADED_OPERATOR && this.topHas(F_BBP) && this.top(R_FLL) === 0) {
@@ -885,6 +891,26 @@ export class Indenter {
       d.lRetWrap[this.line] === 0 &&
       this.topHas(F_BBP)
     ) {
+      // Not past a line comment or a directive inside the line (clang-format 23).
+      const first = d.lFirst[this.line];
+      for (let q = prev; q >= 0; q = d.prv[q]) {
+        if (d.type[q] === TT_LINE_COMMENT) {
+          return false;
+        }
+        if (d.type[q] === TT_TEMPLATE_CLOSER) {
+          q = d.match[q];
+          if (q < 0) {
+            return false;
+          }
+        }
+        const qp = d.prv[q];
+        if (q !== first && qp >= 0 && q > qp + 1 && d.inPP[q - 1] === 1 && d.inPP[q] === 0) {
+          return false;
+        }
+        if (q === first) {
+          break;
+        }
+      }
       return true;
     }
     if (pk === P_LBRACE && d.bk[prev] === BK_BLOCK && ck !== P_RBRACE && ck !== K_COMMENT) {
@@ -998,6 +1024,9 @@ export class Indenter {
     const ci = (ls > ind ? ls : ind) + this.d.opts.continuationIndent;
     if ((r & N_BLOCK) !== 0) {
       return uncheckedGet(this.a.nest, cur) === 0 ? this.firstIndent : ind;
+    }
+    if ((r & N_LARROW) !== 0) {
+      return ci;
     }
     if ((r & N_CLOSEBR) !== 0 && this.sp > 1) {
       const b = uncheckedGet(rc, this.topRec * RS + RP) * RS + RF;
@@ -1234,7 +1263,7 @@ export class Indenter {
         this.setTop(R_COLON, this.col + w);
       }
     }
-    if (d.type[cur] !== TT_TRAILING_RETURN_ARROW && !a.isTrailingReturnArrow(cur)) {
+    if (d.type[cur] !== TT_LAMBDA_ARROW) {
       this.setTop(R_NBI, this.col);
     }
     if (a.isMemberAccess(nnc)) {
@@ -1559,7 +1588,9 @@ export class Indenter {
         newIndent = this.top(R_LS) + d.opts.continuationIndent;
       }
       const nn = a.nextNonComment(cur);
-      const endsInComma = m >= 0 && d.kind[d.prv[m]] === P_COMMA;
+      // (clang-format 23 looks past comments before the `}`.)
+      const lc = m >= 0 ? a.prevNonComment(m) : -1;
+      const endsInComma = lc >= 0 && d.kind[lc] === P_COMMA;
       avoid =
         endsInComma ||
         (nn >= 0 &&

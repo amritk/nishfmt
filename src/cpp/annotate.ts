@@ -37,6 +37,9 @@ import {
   KW_UNION,
   KW_ATTRIBUTE,
   KW_CONSTEXPR,
+  KW_CONSTEVAL,
+  KW_MUTABLE,
+  KW_STATIC,
   KW_DECLTYPE,
   KW_TYPEOF,
   LT_IMPORT,
@@ -159,6 +162,7 @@ export const N_CI: i32 = 32768;
 export const N_IND: i32 = 65536;
 export const N_CI2: i32 = 131072;
 export const N_PNCOK: i32 = 262144;
+export const N_LARROW: i32 = 524288;
 
 // Per-token rules for placing a token on the current line (C_*).
 export const C_NOLB: i32 = 1; // a lambda among other arguments: no breaks on this line
@@ -799,7 +803,9 @@ export class Annot {
     if (tt === TT_CONDITIONAL_EXPR) {
       return PREC_CONDITIONAL;
     }
-    if (this.isTrailingReturnArrow(c)) {
+    // clang-format 23 gives a lambda's arrow comma precedence; a function's
+    // trailing return arrow is no operator at all.
+    if (tt === TT_LAMBDA_ARROW) {
       return PREC_COMMA;
     }
     const k = d.kind[c];
@@ -812,7 +818,7 @@ export class Annot {
     if (tt === TT_BINARY_OPERATOR || k === P_COMMA) {
       return this.prec(c);
     }
-    if (k === P_PERIOD || k === P_ARROW) {
+    if ((k === P_PERIOD || k === P_ARROW) && tt !== TT_TRAILING_RETURN_ARROW) {
       return PREC_ARROW;
     }
     return -1;
@@ -1293,6 +1299,18 @@ export class Annot {
     if (nk === P_LBRACE && d.bk[nnc] === BK_BLOCK) {
       r = r | N_BLOCK;
     }
+    // A lambda's arrow after a specifier or an attribute (clang-format 23).
+    if (
+      d.type[t] === TT_LAMBDA_ARROW &&
+      (pk === KW_NOEXCEPT ||
+        pk === KW_MUTABLE ||
+        pk === KW_CONSTEXPR ||
+        pk === KW_CONSTEVAL ||
+        pk === KW_STATIC ||
+        (pk === P_RSQUARE && d.match[prev] >= 0 && d.type[d.match[prev]] === TT_ATTRIBUTE_SQUARE))
+    ) {
+      r = r | N_LARROW;
+    }
     if (ck === P_RBRACE || ck === P_RSQUARE) {
       r = r | N_CLOSEBR;
       if (this.closesBlockList(t)) {
@@ -1423,7 +1441,7 @@ export class Annot {
       if (tt === TT_BINARY_OPERATOR || tt === TT_CONDITIONAL_EXPR) {
         m = m | M_NBINL;
       }
-      if (tt === TT_LAMBDA_LSQUARE || this.isTrailingReturnArrow(t)) {
+      if (tt === TT_LAMBDA_LSQUARE || tt === TT_LAMBDA_ARROW) {
         m = m | M_LSSET;
       }
       if (
@@ -1552,10 +1570,13 @@ export class Annot {
     if (this.isTrailingComment(left)) {
       return true;
     }
-    if (rk === P_LESSLESS) {
+    // `<< "a" << "b"`: a break between two plain string literals is kept
+    // where the source has one, and only there.
+    if (rk === P_LESSLESS && this.isPlainString(left)) {
+      const bl = d.prv[left];
       const n = d.nxt[t];
-      if (n >= 0 && d.kind[n] === K_STRING && lk === K_STRING && this.endsWithNewlineEscape(left)) {
-        return true;
+      if (bl >= 0 && d.kind[bl] === P_LESSLESS && n >= 0 && this.isPlainString(n)) {
+        return d.nl[t] > 0;
       }
     }
     if (this.rqc[t] === 1) {
@@ -1576,10 +1597,14 @@ export class Annot {
     return false;
   }
 
-  endsWithNewlineEscape(t: i32): boolean {
+  /** clang's tok::string_literal: a string with no encoding prefix (raw or not). */
+  isPlainString(t: i32): boolean {
     const d = this.d;
-    const e = d.end[t];
-    return e - d.start[t] >= 3 && d.at(e - 1) === 34 && d.at(e - 2) === 110 && d.at(e - 3) === 92;
+    if (d.kind[t] !== K_STRING) {
+      return false;
+    }
+    const c = d.at(d.start[t]);
+    return c === 34 || c === 82;
   }
 
   canBreakBefore(l: i32, t: i32): boolean {
@@ -1814,7 +1839,7 @@ export class Annot {
     if (rt === TT_POINTER_OR_REFERENCE) {
       return 190;
     }
-    if (this.isTrailingReturnArrow(t)) {
+    if (rt === TT_LAMBDA_ARROW) {
       return 110;
     }
     if (lk === P_EQUAL && rk === P_LBRACE) {
