@@ -1,0 +1,3 @@
+class A {
+  int f(int var) { int y = (var) + 1;  return y; }
+}

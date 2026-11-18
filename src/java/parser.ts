@@ -128,6 +128,7 @@ import {
 
 /** A saved parser position for speculation. */
 class Mark {
+  restricted: boolean = false;
   p: i32 = 0;
   n: i32 = 0;
   nLists: i32 = 0;
@@ -253,6 +254,7 @@ export class JParser {
   }
 
   save(m: Mark): void {
+    m.restricted = this.restrictedType;
     m.p = this.p;
     m.n = this.t.n;
     m.nLists = this.t.nLists;
@@ -262,6 +264,7 @@ export class JParser {
   }
 
   restore(m: Mark): void {
+    this.restrictedType = m.restricted;
     this.p = m.p;
     this.t.n = m.n;
     this.t.nLists = m.nLists;
@@ -283,6 +286,8 @@ export class JParser {
     this.p = 0;
     this.nT = this.inp.nTokens;
     this.err = false;
+    this.restrictedType = false;
+    this.allowVarType = false;
     // At most a few nodes per token (an enum constant makes three of one).
     t.ensure(this.nT * 4 + 1024);
     const cu = t.node(N_COMPILATION_UNIT, 0);
@@ -391,6 +396,9 @@ export class JParser {
       t.d[cu] = t.list(dm);
     }
     this.finish(cu);
+    if (this.restrictedType) {
+      this.fail();
+    }
     return cu;
   }
 
@@ -413,18 +421,6 @@ export class JParser {
     }
     this.restore(m);
     return ok;
-  }
-
-  /** Whether type `n` is the restricted identifier `var`. */
-  private isVarType(n: i32): boolean {
-    // A speculative parse that already failed can leave an identifier without its name.
-    return (
-      !this.err &&
-      n >= 0 &&
-      this.t.kind[n] === N_IDENTIFIER &&
-      this.t.name[n] >= 0 &&
-      this.inp.is(this.t.name[n], "var")
-    );
   }
 
   /** The implicitly declared class the top-level members go in. */
@@ -928,10 +924,6 @@ export class JParser {
       return;
     }
     const type = this.type();
-    // A field's or a method's type: "'var' is not allowed here".
-    if (this.isVarType(type)) {
-      this.fail();
-    }
     if (this.kindAt(0) === JK_IDENT && this.isAt(1, "(")) {
       t.push(this.method(mods, start, typarams, type, false));
       return;
@@ -1022,11 +1014,8 @@ export class JParser {
     const v = t.node(N_VARIABLE, start);
     t.a[v] = mods;
     t.parent[mods] = v;
+    this.allowVarType = allowVar;
     let type = this.type();
-    // `var` types only a lambda's parameters here: "'var' is not allowed here".
-    if (!allowVar && this.isVarType(type)) {
-      this.fail();
-    }
     let varAnnos = -1;
     if (this.is("@") && this.varargsAnnotationsAhead()) {
       const am = t.mark();
@@ -1149,7 +1138,46 @@ export class JParser {
   }
 
   /** A type with dims; annotations before it become an ANNOTATED_TYPE. */
+  /**
+   * A type, as javac's unannotatedType: a restricted name (`var`, `yield`,
+   * `record`, `sealed`, `permits`), looked through array types, is "not
+   * allowed here", except `var` where the caller set `allowVarType` (an
+   * explicit lambda parameter). Nested types never allow it.
+   */
   type(): i32 {
+    const allowVar = this.allowVarType;
+    this.allowVarType = false;
+    const ty = this.typeAnnotated();
+    if (!this.err) {
+      let e = ty;
+      while (this.t.kind[e] === N_ARRAY_TYPE) {
+        e = this.t.a[e];
+      }
+      if (this.t.kind[e] === N_IDENTIFIER && this.t.name[e] >= 0) {
+        const w = this.t.name[e];
+        const inp = this.inp;
+        if (
+          (inp.is(w, "var") && !allowVar) ||
+          inp.is(w, "yield") ||
+          inp.is(w, "record") ||
+          inp.is(w, "sealed") ||
+          inp.is(w, "permits")
+        ) {
+          // Not this.fail(): a lookahead that parses a type here must still
+          // succeed, as javac's does, and the file fails once the parse
+          // keeps the type (Mark drops the flag with a lookahead).
+          this.restrictedType = true;
+        }
+      }
+    }
+    return ty;
+  }
+
+  allowVarType: boolean = false;
+  // A restricted name was parsed as a type ("'var' is not allowed here").
+  restrictedType: boolean = false;
+
+  private typeAnnotated(): i32 {
     const t = this.t;
     if (this.is("@")) {
       const start = this.pos();
@@ -1265,12 +1293,7 @@ export class JParser {
     const m = t.mark();
     if (!this.is(">")) {
       while (!this.err) {
-        const a = this.type();
-        // "'var' is not allowed here".
-        if (this.isVarType(a)) {
-          this.fail();
-        }
-        t.push(a);
+        t.push(this.type());
         if (!this.accept(",")) {
           break;
         }
@@ -1757,9 +1780,6 @@ export class JParser {
       t.a[v] = mods;
       t.parent[mods] = v;
       const first = this.type();
-      if (this.isVarType(first)) {
-        this.fail();
-      }
       if (this.is("|")) {
         const u = t.node(N_UNION_TYPE, t.start[first]);
         const um = t.mark();
@@ -1894,7 +1914,7 @@ export class JParser {
   }
 
   /** A binding, record or any pattern. */
-  private pattern(): i32 {
+  private pattern(nested: boolean = false): i32 {
     const t = this.t;
     const start = this.pos();
     if (this.is("_") && !this.isAt(1, "(") && this.kindAt(1) !== JK_IDENT) {
@@ -1906,6 +1926,10 @@ export class JParser {
     const vstart = t.start[mods] >= 0 ? t.start[mods] : this.pos();
     let type = -1;
     if (this.is("var") && this.kindAt(1) === JK_IDENT) {
+      // `var` types only a record pattern's components: "'var' is not allowed here".
+      if (!nested) {
+        this.fail();
+      }
       this.next();
     } else {
       type = this.type();
@@ -1916,7 +1940,7 @@ export class JParser {
       this.next();
       const pm = t.mark();
       while (!this.is(")") && !this.err) {
-        t.push(this.pattern());
+        t.push(this.pattern(true));
         if (!this.accept(",")) {
           break;
         }
@@ -2026,11 +2050,23 @@ export class JParser {
     const pm = t.mark();
     if (this.is("(")) {
       this.next();
+      // javac: the parameters are all `var`, or none is ("invalid lambda
+      // parameter declaration").
+      let nVar = 0;
+      let nOther = 0;
       while (!this.is(")") && !this.err) {
         const explicit = !(this.kindAt(0) === JK_IDENT && (this.isAt(1, ",") || this.isAt(1, ")")));
         if (explicit) {
-          t.push(this.formalParameter(false, true));
+          const p = this.formalParameter(false, true);
+          const ty = t.b[p];
+          if (ty >= 0 && t.kind[ty] === N_IDENTIFIER && this.inp.is(t.name[ty], "var")) {
+            nVar++;
+          } else {
+            nOther++;
+          }
+          t.push(p);
         } else {
+          nOther++;
           const v = t.node(N_VARIABLE, this.pos());
           const mods = t.node(N_MODIFIERS, -1);
           t.a[mods] = t.empty();
@@ -2043,6 +2079,9 @@ export class JParser {
         if (!this.accept(",")) {
           break;
         }
+      }
+      if (nVar > 0 && nOther > 0) {
+        this.fail();
       }
       this.expect(")");
     } else {
