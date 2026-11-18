@@ -3,7 +3,7 @@
 // Lint/UnreachableLoop, ...): node type sets, nil's methods, the Enumerable
 // method names, and a few NodePattern pieces.
 //
-// Ported from RuboCop 1.92.2 and rubocop-ast 1.51.0 (MIT License, Copyright
+// Ported from RuboCop 1.92.3 and rubocop-ast 1.52.0 (MIT License, Copyright
 // (c) 2012-24 Bozhidar Batsov).
 
 import {
@@ -139,7 +139,7 @@ export const ldhAncestorBlock = (src: RbSource, n: i32): i32 => {
   return V_NIL;
 };
 
-/** `nil.methods` in RuboCop 1.92.2's process (Ruby 3.3.6, json and psych loaded). */
+/** `nil.methods` in RuboCop 1.92.3's process (Ruby 3.3.6, json and psych loaded). */
 const LDH_NIL_METHODS: string =
   " ! != !~ & <=> == === =~ ^ __id__ __send__ class clone define_singleton_method display dup enum_for eql? equal? extend freeze frozen? hash inspect instance_eval instance_exec instance_of? instance_variable_defined? instance_variable_get instance_variable_set instance_variables is_a? itself kind_of? method methods nil? object_id private_methods protected_methods public_method public_methods public_send rationalize remove_instance_variable respond_to? send singleton_class singleton_method singleton_methods tap then to_a to_c to_enum to_f to_h to_i to_json to_r to_s to_yaml yield_self | ";
 

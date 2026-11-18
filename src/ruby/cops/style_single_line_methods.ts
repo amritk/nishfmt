@@ -3,7 +3,7 @@
 // EnforcedStyle allow_single_line: the correction makes an endless method
 // where EndlessMethodBodyHelp allows one.
 //
-// Ported from RuboCop 1.92.2 (MIT License, Copyright (c) 2012-24 Bozhidar
+// Ported from RuboCop 1.92.3 (MIT License, Copyright (c) 2012-24 Bozhidar
 // Batsov).
 
 import {

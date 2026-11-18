@@ -1,6 +1,6 @@
 // Style/PerlBackrefs.
 //
-// Ported from RuboCop 1.92.2 (MIT License, Copyright (c) 2012-24 Bozhidar
+// Ported from RuboCop 1.92.3 (MIT License, Copyright (c) 2012-24 Bozhidar
 // Batsov).
 
 import { NT_BACK_REF, NT_CLASS, NT_DSTR, NT_GVAR, NT_MODULE, NT_NTH_REF, NT_REGEXP, NT_XSTR, V_NIL } from "../ast";

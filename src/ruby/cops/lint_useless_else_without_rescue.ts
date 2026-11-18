@@ -6,7 +6,7 @@
 // is here so that Lint/RedundantCopDisableDirective knows a directive naming
 // it is redundant.
 //
-// Ported from RuboCop 1.92.2 (MIT License, Copyright (c) 2012-24 Bozhidar
+// Ported from RuboCop 1.92.3 (MIT License, Copyright (c) 2012-24 Bozhidar
 // Batsov).
 
 import { RbCop } from "../cop";

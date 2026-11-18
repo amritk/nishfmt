@@ -1,6 +1,6 @@
 // Layout/DotPosition (EnforcedStyle: leading).
 //
-// Ported from RuboCop 1.92.2 (MIT License, Copyright (c) 2012-24 Bozhidar
+// Ported from RuboCop 1.92.3 (MIT License, Copyright (c) 2012-24 Bozhidar
 // Batsov).
 
 import { F_BEGIN, F_DOT, F_HEREDOC_END, F_SELECTOR, NT_CSEND, NT_SEND } from "../ast";

@@ -8,11 +8,11 @@ nishfmt is MIT licensed ([LICENSE](LICENSE)). Its formatters for Java, Kotlin, R
 | Java | google-java-format 1.28 | Apache-2.0 | Copyright 2015, 2016, 2018 Google Inc.; Copyright 2022 Google LLC | `src/java/`, `src/gdoc/` |
 | Kotlin | ktfmt 0.64 | Apache-2.0 | Copyright (c) Meta Platforms, Inc. and affiliates | `src/kotlin/` |
 | Kotlin | the Kotlin compiler 2.3.20 and the IntelliJ platform's PsiBuilderImpl | Apache-2.0 | Copyright JetBrains s.r.o. and Kotlin Programming Language contributors | `src/kotlin/` (lexer and parser) |
-| Ruby | RuboCop 1.92.2 | MIT | Copyright (c) 2012-24 Bozhidar Batsov | `src/ruby/`, `src/ruby/cops/` |
-| Ruby | rubocop-ast 1.51.0 | MIT | Copyright (c) 2012-24 Bozhidar Batsov | `src/ruby/` |
+| Ruby | RuboCop 1.92.3 | MIT | Copyright (c) 2012-24 Bozhidar Batsov | `src/ruby/`, `src/ruby/cops/` |
+| Ruby | rubocop-ast 1.52.0 | MIT | Copyright (c) 2012-24 Bozhidar Batsov | `src/ruby/` |
 | Ruby | the parser gem 3.3.13.0 | MIT | Copyright (c) 2013-2024 parser contributors | `src/ruby/` (lexer, grammar, AST builder) |
-| Ruby | racc 1.7.3 | Ruby License / BSD-2-Clause | Copyright (c) 1999-2006 Minero Aoki | `src/ruby/parser.ts` (the parser driver) |
-| Ruby | regexp_parser 2.13.1 | MIT | Copyright (c) 2010-2026 Ammar Ali | `src/ruby/` |
+| Ruby | racc 1.8.1 | Ruby License / BSD-2-Clause | Copyright (c) 1999-2006 Minero Aoki | `src/ruby/parser.ts` (the parser driver) |
+| Ruby | regexp_parser 2.13.4 | MIT | Copyright (c) 2010-2026 Ammar Ali | `src/ruby/` |
 | Ruby | unicode-display_width 3.3.0 | MIT | Copyright (c) 2011, 2015-2025 Jan Lelis | `src/ruby/` |
 | Swift | SwiftFormat 0.64.7 | MIT | Copyright (c) 2016 Nick Lockwood | `src/swift/` |
 | Swift | the Unicode Character Database 15.0 and 15.1 | Unicode-3.0 | Copyright © Unicode, Inc. | `src/swift/unicode_data.ts` (generated tables) |

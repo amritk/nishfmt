@@ -1,6 +1,6 @@
 // Layout/IndentationConsistency (EnforcedStyle: normal).
 //
-// Ported from RuboCop 1.92.2 (MIT License, Copyright (c) 2012-24 Bozhidar
+// Ported from RuboCop 1.92.3 (MIT License, Copyright (c) 2012-24 Bozhidar
 // Batsov).
 
 import { NT_BEGIN, NT_KWBEGIN, V_NIL } from "../ast";

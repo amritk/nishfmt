@@ -1,6 +1,6 @@
 // Lint/RedundantRequireStatement (TargetRubyVersion 3.3).
 //
-// Ported from RuboCop 1.92.2 (MIT License, Copyright (c) 2012-24 Bozhidar
+// Ported from RuboCop 1.92.3 (MIT License, Copyright (c) 2012-24 Bozhidar
 // Batsov).
 
 import { F_END, F_KEYWORD, NT_IF, NT_STR, NT_UNTIL, NT_UNTIL_POST, NT_WHILE, NT_WHILE_POST, V_NIL } from "../ast";

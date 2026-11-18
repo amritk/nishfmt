@@ -1,6 +1,6 @@
 // Style/RedundantSortBy.
 //
-// Ported from RuboCop 1.92.2 (MIT License, Copyright (c) 2012-24 Bozhidar
+// Ported from RuboCop 1.92.3 (MIT License, Copyright (c) 2012-24 Bozhidar
 // Batsov).
 
 import { F_END, F_SELECTOR, NT_ARG, NT_ARGS, NT_BLOCK, NT_LVAR, NT_NUMBLOCK } from "../ast";

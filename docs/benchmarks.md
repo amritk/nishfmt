@@ -12,7 +12,7 @@ says how to rebuild them and rerun the comparisons.
 | C++ | clang-format | 18.1.3 | `clang-format` on PATH |
 | Java | google-java-format | 1.28.0, all-dependencies jar | `$GJF` |
 | Kotlin | ktfmt | 0.64, with-dependencies jar | `$KTFMT` |
-| Ruby | RuboCop | 1.92.2 | `rubocop` on PATH |
+| Ruby | RuboCop | 1.92.3 | `rubocop` on PATH |
 | Swift | SwiftFormat | 0.64.7 | `$SWIFTFORMAT`, else `swiftformat` |
 | Rust | rustfmt | 1.9.0 | `rustfmt` on PATH |
 | Dart | `dart format` | Dart SDK 3.14 | `$DART`, else `dart` |

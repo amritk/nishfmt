@@ -2,7 +2,7 @@
 // utf-8`, `# -*- coding: utf-8 -*-` and `# vim: fileencoding=utf-8` comments
 // of a line, as far as Style/Encoding and FrozenStringLiteral read them.
 //
-// Ported from RuboCop 1.92.2 (MIT License, Copyright (c) 2012-24 Bozhidar
+// Ported from RuboCop 1.92.3 (MIT License, Copyright (c) 2012-24 Bozhidar
 // Batsov).
 
 import { rbLitChars, rbLitSpaceC } from "./lit_help";

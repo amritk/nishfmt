@@ -1,7 +1,7 @@
 // Lint/CopDirectiveSyntax. Its one correction (merging several directives on
 // a line into one) is safe, so it runs under `rubocop -a` too.
 //
-// Ported from RuboCop 1.92.2 (MIT License, Copyright (c) 2012-24 Bozhidar
+// Ported from RuboCop 1.92.3 (MIT License, Copyright (c) 2012-24 Bozhidar
 // Batsov).
 
 import { RbCop } from "../cop";

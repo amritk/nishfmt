@@ -1,6 +1,6 @@
 // RuboCop::Cop::Util and the string helpers several cops share.
 //
-// Ported from RuboCop 1.92.2 (MIT License, Copyright (c) 2012-24 Bozhidar
+// Ported from RuboCop 1.92.3 (MIT License, Copyright (c) 2012-24 Bozhidar
 // Batsov).
 
 import { rbInspectStr } from "./ast";

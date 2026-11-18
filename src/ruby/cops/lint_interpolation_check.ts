@@ -1,7 +1,7 @@
 // Lint/InterpolationCheck. Its correction is unsafe, so it only detects; the
 // interpolated source is still reparsed (valid_syntax?).
 //
-// Ported from RuboCop 1.92.2 (MIT License, Copyright (c) 2012-24 Bozhidar
+// Ported from RuboCop 1.92.3 (MIT License, Copyright (c) 2012-24 Bozhidar
 // Batsov).
 
 import { F_BEGIN, F_END, M_HEREDOC, NT_DSTR, NT_REGEXP, NT_STR, V_NIL } from "../ast";

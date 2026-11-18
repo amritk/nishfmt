@@ -1,7 +1,7 @@
 // Layout/FirstArgumentIndentation (EnforcedStyle:
 // special_for_inner_method_call_in_parentheses).
 //
-// Ported from RuboCop 1.92.2 (MIT License, Copyright (c) 2012-24 Bozhidar
+// Ported from RuboCop 1.92.3 (MIT License, Copyright (c) 2012-24 Bozhidar
 // Batsov).
 
 import { F_DOT, F_END, F_OPERATOR, NT_CSEND, NT_KWSPLAT, NT_SEND, NT_SPLAT, NT_SUPER, V_NIL } from "../ast";

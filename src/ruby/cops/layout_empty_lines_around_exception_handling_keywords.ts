@@ -1,7 +1,7 @@
 // Layout/EmptyLinesAroundExceptionHandlingKeywords: no empty line before or
 // after `rescue`, `else` and `ensure` of a def, block or `begin` body.
 //
-// Ported from RuboCop 1.92.2 (MIT License, Copyright (c) 2012-24 Bozhidar
+// Ported from RuboCop 1.92.3 (MIT License, Copyright (c) 2012-24 Bozhidar
 // Batsov).
 
 import {

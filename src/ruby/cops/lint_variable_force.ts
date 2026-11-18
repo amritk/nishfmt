@@ -5,7 +5,7 @@
 // the scopes in the order they were left (after_leaving_scope), which sees
 // each scope's variables in their final state.
 //
-// Ported from RuboCop 1.92.2 (MIT License, Copyright (c) 2012-24 Bozhidar
+// Ported from RuboCop 1.92.3 (MIT License, Copyright (c) 2012-24 Bozhidar
 // Batsov).
 
 import {

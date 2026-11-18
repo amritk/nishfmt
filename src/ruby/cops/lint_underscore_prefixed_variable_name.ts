@@ -1,7 +1,7 @@
 // Lint/UnderscorePrefixedVariableName (AllowKeywordBlockArguments: false; no
 // correction): a `_`-prefixed variable that is read, on the VariableForce.
 //
-// Ported from RuboCop 1.92.2 (MIT License, Copyright (c) 2012-24 Bozhidar
+// Ported from RuboCop 1.92.3 (MIT License, Copyright (c) 2012-24 Bozhidar
 // Batsov).
 
 import { F_NAME, NT_MATCH_WITH_LVASGN, NT_SEND, NT_ZSUPER } from "../ast";

@@ -4,8 +4,8 @@
 // decides whether a tree is built at all (parse errors give no tree), where
 // the escapes are, and which character sets hold what.
 //
-// Ported from regexp_parser 2.13.1 (MIT License, Copyright (c) 2010-2026
-// Ammar Ali) and RuboCop 1.92.2 (MIT License, Copyright (c) 2012-24 Bozhidar
+// Ported from regexp_parser 2.13.4 (MIT License, Copyright (c) 2010-2026
+// Ammar Ali) and RuboCop 1.92.3 (MIT License, Copyright (c) 2012-24 Bozhidar
 // Batsov).
 
 import { NT_BEGIN, NT_REGOPT } from "../ast";

@@ -1,6 +1,6 @@
 // Style/PercentLiteralDelimiters (PreferredDelimiters: the default ones).
 //
-// Ported from RuboCop 1.92.2 (MIT License, Copyright (c) 2012-24 Bozhidar
+// Ported from RuboCop 1.92.3 (MIT License, Copyright (c) 2012-24 Bozhidar
 // Batsov).
 
 import { F_BEGIN, F_END, NT_ARRAY, NT_DSTR, NT_REGEXP, NT_STR, NT_SYM, NT_XSTR, VT_STR, VT_SYM, vTag } from "../ast";

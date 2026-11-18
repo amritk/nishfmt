@@ -1,5 +1,5 @@
 // Cop facts the team needs: RuboCop's registry order (corrections merge in
-// it) and autocorrect_incompatible_with. Generated from RuboCop 1.92.2's
+// it) and autocorrect_incompatible_with. Generated from RuboCop 1.92.3's
 // registry with the default configuration.
 
 /** Every enabled cop, in registry order (for rubocop:disable all and departments). */

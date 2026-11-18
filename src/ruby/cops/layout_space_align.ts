@@ -3,7 +3,7 @@
 // lines up with a token on a neighbouring line. One instance per
 // investigation (the mixin memoizes per cop instance).
 //
-// Ported from RuboCop 1.92.2 (MIT License, Copyright (c) 2012-24 Bozhidar
+// Ported from RuboCop 1.92.3 (MIT License, Copyright (c) 2012-24 Bozhidar
 // Batsov).
 
 import { F_ASSIGNMENT, F_OPERATOR, NT_DEF, NT_OPTARG } from "../ast";

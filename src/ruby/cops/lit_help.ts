@@ -2,7 +2,7 @@
 // PercentLiteralDelimiters preferences, PercentArray / ArraySyntax, MagicComment
 // and a few character classes of Ruby's regexps.
 //
-// Ported from RuboCop 1.92.2 (MIT License, Copyright (c) 2012-24 Bozhidar
+// Ported from RuboCop 1.92.3 (MIT License, Copyright (c) 2012-24 Bozhidar
 // Batsov).
 
 import { F_BEGIN, F_END, NT_BLOCK, NT_NUMBLOCK, NT_SEND, V_NIL, rbInspectSym } from "../ast";

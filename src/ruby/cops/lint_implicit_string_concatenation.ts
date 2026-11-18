@@ -1,7 +1,7 @@
 // Lint/ImplicitStringConcatenation. Its correction is safe, so it runs under
 // `rubocop -a` too: an empty side is removed, otherwise the gap becomes ` + `.
 //
-// Ported from RuboCop 1.92.2 (MIT License, Copyright (c) 2012-24 Bozhidar
+// Ported from RuboCop 1.92.3 (MIT License, Copyright (c) 2012-24 Bozhidar
 // Batsov).
 
 import { NT_DSTR, NT_STR } from "../ast";

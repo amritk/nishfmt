@@ -1,6 +1,6 @@
 // Style/CommandLiteral (EnforcedStyle: backticks, AllowInnerBackticks: false).
 //
-// Ported from RuboCop 1.92.2 (MIT License, Copyright (c) 2012-24 Bozhidar
+// Ported from RuboCop 1.92.3 (MIT License, Copyright (c) 2012-24 Bozhidar
 // Batsov).
 
 import { F_BEGIN, F_END, NT_XSTR } from "../ast";

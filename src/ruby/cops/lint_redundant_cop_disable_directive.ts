@@ -7,7 +7,7 @@
 // on the result (Runner#add_redundant_disables). It does not run at all under
 // --only. So `run` does nothing; the team calls `runWith` instead.
 //
-// Ported from RuboCop 1.92.2 (MIT License, Copyright (c) 2012-24 Bozhidar
+// Ported from RuboCop 1.92.3 (MIT License, Copyright (c) 2012-24 Bozhidar
 // Batsov).
 
 import { RbCop } from "../cop";

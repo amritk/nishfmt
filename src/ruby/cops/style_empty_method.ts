@@ -1,6 +1,6 @@
 // Style/EmptyMethod (EnforcedStyle: compact; Layout/LineLength Max: 120).
 //
-// Ported from RuboCop 1.92.2 (MIT License, Copyright (c) 2012-24 Bozhidar
+// Ported from RuboCop 1.92.3 (MIT License, Copyright (c) 2012-24 Bozhidar
 // Batsov).
 
 import { F_END, NT_DEF, NT_DEFS } from "../ast";

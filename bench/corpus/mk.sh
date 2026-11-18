@@ -8,7 +8,7 @@
 #
 # Tools, each from the environment or PATH: clang-format 18; $GJF and $KTFMT,
 # the google-java-format 1.28 and ktfmt 0.64 all-dependencies jars (required
-# for java and kt); rubocop 1.92.2; $SWIFTFORMAT (swiftformat 0.64.7);
+# for java and kt); rubocop 1.92.3; $SWIFTFORMAT (swiftformat 0.64.7);
 # rustfmt 1.9.0; $DART (Dart 3.14); $CSHARPIER (csharpier 1.4.0).
 set -uo pipefail
 here=$(cd "$(dirname "$0")" && pwd)

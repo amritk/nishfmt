@@ -4,7 +4,7 @@
 // runs it only in a file whose directive comments opt it in (a
 // `# rubocop:enable Lint/NonDeterministicRequireOrder`).
 //
-// Ported from RuboCop 1.92.2 (MIT License, Copyright (c) 2012-24 Bozhidar
+// Ported from RuboCop 1.92.3 (MIT License, Copyright (c) 2012-24 Bozhidar
 // Batsov).
 
 import { NT_ARG, NT_ARGS, NT_BLOCK, NT_BLOCK_PASS, NT_LVAR, NT_NUMBLOCK, NT_SEND, NT_SYM, V_NIL } from "../ast";
