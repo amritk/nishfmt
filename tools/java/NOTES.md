@@ -11,7 +11,8 @@ range, and 2.0.0 also turns `--cleanup` on by default.
 | Corpus | Identical (cmp.sh) |
 | --- | --- |
 | `bench/work/corpus/java`, rebuilt with 2.0.0, on main before the upgrade (1.28 port) | 7157 / 7627 |
-| the same, after this upgrade, before the javadoc stage merged | 7604 / 7627 (the 23 left are javadoc only) |
+| the same, after the layout changes, before the javadoc port merged | 7604 / 7627 (the 23 left are javadoc only) |
+| the same, with both | 7627 / 7627 |
 
 The 4 files google-java-format rejects (`failed.txt`) are left out. The
 corpus was rebuilt with `GJF=.../google-java-format-2.0.0-all-deps.jar bash
@@ -79,12 +80,42 @@ From the release notes, checked against the source diff of 1.28.0 and 2.0.0:
   - Value classes (JEP 401) and the `value` modifier: javac 21 rejects them
     (`value` is not a `Modifier` on JDK 21), so nishfmt leaves such files
     alone.
-  - JavaOutput's `touchesEof` token range and the javadoc changes: the first
-    never happens for StringWrapper's string-literal ranges; the second is
-    the javadoc stage's (`src/java/javadoc.ts`, `src/java/comments.ts`).
+  - JavaOutput's `touchesEof` token range never happens for StringWrapper's
+    string-literal ranges, so it is not ported.
+  - Javadoc: see below.
 
 Flags nishfmt does not use: `--max-line-length`, `--style`/`--aosp`,
 `--cleanup=false`, `--lines`/`--offset`, `--skip-*`.
+
+## Javadoc
+
+From the javadoc port (#17), in `src/java/javadoc.ts` and `src/java/comments.ts`:
+
+- **JavadocFormatter**: `classicCommentText` runs before lexing. It strips
+  `/**`, and `*/` with any stars just before it (`/** foo **/` becomes
+  `/** foo */`, #67). It strips each continuation line's leading `*`; a
+  line with no star loses only the shortest common prefix, so `<pre>{@code}`
+  lines without a `*` keep their relative indentation. Then it strips the
+  leading whitespace every line shares (`jdClassicCommentText`,
+  `jdStripCommonLeadingWhitespace`).
+- **JavadocLexer**: `NEWLINE_PATTERN` is `[ \t]*\n`, since the stars are
+  gone. Contexts (pre, code, table, snippet, brace, inline tag) are a
+  `NestingStack`; a close tag pops back to its context, so
+  `<pre><code>…</pre>` now lexes and is formatted. A word hyphenated across
+  one line break is joined (`thread-\nsafe`), except before `and` or `or`.
+- **JavadocWriter**: requested whitespace is dropped until something
+  significant is written (no blank line before a leading `<ul>` or `<pre>`);
+  a list item's continuation lines indent by the width of its tag as
+  written; `<blockquote>` takes a blank line outside and a newline inside;
+  a multi-line HTML comment is written line by line after ` * `; the MOE
+  strip markers count as significant output.
+- **JavaCommentsHelper**: no change to default-style output on JDK 21. When
+  the hyphen join needs `Character.isLetterOrDigit` of a BMP character
+  beyond Latin-1, `formatJavadoc` answers null and the file is skipped.
+- **Markdown (`///`) javadoc** is not ported: on JDK 21 `///` is a line
+  comment, and the Markdown path also needs a CommonMark parser. If the
+  reference moves to JDK 23 or later, it needs a CommonMark port, and the
+  visitor must record the Markdown javadoc positions.
 
 ## Where each class went
 
