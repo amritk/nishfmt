@@ -112,7 +112,7 @@ const usage = (): string =>
     "Formats each file to match its language's reference formatter:",
     "  C++ (.cpp .cc .cxx .hpp .hh .hxx .h)  clang-format 18, LLVM style",
     "  Java (.java)                        google-java-format 1.28",
-    "  Kotlin (.kt .kts)                   ktfmt 0.64",
+    "  Kotlin (.kt .kts)                   ktfmt 0.65, kotlinlang style",
     "  Ruby (.rb, Gemfile, .gemspec, ...)  rubocop -a 1.92.2",
     "  Swift (.swift)                      SwiftFormat 0.64.7",
     "  Rust (.rs)                          rustfmt 1.9.0, edition 2021",

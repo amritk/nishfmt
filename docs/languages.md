@@ -17,7 +17,8 @@ google-java-format rejects are left out.
 
 ## Kotlin
 
-The Kotlin side ports ktfmt 0.65's default style onto a lexer and parser
+The Kotlin side ports ktfmt 0.65's kotlinlang style (`--kotlinlang-style`:
+4-space blocks, and trailing commas removed where a list fits) onto a lexer and parser
 ported from the Kotlin compiler 2.4.10, the version ktfmt 0.65 builds
 against (PSI-shaped, with the IntelliJ platform's builder): ktfmt's visitor,
 the shared Doc engine, KDoc formatting, import sorting with the removal of

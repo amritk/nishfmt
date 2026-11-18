@@ -174,7 +174,6 @@ import {
   ktIsModifierKeyword,
 } from "./types";
 
-
 export class KVisitor {
   g: GEngine;
   t: KTree;

@@ -7,13 +7,13 @@ class A(
 )
 
 fun g() {
-  call(
-      argument,
-  )
-  val l =
-      listOf<
-          Int,
-      >()
+    call(
+        argument,
+    )
+    val l =
+        listOf<
+            Int,
+        >()
 }
 
 fun shortSingle(a: Int) =

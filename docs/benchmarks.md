@@ -11,7 +11,7 @@ says how to rebuild them and rerun the comparisons.
 | --- | --- | --- | --- |
 | C++ | clang-format | 18.1.3 | `clang-format` on PATH |
 | Java | google-java-format | 1.28.0, all-dependencies jar | `$GJF` |
-| Kotlin | ktfmt | 0.65, with-dependencies jar (from the GitHub release; Maven Central stops at 0.64) | `$KTFMT` |
+| Kotlin | ktfmt | 0.65, with-dependencies jar (from the GitHub release; Maven Central stops at 0.64), run with `--kotlinlang-style` | `$KTFMT` |
 | Ruby | RuboCop | 1.92.2 | `rubocop` on PATH |
 | Swift | SwiftFormat | 0.64.7 | `$SWIFTFORMAT`, else `swiftformat` |
 | Rust | rustfmt | 1.9.0 | `rustfmt` on PATH |
