@@ -4,10 +4,9 @@
 # of the directory's path), which gives cs2/raw; a copy of that formatted with
 # the style alone gives cs2/ref. failed.txt lists the files either pass refused.
 #
-# Both passes run under the style's root $CORPUS/cs2/.editorconfig (CSharpier's
-# defaults with end_of_line = crlf, as mk.sh cs writes). The per-directory files
-# are not root, so CSharpier merges them with it; a .csharpierrc would replace
-# it instead. So pass 1 writes CRLF too, and cs2/raw is CRLF input.
+# Both passes run under the style's root .editorconfig, copied from mk.sh cs;
+# the per-directory ones merge with it (tools/csharp/NOTES.md), so cs2/raw is
+# CRLF input.
 #
 #   mkcs2.sh
 set -uo pipefail
@@ -15,11 +14,9 @@ CORPUS=${CORPUS:-$(cd "$(dirname "$0")/../.." && pwd)/bench/work/corpus} CSHARPI
 export DOTNET_ROOT=${DOTNET_ROOT:-/usr/lib/dotnet}
 d=$CORPUS/cs2
 rm -rf "$d" && mkdir -p "$d" && cp -r "$CORPUS/cs/raw" "$d/raw"
-# The empty .git is a worktree boundary, so no .gitignore above (this checkout's
-# ignores bench/work/) hides the files from CSharpier.
+# An empty .git: a .gitignore boundary (tools/csharp/NOTES.md).
 mkdir -p "$d/.git"
-printf '%s\n' 'root = true' '[*]' 'indent_style = space' '[*.cs]' 'indent_size = 4' 'tab_width = 4' \
-  'end_of_line = crlf' 'insert_final_newline = true' > "$d/.editorconfig"
+cp "$CORPUS/cs/.editorconfig" "$d/.editorconfig"
 cd "$d/raw" || exit 1
 opts=("max_line_length = 40" "max_line_length = 150" "indent_style = tab" "indent_size = 2")
 # Every directory of depth 1 and 3 gets a config; where both apply they merge,

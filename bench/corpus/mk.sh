@@ -73,10 +73,8 @@ case $lang in
   rust) find . -type f -print0 | xargs -0 -P"$(nproc)" -I{} sh -c \
           'rustfmt --edition 2021 < "$1" > "$1.o" 2>/dev/null && mv "$1.o" "$1" || { rm -f "$1.o"; echo "$1" >> ../failed.txt; }' _ {} ;;
   dart) "$DART" format . > /dev/null 2> ../dartformat.log; grep -o '[^ ]*\.dart' ../dartformat.log | sort -u >> ../failed.txt ;;
-  # The style's .editorconfig sits above ref/, so cmp.sh does not count it;
-  # root = true stops the search there. The empty .git is a worktree boundary:
-  # without it CSharpier honours the .gitignore files above (this checkout's
-  # ignores bench/work/) and formats nothing.
+  # The style's .editorconfig and an empty .git (a .gitignore boundary) sit
+  # above ref/, so cmp.sh does not count them; see tools/csharp/NOTES.md.
   cs) printf '%s\n' 'root = true' '[*]' 'indent_style = space' '[*.cs]' 'indent_size = 4' 'tab_width = 4' \
         'end_of_line = crlf' 'insert_final_newline = true' > ../.editorconfig
       mkdir -p ../.git

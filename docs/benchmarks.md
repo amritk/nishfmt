@@ -33,10 +33,8 @@ writes `bench/work/corpus/<lang>` (or `$CORPUS/<lang>`):
 - `raw/`, the sources as found (C++ files over 250 KB and Ruby beyond a
   2000-file sample are left out, as are hidden directories);
 - `ref/`, the reference tool's output at its default settings (for C#, the
-  style's: `mk.sh cs` writes the `.editorconfig` the
-  [README](../README.md#settings) gives to `bench/work/corpus/cs/`, above
-  `ref/`, with an empty `.git` beside it so that no `.gitignore` above, such
-  as this checkout's, hides the files from CSharpier);
+  [README](../README.md#settings)'s `.editorconfig`, which `mk.sh cs` writes
+  above `ref/` with an empty `.git`; see `tools/csharp/NOTES.md`);
 - `failed.txt`, the files the reference rejected, which every comparison
   leaves out.
 
