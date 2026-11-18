@@ -32,7 +32,9 @@ writes `bench/work/corpus/<lang>` (or `$CORPUS/<lang>`):
 
 - `raw/`, the sources as found (C++ files over 250 KB and Ruby beyond a
   2000-file sample are left out, as are hidden directories);
-- `ref/`, the reference tool's output at its default settings;
+- `ref/`, the reference tool's output at its default settings (for C#, the
+  [README](../README.md#settings)'s `.editorconfig`, which `mk.sh cs` writes
+  above `ref/` with an empty `.git`; see `tools/csharp/NOTES.md`);
 - `failed.txt`, the files the reference rejected, which every comparison
   leaves out.
 
@@ -46,7 +48,7 @@ The harder corpora are built from a language's `raw/`:
 | `dart4` | `tools/dart/mk3.sh dart4` | each file marked `3.7`, `3.8` or `3.12`, for the older tall styles |
 | `dart5` | `tools/dart/mk5.sh` | each repository a package at `sdk: ^3.8.0` with the package config `dart pub get` writes, so the version comes from the project |
 | `dart6` | `tools/dart/mk3.sh dart6` | each file marked with one of every version from 2.12 to 3.14 |
-| `cs2` | `tools/csharp/mkcs2.sh` | each directory first formatted with non-default CSharpier options |
+| `cs2` | `tools/csharp/mkcs2.sh` | each directory first formatted with non-default CSharpier options, layered on the `cs` style's `.editorconfig` |
 
 ## Corpus results
 
