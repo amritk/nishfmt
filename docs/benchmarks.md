@@ -59,7 +59,7 @@ for byte as it does, on the corpora the README's table is measured on:
 
 | Corpus | Files | Identical |
 | --- | ---: | ---: |
-| C++ | 10343 | 10298 |
+| C++ | 10343 | 10307 |
 | Java | 7627 | 7627 |
 | Kotlin | 9602 | 9602 |
 | C# | 13988 | 13988 |
@@ -74,7 +74,7 @@ for byte as it does, on the corpora the README's table is measured on:
 | Rust, `rust2` (other configs first) | 8321 | 8321 |
 | Ruby | 1999 | 1999 |
 
-The 38 C++ files left are described in [C++](cpp.md#results-by-repository).
+The 36 C++ files left are described in [C++](cpp.md#results-by-repository).
 
 ## Comparing
 

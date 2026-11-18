@@ -56,7 +56,7 @@ and memory are for the whole tree.
 
 The regression corpus (`bench/corpus`, 10343 files from the same kind of
 repositories, each capped at 250 KB, the reference one clang-format 23.1.5
-`-i` run) matches on 10298. Of the 45 left, 27 are files on which a second
+`-i` run) matches on 10307. Of the 36 left, 27 are files on which a second
 clang-format run changes its own output; nishfmt gives the settled output
 there, as above. Its times are in the [README](../README.md#languages-and-speed).
 
