@@ -2840,7 +2840,8 @@ export class JParser {
    * the type of a class literal", anything else "'.class' expected").
    */
   private annotatedDimsRef(ty: i32): i32 {
-    if (this.t.kind[ty] !== N_ANNOTATED_TYPE || !this.op2(":", ":")) {
+    const k = this.t.kind[ty];
+    if ((k !== N_ANNOTATED_TYPE && k !== N_ARRAY_TYPE) || !this.op2(":", ":")) {
       this.rejected = true;
     }
     return ty;
