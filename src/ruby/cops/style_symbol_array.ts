@@ -12,9 +12,9 @@ import {
   rbLitAllowedBracketArray,
   rbLitBracketed,
   rbLitBracketedArrayOf,
+  rbLitInterpolatedLiteral,
   rbLitPercentCorrect,
   rbLitSpaceC,
-  rbLitTrimInterpEscape,
   rbLitWordC,
 } from "./lit_help";
 
@@ -185,7 +185,7 @@ export class CopStyleSymbolArray {
           for (let i = 0; i < a.nKid(n); i++) {
             const c = a.kid(n, i);
             if (a.type(c) === NT_DSYM) {
-              syms.push(`:${rbLitTrimInterpEscape(rbToStringLiteral(src.nodeSrc(c)))}`);
+              syms.push(`:${rbLitInterpolatedLiteral(src, c)}`);
             } else {
               syms.push(rbSaSymbolLiteral(a.text(a.kid(c, 0))));
             }

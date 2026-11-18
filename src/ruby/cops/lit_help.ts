@@ -5,7 +5,20 @@
 // Ported from RuboCop 1.92.3 (MIT License, Copyright (c) 2012-24 Bozhidar
 // Batsov).
 
-import { F_BEGIN, F_END, NT_BLOCK, NT_NUMBLOCK, NT_SEND, V_NIL, rbInspectSym } from "../ast";
+import {
+  F_BEGIN,
+  F_END,
+  NT_BEGIN,
+  NT_BLOCK,
+  NT_DSTR,
+  NT_DSYM,
+  NT_NUMBLOCK,
+  NT_SEND,
+  NT_STR,
+  V_NIL,
+  rbInspectStr,
+  rbInspectSym,
+} from "../ast";
 import { rnHas, rnS, rnE } from "../node";
 import { RbSource, TK_COMMENT } from "../source";
 import { rbDoubleQuotesRequired, rbEscapeString, rbNeedsEscaping, rbReplaceAll } from "../util";
@@ -229,14 +242,57 @@ export const rbLitBracketed = (src: RbSource, n: i32, elements: string[]): strin
   const a = src.a;
   const k = a.nKid(n);
   const parts: string[] = ["["];
-  parts.push(src.src(rnE(src, n, F_BEGIN), a.exS(a.kid(n, 0))));
+  parts.push(src.src(rnE(src, n, F_BEGIN), rbLitElementBegin(src, a.kid(n, 0))));
   let between = " ";
   if (k >= 2) {
-    between = src.src(a.exE(a.kid(n, 0)), a.exS(a.kid(n, 1)));
+    between = src.src(a.exE(a.kid(n, 0)), rbLitElementBegin(src, a.kid(n, 1)));
   }
   parts.push(elements.join(`,${between}`));
   parts.push(src.src(a.exE(a.kid(n, k - 1)), rnS(src, n, F_END)));
   parts.push("]");
+  return parts.join("");
+};
+
+/**
+ * PercentArray#element_begin: the location of an element starting with a
+ * variable interpolated without braces, such as `#@foo`, does not include the `#`.
+ */
+const rbLitElementBegin = (src: RbSource, e: i32): i32 => {
+  const a = src.a;
+  const s = a.exS(e);
+  const t = a.type(e);
+  if (t !== NT_DSTR && t !== NT_DSYM) {
+    return s;
+  }
+  const f = a.kid(e, 0);
+  if (a.isNode(f) && (a.type(f) === NT_STR || a.type(f) === NT_BEGIN)) {
+    return s;
+  }
+  return s - 1;
+};
+
+/**
+ * PercentArray#build_interpolated_string_literal: a double-quoted string
+ * literal for an interpolated element of a `%W` or `%I` array. Only the text
+ * around the interpolations is escaped, the code inside them is kept as written.
+ */
+export const rbLitInterpolatedLiteral = (src: RbSource, n: i32): string => {
+  const a = src.a;
+  const parts: string[] = ['"'];
+  for (let i = 0; i < a.nKid(n); i++) {
+    const c = a.kid(n, i);
+    if (a.type(c) === NT_STR) {
+      const ins = rbInspectStr(a.text(a.kid(c, 0)));
+      parts.push(ins.substring(1, toI32(ins.length) - 1));
+    } else if (a.type(c) === NT_BEGIN) {
+      parts.push(src.nodeSrc(c));
+    } else {
+      // A variable interpolated without braces, such as `#@foo`. The braces keep
+      // the text that follows from becoming part of the variable name.
+      parts.push(`#{${src.nodeSrc(c)}}`);
+    }
+  }
+  parts.push('"');
   return parts.join("");
 };
 

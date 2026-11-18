@@ -12,9 +12,9 @@ import {
   rbLitAllowedBracketArray,
   rbLitBracketed,
   rbLitBracketedArrayOf,
+  rbLitInterpolatedLiteral,
   rbLitChars,
   rbLitPercentCorrect,
-  rbLitTrimInterpEscape,
   rbLitValidUtf8,
 } from "./lit_help";
 import { rbLitUWord } from "./lit_unicode";
@@ -134,7 +134,7 @@ export class CopStyleWordArray {
           for (let i = 0; i < a.nKid(n); i++) {
             const w = a.kid(n, i);
             if (a.type(w) === NT_DSTR) {
-              words.push(rbLitTrimInterpEscape(rbWaStringLiteral(src.nodeSrc(w))));
+              words.push(rbLitInterpolatedLiteral(src, w));
             } else {
               words.push(rbWaStringLiteral(a.text(a.kid(w, 0))));
             }
