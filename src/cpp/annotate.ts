@@ -32,11 +32,15 @@ import {
   KW_REQUIRES,
   KW_RETURN,
   KW_STRUCT,
+  KW_SWITCH,
   KW_TEMPLATE,
   KW_TYPENAME,
   KW_UNION,
   KW_ATTRIBUTE,
   KW_CONSTEXPR,
+  KW_CONSTEVAL,
+  KW_MUTABLE,
+  KW_STATIC,
   KW_DECLTYPE,
   KW_TYPEOF,
   LT_IMPORT,
@@ -50,6 +54,7 @@ import {
   P_COMMA,
   P_EQUAL,
   P_GREATER,
+  P_HASHHASH,
   P_LBRACE,
   P_LESS,
   P_LESSLESS,
@@ -74,6 +79,7 @@ import {
   TT_ATTRIBUTE_LPAREN,
   TT_ATTRIBUTE_SQUARE,
   TT_BINARY_OPERATOR,
+  TT_BLOCK_COMMENT,
   TT_CAST_RPAREN,
   TT_CONDITIONAL_EXPR,
   TT_CTOR_INITIALIZER_COLON,
@@ -159,6 +165,8 @@ export const N_CI: i32 = 32768;
 export const N_IND: i32 = 65536;
 export const N_CI2: i32 = 131072;
 export const N_PNCOK: i32 = 262144;
+export const N_LARROW: i32 = 524288;
+export const N_BRSON: i32 = 1048576;
 
 // Per-token rules for placing a token on the current line (C_*).
 export const C_NOLB: i32 = 1; // a lambda among other arguments: no breaks on this line
@@ -199,6 +207,8 @@ export class Annot {
   pcnt: i32[];
   bpcnt: i32[];
   ctd: i32[]; // closes a template declaration
+  pmv: i32[]; // the name a multi-variable declaration's comma follows (PartOfMultiVariableDeclStmt)
+  sonStk: i32[]; // per open bracket: the last start of a name in it (FirstStartOfName)
   crc: i32[]; // closes a requires clause
   rqc: i32[]; // a `requires` that starts a clause
   role: i32[]; // comma list of a `{`, or -1
@@ -206,6 +216,7 @@ export class Annot {
   jnl: i32[]; // a joined line's first token: its newlines before the join
   mf: i32[]; // step flags (M_*)
   nlc: i32[]; // new-line column rules (N_*)
+  nbb: i32[]; // a function name nameBreakBlocked holds
   cf: i32[]; // current-line rules (C_*)
   strTab: i32[]; // 1 for a string literal holding a tab
   pnc: i32[]; // the previous non-comment token, or -1
@@ -267,6 +278,7 @@ export class Annot {
     this.pcnt = new Array<i32>(16);
     this.bpcnt = new Array<i32>(16);
     this.ctd = new Array<i32>(16);
+    this.pmv = new Array<i32>(16);
     this.crc = new Array<i32>(16);
     this.rqc = new Array<i32>(16);
     this.role = new Array<i32>(16);
@@ -274,6 +286,7 @@ export class Annot {
     this.ilev = new Array<i32>(16);
     this.mf = new Array<i32>(16);
     this.nlc = new Array<i32>(16);
+    this.nbb = new Array<i32>(16);
     this.cf = new Array<i32>(16);
     this.strTab = new Array<i32>(16);
     this.pnc = new Array<i32>(16);
@@ -300,6 +313,7 @@ export class Annot {
     this.segParsed = new Array<i32>(16);
     this.stk = new Array<i32>(64);
     this.stkB = new Array<i32>(64);
+    this.sonStk = new Array<i32>(64); // grows with stk
   }
 
   /** Prepares for a new file: sizes the columns and forgets every line. */
@@ -324,6 +338,7 @@ export class Annot {
       this.pcnt = new Array<i32>(n);
       this.bpcnt = new Array<i32>(n);
       this.ctd = new Array<i32>(n);
+      this.pmv = new Array<i32>(n);
       this.crc = new Array<i32>(n);
       this.rqc = new Array<i32>(n);
       this.role = new Array<i32>(n);
@@ -331,6 +346,7 @@ export class Annot {
       this.ilev = new Array<i32>(n);
       this.mf = new Array<i32>(n);
       this.nlc = new Array<i32>(n);
+      this.nbb = new Array<i32>(n);
       this.cf = new Array<i32>(n);
       this.strTab = new Array<i32>(n);
       this.pnc = new Array<i32>(n);
@@ -380,11 +396,6 @@ export class Annot {
     }
     const tt = d.type[t];
     return tt !== TT_DESIGNATED_INITIALIZER_PERIOD && tt !== TT_TRAILING_RETURN_ARROW && tt !== TT_LAMBDA_ARROW;
-  }
-
-  isTrailingReturnArrow(t: i32): boolean {
-    const tt = this.d.type[t];
-    return tt === TT_TRAILING_RETURN_ARROW || tt === TT_LAMBDA_ARROW;
   }
 
   /** A comment that ends its line (or a line comment). */
@@ -559,6 +570,11 @@ export class Annot {
     let sp = 0;
     let level = 0;
     let bindS = 1;
+    // clang-format's IsMultiVariableDeclStmt: a comma after a name, at the
+    // top level or in the head of a `for`, `if` or `switch`.
+    const fk = d.kind[d.lFirst[sl]];
+    const initStmt = fk === KW_FOR || fk === KW_IF || fk === KW_SWITCH;
+    this.sonStk[0] = -1;
     for (let t = a; ; t = d.nxt[t]) {
       this.fkHead[t] = -1;
       this.fakeR[t] = 0;
@@ -569,6 +585,7 @@ export class Annot {
       this.pcnt[t] = 0;
       this.bpcnt[t] = 0;
       this.ctd[t] = 0;
+      this.pmv[t] = 0;
       this.crc[t] = 0;
       this.rqc[t] = 0;
       this.role[t] = -1;
@@ -586,15 +603,29 @@ export class Annot {
       }
       const opens = this.opensScope(t) && d.match[t] > t;
       const closes = this.closesScope(t) && d.match[t] >= 0 && d.match[t] < t;
+      const tk = d.kind[t];
+      if (d.type[t] === TT_START_OF_NAME) {
+        this.sonStk[sp] = t;
+      } else if (tk === P_SEMI) {
+        this.sonStk[sp] = -1;
+      } else if (
+        tk === P_COMMA &&
+        d.type[t] !== TT_CTOR_INITIALIZER_COMMA &&
+        d.type[t] !== TT_INHERITANCE_COMMA &&
+        this.sonStk[sp] >= 0 &&
+        (sp === 0 || initStmt)
+      ) {
+        this.pmv[this.sonStk[sp]] = 1;
+        d.lMultiVar[sl] = 1;
+      }
       if (sp > 0 && !closes) {
         const o = this.stk[sp - 1];
-        const k = d.kind[t];
-        if (k === P_LBRACE && d.bk[t] === BK_BLOCK) {
+        if (tk === P_LBRACE && d.bk[t] === BK_BLOCK) {
           this.bpcnt[o] = this.bpcnt[o] + 1;
         }
-        if (k === P_COMMA) {
+        if (tk === P_COMMA) {
           this.pcnt[o] = this.pcnt[o] + 1;
-        } else if (this.pcnt[o] === 0 && k !== K_COMMENT) {
+        } else if (this.pcnt[o] === 0 && tk !== K_COMMENT) {
           this.pcnt[o] = 1;
         }
       }
@@ -617,13 +648,15 @@ export class Annot {
         this.bind[t] = bindS;
       }
       if (opens) {
-        if (sp >= toI32(this.stk.length)) {
-          this.stk = growI32(this.stk, sp + 1);
-          this.stkB = growI32(this.stkB, sp + 1);
+        if (sp + 1 >= toI32(this.stk.length)) {
+          this.stk = growI32(this.stk, sp + 2);
+          this.stkB = growI32(this.stkB, sp + 2);
+          this.sonStk = growI32(this.sonStk, sp + 2);
         }
         this.stk[sp] = t;
         this.stkB[sp] = bindS;
         sp++;
+        this.sonStk[sp] = -1;
         level++;
         let inc = 1;
         if (d.type[t] === TT_TEMPLATE_OPENER) {
@@ -637,12 +670,22 @@ export class Annot {
         break;
       }
     }
-    // Template declarations and requires clauses.
+    // Template declarations and requires clauses. Only the outermost
+    // template declaration's `>` closes one (clang-format 23).
+    let tdDepth = 0;
     for (let t = a; ; t = d.nxt[t]) {
+      if (d.type[t] === TT_TEMPLATE_OPENER && d.match[t] > t && d.prv[t] >= 0 && d.kind[d.prv[t]] === KW_TEMPLATE) {
+        tdDepth++;
+      }
       if (d.type[t] === TT_TEMPLATE_CLOSER) {
         const m = d.match[t];
-        if (m >= 0 && d.prv[m] >= 0 && d.kind[d.prv[m]] === KW_TEMPLATE) {
-          this.ctd[t] = 1;
+        if (m >= 0 && m < t && d.prv[m] >= 0 && d.kind[d.prv[m]] === KW_TEMPLATE) {
+          if (tdDepth > 0) {
+            tdDepth--;
+          }
+          if (tdDepth === 0) {
+            this.ctd[t] = 1;
+          }
         }
       }
       if (d.kind[t] === KW_REQUIRES && this.isRequiresClause(t, a)) {
@@ -799,7 +842,9 @@ export class Annot {
     if (tt === TT_CONDITIONAL_EXPR) {
       return PREC_CONDITIONAL;
     }
-    if (this.isTrailingReturnArrow(c)) {
+    // clang-format 23 gives a lambda's arrow comma precedence; a function's
+    // trailing return arrow is no operator at all.
+    if (tt === TT_LAMBDA_ARROW) {
       return PREC_COMMA;
     }
     const k = d.kind[c];
@@ -812,7 +857,7 @@ export class Annot {
     if (tt === TT_BINARY_OPERATOR || k === P_COMMA) {
       return this.prec(c);
     }
-    if (k === P_PERIOD || k === P_ARROW) {
+    if ((k === P_PERIOD || k === P_ARROW) && tt !== TT_TRAILING_RETURN_ARROW) {
       return PREC_ARROW;
     }
     return -1;
@@ -1154,7 +1199,9 @@ export class Annot {
     if (
       pc >= 0 &&
       d.kind[pc] === P_LPAREN &&
-      !(ck === K_COMMENT || ck === P_LPAREN || d.type[t] === TT_LAMBDA_LSQUARE)
+      !(ck === K_COMMENT || ck === P_LPAREN || d.type[t] === TT_LAMBDA_LSQUARE) &&
+      // (clang-format 23: not right after a `/*name=*/` comment it is glued to.)
+      !(pt === TT_BLOCK_COMMENT && d.spaces[t] === 0)
     ) {
       const bpc = this.bpcnt[pc];
       if (bpc > 1) {
@@ -1293,6 +1340,18 @@ export class Annot {
     if (nk === P_LBRACE && d.bk[nnc] === BK_BLOCK) {
       r = r | N_BLOCK;
     }
+    // A lambda's arrow after a specifier or an attribute (clang-format 23).
+    if (
+      d.type[t] === TT_LAMBDA_ARROW &&
+      (pk === KW_NOEXCEPT ||
+        pk === KW_MUTABLE ||
+        pk === KW_CONSTEXPR ||
+        pk === KW_CONSTEVAL ||
+        pk === KW_STATIC ||
+        (pk === P_RSQUARE && d.match[prev] >= 0 && d.type[d.match[prev]] === TT_ATTRIBUTE_SQUARE))
+    ) {
+      r = r | N_LARROW;
+    }
     if (ck === P_RBRACE || ck === P_RSQUARE) {
       r = r | N_CLOSEBR;
       if (this.closesBlockList(t)) {
@@ -1303,6 +1362,10 @@ export class Annot {
       // goes to the line's first indent.)
       if (m >= 0 && d.bk[m] === BK_BRACED_INIT && d.eqList[m] === 0) {
         r = r | N_BRINIT;
+        const mp = this.prevNonComment(m);
+        if (mp >= 0 && d.type[mp] === TT_START_OF_NAME) {
+          r = r | N_BRSON;
+        }
       }
     }
     if (ck === P_RPAREN) {
@@ -1423,7 +1486,7 @@ export class Annot {
       if (tt === TT_BINARY_OPERATOR || tt === TT_CONDITIONAL_EXPR) {
         m = m | M_NBINL;
       }
-      if (tt === TT_LAMBDA_LSQUARE || this.isTrailingReturnArrow(t)) {
+      if (tt === TT_LAMBDA_LSQUARE || tt === TT_LAMBDA_ARROW) {
         m = m | M_LSSET;
       }
       if (
@@ -1489,6 +1552,7 @@ export class Annot {
       }
       this.mf[t] = m;
       this.nlc[t] = this.newLineRules(l, t, pc);
+      this.nbb[t] = d.type[t] === TT_FUNCTION_DECLARATION_NAME && this.nameBreakBlocked(t, d.lFirst[l]) ? 1 : 0;
       this.cf[t] = this.currentLineRules(l, t, pc);
       if (k !== K_COMMENT) {
         pc = t;
@@ -1513,7 +1577,7 @@ export class Annot {
       return d.nl[t] > 0 && d.inPP[t] === 0;
     }
     // A directive between the two (taken out of the line) ends the line before it.
-    if (t > left + 1 && d.inPP[t - 1] === 1 && d.inPP[t] === 0) {
+    if (this.directiveBefore(t)) {
       return true;
     }
     if (lk === K_STRING && rk === K_STRING) {
@@ -1552,10 +1616,13 @@ export class Annot {
     if (this.isTrailingComment(left)) {
       return true;
     }
-    if (rk === P_LESSLESS) {
+    // `<< "a" << "b"`: a break between two plain string literals is kept
+    // where the source has one, and only there.
+    if (rk === P_LESSLESS && this.isPlainString(left)) {
+      const bl = d.prv[left];
       const n = d.nxt[t];
-      if (n >= 0 && d.kind[n] === K_STRING && lk === K_STRING && this.endsWithNewlineEscape(left)) {
-        return true;
+      if (bl >= 0 && d.kind[bl] === P_LESSLESS && n >= 0 && this.isPlainString(n)) {
+        return d.nl[t] > 0;
       }
     }
     if (this.rqc[t] === 1) {
@@ -1576,10 +1643,47 @@ export class Annot {
     return false;
   }
 
-  endsWithNewlineEscape(t: i32): boolean {
+  /** A directive (taken out of the line) sits between `t` and the token before it: clang's FirstAfterPPLine. */
+  directiveBefore(t: i32): boolean {
     const d = this.d;
-    const e = d.end[t];
-    return e - d.start[t] >= 3 && d.at(e - 1) === 34 && d.at(e - 2) === 110 && d.at(e - 3) === 92;
+    const p = d.prv[t];
+    return p >= 0 && t > p + 1 && d.inPP[t - 1] === 1 && d.inPP[t] === 0;
+  }
+
+  /**
+   * clang-format 23 never forces the break before a function's name past a
+   * line comment or a directive inside the line before it.
+   */
+  nameBreakBlocked(t: i32, first: i32): boolean {
+    const d = this.d;
+    for (let q = d.prv[t]; q >= 0; q = d.prv[q]) {
+      if (d.type[q] === TT_LINE_COMMENT) {
+        return true;
+      }
+      if (d.type[q] === TT_TEMPLATE_CLOSER) {
+        q = d.match[q];
+        if (q < 0) {
+          return true;
+        }
+      }
+      if (q === first) {
+        return false;
+      }
+      if (this.directiveBefore(q)) {
+        return true;
+      }
+    }
+    return false;
+  }
+
+  /** clang's tok::string_literal: a string with no encoding prefix (raw or not). */
+  isPlainString(t: i32): boolean {
+    const d = this.d;
+    if (d.kind[t] !== K_STRING) {
+      return false;
+    }
+    const c = d.at(d.start[t]);
+    return c === 34 || c === 82;
   }
 
   canBreakBefore(l: i32, t: i32): boolean {
@@ -1591,7 +1695,11 @@ export class Annot {
     const rt = d.type[t];
     if (rt === TT_POINTER_OR_REFERENCE) {
       const n = d.nxt[t];
-      return d.lMultiVar[l] === 1 || n < 0 || d.type[n] !== TT_FUNCTION_DECLARATION_NAME;
+      return d.lMultiVar[l] === 1 || n < 0 || (d.type[n] !== TT_FUNCTION_DECLARATION_NAME && d.kind[n] !== KW_CONST);
+    }
+    // Never next to a `##` (clang-format 23).
+    if (lk === P_HASHHASH || rk === P_HASHHASH) {
+      return false;
     }
     if (rt === TT_START_OF_NAME || rt === TT_FUNCTION_DECLARATION_NAME || rk === KW_OPERATOR) {
       return true;
@@ -1758,7 +1866,8 @@ export class Annot {
       lk === KW_STRUCT ||
       lk === K_COMMENT ||
       this.isMemberAccess(t) ||
-      this.isTrailingReturnArrow(t) ||
+      rt === TT_TRAILING_RETURN_ARROW ||
+      rt === TT_LAMBDA_ARROW ||
       rk === P_LESSLESS ||
       rk === P_COLON ||
       rk === P_LSQUARE ||
@@ -1800,7 +1909,7 @@ export class Annot {
       return 500;
     }
     if (rt === TT_START_OF_NAME || rt === TT_FUNCTION_DECLARATION_NAME || rk === KW_OPERATOR) {
-      if (d.kind[d.lFirst[l]] === KW_FOR && d.lMultiVar[l] === 1) {
+      if (d.kind[d.lFirst[l]] === KW_FOR && this.pmv[t] === 1) {
         return 3;
       }
       if (lt === TT_START_OF_NAME) {
@@ -1814,7 +1923,7 @@ export class Annot {
     if (rt === TT_POINTER_OR_REFERENCE) {
       return 190;
     }
-    if (this.isTrailingReturnArrow(t)) {
+    if (rt === TT_LAMBDA_ARROW) {
       return 110;
     }
     if (lk === P_EQUAL && rk === P_LBRACE) {

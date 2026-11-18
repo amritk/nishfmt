@@ -1,0 +1,6 @@
+void f() {
+  const auto results = RunInParallel(
+      /*num_runs=*/paths.size(), [&paths, &root](size_t i) { return 1; },
+      /*do_work=*/
+      AnalyzeProfileProto(substream, path, options));
+}

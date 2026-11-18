@@ -60,6 +60,8 @@ import {
   N_MAXLSIND,
   N_MEMBER,
   N_PNCOK,
+  N_LARROW,
+  N_BRSON,
   N_QC,
   N_QCIND,
   N_RPAREN,
@@ -143,6 +145,7 @@ import {
   TT_FUNCTION_DECLARATION_NAME,
   TT_INHERITANCE_COLON,
   TT_INHERITANCE_COMMA,
+  TT_LAMBDA_ARROW,
   TT_LAMBDA_LSQUARE,
   TT_LINE_COMMENT,
   TT_OVERLOADED_OPERATOR,
@@ -150,7 +153,6 @@ import {
   TT_START_OF_NAME,
   TT_TEMPLATE_CLOSER,
   TT_TEMPLATE_OPENER,
-  TT_TRAILING_RETURN_ARROW,
   TT_UNARY_OPERATOR,
 } from "./tok";
 
@@ -211,6 +213,9 @@ const LAZY_LIMIT: i64 = 1073741824;
 const RC_SIZE: i32 = 8192; // power of two
 const CC_SIZE: i32 = 65536; // power of two
 const IGNORE_AFTER: i32 = 50000;
+
+/** An implicit paren's record has no token: its R_TOK holds its precedence. */
+const fakeTok = (prec: i32): i32 => -2 - prec;
 
 const isHex = (c: i32): boolean => (c >= 48 && c <= 57) || (c >= 97 && c <= 102) || (c >= 65 && c <= 70);
 
@@ -865,7 +870,12 @@ export class Indenter {
           return true;
         }
       }
-    } else if (ct === TT_BINARY_OPERATOR && a.canB[cur] === 1 && this.topHas(F_BBP)) {
+    } else if (
+      ct === TT_BINARY_OPERATOR &&
+      a.canB[cur] === 1 &&
+      a.prec(cur) !== PREC_ASSIGNMENT &&
+      this.topHas(F_BBP)
+    ) {
       return true;
     }
     if (ck === P_LESSLESS && ct !== TT_OVERLOADED_OPERATOR && this.topHas(F_BBP) && this.top(R_FLL) === 0) {
@@ -885,7 +895,8 @@ export class Indenter {
       d.lRetWrap[this.line] === 0 &&
       this.topHas(F_BBP)
     ) {
-      return true;
+      // (clang-format 23: not past a line comment or an inner directive.)
+      return a.nbb[cur] === 0;
     }
     if (pk === P_LBRACE && d.bk[prev] === BK_BLOCK && ck !== P_RBRACE && ck !== K_COMMENT) {
       return true;
@@ -999,12 +1010,23 @@ export class Indenter {
     if ((r & N_BLOCK) !== 0) {
       return uncheckedGet(this.a.nest, cur) === 0 ? this.firstIndent : ind;
     }
+    if ((r & N_LARROW) !== 0) {
+      return ci;
+    }
     if ((r & N_CLOSEBR) !== 0 && this.sp > 1) {
       const b = uncheckedGet(rc, this.topRec * RS + RP) * RS + RF;
       if ((r & N_CLOSEBL) !== 0) {
         return uncheckedGet(rc, b + R_NBI);
       }
       if ((r & N_BRINIT) !== 0) {
+        // At the top level, or right inside an assignment, the brace lines
+        // up with the start of the line (clang-format 23).
+        if (
+          (this.sp === 2 && (r & N_BRSON) !== 0) ||
+          (this.sp === 3 && this.at(1, R_TOK) === fakeTok(PREC_ASSIGNMENT))
+        ) {
+          return this.firstIndent;
+        }
         return uncheckedGet(rc, b + R_LS);
       }
       return this.firstIndent;
@@ -1120,6 +1142,9 @@ export class Indenter {
         tk = d.prv[tk];
       }
       this.setTop(R_VP, vp);
+      if (a.pmv[d.prv[cur]] === 1) {
+        this.setTop(R_LS, vp);
+      }
     }
     const spaces = d.spaces[cur] + extra;
     const fm = this.fm;
@@ -1234,7 +1259,7 @@ export class Indenter {
         this.setTop(R_COLON, this.col + w);
       }
     }
-    if (d.type[cur] !== TT_TRAILING_RETURN_ARROW && !a.isTrailingReturnArrow(cur)) {
+    if (d.type[cur] !== TT_LAMBDA_ARROW) {
       this.setTop(R_NBI, this.col);
     }
     if (a.isMemberAccess(nnc)) {
@@ -1454,7 +1479,7 @@ export class Indenter {
       if (p > PREC_COMMA) {
         fl = fl & ~F_AVOID;
       }
-      this.setTop(R_TOK, -1);
+      this.setTop(R_TOK, fakeTok(p));
       if (!trailing && (prev < 0 || d.kind[prev] !== KW_RETURN || p > 0)) {
         let ind = this.top(R_IND);
         if (this.col > ind) {
@@ -1559,7 +1584,9 @@ export class Indenter {
         newIndent = this.top(R_LS) + d.opts.continuationIndent;
       }
       const nn = a.nextNonComment(cur);
-      const endsInComma = m >= 0 && d.kind[d.prv[m]] === P_COMMA;
+      // (clang-format 23 looks past comments before the `}`.)
+      const lc = m >= 0 ? a.prevNonComment(m) : -1;
+      const endsInComma = lc >= 0 && d.kind[lc] === P_COMMA;
       avoid =
         endsInComma ||
         (nn >= 0 &&

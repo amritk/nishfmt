@@ -1,0 +1,3 @@
+template <
+    template <typename, typename, uint8_t, typename, typename, typename, template <typename> class, class> class Impl>
+struct S {};
