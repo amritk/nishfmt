@@ -1933,7 +1933,6 @@ export class JParser {
     return this.finish(n);
   }
 
-  /** `{ case ...: ... }` of a switch statement or expression. */
   /** A switch's `{ cases }`; `statement`: a switch statement's, not a switch expression's. */
   private switchBody(statement: boolean): i32 {
     const t = this.t;
