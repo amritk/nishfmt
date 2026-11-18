@@ -1924,6 +1924,23 @@ export const rsFormatImpl = (ctx: RsCtx, item: i32, bi: i32, al: i32): string | 
   return result + "}";
 };
 
+/** Whether the impl's `const` is written after `impl`, right before the first type in [lo, tyLo). */
+const isConstAfterImpl = (ctx: RsCtx, lo: i32, tyLo: i32): boolean => {
+  let s = rsTrimEnd(ctx.snippet(lo, tyLo));
+  if (s.endsWith("!")) {
+    s = rsTrimEnd(s.slice(0, toI32(s.length) - 1));
+  }
+  if (!s.endsWith("const")) {
+    return false;
+  }
+  const n = toI32(s.length);
+  if (n === 5) {
+    return true;
+  }
+  const c = s.charCodeAt(n - 6);
+  return !(c === 95 || (c >= 48 && c <= 57) || (c >= 65 && c <= 90) || (c >= 97 && c <= 122));
+};
+
 const formatImplRefAndType = (ctx: RsCtx, item: i32, bi: i32, al: i32): string | null => {
   const ast = ctx.ast;
   const cfg = ctx.cfg;
@@ -1931,6 +1948,14 @@ const formatImplRefAndType = (ctx: RsCtx, item: i32, bi: i32, al: i32): string |
   const ofTrait = ast.b[item];
   const selfTy = ast.c[item];
   const f = ast.fl[item];
+  const firstTy = ofTrait >= 0 ? ofTrait : selfTy;
+  if ((f & IT_CONST) !== 0 && isConstAfterImpl(ctx, ast.lo[item], ast.lo[firstTy])) {
+    // rustc 1.99 rejects `impl const Tr for T` and parses an inherent
+    // `impl const S` as an impl of the type `const S`, which rustfmt keeps as
+    // written. The parser still takes both the 1.9 way, so skip the file.
+    ctx.unsupported("impl const");
+    return null;
+  }
   let result = rsFormatVisibility(ctx, ast.e[item]);
   if (ofTrait >= 0) {
     if ((f & IT_DEFAULT) !== 0) {

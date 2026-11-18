@@ -338,7 +338,6 @@ const formatFunctionType = (
   return args + "\n" + rsIndentStr(cfg, listShape.bi, listShape.al) + rsTrimStart(out);
 };
 
-// The Spanned lo of a param of a fn pointer type.
 const getTactics = (items: RsListItem[], output: string, shape: RsShape): i32 => {
   if (rsHasByte(output, 10)) {
     return DLT_VERTICAL;

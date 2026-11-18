@@ -101,9 +101,10 @@ Not ported, and why:
   (#6835) is style edition 2027 only.
 - The parser changes of rustc 1.99: `impl const Tr for T` is an error and an
   inherent `impl const S` parses `const S` as a type that rustfmt keeps as
-  written. The port's parser still takes both in the 1.9 way (and rejects
-  `const unsafe impl`, which rustc accepts), so such files differ; they
-  belong to the parser (`parser.ts`).
+  written. The port's parser still takes both the 1.9 way, so
+  `formatImplRefAndType` skips a file with `const` after `impl`
+  (`v1_10_inherent_impl_const`) until the parser follows rustc. It also
+  rejects `const unsafe impl`, which rustc accepts.
 - Unstable syntax: `super let`, field representing types, `mut`/`impl`
   restrictions, try blocks, fn delegation, pattern types, direct const args,
   `cfg_select!` (formatted on nightly only). Such files stay skipped.

@@ -1476,7 +1476,7 @@ export const rsRewriteUnaryPrefix = (ctx: RsCtx, prefix: string, n: i32, shape: 
   return r === null ? null : prefix + r;
 };
 
-export const rsRewriteUnarySuffix = (ctx: RsCtx, suffix: string, n: i32, shape: RsShape): string | null => {
+const rsRewriteUnarySuffix = (ctx: RsCtx, suffix: string, n: i32, shape: RsShape): string | null => {
   const s = shape.subWidth(toI32(suffix.length));
   if (s === null) {
     return null;

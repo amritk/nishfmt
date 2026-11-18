@@ -792,19 +792,9 @@ export const rsRewriteMacroDef = (ctx: RsCtx, shape: RsShape, bi: i32, al: i32, 
   const bangHi = ctx.spanAfter(lo, hi, "!");
   const identLo = t.lo[identTok];
   const between = ctx.snippet(bangHi, identLo);
-  let result = "macro_rules!" + between + identStr;
-  if (!rsContainsComment(between)) {
-    const r = rsCombineStrsWithMissingComments(
-      ctx,
-      "macro_rules!",
-      identStr,
-      bangHi,
-      identLo,
-      shape.infiniteWidth(),
-      true,
-    );
-    result = r !== null ? r : "macro_rules! " + identStr;
-  }
+  // Without a comment, combine_strs_with_missing_comments at infinite width
+  // always joins the two with one space.
+  let result = rsContainsComment(between) ? "macro_rules!" + between + identStr : "macro_rules! " + identStr;
   const armShape = shape.blockIndent(cfg.tabSpaces).withMaxWidth(cfg);
   if (branches.length === 0) {
     const blo = ctx.spanBefore(lo, hi, "{");
