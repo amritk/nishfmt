@@ -203,12 +203,14 @@ Four of #43's cases are guards (#44): they pass on e32d0ff and pin the
 boundary the change moved, not the fix. `javac_near_miss_statements` holds
 inputs gjf formats next to the new rejections (`sealed` and `non` as names,
 `non - sealed`, a local `abstract sealed class`, array declarations, an
-annotated method reference, arrow cases); a binary that over-rejects skips it
-and fails. `skip_javac_primitive_array_class_statement`,
+annotated method reference, arrow cases). A binary that over-rejects skips
+it and fails: dropping `k === N_ASSIGNMENT ||` from `checkExprStat` in
+`src/java/parser.ts` does. `skip_javac_primitive_array_class_statement`,
 `skip_javac_primitive_2d_array_class_statement` and
 `skip_javac_primitive_array_ctor_ref_statement` are the bare statements
 `int[].class;`, `int[][].class;` and `int[]::new;`, which gjf rejects ("not
 a statement"). e32d0ff skipped them only because `isLocalVarDecl` took them
-for declarations; #43's first head, 9e7e7ad, made
+for declarations. #43's first head, 9e7e7ad, made
 `javac_primitive_array_class_literal_statement` (`int[].class.foo(2);`)
-format and formatted these too, which they catch.
+format and, by #42's record, formatted these too. Dropping `this.rejected =
+true;` from `checkExprStat` formats all three, which these cases catch.
