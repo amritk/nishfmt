@@ -1,0 +1,9 @@
+// A raw string's delimiter may hold `"` (and `$ @ backtick`): it ends only at
+// `)`, the delimiter and `"`.
+void f() {
+  constexpr const char *kErrorMessage = R"""(Error converting %s to binary (expected %d bytes, got %d): %s)""";
+  const char *a = R"a"(x)a" still inside)a"";
+  const char *b = u8R"'$@`(y)'$@`";
+  const char *c = R"0123456789abcdef(sixteen)0123456789abcdef";
+  int z = 1;
+}
