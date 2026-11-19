@@ -80,6 +80,14 @@ and cannot catch a formatter that wrongly gives up. Run each new case against
 the base commit's binary before committing it: a case the old binary already
 passes pins nothing.
 
+**A guard case may pass on the base binary**, beside the cases that fail on
+it, when it holds the line the change moved: inputs next to a new rejection
+that the reference formats (a skip there fails them), or inputs next to a new
+acceptance that the reference rejects. Name the binary it fails on, an
+intermediate head or a one-line mutation you ran, and list each guard case in
+the language's `tools/<lang>/NOTES.md` with what it guards. A guard never
+stands in for the fix's own failing case.
+
 **A skip case is `tests/cases/<lang>/skip_<name>.<ext>`, with no
 `.expected`.** `tests/run.sh` requires the "skipped" message, an unchanged
 file and a clean `--check`, so the case fails on a binary that formats the
