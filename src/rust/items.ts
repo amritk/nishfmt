@@ -1742,7 +1742,11 @@ export const rsVisitTypeAlias = (v: RsVisitor, item: i32, kind: i32): void => {
   v.pushRewrite(ast.lo[item], ast.hi[item], rw);
 };
 
-/** rewrite_type_alias / rewrite_ty. The visitor kind does not change the output here. */
+/**
+ * rewrite_type_alias / rewrite_ty. Only an impl item prints `default`, before the
+ * visibility and after the rest is laid out without it; an item, a trait item and a
+ * foreign item drop it.
+ */
 export const rsRewriteTypeAlias = (ctx: RsCtx, item: i32, bi: i32, al: i32, kind: i32): string | null => {
   const ast = ctx.ast;
   const cfg = ctx.cfg;
@@ -1754,10 +1758,9 @@ export const rsRewriteTypeAlias = (ctx: RsCtx, item: i32, bi: i32, al: i32, kind
   const lo = ast.lo[item];
   const hi = ast.hi[item];
   const rhsHi = ty >= 0 ? ast.hi[ty] : ast.hi[w];
-  // rustfmt 1.10 prints `default` before the visibility here; an opaque type in an
-  // impl loses its visibility (DEFAULT_VISIBILITY).
+  // An opaque type in an impl loses its visibility (DEFAULT_VISIBILITY).
   const dropVis = kind === IVK_IMPL && ty >= 0 && ast.kind[ty] === N_TY_IMPL;
-  let result = `${(ast.fl[item] & IT_DEFAULT) !== 0 ? "default " : ""}${dropVis ? "" : rsFormatVisibility(ctx, ast.e[item])}type `;
+  let result = `${dropVis ? "" : rsFormatVisibility(ctx, ast.e[item])}type `;
   const identStr = rsIdentStr(ctx, ast.d[item]);
   if (ast.ln[g] === 0) {
     result = result + identStr;
@@ -1848,6 +1851,9 @@ export const rsRewriteTypeAlias = (ctx: RsCtx, item: i32, bi: i32, al: i32, kind
   }
   if (kind < 0) {
     return null;
+  }
+  if (kind === IVK_IMPL && (ast.fl[item] & IT_DEFAULT) !== 0) {
+    return `default ${result};`;
   }
   return result + ";";
 };
