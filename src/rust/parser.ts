@@ -1611,6 +1611,10 @@ export class RsParser {
 
   /** A where clause into generics `g` (its where node is replaced). */
   parseWhereInto(g: i32): void {
+    // A failed parseGenerics answers -1; the parse is over (the file is skipped).
+    if (this.failed || g < 0) {
+      return;
+    }
     if (!this.isKw(KW_WHERE)) {
       const w0 = this.ast.a[g];
       this.ast.lo[w0] = this.ph;

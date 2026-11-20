@@ -166,10 +166,14 @@ rewrite:
 | `gen {}`, `async gen move {}` | `parse_gen_block`, `is_gen_block`; `ExprKind::Gen`'s rewrite, which drops a `use` capture clause; `is_simple_block` gets `expr.attrs`, so an attribute keeps the block multi-line (async blocks too) | `parseGenBlock`, `expr.ts` | `gen_blocks`, `async_block_attrs` |
 | `macro m($i:ident) {}`, `macro m { .. }` | `parse_item_decl_macro` (params and body become one branch); `rewrite_macro_def`'s header, single-branch form and separator-less branches; `MacroParser` needs every token tree in a branch | `macros.ts` `rsRewriteMacroDef` | `macros2`, `macro_rules_trailing_tokens` |
 
-`fn foo<T: for<'a> [const] async Trait>() {}` panicked the release binary
-before `[const]` parsed (the parser failed and the skip path hit the panic
-the nish-panic stage reduces); it now formats in the release binary
-(`const_async_bound`). The other inputs of that panic still panic.
+`fn foo<T: for<'a> [const] async Trait>() {}` panicked the binary: the
+`index out of range: 18446744073709551615 >= 64` was the parser's, not the
+compiler's. When `parseGenerics` fails it answers -1, and `parseWhereInto`
+indexed the AST with it (reached from fns, enums, traits, trait aliases and
+type aliases). `parseWhereInto` now returns when the parse has failed, so
+such a file is skipped (`skip_generics_double_comma_params`,
+`skip_generics_macro_bounds`, which panic on the base binary), and the
+`[const]` bound itself now parses and formats (`const_async_bound`).
 
 Guard cases (they pass on the base binary):
 
