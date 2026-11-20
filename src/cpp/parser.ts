@@ -11,6 +11,7 @@ import { prevCode, requiresIsClause } from "./classify";
 import {
   isIdentKind,
   CW_FINAL,
+  CW_OVERRIDE,
   TT_CLASS_HEAD_NAME,
   TT_TEMPLATE_CLOSER,
   P_HASHHASH,
@@ -768,6 +769,14 @@ export class Parser {
         // A goto label in code: one level out, like a case label (also on
         // a macro body's first line: clang-format 23's parsePPDefine no
         // longer reads past a leading `label:`).
+        if ((this.first < 0 || attrOnly) && !this.mustDecl && this.peek(1) === P_COLON) {
+          this.parseCaseLabel();
+          return;
+        }
+        break;
+      case CW_FINAL:
+      case CW_OVERRIDE:
+        // Identifiers to clang-format: `final:` is a goto label too.
         if ((this.first < 0 || attrOnly) && !this.mustDecl && this.peek(1) === P_COLON) {
           this.parseCaseLabel();
           return;

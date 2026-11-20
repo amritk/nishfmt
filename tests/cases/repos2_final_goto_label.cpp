@@ -1,0 +1,10 @@
+CatalogSearchEntry ParseInternal(const string &input, idx_t &idx) {
+  if (input.empty()) goto final;
+final:
+  if (components.size() == 1) { return CatalogSearchEntry(Identifier(), std::move(components[0])); }
+  return CatalogSearchEntry(std::move(components[0]), std::move(components[1]));
+}
+int g() {
+override:
+  return 0;
+}
