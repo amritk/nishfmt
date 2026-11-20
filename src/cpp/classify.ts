@@ -1076,7 +1076,7 @@ export class Classifier {
         this.ctorSeen = true;
       }
       // clang-format's parseParens: after a binary operator the parens hold
-      // an expression; after `const`, `auto` or a simple type they do not.
+      // an expression; after `const`, `auto` or a type name they do not.
       if (dep > 0 && this.k(this.open[dep]) === P_LPAREN) {
         const pt = this.prev(t);
         if (pt >= 0 && pt !== this.open[dep]) {
@@ -1084,7 +1084,7 @@ export class Classifier {
             this.expr[dep] = 1;
           }
           const ptk = this.k(pt);
-          if (ptk === KW_CONST || ptk === KW_AUTO || isSimpleTypeKind(ptk)) {
+          if (ptk === KW_CONST || ptk === KW_AUTO || isTypeName(d, pt)) {
             const n = d.nxt[t];
             const fnTypeParen =
               k === P_LPAREN && n >= 0 && (this.k(n) === P_STAR || this.k(n) === P_AMP || this.k(n) === P_CARET);
