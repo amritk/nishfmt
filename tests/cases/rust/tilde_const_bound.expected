@@ -1,0 +1,2 @@
+fn f<T: [const] Copy>() {}
+impl<T: [const] Clone> Foo for T {}

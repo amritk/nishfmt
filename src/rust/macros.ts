@@ -1,7 +1,7 @@
 // Formatting macro invocations (whose arguments parse as expressions, types,
-// patterns or items) and macro definitions (format_macro_matchers and
-// format_macro_bodies are off, so `macro_rules!` branches are kept as
-// written).
+// patterns or items) and `macro_rules!` and `macro` definitions
+// (format_macro_matchers is off, so a branch's matcher is kept as written;
+// format_macro_bodies is on).
 //
 // Ported from rustfmt 1.10.0 (MIT OR Apache-2.0, Copyright The Rust Project
 // Developers): macros.rs, header.rs, parse/macros/mod.rs,
@@ -45,7 +45,6 @@ import {
   T_LPAREN,
   T_SEMI,
   rsIsReserved,
-  RsTokens,
 } from "./lexer";
 import { OC_MACRO_ARG, rsRewriteWithParens } from "./overflow";
 import { RsParser } from "./parser";
@@ -727,10 +726,18 @@ const rewriteBranch = (ctx: RsCtx, br: Branch, shape: RsShape, multi: boolean): 
   return result + "}";
 };
 
-/** The token after the token tree at `i`. */
-const ttEnd = (t: RsTokens, i: i32): i32 => {
-  const k = t.kind[i];
-  return k === T_LPAREN || k === T_LBRACKET || k === T_LBRACE ? t.match[i] + 1 : i + 1;
+/**
+ * format_header's join of `part` (at `lo`) to `result` (ending at `prevHi`): a comment
+ * between them is kept as written, with the whitespace around it; without one,
+ * combine_strs_with_missing_comments at infinite width joins them with one space. An
+ * empty `result` (no visibility) is no part.
+ */
+const joinHeaderPart = (ctx: RsCtx, result: string, prevHi: i32, lo: i32, part: string): string => {
+  if (result.length === 0) {
+    return part;
+  }
+  const between = ctx.snippet(prevHi, lo);
+  return rsContainsComment(between) ? result + between + part : result + " " + part;
 };
 
 /** rewrite_macro_def. */
@@ -745,18 +752,20 @@ export const rsRewriteMacroDef = (ctx: RsCtx, shape: RsShape, bi: i32, al: i32, 
     return snippet;
   }
   const isRules = (ast.fl[item] & IT_MACRO_RULES) !== 0;
-  if (!isRules) {
-    ctx.unsupported("macro 2.0");
-    return null;
-  }
   const body = ast.a[item];
-  const bodyOpen = ast.a[body];
-  const bodyClose = ast.b[body];
-  // MacroParser::parse.
+  // MacroParser::parse over def.body's tokens: the braces' contents, or for
+  // `macro m(params) { body }` the tokens `(params) => { body }` rustc makes of it
+  // (parse_item_decl_macro). Every token tree must be part of a branch.
+  let first = ast.a[body] + 1;
+  let end = ast.b[body];
+  const params = ast.b[item];
+  if (params >= 0) {
+    first = ast.a[params];
+    end = ast.b[body] + 1;
+  }
   const branches: Branch[] = [];
-  let i = bodyOpen + 1;
-  // While at least two token trees remain.
-  while (i < bodyClose && ttEnd(t, i) < bodyClose) {
+  let i = first;
+  while (i < end) {
     const k = t.kind[i];
     if (!(k === T_LPAREN || k === T_LBRACKET || k === T_LBRACE)) {
       return snippet;
@@ -766,11 +775,16 @@ export const rsRewriteMacroDef = (ctx: RsCtx, shape: RsShape, bi: i32, al: i32, 
     const argsKind = k;
     const argsOpen = i;
     i = argsClose + 1;
-    if (i >= bodyClose || t.kind[i] !== T_FATARROW) {
-      return snippet;
+    // In `macro m(params) { body }` the params are followed by the body directly; rustc
+    // puts the `=>` between them.
+    if (!(params >= 0 && i === ast.a[body])) {
+      if (i >= end || t.kind[i] !== T_FATARROW) {
+        return snippet;
+      }
+      i++;
     }
-    i++;
-    if (i >= bodyClose) {
+    const bo = i;
+    if (i >= end) {
       return snippet;
     }
     const k2 = t.kind[i];
@@ -778,26 +792,35 @@ export const rsRewriteMacroDef = (ctx: RsCtx, shape: RsShape, bi: i32, al: i32, 
       return snippet;
     }
     const bc = t.match[i];
-    const bo = i;
     let bhi = t.hi[bc];
     i = bc + 1;
-    if (i < bodyClose && t.kind[i] === T_SEMI) {
+    if (i < end && t.kind[i] === T_SEMI) {
       bhi = t.hi[i];
       i++;
     }
     branches.push(new Branch(blo, bhi, argsOpen, argsKind, bo, bc));
   }
-  // The header (header.rs format_header): `macro_rules!`, then the name. A
-  // comment between them is kept as written, with the whitespace around it.
+  // The header (header.rs format_header): `macro_rules!`, or the visibility and
+  // `macro`, then the name.
   const identTok = ast.d[item];
-  const identStr = rsIdentStr(ctx, identTok);
-  const bangHi = ctx.spanAfter(lo, hi, "!");
-  const identLo = t.lo[identTok];
-  const between = ctx.snippet(bangHi, identLo);
-  // Without a comment, combine_strs_with_missing_comments at infinite width
-  // always joins the two with one space.
-  let result = rsContainsComment(between) ? "macro_rules!" + between + identStr : "macro_rules! " + identStr;
-  const armShape = shape.blockIndent(cfg.tabSpaces).withMaxWidth(cfg);
+  let result = "";
+  let prevHi = lo;
+  if (isRules) {
+    result = "macro_rules!";
+    prevHi = ctx.spanAfter(lo, hi, "!");
+  } else {
+    const vis = ast.e[item];
+    if (vis >= 0) {
+      result = rsTrimEnd(rsFormatVisibility(ctx, vis));
+      prevHi = ast.hi[vis];
+    }
+    const macroLo = ctx.spanBefore(lo, hi, "macro");
+    result = joinHeaderPart(ctx, result, prevHi, macroLo, "macro");
+    prevHi = macroLo + 5;
+  }
+  result = joinHeaderPart(ctx, result, prevHi, t.lo[identTok], rsIdentStr(ctx, identTok));
+  const multi = isRules || branches.length !== 1;
+  const armShape = multi ? shape.blockIndent(cfg.tabSpaces).withMaxWidth(cfg) : shape;
   if (branches.length === 0) {
     const blo = ctx.spanBefore(lo, hi, "{");
     // rewrite_empty_macro_def_body: an empty block over [blo, hi).
@@ -817,7 +840,7 @@ export const rsRewriteMacroDef = (ctx: RsCtx, shape: RsShape, bi: i32, al: i32, 
     (k: i32): i32 => branches[k].lo,
     (k: i32): i32 => branches[k].hi,
     (k: i32): string | null => {
-      const r = rewriteBranch(ctx, branches[k], armShape, true);
+      const r = rewriteBranch(ctx, branches[k], armShape, multi);
       if (r === null && ctx.macroRewriteFailure) {
         const br = branches[k];
         return rsTrim(ctx.snippet(t.hi[br.bodyOpen], t.lo[br.bodyClose]));
@@ -829,16 +852,20 @@ export const rsRewriteMacroDef = (ctx: RsCtx, shape: RsShape, bi: i32, al: i32, 
     false,
   );
   const fmt = new RsListFormatting(armShape, cfg);
-  fmt.separator = ";";
+  fmt.separator = isRules ? ";" : "";
   fmt.trailingSeparator = ST_ALWAYS;
   fmt.preserveNewline = true;
-  result = result + " {" + rsIndentStrNl(cfg, armShape.bi, armShape.al);
+  if (multi) {
+    result = result + " {" + rsIndentStrNl(cfg, armShape.bi, armShape.al);
+  }
   const ls = rsWriteList(items, fmt);
   if (ls === null) {
     return snippet;
   }
   result = result + ls;
-  result = result + rsIndentStrNl(cfg, bi, al) + "}";
+  if (multi) {
+    result = result + rsIndentStrNl(cfg, bi, al) + "}";
+  }
   return result;
 };
 

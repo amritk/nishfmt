@@ -1,0 +1,16 @@
+type F = Box<Fn(i32) -> ()>;
+type F = Box<::Fn(i32) -> ()>;
+type F = Start(Middle) -> (Middle)::End;
+type F = a::b(x)::c<d>::e(f);
+impl Fn(u8) for X {}
+fn f() {
+    foo(x);
+    let foo(x) = 1;
+}
+fn foo<T>()
+where
+    T::method(..): Send,
+    method(..): Send,
+    method(..): Send,
+{
+}

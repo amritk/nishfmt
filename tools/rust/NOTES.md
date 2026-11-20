@@ -49,9 +49,11 @@ that the reference binary formats at the default config through stdin (the
 `// rustfmt-*` option comments there are ignored outside rustfmt's test
 harness). It is full of rare syntax and comment placements; the 53 skipped
 files use syntax the parser does not take (unstable features such as
-`super let`, `mut ref`, pin sugar, postfix match, guard patterns, unsafe
-fields/binders, `final`/`impl` restrictions), macros 2.0, or
-`rustfmt::skip::macros`/`attributes`.
+`mut ref`, pin sugar, postfix match, guard patterns, unsafe binders,
+`final`/`impl` restrictions), or `rustfmt::skip::macros`/`attributes`.
+(`super let`, unsafe fields and macros 2.0 were among them when this was
+measured; they are ported now, see "Unstable syntax from rust-analyzer's
+parser tests".)
 
 ## The reference source
 
@@ -128,8 +130,8 @@ Not ported, and why:
 - The long-return-type fix (#6835) is style edition 2027 only. (#6840, a
   commented single fn parameter, is in the style edition 2024 path of
   `rewrite_fn_base`, ported below.)
-- Unstable syntax: `super let`, field representing types, `mut`/`impl`
-  restrictions, fn delegation, pattern types, direct const args,
+- Unstable syntax: field representing types, `impl` restrictions, fn
+  delegation, pattern types, direct const args,
   `cfg_select!` (formatted on nightly only). Such files stay skipped. Try
   blocks are formatted: the `expr.rs` try-block arms are the same in 1.9.0
   and 1.10.0, so the forms the parser takes need no change.
@@ -140,6 +142,50 @@ Not ported, and why:
   `format_strings` and `wrap_comments`.
 - `modules.rs` skipping a missing out-of-line module with a custom
   attribute: formatting through stdin resolves no modules.
+
+## Unstable syntax from rust-analyzer's parser tests
+
+rust-analyzer's parser tests at aa198229289901e5718e7c0a8d4115638cc1900c
+(`crates/parser/test_data/parser/{inline/ok,ok}`,
+`crates/syntax/test_data/parser/validation`) hold syntax rustfmt formats and
+the port skipped. Each is ported from rustc_parse at 1.99.1 with its nearby
+rejections (probed against rustfmt's exit status) and rustfmt 1.10.0's
+rewrite:
+
+| Syntax | rustc_parse / rustfmt | Port | Cases |
+| --- | --- | --- | --- |
+| `x.0. await`, `x.1e2` | `break_up_float`'s TrailingDot and Single; `mk_expr_tuple_field_access` rejects a suffix | `parser.ts` `parseDotSuffix` | `tuple_index_float`, `skip_tuple_index_suffix`, `skip_tuple_index_float_suffix` |
+| `Box<(?Sized) + Copy>` | `parse_ty_tuple_or_parens`: a parenthesized bare trait object of one bound goes on with its bounds, and the parens are not the bound's (rustfmt drops them) | `parseTyCommon` | `paren_bounds` |
+| `(Trait)` bounds, `[const]` | `parse_generic_bound` (a parenthesized lifetime, `use<..>` or nested parens is an error), `parse_bound_constness`, PolarityAndModifiers; `BoundConstness::as_str` prints `~const` as `[const]` | `parseBound`, `types.ts` `rewritePolyTraitRef` | `paren_bounds`, `tilde_const_bound`, `const_async_bound`, `skip_paren_lifetime_type`, `skip_paren_lifetime_bound`, `skip_nested_paren_bound`, `skip_const_maybe_bound`, `skip_paren_use_bound` |
+| `&dyn` | `is_explicit_dyn_type`: from 2018 `dyn` always starts a trait object, whose bounds may be empty (rustfmt prints `dyn `) | `parseTyCommon` | `paren_bounds` |
+| `Item<T>: Bound`, `Item::<T> = Item`, `S<'static + Trait>` | `parse_angle_arg` / `get_ident_from_generic_arg`; `parse_generic_arg`'s lifetime check | `parseGenericArg` | `generic_arg_constraints` |
+| `Fn::(i32) -> ()`, `method::(..): Send`, `foo::(x)` | `parse_path_segment`: `::(` in any but a module path; a return type after `(..)` is an error | `parsePathSegments`, `parseParenArgs` | `fn_sugar_path` |
+| `super let` | `parse_stmt_without_recovery`, `Local::rewrite` (which drops a comment between the keywords) | `parseFullStmt`, `items.ts` `rsRewriteLocal` | `super_let` |
+| `unsafe c: u8`, `mut(super) i: i32` | `parse_field_def`, `parse_mut_restriction`, `parse_unsafe_field` (not `safe`, which the port took); `rewrite_struct_field_prefix` | `parseRecordBody`, `parseTupleBody`, `items.ts` `structFieldPrefix` | `field_modifiers`, `skip_safe_field` |
+| `pub unsafe static` | `parse_global_static_front_matter`, also as a statement (`safe static` is not one) | `parseItemKind`, `isItemStartForStmt` | `unsafe_static`, `skip_safe_static_stmt` |
+| `gen {}`, `async gen move {}` | `parse_gen_block`, `is_gen_block`; `ExprKind::Gen`'s rewrite, which drops a `use` capture clause; `is_simple_block` gets `expr.attrs`, so an attribute keeps the block multi-line (async and try blocks too) | `parseGenBlock`, `expr.ts` `rewritePrefixedBlockExpr` | `gen_blocks`, `async_block_attrs`, `try_block_attrs` |
+| `macro m($i:ident) {}`, `macro m { .. }` | `parse_item_decl_macro` (params and body become one branch); `rewrite_macro_def`'s header, single-branch form and separator-less branches; `MacroParser` needs every token tree in a branch | `macros.ts` `rsRewriteMacroDef` | `macros2`, `macro_rules_trailing_tokens` |
+
+`fn foo<T: for<'a> [const] async Trait>() {}` panicked the binary: the
+`index out of range: 18446744073709551615 >= 64` was the parser's, not the
+compiler's. When `parseGenerics` fails it answers -1, and `parseWhereInto`
+indexed the AST with it (reached from fns, enums, traits, trait aliases and
+type aliases). `parseWhereInto` now returns when the parse has failed, so
+such a file is skipped (`skip_generics_double_comma_params`,
+`skip_generics_macro_bounds`, which panic on the base binary), and the
+`[const]` bound itself now parses and formats (`const_async_bound`).
+
+Guard cases (they pass on the base binary):
+
+- `skip_safe_static_stmt`: `safe static` in a block is a path expression in
+  rustc, not an item; it fails on the intermediate head that also made
+  `safe static` an item start in `isItemStartForStmt`.
+
+Two rust-analyzer inputs rustc rejects are still taken, as before this
+change (written back unchanged, not reported skipped):
+`const_param_default_path.rs` (`struct A<const N: i32 = i32::MAX>;`, an
+unbraced path as a const param default) and `0038_endless_inclusive_range.rs`
+(`0..=;`).
 
 ## Edition 2024
 
@@ -155,8 +201,9 @@ Formatting: `pairs.rs` `rewrite_all_pairs` writes a `&&` chain holding a
 `rsRewriteAllPairs` (`edition2024_let_chains`). A global path (`::a`) is
 not an ident there: rustc gives it a `{{root}}` segment.
 
-Not ported (the file is skipped): `gen` blocks, `gen fn` and `async gen`
-(the unstable gen_blocks), which rustc parses at 2024.
+`gen` blocks and `async gen` blocks (the unstable gen_blocks, which rustc
+parses at 2024) are ported (`gen_blocks`). Not ported (the file is
+skipped): `gen fn` and `async gen fn`.
 
 ## Style edition 2024
 
@@ -285,7 +332,11 @@ byte.
 
 None of these occur in the two corpora.
 
-- `macro` (macros 2.0) definitions with a body.
+- The rest of rust-analyzer's parser tests at aa198229 that rustfmt formats
+  (`final` assoc fns, `impl` restrictions, `try bikeshed` blocks, `type
+  const` items, `do yeet`) and `gen fn`: unstable syntax the parser does not
+  take.
+
 - Foreign items other than fns, statics, type aliases and macro calls.
 - Match arms without a body (never-pattern arms), `mut ref` bindings,
   where-clause equality predicates.
