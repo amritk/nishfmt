@@ -9,6 +9,10 @@
 import { isForEachMacro, isQtWord } from "./parser";
 import { Doc } from "./doc";
 import {
+  KW_CONST_CAST,
+  KW_DYNAMIC_CAST,
+  KW_REINTERPRET_CAST,
+  KW_STATIC_CAST,
   PP_DEFINE,
   PP_ELIF,
   PP_ERROR,
@@ -514,6 +518,16 @@ export class Classifier {
     const f = this.next(o);
     if (f < 0 || f === c) {
       return;
+    }
+    // clang-format's lParenStartsCppCast: never the parens of
+    // `static_cast<T>(...)` and the other named casts.
+    const g = this.prev(o);
+    if (g >= 0 && this.ty(g) === TT_TEMPLATE_CLOSER && d.match[g] >= 0 && d.match[g] < g) {
+      const mp = this.prev(d.match[g]);
+      const ck = mp >= 0 ? this.k(mp) : -1;
+      if (ck === KW_STATIC_CAST || ck === KW_CONST_CAST || ck === KW_DYNAMIC_CAST || ck === KW_REINTERPRET_CAST) {
+        return;
+      }
     }
     // `(&)`, `(*)`, `(C::*)` make a function or array type whatever the
     // context (clang-format 23's parseParens; a pointer, not a block's `^`).

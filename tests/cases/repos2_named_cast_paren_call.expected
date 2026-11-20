@@ -1,0 +1,7 @@
+void f() {
+  static_cast<Opt &>(*this)("display usage information")["-?"]["-h"]["--help"].optional();
+  static_cast<Opt>(*this)(x);
+  const_cast<T &>(*p)(y);
+  reinterpret_cast<F *>(*q)(z);
+  any_cast<T &> (*this)(x);
+}
