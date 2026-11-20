@@ -51,12 +51,18 @@ build() { # build <out> <src.ts> <flags...>
   fi
 }
 
-# The Rust driver, natively, under each mode.
-for mode in speed size debug g; do
-  case $mode in
+# The native build modes: the three link profiles, and -g at the default.
+modes="speed size debug g"
+set_flags() {
+  case $1 in
     g) flags=(-g) ;;
-    *) flags=(--profile "$mode") ;;
+    *) flags=(--profile "$1") ;;
   esac
+}
+
+# The Rust driver, natively, under each mode.
+for mode in $modes; do
+  set_flags "$mode"
   build "$work/rust-$mode" tools/dev/rust.ts "${flags[@]}"
   echo "rust driver, ${flags[*]}:"
   for f in $inputs; do
@@ -108,18 +114,18 @@ done
 
 # The reduced program: the same unchecked -1, in every mode.
 echo "tools/nish-panic/reduced.ts:"
-for mode in speed size debug; do
-  build "$work/red-$mode" tools/nish-panic/reduced.ts --profile "$mode"
+for mode in $modes; do
+  set_flags "$mode"
+  build "$work/red-$mode" tools/nish-panic/reduced.ts "${flags[@]}"
   "$work/red-$mode" > /dev/null 2> "$work/err"
   rc=$?
-  check "--profile $mode" panic "$rc" "$work/err"
+  check "${flags[*]}" panic "$rc" "$work/err"
 done
-build "$work/red-g" tools/nish-panic/reduced.ts -g
-"$work/red-g" > /dev/null 2> "$work/err"
-rc=$?
-check "-g" panic "$rc" "$work/err"
 if [ "$node_ok" = 1 ]; then
-  "$NISH" tools/nish-panic/reduced.ts --emit-ts "$work/rts" > "$work/rts.log" 2>&1
+  "$NISH" tools/nish-panic/reduced.ts --emit-ts "$work/rts" > "$work/rts.log" 2>&1 || {
+    echo "--emit-ts failed on reduced.ts" >&2
+    exit 2
+  }
   cp -r "$work/ts/node_modules" "$work/ts/package.json" "$work/rts/"
   node "$work/rts/entry.ts" > /dev/null 2> "$work/err"
   rc=$?
