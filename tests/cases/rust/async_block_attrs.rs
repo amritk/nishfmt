@@ -1,0 +1,4 @@
+fn f() {
+    let x = #[a] async { 1 };
+    let y = #[a] async move { foo() };
+}

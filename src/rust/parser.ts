@@ -28,6 +28,7 @@ import {
   KW_FALSE,
   KW_FN,
   KW_FOR,
+  KW_GEN_2024,
   KW_IF,
   KW_IMPL,
   KW_IN,
@@ -137,8 +138,10 @@ import {
   BM_REF_MUT,
   CL_ASYNC,
   CL_CONST,
+  CL_GEN,
   CL_MOVE,
   CL_STATIC,
+  CL_USE,
   FD_MUT_IN,
   FD_UNSAFE,
   FN_ASYNC,
@@ -4024,24 +4027,57 @@ export class RsParser {
       const u = this.nd(N_EX_UNDERSCORE, lo);
       return this.fin(u);
     }
-    if (kk === KW_ASYNC) {
-      const k1 = this.laKw(1);
-      if (this.la(1) === T_LBRACE || (k1 === KW_MOVE && this.la(2) === T_LBRACE)) {
-        this.bump();
-        const ab = this.nd(N_EX_ASYNC, lo);
-        if (this.eatKw(KW_MOVE)) {
-          this.ast.fl[ab] = CL_MOVE;
-        }
-        const gv93 = this.parseBlock(this.lo(), 0);
-        this.ast.a[ab] = gv93;
-        return this.fin(ab);
-      }
+    // `gen {}` and `async gen {}` from edition 2024 (unstable gen_blocks, gated after
+    // parsing), then `async {}`, each maybe with `move` or `use`.
+    const atAsync = kk === KW_ASYNC;
+    if (
+      (this.t.edition >= 2024 && this.isGenBlock(KW_GEN_2024, atAsync ? 1 : 0)) ||
+      this.isGenBlock(KW_ASYNC, 0)
+    ) {
+      return this.parseGenBlock(lo);
+    }
+    if (atAsync) {
       return this.parseClosure(lo);
     }
     if (this.isPathStart()) {
       return this.parsePathStartExpr(lo);
     }
     return this.fail();
+  }
+
+  /** is_gen_block: `kw` at `i`, then `{`, `move {` or `use {`. */
+  isGenBlock(kw: i32, i: i32): boolean {
+    if (this.laKwAt(i) !== kw) {
+      return false;
+    }
+    const k1 = this.laKwAt(i + 1);
+    if (k1 === KW_MOVE || k1 === KW_USE) {
+      return this.laAt(i + 2) === T_LBRACE;
+    }
+    return this.laAt(i + 1) === T_LBRACE;
+  }
+
+  /** parse_gen_block: `async`, `gen` or `async gen`, the capture clause and the block. */
+  parseGenBlock(lo: i32): i32 {
+    const ab = this.nd(N_EX_ASYNC, lo);
+    let f = 0;
+    if (this.eatKw(KW_ASYNC)) {
+      if (this.eatKw(KW_GEN_2024)) {
+        f = CL_GEN | CL_ASYNC;
+      }
+    } else {
+      this.bump(); // gen
+      f = CL_GEN;
+    }
+    if (this.eatKw(KW_MOVE)) {
+      f = f | CL_MOVE;
+    } else if (this.eatKw(KW_USE)) {
+      f = f | CL_USE;
+    }
+    this.ast.fl[ab] = f;
+    const gv93 = this.parseBlock(this.lo(), 0);
+    this.ast.a[ab] = gv93;
+    return this.fin(ab);
   }
 
   parsePathStartExpr(lo: i32): i32 {

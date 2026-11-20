@@ -9,6 +9,9 @@ import {
   ADDR_RAW,
   AT_INNER,
   BLK_UNSAFE,
+  CL_ASYNC,
+  CL_GEN,
+  CL_MOVE,
   FOR_AWAIT,
   MUT,
   N_ATTR,
@@ -348,9 +351,13 @@ export const rsFormatExpr = (ctx: RsCtx, e: i32, exprType: i32, shape0: RsShape)
     }
   } else if (k === N_EX_ASYNC) {
     const block = ast.a[e];
-    const mover = (ast.fl[e] & 1) !== 0 ? "move " : "";
-    const pre = "async " + mover;
-    const sl = rewriteSingleLineBlock(ctx, pre, block, true, -1, sh);
+    // `{kind} {mover}`: a `use` capture clause is not printed.
+    const f = ast.fl[e];
+    const kind = (f & CL_GEN) === 0 ? "async" : (f & CL_ASYNC) !== 0 ? "async gen" : "gen";
+    const mover = (f & CL_MOVE) !== 0 ? "move " : "";
+    const pre = kind + " " + mover;
+    // is_simple_block gets expr.attrs: the outer attributes and the block's inner ones.
+    const sl: string | null = ast.atn[e] > 0 ? null : rewriteSingleLineBlock(ctx, pre, block, true, -1, sh);
     if (sl !== null) {
       rw = sl;
     } else {
@@ -358,7 +365,7 @@ export const rsFormatExpr = (ctx: RsCtx, e: i32, exprType: i32, shape0: RsShape)
       if (budget < 0) {
         budget = 0;
       }
-      const r = rsRewriteBlock(ctx, block, true, -1, rsShapeLegacy(budget, sh.bi, sh.al));
+      const r = rewriteBlockInner(ctx, block, true, -1, ast.atn[e] === 0, rsShapeLegacy(budget, sh.bi, sh.al));
       rw = r === null ? null : pre + r;
     }
   } else if (k === N_EX_UNDERSCORE) {
