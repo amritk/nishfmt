@@ -72,7 +72,7 @@ case $lang in
           'java -jar '"$GJF"' --replace "$@" 2>/dev/null || for f; do cp "../raw/$f" "$f"; java -jar '"$GJF"' --replace "$f" 2>/dev/null || echo "$f" >> ../failed.txt; done' _ ;;
   kt) find . -type f -print0 | xargs -0 -P"$(nproc)" -n 300 sh -c \
         'java -jar '"$KTFMT"' --kotlinlang-style "$@" >/dev/null 2>&1 || for f; do cp "../raw/$f" "$f"; java -jar '"$KTFMT"' --kotlinlang-style "$f" >/dev/null 2>&1 || echo "$f" >> ../failed.txt; done' _ ;;
-  # Under UTF-8, or Style/WordArray writes non-ASCII words as escapes.
+  # UTF-8: under US-ASCII, Style/WordArray writes non-ASCII words as escapes.
   rb) export LANG=C.UTF-8
       printf 'AllCops:\n  TargetRubyVersion: 3.3\n' > ../rubocop.yml
       find . -type f -print0 | xargs -0 -P"$(nproc)" -n 100 sh -c \

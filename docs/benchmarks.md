@@ -131,7 +131,7 @@ uses; `ref-settled/` holds the output rerun until it stops changing, and
 
 A file can match one and not the other: nishfmt makes clang-format's
 decisions on the source as found, and where clang-format's second run
-changes its first, nishfmt's output is usually the second. Of the 27
+changes its first, nishfmt's output is often the second. Of the 27
 first-corpus files that differ from one run and that a rerun changes, 24
 match its second run and the settled output. Of the second corpus's 32, 23
 do, and 9 match neither its first run nor its second (one of them, which
