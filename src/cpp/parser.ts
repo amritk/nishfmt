@@ -1494,6 +1494,19 @@ export class Parser {
       this.parseBlock(1, false, TT_CONTROL_STATEMENT_LBRACE);
     }
     while (true) {
+      // Own-line comments before a `catch`: clang-format's parseTryCatch
+      // reads them with the `catch`, flushing them as lines of their own,
+      // which ends the `}` line, and goes on with the chain.
+      if (this.cur() === K_COMMENT && this.d.kind[this.nextNonComment(this.pos)] === KW_CATCH) {
+        // (A comment on the `}` line stays on it, and so does the `catch`.)
+        while (this.cur() === K_COMMENT && this.d.nl[this.pos] === 0) {
+          this.push();
+        }
+        if (this.cur() === K_COMMENT) {
+          this.addLine();
+          this.flushComments();
+        }
+      }
       // Directives before a `catch` are read past, as clang-format reads tokens.
       if (this.macro < 0 && this.cur() === P_HASH && this.d.ppKind[this.pos] !== PP_NONE) {
         const d = this.d;
