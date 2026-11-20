@@ -80,6 +80,8 @@ import {
   PP_ELSE,
   K_IDENT,
   P_AT,
+  P_MINUS,
+  P_PLUS,
   K_STRING,
   KW_USING,
   KW_TYPENAME,
@@ -1487,8 +1489,11 @@ export class Formatter {
           fk === KW_DEFAULT ||
           fk === KW_EXTERN;
         const blockLike = tt === TT_UNKNOWN || (tt === TT_CONTROL_STATEMENT_LBRACE && fk === KW_SWITCH);
+        // (Never a line starting with an Objective-C `@`, `-` or `+`.)
+        const objcFirst = d.kind[lineStart] === P_AT || d.kind[lineStart] === P_MINUS || d.kind[lineStart] === P_PLUS;
         if (
           blockLike &&
+          !objcFirst &&
           !blockLBrace &&
           !ctrl &&
           !emptyBody &&
