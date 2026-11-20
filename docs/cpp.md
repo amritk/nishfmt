@@ -56,13 +56,14 @@ and memory are for the whole tree.
 
 The regression corpus (`bench/corpus/repos.txt`, 10343 files from the same
 kind of repositories, each capped at 250 KB, the reference one clang-format
-23.1.5 `-i` run) matches on 10307, and on 10319 against clang-format's
-settled output (`ref-settled/`). Of the 36 left, 27 are files on which a
+23.1.5 `-i` run) matches on 10307, and against clang-format's settled
+output (`ref-settled/`) on 10319 of the 10341 files that settle. Of the 36 left, 27 are files on which a
 second clang-format run changes its own output; nishfmt gives the settled
 output on 24 of them. Its times are in the [README](../README.md#languages-and-speed).
 The second corpus (`bench/corpus/repos2.txt`, 13902 files) matches on 13797
-against one run and on 13800 against the settled output; both counts and how
-they are built are in [Benchmarks](benchmarks.md#c-one-run-and-the-settled-output).
+against one run, and on 13799 of the 13901 files that settle against the
+settled output; both counts and how they are built are in
+[Benchmarks](benchmarks.md#c-one-run-and-the-settled-output).
 
 On the second corpus, 32 of the 105 files that differ from one run are files
 a rerun of clang-format changes. nishfmt gives the second run's output on 23.
@@ -75,7 +76,7 @@ real gaps:
 | eigen `Eigen/src/Core/util/Macros.h` (in taskflow) | comment indentation beside preprocessor conditionals |
 | tbb `include/tbb/tbb_config.h` (in taskflow) | comment indentation beside preprocessor conditionals, and a long `#define` condition |
 | tbb `include/tbb/machine/msvc_ia32_common.h` (in taskflow) | comment indentation beside preprocessor conditionals, and an `_asm { }` block |
-| brotli `common/brotli_platform.h` (in duckdb) | a run of macro invocations without semicolons, and a function under `#if`; never settles, nishfmt matches the last rerun |
+| brotli `common/brotli_platform.h` (in duckdb) | a run of macro invocations without semicolons, and a function under `#if`; never settles |
 | jemalloc `internal/rb.h` (in duckdb) | assembler-like macro bodies: the red-black tree generator macros, `*` spacing in declarations |
 | zstd `compress/huf_compress.cpp` (in duckdb) | a block comment past the column limit in a macro body |
 | eigen `Eigen/src/Core/ProductEvaluators.h` (in taskflow) | continuation alignment in a template argument, and the space after `//` in commented-out code |

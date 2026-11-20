@@ -39,9 +39,10 @@ pinned to one core:
   [Benchmarks](docs/benchmarks.md#corpus-results). For C++ the reference is
   one `clang-format -i` run, which is not always stable: against
   clang-format's settled output (its own output rerun until it stops
-  changing) nishfmt matches 10,319 of the 10,343 files
-  ([Benchmarks](docs/benchmarks.md#c-one-run-and-the-settled-output)). Times cover the whole
-  corpus directory, including the few files the reference rejects.
+  changing) nishfmt matches 10,319 of the 10,341 files that settle
+  ([Benchmarks](docs/benchmarks.md#c-one-run-and-the-settled-output)).
+  Times cover the whole corpus directory, including the few files the
+  reference rejects.
 - One core is `taskset -c 0`, with `-j 1` for nishfmt. nishfmt's times are
   the best of three. The C++ and Ruby rows were measured together on an
   otherwise idle machine, the reference tools one run each; the Java row
