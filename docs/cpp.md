@@ -60,14 +60,14 @@ kind of repositories, each capped at 250 KB, the reference one clang-format
 output (`ref-settled/`) on 10319 of the 10341 files that settle. Of the 36 left, 27 are files on which a
 second clang-format run changes its own output; nishfmt gives the settled
 output on 24 of them. Its times are in the [README](../README.md#languages-and-speed).
-The second corpus (`bench/corpus/repos2.txt`, 13902 files) matches on 13824
-against one run, and on 13825 of the 13901 files that settle against the
+The second corpus (`bench/corpus/repos2.txt`, 13902 files) matches on 13827
+against one run, and on 13829 of the 13901 files that settle against the
 settled output; both counts and how they are built are in
 [Benchmarks](benchmarks.md#c-one-run-and-the-settled-output).
 
-On the second corpus, 31 of the 78 files that differ from one run are files
-a rerun of clang-format changes. nishfmt gives the second run's output on 23.
-The other 8 match neither clang-format's first run nor its second, and are
+On the second corpus, 31 of the 75 files that differ from one run are files
+a rerun of clang-format changes. nishfmt gives the second run's output on 24.
+The other 7 match neither clang-format's first run nor its second, and are
 real gaps:
 
 | File (`repos2.txt`) | What differs |
@@ -77,11 +77,10 @@ real gaps:
 | tbb `include/tbb/machine/msvc_ia32_common.h` (in taskflow) | comment indentation beside preprocessor conditionals, and an `_asm { }` block |
 | brotli `common/brotli_platform.h` (in duckdb) | a run of macro invocations without semicolons, and a function under `#if`; never settles |
 | jemalloc `internal/rb.h` (in duckdb) | assembler-like macro bodies: the red-black tree generator macros, `*` spacing in declarations |
-| zstd `compress/huf_compress.cpp` (in duckdb) | a block comment past the column limit in a macro body |
 | eigen `Eigen/src/Core/ProductEvaluators.h` (in taskflow) | continuation alignment in a template argument, and the space after `//` in commented-out code |
 | eigen `bench/btl/data/gnuplot_common_settings.hh` (in taskflow) | gnuplot settings, not C++, parsed as C++: `[*:*]` spacing |
 
-The 47 files that differ on the second corpus and that clang-format leaves
+The 44 files that differ on the second corpus and that clang-format leaves
 as they are on a rerun are the long tail, mostly one construct each:
 
 | What differs | Files (`repos2.txt`) |
@@ -91,7 +90,6 @@ as they are on a rerun are the long tail, mostly one construct each:
 | trailing comment alignment and reflow (a reflowed section inside an aligned run, an enum's comments, a comment before `// clang-format off`) | eigen `doc/tutorial.cpp`, `util/XprHelper.h`, `util/Constants.h`, `test/main.h`; flatbuffers `src/idl_gen_text.cpp`; tbb `rml/include/rml_base.h` |
 | string literals: a tab inside a string (clang-format's rerun emulation), emoji widths when splitting, macro-adjacent literals | duckdb `holistic_functions.hpp`, `string_functions.hpp`; utf8proc `utf8proc.cpp` (in duckdb); bitcoin `test/cluster_linearize_tests.cpp` |
 | line breaking: a conditional's operand column, designated initializers, `<<` chains, lambdas among arguments | bitcoin `test/fuzz/package_eval.cpp`, `test/checkqueue_tests.cpp`; eigen `Tutorial_commainit_02.cpp`; flatbuffers `src/idl_gen_ts.cpp`; grpc `xds_server_config_fetcher.cc`; tbb `graph/cholesky/cholesky.cpp` |
-| state one file leaves for the next in a worker: a block comment in an `#if` line past the limit reads another file's break flags (`Annotator.canB`, only set by `annotateFull`); each file matches when formatted alone | zstd `common/xxhash.cpp`, `common/mem.h` (in duckdb); grpc `third_party/xxhash/xxhash.h` |
 | other: C++/CLI `[assembly: ...]` attributes, `__asm` statements | tbb `game_of_life/src/AssemblyInfo.cpp`, `tbb/scheduler.cpp` (in taskflow) |
 
 Some forms next to the fixed ones still differ, on both corpora's sources
@@ -106,10 +104,6 @@ and on main alike:
 - `}  /* blk */` then `// c1` under a namespace: `// c1` goes to column 0;
 - a `#pragma mark` line past the limit with a `.` in it: its `#pragma   mark`
   spacing is normalized, where clang-format, finding no layout, keeps it.
-
-The cross-file one has a fix (annotate the line fully before reading its
-break flags) that is not in yet: `tests/run.sh` formats each case alone, so no
-case can pin it.
 
 On a generated corpus of 30,194 files (108.8 MB) of SDK code (measured
 against clang-format 18.1.3), every file
@@ -175,7 +169,10 @@ the tree, writes one file list, and spawns itself as `nishfmt --worker` once
 per core. Workers claim chunks of the list by creating the chunk's marker
 file exclusively; chunks shrink to single files near the end so no worker
 finishes long after the others. Each worker reuses one engine (token tables,
-search pools, output buffer) for every file it formats.
+search pools, output buffer) for every file it formats, and clears the
+annotation columns before each file (`Annot.clear`), so no file reads what
+the one before it left; `tests/cases/worker/` runs files through one worker
+in turn to hold that.
 
 Set `FFPROF=1` to print per-phase timings and search counts, and `FFDEBUG=1`
 to dump each line's annotations.

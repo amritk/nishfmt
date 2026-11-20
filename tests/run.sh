@@ -105,6 +105,36 @@ for pkg in "$here"/cases/dart/pkg-*/; do
   done < <(cd "$work/pkg" && find . -name '*.dart' -type f | sort)
 done
 
+# State one file leaves for the next: the files of each
+# tests/cases/worker/<name>/ go, in name order, through one worker (-j 1) in
+# one run, and each must become its .expected, as it does when formatted alone.
+for dir in "$here"/cases/worker/*/; do
+  [ -d "$dir" ] || continue
+  label="worker/$(basename "$dir")"
+  rm -rf "$work/seq" && mkdir "$work/seq"
+  files=()
+  for src in "$dir"*; do
+    case $src in *.expected) continue ;; esac
+    cp "$src" "$work/seq/"
+    files+=("$work/seq/${src##*/}")
+  done
+  "$bin" -i -q -j 1 "${files[@]}" > /dev/null 2>&1
+  ok=1
+  for f in "${files[@]}"; do
+    file=${f##*/}
+    if ! cmp -s "$f" "$dir${file%.*}.expected"; then
+      ok=0
+      echo "FAIL $label: $file differs from ${file%.*}.expected after the files before it"
+      diff "$f" "$dir${file%.*}.expected" | head -20
+    fi
+  done
+  if [ "$ok" -eq 1 ]; then
+    pass=$((pass + 1))
+  else
+    fail=$((fail + 1))
+  fi
+done
+
 # Unbalanced input is skipped, not mangled.
 cp "$here/cases/unbalanced.cpp" "$work/unbalanced.cpp"
 "$bin" -i -q "$work/unbalanced.cpp" > /dev/null 2>&1

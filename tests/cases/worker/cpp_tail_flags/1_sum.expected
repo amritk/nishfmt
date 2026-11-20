@@ -1,0 +1,10 @@
+int f() {
+  return aaaaaaaa0 + aaaaaaaa1 + aaaaaaaa2 + aaaaaaaa3 + aaaaaaaa4 + aaaaaaaa5 + aaaaaaaa6 + aaaaaaaa7 + aaaaaaaa8 +
+         aaaaaaaa9 + aaaaaaaa10 + aaaaaaaa11 + aaaaaaaa12 + aaaaaaaa13 + aaaaaaaa14 + aaaaaaaa15 + aaaaaaaa16 +
+         aaaaaaaa17 + aaaaaaaa18 + aaaaaaaa19 + aaaaaaaa20 + aaaaaaaa21 + aaaaaaaa22 + aaaaaaaa23 + aaaaaaaa24 +
+         aaaaaaaa25 + aaaaaaaa26 + aaaaaaaa27 + aaaaaaaa28 + aaaaaaaa29 + aaaaaaaa30 + aaaaaaaa31 + aaaaaaaa32 +
+         aaaaaaaa33 + aaaaaaaa34 + aaaaaaaa35 + aaaaaaaa36 + aaaaaaaa37 + aaaaaaaa38 + aaaaaaaa39 + aaaaaaaa40 +
+         aaaaaaaa41 + aaaaaaaa42 + aaaaaaaa43 + aaaaaaaa44 + aaaaaaaa45 + aaaaaaaa46 + aaaaaaaa47 + aaaaaaaa48 +
+         aaaaaaaa49 + aaaaaaaa50 + aaaaaaaa51 + aaaaaaaa52 + aaaaaaaa53 + aaaaaaaa54 + aaaaaaaa55 + aaaaaaaa56 +
+         aaaaaaaa57 + aaaaaaaa58 + aaaaaaaa59;
+}
