@@ -1580,8 +1580,15 @@ export class Classifier {
     // declares a function when its first word is a constructor's or
     // destructor's name, or a later name before any braced list is a
     // declaration's (TokenAnnotator::annotate).
-    const last = d.lLast[l];
-    const lp = d.prv[last];
+    // (Line.endsWith skips comments.)
+    let last = d.lLast[l];
+    while (d.kind[last] === K_COMMENT && d.prv[last] >= 0) {
+      last = d.prv[last];
+    }
+    let lp = d.prv[last];
+    while (lp >= 0 && d.kind[lp] === K_COMMENT) {
+      lp = d.prv[lp];
+    }
     if (d.kind[last] === P_SEMI && lp >= 0 && d.kind[lp] === P_RBRACE && d.match[lp] >= 0 && d.match[lp] < lp) {
       const fnc = d.kind[this.first] === K_COMMENT ? this.next(this.first) : this.first;
       let fn = fnc >= 0 && d.type[fnc] === TT_CTOR_DTOR_DECL_NAME;

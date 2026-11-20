@@ -1,0 +1,6 @@
+class ParsedExpressionIterator {
+private:
+  static void DefaultRefCallback(TableRef &ref) {}; // NOP
+  void Other() {};                                  /* a block comment */
+  void Plain() {};
+};
