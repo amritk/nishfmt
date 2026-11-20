@@ -300,12 +300,23 @@ const batches = (lang: i32): boolean => lang === LANG_KOTLIN || lang === LANG_JA
 
 /**
  * Appends one finished entry of the worker's list to its progress log
- * `cli.stats`: its index, then the files, changed, skipped and bytes it added
- * to the counts. The parent sums the counts from these lines, and an entry
- * with no line was never finished: its worker died.
+ * `cli.stats` (nothing when it is "", outside a worker): its index, then the
+ * files, changed, skipped and bytes it added to the counts. The parent sums
+ * the counts from these lines, and an entry with no line was never finished:
+ * its worker died.
  */
 const logEntry = (log: string, at: i32, files: i32, changed: i32, skipped: i32, bytes: i32): void => {
-  appendFileSync(log, `${at} ${files} ${changed} ${skipped} ${bytes}\n`);
+  if (log.length !== 0) {
+    appendFileSync(log, `${at} ${files} ${changed} ${skipped} ${bytes}\n`);
+  }
+};
+
+/** Entry `at`, `path`, is a directory: logged as `<at> 0 0 0 0 d`, and kept in `dirs`. */
+const logDir = (log: string, at: i32, path: string, dirs: string[]): void => {
+  if (log.length !== 0) {
+    appendFileSync(log, `${at} 0 0 0 0 d\n`);
+  }
+  dirs.push(path);
 };
 
 /**
@@ -314,9 +325,9 @@ const logEntry = (log: string, at: i32, files: i32, changed: i32, skipped: i32, 
  * region of its own. Each entry is logged as soon as it is finished
  * (logEntry). The walk does not stat names that look like sources, so a
  * directory named like one (`Directory.swift`) arrives here: it is logged as
- * a directory, `<at> 0 0 0 0 d`, and the parent walks it.
+ * a directory and added to `dirs`, and the parent walks it.
  */
-const formatFiles = (files: string[], a: i32, b: i32, cli: Cli, stats: Stats, eng: Engine): void => {
+const formatFiles = (files: string[], a: i32, b: i32, cli: Cli, stats: Stats, eng: Engine, dirs: string[]): void => {
   const log = cli.stats;
   let i = a;
   while (i < b) {
@@ -328,7 +339,7 @@ const formatFiles = (files: string[], a: i32, b: i32, cli: Cli, stats: Stats, en
       s0.skipped = stats.skipped;
       s0.bytes = stats.bytes;
       if (formatFile(files[i], cli, stats, eng) === 3) {
-        appendFileSync(log, `${i} 0 0 0 0 d\n`);
+        logDir(log, i, files[i], dirs);
       } else {
         logEntry(
           log,
@@ -365,7 +376,7 @@ const formatFiles = (files: string[], a: i32, b: i32, cli: Cli, stats: Stats, en
       const res = job.res[2 * k];
       if (res === 3) {
         if (isDirectorySync(files[i + k])) {
-          appendFileSync(log, `${i + k} 0 0 0 0 d\n`);
+          logDir(log, i + k, files[i + k], dirs);
           continue;
         }
         console.error(`nishfmt: cannot read ${files[i + k]}`);
@@ -546,6 +557,7 @@ const runWorker = (cli: Cli): i32 => {
   }
   const stats = new Stats();
   const eng = engineFor(cli);
+  const dirs: string[] = []; // the parent walks these, from the log
   // Claim chunks: creating the chunk's marker file exclusively wins it.
   const nf = toI32(files.length);
   let c = 0;
@@ -553,7 +565,7 @@ const runWorker = (cli: Cli): i32 => {
   while (at < nf) {
     const size = chunkSize(nf - at, cli.jobs);
     if (createFileExclusiveSync(`${cli.worker}.c${c}`, "", 384) >= 0) {
-      formatFiles(files, at, at + size, cli, stats, eng);
+      formatFiles(files, at, at + size, cli, stats, eng, dirs);
     }
     at = at + size;
     c++;
@@ -689,7 +701,11 @@ const runRound = (run: Run, files: string[], jobs: i32): void => {
   }
   const listPath = `${run.tag}-${run.rounds}.list`;
   run.rounds = run.rounds + 1;
-  writeFileSync(listPath, files.join("\n"));
+  if (createFileExclusiveSync(listPath, files.join("\n"), 384) < 0) {
+    // No list for workers (TMPDIR not writable, say).
+    formatInProcess(run, files);
+    return;
+  }
   // A worker that exits abnormally is replaced at once, so the chunks no
   // worker has claimed yet keep `jobs` workers. Workers claim chunks in
   // order, so once the last is claimed there is nothing left to replace one
@@ -706,6 +722,12 @@ const runRound = (run: Run, files: string[], jobs: i32): void => {
     if (startWorker(run, listPath, logs, jobs) > 0) {
       live++;
     }
+  }
+  if (live === 0) {
+    // No worker would start (a process limit, say): nothing was formatted.
+    unlinkSync(listPath);
+    formatInProcess(run, files);
+    return;
   }
   while (live > 0) {
     const w = waitPid(-1, 0);
@@ -774,6 +796,21 @@ const runRound = (run: Run, files: string[], jobs: i32): void => {
   }
   if (rest.length > 0) {
     runRound(run, rest, jobs);
+  }
+};
+
+/**
+ * Formats `files` in this process, for a round that cannot have workers (no
+ * list could be written, or none would start), as nishfmt did for few files
+ * before it had workers to take a panic. A panic here ends the run.
+ */
+const formatInProcess = (run: Run, files: string[]): void => {
+  const dirs: string[] = [];
+  formatFiles(files, 0, toI32(files.length), run.cli, run.stats, engineFor(run.cli), dirs);
+  for (const d of dirs) {
+    const sub: string[] = [];
+    walk(d, sub, new Ignore(), langOf);
+    formatInProcess(run, sub);
   }
 };
 

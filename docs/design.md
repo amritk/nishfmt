@@ -11,7 +11,8 @@ each file's language from its name (`isCppName`, `isJavaName` and the rest,
 one per `src/<lang>/run.ts`). A directory is walked recursively, skipping
 hidden entries and honouring basic `.gitignore` patterns (names, `dir/`,
 `/name`, `*.ext`). A name that looks like a source is not stat'ed during the
-walk; if it turns out to be a directory, the worker walks it then.
+walk; if it turns out to be a directory, a worker logs it as one and the
+parent walks it then.
 
 ## Workers
 
@@ -50,6 +51,10 @@ have had if the formatter had answered `false` for that file, 0, or 1 under
 does not fail a run, whether its formatter gives up or crashes. The panic's
 own message is on stderr, and the `formatter crashed` line names the file
 for a bug report.
+
+When there can be no workers, because the list cannot be written (`TMPDIR`
+is not writable) or no worker process will start, the parent formats the
+files itself, as it did for few files before, and a panic then ends the run.
 
 ## Regions and batches
 
