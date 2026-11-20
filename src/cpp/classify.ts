@@ -185,7 +185,6 @@ export class Classifier {
   open: i32[]; // the opening token of each level (-1 at the top)
   expr: i32[]; // 1 when the level holds an expression
   tmpl: i32[]; // 1 inside template arguments
-  lfd: i32[]; // 1 in an if/while condition's parens until a declaration is ruled out
   ctorSeen: boolean = false; // a constructor initializer list started before the current token
   fnEarly: boolean = false; // isFunctionName decided on the token before `operator` alone
   asg: i32[]; // 1 once the level has passed an assignment
@@ -205,7 +204,6 @@ export class Classifier {
     this.open = new Array<i32>(MAXD);
     this.expr = new Array<i32>(MAXD);
     this.tmpl = new Array<i32>(MAXD);
-    this.lfd = new Array<i32>(MAXD);
     this.asg = new Array<i32>(MAXD);
     this.ques = new Array<i32>(MAXD);
     this.afterNew = new Array<i32>(MAXD);
@@ -1061,24 +1059,6 @@ export class Classifier {
       if (!this.ctorSeen && pv >= 0 && d.type[pv] === TT_CTOR_INITIALIZER_COLON) {
         this.ctorSeen = true;
       }
-      if (k === K_IDENT && dep > 0 && this.lfd[dep] === 1) {
-        // clang-format's parseParens(LookForDecls): `if (a *b ...)` without
-        // `=` after `b` reads the `*` as a multiplication.
-        const p = this.prev(t);
-        const pp = p >= 0 ? this.prev(p) : -1;
-        const n = d.nxt[t];
-        if (
-          pp >= 0 &&
-          this.k(pp) === K_IDENT &&
-          this.isPtrKind(p) &&
-          this.ty(p) === TT_POINTER_OR_REFERENCE &&
-          n >= 0 &&
-          this.k(n) !== P_EQUAL
-        ) {
-          d.type[p] = TT_BINARY_OPERATOR;
-          this.lfd[dep] = 0;
-        }
-      }
       // clang-format's parseParens: after a binary operator the parens hold
       // an expression; after `const`, `auto` or a simple type they do not.
       if (dep > 0 && this.k(this.open[dep]) === P_LPAREN) {
@@ -1217,7 +1197,6 @@ export class Classifier {
           this.afterNew[nd] = 0;
           this.caret[nd] = 0;
           this.sa[nd] = k === P_LPAREN && this.k(this.prev(t)) === KW_STATIC_ASSERT ? 1 : 0;
-          this.lfd[nd] = k === P_LPAREN && this.conditionParen(t) ? 1 : 0;
           if (k === P_LPAREN) {
             this.expr[nd] = this.parenIsExpr(t, this.expr[dep]);
           } else {
@@ -1340,7 +1319,6 @@ export class Classifier {
                 this.afterNew[nd] = 0;
                 this.caret[nd] = 0;
                 this.sa[nd] = 0;
-                this.lfd[nd] = 0;
                 this.bindAt[nd] = this.bindAt[dep] + 12;
               }
             }
@@ -1471,14 +1449,11 @@ export class Classifier {
           }
           break;
         }
-        case P_SEMI: {
-          // In `for (...)`, what follows the first `;` is an expression.
-          const o = this.open[dep];
-          if (dep > 0 && this.k(o) === P_LPAREN && this.prev(o) >= 0 && this.k(this.prev(o)) === KW_FOR) {
-            this.expr[dep] = 1;
-          }
+        case P_SEMI:
+          // clang-format's modifyContext: what follows a `;` is an
+          // expression (a for loop's condition, an if's after its initializer).
+          this.expr[dep] = 1;
           break;
-        }
         case KW_RETURN:
         case KW_THROW:
         case KW_CASE:
@@ -1692,20 +1667,6 @@ export class Classifier {
     const p = this.prev(t);
     const pp = p >= 0 ? this.prev(p) : -1;
     return pp >= 0 && this.k(pp) !== KW_TYPENAME && this.k(pp) !== KW_CLASS;
-  }
-
-  /** Whether `(` (token `t`) holds an `if` or `while` condition. */
-  conditionParen(t: i32): boolean {
-    const p = this.prev(t);
-    if (p < 0) {
-      return false;
-    }
-    const pk = this.k(p);
-    if (pk === KW_IF || pk === KW_WHILE) {
-      return true;
-    }
-    const pp = this.prev(p);
-    return (pk === KW_CONSTEXPR || pk === K_IDENT) && pp >= 0 && this.k(pp) === KW_IF;
   }
 
   templateDeclKeyword(): boolean {
