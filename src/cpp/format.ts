@@ -1288,7 +1288,7 @@ export class Formatter {
   }
 
   /**
-   * Whether `#error`/`#warning` line `l` is left as written: its words after
+   * Whether `#error`/`#warning` line `l` is left as written after its `#`: its words after
    * the first are implicit string literals clang-format cannot break before,
    * yet a `.` or `->` among them past the column limit must break (the member
    * access rule), so clang-format finds no layout and leaves the line alone.
@@ -2066,8 +2066,12 @@ export class Formatter {
           pend = -1;
         }
       } else if (this.longMessage(l)) {
-        // A `#error` or `#warning` clang-format finds no layout for is left as written.
-        this.emitVerbatimLine(l);
+        // A `#error` or `#warning` clang-format finds no layout for: its
+        // first token is still placed (formatFirstToken runs before the
+        // line formatter), the rest is left as written.
+        this.firstEmitted = true;
+        this.emit(f, this.newlinesBefore(l, prev, prev < 0, nested), 0);
+        this.emitRaw(d.end[f], d.end[d.lLast[l]]);
       } else if (this.isMessage(l)) {
         this.emitMessage(l, this.newlinesBefore(l, prev, prev < 0, nested));
         this.firstEmitted = true;
