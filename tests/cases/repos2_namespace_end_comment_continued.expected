@@ -1,0 +1,16 @@
+namespace tbb {
+namespace internal {
+void NFS_Free(void *);
+void NFS_Other(void *);
+} // namespace internal
+  // Workaround for erroneous "unreferenced parameter" warning in method destroy.
+#if _MSC_VER
+  // A comment read after a directive also continues the end comment.
+#pragma warning(push)
+#endif
+namespace other {
+int a;
+int b;
+} // namespace other
+// At the brace's column: a comment of its own.
+} // namespace tbb

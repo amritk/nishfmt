@@ -195,6 +195,7 @@ export class Formatter {
   sType: i32[];
   sFinal: i32[];
   bracesBalanced: boolean = true;
+  endCommentsInserted: boolean = false; // insertContinuedEndComments ran on this file
   bcLa: i32[]; // block comment lines being written: line, content and content column
   bcLe: i32[];
   bcCa: i32[];
@@ -711,6 +712,101 @@ export class Formatter {
       }
     }
     return ind;
+  }
+
+  /**
+   * clang-format's NamespaceEndCommentsFixer runs before its formatter, on the
+   * text, so a line comment under a namespace `}` that gets an end comment
+   * can continue that comment (continuesLineCommentSection: written right of
+   * the `}`). Where that may happen, inserts the end comments namespaceComment
+   * would add into the text, once per file, and answers true to start over.
+   */
+  insertContinuedEndComments(): boolean {
+    const d = this.d;
+    if (this.endCommentsInserted) {
+      return false;
+    }
+    let braces = 0;
+    for (let t = 0; t < d.ntok; t++) {
+      if (d.kind[t] === P_LBRACE) {
+        braces++;
+      } else if (d.kind[t] === P_RBRACE) {
+        braces--;
+      }
+    }
+    if (braces !== 0) {
+      return false;
+    }
+    const at: i32[] = []; // source offset, line of the namespace
+    let trigger = false;
+    let off = false; // inside a `// clang-format off` region
+    let ct = 0;
+    for (let l = d.topHead; l >= 0; l = d.lSibling[l]) {
+      const rb = d.lFirst[l];
+      for (; ct < rb; ct++) {
+        if (d.kind[ct] === K_COMMENT) {
+          const m = this.offMarker(ct);
+          if (m === 1) {
+            off = true;
+          } else if (m === 2) {
+            off = false;
+          }
+        }
+      }
+      if (off || d.kind[rb] !== P_RBRACE || !this.closesNamespace(l) || d.inPP[rb] === 1) {
+        continue;
+      }
+      const o = d.lOpen[l];
+      if (!this.samePPContext(d.lLast[o], rb) || d.kind[d.lLast[l]] === K_COMMENT || l - o - 1 <= 1) {
+        continue;
+      }
+      let after = d.nxt[rb];
+      if (after >= 0 && d.kind[after] === P_SEMI) {
+        after = d.nxt[after];
+      }
+      if (after >= 0) {
+        continue;
+      }
+      // The end comment goes after the `}` (past a `;`).
+      const end = d.nxt[rb] >= 0 ? d.nxt[rb] : rb;
+      at.push(d.end[end]);
+      at.push(o);
+      // The comments up to the next code token, directive lines between
+      // them included, are read while the `}` line is pending.
+      for (let c = end + 1; c < d.ntok && (d.kind[c] === K_COMMENT || d.inPP[c] === 1); c++) {
+        if (
+          d.kind[c] === K_COMMENT &&
+          d.inPP[c] === 0 &&
+          d.nl[c] === 1 &&
+          d.at(d.start[c] + 1) === 47 &&
+          d.origCol(c) > d.origCol(rb)
+        ) {
+          trigger = true;
+        }
+      }
+    }
+    if (!trigger) {
+      return false;
+    }
+    this.endCommentsInserted = true;
+    const out: u8[] = [];
+    let from = 0;
+    for (let i = 0; i < toI32(at.length); i += 2) {
+      for (let c = from; c < at[i]; c++) {
+        out.push(d.src[c]);
+      }
+      const name = this.namespaceName(at[i + 1]);
+      const text = name.length === 0 ? " // namespace" : ` // namespace ${name}`;
+      for (let k = 0; k < toI32(text.length); k++) {
+        out.push(toU8(text.charCodeAt(k)));
+      }
+      from = at[i];
+    }
+    for (let c = from; c < d.n; c++) {
+      out.push(d.src[c]);
+    }
+    d.reset(out, toI32(out.length));
+    return true;
   }
 
   /** Appends `// namespace name` to a namespace's `}` line that lacks a comment. */
@@ -2247,6 +2343,7 @@ export class Formatter {
     }
     let mayRestart = true;
     let restarts = 0; // using-declarations sorted in a later pass restart it all
+    this.endCommentsInserted = false;
     while (true) {
       const np = this.planPasses();
       if (getenv("FFPASS") !== null) console.error(`passes ${np} tokens ${d.ntok}`);
@@ -2389,6 +2486,9 @@ export class Formatter {
     }
     if (mayRestart && this.sortUsings()) {
       // The using-declarations were reordered in the text: start over on it.
+      return PASS_RESTART;
+    }
+    if (this.insertContinuedEndComments()) {
       return PASS_RESTART;
     }
     const t2 = monotonicNanos();
