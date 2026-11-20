@@ -1977,15 +1977,15 @@ export class Classifier {
   }
 
   /**
-   * Whether the brackets from `[` at `t` hold `word word` then a `:` at their
-   * own level, with no `,` or `?` before it: an Objective-C message's
-   * selector argument.
+   * Whether the brackets from `[` at `t` hold a receiver (`a`, `a.b`, ...),
+   * a word, then a `:` at their own level, with no `,` or `?` before it: an
+   * Objective-C message's selector argument.
    */
   messageColon(t: i32): boolean {
     const d = this.d;
     const r = d.nxt[t];
     const s = r >= 0 ? d.nxt[r] : -1;
-    if (r < 0 || s < 0 || !isWordKind(this.k(s))) {
+    if (r < 0 || s < 0) {
       return false;
     }
     let depth = 0;
@@ -2001,7 +2001,7 @@ export class Classifier {
       } else if (depth === 0 && (k === P_COMMA || k === P_QUESTION || k === P_SEMI)) {
         return false;
       } else if (depth === 0 && k === P_COLON) {
-        return true;
+        return d.prv[q] !== r && isWordKind(this.k(d.prv[q]));
       }
     }
     return false;
