@@ -102,9 +102,10 @@ spaceInsideComments checks only the Character boundaries before bytes 1-3 of a c
 `Syntax+Assertions.swift` on ``/// `1️⃣` that ...``, where U+FE0F sits at byte 4 of the body.
 Keycap emoji are digit, U+FE0F, U+20E3; both marks are Grapheme_Cluster_Break=Extend in the
 port's Unicode 15.0 table, so `swGraphemeCount` counts the sequence as one Character, and
-`oracle_graphemes.py` checked each mark alone in `"aXa"`. The whole sequence has not been
-run through SwiftFormat, but spaceInsideComments never reads the boundary after the digit.
-Regression cases `keycap_comment` and `keycap_block_comment` are pending SwiftFormat output.
+`oracle_graphemes.py` checked each mark alone in `"aXa"`; spaceInsideComments never reads
+the boundary after the digit anyway. `Syntax+Assertions.swift` now matches SwiftFormat
+0.64.7 byte for byte. Regression cases `keycap_comment` and `keycap_block_comment`
+(SwiftFormat 0.64.7 output) fail on the base binary, which skips them.
 Guards, all skipped by the base and current binaries:
 
 - `skip_comment_combining_prefix` (`//===` U+0301, where `hasPrefix("===")` is false
