@@ -1,10 +1,14 @@
 #!/usr/bin/env bash
-# Builds one language's corpus from the clones in $REPOS: $CORPUS/<lang>/raw
-# holds the sources as found, $CORPUS/<lang>/ref the reference tool's output at
+# Builds one language's corpus from the clones in $REPOS of the repositories
+# $REPOLIST lists (default bench/corpus/repos.txt): $CORPUS/<lang>/raw holds
+# the sources as found, $CORPUS/<lang>/ref the reference tool's output at
 # its default settings (Kotlin: ktfmt's --kotlinlang-style; Rust: edition
 # 2024, style_edition 2024, max_width 120; C#: under $CORPUS/cs/.editorconfig,
 # CSharpier's defaults with end_of_line = crlf), and $CORPUS/<lang>/failed.txt
-# the files it rejected (left out of comparisons).
+# the files it rejected (left out of comparisons). For C++ also
+# $CORPUS/cpp/ref-settled, each file of ref/ formatted again until
+# clang-format leaves it unchanged (at most 5 more runs), and unsettled.txt,
+# the files still changing after the fifth.
 #
 #   mk.sh cpp|java|kt|rb|swift|rust|dart|cs
 #
@@ -17,6 +21,7 @@
 set -uo pipefail
 here=$(cd "$(dirname "$0")" && pwd)
 lang=$1
+list=$(realpath "${REPOLIST:-$here/repos.txt}") || exit 2
 REPOS=${REPOS:-$here/../work/repos} CORPUS=${CORPUS:-$here/../work/corpus}
 GJF=${GJF:-} KTFMT=${KTFMT:-}
 SWIFTFORMAT=${SWIFTFORMAT:-swiftformat}
@@ -44,7 +49,7 @@ size=-2M
 [ "$lang" = cpp ] && size=-250k
 d=$CORPUS/$lang
 rm -rf "$d" && mkdir -p "$d/raw"
-for r in $(awk -v l="$lang" '$1==l{print $2}' "$here/repos.txt" | tr / _); do
+for r in $(awk -v l="$lang" '$1==l{print $2}' "$list" | tr / _); do
   (cd "$REPOS" && find "$r" -type f \( "${pat[@]}" \) -not -path '*/.*/*' -size $size -print0 | tar --null -cf - -T -) \
     | (cd "$d/raw" && tar xf -)
 done
@@ -67,7 +72,9 @@ case $lang in
           'java -jar '"$GJF"' --replace "$@" 2>/dev/null || for f; do cp "../raw/$f" "$f"; java -jar '"$GJF"' --replace "$f" 2>/dev/null || echo "$f" >> ../failed.txt; done' _ ;;
   kt) find . -type f -print0 | xargs -0 -P"$(nproc)" -n 300 sh -c \
         'java -jar '"$KTFMT"' --kotlinlang-style "$@" >/dev/null 2>&1 || for f; do cp "../raw/$f" "$f"; java -jar '"$KTFMT"' --kotlinlang-style "$f" >/dev/null 2>&1 || echo "$f" >> ../failed.txt; done' _ ;;
-  rb) printf 'AllCops:\n  TargetRubyVersion: 3.3\n' > ../rubocop.yml
+  # Under UTF-8, or Style/WordArray writes non-ASCII words as escapes.
+  rb) export LANG=C.UTF-8
+      printf 'AllCops:\n  TargetRubyVersion: 3.3\n' > ../rubocop.yml
       find . -type f -print0 | xargs -0 -P"$(nproc)" -n 100 sh -c \
         'rubocop -a -c ../rubocop.yml --cache false --format quiet "$@" >/dev/null 2>&1; true' _
       # RuboCop exits 1 when offenses remain; a file it cannot parse is a failure.
@@ -87,4 +94,19 @@ esac
 # Every entry is a path from here, starting "./" as cmp.sh expects.
 sed -i -e 's|^\./||' -e 's|^|./|' ../failed.txt
 sort -u -o ../failed.txt ../failed.txt
+# clang-format is not idempotent on every file: ref-settled/ reruns it on its
+# own output until a run leaves the file unchanged.
+if [ "$lang" = cpp ]; then
+  cp -r . ../ref-settled
+  : > ../unsettled.txt
+  (cd ../ref-settled && find . -type f -print0 | grep -zvxF -f ../failed.txt | xargs -0 -P"$(nproc)" -I{} sh -c '
+    for i in 1 2 3 4 5; do
+      clang-format --style="{BasedOnStyle: LLVM, ColumnLimit: 120}" "$1" > "$1.o" 2>/dev/null || break
+      if cmp -s "$1" "$1.o"; then rm -f "$1.o"; exit 0; fi
+      mv "$1.o" "$1"
+    done
+    rm -f "$1.o"; echo "$1" >> ../unsettled.txt' _ {})
+  sort -o ../unsettled.txt ../unsettled.txt
+  echo "cpp: clang-format changes $(cd .. && diff -rq ref ref-settled | grep -c '^Files ') files on a second run, $(wc -l < ../unsettled.txt) never settle"
+fi
 echo "$lang: $(find . -type f | wc -l) files, reference failed on $(wc -l < ../failed.txt)"
