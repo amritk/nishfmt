@@ -16,8 +16,8 @@ ordering, the javadoc formatter, and long-string wrapping with the partial
 reformat google-java-format runs before it. Constructs javac 21 rejects,
 such as module imports and value classes, are left untouched; the notes are
 in `tools/java/NOTES.md`. The corpus is the Java sources of public
-repositories as found (`bench/corpus/repos.txt`), 7627 files once the 4
-google-java-format rejects are left out.
+repositories as found (the first corpus, `bench/corpus/repos.txt`), 7627
+files once the 4 google-java-format rejects are left out.
 
 ## Kotlin
 

@@ -24,8 +24,8 @@ Where the two goals pull apart, matching wins, then speed.
 | C# | `src/csharp` | CSharpier 1.4.0, default options except `end_of_line = crlf` | `csharpier format --write-stdout < f`, run below the `.editorconfig` that `mk.sh cs` writes ([README](../README.md#settings)) |
 
 A new language takes a directory of its own, a prefix for its names (below),
-a corpus (`bench/corpus/repos.txt` and a case in `mk.sh`) and a row in the
-README's table.
+a corpus (its repositories in `bench/corpus/repos.txt` and `repos2.txt`, and
+a case in `mk.sh`) and a row in the README's table.
 
 ## Nish
 

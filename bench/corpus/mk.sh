@@ -94,6 +94,7 @@ esac
 # Every entry is a path from here, starting "./" as cmp.sh expects.
 sed -i -e 's|^\./||' -e 's|^|./|' ../failed.txt
 sort -u -o ../failed.txt ../failed.txt
+echo "$lang: $(find . -type f | wc -l) files, reference failed on $(wc -l < ../failed.txt)"
 # clang-format is not idempotent on every file: ref-settled/ reruns it on its
 # own output until a run leaves the file unchanged.
 if [ "$lang" = cpp ]; then
@@ -107,6 +108,5 @@ if [ "$lang" = cpp ]; then
     done
     rm -f "$1.o"; echo "$1" >> ../unsettled.txt' _ {})
   sort -o ../unsettled.txt ../unsettled.txt
-  echo "cpp: clang-format changes $(cd .. && diff -rq ref ref-settled | grep -c '^Files ') files on a second run, $(wc -l < ../unsettled.txt) never settle"
+  echo "cpp: rerunning clang-format changes $(cd .. && diff -rq ref ref-settled | grep -c '^Files ') files, $(wc -l < ../unsettled.txt) never settle"
 fi
-echo "$lang: $(find . -type f | wc -l) files, reference failed on $(wc -l < ../failed.txt)"

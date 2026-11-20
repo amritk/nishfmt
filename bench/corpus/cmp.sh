@@ -12,7 +12,7 @@
 set -uo pipefail
 bin=$1 lang=$2; shift 2
 here=$(cd "$(dirname "$0")" && pwd)
-CORPUS=${CORPUS:-$here/../work/corpus} WORK=${WORK:-$here/../work/out}
+CORPUS=$(realpath -m "${CORPUS:-$here/../work/corpus}") WORK=$(realpath -m "${WORK:-$here/../work/out}")
 d=$CORPUS/$lang w=$WORK/$lang
 rm -rf "$w" && mkdir -p "$w" && cp -r "$d/raw" "$w/out"
 s=$(date +%s.%N)

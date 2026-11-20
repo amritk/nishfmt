@@ -34,8 +34,13 @@ pinned to one core:
 | Ruby | `rubocop -a` 1.92.3, default config, `TargetRubyVersion: 3.3` | 100% of 1,999 | 303.9 s / 289.6 s | **4.00 s / 12.7 s** |
 
 - **Identical** is the share of the corpus files the reference tool accepts
-  that nishfmt formats byte for byte as it does; the exact counts are in
-  [Benchmarks](docs/benchmarks.md#corpus-results). Times cover the whole
+  that nishfmt formats byte for byte as it does; the exact counts, and those
+  on a second corpus of other repositories, are in
+  [Benchmarks](docs/benchmarks.md#corpus-results). For C++ the reference is
+  one `clang-format -i` run, which is not always stable: against
+  clang-format's settled output (its own output rerun until it stops
+  changing) nishfmt matches 10,319 of the 10,343 files
+  ([Benchmarks](docs/benchmarks.md#c-one-run-and-the-settled-output)). Times cover the whole
   corpus directory, including the few files the reference rejects.
 - One core is `taskset -c 0`, with `-j 1` for nishfmt. nishfmt's times are
   the best of three. The C++ and Ruby rows were measured together on an
