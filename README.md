@@ -197,8 +197,8 @@ Exit status: 0; 1 with --check when a file would change; 2 for a bad command
 line. A skipped file does not change it.
 ```
 
-Directories are walked recursively, skipping hidden entries and honouring
-basic `.gitignore` patterns. Each run ends with a summary line:
+Directories are walked recursively, skipping hidden entries and symbolic
+links and honouring basic `.gitignore` patterns. Each run ends with a summary line:
 
 ```text
 nishfmt: 30194 files, reformatted 30163, skipped 0; 108.8 MB in 2040 ms (53 MB/s, 4 workers)

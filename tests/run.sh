@@ -151,6 +151,23 @@ else
   fail=$((fail + 1))
 fi
 
+# The walk follows no symbolic link: a link to an ancestor (a cycle) and a
+# link to a file in the tree are left out, so each file is listed once, while
+# a directory named like a source is still walked.
+mkdir -p "$work/links/a" "$work/links/Dir.kt"
+cp "$here/cases/kotlin/type_two_modifier_lists.kt" "$work/links/a/T.kt"
+cp "$here/cases/kotlin/type_two_modifier_lists.kt" "$work/links/Dir.kt/U.kt"
+ln -s .. "$work/links/a/up"
+ln -s a/T.kt "$work/links/link.kt"
+listed=$("$bin" --check "$work/links" 2> /dev/null | sort)
+want=$(printf '%s\n' "$work/links/Dir.kt/U.kt" "$work/links/a/T.kt")
+if [ "$listed" = "$want" ]; then
+  pass=$((pass + 1))
+else
+  echo "FAIL walk-symlinks: --check listed $(printf '%s\n' "$listed" | wc -l) paths, not the 2 real files"
+  fail=$((fail + 1))
+fi
+
 # `// nishfmt off` keeps a region verbatim (clang-format has no such pragma).
 printf 'int   a=1;\n// nishfmt off\nint   b =  2 ;\n// nishfmt on\nint   c=3;\n' > "$work/off.cpp"
 printf 'int a = 1;\n// nishfmt off\nint   b =  2 ;\n// nishfmt on\nint c = 3;\n' > "$work/off.expected"

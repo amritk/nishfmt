@@ -323,9 +323,10 @@ const logDir = (log: string, at: i32, path: string, dirs: string[]): void => {
  * Formats `files[a, b)` of the worker's list: C++ files one by one with the
  * worker's engine, the others in batches of one language, each batch in a
  * region of its own. Each entry is logged as soon as it is finished
- * (logEntry). The walk does not stat names that look like sources, so a
- * directory named like one (`Directory.swift`) arrives here: it is logged as
- * a directory and added to `dirs`, and the parent walks it.
+ * (logEntry). The walk lstats every entry and walks a directory named like
+ * a source (`Directory.swift`) itself, so a directory arrives here only when
+ * a path became one after the walk: it is logged as a directory and added to
+ * `dirs`, and the parent walks it.
  */
 const formatFiles = (files: string[], a: i32, b: i32, cli: Cli, stats: Stats, eng: Engine, dirs: string[]): void => {
   const log = cli.stats;

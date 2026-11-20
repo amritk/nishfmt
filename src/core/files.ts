@@ -77,15 +77,34 @@ export const walk = (dir: string, out: string[], parent: Ignore, langOf: (name: 
       continue;
     }
     const p = `${dir}/${name}`;
-    // A source name is pushed without a stat: formatFiles walks it when it
-    // turns out to be a directory. Any other name may be a directory, whatever
-    // its extension (kotest has a package directory `io.kotest.assertions.json`).
-    if (langOf(name) > 0) {
-      out.push(p);
-    } else if (isDirectorySync(p)) {
+    // A symbolic link is not followed: a link to an ancestor would walk the
+    // tree forever, and one to a file in the tree would format it twice. A
+    // directory is walked whatever its name (kotest has a package directory
+    // `io.kotest.assertions.json`, and a directory may be named like a source).
+    const kind = walkKind(p);
+    if (kind === WALK_DIR) {
       walk(p, out, ig, langOf);
+    } else if (kind === WALK_FILE && langOf(name) > 0) {
+      out.push(p);
     }
   }
+};
+
+const WALK_OTHER: i32 = 0;
+const WALK_FILE: i32 = 1;
+const WALK_DIR: i32 = 2;
+
+/** What `p` is itself, without following a symbolic link: a directory, a regular file, or anything else (a link, a name that vanished). */
+const walkKind = (p: string): i32 => {
+  const m = lstatOwnerModeSync(p);
+  if (m < toI64(0)) {
+    return WALK_OTHER;
+  }
+  const fmt = toI32(m & toI64(0o170000));
+  if (fmt === 0o040000) {
+    return WALK_DIR;
+  }
+  return fmt === 0o100000 ? WALK_FILE : WALK_OTHER;
 };
 
 /** Writes each line feed of `out` that has no carriage return before it as CRLF. */

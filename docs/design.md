@@ -9,10 +9,13 @@ pipeline is on its page: [C++](cpp.md), [the others](languages.md).
 `src/main.ts` parses the arguments, walks the paths it is given and picks
 each file's language from its name (`isCppName`, `isJavaName` and the rest,
 one per `src/<lang>/run.ts`). A directory is walked recursively, skipping
-hidden entries and honouring basic `.gitignore` patterns (names, `dir/`,
-`/name`, `*.ext`). A name that looks like a source is not stat'ed during the
-walk; if it turns out to be a directory, a worker logs it as one and the
-parent walks it then.
+hidden entries and symbolic links and honouring basic `.gitignore` patterns
+(names, `dir/`, `/name`, `*.ext`). Each entry is `lstat`ed, so a link is never
+followed: one to an ancestor would walk the tree forever, and one to a file in
+the tree would format it twice. A path named on the command line is followed
+whatever it is. A directory named like a source (`Directory.swift`) is walked
+in place; should an entry become a directory after the walk, a worker logs it
+as one and the parent walks it then.
 
 ## Workers
 
