@@ -601,6 +601,17 @@ export class RsParser {
     return false;
   }
 
+  /** is_like_plus on the token `i` ahead: `+` or `+=`. */
+  isLikePlusAt(i: i32): boolean {
+    const k = this.laAt(i);
+    return k === T_PLUS || k === T_PLUSEQ;
+  }
+
+  /** can_begin_maybe_const_bound: `[const]`. */
+  isBracketConst(): boolean {
+    return this.is(T_LBRACKET) && this.laKw(1) === KW_CONST && this.la(2) === T_RBRACKET;
+  }
+
   /** `prev_token == Plus`: the token just consumed was `+` (or the `+` of a split `+=`). */
   prevIsPlus(): boolean {
     if (this.off >= 0) {
@@ -1702,8 +1713,7 @@ export class RsParser {
     if (k === T_COLONCOLON || k === T_LT || k === T_SHL) {
       return true;
     }
-    // can_begin_maybe_const_bound: `[const]`.
-    if (k === T_LBRACKET && this.laKw(1) === KW_CONST && this.la(2) === T_RBRACKET) {
+    if (this.isBracketConst()) {
       return true;
     }
     const kk = this.kw();
@@ -1766,29 +1776,24 @@ export class RsParser {
       this.ast.c[n] = gv25;
     }
     // parse_bound_constness: `~const`, `[const]` (both Maybe) or `const`.
-    let modifiers = false;
     if (this.is(T_TILDE)) {
       this.bump();
       if (!this.eatKw(KW_CONST)) {
         return this.fail();
       }
       f = f | TB_MAYBE_CONST;
-      modifiers = true;
-    } else if (this.is(T_LBRACKET) && this.laKw(1) === KW_CONST && this.la(2) === T_RBRACKET) {
+    } else if (this.isBracketConst()) {
       this.bump();
       this.bump();
       this.bump();
       f = f | TB_MAYBE_CONST;
-      modifiers = true;
     } else if (this.isKw(KW_CONST)) {
       this.bump();
       f = f | TB_CONST;
-      modifiers = true;
     }
     if (this.isKw(KW_ASYNC)) {
       this.bump();
       f = f | TB_ASYNC;
-      modifiers = true;
     }
     if (this.eat(T_QUESTION)) {
       f = f | TB_MAYBE;
@@ -1800,6 +1805,7 @@ export class RsParser {
     // (ModifierLifetime) and a binder after the modifiers (BinderBeforeModifiers): errors
     // it recovers from.
     const polarity = (f & (TB_MAYBE | TB_NEGATIVE)) !== 0;
+    const modifiers = (f & (TB_MAYBE_CONST | TB_CONST | TB_ASYNC)) !== 0;
     if (polarity && (modifiers || this.ast.c[n] >= 0)) {
       return this.fail();
     }
@@ -2324,7 +2330,7 @@ export class RsParser {
   parseGenericArg(): i32 {
     const lo = this.lo();
     const k = this.tk();
-    if (k === T_LIFETIME && this.la(1) !== T_PLUS && this.la(1) !== T_PLUSEQ) {
+    if (k === T_LIFETIME && !this.isLikePlusAt(1)) {
       const l = this.nd(N_LIFETIME, lo);
       this.ast.d[l] = this.p;
       this.bump();
@@ -2552,25 +2558,13 @@ export class RsParser {
         // are not part of the first bound's span.
         if (
           allowPlus &&
-          (this.is(T_PLUS) || this.is(T_PLUSEQ)) &&
+          this.isLikePlusAt(0) &&
           this.ast.kind[inner] === N_TY_DYN &&
           (this.ast.fl[inner] & TY_DYN) === 0 &&
           this.ast.ln[this.ast.b[inner]] === 1 &&
           !innerTrailingPlus
         ) {
-          const b = this.nd(N_BOUNDS, lo);
-          this.push(this.ast.kid(this.ast.b[inner], 0));
-          while (this.eatPlus()) {
-            if (!this.canBeginBound()) {
-              break;
-            }
-            this.push(this.parseBound());
-          }
-          this.endList(b, mark);
-          this.fin(b);
-          ty = this.nd(N_TY_DYN, lo);
-          this.ast.b[ty] = b;
-          return this.fin(ty);
+          return this.parseRemainingBounds(lo, this.ast.kid(this.ast.b[inner], 0), true);
         }
         ty = this.nd(N_TY_PAREN, lo);
         this.ast.a[ty] = inner;
@@ -2647,27 +2641,12 @@ export class RsParser {
         return this.parseFnPtr(lo, binder);
       }
       // `for<'a> Trait`: a bare trait object with a binder.
-      const b = this.nd(N_BOUNDS, lo);
       const tb = this.nd(N_TRAIT_BOUND, lo);
       this.ast.c[tb] = binder;
       const gv62 = this.parsePath(PS_TYPE);
       this.ast.a[tb] = gv62;
       this.fin(tb);
-      const mark = this.sp;
-      this.push(tb);
-      if (allowPlus) {
-        while (this.eatPlus()) {
-          if (!this.canBeginBound()) {
-            break;
-          }
-          this.push(this.parseBound());
-        }
-      }
-      this.endList(b, mark);
-      this.fin(b);
-      ty = this.nd(N_TY_DYN, lo);
-      this.ast.b[ty] = b;
-      return this.fin(ty);
+      return this.parseRemainingBounds(lo, tb, allowPlus);
     }
     if (kk === KW_IMPL) {
       ty = this.nd(N_TY_IMPL, lo);
@@ -2676,9 +2655,9 @@ export class RsParser {
       this.ast.b[ty] = gv63;
       return this.fin(ty);
     }
-    // is_explicit_dyn_type: from edition 2018 `dyn` always starts a trait object, whose
-    // bounds may be empty (`&dyn`).
-    if (kk === KW_DYN && (this.t.edition >= 2018 || this.canBeginBoundAt1())) {
+    // is_explicit_dyn_type: from edition 2018 (every edition the parser takes) `dyn`
+    // always starts a trait object, whose bounds may be empty (`&dyn`).
+    if (kk === KW_DYN) {
       ty = this.nd(N_TY_DYN, lo);
       this.bump();
       this.ast.fl[ty] = TY_DYN;
@@ -2703,7 +2682,7 @@ export class RsParser {
     if (k === T_LIFETIME && allowPlus) {
       // parse_bare_trait_object: a lifetime starts one only when `+` follows; from
       // edition 2021 anything else is "expected type, found lifetime".
-      if (this.la(1) !== T_PLUS && this.la(1) !== T_PLUSEQ) {
+      if (!this.isLikePlusAt(1)) {
         return this.fail();
       }
       return this.parseBareTraitObject(lo, allowPlus);
@@ -2749,31 +2728,8 @@ export class RsParser {
     return this.fail();
   }
 
-  canBeginBoundAt1(): boolean {
-    const k = this.la(1);
-    if (k === T_LIFETIME || k === T_QUESTION || k === T_LPAREN || k === T_COLONCOLON || k === T_LT || k === T_TILDE) {
-      return true;
-    }
-    if (k !== T_IDENT) {
-      return false;
-    }
-    const kk = this.laKw(1);
-    return (
-      !rsIsReserved(kk) ||
-      kk === KW_FOR ||
-      kk === KW_SELF_TY ||
-      kk === KW_SUPER ||
-      kk === KW_CRATE ||
-      kk === KW_SELF ||
-      kk === KW_CONST ||
-      kk === KW_ASYNC
-    );
-  }
-
   /** A bare trait object whose first bound is the path type (or parenthesized type) `first`. */
   parseBareTraitObjectFrom(lo: i32, first: i32): i32 {
-    const b = this.nd(N_BOUNDS, lo);
-    const mark = this.sp;
     let fb = -1;
     if (this.ast.kind[first] === N_TY_PAREN) {
       const inner = this.ast.a[first];
@@ -2793,8 +2749,15 @@ export class RsParser {
       this.ast.a[fb] = this.ast.b[first];
       this.ast.hi[fb] = this.ast.hi[first];
     }
-    this.push(fb);
-    while (this.eatPlus()) {
+    return this.parseRemainingBounds(lo, fb, true);
+  }
+
+  /** parse_remaining_bounds: bound `first`, then with `allowPlus` each `+ bound`, as a bare trait object from `lo`. */
+  parseRemainingBounds(lo: i32, first: i32, allowPlus: boolean): i32 {
+    const b = this.nd(N_BOUNDS, lo);
+    const mark = this.sp;
+    this.push(first);
+    while (allowPlus && this.eatPlus()) {
       if (!this.canBeginBound()) {
         break;
       }
@@ -4035,8 +3998,8 @@ export class RsParser {
     // parsing), then `async {}`, each maybe with `move` or `use`.
     const atAsync = kk === KW_ASYNC;
     if (
-      (this.t.edition >= 2024 && this.isGenBlock(KW_GEN_2024, atAsync ? 1 : 0)) ||
-      this.isGenBlock(KW_ASYNC, 0)
+      (atAsync || kk === KW_GEN_2024) &&
+      ((this.t.edition >= 2024 && this.isGenBlock(KW_GEN_2024, atAsync ? 1 : 0)) || this.isGenBlock(KW_ASYNC, 0))
     ) {
       return this.parseGenBlock(lo);
     }
@@ -4070,7 +4033,7 @@ export class RsParser {
         f = CL_GEN | CL_ASYNC;
       }
     } else {
-      this.bump(); // gen
+      this.eatKw(KW_GEN_2024);
       f = CL_GEN;
     }
     if (this.eatKw(KW_MOVE)) {

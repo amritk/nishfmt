@@ -45,7 +45,6 @@ import {
   T_LPAREN,
   T_SEMI,
   rsIsReserved,
-  RsTokens,
 } from "./lexer";
 import { OC_MACRO_ARG, rsRewriteWithParens } from "./overflow";
 import { RsParser } from "./parser";
@@ -727,10 +726,18 @@ const rewriteBranch = (ctx: RsCtx, br: Branch, shape: RsShape, multi: boolean): 
   return result + "}";
 };
 
-/** The token after the token tree at `i`. */
-const ttEnd = (t: RsTokens, i: i32): i32 => {
-  const k = t.kind[i];
-  return k === T_LPAREN || k === T_LBRACKET || k === T_LBRACE ? t.match[i] + 1 : i + 1;
+/**
+ * format_header's join of `part` (at `lo`) to `result` (ending at `prevHi`): a comment
+ * between them is kept as written, with the whitespace around it; without one,
+ * combine_strs_with_missing_comments at infinite width joins them with one space. An
+ * empty `result` (no visibility) is no part.
+ */
+const joinHeaderPart = (ctx: RsCtx, result: string, prevHi: i32, lo: i32, part: string): string => {
+  if (result.length === 0) {
+    return part;
+  }
+  const between = ctx.snippet(prevHi, lo);
+  return rsContainsComment(between) ? result + between + part : result + " " + part;
 };
 
 /** rewrite_macro_def. */
@@ -768,16 +775,15 @@ export const rsRewriteMacroDef = (ctx: RsCtx, shape: RsShape, bi: i32, al: i32, 
     const argsKind = k;
     const argsOpen = i;
     i = argsClose + 1;
-    let bo = i;
-    if (params >= 0 && i === ast.a[body]) {
-      // The `=>` rustc puts between the params and the body.
-    } else {
+    // In `macro m(params) { body }` the params are followed by the body directly; rustc
+    // puts the `=>` between them.
+    if (!(params >= 0 && i === ast.a[body])) {
       if (i >= end || t.kind[i] !== T_FATARROW) {
         return snippet;
       }
       i++;
-      bo = i;
     }
+    const bo = i;
     if (i >= end) {
       return snippet;
     }
@@ -795,37 +801,24 @@ export const rsRewriteMacroDef = (ctx: RsCtx, shape: RsShape, bi: i32, al: i32, 
     branches.push(new Branch(blo, bhi, argsOpen, argsKind, bo, bc));
   }
   // The header (header.rs format_header): `macro_rules!`, or the visibility and
-  // `macro`, then the name. A comment between two parts is kept as written, with
-  // the whitespace around it; without one, combine_strs_with_missing_comments at
-  // infinite width joins them with one space.
+  // `macro`, then the name.
   const identTok = ast.d[item];
-  const partStrs: string[] = [];
-  const partLos: i32[] = [];
-  const partHis: i32[] = [];
+  let result = "";
+  let prevHi = lo;
   if (isRules) {
-    partStrs.push("macro_rules!");
-    partLos.push(lo);
-    partHis.push(ctx.spanAfter(lo, hi, "!"));
+    result = "macro_rules!";
+    prevHi = ctx.spanAfter(lo, hi, "!");
   } else {
     const vis = ast.e[item];
     if (vis >= 0) {
-      partStrs.push(rsTrimEnd(rsFormatVisibility(ctx, vis)));
-      partLos.push(ast.lo[vis]);
-      partHis.push(ast.hi[vis]);
+      result = rsTrimEnd(rsFormatVisibility(ctx, vis));
+      prevHi = ast.hi[vis];
     }
     const macroLo = ctx.spanBefore(lo, hi, "macro");
-    partStrs.push("macro");
-    partLos.push(macroLo);
-    partHis.push(macroLo + 5);
+    result = joinHeaderPart(ctx, result, prevHi, macroLo, "macro");
+    prevHi = macroLo + 5;
   }
-  partStrs.push(rsIdentStr(ctx, identTok));
-  partLos.push(t.lo[identTok]);
-  partHis.push(t.hi[identTok]);
-  let result = partStrs[0];
-  for (let pi = 1; pi < partStrs.length; pi++) {
-    const between = ctx.snippet(partHis[pi - 1], partLos[pi]);
-    result = rsContainsComment(between) ? result + between + partStrs[pi] : result + " " + partStrs[pi];
-  }
+  result = joinHeaderPart(ctx, result, prevHi, t.lo[identTok], rsIdentStr(ctx, identTok));
   const multi = isRules || branches.length !== 1;
   const armShape = multi ? shape.blockIndent(cfg.tabSpaces).withMaxWidth(cfg) : shape;
   if (branches.length === 0) {

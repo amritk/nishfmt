@@ -163,7 +163,7 @@ rewrite:
 | `super let` | `parse_stmt_without_recovery`, `Local::rewrite` (which drops a comment between the keywords) | `parseFullStmt`, `items.ts` `rsRewriteLocal` | `super_let` |
 | `unsafe c: u8`, `mut(super) i: i32` | `parse_field_def`, `parse_mut_restriction`, `parse_unsafe_field` (not `safe`, which the port took); `rewrite_struct_field_prefix` | `parseRecordBody`, `parseTupleBody`, `items.ts` `structFieldPrefix` | `field_modifiers`, `skip_safe_field` |
 | `pub unsafe static` | `parse_global_static_front_matter`, also as a statement (`safe static` is not one) | `parseItemKind`, `isItemStartForStmt` | `unsafe_static`, `skip_safe_static_stmt` |
-| `gen {}`, `async gen move {}` | `parse_gen_block`, `is_gen_block`; `ExprKind::Gen`'s rewrite, which drops a `use` capture clause; `is_simple_block` gets `expr.attrs`, so an attribute keeps the block multi-line (async blocks too) | `parseGenBlock`, `expr.ts` | `gen_blocks`, `async_block_attrs` |
+| `gen {}`, `async gen move {}` | `parse_gen_block`, `is_gen_block`; `ExprKind::Gen`'s rewrite, which drops a `use` capture clause; `is_simple_block` gets `expr.attrs`, so an attribute keeps the block multi-line (async and try blocks too) | `parseGenBlock`, `expr.ts` `rewritePrefixedBlockExpr` | `gen_blocks`, `async_block_attrs`, `try_block_attrs` |
 | `macro m($i:ident) {}`, `macro m { .. }` | `parse_item_decl_macro` (params and body become one branch); `rewrite_macro_def`'s header, single-branch form and separator-less branches; `MacroParser` needs every token tree in a branch | `macros.ts` `rsRewriteMacroDef` | `macros2`, `macro_rules_trailing_tokens` |
 
 `fn foo<T: for<'a> [const] async Trait>() {}` panicked the binary: the
