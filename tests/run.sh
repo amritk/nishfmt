@@ -165,29 +165,31 @@ fi
 # A file a formatter panics on takes down only the worker formatting it: the
 # rest of its chunk is still formatted, the file is left untouched and counted
 # as skipped (and crashed), and the run prints its summary with the exit
-# status it would have had. The trigger is a Rust input the Rust formatter
-# panics on (an index out of range); rustfmt rejects it. If it stops
-# panicking, these fail with "no crash": use another input that panics.
-crash_src='fn f<T: Clone,, U:, V>() {}\n'
+# status it would have had. The trigger is a Java lambda whose parameter
+# list is parenthesised again, which javac rejects: JParser.lambda reads the
+# name of the parameter formalParameter failed to parse, token -1, and indexes
+# out of range. The other files are Rust. If it stops panicking, these fail
+# with "no crash": use another input that panics.
+crash_src='class A { Object o = (()) -> 1; }\n'
 good_src='fn  main( ) { let x=1; }\n'
 good_out='fn main() {\n    let x = 1;\n}\n'
 printf "$good_out" > "$work/good.expected"
-# crash_tree <dir> <good files>: a.rs and g05z.rs panic, g01.rs ... format.
+# crash_tree <dir> <good files>: a.java and g05z.java panic, g01.rs ... format.
 crash_tree() {
   rm -rf "$1" && mkdir -p "$1"
-  printf "$crash_src" > "$1/a.rs"
-  printf "$crash_src" > "$1/g05z.rs"
+  printf "$crash_src" > "$1/a.java"
+  printf "$crash_src" > "$1/g05z.java"
   for i in $(seq -w 1 "$2"); do printf "$good_src" > "$1/g$i.rs"; done
 }
 # crash_check <label> <dir> <good files> <stderr> <exit> <want exit> <want summary>
 crash_check() {
   local ok=1 f
-  case $4 in *"nishfmt: skipped $2/a.rs (formatter crashed)"*) ;; *) ok=0; echo "FAIL $1: no crash reported for a.rs" ;; esac
-  case $4 in *"nishfmt: skipped $2/g05z.rs (formatter crashed)"*) ;; *) ok=0; echo "FAIL $1: no crash reported for g05z.rs" ;; esac
+  case $4 in *"nishfmt: skipped $2/a.java (formatter crashed)"*) ;; *) ok=0; echo "FAIL $1: no crash reported for a.java" ;; esac
+  case $4 in *"nishfmt: skipped $2/g05z.java (formatter crashed)"*) ;; *) ok=0; echo "FAIL $1: no crash reported for g05z.java" ;; esac
   case $4 in *"$7"*) ;; *) ok=0; echo "FAIL $1: no summary \"$7\"" ;; esac
   [ "$5" -eq "$6" ] || { ok=0; echo "FAIL $1: exit $5, want $6"; }
   for f in a g05z; do
-    printf "$crash_src" | cmp -s - "$2/$f.rs" || { ok=0; echo "FAIL $1: $f.rs was rewritten"; }
+    printf "$crash_src" | cmp -s - "$2/$f.java" || { ok=0; echo "FAIL $1: $f.java was rewritten"; }
   done
   local bad=0 want=$work/good.expected
   [ "$6" -eq 1 ] && { want=$work/good.src; printf "$good_src" > "$want"; }
@@ -217,10 +219,10 @@ for run in "8 -i" "70 -i -j 1" "70 -i -j 3" "8 --check" "70 --check -j 2"; do
     "nishfmt: $((n + 2)) files, $verb $n, skipped 2 (2 crashed);"
 done
 # One file to stdout: printed as it is.
-printf "$crash_src" > "$work/crash1.rs"
-out=$("$bin" "$work/crash1.rs" 2> "$work/err")
+printf "$crash_src" > "$work/crash1.java"
+out=$("$bin" "$work/crash1.java" 2> "$work/err")
 st=$?
-if [ "$st" -eq 0 ] && [ "$out" = "$(printf "$crash_src")" ] && grep -qF "skipped $work/crash1.rs (formatter crashed)" "$work/err"; then
+if [ "$st" -eq 0 ] && [ "$out" = "$(printf "$crash_src")" ] && grep -qF "skipped $work/crash1.java (formatter crashed)" "$work/err"; then
   pass=$((pass + 1))
 else
   echo "FAIL crash (stdout): exit $st, $(cat "$work/err" | head -5)"
