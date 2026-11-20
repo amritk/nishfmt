@@ -772,6 +772,7 @@ export class Classifier {
       (nk === KW_NOEXCEPT && !inExpr) ||
       nk === KW_CONST ||
       nk === KW_VOLATILE ||
+      isPointerQualifierWord(this.d, n) ||
       (nk === P_LBRACE && this.next(n) < 0) ||
       (nk === KW_REQUIRES && requiresIsClause(this.d, n))
     ) {
@@ -2207,15 +2208,7 @@ export class Classifier {
         t = this.prev(this.d.match[t]);
         continue;
       }
-      if (
-        k === KW_CONST ||
-        k === KW_VOLATILE ||
-        (k === K_IDENT &&
-          (this.d.is(t, "restrict") ||
-            this.d.is(t, "__restrict") ||
-            this.d.is(t, "_Nonnull") ||
-            this.d.is(t, "_Nullable")))
-      ) {
+      if (k === KW_CONST || k === KW_VOLATILE || isPointerQualifierWord(this.d, t)) {
         t = this.prev(t);
         continue;
       }
@@ -3418,6 +3411,32 @@ const CLANG_RESERVED_KEYWORDS: string =
   " __unaligned __uptr __vectorcall __virtual_inheritance __volatile __volatile__ __w64 __wchar_t _alignof _asm" +
   " _declspec _inline _int16 _int32 _int64 _int8 _thiscall _vectorcall ";
 
+/**
+ * The identifiers among clang-format's canBePointerOrReferenceQualifier
+ * keywords: `restrict` (C99 is on), `__restrict`, `__restrict__`, the
+ * nullability qualifiers, `__ptr32`, `__ptr64` and `__funcref`.
+ */
+export const isPointerQualifierWord = (d: Doc, t: i32): boolean => {
+  if (d.kind[t] !== K_IDENT) {
+    return false;
+  }
+  const w = d.len(t);
+  if (w < 6 || w > 18) {
+    return false;
+  }
+  return (
+    d.is(t, "restrict") ||
+    d.is(t, "__restrict") ||
+    d.is(t, "__restrict__") ||
+    d.is(t, "_Nonnull") ||
+    d.is(t, "_Nullable") ||
+    d.is(t, "_Null_unspecified") ||
+    d.is(t, "__ptr32") ||
+    d.is(t, "__ptr64") ||
+    d.is(t, "__funcref")
+  );
+};
+
 /** Whether identifier token `t` is a reserved-name keyword to clang's lexer (`__builtin_offsetof`, `__int64`). */
 export const isReservedKeyword = (d: Doc, t: i32): boolean => {
   const a = d.start[t];
@@ -3458,6 +3477,20 @@ export const isTypeName = (d: Doc, t: i32): boolean => {
   }
   if (k !== K_IDENT) {
     return false;
+  }
+  // Simple type specifiers the lexer has no kind for: keywords under
+  // clang-format's LangOpts (MicrosoftExt is on: `__int64`, `_int64`).
+  if (d.at(d.start[t]) === 95) {
+    return (
+      d.is(t, "__int64") ||
+      d.is(t, "_int64") ||
+      d.is(t, "__int128") ||
+      d.is(t, "__bf16") ||
+      d.is(t, "_Float16") ||
+      d.is(t, "__float128") ||
+      d.is(t, "__ibm128") ||
+      d.is(t, "__auto_type")
+    );
   }
   const w = d.len(t);
   // (Every one is 6 to 9 bytes and ends in `_t`: 95 `_`, 116 `t`.)

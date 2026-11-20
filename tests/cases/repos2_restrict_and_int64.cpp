@@ -1,0 +1,9 @@
+void f(unsigned char *symbol, int code, long long *destination, long long *exchange) {
+  unsigned char *__restrict__ symbolPointer = (unsigned char *__restrict__) & symbol[code];
+  cas_result = g((volatile __int64 *)destination, (__int64) * (exchange + 1), x);
+  float *__restrict p = (float *__restrict) & buf[0];
+}
+template <class TYPE>
+typename std::enable_if<(DELTA + SHR) >= TYPE_SIZE>::type unpack_single_out(const TYPE * __restrict & in, int b) {}
+void pack(TYPE * __restrict & out);
+void nn(NSError * _Nullable * _Nullable errorPtr);
