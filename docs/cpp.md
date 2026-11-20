@@ -94,6 +94,19 @@ as they are on a rerun are the long tail, mostly one construct each:
 | state one file leaves for the next in a worker: a block comment in an `#if` line past the limit reads another file's break flags (`Annotator.canB`, only set by `annotateFull`); each file matches when formatted alone | zstd `common/xxhash.cpp`, `common/mem.h` (in duckdb); grpc `third_party/xxhash/xxhash.h` |
 | other: C++/CLI `[assembly: ...]` attributes, `__asm` statements | tbb `game_of_life/src/AssemblyInfo.cpp`, `tbb/scheduler.cpp` (in taskflow) |
 
+Some forms next to the fixed ones still differ, on both corpora's sources
+and on main alike:
+
+- the `*` of an if-initializer that is not `const`: `if (T *p{q}; p)`,
+  `if (a *b; c)` (clang-format: `T *p`, `a *b`);
+- casts to a type ending in the new qualifier words when a sign, `(` or `+`
+  follows: `(T *__restrict)-1`, `(T *__ptr64)(*q)`, `(T *__ptr64) + b`;
+- a comment before `catch` on a `#define` continuation line (`} /* c */`);
+- Objective-C nested messages `[[a b:c] d:e]`, `[a: b]`, and `x[a.b : c]`;
+- `}  /* blk */` then `// c1` under a namespace: `// c1` goes to column 0;
+- a `#pragma mark` line past the limit with a `.` in it: its `#pragma   mark`
+  spacing is normalized, where clang-format, finding no layout, keeps it.
+
 The cross-file one has a fix (annotate the line fully before reading its
 break flags) that is not in yet: `tests/run.sh` formats each case alone, so no
 case can pin it.

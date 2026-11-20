@@ -98,9 +98,10 @@ settle ([below](#c-one-run-and-the-settled-output)).
 
 The 36 C++ files left are described in [C++](cpp.md#results-by-repository).
 
-On the second corpus, `repos2.txt`, measured on 2026-11-20 at main 42a489f
-(C++ measured again after the long-tail fixes; against one run, and against
-the settled output 13825 of the 13901 files that settle):
+On the second corpus, `repos2.txt`, measured on 2026-11-20 at main 42a489f,
+except C++, measured again on 2026-11-20 after the C++ long-tail fixes (C++
+against one run; against the settled output, 13825 of the 13901 files that
+settle):
 
 | Corpus | Files | Identical |
 | --- | ---: | ---: |
