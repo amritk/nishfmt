@@ -15,6 +15,7 @@ import {
   IT_NEGATIVE,
   IT_SAFE,
   IT_UNSAFE,
+  LOCAL_SUPER,
   N_CONST,
   N_FN,
   N_LOCAL,
@@ -118,7 +119,8 @@ export const rsRewriteLocal = (ctx: RsCtx, s: i32, shape: RsShape): string | nul
   if (rsAttrsContainSkip(ctx, s)) {
     return null;
   }
-  const let_ = "let ";
+  // FIXME (rustfmt): deletes any comments in between super and let
+  const let_ = (ast.fl[s] & LOCAL_SUPER) !== 0 ? "super let " : "let ";
   const attrsStr = rsRewriteNodeAttrs(ctx, s, shape);
   if (attrsStr === null) {
     return null;

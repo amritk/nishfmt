@@ -1,0 +1,7 @@
+fn f() { let x: i32 = 92; super let y; super::foo; }
+fn g() {
+    super  let y = 1;
+    super /* c */ let y = 1;
+    #[a] super let y: u8 = 1;
+    super let Some(aaaaaaaaaaaaaaaaaaa) = bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb else { return };
+}

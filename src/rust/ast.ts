@@ -150,7 +150,7 @@ export const N_EX_TYPE_ASCRIPTION: i32 = 142;
 
 // ---- Blocks and statements
 export const N_BLOCK: i32 = 150; // list: stmts; fl: BLK_UNSAFE; attrs: inner attributes
-export const N_LOCAL: i32 = 151; // a: pat, b: ty or -1, c: init or -1, x: else block or -1
+export const N_LOCAL: i32 = 151; // a: pat, b: ty or -1, c: init or -1, x: else block or -1; fl: LOCAL_SUPER
 export const N_STMT_ITEM: i32 = 152; // a: item
 export const N_STMT_EXPR: i32 = 153; // a: expr (no semicolon)
 export const N_STMT_SEMI: i32 = 154; // a: expr
@@ -262,6 +262,8 @@ export const MS_BRACES: i32 = 2;
 export const MS_NOBRACES: i32 = 4;
 
 export const TY_DYN: i32 = 1;
+// N_LOCAL fl: `super let`.
+export const LOCAL_SUPER: i32 = 1;
 export const PATH_GLOBAL: i32 = 1;
 
 export class RsAst {

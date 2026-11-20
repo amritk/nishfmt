@@ -289,6 +289,7 @@ import {
   N_WPRED_BOUND,
   N_WPRED_EQ,
   N_WPRED_REGION,
+  LOCAL_SUPER,
   PATH_GLOBAL,
   PA_MUT,
   PA_REF_MUT,
@@ -4547,8 +4548,15 @@ export class RsParser {
     }
     const lo = this.lo();
     let s = -1;
-    if (this.isKw(KW_LET)) {
+    // `super let` (unstable super_let, gated after parsing): the local's span starts at
+    // `super`.
+    const isSuper = this.isKw(KW_SUPER) && this.laKw(1) === KW_LET;
+    if (isSuper || this.isKw(KW_LET)) {
       s = this.nd(N_LOCAL, lo);
+      if (isSuper) {
+        this.bump();
+        this.ast.fl[s] = LOCAL_SUPER;
+      }
       this.bump();
       const gv116 = this.parsePatTopAlt();
       this.ast.a[s] = gv116;
