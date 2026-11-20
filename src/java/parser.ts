@@ -2226,6 +2226,10 @@ export class JParser {
         const explicit = !(this.kindAt(0) === JK_IDENT && (this.isAt(1, ",") || this.isAt(1, ")")));
         if (explicit) {
           const p = this.formalParameter(false, true);
+          if (this.err) {
+            // (javac rejects it; a failed type has no name to read.)
+            break;
+          }
           const ty = t.b[p];
           // javac's lambdaExpressionOrStatement: a restricted type with array
           // brackets, `var[] x` or `var x[]`, is "not allowed as an element type of an array".
