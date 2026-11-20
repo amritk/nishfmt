@@ -5118,6 +5118,12 @@ export class Formatter {
     if (before >= 0 && d.kind[before] === P_LBRACE && this.origColumn(t) < this.origColumn(before) + 1) {
       return false;
     }
+    // A section trailing code takes only the comments the parser put on its
+    // line (BreakableLineCommentSection reads its own unwrapped line): one
+    // that starts a line of its own is another section.
+    if (before >= 0 && d.prv[t] < 0) {
+      return false;
+    }
     return !this.isPragma(t) && !this.isPragma(p);
   }
 
