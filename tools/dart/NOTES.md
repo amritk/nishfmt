@@ -67,8 +67,9 @@ and their corpus refs are byte-identical.
 - The parser follows the version where the analyzer's parse differs without
   an error: before 3.0 a `case` holds an expression, and before 3.13 `var`
   and `final` are fine on any parameter but a function-typed one (`final
-  f(int a)`, the analyzer's functionTypedParameterVar). Syntax that an older version lacks
-  is parsed, and then the file is left alone (`features.ts`, Version gates).
+  f(int a)`, the analyzer's functionTypedParameterVar). Syntax that an
+  older version lacks is parsed, and then the file is left alone
+  (`features.ts`, Version gates).
 - Files that do not parse, or that the analyzer would reject in a way
   `dart format` reports, are left alone; so are files where dart_style would
   throw (a short-style rule index from another line, two solve states it
@@ -87,6 +88,12 @@ and their corpus refs are byte-identical.
     function-typed parameter named `Function` with `final`, which the
     analyzer rejects. It fails on the head that first accepted that
     parameter without porting functionTypedParameterVar.
+  - `skip_null_assert_targs_bang.dart`: `a!<int>!(1)`, which the analyzer
+    rejects because `!` does not follow method type arguments. It fails when
+    `T_BANG` is added to `methodTypeArgsEnd`'s followers.
+  - `skip_null_assert_relational.dart`: `a! < b > c`, where `<b>` before an
+    identifier is not type arguments and the relational operators chain. It
+    fails when the chained-operator check in `precedenceLoop` is dropped.
 
 ## Version gates
 

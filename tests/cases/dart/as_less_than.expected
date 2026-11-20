@@ -6,3 +6,8 @@ f(Map data, x, y) {
 }
 
 g(x) => x as Function < 5;
+h(x, y) =>
+    x as List<int> <= 5 ||
+    x is List<int> < y ||
+    x as Map<K, V> < y ||
+    x as List<List<int>> < 5;
