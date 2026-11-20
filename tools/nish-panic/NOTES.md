@@ -18,9 +18,12 @@ fn foo<T: for<'a> [const] async Trait>() {}
 and was reported to skip them cleanly under `--profile debug`, `-g` and
 `--emit-ts` with Node. The suspicion was a miscompile in the speed profile.
 
-## What happens (main at 42a489f, nish 0.42.0)
+## What happens (69be496 and main at 42a489f, nish 0.42.0)
 
-It is not a compiler bug. Every build panics the same way on the last three
+It is not a compiler bug. Neither of the report's observations reproduces:
+the debug build panics as the speed build does, and replacing the
+unchecked accesses in `src/core/out.ts` and `src/core/uwidth.ts` cannot
+matter, since neither is on the path (see "Unsafe uses"). Every build panics the same way on the last three
 inputs, with the same message:
 
 | build of `tools/dev/rust.ts` | `fn f<T: Clone,,>() {}` | the other three |
@@ -59,10 +62,11 @@ bound (`<T: T!>`) skip cleanly.
 ## Unsafe uses
 
 Of the nine modules that import `nish:unsafe` (`uncheckedGet`,
-`uncheckedSet`; nothing in `src/` uses `wrapping*`), the Rust formatter
-reaches only `src/core/out.ts`, whose writes happen after parsing. The
-panic fires in the parser, before any output, so no unchecked access is on
-its path. `src/core/uwidth.ts` is not imported by `src/rust/`.
+`uncheckedSet`, and `wrappingAdd` in `src/cpp/indenter.ts` alone), the Rust
+formatter reaches only `src/core/out.ts`, whose writes happen after parsing.
+The panic fires in the parser, before any output, so no unchecked access is
+on its path. `src/rust/` uses its own `src/rust/uwidth.ts`, not
+`src/core/uwidth.ts`.
 
 ## The reduced program
 

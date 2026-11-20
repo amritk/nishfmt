@@ -12,7 +12,12 @@ root=$PWD
 NISH=${NISH:-.nish/bin/nish}
 work=$(mktemp -d)
 trap 'rm -rf "$work"' EXIT
-"$NISH" --version 2>&1 | head -1
+version=$("$NISH" --version 2>&1 | head -1)
+echo "$version"
+if [ "$version" != "nish 0.42.0" ]; then
+  echo "NOTES.md records nish 0.42.0; this is $version" >&2
+  exit 2
+fi
 
 # The plan's inputs. On the first, parseGenerics fails but still answers its
 # node (2), not -1, so it skips cleanly; the other three panic.
@@ -92,7 +97,7 @@ if command -v node > /dev/null 2>&1; then
     check "$f" "$(want "$f")" "$rc" "$work/err"
   done
 else
-  echo "rust driver, --emit-ts: no node on PATH, not run"
+  echo "rust driver, --emit-ts: no node on PATH, not checked"
 fi
 
 # The proposed workaround: parseWhereInto returns on a failed generics node.
@@ -132,7 +137,9 @@ if [ "$node_ok" = 1 ]; then
   check "--emit-ts, node" panic "$rc" "$work/err"
 fi
 
-if [ "$bad" = 0 ]; then
+if [ "$bad" = 0 ] && [ "$node_ok" = 0 ]; then
+  echo "every native outcome as recorded in tools/nish-panic/NOTES.md; the Node rows not checked"
+elif [ "$bad" = 0 ]; then
   echo "every outcome as recorded in tools/nish-panic/NOTES.md"
 else
   echo "an outcome differs from tools/nish-panic/NOTES.md" >&2
