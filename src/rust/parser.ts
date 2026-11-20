@@ -2221,22 +2221,22 @@ export class RsParser {
       }
       const sg = this.nd(N_SEG, this.lo());
       this.ast.d[sg] = this.identTok();
-      if (style === PS_TYPE) {
-        if (this.is(T_COLONCOLON) && this.isLtAt(1)) {
-          this.bump();
-        }
+      // parse_path_segment: args at `<` or `(` in a type path, and at `::<` or `::(` in
+      // any but a module path (`Fn::(i32)`, `foo::(x)`).
+      let args = false;
+      if (style === PS_TYPE && (this.isLt() || this.is(T_LPAREN))) {
+        args = true;
+      } else if (style !== PS_MOD && this.is(T_COLONCOLON) && (this.isLtAt(1) || this.la(1) === T_LPAREN)) {
+        this.bump();
+        args = true;
+      }
+      if (args) {
         if (this.isLt()) {
           const gv48 = this.parseAngleArgs();
           this.ast.a[sg] = gv48;
-        } else if (this.is(T_LPAREN)) {
+        } else {
           const gv49 = this.parseParenArgs();
           this.ast.a[sg] = gv49;
-        }
-      } else if (style === PS_EXPR) {
-        if (this.is(T_COLONCOLON) && this.isLtAt(1)) {
-          this.bump();
-          const gv50 = this.parseAngleArgs();
-          this.ast.a[sg] = gv50;
         }
       }
       this.fin(sg);
@@ -2277,37 +2277,38 @@ export class RsParser {
     return this.fin(g);
   }
 
+  /**
+   * parse_angle_arg: a generic arg (parse_generic_arg), and when `:` or `=` follows one that
+   * is a single-segment path type, an associated item constraint on that segment
+   * (get_ident_from_generic_arg: `Item<T>: Bound`, `Item::<T> = Item`, `Item(..): Send`).
+   */
   parseGenericArg(): i32 {
     const lo = this.lo();
     const k = this.tk();
-    if (k === T_LIFETIME) {
+    if (k === T_LIFETIME && this.la(1) !== T_PLUS && this.la(1) !== T_PLUSEQ) {
       const l = this.nd(N_LIFETIME, lo);
       this.ast.d[l] = this.p;
       this.bump();
       return this.fin(l);
     }
-    // An associated item constraint: `Ident (<args>)? (= | :)`.
-    if (k === T_IDENT && !rsIsReserved(this.kw())) {
-      const k1 = this.la(1);
-      if ((k1 === T_EQ && this.la(2) !== T_EQ) || (k1 === T_COLON && this.la(2) !== T_COLON)) {
-        return this.parseConstraint(lo, -1);
-      }
-      if (k1 === T_LT || k1 === T_LPAREN) {
-        // Maybe `Ident<args> = ...`: try it.
-        const save = this.save();
-        const id = this.identTok();
-        const ga = k1 === T_LT ? this.parseAngleArgs() : this.parseParenArgs();
-        if (!this.failed && ((this.is(T_EQ) && this.la(1) !== T_EQ) || (this.is(T_COLON) && this.la(1) !== T_COLON))) {
-          const c = this.parseConstraintRest(lo, id, ga);
-          return c;
-        }
-        this.restore(save);
-      }
-    }
     if (this.isConstArgStart()) {
       return this.parseConstArg();
     }
-    return this.parseTy();
+    const ty = this.parseTy();
+    if (this.failed || !(this.is(T_COLON) || this.is(T_EQ))) {
+      return ty;
+    }
+    // A bare trait object (`for<'a> Item: Bound`) is "`for<...>` is not allowed on
+    // associated type bounds"; any other type leaves the `:` or `=` to fail.
+    if (this.ast.kind[ty] !== N_TY_PATH || this.ast.a[ty] >= 0) {
+      return this.fail();
+    }
+    const pa = this.ast.b[ty];
+    if (this.ast.ln[pa] !== 1 || (this.ast.fl[pa] & PATH_GLOBAL) !== 0) {
+      return this.fail();
+    }
+    const seg = this.ast.kid(pa, 0);
+    return this.parseConstraintRest(lo, this.ast.d[seg], this.ast.a[seg]);
   }
 
   isConstArgStart(): boolean {
@@ -2369,11 +2370,6 @@ export class RsParser {
     return this.fail();
   }
 
-  parseConstraint(lo: i32, ga: i32): i32 {
-    const id = this.identTok();
-    return this.parseConstraintRest(lo, id, ga);
-  }
-
   parseConstraintRest(lo: i32, id: i32, ga: i32): i32 {
     const c = this.nd(N_CONSTRAINT, lo);
     this.ast.d[c] = id;
@@ -2402,6 +2398,10 @@ export class RsParser {
       this.bump();
       this.bump();
       this.ast.kind[g] = N_GARGS_ELIDED;
+      if (this.is(T_RARROW)) {
+        // BadReturnTypeNotationOutput.
+        return this.fail();
+      }
       return this.fin(g);
     }
     // rustc 1.99 parses the inputs as params with an optional name (the
