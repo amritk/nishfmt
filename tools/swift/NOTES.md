@@ -96,6 +96,16 @@ type names. Where SwiftFormat's hasPrefix / dropFirst / first work on Characters
 combining scalar would move a Character boundary (todos, spaceInsideComments, docComments),
 `swUniCheckPrefix` / `swUniJoinsPrevious` make the file skip.
 
+spaceInsideComments checks only the Character boundaries before bytes 1-3 of a comment body
+(`swUniCheckPrefix(s, 4)`), the most its first / second Character and `hasPrefix("===")`,
+`("---")`, `("**")`, `("*/")` can read. Checking byte 4 as well skipped swift-syntax's
+`Syntax+Assertions.swift` on ``/// `1️⃣` that ...``: keycap emoji are digit, U+FE0F, U+20E3,
+both marks Grapheme_Cluster_Break=Extend (GB9), one Character in every Unicode version, but
+the boundary after `1` is never read there. Cases: `keycap_comment` and
+`keycap_block_comment` fail on the base binary (skipped). Guard: `skip_comment_combining_prefix`
+(`//===` U+0301, where `hasPrefix("===")` is false Character-wise) passes on the base binary
+and fails with `swUniCheckPrefix(s, 3)`, which formats it byte-wise.
+
 ## Known differences
 
 - Other ASCII `hasPrefix`/`hasSuffix` checks are byte-wise; SwiftFormat's are Character-wise,
