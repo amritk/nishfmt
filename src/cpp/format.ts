@@ -2076,8 +2076,9 @@ export class Formatter {
         // A `#error` or `#warning` clang-format finds no layout for: its
         // first token is still placed (formatFirstToken runs before the
         // line formatter), the rest is left as written.
+        const nl0 = this.newlinesBefore(l, prev, prev < 0, nested);
         this.firstEmitted = true;
-        this.emit(f, this.newlinesBefore(l, prev, prev < 0, nested), 0);
+        this.emit(f, nl0, 0);
         this.emitRaw(d.end[f], d.end[d.lLast[l]]);
       } else if (this.isMessage(l)) {
         this.emitMessage(l, this.newlinesBefore(l, prev, prev < 0, nested));
