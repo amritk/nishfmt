@@ -1,7 +1,7 @@
 // Formatting macro invocations (whose arguments parse as expressions, types,
-// patterns or items) and macro definitions (format_macro_matchers and
-// format_macro_bodies are off, so `macro_rules!` branches are kept as
-// written).
+// patterns or items) and `macro_rules!` and `macro` definitions
+// (format_macro_matchers is off, so a branch's matcher is kept as written;
+// format_macro_bodies is on).
 //
 // Ported from rustfmt 1.10.0 (MIT OR Apache-2.0, Copyright The Rust Project
 // Developers): macros.rs, header.rs, parse/macros/mod.rs,
