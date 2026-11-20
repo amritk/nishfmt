@@ -9,6 +9,7 @@
 import { isForEachMacro, isQtWord } from "./parser";
 import { Doc } from "./doc";
 import {
+  KW_TRY,
   KW_CONST_CAST,
   KW_DYNAMIC_CAST,
   KW_REINTERPRET_CAST,
@@ -1898,6 +1899,16 @@ export class Classifier {
     if (this.k(p) === P_RPAREN || this.k(p) === KW_NOEXCEPT || this.closesRequiresClause(p)) {
       this.set(t, TT_CTOR_INITIALIZER_COLON);
       this.expr[0] = 1;
+      return;
+    }
+    if (this.k(p) === KW_TRY) {
+      // A member initializer list in a function try block: `f() try : x(1)`;
+      // after any other `try`, no kind at all.
+      const pp = this.prev(p);
+      if (pp >= 0 && (this.k(pp) === P_RPAREN || this.k(pp) === KW_NOEXCEPT)) {
+        this.set(t, TT_CTOR_INITIALIZER_COLON);
+        this.expr[0] = 1;
+      }
       return;
     }
     if (n < 0) {
