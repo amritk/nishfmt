@@ -4,3 +4,5 @@ f(Map data, x, y) {
   if (data['frame_count'] as int < 5) {}
   return x is int < 5 || x as p.T < y || (x as List<int>) <= 5;
 }
+
+g(x) => x as Function < 5;

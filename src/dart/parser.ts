@@ -2359,7 +2359,11 @@ export class DtParser {
   parseType(): i32 {
     let t = -1;
     const p = this.p;
-    if (this.kw(p) === K_FUNCTION && (this.k(p + 1) === T_LT || this.k(p + 1) === T_LPAREN)) {
+    if (
+      this.kw(p) === K_FUNCTION &&
+      (this.k(p + 1) === T_LT || this.k(p + 1) === T_LPAREN) &&
+      !(this.tyEnd >= 0 && p + 1 >= this.tyEnd)
+    ) {
       t = this.parseGenericFunctionType(-1);
     } else if (this.k(p) === T_LPAREN) {
       t = this.parseRecordType();
@@ -3505,6 +3509,8 @@ export class DtParser {
         return -1;
       }
       left = this.mk(N_DOT_SHORTHAND_PROPERTY_ACCESS, beg, dot, name);
+      // As after any selector, fasta looks past a `!` for type arguments.
+      left = this.typeArgApplication(left);
     }
     left = this.precedenceLoop(P_SELECTOR, allowCascades, left, false);
     if (this.k(this.p) === T_BANG) {
