@@ -992,6 +992,11 @@ export class RsParser {
         }
         return m;
       }
+      if (k1 === KW_STATIC) {
+        // parse_global_static_front_matter: `unsafe static`.
+        this.bump();
+        return this.parseStatic(lo, IT_UNSAFE);
+      }
       return -1;
     }
     if (kk === KW_IMPL) {
@@ -1036,10 +1041,6 @@ export class RsParser {
     if (kk === KW_SAFE && this.laKw(1) === KW_STATIC) {
       this.bump();
       return this.parseStatic(lo, IT_SAFE);
-    }
-    if (kk === KW_UNSAFE && this.laKw(1) === KW_STATIC) {
-      this.bump();
-      return this.parseStatic(lo, IT_UNSAFE);
     }
     if (kk === KW_TRAIT || (kk === KW_AUTO && this.laKw(1) === KW_TRAIT)) {
       return this.parseTrait(lo);
@@ -4519,7 +4520,9 @@ export class RsParser {
     }
     if (k === KW_UNSAFE) {
       const k1 = this.laKw(1);
-      return k1 === KW_IMPL || k1 === KW_TRAIT || k1 === KW_AUTO || k1 === KW_EXTERN || k1 === KW_MOD;
+      return (
+        k1 === KW_IMPL || k1 === KW_TRAIT || k1 === KW_AUTO || k1 === KW_EXTERN || k1 === KW_MOD || k1 === KW_STATIC
+      );
     }
     if (k === KW_CONST) {
       const k1 = this.la(1);
