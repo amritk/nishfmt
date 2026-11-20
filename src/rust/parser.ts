@@ -596,6 +596,14 @@ export class RsParser {
     return false;
   }
 
+  /** `prev_token == Plus`: the token just consumed was `+` (or the `+` of a split `+=`). */
+  prevIsPlus(): boolean {
+    if (this.off >= 0) {
+      return this.p < this.end && this.t.kind[this.p] === T_PLUSEQ;
+    }
+    return this.p > 0 && this.t.kind[this.p - 1] === T_PLUS;
+  }
+
   // ---------------------------------------------------------------- state
 
   save(): i32[] {
@@ -1684,6 +1692,10 @@ export class RsParser {
     if (k === T_COLONCOLON || k === T_LT || k === T_SHL) {
       return true;
     }
+    // can_begin_maybe_const_bound: `[const]`.
+    if (k === T_LBRACKET && this.laKw(1) === KW_CONST && this.la(2) === T_RBRACKET) {
+      return true;
+    }
     const kk = this.kw();
     if (kk === KW_FOR || kk === KW_CONST || kk === KW_ASYNC || kk === KW_USE) {
       return true;
@@ -1691,15 +1703,25 @@ export class RsParser {
     return this.isPathSegIdent();
   }
 
+  /** parse_generic_bound: a lifetime, `use<..>` or trait bound, the last maybe in parens. */
   parseBound(): i32 {
     const lo = this.lo();
+    const parens = this.eat(T_LPAREN);
     if (this.is(T_LIFETIME)) {
+      if (parens) {
+        // "lifetime bounds may not be parenthesized".
+        return this.fail();
+      }
       const l = this.nd(N_LIFETIME, lo);
       this.ast.d[l] = this.p;
       this.bump();
       return this.fin(l);
     }
-    if (this.isKw(KW_USE) && this.isLtAt(1)) {
+    if (this.isKw(KW_USE)) {
+      if (parens || !this.isLtAt(1)) {
+        // "precise capturing lists may not be parenthesized"; expect_lt.
+        return this.fail();
+      }
       const u = this.nd(N_USE_BOUND, lo);
       this.bump();
       this.eatLt();
@@ -1726,52 +1748,68 @@ export class RsParser {
       this.endList(u, mark);
       return this.fin(u);
     }
-    if (this.is(T_LPAREN)) {
-      // A parenthesized bound.
-      this.bump();
-      const inner = this.parseBound();
-      this.expect(T_RPAREN);
-      if (inner >= 0) {
-        this.ast.lo[inner] = lo;
-        this.ast.hi[inner] = this.ph;
-        this.ast.fl[inner] = this.ast.fl[inner] | TB_PAREN;
-      }
-      return inner;
-    }
+    // parse_trait_bound.
     const n = this.nd(N_TRAIT_BOUND, lo);
-    let f = 0;
+    let f = parens ? TB_PAREN : 0;
     if (this.isKw(KW_FOR) && this.isLtAt(1)) {
       const gv25 = this.parseForBinder();
       this.ast.c[n] = gv25;
     }
-    if (this.is(T_TILDE) && this.laKw(1) === KW_CONST) {
+    // parse_bound_constness: `~const`, `[const]` (both Maybe) or `const`.
+    let modifiers = false;
+    if (this.is(T_TILDE)) {
+      this.bump();
+      if (!this.eatKw(KW_CONST)) {
+        return this.fail();
+      }
+      f = f | TB_MAYBE_CONST;
+      modifiers = true;
+    } else if (this.is(T_LBRACKET) && this.laKw(1) === KW_CONST && this.la(2) === T_RBRACKET) {
+      this.bump();
       this.bump();
       this.bump();
       f = f | TB_MAYBE_CONST;
+      modifiers = true;
     } else if (this.isKw(KW_CONST)) {
       this.bump();
       f = f | TB_CONST;
+      modifiers = true;
     }
     if (this.isKw(KW_ASYNC)) {
       this.bump();
       f = f | TB_ASYNC;
+      modifiers = true;
     }
     if (this.eat(T_QUESTION)) {
       f = f | TB_MAYBE;
     } else if (this.eat(T_NOT)) {
       f = f | TB_NEGATIVE;
     }
-    // rustc reports a binder with `?`/`!` (BinderAndPolarity) and a binder after the
-    // modifiers (BinderBeforeModifiers): errors it recovers from.
-    if (this.ast.c[n] >= 0 && (f & (TB_MAYBE | TB_NEGATIVE)) !== 0) {
+    // rustc reports `?`/`!` with `const`/`async` (PolarityAndModifiers), a binder with
+    // `?`/`!` (BinderAndPolarity), a lifetime after modifiers or a binder
+    // (ModifierLifetime) and a binder after the modifiers (BinderBeforeModifiers): errors
+    // it recovers from.
+    const polarity = (f & (TB_MAYBE | TB_NEGATIVE)) !== 0;
+    if (polarity && (modifiers || this.ast.c[n] >= 0)) {
+      return this.fail();
+    }
+    if (this.is(T_LIFETIME)) {
       return this.fail();
     }
     if (this.isKw(KW_FOR) && this.isLtAt(1)) {
       return this.fail();
     }
+    // A type that is not a path ("expected a trait, found type"), or `fn(..)`
+    // (ExpectedFnPathFoundFnKeyword): errors.
+    if (!this.isPathStart()) {
+      return this.fail();
+    }
     this.ast.fl[n] = f;
     const gv27 = this.parsePath(PS_TYPE);
     this.ast.a[n] = gv27;
+    if (parens && !this.expect(T_RPAREN)) {
+      return this.fail();
+    }
     return this.fin(n);
   }
 
@@ -2455,8 +2493,10 @@ export class RsParser {
       const mark = this.sp;
       let trailing = false;
       let count = 0;
+      let innerTrailingPlus = false;
       while (!this.failed && !this.is(T_RPAREN)) {
         this.push(this.parseTy());
+        innerTrailingPlus = this.prevIsPlus();
         count++;
         trailing = false;
         if (!this.eat(T_COMMA)) {
@@ -2468,6 +2508,31 @@ export class RsParser {
       if (count === 1 && !trailing) {
         const inner = this.stk[mark];
         this.sp = mark;
+        // parse_ty_tuple_or_parens: `(?Sized) + Send`, a bare trait object of one bound
+        // not ending in `+`, goes on with its bounds (parse_remaining_bounds); the parens
+        // are not part of the first bound's span.
+        if (
+          allowPlus &&
+          (this.is(T_PLUS) || this.is(T_PLUSEQ)) &&
+          this.ast.kind[inner] === N_TY_DYN &&
+          (this.ast.fl[inner] & TY_DYN) === 0 &&
+          this.ast.ln[this.ast.b[inner]] === 1 &&
+          !innerTrailingPlus
+        ) {
+          const b = this.nd(N_BOUNDS, lo);
+          this.push(this.ast.kid(this.ast.b[inner], 0));
+          while (this.eatPlus()) {
+            if (!this.canBeginBound()) {
+              break;
+            }
+            this.push(this.parseBound());
+          }
+          this.endList(b, mark);
+          this.fin(b);
+          ty = this.nd(N_TY_DYN, lo);
+          this.ast.b[ty] = b;
+          return this.fin(ty);
+        }
         ty = this.nd(N_TY_PAREN, lo);
         this.ast.a[ty] = inner;
         this.fin(ty);
@@ -2572,7 +2637,9 @@ export class RsParser {
       this.ast.b[ty] = gv63;
       return this.fin(ty);
     }
-    if (kk === KW_DYN && this.canBeginBoundAt1()) {
+    // is_explicit_dyn_type: from edition 2018 `dyn` always starts a trait object, whose
+    // bounds may be empty (`&dyn`).
+    if (kk === KW_DYN && (this.t.edition >= 2018 || this.canBeginBoundAt1())) {
       ty = this.nd(N_TY_DYN, lo);
       this.bump();
       this.ast.fl[ty] = TY_DYN;
@@ -2595,6 +2662,11 @@ export class RsParser {
       return this.parseBareTraitObject(lo, allowPlus);
     }
     if (k === T_LIFETIME && allowPlus) {
+      // parse_bare_trait_object: a lifetime starts one only when `+` follows; from
+      // edition 2021 anything else is "expected type, found lifetime".
+      if (this.la(1) !== T_PLUS && this.la(1) !== T_PLUSEQ) {
+        return this.fail();
+      }
       return this.parseBareTraitObject(lo, allowPlus);
     }
     if (kk === KW_CONST || kk === KW_ASYNC) {

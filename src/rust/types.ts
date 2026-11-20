@@ -448,7 +448,7 @@ const rewritePolyTraitRef = (ctx: RsCtx, b: i32, shape0: RsShape): string | null
   const f = ast.fl[b];
   let constness = "";
   if ((f & TB_MAYBE_CONST) !== 0) {
-    constness = "~const ";
+    constness = "[const] ";
   } else if ((f & TB_CONST) !== 0) {
     constness = "const ";
   }

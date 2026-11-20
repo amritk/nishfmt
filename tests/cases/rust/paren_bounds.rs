@@ -1,0 +1,10 @@
+fn main() {
+    let _: Box<(Copy) + (?Sized) + (for<'a> Trait<'a>)>;
+    let _: Box<(?Sized) + (for<'a> Trait<'a>) + (Copy)>;
+    let _: Box<(for<'a> Trait<'a>) + (Copy) + (?Sized)>;
+    let _: Box<( ?Sized )+Copy>;
+    let _: Box<(for<'a> Fn(&'a u8)) + Send + (Sync)>;
+}
+struct S<T: 'a + ?Sized + (Copy) + [const] Drop>;
+fn f<T: [ const ] Copy, U: ~const Copy, V: ([const] async Fn())>() {}
+fn g(_: &dyn, _: Box<dyn>, _: &mut dyn) {}
