@@ -66,7 +66,8 @@ and their corpus refs are byte-identical.
   around mixins and extension types). 3.13 on: the current tall style.
 - The parser follows the version where the analyzer's parse differs without
   an error: before 3.0 a `case` holds an expression, and before 3.13 `var`
-  and `final` are fine on any parameter. Syntax that an older version lacks
+  and `final` are fine on any parameter but a function-typed one (`final
+  f(int a)`, the analyzer's functionTypedParameterVar). Syntax that an older version lacks
   is parsed, and then the file is left alone (`features.ts`, Version gates).
 - Files that do not parse, or that the analyzer would reject in a way
   `dart format` reports, are left alone; so are files where dart_style would
@@ -80,6 +81,12 @@ and their corpus refs are byte-identical.
   redirect twice and never the parameters; `TextPiece` hard newline and total
   characters ignore its comment children; the short style's merged empty
   splits harden their rule.
+- Guard cases in `tests/cases/dart/`, which pass on the commit before the
+  change they hold the line for:
+  - `skip_fn_param_var.dart`: `final void Function(int a)` at 3.12, a
+    function-typed parameter named `Function` with `final`, which the
+    analyzer rejects. It fails on the head that first accepted that
+    parameter without porting functionTypedParameterVar.
 
 ## Version gates
 

@@ -2335,6 +2335,26 @@ export class DtParser {
   // ambiguous `x is T ? a : b`).
   noQ: i32 = -1;
 
+  // The token index where the type being parsed ends, as computeType measured
+  // it, or -1: fasta's parser follows the TypeInfo computeType answered, so
+  // a `<` or `Function` from there on is not part of the type (`x as int < 5`,
+  // the parameter `void Function(int a)` named `Function`).
+  tyEnd: i32 = -1;
+
+  /** Parses the type computeType measured as ending at cursor `te`. */
+  parseTypeTo(te: i32): i32 {
+    const save = this.tyEnd;
+    this.tyEnd = (te & 3) === 0 ? toI32(te >> 2) : -1;
+    const t = this.parseType();
+    this.tyEnd = save;
+    return t;
+  }
+
+  /** Whether the type being parsed has ended at the current token. */
+  atTyEnd(): boolean {
+    return this.tyEnd >= 0 && this.p >= this.tyEnd;
+  }
+
   /** Parses a type at the current token. */
   parseType(): i32 {
     let t = -1;
@@ -2348,6 +2368,7 @@ export class DtParser {
     }
     while (
       !this.failed &&
+      !this.atTyEnd() &&
       this.kw(this.p) === K_FUNCTION &&
       (this.k(this.p + 1) === T_LT || this.k(this.p + 1) === T_LPAREN)
     ) {
@@ -2373,7 +2394,7 @@ export class DtParser {
     const name = this.p;
     this.p = name + 1;
     let targs = -1;
-    if (this.k(this.p) === T_LT) {
+    if (this.k(this.p) === T_LT && !this.atTyEnd()) {
       targs = this.parseTypeArgumentList();
     }
     const q = this.optQuestion();
@@ -2568,8 +2589,8 @@ export class DtParser {
     const pk = this.kw(p);
     if (!((pk === K_THIS || pk === K_SUPER) && this.k(p + 1) === T_DOT)) {
       const te = this.computeType(p << 2, false);
-      if (te !== NO) {
-        type = this.parseType();
+      if (te !== NO && ctx !== FP_FUNCTION_TYPE) {
+        type = this.parseTypeTo(te);
       } else if (ctx === FP_FUNCTION_TYPE) {
         type = this.parseType();
       }
@@ -2590,6 +2611,12 @@ export class DtParser {
     }
     let suffix = -1;
     if (name >= 0 && (this.k(this.p) === T_LPAREN || this.k(this.p) === T_LT)) {
+      // fasta's functionTypedParameterVar: `var` or `final` on a
+      // function-typed parameter, outside a primary constructor.
+      if (mutable >= 0 && !this.inPrimary) {
+        this.fail("var or final on a function-typed parameter");
+        return -1;
+      }
       const sb = this.p;
       let tps = -1;
       if (this.k(this.p) === T_LT) {
@@ -3521,11 +3548,18 @@ export class DtParser {
    * After an expression: `<T>` that is not followed by `(` makes a function
    * reference; one followed by `(` waits for the call.
    */
-  typeArgApplication(left: i32): i32 {
+  typeArgApplication(left0: i32): i32 {
     this.pendingTargs = -1;
-    const e = this.methodTypeArgsEnd(this.p);
+    let left = left0;
+    // fasta looks past a `!` for the type arguments: `e!<T>(a)`.
+    const bang = this.k(this.p) === T_BANG ? this.p : -1;
+    const e = this.methodTypeArgsEnd(bang >= 0 ? bang + 1 : this.p);
     if (e === NO) {
       return left;
+    }
+    if (bang >= 0) {
+      this.p = bang + 1;
+      left = this.mk(N_POSTFIX_EXPRESSION, this.a.beg[left], left, bang);
     }
     const ta = this.parseTypeArgumentList();
     if (this.k(this.p) !== T_LPAREN) {
@@ -3671,7 +3705,7 @@ export class DtParser {
     }
     const saveQ = this.noQ;
     this.noQ = stopQ;
-    const t = this.parseType();
+    const t = te !== NO ? this.parseTypeTo(te) : this.parseType();
     this.noQ = saveQ;
     return t;
   }
