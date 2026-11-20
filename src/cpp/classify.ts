@@ -9,6 +9,11 @@
 import { isForEachMacro, isQtWord } from "./parser";
 import { Doc } from "./doc";
 import {
+  KW_TRY,
+  KW_CONST_CAST,
+  KW_DYNAMIC_CAST,
+  KW_REINTERPRET_CAST,
+  KW_STATIC_CAST,
   PP_DEFINE,
   PP_ELIF,
   PP_ERROR,
@@ -185,7 +190,6 @@ export class Classifier {
   open: i32[]; // the opening token of each level (-1 at the top)
   expr: i32[]; // 1 when the level holds an expression
   tmpl: i32[]; // 1 inside template arguments
-  lfd: i32[]; // 1 in an if/while condition's parens until a declaration is ruled out
   ctorSeen: boolean = false; // a constructor initializer list started before the current token
   fnEarly: boolean = false; // isFunctionName decided on the token before `operator` alone
   asg: i32[]; // 1 once the level has passed an assignment
@@ -205,7 +209,6 @@ export class Classifier {
     this.open = new Array<i32>(MAXD);
     this.expr = new Array<i32>(MAXD);
     this.tmpl = new Array<i32>(MAXD);
-    this.lfd = new Array<i32>(MAXD);
     this.asg = new Array<i32>(MAXD);
     this.ques = new Array<i32>(MAXD);
     this.afterNew = new Array<i32>(MAXD);
@@ -517,6 +520,16 @@ export class Classifier {
     if (f < 0 || f === c) {
       return;
     }
+    // clang-format's lParenStartsCppCast: never the parens of
+    // `static_cast<T>(...)` and the other named casts.
+    const g = this.prev(o);
+    if (g >= 0 && this.ty(g) === TT_TEMPLATE_CLOSER && d.match[g] >= 0 && d.match[g] < g) {
+      const mp = this.prev(d.match[g]);
+      const ck = mp >= 0 ? this.k(mp) : -1;
+      if (ck === KW_STATIC_CAST || ck === KW_CONST_CAST || ck === KW_DYNAMIC_CAST || ck === KW_REINTERPRET_CAST) {
+        return;
+      }
+    }
     // `(&)`, `(*)`, `(C::*)` make a function or array type whatever the
     // context (clang-format 23's parseParens; a pointer, not a block's `^`).
     const last = d.prv[c];
@@ -760,6 +773,7 @@ export class Classifier {
       (nk === KW_NOEXCEPT && !inExpr) ||
       nk === KW_CONST ||
       nk === KW_VOLATILE ||
+      isPointerQualifierWord(this.d, n) ||
       (nk === P_LBRACE && this.next(n) < 0) ||
       (nk === KW_REQUIRES && requiresIsClause(this.d, n))
     ) {
@@ -1061,26 +1075,8 @@ export class Classifier {
       if (!this.ctorSeen && pv >= 0 && d.type[pv] === TT_CTOR_INITIALIZER_COLON) {
         this.ctorSeen = true;
       }
-      if (k === K_IDENT && dep > 0 && this.lfd[dep] === 1) {
-        // clang-format's parseParens(LookForDecls): `if (a *b ...)` without
-        // `=` after `b` reads the `*` as a multiplication.
-        const p = this.prev(t);
-        const pp = p >= 0 ? this.prev(p) : -1;
-        const n = d.nxt[t];
-        if (
-          pp >= 0 &&
-          this.k(pp) === K_IDENT &&
-          this.isPtrKind(p) &&
-          this.ty(p) === TT_POINTER_OR_REFERENCE &&
-          n >= 0 &&
-          this.k(n) !== P_EQUAL
-        ) {
-          d.type[p] = TT_BINARY_OPERATOR;
-          this.lfd[dep] = 0;
-        }
-      }
       // clang-format's parseParens: after a binary operator the parens hold
-      // an expression; after `const`, `auto` or a simple type they do not.
+      // an expression; after `const`, `auto` or a type name they do not.
       if (dep > 0 && this.k(this.open[dep]) === P_LPAREN) {
         const pt = this.prev(t);
         if (pt >= 0 && pt !== this.open[dep]) {
@@ -1088,7 +1084,7 @@ export class Classifier {
             this.expr[dep] = 1;
           }
           const ptk = this.k(pt);
-          if (ptk === KW_CONST || ptk === KW_AUTO || isSimpleTypeKind(ptk)) {
+          if (ptk === KW_CONST || ptk === KW_AUTO || isTypeName(d, pt)) {
             const n = d.nxt[t];
             const fnTypeParen =
               k === P_LPAREN && n >= 0 && (this.k(n) === P_STAR || this.k(n) === P_AMP || this.k(n) === P_CARET);
@@ -1217,7 +1213,6 @@ export class Classifier {
           this.afterNew[nd] = 0;
           this.caret[nd] = 0;
           this.sa[nd] = k === P_LPAREN && this.k(this.prev(t)) === KW_STATIC_ASSERT ? 1 : 0;
-          this.lfd[nd] = k === P_LPAREN && this.conditionParen(t) ? 1 : 0;
           if (k === P_LPAREN) {
             this.expr[nd] = this.parenIsExpr(t, this.expr[dep]);
           } else {
@@ -1340,7 +1335,6 @@ export class Classifier {
                 this.afterNew[nd] = 0;
                 this.caret[nd] = 0;
                 this.sa[nd] = 0;
-                this.lfd[nd] = 0;
                 this.bindAt[nd] = this.bindAt[dep] + 12;
               }
             }
@@ -1471,14 +1465,11 @@ export class Classifier {
           }
           break;
         }
-        case P_SEMI: {
-          // In `for (...)`, what follows the first `;` is an expression.
-          const o = this.open[dep];
-          if (dep > 0 && this.k(o) === P_LPAREN && this.prev(o) >= 0 && this.k(this.prev(o)) === KW_FOR) {
-            this.expr[dep] = 1;
-          }
+        case P_SEMI:
+          // clang-format's modifyContext: what follows a `;` is an
+          // expression (a for loop's condition, an if's after its initializer).
+          this.expr[dep] = 1;
           break;
-        }
         case KW_RETURN:
         case KW_THROW:
         case KW_CASE:
@@ -1590,8 +1581,12 @@ export class Classifier {
     // declares a function when its first word is a constructor's or
     // destructor's name, or a later name before any braced list is a
     // declaration's (TokenAnnotator::annotate).
-    const last = d.lLast[l];
-    const lp = d.prv[last];
+    // (Line.endsWith skips comments.)
+    let last = d.lLast[l];
+    while (d.kind[last] === K_COMMENT && d.prv[last] >= 0) {
+      last = d.prv[last];
+    }
+    const lp = this.prev(last);
     if (d.kind[last] === P_SEMI && lp >= 0 && d.kind[lp] === P_RBRACE && d.match[lp] >= 0 && d.match[lp] < lp) {
       const fnc = d.kind[this.first] === K_COMMENT ? this.next(this.first) : this.first;
       let fn = fnc >= 0 && d.type[fnc] === TT_CTOR_DTOR_DECL_NAME;
@@ -1692,20 +1687,6 @@ export class Classifier {
     const p = this.prev(t);
     const pp = p >= 0 ? this.prev(p) : -1;
     return pp >= 0 && this.k(pp) !== KW_TYPENAME && this.k(pp) !== KW_CLASS;
-  }
-
-  /** Whether `(` (token `t`) holds an `if` or `while` condition. */
-  conditionParen(t: i32): boolean {
-    const p = this.prev(t);
-    if (p < 0) {
-      return false;
-    }
-    const pk = this.k(p);
-    if (pk === KW_IF || pk === KW_WHILE) {
-      return true;
-    }
-    const pp = this.prev(p);
-    return (pk === KW_CONSTEXPR || pk === K_IDENT) && pp >= 0 && this.k(pp) === KW_IF;
   }
 
   templateDeclKeyword(): boolean {
@@ -1917,6 +1898,16 @@ export class Classifier {
       this.expr[0] = 1;
       return;
     }
+    if (this.k(p) === KW_TRY) {
+      // A member initializer list in a function try block: `f() try : x(1)`;
+      // after any other `try`, no kind at all.
+      const pp = this.prev(p);
+      if (pp >= 0 && (this.k(pp) === P_RPAREN || this.k(pp) === KW_NOEXCEPT)) {
+        this.set(t, TT_CTOR_INITIALIZER_COLON);
+        this.expr[0] = 1;
+      }
+      return;
+    }
     if (n < 0) {
       return; // a label
     }
@@ -2016,15 +2007,15 @@ export class Classifier {
   }
 
   /**
-   * Whether the brackets from `[` at `t` hold `word word` then a `:` at their
-   * own level, with no `,` or `?` before it: an Objective-C message's
-   * selector argument.
+   * Whether the brackets from `[` at `t` hold a receiver (`a`, `a.b`, ...),
+   * a word, then a `:` at their own level, with no `,` or `?` before it: an
+   * Objective-C message's selector argument.
    */
   messageColon(t: i32): boolean {
     const d = this.d;
     const r = d.nxt[t];
     const s = r >= 0 ? d.nxt[r] : -1;
-    if (r < 0 || s < 0 || !isWordKind(this.k(s))) {
+    if (r < 0 || s < 0) {
       return false;
     }
     let depth = 0;
@@ -2040,7 +2031,7 @@ export class Classifier {
       } else if (depth === 0 && (k === P_COMMA || k === P_QUESTION || k === P_SEMI)) {
         return false;
       } else if (depth === 0 && k === P_COLON) {
-        return true;
+        return d.prv[q] !== r && isWordKind(this.k(d.prv[q]));
       }
     }
     return false;
@@ -2232,15 +2223,7 @@ export class Classifier {
         t = this.prev(this.d.match[t]);
         continue;
       }
-      if (
-        k === KW_CONST ||
-        k === KW_VOLATILE ||
-        (k === K_IDENT &&
-          (this.d.is(t, "restrict") ||
-            this.d.is(t, "__restrict") ||
-            this.d.is(t, "_Nonnull") ||
-            this.d.is(t, "_Nullable")))
-      ) {
+      if (k === KW_CONST || k === KW_VOLATILE || isPointerQualifierWord(this.d, t)) {
         t = this.prev(t);
         continue;
       }
@@ -3178,9 +3161,11 @@ const spaceBeforeCode = (d: Doc, l: i32, r: i32): boolean => {
       lk === KW_CASE ||
       lk === KW_CATCH ||
       isForEachMacro(d, left) ||
-      ((lk === KW_IF ||
-        ((lk === KW_CONSTEXPR || lk === K_IDENT) && d.prv[left] >= 0 && d.kind[d.prv[left]] === KW_IF)) &&
-        d.lType[l] !== LT_PREPROCESSOR)
+      // isIf(AllowConstexprMacro): `if X (` only outside a directive.
+      lk === KW_IF ||
+      ((lk === KW_CONSTEXPR || (lk === K_IDENT && d.lType[l] !== LT_PREPROCESSOR)) &&
+        d.prv[left] >= 0 &&
+        d.kind[d.prv[left]] === KW_IF)
     ) {
       return true;
     }
@@ -3441,6 +3426,28 @@ const CLANG_RESERVED_KEYWORDS: string =
   " __unaligned __uptr __vectorcall __virtual_inheritance __volatile __volatile__ __w64 __wchar_t _alignof _asm" +
   " _declspec _inline _int16 _int32 _int64 _int8 _thiscall _vectorcall ";
 
+/**
+ * The identifiers among clang-format's canBePointerOrReferenceQualifier
+ * keywords: `restrict` (C99 is on), `__restrict`, `__restrict__`, the
+ * nullability qualifiers, `__ptr32`, `__ptr64` and `__funcref`.
+ */
+export const isPointerQualifierWord = (d: Doc, t: i32): boolean => {
+  if (d.kind[t] !== K_IDENT) {
+    return false;
+  }
+  return (
+    d.is(t, "restrict") ||
+    d.is(t, "__restrict") ||
+    d.is(t, "__restrict__") ||
+    d.is(t, "_Nonnull") ||
+    d.is(t, "_Nullable") ||
+    d.is(t, "_Null_unspecified") ||
+    d.is(t, "__ptr32") ||
+    d.is(t, "__ptr64") ||
+    d.is(t, "__funcref")
+  );
+};
+
 /** Whether identifier token `t` is a reserved-name keyword to clang's lexer (`__builtin_offsetof`, `__int64`). */
 export const isReservedKeyword = (d: Doc, t: i32): boolean => {
   const a = d.start[t];
@@ -3481,6 +3488,20 @@ export const isTypeName = (d: Doc, t: i32): boolean => {
   }
   if (k !== K_IDENT) {
     return false;
+  }
+  // Simple type specifiers the lexer has no kind for: keywords under
+  // clang-format's LangOpts (MicrosoftExt is on: `__int64`, `_int64`).
+  if (d.at(d.start[t]) === 95) {
+    return (
+      d.is(t, "__int64") ||
+      d.is(t, "_int64") ||
+      d.is(t, "__int128") ||
+      d.is(t, "__bf16") ||
+      d.is(t, "_Float16") ||
+      d.is(t, "__float128") ||
+      d.is(t, "__ibm128") ||
+      d.is(t, "__auto_type")
+    );
   }
   const w = d.len(t);
   // (Every one is 6 to 9 bytes and ends in `_t`: 95 `_`, 116 `t`.)

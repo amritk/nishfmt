@@ -1,0 +1,9 @@
+@interface OpenGLView : NSOpenGLView {
+  NSTimer *timer;
+}
+- (void)drawRect:(NSRect)start;
+@end
+@interface tbbAppDelegate : NSObject <NSApplicationDelegate> {
+  __unsafe_unretained NSWindow *_window;
+}
+@end

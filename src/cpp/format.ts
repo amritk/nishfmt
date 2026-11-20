@@ -80,6 +80,8 @@ import {
   PP_ELSE,
   K_IDENT,
   P_AT,
+  P_MINUS,
+  P_PLUS,
   K_STRING,
   KW_USING,
   KW_TYPENAME,
@@ -195,6 +197,7 @@ export class Formatter {
   sType: i32[];
   sFinal: i32[];
   bracesBalanced: boolean = true;
+  endCommentsInserted: boolean = false; // insertContinuedEndComments ran on this file
   bcLa: i32[]; // block comment lines being written: line, content and content column
   bcLe: i32[];
   bcCa: i32[];
@@ -493,6 +496,11 @@ export class Formatter {
    */
   splitString(t: i32, prefixLen: i32, cuts: i32[], n: i32, col: i32): void {
     const d = this.d;
+    if (this.hasOff && this.offTok[t] === 1) {
+      // clang-format's replaceWhitespaceInToken: a Finalized token (in an
+      // off region) is written as it is, whatever the breaker decided.
+      return;
+    }
     let a = d.start[t] + prefixLen;
     const e = d.end[t] - 1;
     for (let i = 0; i <= n; i++) {
@@ -713,6 +721,103 @@ export class Formatter {
     return ind;
   }
 
+  /**
+   * clang-format's NamespaceEndCommentsFixer runs before its formatter, on the
+   * text, so a line comment under a namespace `}` that gets an end comment
+   * can continue that comment (continuesLineCommentSection: written right of
+   * the `}`). Where that may happen, inserts the end comments namespaceComment
+   * would add into the text, once per file, and answers true to start over.
+   */
+  insertContinuedEndComments(): boolean {
+    const d = this.d;
+    if (this.endCommentsInserted) {
+      return false;
+    }
+    const at: i32[] = []; // source offset, line of the namespace
+    let trigger = false;
+    let off = false; // inside a `// clang-format off` region
+    let ct = 0;
+    for (let l = d.topHead; l >= 0; l = d.lSibling[l]) {
+      const rb = d.lFirst[l];
+      for (; ct < rb; ct++) {
+        if (d.kind[ct] === K_COMMENT) {
+          const m = this.offMarker(ct);
+          if (m === 1) {
+            off = true;
+          } else if (m === 2) {
+            off = false;
+          }
+        }
+      }
+      if (off || d.kind[rb] !== P_RBRACE || !this.closesNamespace(l) || d.inPP[rb] === 1) {
+        continue;
+      }
+      const o = d.lOpen[l];
+      if (!this.samePPContext(d.lLast[o], rb) || d.kind[d.lLast[l]] === K_COMMENT || l - o - 1 <= 1) {
+        continue;
+      }
+      let after = d.nxt[rb];
+      if (after >= 0 && d.kind[after] === P_SEMI) {
+        after = d.nxt[after];
+      }
+      if (after >= 0) {
+        continue;
+      }
+      // The end comment goes after the `}` (past a `;`).
+      const end = d.nxt[rb] >= 0 ? d.nxt[rb] : rb;
+      at.push(d.end[end]);
+      at.push(o);
+      // The comments up to the next code token, directive lines between
+      // them included, are read while the `}` line is pending.
+      for (let c = end + 1; c < d.ntok && (d.kind[c] === K_COMMENT || d.inPP[c] === 1); c++) {
+        if (
+          d.kind[c] === K_COMMENT &&
+          d.inPP[c] === 0 &&
+          d.nl[c] === 1 &&
+          d.at(d.start[c] + 1) === 47 &&
+          d.origCol(c) > d.origCol(rb)
+        ) {
+          trigger = true;
+        }
+      }
+    }
+    if (!trigger || !this.bracesBalance()) {
+      return false;
+    }
+    this.endCommentsInserted = true;
+    const out: u8[] = [];
+    let from = 0;
+    for (let i = 0; i < toI32(at.length); i += 2) {
+      for (let c = from; c < at[i]; c++) {
+        out.push(d.src[c]);
+      }
+      const text = ` ${this.endCommentText(at[i + 1])}`;
+      for (let k = 0; k < toI32(text.length); k++) {
+        out.push(toU8(text.charCodeAt(k)));
+      }
+      from = at[i];
+    }
+    for (let c = from; c < d.n; c++) {
+      out.push(d.src[c]);
+    }
+    d.reset(out, toI32(out.length));
+    return true;
+  }
+
+  /** Whether the document's `{` and `}` balance. */
+  bracesBalance(): boolean {
+    const d = this.d;
+    let braces = 0;
+    for (let t = 0; t < d.ntok; t++) {
+      if (d.kind[t] === P_LBRACE) {
+        braces++;
+      } else if (d.kind[t] === P_RBRACE) {
+        braces--;
+      }
+    }
+    return braces === 0;
+  }
+
   /** Appends `// namespace name` to a namespace's `}` line that lacks a comment. */
   namespaceComment(l: i32): void {
     const d = this.d;
@@ -740,8 +845,7 @@ export class Formatter {
     if (body <= 1) {
       return;
     }
-    const name = this.namespaceName(o);
-    const text = name.length === 0 ? "// namespace" : `// namespace ${name}`;
+    const text = this.endCommentText(o);
     const last = this.emTok[this.nem - 1];
     const col = this.emCol[this.nem - 1] + (last >= 0 ? this.lastLineWidth(last) : 0) + 1;
     this.synth.push(text);
@@ -765,12 +869,18 @@ export class Formatter {
     if (!this.validEndComment(after, name)) {
       for (let i = this.nem - 1; i >= 0; i--) {
         if (this.emTok[i] === after) {
-          this.synth.push(name.length === 0 ? "// namespace" : `// namespace ${name}`);
+          this.synth.push(this.endCommentText(o));
           this.emTok[i] = -toI32(this.synth.length);
           break;
         }
       }
     }
+  }
+
+  /** The end comment of the namespace opened on line `o`. */
+  endCommentText(o: i32): string {
+    const name = this.namespaceName(o);
+    return name.length === 0 ? "// namespace" : `// namespace ${name}`;
   }
 
   /** The name a namespace opened on line `o` goes by (empty for an anonymous one). */
@@ -1185,7 +1295,7 @@ export class Formatter {
   }
 
   /**
-   * Whether `#error`/`#warning` line `l` is left as written: its words after
+   * Whether `#error`/`#warning` line `l` is left as written after its `#`: its words after
    * the first are implicit string literals clang-format cannot break before,
    * yet a `.` or `->` among them past the column limit must break (the member
    * access rule), so clang-format finds no layout and leaves the line alone.
@@ -1391,8 +1501,11 @@ export class Formatter {
           fk === KW_DEFAULT ||
           fk === KW_EXTERN;
         const blockLike = tt === TT_UNKNOWN || (tt === TT_CONTROL_STATEMENT_LBRACE && fk === KW_SWITCH);
+        // (Never a line starting with an Objective-C `@`, `-` or `+`.)
+        const objcFirst = d.kind[lineStart] === P_AT || d.kind[lineStart] === P_MINUS || d.kind[lineStart] === P_PLUS;
         if (
           blockLike &&
+          !objcFirst &&
           !blockLBrace &&
           !ctrl &&
           !emptyBody &&
@@ -1960,8 +2073,13 @@ export class Formatter {
           pend = -1;
         }
       } else if (this.longMessage(l)) {
-        // A `#error` or `#warning` clang-format finds no layout for is left as written.
-        this.emitVerbatimLine(l);
+        // A `#error` or `#warning` clang-format finds no layout for: its
+        // first token is still placed (formatFirstToken runs before the
+        // line formatter), the rest is left as written.
+        const nl0 = this.newlinesBefore(l, prev, prev < 0, nested);
+        this.firstEmitted = true;
+        this.emit(f, nl0, 0);
+        this.emitRaw(d.end[f], d.end[d.lLast[l]]);
       } else if (this.isMessage(l)) {
         this.emitMessage(l, this.newlinesBefore(l, prev, prev < 0, nested));
         this.firstEmitted = true;
@@ -2178,13 +2296,38 @@ export class Formatter {
       i++;
     }
     const e = d.end[t];
-    if (d.startsWithAt(i, e, "nishfmt off") || d.startsWithAt(i, e, "clang-format off")) {
+    if (d.startsWithAt(i, e, "nishfmt off")) {
       return 1;
     }
-    if (d.startsWithAt(i, e, "nishfmt on") || d.startsWithAt(i, e, "clang-format on")) {
+    if (d.startsWithAt(i, e, "nishfmt on")) {
+      return 2;
+    }
+    // clang-format's isClangFormatOff/On: `// clang-format off`, alone or
+    // before a `:`, or `/* clang-format off */` exactly.
+    if (this.isFormatOff(d.start[t], e)) {
+      return 1;
+    }
+    if (this.isFormatOn(d.start[t], e)) {
       return 2;
     }
     return 0;
+  }
+
+  /**
+   * clang-format's switchesFormatting: the comment's text after `//` or `/*`,
+   * blanks dropped, starts with `clang-format on` or `off` (so do nishfmt's
+   * markers). Such a comment is never reflowed, broken or given a space.
+   */
+  switchesFormatting(t: i32): boolean {
+    const d = this.d;
+    const e = d.end[t];
+    let i = d.start[t] + 2;
+    while (i < e && (isBlankByte(d.at(i)) || d.at(i) === 10)) {
+      i++;
+    }
+    return (
+      d.startsWithAt(i, e, "clang-format on") || d.startsWithAt(i, e, "clang-format off") || this.offMarker(t) !== 0
+    );
   }
 
   /** Emits line `l` exactly as it was written. */
@@ -2247,6 +2390,7 @@ export class Formatter {
     }
     let mayRestart = true;
     let restarts = 0; // using-declarations sorted in a later pass restart it all
+    this.endCommentsInserted = false;
     while (true) {
       const np = this.planPasses();
       if (getenv("FFPASS") !== null) console.error(`passes ${np} tokens ${d.ntok}`);
@@ -2391,6 +2535,9 @@ export class Formatter {
       // The using-declarations were reordered in the text: start over on it.
       return PASS_RESTART;
     }
+    if (this.insertContinuedEndComments()) {
+      return PASS_RESTART;
+    }
     const t2 = monotonicNanos();
     this.ann.reset();
     this.ind.reset();
@@ -2405,15 +2552,7 @@ export class Formatter {
     this.joinShortBlocks(d.topHead, 0);
     const t3 = monotonicNanos();
     // clang-format leaves namespace end comments alone when braces do not balance.
-    let braces = 0;
-    for (let t = 0; t < d.ntok; t++) {
-      if (d.kind[t] === P_LBRACE) {
-        braces++;
-      } else if (d.kind[t] === P_RBRACE) {
-        braces--;
-      }
-    }
-    this.bracesBalanced = braces === 0;
+    this.bracesBalanced = this.bracesBalance();
     for (let t = 0; t < d.ntok; t++) {
       d.keepWs[t] = 0;
     }
@@ -4330,7 +4469,7 @@ export class Formatter {
       if (
         d.opts.reflowComments &&
         d.inPP[t] === 0 &&
-        this.offMarker(t) === 0 &&
+        !this.switchesFormatting(t) &&
         (d.multi[t] === 1 || col + d.width[t] + this.unbreakableTail(t) > d.opts.columnLimit)
       ) {
         const pre0 = i >= 0 && i < this.nem ? this.emColPre[i] : col;
@@ -4370,7 +4509,7 @@ export class Formatter {
         !inInclude &&
         (d.multi[t] === 1 || pre + d.width[t] + this.unbreakableTail(t) > d.opts.columnLimit - 2) &&
         pp >= 0 &&
-        this.offMarker(t) === 0
+        !this.switchesFormatting(t)
       ) {
         this.bcEsc = this.escStamp[pp] === this.fileStamp ? this.escCol[pp] : d.opts.columnLimit;
         this.bcPP = true;
@@ -4999,13 +5138,19 @@ export class Formatter {
     if (before >= 0 && d.kind[before] === P_LBRACE && this.origColumn(t) < this.origColumn(before) + 1) {
       return false;
     }
+    // A section trailing code takes only the comments the parser put on its
+    // line (BreakableLineCommentSection reads its own unwrapped line): one
+    // that starts a line of its own is another section.
+    if (before >= 0 && d.prv[t] < 0) {
+      return false;
+    }
     return !this.isPragma(t) && !this.isPragma(p);
   }
 
   /** `// clang-format on|off`, `// nishfmt on|off` or an IWYU pragma. */
   isPragma(t: i32): boolean {
     const d = this.d;
-    if (this.offMarker(t) !== 0) {
+    if (this.switchesFormatting(t)) {
       return true;
     }
     const a = d.start[t] + 2;
@@ -5108,7 +5253,7 @@ export class Formatter {
           change = change + 1 - (spaces + change);
         }
         const requires = !noSpace || (c === 125 && first !== 0);
-        const allows = this.offMarker(t) === 0 && (spaces !== 0 || requires);
+        const allows = !this.switchesFormatting(t) && (spaces !== 0 || requires);
         if (change > 0 && allows) {
           extra = change;
         }
@@ -5123,7 +5268,7 @@ export class Formatter {
 
   /** Whether a line comment's text starting with byte `c` takes a space after its prefix. */
   wantsPrefixSpace(t: i32, c: i32): boolean {
-    if (!this.d.opts.reflowComments || this.offMarker(t) !== 0) {
+    if (!this.d.opts.reflowComments || this.switchesFormatting(t)) {
       return false;
     }
     return !(c < 128 && (c === 92 || isPunct(c) || c === 32 || c === 9) && c !== 35);
@@ -5265,7 +5410,7 @@ export class Formatter {
     // (clang-format's trailing comment alignment counts a comment's bytes,
     // not its columns: a tab or a multibyte character is one, or several.)
     const bytes = d.end[t] - d.start[t];
-    if (!d.opts.reflowComments || this.isPragma(t) || this.offMarker(t) !== 0 || d.multi[t] === 1) {
+    if (!d.opts.reflowComments || this.isPragma(t) || this.switchesFormatting(t) || d.multi[t] === 1) {
       return d.multi[t] === 1 ? d.width[t] : bytes;
     }
     // (With the space clang-format puts after a bare `//`.)
@@ -5310,7 +5455,7 @@ export class Formatter {
     const lim = d.opts.columnLimit - (d.inPP[t] === 1 ? 2 : 0);
     const a = d.start[t] + 2;
     const e = d.end[t] - 2;
-    if (!d.opts.reflowComments || e < a || this.offMarker(t) !== 0) {
+    if (!d.opts.reflowComments || e < a || this.switchesFormatting(t)) {
       return excessPenalty(col + d.width[t] - lim);
     }
     if (d.multi[t] === 1) {
@@ -5417,7 +5562,7 @@ export class Formatter {
   commentPenaltyAt(t: i32, col: i32): i64 {
     const d = this.d;
     const lim = d.opts.columnLimit;
-    if (!d.opts.reflowComments || this.isPragma(t) || this.offMarker(t) !== 0 || d.multi[t] === 1) {
+    if (!d.opts.reflowComments || this.isPragma(t) || this.switchesFormatting(t) || d.multi[t] === 1) {
       return excessPenalty(col + d.width[t] - lim);
     }
     const a0 = d.start[t];
@@ -5518,7 +5663,7 @@ export class Formatter {
       d.type[n] !== TT_LINE_COMMENT ||
       d.nl[n] !== 1 ||
       d.multi[n] === 1 ||
-      this.offMarker(n) !== 0
+      this.switchesFormatting(n)
     ) {
       return -1;
     }
@@ -5688,7 +5833,7 @@ export class Formatter {
       d.type[n] !== TT_LINE_COMMENT ||
       d.nl[n] !== 1 ||
       this.isPragma(n) ||
-      this.offMarker(n) !== 0
+      this.switchesFormatting(n)
     ) {
       return false;
     }

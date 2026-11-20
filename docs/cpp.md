@@ -60,19 +60,18 @@ kind of repositories, each capped at 250 KB, the reference one clang-format
 output (`ref-settled/`) on 10319 of the 10341 files that settle. Of the 36 left, 27 are files on which a
 second clang-format run changes its own output; nishfmt gives the settled
 output on 24 of them. Its times are in the [README](../README.md#languages-and-speed).
-The second corpus (`bench/corpus/repos2.txt`, 13902 files) matches on 13797
-against one run, and on 13799 of the 13901 files that settle against the
+The second corpus (`bench/corpus/repos2.txt`, 13902 files) matches on 13824
+against one run, and on 13825 of the 13901 files that settle against the
 settled output; both counts and how they are built are in
 [Benchmarks](benchmarks.md#c-one-run-and-the-settled-output).
 
-On the second corpus, 32 of the 105 files that differ from one run are files
+On the second corpus, 31 of the 78 files that differ from one run are files
 a rerun of clang-format changes. nishfmt gives the second run's output on 23.
-The other 9 match neither clang-format's first run nor its second, and are
+The other 8 match neither clang-format's first run nor its second, and are
 real gaps:
 
 | File (`repos2.txt`) | What differs |
 | --- | --- |
-| Catch2 `src/catch2/internal/catch_test_macro_impl.hpp` | comment indentation beside preprocessor conditionals |
 | eigen `Eigen/src/Core/util/Macros.h` (in taskflow) | comment indentation beside preprocessor conditionals |
 | tbb `include/tbb/tbb_config.h` (in taskflow) | comment indentation beside preprocessor conditionals, and a long `#define` condition |
 | tbb `include/tbb/machine/msvc_ia32_common.h` (in taskflow) | comment indentation beside preprocessor conditionals, and an `_asm { }` block |
@@ -81,6 +80,36 @@ real gaps:
 | zstd `compress/huf_compress.cpp` (in duckdb) | a block comment past the column limit in a macro body |
 | eigen `Eigen/src/Core/ProductEvaluators.h` (in taskflow) | continuation alignment in a template argument, and the space after `//` in commented-out code |
 | eigen `bench/btl/data/gnuplot_common_settings.hh` (in taskflow) | gnuplot settings, not C++, parsed as C++: `[*:*]` spacing |
+
+The 47 files that differ on the second corpus and that clang-format leaves
+as they are on a rerun are the long tail, mostly one construct each:
+
+| What differs | Files (`repos2.txt`) |
+| --- | --- |
+| a layout that depends on how clang-format's `#if` passes share tokens (a braced list `{{ a, b... }}` gets spaces, a block indents differently) | eigen `Tensor.h`, `TensorRef.h`, `TensorFixedSize.h`, `TensorDimensions.h`, `TensorMap.h` (in taskflow); spdlog `pattern_formatter-inl.h`, `common.h`, `tests/utils.cpp`; duckdb `shared_ptr_ipp.hpp`, `weak_ptr_ipp.hpp`; mbedtls `pk.cpp` (in duckdb); tbb `custom_scheduler.h`, `tbbmalloc/frontend.cpp` (in taskflow) |
+| macro bodies and lines clang-format cannot annotate (`SPDLOG_TRY{`, generator macros, a lambda in a macro) | spdlog `async_logger-inl.h`, `stopwatch.h`, `fmt/bin_to_hex.h`; ff `parallel_for_internals.hpp`; eigen `lapack/lapack_common.h`, `bench/basicbenchmark.cpp`; jemalloc `tsd_internals.h`, fsst `libfsst.hpp` (in duckdb); grpc `iomgr/closure.h`; tbb `perf/time_framework.h`, `flow_graph.h`, `internal/_flow_graph_cache_impl.h`, lodepng `lodepng.cpp` |
+| trailing comment alignment and reflow (a reflowed section inside an aligned run, an enum's comments, a comment before `// clang-format off`) | eigen `doc/tutorial.cpp`, `util/XprHelper.h`, `util/Constants.h`, `test/main.h`; flatbuffers `src/idl_gen_text.cpp`; tbb `rml/include/rml_base.h` |
+| string literals: a tab inside a string (clang-format's rerun emulation), emoji widths when splitting, macro-adjacent literals | duckdb `holistic_functions.hpp`, `string_functions.hpp`; utf8proc `utf8proc.cpp` (in duckdb); bitcoin `test/cluster_linearize_tests.cpp` |
+| line breaking: a conditional's operand column, designated initializers, `<<` chains, lambdas among arguments | bitcoin `test/fuzz/package_eval.cpp`, `test/checkqueue_tests.cpp`; eigen `Tutorial_commainit_02.cpp`; flatbuffers `src/idl_gen_ts.cpp`; grpc `xds_server_config_fetcher.cc`; tbb `graph/cholesky/cholesky.cpp` |
+| state one file leaves for the next in a worker: a block comment in an `#if` line past the limit reads another file's break flags (`Annotator.canB`, only set by `annotateFull`); each file matches when formatted alone | zstd `common/xxhash.cpp`, `common/mem.h` (in duckdb); grpc `third_party/xxhash/xxhash.h` |
+| other: C++/CLI `[assembly: ...]` attributes, `__asm` statements | tbb `game_of_life/src/AssemblyInfo.cpp`, `tbb/scheduler.cpp` (in taskflow) |
+
+Some forms next to the fixed ones still differ, on both corpora's sources
+and on main alike:
+
+- the `*` of an if-initializer that is not `const`: `if (T *p{q}; p)`,
+  `if (a *b; c)` (clang-format: `T *p`, `a *b`);
+- casts to a type ending in the new qualifier words when a sign, `(` or `+`
+  follows: `(T *__restrict)-1`, `(T *__ptr64)(*q)`, `(T *__ptr64) + b`;
+- a comment before `catch` on a `#define` continuation line (`} /* c */`);
+- Objective-C nested messages `[[a b:c] d:e]`, `[a: b]`, and `x[a.b : c]`;
+- `}  /* blk */` then `// c1` under a namespace: `// c1` goes to column 0;
+- a `#pragma mark` line past the limit with a `.` in it: its `#pragma   mark`
+  spacing is normalized, where clang-format, finding no layout, keeps it.
+
+The cross-file one has a fix (annotate the line fully before reading its
+break flags) that is not in yet: `tests/run.sh` formats each case alone, so no
+case can pin it.
 
 On a generated corpus of 30,194 files (108.8 MB) of SDK code (measured
 against clang-format 18.1.3), every file

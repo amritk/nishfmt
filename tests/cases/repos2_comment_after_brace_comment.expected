@@ -1,0 +1,9 @@
+void f() {
+restart:
+  { // lock scope
+    // get bucket
+    bucket_accessor b(this, h & m);
+  }
+  int a; // no space
+         //  continues the section above
+}

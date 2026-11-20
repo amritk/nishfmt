@@ -1,0 +1,10 @@
+void sort(int *v, int left, int right) {
+#pragma omp task shared(v) untied if (right - left >= (1 << 14))
+  sort(v, left, right);
+#pragma omp parallel for if (right > 100) schedule(static)
+  for (int i = 0; i < right; i++)
+    v[i] = 0;
+}
+#if (FOO)
+#elif (BAR)
+#endif

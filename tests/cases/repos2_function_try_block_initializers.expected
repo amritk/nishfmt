@@ -1,0 +1,9 @@
+CompressedFile::CompressedFile(CompressedFileSystem &fs, unique_ptr<FileHandle> child_handle_p, const string &path) try
+    : FileHandle(fs, path, child_handle_p->GetFlags()), compressed_fs(fs), child_handle(std::move(child_handle_p)) {
+  Initialize();
+} catch (...) {
+}
+Widget::Widget(int aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa, int bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb) noexcept try
+    : a(aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa), b(bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb), c(0) {
+} catch (...) {
+}

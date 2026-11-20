@@ -1,0 +1,14 @@
+// clang-format off
+#define BM_CHECK_FLOAT_EQ(a, b, eps) BM_CHECK(std::fabs((a) - (b)) <  (eps))
+//clang-format on
+int  kept( ){return 0;}
+// clang-format on because a word follows it
+int  still_kept( ){return 0;}
+// clang-format on: with a colon it counts
+int  formatted( ){return 0;}
+/* clang-format off */
+int  kept_too( ){return 0;}
+/*  clang-format on */
+int  not_on( ){return 0;}
+/* clang-format on */
+#endif   // CHECK_H_
