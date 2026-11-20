@@ -54,7 +54,9 @@ import {
   P_COMMA,
   P_EQUAL,
   P_GREATER,
+  P_HASH,
   P_HASHHASH,
+  PP_PRAGMA,
   P_LBRACE,
   P_LESS,
   P_LESSLESS,
@@ -168,6 +170,7 @@ export const N_CI2: i32 = 131072;
 export const N_PNCOK: i32 = 262144;
 export const N_LARROW: i32 = 524288;
 export const N_BRSON: i32 = 1048576;
+export const N_OMP: i32 = 2097152; // a clause of `#pragma omp`: one continuation indent in
 
 // Per-token rules for placing a token on the current line (C_*).
 export const C_NOLB: i32 = 1; // a lambda among other arguments: no breaks on this line
@@ -1420,6 +1423,13 @@ export class Annot {
     }
     if (nt === TT_ARRAY_SUBSCRIPT_LSQUARE) {
       r = r | N_SUBSCRIPT;
+    }
+    // getNewLineColumn: OpenMP clauses pushed onto the next line.
+    const lf = d.lFirst[l];
+    const pw = d.nxt[lf];
+    const om = pw >= 0 ? d.nxt[pw] : -1;
+    if (d.kind[lf] === P_HASH && d.ppKind[lf] === PP_PRAGMA && om >= 0 && d.is(om, "omp")) {
+      r = r | N_OMP;
     }
     if (nt === TT_START_OF_NAME || nt === TT_POINTER_OR_REFERENCE || pk === P_COLONCOLON || pk === P_EQUAL) {
       r = r | N_CI;

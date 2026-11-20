@@ -1,0 +1,13 @@
+void jacobi() {
+#pragma omp parallel shared(u_, unew_, f_, max_blocks_x, max_blocks_y, nx, ny, dx, dy, itold, itnew,                   \
+                                block_size) private(it, block_x, block_y)
+  for (it = itold + 1; it <= itnew; it++) {
+#pragma omp task shared(u_, unew_, block_size, nx, ny) firstprivate(block_x, block_y)                                  \
+    depend(in : unew[block_x * block_size : block_size][block_y * block_size : block_size])                            \
+    depend(out : u[block_x * block_size : block_size][block_y * block_size : block_size])
+    copy_block(nx, ny, block_x, block_y, u_, unew_, block_size);
+  }
+#pragma other parallel shared(u_, unew_, f_, max_blocks_x, max_blocks_y, nx, ny, dx, dy, itold, itnew,                 \
+                              block_size) private(it, block_x, block_y)
+  g();
+}
