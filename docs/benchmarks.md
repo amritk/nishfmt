@@ -99,12 +99,12 @@ settle ([below](#c-one-run-and-the-settled-output)).
 The 36 C++ files left are described in [C++](cpp.md#results-by-repository).
 
 On the second corpus, `repos2.txt`, measured on 2026-11-20 at main 42a489f
-(C++ against one run; against the settled output, 13799 of the 13901 files
-that settle):
+(C++ measured again after the long-tail fixes; against one run, and against
+the settled output 13825 of the 13901 files that settle):
 
 | Corpus | Files | Identical |
 | --- | ---: | ---: |
-| C++ | 13902 | 13797 |
+| C++ | 13902 | 13824 |
 | Java | 11914 | 11914 |
 | Kotlin | 6219 | 6199 |
 | C# | 18673 | 18673 |
@@ -131,16 +131,16 @@ count:
 | Corpus | Files | Identical to one run | Identical to the settled output | Never settle |
 | --- | ---: | ---: | ---: | ---: |
 | `repos.txt` | 10343 | 10307 | 10319 of 10341 | 2 |
-| `repos2.txt` | 13902 | 13797 | 13799 of 13901 | 1 |
+| `repos2.txt` | 13902 | 13824 | 13825 of 13901 | 1 |
 
 A file can match one and not the other: nishfmt makes clang-format's
 decisions on the source as found, and where clang-format's second run
 changes its first, nishfmt's output is often the second. Of the 27
 first-corpus files that differ from one run and that a rerun changes, 24
-match its second run and the settled output. Of the second corpus's 32, 23
-do, and 9 match neither its first run nor its second (one of them never
+match its second run and the settled output. Of the second corpus's 31, 23
+do, and 8 match neither its first run nor its second (one of them never
 settles); [C++](cpp.md#results-by-repository) lists them. The other way, files nishfmt matches on one run but not settled
-(12 and 21) are files where clang-format's rerun departs from its first.
+(12 and 22) are files where clang-format's rerun departs from its first.
 
 ## Comparing
 
