@@ -1,0 +1,23 @@
+// The right side of a binary operator is parsed without STMT_EXPR
+// (parse_expr_assoc_rest), so a block-like operand there does not end the
+// statement's expression: `a + if .. {} * b;` is `a + (if .. {} * b)`.
+fn f() {
+    aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa
+        + if xxxxxxxxxxxxxxxxxxxxxx { 1 } else { 2 } * bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb;
+    aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa
+        - match xxxxxxxxxxxxxxxx {
+            _ => 1,
+        } * bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb
+        - ccccccccccccccccccccccccc * ddddddddddddddd;
+    aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa
+        == loop {
+            break 1;
+        } + bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb
+            + ccccccccccccc;
+    match q {
+        _ => {
+            aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa
+                + if xxxxxxxxxxxxxxxxxxxxxx { 1 } else { 2 } * bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb
+        }
+    }
+}
