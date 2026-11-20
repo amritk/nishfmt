@@ -180,6 +180,14 @@ const isIdentChar = (c: i32): boolean =>
 
 const isDigit = (c: i32): boolean => c >= 48 && c <= 57;
 
+/**
+ * clang's isRawStringDelimBody: a letter, digit, underscore, period or
+ * punctuation byte (the double quote, dollar, at and backtick included) other
+ * than the parentheses and the backslash; that is, printable ASCII but space,
+ * `(`, `)` and `\`.
+ */
+const isRawDelimBody = (c: i32): boolean => c >= 33 && c <= 126 && c !== 40 && c !== 41 && c !== 92;
+
 /** Whether the `n` bytes of `d.src` at `a` spell `s`. */
 const wordIs = (src: u8[], a: i32, n: i32, s: string): boolean => {
   if (n !== toI32(s.length)) {
@@ -759,14 +767,23 @@ export const lex = (d: Doc): boolean => {
       const q = d.at(i);
       const pre = q === 34 || q === 39 ? stringPrefix(src, a, i) : 0;
       if (pre === 2 && q === 34) {
-        // A raw string: R"delim( ... )delim".
+        // A raw string: R"delim( ... )delim", as clang's
+        // Lexer::LexRawStringLiteral finds it: up to 16 delimiter bytes,
+        // then `(`; it ends only at `)`, the delimiter and `"`.
         i++;
         const dStart = i;
-        while (i < n && d.at(i) !== 40 && d.at(i) !== 34 && d.at(i) !== 10) {
+        while (i - dStart !== 16 && i < n && isRawDelimBody(d.at(i))) {
           i++;
         }
         const dLen = i - dStart;
         let closed = false;
+        if (d.at(i) !== 40) {
+          // Not a delimiter: clang lexes an unknown token up to the next `"`.
+          ok = false;
+          i = n;
+        } else {
+          i++;
+        }
         while (i < n) {
           if (d.at(i) === 41) {
             let m = true;
