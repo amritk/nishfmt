@@ -3589,6 +3589,10 @@ export class RsParser {
       return this.fin(a);
     }
     if (k === T_INT) {
+      // mk_expr_tuple_field_access: a suffix on a tuple index is an error.
+      if (this.t.suf[this.p] < this.t.hi[this.p]) {
+        return this.fail();
+      }
       const f = this.nd(N_EX_FIELD, lo);
       this.ast.a[f] = e;
       this.ast.d[f] = this.p;
@@ -3596,15 +3600,49 @@ export class RsParser {
       return this.fin(f);
     }
     if (k === T_FLOAT) {
-      // `x.0.1`: two field accesses from one float token.
+      // break_up_float, over the token's symbol (its text without the suffix).
       const ti = this.p;
       const tlo = this.t.lo[ti];
-      const thi = this.t.hi[ti];
-      let dot = tlo;
-      while (dot < thi && toI32(this.src[dot]) !== 46) {
-        dot++;
+      const sym = this.t.suf[ti];
+      const hasSuffix = sym < this.t.hi[ti];
+      let dot = -1;
+      let sign = false;
+      for (let i = tlo; i < sym; i++) {
+        const c = toI32(this.src[i]);
+        if (c === 46 && dot < 0) {
+          dot = i;
+        } else if (c === 43 || c === 45) {
+          sign = true;
+        }
       }
-      if (dot >= thi - 1) {
+      if (sign) {
+        // `1e+2`, `1.2e-3`: error_unexpected_after_dot.
+        return this.fail();
+      }
+      if (dot < 0) {
+        // DestructuredFloat::Single, `x.1e2`: one field access.
+        if (hasSuffix) {
+          return this.fail();
+        }
+        const f = this.nd(N_EX_FIELD, lo);
+        this.ast.a[f] = e;
+        this.ast.d[f] = ti;
+        this.bump();
+        return this.fin(f);
+      }
+      if (dot === sym - 1) {
+        // DestructuredFloat::TrailingDot, `x.0. y`: one field access, and the token's own
+        // dot starts the next suffix.
+        const f0 = this.nd(N_EX_FIELD, lo);
+        this.ast.a[f0] = e;
+        this.ast.d[f0] = ti;
+        this.ast.x[f0] = dot;
+        this.ast.hi[f0] = dot;
+        this.bump();
+        return this.parseDotSuffix(f0, lo);
+      }
+      // DestructuredFloat::MiddleDot, `x.0.1`: two field accesses.
+      if (hasSuffix) {
         return this.fail();
       }
       const f1 = this.nd(N_EX_FIELD, lo);

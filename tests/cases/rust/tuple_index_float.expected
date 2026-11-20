@@ -1,0 +1,11 @@
+fn foo() {
+    x.0.await;
+    x.0.bar;
+    x.0.call();
+    x.0.await;
+    x.0. /* c */ bar;
+    x.0.1.await;
+    x.0.foo::<T>();
+    x.1e2;
+    x.0.1e2.await;
+}
