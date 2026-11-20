@@ -63,6 +63,7 @@ import {
   N_LARROW,
   N_BRSON,
   N_OMP,
+  isOmpPragmaLine,
   N_QC,
   N_QCIND,
   N_RPAREN,
@@ -2177,9 +2178,7 @@ export class Indenter {
     this.mix(d.lType[l] | (d.lMightFn[l] << 4) | (d.lMultiVar[l] << 5) | (d.lMustDecl[l] << 6));
     const f = d.lFirst[l];
     // (`#pragma omp` clauses take their own indent: the word is read.)
-    const pw = d.nxt[f];
-    const om = pw >= 0 ? d.nxt[pw] : -1;
-    this.mix(om >= 0 && d.kind[f] === P_HASH && d.is(om, "omp") ? 1 : 0);
+    this.mix(isOmpPragmaLine(d, l) ? 1 : 0);
     const last = d.lLast[l];
     this.hlen = 0;
     const src = d.src;

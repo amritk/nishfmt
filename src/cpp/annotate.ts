@@ -172,6 +172,17 @@ export const N_LARROW: i32 = 524288;
 export const N_BRSON: i32 = 1048576;
 export const N_OMP: i32 = 2097152; // a clause of `#pragma omp`: one continuation indent in
 
+/** Whether line `l` is a `#pragma omp` directive (InPragmaDirective, then `omp`). */
+export const isOmpPragmaLine = (d: Doc, l: i32): boolean => {
+  const f = d.lFirst[l];
+  if (d.kind[f] !== P_HASH || d.ppKind[f] !== PP_PRAGMA) {
+    return false;
+  }
+  const pw = d.nxt[f];
+  const om = pw >= 0 ? d.nxt[pw] : -1;
+  return om >= 0 && d.is(om, "omp");
+};
+
 // Per-token rules for placing a token on the current line (C_*).
 export const C_NOLB: i32 = 1; // a lambda among other arguments: no breaks on this line
 export const C_VP: i32 = 2; // an `=` that records the variable's column
@@ -1425,10 +1436,7 @@ export class Annot {
       r = r | N_SUBSCRIPT;
     }
     // getNewLineColumn: OpenMP clauses pushed onto the next line.
-    const lf = d.lFirst[l];
-    const pw = d.nxt[lf];
-    const om = pw >= 0 ? d.nxt[pw] : -1;
-    if (d.kind[lf] === P_HASH && d.ppKind[lf] === PP_PRAGMA && om >= 0 && d.is(om, "omp")) {
+    if (isOmpPragmaLine(d, l)) {
       r = r | N_OMP;
     }
     if (nt === TT_START_OF_NAME || nt === TT_POINTER_OR_REFERENCE || pk === P_COLONCOLON || pk === P_EQUAL) {

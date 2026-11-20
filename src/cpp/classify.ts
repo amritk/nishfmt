@@ -1586,10 +1586,7 @@ export class Classifier {
     while (d.kind[last] === K_COMMENT && d.prv[last] >= 0) {
       last = d.prv[last];
     }
-    let lp = d.prv[last];
-    while (lp >= 0 && d.kind[lp] === K_COMMENT) {
-      lp = d.prv[lp];
-    }
+    const lp = this.prev(last);
     if (d.kind[last] === P_SEMI && lp >= 0 && d.kind[lp] === P_RBRACE && d.match[lp] >= 0 && d.match[lp] < lp) {
       const fnc = d.kind[this.first] === K_COMMENT ? this.next(this.first) : this.first;
       let fn = fnc >= 0 && d.type[fnc] === TT_CTOR_DTOR_DECL_NAME;
@@ -3436,10 +3433,6 @@ const CLANG_RESERVED_KEYWORDS: string =
  */
 export const isPointerQualifierWord = (d: Doc, t: i32): boolean => {
   if (d.kind[t] !== K_IDENT) {
-    return false;
-  }
-  const w = d.len(t);
-  if (w < 6 || w > 18) {
     return false;
   }
   return (

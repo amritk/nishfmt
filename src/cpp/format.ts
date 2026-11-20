@@ -733,17 +733,6 @@ export class Formatter {
     if (this.endCommentsInserted) {
       return false;
     }
-    let braces = 0;
-    for (let t = 0; t < d.ntok; t++) {
-      if (d.kind[t] === P_LBRACE) {
-        braces++;
-      } else if (d.kind[t] === P_RBRACE) {
-        braces--;
-      }
-    }
-    if (braces !== 0) {
-      return false;
-    }
     const at: i32[] = []; // source offset, line of the namespace
     let trigger = false;
     let off = false; // inside a `// clang-format off` region
@@ -792,7 +781,7 @@ export class Formatter {
         }
       }
     }
-    if (!trigger) {
+    if (!trigger || !this.bracesBalance()) {
       return false;
     }
     this.endCommentsInserted = true;
@@ -802,8 +791,7 @@ export class Formatter {
       for (let c = from; c < at[i]; c++) {
         out.push(d.src[c]);
       }
-      const name = this.namespaceName(at[i + 1]);
-      const text = name.length === 0 ? " // namespace" : ` // namespace ${name}`;
+      const text = ` ${this.endCommentText(at[i + 1])}`;
       for (let k = 0; k < toI32(text.length); k++) {
         out.push(toU8(text.charCodeAt(k)));
       }
@@ -814,6 +802,20 @@ export class Formatter {
     }
     d.reset(out, toI32(out.length));
     return true;
+  }
+
+  /** Whether the document's `{` and `}` balance. */
+  bracesBalance(): boolean {
+    const d = this.d;
+    let braces = 0;
+    for (let t = 0; t < d.ntok; t++) {
+      if (d.kind[t] === P_LBRACE) {
+        braces++;
+      } else if (d.kind[t] === P_RBRACE) {
+        braces--;
+      }
+    }
+    return braces === 0;
   }
 
   /** Appends `// namespace name` to a namespace's `}` line that lacks a comment. */
@@ -843,8 +845,7 @@ export class Formatter {
     if (body <= 1) {
       return;
     }
-    const name = this.namespaceName(o);
-    const text = name.length === 0 ? "// namespace" : `// namespace ${name}`;
+    const text = this.endCommentText(o);
     const last = this.emTok[this.nem - 1];
     const col = this.emCol[this.nem - 1] + (last >= 0 ? this.lastLineWidth(last) : 0) + 1;
     this.synth.push(text);
@@ -868,12 +869,18 @@ export class Formatter {
     if (!this.validEndComment(after, name)) {
       for (let i = this.nem - 1; i >= 0; i--) {
         if (this.emTok[i] === after) {
-          this.synth.push(name.length === 0 ? "// namespace" : `// namespace ${name}`);
+          this.synth.push(this.endCommentText(o));
           this.emTok[i] = -toI32(this.synth.length);
           break;
         }
       }
     }
+  }
+
+  /** The end comment of the namespace opened on line `o`. */
+  endCommentText(o: i32): string {
+    const name = this.namespaceName(o);
+    return name.length === 0 ? "// namespace" : `// namespace ${name}`;
   }
 
   /** The name a namespace opened on line `o` goes by (empty for an anonymous one). */
@@ -2296,11 +2303,10 @@ export class Formatter {
     }
     // clang-format's isClangFormatOff/On: `// clang-format off`, alone or
     // before a `:`, or `/* clang-format off */` exactly.
-    const s = d.start[t];
-    if (this.textIs(s, e, "/* clang-format off */") || this.markerAt(s, e, "// clang-format off")) {
+    if (this.isFormatOff(d.start[t], e)) {
       return 1;
     }
-    if (this.textIs(s, e, "/* clang-format on */") || this.markerAt(s, e, "// clang-format on")) {
+    if (this.isFormatOn(d.start[t], e)) {
       return 2;
     }
     return 0;
@@ -2528,15 +2534,7 @@ export class Formatter {
     this.joinShortBlocks(d.topHead, 0);
     const t3 = monotonicNanos();
     // clang-format leaves namespace end comments alone when braces do not balance.
-    let braces = 0;
-    for (let t = 0; t < d.ntok; t++) {
-      if (d.kind[t] === P_LBRACE) {
-        braces++;
-      } else if (d.kind[t] === P_RBRACE) {
-        braces--;
-      }
-    }
-    this.bracesBalanced = braces === 0;
+    this.bracesBalanced = this.bracesBalance();
     for (let t = 0; t < d.ntok; t++) {
       d.keepWs[t] = 0;
     }
