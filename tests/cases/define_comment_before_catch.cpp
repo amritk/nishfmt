@@ -1,0 +1,6 @@
+#define F(x)                                                                                                           \
+  try {                                                                                                                \
+    x;                                                                                                                 \
+  }                                                                                                                    \
+  /* c */ catch (...) {                                                                                                \
+  }
