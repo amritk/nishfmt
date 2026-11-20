@@ -2284,10 +2284,19 @@ export class Formatter {
       i++;
     }
     const e = d.end[t];
-    if (d.startsWithAt(i, e, "nishfmt off") || d.startsWithAt(i, e, "clang-format off")) {
+    if (d.startsWithAt(i, e, "nishfmt off")) {
       return 1;
     }
-    if (d.startsWithAt(i, e, "nishfmt on") || d.startsWithAt(i, e, "clang-format on")) {
+    if (d.startsWithAt(i, e, "nishfmt on")) {
+      return 2;
+    }
+    // clang-format's isClangFormatOff/On: `// clang-format off`, alone or
+    // before a `:`, or `/* clang-format off */` exactly.
+    const s = d.start[t];
+    if (this.textIs(s, e, "/* clang-format off */") || this.markerAt(s, e, "// clang-format off")) {
+      return 1;
+    }
+    if (this.textIs(s, e, "/* clang-format on */") || this.markerAt(s, e, "// clang-format on")) {
       return 2;
     }
     return 0;
