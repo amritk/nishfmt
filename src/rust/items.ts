@@ -7,6 +7,8 @@
 import {
   AT_DOC,
   AT_INNER,
+  FD_MUT_IN,
+  FD_UNSAFE,
   FN_EXTERN,
   IT_AUTO,
   IT_CONST,
@@ -107,6 +109,7 @@ import {
   rsIsAttributesExtendable,
   rsLastLineContainsSingleLineComment,
   rsLoWithAttrs,
+  rsPathSegmentsStr,
 } from "./utils";
 import { RsVisitor } from "./visitor";
 
@@ -1367,11 +1370,17 @@ const rewriteFieldsWithAlignment = (
 const structFieldPrefix = (ctx: RsCtx, f: i32): string => {
   const ast = ctx.ast;
   const vis = rsFormatVisibility(ctx, ast.e[f]);
-  const safety = (ast.fl[f] & 1) !== 0 ? "safe " : "";
-  if (ast.d[f] >= 0) {
-    return `${vis}${safety}${rsIdentStr(ctx, ast.d[f])}:`;
+  // format_mut_restriction: `in ` unless the restriction was the shorthand.
+  let mutRestriction = "";
+  if (ast.b[f] >= 0) {
+    const inStr = (ast.fl[f] & FD_MUT_IN) !== 0 ? "in " : "";
+    mutRestriction = `mut(${inStr}${rsPathSegmentsStr(ctx, ast.b[f])}) `;
   }
-  return `${vis}${safety}`;
+  const safety = (ast.fl[f] & FD_UNSAFE) !== 0 ? "unsafe " : "";
+  if (ast.d[f] >= 0) {
+    return `${vis}${mutRestriction}${safety}${rsIdentStr(ctx, ast.d[f])}:`;
+  }
+  return `${vis}${mutRestriction}${safety}`;
 };
 
 /** rewrite_struct_field. */

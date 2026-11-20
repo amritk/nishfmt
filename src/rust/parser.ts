@@ -139,7 +139,8 @@ import {
   CL_CONST,
   CL_MOVE,
   CL_STATIC,
-  FD_SAFE,
+  FD_MUT_IN,
+  FD_UNSAFE,
   FN_ASYNC,
   FN_CONST,
   FN_DEFAULT,
@@ -1871,9 +1872,10 @@ export class RsParser {
       const f = this.nd(N_FIELD, lo);
       const gv28 = this.parseVis();
       this.ast.e[f] = gv28;
-      if (this.isKw(KW_SAFE) && this.laIsIdent(1)) {
-        this.bump();
-        this.ast.fl[f] = FD_SAFE;
+      this.parseMutRestriction(f);
+      // parse_unsafe_field: `unsafe` only (not `safe`).
+      if (this.eatKw(KW_UNSAFE)) {
+        this.ast.fl[f] = this.ast.fl[f] | FD_UNSAFE;
       }
       if (this.tk() !== T_IDENT) {
         this.failed = true;
@@ -1899,6 +1901,32 @@ export class RsParser {
     this.fin(vd);
   }
 
+  /**
+   * parse_mut_restriction (unstable mut_restriction, gated after parsing) into field `f`:
+   * `mut(in path)` or `mut(crate|self|super)`; any other `mut(path)` is an error.
+   */
+  parseMutRestriction(f: i32): void {
+    if (!this.isKw(KW_MUT)) {
+      return;
+    }
+    this.bump();
+    if (!this.expect(T_LPAREN)) {
+      return;
+    }
+    if (this.eatKw(KW_IN)) {
+      this.ast.fl[f] = this.ast.fl[f] | FD_MUT_IN;
+    } else {
+      const k = this.kw();
+      if (!((k === KW_CRATE || k === KW_SELF || k === KW_SUPER) && this.la(1) === T_RPAREN)) {
+        this.fail();
+        return;
+      }
+    }
+    const gv = this.parsePath(PS_MOD);
+    this.ast.b[f] = gv;
+    this.expect(T_RPAREN);
+  }
+
   parseTupleBody(vd: i32): void {
     this.ast.fl[vd] = VD_TUPLE;
     this.ast.lo[vd] = this.lo();
@@ -1911,6 +1939,8 @@ export class RsParser {
       const f = this.nd(N_FIELD, lo);
       const gv31 = this.parseVis();
       this.ast.e[f] = gv31;
+      // No `unsafe` here: `struct X(unsafe fn())` is a fn pointer type.
+      this.parseMutRestriction(f);
       const gv32 = this.parseTy();
       this.ast.a[f] = gv32;
       if (this.eat(T_EQ)) {

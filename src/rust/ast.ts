@@ -51,7 +51,7 @@ export const N_TRAIT_BOUND: i32 = 37; // a: path, c: N_GPARAMS or -1; fl: TB_*
 export const N_USE_BOUND: i32 = 38; // list: args (N_LIFETIME / N_TY_PATH)
 export const N_GPARAMS: i32 = 39; // list: N_GPARAM (a `for<...>` binder)
 export const N_VDATA: i32 = 40; // list: N_FIELD; fl: VD_STRUCT, VD_TUPLE, VD_UNIT
-export const N_FIELD: i32 = 41; // d: ident or -1, a: ty, e: vis, c: default expr; fl: FD_*
+export const N_FIELD: i32 = 41; // d: ident or -1, a: ty, e: vis, b: mut restriction path or -1, c: default expr; fl: FD_*
 export const N_VARIANT: i32 = 42; // d: ident, b: N_VDATA, c: discriminant expr or -1, e: vis
 export const N_FNDECL: i32 = 43; // list: N_PARAM; a: return ty or -1
 export const N_PARAM: i32 = 44; // a: pat, b: ty; fl: PA_*; d: lifetime token for `&'a self`
@@ -215,7 +215,10 @@ export const VD_STRUCT: i32 = 1;
 export const VD_TUPLE: i32 = 2;
 export const VD_UNIT: i32 = 4;
 
-export const FD_SAFE: i32 = 1;
+// N_FIELD fl: `unsafe` (unsafe_fields), and a `mut(in path)` restriction (not the
+// `mut(crate|self|super)` shorthand).
+export const FD_UNSAFE: i32 = 1;
+export const FD_MUT_IN: i32 = 2;
 
 export const PA_SELF_VALUE: i32 = 1; // self / mut self
 export const PA_SELF_REF: i32 = 2; // &self / &mut self / &'a self

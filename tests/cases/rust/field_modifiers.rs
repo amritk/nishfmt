@@ -1,0 +1,7 @@
+struct S { a: i32, b: f32, unsafe c: u8 }
+struct Foo { mut(super) unsafe i: i32 }
+struct Foo(pub(crate) mut(super) i32);
+struct Foo { pub mut(in ::a::b) x: u8, mut(in crate) y: u8, mut ( self ) z: u8 }
+enum E { V { unsafe x: u8 }, W(mut(super) u8) }
+union U { #[a] pub unsafe x: u8 }
+struct Foo { pub(crate) mut(in super) unsafe aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa: Vec<bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb, ccccccccc> }
