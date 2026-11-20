@@ -1,0 +1,9 @@
+macro m { ($i:ident) => {} }
+macro  m  (  $i:ident  )   {   $i   }
+pub(crate) macro m($i:ident) { let x = $i; foo(x); }
+pub /* c */ macro m($i:ident) { $i }
+macro m { ($i:ident) => { $i + 1 }; ($i:ident, $j:ident) => { $i + $j } }
+macro m { ($i:ident) => { $i + 1 }, ($i:ident, $j:ident) => { $i + $j } }
+macro m { }
+macro m { ($i:ident) => { aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa(bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb, $i) } }
+fn f() { macro m($i:ident) { $i } }
