@@ -3139,9 +3139,11 @@ const spaceBeforeCode = (d: Doc, l: i32, r: i32): boolean => {
       lk === KW_CASE ||
       lk === KW_CATCH ||
       isForEachMacro(d, left) ||
-      ((lk === KW_IF ||
-        ((lk === KW_CONSTEXPR || lk === K_IDENT) && d.prv[left] >= 0 && d.kind[d.prv[left]] === KW_IF)) &&
-        d.lType[l] !== LT_PREPROCESSOR)
+      // isIf(AllowConstexprMacro): `if X (` only outside a directive.
+      lk === KW_IF ||
+      ((lk === KW_CONSTEXPR || (lk === K_IDENT && d.lType[l] !== LT_PREPROCESSOR)) &&
+        d.prv[left] >= 0 &&
+        d.kind[d.prv[left]] === KW_IF)
     ) {
       return true;
     }
