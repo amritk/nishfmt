@@ -7,8 +7,9 @@
 # CSharpier's defaults with end_of_line = crlf), and $CORPUS/<lang>/failed.txt
 # the files it rejected (left out of comparisons). For C++ also
 # $CORPUS/cpp/ref-settled, each file of ref/ formatted again until
-# clang-format leaves it unchanged (at most 5 more runs), and unsettled.txt,
-# the files still changing after the fifth.
+# clang-format leaves it unchanged (at most 5 more runs), unsettled.txt, the
+# files still changing after the fifth, and settle-failed.txt, the files
+# clang-format rejects on a rerun.
 #
 #   mk.sh cpp|java|kt|rb|swift|rust|dart|cs
 #
@@ -21,7 +22,8 @@
 set -uo pipefail
 here=$(cd "$(dirname "$0")" && pwd)
 lang=$1
-list=$(realpath "${REPOLIST:-$here/repos.txt}") || exit 2
+list=${REPOLIST:-$here/repos.txt}
+list=$(cd "$(dirname "$list")" && pwd)/$(basename "$list") && [ -f "$list" ] || { echo "no repository list $list" >&2; exit 2; }
 REPOS=${REPOS:-$here/../work/repos} CORPUS=${CORPUS:-$here/../work/corpus}
 GJF=${GJF:-} KTFMT=${KTFMT:-}
 SWIFTFORMAT=${SWIFTFORMAT:-swiftformat}
@@ -73,7 +75,7 @@ case $lang in
   kt) find . -type f -print0 | xargs -0 -P"$(nproc)" -n 300 sh -c \
         'java -jar '"$KTFMT"' --kotlinlang-style "$@" >/dev/null 2>&1 || for f; do cp "../raw/$f" "$f"; java -jar '"$KTFMT"' --kotlinlang-style "$f" >/dev/null 2>&1 || echo "$f" >> ../failed.txt; done' _ ;;
   # UTF-8: under US-ASCII, Style/WordArray writes non-ASCII words as escapes.
-  rb) export LANG=C.UTF-8
+  rb) export LC_ALL=C.UTF-8
       printf 'AllCops:\n  TargetRubyVersion: 3.3\n' > ../rubocop.yml
       find . -type f -print0 | xargs -0 -P"$(nproc)" -n 100 sh -c \
         'rubocop -a -c ../rubocop.yml --cache false --format quiet "$@" >/dev/null 2>&1; true' _
@@ -99,14 +101,18 @@ echo "$lang: $(find . -type f | wc -l) files, reference failed on $(wc -l < ../f
 # own output until a run leaves the file unchanged.
 if [ "$lang" = cpp ]; then
   cp -r . ../ref-settled
-  : > ../unsettled.txt
-  (cd ../ref-settled && find . -type f -print0 | grep -zvxF -f ../failed.txt | xargs -0 -P"$(nproc)" -I{} sh -c '
+  : > ../unsettled.txt; : > ../settle-failed.txt
+  # The list is taken before any run writes its "<file>.o" into the tree.
+  find . -type f -print0 | grep -zvxF -f ../failed.txt > ../settle-list
+  (cd ../ref-settled && xargs -0 -P"$(nproc)" -I{} sh -c '
     for i in 1 2 3 4 5; do
-      clang-format --style="{BasedOnStyle: LLVM, ColumnLimit: 120}" "$1" > "$1.o" 2>/dev/null || break
+      clang-format --style="{BasedOnStyle: LLVM, ColumnLimit: 120}" "$1" > "$1.o" 2>/dev/null ||
+        { rm -f "$1.o"; echo "$1" >> ../settle-failed.txt; exit 0; }
       if cmp -s "$1" "$1.o"; then rm -f "$1.o"; exit 0; fi
       mv "$1.o" "$1"
     done
-    rm -f "$1.o"; echo "$1" >> ../unsettled.txt' _ {})
-  sort -o ../unsettled.txt ../unsettled.txt
-  echo "cpp: rerunning clang-format changes $(cd .. && diff -rq ref ref-settled | grep -c '^Files ') files, $(wc -l < ../unsettled.txt) never settle"
+    rm -f "$1.o"; echo "$1" >> ../unsettled.txt' _ {} < ../settle-list)
+  sort -o ../unsettled.txt ../unsettled.txt; sort -o ../settle-failed.txt ../settle-failed.txt
+  echo "cpp: rerunning clang-format changes $(cd .. && diff -rq ref ref-settled | grep -c '^Files ') files," \
+    "$(wc -l < ../unsettled.txt) never settle, it rejects $(wc -l < ../settle-failed.txt) on a rerun"
 fi

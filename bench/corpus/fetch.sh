@@ -6,7 +6,8 @@
 set -uo pipefail
 here=$(cd "$(dirname "$0")" && pwd)
 REPOS=${REPOS:-$here/../work/repos}
-list=$(realpath "${REPOLIST:-$here/repos.txt}") || exit 2
+list=${REPOLIST:-$here/repos.txt}
+list=$(cd "$(dirname "$list")" && pwd)/$(basename "$list") && [ -f "$list" ] || { echo "no repository list $list" >&2; exit 2; }
 mkdir -p "$REPOS" && cd "$REPOS"
 awk '{print $2, $3}' "$list" | xargs -P8 -n2 sh -c '
   d=$(echo "$0" | tr / _)
