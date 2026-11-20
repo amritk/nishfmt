@@ -2313,6 +2313,23 @@ export class Formatter {
     return 0;
   }
 
+  /**
+   * clang-format's switchesFormatting: the comment's text after `//` or `/*`,
+   * blanks dropped, starts with `clang-format on` or `off` (so do nishfmt's
+   * markers). Such a comment is never reflowed, broken or given a space.
+   */
+  switchesFormatting(t: i32): boolean {
+    const d = this.d;
+    const e = d.end[t];
+    let i = d.start[t] + 2;
+    while (i < e && (isBlankByte(d.at(i)) || d.at(i) === 10)) {
+      i++;
+    }
+    return (
+      d.startsWithAt(i, e, "clang-format on") || d.startsWithAt(i, e, "clang-format off") || this.offMarker(t) !== 0
+    );
+  }
+
   /** Emits line `l` exactly as it was written. */
   emitVerbatimLine(l: i32): void {
     const d = this.d;
@@ -4452,7 +4469,7 @@ export class Formatter {
       if (
         d.opts.reflowComments &&
         d.inPP[t] === 0 &&
-        this.offMarker(t) === 0 &&
+        !this.switchesFormatting(t) &&
         (d.multi[t] === 1 || col + d.width[t] + this.unbreakableTail(t) > d.opts.columnLimit)
       ) {
         const pre0 = i >= 0 && i < this.nem ? this.emColPre[i] : col;
@@ -4492,7 +4509,7 @@ export class Formatter {
         !inInclude &&
         (d.multi[t] === 1 || pre + d.width[t] + this.unbreakableTail(t) > d.opts.columnLimit - 2) &&
         pp >= 0 &&
-        this.offMarker(t) === 0
+        !this.switchesFormatting(t)
       ) {
         this.bcEsc = this.escStamp[pp] === this.fileStamp ? this.escCol[pp] : d.opts.columnLimit;
         this.bcPP = true;
@@ -5133,7 +5150,7 @@ export class Formatter {
   /** `// clang-format on|off`, `// nishfmt on|off` or an IWYU pragma. */
   isPragma(t: i32): boolean {
     const d = this.d;
-    if (this.offMarker(t) !== 0) {
+    if (this.switchesFormatting(t)) {
       return true;
     }
     const a = d.start[t] + 2;
@@ -5236,7 +5253,7 @@ export class Formatter {
           change = change + 1 - (spaces + change);
         }
         const requires = !noSpace || (c === 125 && first !== 0);
-        const allows = this.offMarker(t) === 0 && (spaces !== 0 || requires);
+        const allows = !this.switchesFormatting(t) && (spaces !== 0 || requires);
         if (change > 0 && allows) {
           extra = change;
         }
@@ -5251,7 +5268,7 @@ export class Formatter {
 
   /** Whether a line comment's text starting with byte `c` takes a space after its prefix. */
   wantsPrefixSpace(t: i32, c: i32): boolean {
-    if (!this.d.opts.reflowComments || this.offMarker(t) !== 0) {
+    if (!this.d.opts.reflowComments || this.switchesFormatting(t)) {
       return false;
     }
     return !(c < 128 && (c === 92 || isPunct(c) || c === 32 || c === 9) && c !== 35);
@@ -5393,7 +5410,7 @@ export class Formatter {
     // (clang-format's trailing comment alignment counts a comment's bytes,
     // not its columns: a tab or a multibyte character is one, or several.)
     const bytes = d.end[t] - d.start[t];
-    if (!d.opts.reflowComments || this.isPragma(t) || this.offMarker(t) !== 0 || d.multi[t] === 1) {
+    if (!d.opts.reflowComments || this.isPragma(t) || this.switchesFormatting(t) || d.multi[t] === 1) {
       return d.multi[t] === 1 ? d.width[t] : bytes;
     }
     // (With the space clang-format puts after a bare `//`.)
@@ -5438,7 +5455,7 @@ export class Formatter {
     const lim = d.opts.columnLimit - (d.inPP[t] === 1 ? 2 : 0);
     const a = d.start[t] + 2;
     const e = d.end[t] - 2;
-    if (!d.opts.reflowComments || e < a || this.offMarker(t) !== 0) {
+    if (!d.opts.reflowComments || e < a || this.switchesFormatting(t)) {
       return excessPenalty(col + d.width[t] - lim);
     }
     if (d.multi[t] === 1) {
@@ -5545,7 +5562,7 @@ export class Formatter {
   commentPenaltyAt(t: i32, col: i32): i64 {
     const d = this.d;
     const lim = d.opts.columnLimit;
-    if (!d.opts.reflowComments || this.isPragma(t) || this.offMarker(t) !== 0 || d.multi[t] === 1) {
+    if (!d.opts.reflowComments || this.isPragma(t) || this.switchesFormatting(t) || d.multi[t] === 1) {
       return excessPenalty(col + d.width[t] - lim);
     }
     const a0 = d.start[t];
@@ -5646,7 +5663,7 @@ export class Formatter {
       d.type[n] !== TT_LINE_COMMENT ||
       d.nl[n] !== 1 ||
       d.multi[n] === 1 ||
-      this.offMarker(n) !== 0
+      this.switchesFormatting(n)
     ) {
       return -1;
     }
@@ -5816,7 +5833,7 @@ export class Formatter {
       d.type[n] !== TT_LINE_COMMENT ||
       d.nl[n] !== 1 ||
       this.isPragma(n) ||
-      this.offMarker(n) !== 0
+      this.switchesFormatting(n)
     ) {
       return false;
     }
