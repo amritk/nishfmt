@@ -138,6 +138,19 @@ for src in "$here"/cases/*/skip_*; do
   fi
 done
 
+# A directory is walked whatever its name: a Kotlin case under a package
+# directory named like a JSON file (kotest's `io.kotest.assertions.json`),
+# formatted by -i on the tree above it, must become its .expected.
+mkdir -p "$work/walk/io.example.json"
+cp "$here/cases/kotlin/type_two_modifier_lists.kt" "$work/walk/io.example.json/T.kt"
+"$bin" -i -q "$work/walk" > /dev/null 2>&1
+if cmp -s "$work/walk/io.example.json/T.kt" "$here/cases/kotlin/type_two_modifier_lists.expected"; then
+  pass=$((pass + 1))
+else
+  echo "FAIL walk-dotted-dir: a file under io.example.json/ was not formatted"
+  fail=$((fail + 1))
+fi
+
 # `// nishfmt off` keeps a region verbatim (clang-format has no such pragma).
 printf 'int   a=1;\n// nishfmt off\nint   b =  2 ;\n// nishfmt on\nint   c=3;\n' > "$work/off.cpp"
 printf 'int a = 1;\n// nishfmt off\nint   b =  2 ;\n// nishfmt on\nint c = 3;\n' > "$work/off.expected"
