@@ -191,6 +191,7 @@ import {
   N_EX_CONTINUE,
   N_EX_FIELD,
   N_EX_FOR,
+  N_EX_GEN,
   N_EX_IF,
   N_EX_INDEX,
   N_EX_LET,
@@ -211,6 +212,7 @@ import {
   N_EX_UNARY,
   N_EX_UNDERSCORE,
   N_EX_WHILE,
+  N_EX_YEET,
   N_EX_YIELD,
   N_FIELD,
   N_FN,
@@ -373,6 +375,8 @@ export class RsParser {
   nInner: i32 = 0;
   // The inner attributes of the block parsed last.
   lastBlockInner: i32 = 0;
+  // The restrictions at the start of the parse_expr_bottom in progress.
+  bottomRes: i32 = 0;
 
   constructor(t: RsTokens, ast: RsAst) {
     this.t = t;
@@ -1013,7 +1017,8 @@ export class RsParser {
     }
     if (kk === KW_STATIC) {
       const k1 = this.la(1);
-      if (k1 === T_OR || k1 === T_OROR || this.laKw(1) === KW_MOVE || this.laKw(1) === KW_ASYNC) {
+      // parse_global_static_front_matter: a closure only before `move`, `use`, `|` or `||`.
+      if (k1 === T_OR || k1 === T_OROR || this.laKw(1) === KW_MOVE || this.laKw(1) === KW_USE) {
         return -1; // a static closure
       }
       return this.parseStatic(lo, 0);
@@ -1304,29 +1309,24 @@ export class RsParser {
 
   parseFn(lo: i32, assoc: boolean): i32 {
     const n = this.nd(N_FN, lo);
+    // parse_fn_front_matter: `const`? `async`? (`unsafe` | `safe`)? (`extern` ABI?)? `fn`,
+    // in that order; a qualifier out of order or repeated is an error.
     let f = 0;
-    for (;;) {
-      const k = this.kw();
-      if (k === KW_CONST) {
-        f = f | FN_CONST;
-        this.bump();
-      } else if (k === KW_ASYNC) {
-        f = f | FN_ASYNC;
-        this.bump();
-      } else if (k === KW_UNSAFE) {
-        f = f | FN_UNSAFE;
-        this.bump();
-      } else if (k === KW_SAFE) {
-        f = f | FN_SAFE;
-        this.bump();
-      } else if (k === KW_EXTERN) {
-        f = f | FN_EXTERN;
-        this.bump();
-        const gv6 = this.parseAbi();
-        this.ast.x[n] = gv6;
-      } else {
-        break;
-      }
+    if (this.eatKw(KW_CONST)) {
+      f = f | FN_CONST;
+    }
+    if (this.eatKw(KW_ASYNC)) {
+      f = f | FN_ASYNC;
+    }
+    if (this.eatKw(KW_UNSAFE)) {
+      f = f | FN_UNSAFE;
+    } else if (this.eatKw(KW_SAFE)) {
+      f = f | FN_SAFE;
+    }
+    if (this.eatKw(KW_EXTERN)) {
+      f = f | FN_EXTERN;
+      const gv6 = this.parseAbi();
+      this.ast.x[n] = gv6;
     }
     if (!this.eatKw(KW_FN)) {
       return this.fail();
@@ -2131,7 +2131,8 @@ export class RsParser {
     const n = this.nd(N_MACRO_DEF, lo);
     this.bump(); // macro_rules
     this.bump(); // !
-    this.ast.d[n] = this.identTok();
+    // parse_item_macro_rules: parse_ident, so a reserved word is no macro name.
+    this.ast.d[n] = this.itemIdent();
     this.ast.fl[n] = IT_MACRO_RULES;
     const tts = this.parseTts();
     if (this.failed) {
@@ -2147,7 +2148,7 @@ export class RsParser {
   parseMacro2(lo: i32): i32 {
     const n = this.nd(N_MACRO_DEF, lo);
     this.bump(); // macro
-    this.ast.d[n] = this.identTok();
+    this.ast.d[n] = this.itemIdent(); // parse_item_decl_macro: parse_ident
     if (this.is(T_LPAREN)) {
       const gv46 = this.parseTts();
       this.ast.b[n] = gv46;
@@ -2728,23 +2729,20 @@ export class RsParser {
   parseFnPtr(lo: i32, binder: i32): i32 {
     const ty = this.nd(N_TY_FN, lo);
     this.ast.c[ty] = binder;
+    // parse_fn_front_matter (FunctionPtrType): `unsafe`? (`extern` ABI?)? `fn`, in that order.
     let f = 0;
-    for (;;) {
-      const k = this.kw();
-      if (k === KW_UNSAFE) {
-        f = f | FN_UNSAFE;
-        this.bump();
-      } else if (k === KW_EXTERN) {
-        f = f | FN_EXTERN;
-        this.bump();
-        const gv67 = this.parseAbi();
-        this.ast.x[ty] = gv67;
-      } else {
-        break;
-      }
+    if (this.eatKw(KW_UNSAFE)) {
+      f = f | FN_UNSAFE;
+    }
+    if (this.eatKw(KW_EXTERN)) {
+      f = f | FN_EXTERN;
+      const gv67 = this.parseAbi();
+      this.ast.x[ty] = gv67;
     }
     this.ast.fl[ty] = f;
-    this.bump(); // fn
+    if (!this.eatKw(KW_FN)) {
+      return this.fail();
+    }
     const gv68 = this.parseFnDecl(false);
     this.ast.b[ty] = gv68;
     return this.fin(ty);
@@ -2823,11 +2821,8 @@ export class RsParser {
   parseRangeEnd(): i32 {
     const lo = this.lo();
     if (this.isKw(KW_CONST) && this.la(1) === T_LBRACE) {
-      this.bump();
-      const e = this.nd(N_EX_CONST_BLOCK, lo);
-      const gv69 = this.parseBlock(this.lo(), 0);
-      this.ast.a[e] = gv69;
-      return this.fin(e);
+      // parse_const_block(_, pat = true): "const blocks cannot be used as patterns".
+      return this.fail();
     }
     if (this.isPathStart()) {
       const e = this.nd(N_EX_PATH, lo);
@@ -3111,17 +3106,20 @@ export class RsParser {
     this.bump(); // {
     const mark = this.sp;
     while (!this.failed && !this.is(T_RBRACE)) {
-      const am = this.sp;
-      const na = this.outerAttrs();
+      // parse_pat_fields looks for `..` before the outer attributes, so `#[a] ..` is
+      // taken for a field and `..` is no identifier.
       if (this.is(T_DOTDOT)) {
         this.bump();
         this.ast.fl[pat] = PS_REST;
-        this.dropTo(am);
         break;
       }
+      const am = this.sp;
+      const na = this.outerAttrs();
       const flo = this.lo();
       const f = this.nd(N_PATFIELD, flo);
-      if ((this.tk() === T_IDENT || this.tk() === T_INT) && this.la(1) === T_COLON) {
+      // parse_pat_field: the field name (parse_field_name) and a shorthand binding
+      // (parse_ident_common) are identifiers that are not reserved words.
+      if ((this.isIdent() || this.tk() === T_INT) && this.la(1) === T_COLON) {
         this.ast.d[f] = this.p;
         this.bump();
         this.bump();
@@ -3146,7 +3144,7 @@ export class RsParser {
           bf = BM_MUT;
         }
         this.ast.fl[ip] = bf;
-        const id = this.identTok();
+        const id = this.itemIdent();
         this.ast.d[ip] = id;
         this.fin(ip);
         this.ast.d[f] = id;
@@ -3255,12 +3253,12 @@ export class RsParser {
 
   parseExprAssoc(minPrec: i32): i32 {
     const lo = this.lo();
-    let lhs = -1;
     if (this.tk() === T_DOTDOT || this.tk() === T_DOTDOTEQ) {
-      lhs = this.parsePrefixRange(lo);
-    } else {
-      lhs = this.parseExprPrefix();
+      // parse_expr_assoc_after_attrs: a prefix range is the whole expression; no operator
+      // (an assignment, another range) may follow it.
+      return this.parsePrefixRange(lo);
     }
+    const lhs = this.parseExprPrefix();
     if (this.failed) {
       return -1;
     }
@@ -3310,8 +3308,13 @@ export class RsParser {
         break;
       }
       this.bump();
-      // Assignment is right-associative.
+      // Assignment is right-associative, and its right side keeps only NO_STRUCT_LITERAL.
+      const oldRes = this.res;
+      if (prec === P_ASSIGN) {
+        this.res = oldRes & R_NO_STRUCT;
+      }
       const rhs = this.parseExprAssoc(prec === P_ASSIGN ? prec : prec + 1);
+      this.res = oldRes;
       if (this.failed) {
         return -1;
       }
@@ -3651,7 +3654,21 @@ export class RsParser {
     return this.fail();
   }
 
+  /**
+   * parse_expr_bottom: the expression is parsed without ALLOW_LET; only a `let` itself and
+   * the elements of a parenthesized expression see the outer restrictions (`bottomRes`).
+   */
   parseExprBottom(): i32 {
+    const old = this.res;
+    this.bottomRes = old;
+    this.res = old & ~R_ALLOW_LET;
+    const e = this.parseExprBottomInner();
+    this.res = old;
+    return e;
+  }
+
+  parseExprBottomInner(): i32 {
+    const outerRes = this.bottomRes;
     const lo = this.lo();
     const k = this.tk();
     const kk = this.kw();
@@ -3664,7 +3681,7 @@ export class RsParser {
       let count = 0;
       let trailing = false;
       const old = this.res;
-      this.res = 0;
+      this.res = outerRes & R_ALLOW_LET; // parse_expr_tuple_parens
       while (!this.failed && !this.is(T_RPAREN)) {
         this.push(this.parseExprAssoc(0));
         count++;
@@ -3842,6 +3859,9 @@ export class RsParser {
       return this.fail();
     }
     if (kk === KW_LET) {
+      if ((outerRes & R_ALLOW_LET) === 0) {
+        return this.fail(); // parse_expr_let: expected expression, found `let` statement
+      }
       this.bump();
       const le = this.nd(N_EX_LET, lo);
       const gv91 = this.parsePatTopAlt();
@@ -4071,11 +4091,57 @@ export class RsParser {
 
   parseCond(): i32 {
     const e = this.parseExprRes(R_NO_STRUCT | R_ALLOW_LET);
+    if (!this.failed && this.condHasForbiddenLet(e, false)) {
+      return this.fail();
+    }
     if (!this.failed && this.t.edition < 2024 && this.ast.kind[e] === N_EX_BINARY && this.hasLetInAndChain(e)) {
       // CondChecker: let chains are only allowed in Rust 2024 or later.
       return this.fail();
     }
     return e;
+  }
+
+  /**
+   * CondChecker: whether a `let` of the condition `e` sits under anything but `&&`
+   * (`||`, parentheses, an assignment, another operator, a call, ...). `forbid`: one does.
+   */
+  condHasForbiddenLet(e: i32, forbid: boolean): boolean {
+    if (e < 0) {
+      return false;
+    }
+    const ast = this.ast;
+    const k = ast.kind[e];
+    if (k === N_EX_LET) {
+      return forbid;
+    }
+    if (k === N_EX_BINARY && ast.x[e] === T_ANDAND) {
+      return this.condHasForbiddenLet(ast.a[e], forbid) || this.condHasForbiddenLet(ast.b[e], forbid);
+    }
+    if (k === N_EX_BINARY || k === N_EX_ASSIGN || k === N_EX_ASSIGN_OP || k === N_EX_RANGE || k === N_EX_INDEX) {
+      return this.condHasForbiddenLet(ast.a[e], true) || this.condHasForbiddenLet(ast.b[e], true);
+    }
+    if (
+      k === N_EX_PAREN ||
+      k === N_EX_UNARY ||
+      k === N_EX_AWAIT ||
+      k === N_EX_TRY ||
+      k === N_EX_ADDR_OF ||
+      k === N_EX_FIELD ||
+      k === N_EX_CAST
+    ) {
+      return this.condHasForbiddenLet(ast.a[e], true);
+    }
+    if (k === N_EX_CALL || k === N_EX_METHOD || k === N_EX_TUP) {
+      if (k !== N_EX_TUP && this.condHasForbiddenLet(ast.a[e], true)) {
+        return true;
+      }
+      for (let i = 0; i < ast.ln[e]; i++) {
+        if (this.condHasForbiddenLet(ast.kid(e, i), true)) {
+          return true;
+        }
+      }
+    }
+    return false;
   }
 
   hasLetInAndChain(e: i32): boolean {
@@ -4133,6 +4199,9 @@ export class RsParser {
     }
     const gv107 = this.parseBlock(this.lo(), 0);
     this.ast.b[n] = gv107;
+    if (this.isKw(KW_ELSE)) {
+      return this.fail(); // recover_loop_else: loops have no `else`
+    }
     return this.fin(n);
   }
 
@@ -4145,6 +4214,9 @@ export class RsParser {
     }
     const gv108 = this.parseBlock(this.lo(), 0);
     this.ast.b[n] = gv108;
+    if (this.isKw(KW_ELSE)) {
+      return this.fail(); // recover_loop_else: loops have no `else`
+    }
     return this.fin(n);
   }
 
@@ -4168,6 +4240,9 @@ export class RsParser {
     }
     const gv111 = this.parseBlock(this.lo(), 0);
     this.ast.c[n] = gv111;
+    if (this.isKw(KW_ELSE)) {
+      return this.fail(); // recover_loop_else: loops have no `else`
+    }
     return this.fin(n);
   }
 
@@ -4200,6 +4275,9 @@ export class RsParser {
         // every edition (LetChainsPolicy::AlwaysAllowed).
         const gv114 = this.parseExprRes(R_ALLOW_LET);
         this.ast.b[arm] = gv114;
+        if (!this.failed && this.condHasForbiddenLet(gv114, false)) {
+          this.failed = true; // CondChecker
+        }
       }
       if (this.failed) {
         break;
@@ -4308,7 +4386,7 @@ export class RsParser {
     }
     if (k === KW_STATIC) {
       const k1 = this.la(1);
-      return !(k1 === T_OR || k1 === T_OROR || this.laKw(1) === KW_MOVE || this.laKw(1) === KW_ASYNC);
+      return !(k1 === T_OR || k1 === T_OROR || this.laKw(1) === KW_MOVE || this.laKw(1) === KW_USE);
     }
     if (k === KW_UNION && this.laIsIdent(1)) {
       return true;
@@ -4384,6 +4462,17 @@ export class RsParser {
           if (!this.failed && this.lastBlockInner > 0) {
             return this.fail(); // parse_block: no inner attributes in a let-else block
           }
+          // check_let_else_init_bool_expr and check_let_else_init_trailing_brace.
+          if (!this.failed) {
+            const ik = this.ast.kind[gv118];
+            const op = this.ast.x[gv118];
+            if (ik === N_EX_BINARY && (op === T_ANDAND || op === T_OROR)) {
+              return this.fail();
+            }
+            if (this.exprTrailingBrace(gv118)) {
+              return this.fail();
+            }
+          }
         }
       }
       if (!this.expect(T_SEMI)) {
@@ -4457,6 +4546,101 @@ export class RsParser {
     }
     this.ast.hi[s] = this.ph;
     return s;
+  }
+
+  /** classify::expr_trailing_brace: whether the expression's last token is a `}`. */
+  exprTrailingBrace(e0: i32): boolean {
+    const ast = this.ast;
+    let e = e0;
+    for (;;) {
+      if (e < 0) {
+        return false;
+      }
+      const k = ast.kind[e];
+      if (
+        k === N_EX_ADDR_OF ||
+        k === N_EX_UNARY ||
+        k === N_EX_BREAK ||
+        k === N_EX_RET ||
+        k === N_EX_YIELD ||
+        k === N_EX_YEET ||
+        k === N_EX_BECOME ||
+        k === N_EX_CLOSURE
+      ) {
+        e = ast.a[e]; // the operand, value or body; none ends it
+      } else if (k === N_EX_ASSIGN || k === N_EX_ASSIGN_OP || k === N_EX_BINARY || k === N_EX_LET || k === N_EX_RANGE) {
+        e = ast.b[e]; // the right side; a range without an end ends it
+      } else if (
+        k === N_EX_ASYNC ||
+        k === N_EX_GEN ||
+        k === N_EX_BLOCK ||
+        k === N_EX_FOR ||
+        k === N_EX_IF ||
+        k === N_EX_LOOP ||
+        k === N_EX_MATCH ||
+        k === N_EX_STRUCT ||
+        k === N_EX_TRY_BLOCK ||
+        k === N_EX_WHILE ||
+        k === N_EX_CONST_BLOCK
+      ) {
+        return true;
+      } else if (k === N_EX_CAST) {
+        return this.tyTrailingBracedMac(ast.b[e]);
+      } else if (k === N_EX_MAC) {
+        return ast.x[ast.b[ast.a[e]]] === T_LBRACE;
+      } else {
+        return false;
+      }
+    }
+  }
+
+  /** classify::type_trailing_braced_mac_call: whether the type ends in a braced macro call. */
+  tyTrailingBracedMac(t0: i32): boolean {
+    const ast = this.ast;
+    let t = t0;
+    for (;;) {
+      if (t < 0) {
+        return false;
+      }
+      const k = ast.kind[t];
+      if (k === N_TY_MAC) {
+        return ast.x[ast.b[ast.a[t]]] === T_LBRACE;
+      }
+      if (k === N_TY_PTR || k === N_TY_REF) {
+        t = ast.a[t];
+      } else if (k === N_TY_FN) {
+        t = ast.a[ast.b[t]];
+      } else if (k === N_TY_PATH) {
+        t = this.pathReturnTy(ast.b[t]);
+      } else if (k === N_TY_IMPL || k === N_TY_DYN) {
+        const bs = ast.b[t];
+        const nb = ast.ln[bs];
+        if (nb === 0) {
+          return false;
+        }
+        const last = ast.kid(bs, nb - 1);
+        if (ast.kind[last] !== N_TRAIT_BOUND) {
+          return false;
+        }
+        t = this.pathReturnTy(ast.a[last]);
+      } else {
+        return false;
+      }
+    }
+  }
+
+  /** classify::path_return_type: the `-> Ty` of the path's last segment's `(...)` arguments, or -1. */
+  pathReturnTy(pa: i32): i32 {
+    const ast = this.ast;
+    if (pa < 0 || ast.ln[pa] === 0) {
+      return -1;
+    }
+    const ns = ast.ln[pa];
+    const ga = ast.a[ast.kid(pa, ns - 1)];
+    if (ga < 0 || ast.kind[ga] !== N_PGARGS) {
+      return -1;
+    }
+    return ast.a[ga];
   }
 
   parseStmtPathStart(lo: i32): i32 {

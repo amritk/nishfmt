@@ -69,8 +69,11 @@ v=1.99.1; mkdir -p $TMPDIR/rustsrc/$v && cd $TMPDIR/rustsrc/$v && git init -q &&
 Behaviors of rustfmt 1.10.0 that look like bugs, which the port keeps
 (`binary_quirks`; later rustfmt sources change several of them):
 
-- an associated type alias prints `default` before its visibility, and an
-  opaque (`impl Trait`) type alias in an impl drops its visibility;
+- only an impl's associated type alias prints `default`, before its
+  visibility and added after the rest is laid out (so its first line can
+  pass `max_width`); a free, trait or foreign type alias drops it
+  (`default_type_alias`); an opaque (`impl Trait`) type alias in an impl
+  drops its visibility;
 - a fn pointer type looks for its parameter list from the start of the
   whole type (so a `(` in a `for<#[attr] 'a>` binder is taken for it);
 - a fn pointer type's list item for an unnamed param starts at its type, so
