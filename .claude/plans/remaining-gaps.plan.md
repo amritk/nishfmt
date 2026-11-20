@@ -5,10 +5,10 @@ stages:
   - id: bench-corpus2
     title: build(bench) — add a second pinned corpus and measure C++ against clang-format's settled output
     goal: repos2.txt and REPOLIST-aware fetch.sh and mk.sh build corpus2; RuboCop runs under UTF-8; cmp.sh cpp reports one-run and settled counts on both corpora; docs say which number is which
-    verification: npm run lint && bash -n bench/corpus/fetch.sh bench/corpus/mk.sh bench/corpus/cmp.sh && test "$(wc -l < bench/corpus/repos2.txt)" -eq 81
+    verification: npm run lint && bash -n bench/corpus/fetch.sh bench/corpus/mk.sh bench/corpus/cmp.sh && test "$(wc -l < bench/corpus/repos2.txt)" -eq 72
     todos:
       - id: repos2-list
-        content: Create bench/corpus/repos2.txt with the 81 pinned lines — see Bench corpus2
+        content: Create bench/corpus/repos2.txt with the 72 pinned lines — see Bench corpus2
       - id: repolist-env
         content: Make fetch.sh and mk.sh read the list from REPOLIST, default repos.txt — see Bench corpus2
       - id: rubocop-utf8
@@ -119,7 +119,83 @@ Prompts 1 and 6 are one stage: 6 needs 1's `REPOLIST` support to start and both 
 
 Prompt 1, verbatim requirements:
 
-1. `bench/corpus/repos2.txt`, same `<lang> <owner/name> <commit>` format, exactly the 81 lines in the prompt (cpp ×9, java ×8, kt ×10, rb ×8, swift ×11, rust ×9, dart ×8, cs ×9 — copy them from the prompt, do not retype).
+1. `bench/corpus/repos2.txt`, same `<lang> <owner/name> <commit>` format, exactly these 72 lines (cpp ×9, java ×8, kt ×10, rb ×8, swift ×11, rust ×9, dart ×8, cs ×9) — copy them from this block, do not retype:
+
+```
+cpp bitcoin/bitcoin 079437cca7a8e2997a6dcd83ad38350014352544
+cpp catchorg/Catch2 36c1bc3ef209a649741f36d9913d63451e8d07b5
+cpp google/benchmark 88e2febd385d65ad3d43c9d7327d36f19f2727b4
+cpp gabime/spdlog 6d9805df3f588402b17073dcd13eb569ceda864d
+cpp ocornut/imgui 77fe4588e6af934b4167b91312174ca3fbb0d71a
+cpp taskflow/taskflow 9d9cea031a7f4c8ec97179668c34ee47378e5a99
+cpp google/flatbuffers 5eb190f00005b8dd1aa4f7ab2db9f01a39e3c76d
+cpp duckdb/duckdb ba52c7f1980fe5e09255e169f236ae1a1c2ec3f6
+cpp grpc/grpc a9b712ca36f54013cab0f2a716c23c9f0b347103
+java ReactiveX/RxJava 3b4ec5358690fd9e3026a8080be169120c139dd9
+java netty/netty 7a1ecd85c47e7bee374230e2b79f7a043f61b359
+java google/error-prone 397dbc92b93dac30cfe0fc9c31fc555b256e6ba4
+java google/dagger 1cc4039068656e304a515d76598d19bec2f6c979
+java apache/commons-collections 2bcf69296bbde598b1e8bac1b3cd90a11ef3e563
+java square/javapoet b9017a9503b76e11b4ad4c1a9f050e2d29112cb0
+java FasterXML/jackson-databind 2a1dcbcc6d188f271e6360f16d2be3a4bb8eff9f
+java google/auto c50a2d1ee588e2bf6822325aba7602b8900a902d
+kt square/kotlinpoet 58405291cd44c352016462dfe76f0be8c059d4a3
+kt square/wire b6bbb52eb52419e8806ae884c5e4b41a233a9afe
+kt InsertKoinIO/koin d486a5e8748f90db43f939e227083f2bd2c47c12
+kt mockk/mockk 9ce7b51839edca5a465c74137f73e6f234e6d6b0
+kt Kotlin/kotlinx.serialization 99172ab9ff063e16466226bbeb9a5d00703bbf41
+kt Kotlin/kotlinx-datetime b9e4f4965e04ce6f8231bc8ddc6fee337c9de687
+kt kotest/kotest 0c1e740b7cab3a19bc085afba168755f4dacdd6f
+kt square/leakcanary eb60b0be53732aa016c79b7774b497770ad1e4f3
+kt airbnb/mavericks 88bab77829c946ee57fe2645ea51ef1fc9d5974a
+kt android/architecture-samples ee66e1526b84c026615df032c705842b7d2a521f
+rb mastodon/mastodon b9e99ea202e04277a33fb323829947adc66f8af4
+rb fastlane/fastlane 3a9429c2f601a7c399c6c1d11b01827ec5c262f7
+rb rubygems/rubygems bd0f3923fc27673074310ea90319df2fed8986dd
+rb puma/puma 596151f3fb0d3b8e1538c90500ee499f39997c3b
+rb sidekiq/sidekiq 7976065b7e27efbb9a1f7fa842d1e74adcf2103c
+rb thoughtbot/factory_bot cf9b56fbdd0d8a54bc5ff54ec701feb9c4559083
+rb ruby-grape/grape 552459af2a7da4121dd786899e1e818eb69fad6c
+rb faker-ruby/faker 577447c403c67c92200bca045390c3dfdb6d643b
+swift apple/swift-syntax 60f0e15f908575c7ba83053b8d12ccd055cb73aa
+swift danielgindi/Charts 1bad5469f57628782110b05996d4fa00473abf06
+swift ReactiveCocoa/ReactiveSwift a44317ce38b5bcce173b03f5d36cfdc939e1768b
+swift Quick/Quick 2b4547b230e94d84320724fd6df65e418b058be2
+swift Quick/Nimble 727f75d91a0f7501d08d938966d17e6728b76a2a
+swift apple/swift-log 47655e0c23baf5d7d5d832151bfab7ccda35f6b7
+swift apple/swift-algorithms 8fdd7fe21dc07a4538d6b3b7c873f497ab4d60fe
+swift airbnb/lottie-ios 1fb4d7d5b45b0e81239c0c0cab95136a10153762
+swift mxcl/PromiseKit 96cd3bdedf944c1606ad1fa7e32418ce0cd7ff68
+swift pointfreeco/swift-snapshot-testing 0c6380dd46cd45e00f2bf87cf6002f3478e84452
+swift apple/swift-openapi-generator 77cb2239015730f89b3973f74665d8b4ed0faf2a
+rust rust-lang/rust-analyzer aa198229289901e5718e7c0a8d4115638cc1900c
+rust tokio-rs/axum 8d60d69eb195dad2f983926ab11fc91a79b98e06
+rust serde-rs/json f51fa15a7015c7d02817a46d2db44c899a0016e8
+rust rayon-rs/rayon 599425d4a4c64714632817f48496dbc53f656a90
+rust dtolnay/syn a2cddb7a893532133c17a32e4ac68a9805db7c9f
+rust launchbadge/sqlx e8acd6bd5caddbc610029d5afed3175740880790
+rust starship/starship f6a1f925c0feb21f73000b989a9b00af8021be09
+rust helix-editor/helix 9de242bfac2aac9dfd0e4496eb25190e85c24e69
+rust uutils/coreutils 07b76df463390fd56856725201ae52df5df0a063
+dart flutter/flutter ed20d2e43d4821441036e79cec77739d4bd11984
+dart firebase/flutterfire e6f7fc84be1f4004c70bac416600808a431fa2e6
+dart fluttercommunity/plus_plugins 907994b0e52c2c11ae2f2ccc08d0658e1c73dbaf
+dart dart-lang/pub fe190660d68a4dd3070fe33fc406ff58d754dccc
+dart dart-lang/build 754c93454f39945a7efbeea71a4b0caed10f1a19
+dart simolus3/drift 233db805d7ecec4a555dff95d826c4d0e365e466
+dart mobxjs/mobx.dart 4fe5e0f93ead0d2d0c385ec826d152c5e7165c68
+dart rrousselGit/freezed 86181b4aebc15c7311524bf36f3e410570c6a6c9
+cs jellyfin/jellyfin c47a9f9221826b1b45e1cd7d1be451a27cd0c067
+cs MassTransit/MassTransit d9f61f764c802785cc9a4be92547d8f5b63018d4
+cs StackExchange/StackExchange.Redis f797d55a82b4777d67475f498f7a674e96c37b95
+cs JoshClose/CsvHelper b4151b6dbafc90de35a3016ba96218ecc4e6f88c
+cs dotnet/BenchmarkDotNet ffee367585170596503b88e06bf6872c8731fdaa
+cs quartznet/quartznet 24ffdf50594ab7a268ecbdf3c982725c6adb86ec
+cs HangfireIO/Hangfire 8bedc72533ad8a09fe8fa6666505518e2cc700c2
+cs louthy/language-ext 54d27a2d76cf3f14b964ce1ab421ae80a080bb7a
+cs AvaloniaUI/Avalonia 3f984fa0d96d2e66ad6f8fb62361b780e44d55fc
+```
+
 2. `fetch.sh` and `mk.sh` take the list from `$REPOLIST` (default `bench/corpus/repos.txt`), so `REPOLIST=bench/corpus/repos2.txt CORPUS=bench/work/corpus2 REPOS=bench/work/repos2 bash bench/corpus/mk.sh <lang>` builds the second corpus. `cmp.sh` already honours `$CORPUS` and `$WORK`.
 3. `mk.sh rb` exports `LANG=C.UTF-8` before RuboCop (mastodon's `app/helpers/languages_helper.rb`: under US-ASCII Style/WordArray writes escapes; under UTF-8 it writes `%w[Amharic አማርኛ]`, which nishfmt matches).
 4. [docs/benchmarks.md](../../docs/benchmarks.md) ("Building a corpus", "Corpus results") gains a repos2 table: measured on 2026-11-19 at main 9444d49, accepted / identical — C++ 13902 / 13796, Java 11914 / 11914, Kotlin 6219 / 6199, Swift 2140 / 2139, Rust 3606 / 3578, Dart 10675 / 10672, C# 18673 / 18673, Ruby 2000 / 2000. Rebuild and re-measure where the reference tool can be installed; where it cannot, keep the given number and say so in the PR body.
