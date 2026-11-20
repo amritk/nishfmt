@@ -496,6 +496,11 @@ export class Formatter {
    */
   splitString(t: i32, prefixLen: i32, cuts: i32[], n: i32, col: i32): void {
     const d = this.d;
+    if (this.hasOff && this.offTok[t] === 1) {
+      // clang-format's replaceWhitespaceInToken: a Finalized token (in an
+      // off region) is written as it is, whatever the breaker decided.
+      return;
+    }
     let a = d.start[t] + prefixLen;
     const e = d.end[t] - 1;
     for (let i = 0; i <= n; i++) {
