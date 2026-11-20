@@ -3382,11 +3382,11 @@ export class RsParser {
         break;
       }
       this.bump();
-      // Assignment is right-associative, and its right side keeps only NO_STRUCT_LITERAL.
+      // Assignment is right-associative. parse_expr_assoc_rest parses the right side
+      // without STMT_EXPR (a block-like operand there does not end the expression),
+      // and an assignment's right side keeps only NO_STRUCT_LITERAL.
       const oldRes = this.res;
-      if (prec === P_ASSIGN) {
-        this.res = oldRes & R_NO_STRUCT;
-      }
+      this.res = prec === P_ASSIGN ? oldRes & R_NO_STRUCT : oldRes & ~R_STMT_EXPR;
       const rhs = this.parseExprAssoc(prec === P_ASSIGN ? prec : prec + 1);
       this.res = oldRes;
       if (this.failed) {

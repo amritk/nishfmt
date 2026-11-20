@@ -97,6 +97,7 @@ class Stats {
   files: i32 = 0;
   changed: i32 = 0;
   skipped: i32 = 0;
+  crashed: i32 = 0; // of the skipped, files a worker died on
   bytes: i64 = 0;
 }
 
@@ -131,8 +132,12 @@ const usage = (): string =>
     "  -v, --version   print the version",
     "",
     "A file nishfmt cannot format exactly as the reference tool would (one that",
-    "does not parse, say) is left untouched and counted as skipped. In C++, a",
-    "`// nishfmt off` ... `// nishfmt on` region is left as written.",
+    "does not parse, say, or one its formatter crashes on) is left untouched and",
+    "counted as skipped. In C++, a `// nishfmt off` ... `// nishfmt on` region is",
+    "left as written.",
+    "",
+    "Exit status: 0; 1 with --check when a file would change; 2 for a bad command",
+    "line. A skipped file does not change it.",
   ].join("\n");
 
 /** Files formatted in one region: up to this many, or until this many bytes were read. */
@@ -147,13 +152,16 @@ const BATCH_BYTES: i32 = 1048576;
  */
 class Job {
   paths: string[];
+  // The worker's progress log; `base` below is the list index of paths[0].
+  log: string = "";
+  // Per file k: 2k the result (0 unchanged, 1 changed, 2 skipped, 3 unreadable), 2k+1 the bytes read.
+  res: i32[];
   count: i32 = 0;
   done: i32 = 0;
   lang: i32 = 0;
   mode: i32 = 0;
+  base: i32 = 0;
   quiet: boolean = false;
-  // Per file k: 2k the result (0 unchanged, 1 changed, 2 skipped, 3 unreadable), 2k+1 the bytes read.
-  res: i32[];
   constructor() {
     this.paths = [];
     for (let i = 0; i < BATCH_FILES; i++) {
@@ -255,6 +263,7 @@ const runJob = (job: Job): JobRoot => {
       } else if (!job.quiet) {
         console.error(`nishfmt: skipped ${path} (does not parse)`);
       }
+      logEntry(job.log, job.base + k, 1, 0, 1, n);
       bytes = bytes + n;
       k++;
       continue;
@@ -278,6 +287,7 @@ const runJob = (job: Job): JobRoot => {
     } else if (!same && job.mode === MODE_CHECK) {
       console.log(path);
     }
+    logEntry(job.log, job.base + k, 1, same ? 0 : 1, 0, n);
     bytes = bytes + n;
     k++;
   }
@@ -289,20 +299,56 @@ const runJob = (job: Job): JobRoot => {
 const batches = (lang: i32): boolean => lang === LANG_KOTLIN || lang === LANG_JAVA;
 
 /**
- * Formats `files[a, b)`: C++ files one by one with the worker's engine, the
- * others in batches of one language, each batch in a region of its own.
+ * Appends one finished entry of the worker's list to its progress log
+ * `cli.stats` (nothing when it is "", outside a worker): its index, then the
+ * files, changed, skipped and bytes it added to the counts. The parent sums
+ * the counts from these lines, and an entry with no line was never finished:
+ * its worker died.
  */
-const formatFiles = (files: string[], a: i32, b: i32, cli: Cli, stats: Stats, eng: Engine): void => {
-  // The walk does not stat names that look like sources, so a directory
-  // named like one (`Directory.swift`) arrives here; it is walked once the
-  // files around it are done.
-  const dirs: string[] = [];
+const logEntry = (log: string, at: i32, files: i32, changed: i32, skipped: i32, bytes: i32): void => {
+  if (log.length !== 0) {
+    appendFileSync(log, `${at} ${files} ${changed} ${skipped} ${bytes}\n`);
+  }
+};
+
+/** Entry `at`, `path`, is a directory: logged as `<at> 0 0 0 0 d`, and kept in `dirs`. */
+const logDir = (log: string, at: i32, path: string, dirs: string[]): void => {
+  if (log.length !== 0) {
+    appendFileSync(log, `${at} 0 0 0 0 d\n`);
+  }
+  dirs.push(path);
+};
+
+/**
+ * Formats `files[a, b)` of the worker's list: C++ files one by one with the
+ * worker's engine, the others in batches of one language, each batch in a
+ * region of its own. Each entry is logged as soon as it is finished
+ * (logEntry). The walk does not stat names that look like sources, so a
+ * directory named like one (`Directory.swift`) arrives here: it is logged as
+ * a directory and added to `dirs`, and the parent walks it.
+ */
+const formatFiles = (files: string[], a: i32, b: i32, cli: Cli, stats: Stats, eng: Engine, dirs: string[]): void => {
+  const log = cli.stats;
   let i = a;
   while (i < b) {
     const lang = langOf(files[i]);
     if (lang < LANG_JAVA) {
+      const s0 = new Stats();
+      s0.files = stats.files;
+      s0.changed = stats.changed;
+      s0.skipped = stats.skipped;
+      s0.bytes = stats.bytes;
       if (formatFile(files[i], cli, stats, eng) === 3) {
-        dirs.push(files[i]);
+        logDir(log, i, files[i], dirs);
+      } else {
+        logEntry(
+          log,
+          i,
+          stats.files - s0.files,
+          stats.changed - s0.changed,
+          stats.skipped - s0.skipped,
+          toI32(stats.bytes - s0.bytes),
+        );
       }
       i++;
       continue;
@@ -320,6 +366,8 @@ const formatFiles = (files: string[], a: i32, b: i32, cli: Cli, stats: Stats, en
     job.lang = lang;
     job.mode = cli.mode;
     job.quiet = cli.quiet;
+    job.log = log;
+    job.base = i;
     job.done = 0;
     const tr0 = monotonicNanos();
     free(regionWith(job, runJob));
@@ -328,11 +376,12 @@ const formatFiles = (files: string[], a: i32, b: i32, cli: Cli, stats: Stats, en
       const res = job.res[2 * k];
       if (res === 3) {
         if (isDirectorySync(files[i + k])) {
-          dirs.push(files[i + k]);
+          logDir(log, i + k, files[i + k], dirs);
           continue;
         }
         console.error(`nishfmt: cannot read ${files[i + k]}`);
         stats.skipped = stats.skipped + 1;
+        logEntry(log, i + k, 0, 0, 1, 0);
         continue;
       }
       stats.files = stats.files + 1;
@@ -344,11 +393,6 @@ const formatFiles = (files: string[], a: i32, b: i32, cli: Cli, stats: Stats, en
       }
     }
     i = i + job.done;
-  }
-  for (const d of dirs) {
-    const sub: string[] = [];
-    walk(d, sub, new Ignore(), langOf);
-    formatFiles(sub, 0, toI32(sub.length), cli, stats, eng);
   }
 };
 
@@ -513,6 +557,7 @@ const runWorker = (cli: Cli): i32 => {
   }
   const stats = new Stats();
   const eng = engineFor(cli);
+  const dirs: string[] = []; // the parent walks these, from the log
   // Claim chunks: creating the chunk's marker file exclusively wins it.
   const nf = toI32(files.length);
   let c = 0;
@@ -520,16 +565,18 @@ const runWorker = (cli: Cli): i32 => {
   while (at < nf) {
     const size = chunkSize(nf - at, cli.jobs);
     if (createFileExclusiveSync(`${cli.worker}.c${c}`, "", 384) >= 0) {
-      formatFiles(files, at, at + size, cli, stats, eng);
+      formatFiles(files, at, at + size, cli, stats, eng, dirs);
     }
     at = at + size;
     c++;
   }
-  writeFileSync(cli.stats, `${stats.files} ${stats.changed} ${stats.skipped} ${stats.bytes}\n`);
   if (getenv("FFKPROF") !== null) {
     kprofPrint();
   }
   if (getenv("FFPROF") !== null) {
+    console.error(
+      `searches ${eng.cpp.f.ind.stSearches} nodes ${eng.cpp.f.ind.stNodes} pops ${eng.cpp.f.ind.stPops} depth ${eng.cpp.f.ind.stDepth} listMiss ${eng.cpp.f.ind.stListMiss} listHit ${eng.cpp.f.ind.stListHit}`,
+    );
     console.error(
       `worker: lex ${ms(stats.prof[0])} parse ${ms(stats.prof[1])} classify ${ms(stats.prof[2])} layout ${ms(stats.prof[3])} write ${ms(stats.prof[4])} run ${ms(stats.prof[5])} ms`,
     );
@@ -537,27 +584,253 @@ const runWorker = (cli: Cli): i32 => {
   return 0;
 };
 
-const parseStats = (path: string, into: Stats): void => {
+/** The digits of `s[a, b)` as a number; 0 when there are none. */
+const parseNum = (s: string, a: i32, b: i32): i32 => {
+  let v = 0;
+  for (let i = a; i < b; i++) {
+    const ch = s.charCodeAt(i);
+    if (ch >= 48 && ch <= 57 && v < 214748364) {
+      v = v * 10 + (ch - 48);
+    }
+  }
+  return v;
+};
+
+/**
+ * Reads a worker's progress log (logEntry): marks each entry of `files` it
+ * finished in `done`, adds its counts to `into` and each directory to
+ * `dirs`. A line without its newline is one the worker died writing, and
+ * does not count.
+ */
+const readLog = (path: string, files: string[], done: u8[], into: Stats, dirs: string[]): void => {
   const s = readFileSyncOrNull(path);
   if (s === null) {
     return;
   }
-  const parts: string[] = [];
+  const v: i32[] = [0, 0, 0, 0, 0];
   let a = 0;
-  for (let i = 0; i <= toI32(s.length); i++) {
-    if (i === toI32(s.length) || s.charCodeAt(i) === 32 || s.charCodeAt(i) === 10) {
-      if (i > a) {
-        parts.push(s.substring(a, i));
+  for (let i = 0; i < toI32(s.length); i++) {
+    if (s.charCodeAt(i) !== 10) {
+      continue;
+    }
+    let f = 0;
+    let w = a;
+    for (let j = a; j <= i && f < 6; j++) {
+      if (j === i || s.charCodeAt(j) === 32) {
+        if (f < 5) {
+          v[f] = parseNum(s, w, j);
+        }
+        f++;
+        w = j + 1;
       }
-      a = i + 1;
+    }
+    a = i + 1;
+    const at = v[0];
+    if (f >= 5 && at >= 0 && at < toI32(done.length) && done[at] === 0) {
+      done[at] = 1;
+      if (f === 6) {
+        dirs.push(files[at]);
+      }
+      into.files = into.files + v[1];
+      into.changed = into.changed + v[2];
+      into.skipped = into.skipped + v[3];
+      into.bytes = into.bytes + toI64(v[4]);
     }
   }
-  if (parts.length >= 4) {
-    into.files = into.files + parseInt(parts[0]);
-    into.changed = into.changed + parseInt(parts[1]);
-    into.skipped = into.skipped + parseInt(parts[2]);
-    into.bytes = into.bytes + toI64(parseInt(parts[3]));
+};
+
+/** What every round of a run shares: where its files go, and the counts. */
+class Run {
+  cli: Cli;
+  stats: Stats;
+  self: string;
+  tag: string;
+  tunables: boolean = false;
+  rounds: i32 = 0;
+  constructor(cli: Cli, stats: Stats, self: string, tag: string) {
+    this.cli = cli;
+    this.stats = stats;
+    this.self = self;
+    this.tag = tag;
   }
+}
+
+/** Starts one worker on the list at `listPath`, its log the next of `logs`; answers its pid. */
+const startWorker = (run: Run, listPath: string, logs: string[], jobs: i32): i32 => {
+  const cli = run.cli;
+  const log = `${listPath}.${logs.length}.log`;
+  logs.push(log);
+  const argv: string[] = [
+    run.self,
+    "--worker",
+    listPath,
+    log,
+    "--width",
+    `${cli.width}`,
+    "--indent",
+    `${cli.indent}`,
+    "-j",
+    `${jobs}`,
+  ];
+  if (cli.mode === MODE_WRITE) {
+    argv.push("-i");
+  } else if (cli.mode === MODE_CHECK) {
+    argv.push("--check");
+  }
+  if (cli.quiet) {
+    argv.push("-q");
+  }
+  return spawn(run.tunables ? withMallocTunables(argv) : argv);
+};
+
+/**
+ * Formats `files` in `jobs` worker processes, then whatever a worker that
+ * died (a panic, a signal) left unfinished. Each worker logs every entry it
+ * finishes, so an entry with no line in any log was not finished. A worker
+ * formats a chunk in order, so in a chunk that was claimed the first entry
+ * not finished is the one its worker died on: that entry is run again alone,
+ * and the rest of the unfinished entries go to a fresh round. A file that a
+ * worker of its own dies on too is left untouched and counted as skipped.
+ * The files of a directory a worker logged (formatFiles) go to a round of
+ * their own.
+ */
+const runRound = (run: Run, files: string[], jobs: i32): void => {
+  const nf = toI32(files.length);
+  if (nf === 0) {
+    return;
+  }
+  const listPath = `${run.tag}-${run.rounds}.list`;
+  run.rounds = run.rounds + 1;
+  if (createFileExclusiveSync(listPath, files.join("\n"), 384) < 0) {
+    // No list for workers (TMPDIR not writable, say).
+    formatInProcess(run, files);
+    return;
+  }
+  // A worker that exits abnormally is replaced at once, so the chunks no
+  // worker has claimed yet keep `jobs` workers. Workers claim chunks in
+  // order, so once the last is claimed there is nothing left to replace one
+  // for; and there is at most one replacement a chunk, so workers that die
+  // before claiming one cannot respawn forever.
+  let chunks = 0;
+  for (let at = 0; at < nf; at = at + chunkSize(nf - at, jobs)) {
+    chunks++;
+  }
+  const lastChunk = `${listPath}.c${chunks - 1}`;
+  const logs: string[] = [];
+  let live = 0;
+  for (let k = 0; k < jobs; k++) {
+    if (startWorker(run, listPath, logs, jobs) > 0) {
+      live++;
+    }
+  }
+  if (live === 0) {
+    // No worker would start (a process limit, say): nothing was formatted.
+    unlinkSync(listPath);
+    formatInProcess(run, files);
+    return;
+  }
+  while (live > 0) {
+    const w = waitPid(-1, 0);
+    if (w[0] <= 0) {
+      break;
+    }
+    live--;
+    if (w[1] !== 0 && chunks > 0 && readFileSyncOrNull(lastChunk) === null) {
+      chunks--;
+      if (startWorker(run, listPath, logs, jobs) > 0) {
+        live++;
+      }
+    }
+  }
+  const done = new Array<u8>(nf);
+  const dirs: string[] = [];
+  for (const log of logs) {
+    readLog(log, files, done, run.stats, dirs);
+    unlinkSync(log);
+  }
+  const culprits: string[] = [];
+  const rest: string[] = [];
+  let at = 0;
+  let c = 0;
+  while (at < nf) {
+    const size = chunkSize(nf - at, jobs);
+    // The marker is there when a worker claimed the chunk.
+    let first = unlinkSync(`${listPath}.c${c}`) === 0;
+    for (let i = at; i < at + size && i < nf; i++) {
+      if (done[i] === 0) {
+        if (first) {
+          culprits.push(files[i]);
+          first = false;
+        } else {
+          rest.push(files[i]);
+        }
+      }
+    }
+    at = at + size;
+    c++;
+  }
+  unlinkSync(listPath);
+  if (dirs.length > 0) {
+    const sub: string[] = [];
+    for (const d of dirs) {
+      walk(d, sub, new Ignore(), langOf);
+    }
+    runRound(run, sub, jobs);
+  }
+  if (culprits.length === 0 && rest.length === 0) {
+    return;
+  }
+  if (nf === 1) {
+    crashed(run, files[0]);
+    return;
+  }
+  if (culprits.length === 0) {
+    // No worker claimed what is left (none started, say): each entry alone.
+    for (const f of rest) {
+      runRound(run, [f], 1);
+    }
+    return;
+  }
+  for (const f of culprits) {
+    runRound(run, [f], 1);
+  }
+  if (rest.length > 0) {
+    runRound(run, rest, jobs);
+  }
+};
+
+/**
+ * Formats `files` in this process, for a round that cannot have workers (no
+ * list could be written, or none would start), as nishfmt did for few files
+ * before it had workers to take a panic. A panic here ends the run.
+ */
+const formatInProcess = (run: Run, files: string[]): void => {
+  const dirs: string[] = [];
+  formatFiles(files, 0, toI32(files.length), run.cli, run.stats, engineFor(run.cli), dirs);
+  for (const d of dirs) {
+    const sub: string[] = [];
+    walk(d, sub, new Ignore(), langOf);
+    formatInProcess(run, sub);
+  }
+};
+
+/**
+ * A worker of its own died on `path`: the file is left as it is (printed as
+ * it is, with no mode) and counted as skipped.
+ */
+const crashed = (run: Run, path: string): void => {
+  const stats = run.stats;
+  stats.files = stats.files + 1;
+  stats.skipped = stats.skipped + 1;
+  stats.crashed = stats.crashed + 1;
+  const src = readFileBytesSync(path);
+  if (src !== null) {
+    stats.bytes = stats.bytes + toI64(src.length);
+    if (run.cli.mode === MODE_STDOUT) {
+      writeBytes(src, 0, toI32(src.length));
+    }
+  }
+  console.error(`nishfmt: skipped ${path} (formatter crashed)`);
 };
 
 export const main = (): i32 => {
@@ -596,67 +869,14 @@ export const main = (): i32 => {
   if (cli.mode === MODE_STDOUT || files.length < 64) {
     jobs = 1;
   }
-  // One worker still runs as a child when there are many files, so that it
-  // gets glibc's trimming off (withMallocTunables); a run in this process
-  // would fault its freed per-file regions back in for every file.
-  const inProcess = cli.mode === MODE_STDOUT || files.length < 64 || getenv("GLIBC_TUNABLES") !== null;
-  if (jobs === 1 && inProcess) {
-    const eng = engineFor(cli);
-    formatFiles(files, 0, toI32(files.length), cli, stats, eng);
-    if (getenv("FFPROF") !== null) {
-      console.error(
-        `searches ${eng.cpp.f.ind.stSearches} nodes ${eng.cpp.f.ind.stNodes} pops ${eng.cpp.f.ind.stPops} depth ${eng.cpp.f.ind.stDepth} listMiss ${eng.cpp.f.ind.stListMiss} listHit ${eng.cpp.f.ind.stListHit}`,
-      );
-      console.error(
-        `lex ${ms(stats.prof[0])} parse ${ms(stats.prof[1])} classify ${ms(stats.prof[2])} layout ${ms(stats.prof[3])} write ${ms(stats.prof[4])} run-total ${ms(stats.prof[5])} ms`,
-      );
-    }
-  } else {
-    const self = realpathSync("/proc/self/exe") ?? process.argv[0];
-    const tmp = getenv("TMPDIR") ?? "/tmp";
-    const tag = `${tmp}/nishfmt-${wallClockNanos()}`;
-    const pids: i32[] = [];
-    const listPath = `${tag}.list`;
-    writeFileSync(listPath, files.join("\n"));
-    for (let k = 0; k < jobs; k++) {
-      const argv: string[] = [
-        self,
-        "--worker",
-        listPath,
-        `${tag}-${k}.stats`,
-        "--width",
-        `${cli.width}`,
-        "--indent",
-        `${cli.indent}`,
-        "-j",
-        `${jobs}`,
-      ];
-      if (cli.mode === MODE_WRITE) {
-        argv.push("-i");
-      } else {
-        argv.push("--check");
-      }
-      if (cli.quiet) {
-        argv.push("-q");
-      }
-      pids.push(spawn(withMallocTunables(argv)));
-    }
-    for (let k = 0; k < jobs; k++) {
-      if (pids[k] > 0) {
-        waitPid(pids[k], 0);
-      }
-      parseStats(`${tag}-${k}.stats`, stats);
-      unlinkSync(`${tag}-${k}.stats`);
-    }
-    let at = 0;
-    let c = 0;
-    while (at < toI32(files.length)) {
-      unlinkSync(`${listPath}.c${c}`);
-      at = at + chunkSize(toI32(files.length) - at, jobs);
-      c++;
-    }
-    unlinkSync(listPath);
-  }
+  // Files are formatted in worker processes, even one file, so that a
+  // formatter that panics takes down only its worker (runRound). Many files
+  // run with glibc's heap trimming off (withMallocTunables).
+  const self = realpathSync("/proc/self/exe") ?? process.argv[0];
+  const tmp = getenv("TMPDIR") ?? "/tmp";
+  const run = new Run(cli, stats, self, `${tmp}/nishfmt-${wallClockNanos()}`);
+  run.tunables = files.length >= 64;
+  runRound(run, files, jobs);
   if (getenv("FFPROF") !== null) {
     console.error(`walk ${(tWalk - t0) / toI64(1000000)} ms, format ${(monotonicNanos() - tWalk) / toI64(1000000)} ms`);
   }
@@ -666,8 +886,9 @@ export const main = (): i32 => {
     const mbTenths = (kb * 10) / 1024;
     const rate = ms > 0 ? (kb * 1000) / 1024 / ms : 0;
     const verb = cli.mode === MODE_WRITE ? "reformatted" : "would reformat";
+    const crash = stats.crashed > 0 ? ` (${stats.crashed} crashed)` : "";
     console.error(
-      `nishfmt: ${stats.files} files, ${verb} ${stats.changed}, skipped ${stats.skipped}; ${mbTenths / 10}.${mbTenths % 10} MB in ${ms} ms (${rate} MB/s, ${jobs} workers)`,
+      `nishfmt: ${stats.files} files, ${verb} ${stats.changed}, skipped ${stats.skipped}${crash}; ${mbTenths / 10}.${mbTenths % 10} MB in ${ms} ms (${rate} MB/s, ${jobs} workers)`,
     );
   }
   if (cli.mode === MODE_CHECK && stats.changed > 0) {

@@ -294,7 +294,9 @@ export const swRuleSpaceInsideComments = (f: SwFormatter): void => {
     if (s.length === 0) {
       continue;
     }
-    swUniCheckPrefix(s, 5);
+    // SwiftFormat reads the first two Characters and hasPrefix("==="): only the Character
+    // boundaries before bytes 1-3 decide, so a mark at byte 4 (`1` FE0F 20E3 in "/ `1...") is safe.
+    swUniCheckPrefix(s, 4);
     const c = s.charCodeAt(0);
     if (c === 47 || c === 33 || c === 58) {
       if (s.length > 1) {
@@ -312,7 +314,8 @@ export const swRuleSpaceInsideComments = (f: SwFormatter): void => {
       continue;
     }
     const s = f.s(i0 + 1);
-    swUniCheckPrefix(s, 5);
+    // As above: the first two Characters and the prefixes "---", "@", "**" and "*/".
+    swUniCheckPrefix(s, 4);
     if (s.length > 3) {
       // hasSuffix("---") / hasSuffix("@") work on Characters too.
       swUniCheckPrefix(s.substring(toI32(s.length) - 4), 4);

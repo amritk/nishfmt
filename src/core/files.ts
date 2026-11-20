@@ -77,12 +77,13 @@ export const walk = (dir: string, out: string[], parent: Ignore, langOf: (name: 
       continue;
     }
     const p = `${dir}/${name}`;
+    // A source name is pushed without a stat: formatFiles walks it when it
+    // turns out to be a directory. Any other name may be a directory, whatever
+    // its extension (kotest has a package directory `io.kotest.assertions.json`).
     if (langOf(name) > 0) {
       out.push(p);
-    } else if (name.indexOf(".") < 0 || !name.endsWith(".json")) {
-      if (isDirectorySync(p)) {
-        walk(p, out, ig, langOf);
-      }
+    } else if (isDirectorySync(p)) {
+      walk(p, out, ig, langOf);
     }
   }
 };

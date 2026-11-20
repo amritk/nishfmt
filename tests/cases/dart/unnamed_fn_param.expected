@@ -1,0 +1,14 @@
+// `void Function(...)` with no name after it is a function-typed parameter
+// named `Function` (flutter's ui_test.dart).
+external void encodeImage(
+  Image i,
+  int format,
+  void Function(Uint8List result, String? error),
+);
+void f(int Function(int a)) {}
+void g([void Function<T>(T a)]) {}
+
+class C {
+  C({required void Function(int a)});
+  void m(Function(int a)) {}
+}

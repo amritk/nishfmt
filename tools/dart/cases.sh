@@ -4,7 +4,8 @@
 # With --regen, writes each NAME.expected from `dart format < NAME.dart`
 # (dart is $DART, else dart on PATH: Dart SDK 3.14.1).
 # Then checks that the binary formats NAME.dart to NAME.expected and leaves
-# NAME.expected unchanged.
+# NAME.expected unchanged. A skip_NAME.dart has no NAME.expected: dart format
+# rejects it, and the binary must leave it alone.
 #
 # Each pkg-<name>/ directory is a project: it is copied to a scratch
 # directory and every NAME.dart in it is formatted there by a relative path,
@@ -20,6 +21,17 @@ tmp=$(mktemp)
 fail=0
 for f in "$dir"/*.dart; do
   n=${f%.dart}
+  # skip_NAME.dart: dart format rejects it, and the binary must leave it
+  # alone (exit 1).
+  case $(basename "$n") in skip_*)
+    if [ "$2" = "--regen" ] && "$DART" format < "$f" > /dev/null 2>&1; then
+      echo "dart format did not reject: $f"; fail=1
+    fi
+    "$bin" "$f" > /dev/null 2>&1; st=$?
+    if [ "$st" -eq 1 ]; then echo "PASS $(basename "$n") (skipped)"; else
+      echo "FAIL $(basename "$n"): exit $st, not skipped"; fail=1; fi
+    continue ;;
+  esac
   if [ "$2" = "--regen" ]; then
     "$DART" format < "$f" > "$n.expected" || { echo "dart format failed: $f"; fail=1; }
   fi

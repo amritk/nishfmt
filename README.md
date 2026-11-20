@@ -34,9 +34,15 @@ pinned to one core:
 | Ruby | `rubocop -a` 1.92.3, default config, `TargetRubyVersion: 3.3` | 100% of 1,999 | 303.9 s / 289.6 s | **4.00 s / 12.7 s** |
 
 - **Identical** is the share of the corpus files the reference tool accepts
-  that nishfmt formats byte for byte as it does; the exact counts are in
-  [Benchmarks](docs/benchmarks.md#corpus-results). Times cover the whole
-  corpus directory, including the few files the reference rejects.
+  that nishfmt formats byte for byte as it does; the exact counts, and those
+  on a second corpus of other repositories, are in
+  [Benchmarks](docs/benchmarks.md#corpus-results). For C++ the reference is
+  one `clang-format -i` run, which is not always stable: against
+  clang-format's settled output (its own output rerun until it stops
+  changing) nishfmt matches 10,319 of the 10,341 files that settle
+  ([Benchmarks](docs/benchmarks.md#c-one-run-and-the-settled-output)).
+  Times cover the whole corpus directory, including the few files the
+  reference rejects.
 - One core is `taskset -c 0`, with `-j 1` for nishfmt. nishfmt's times are
   the best of three. The C++ and Ruby rows were measured together on an
   otherwise idle machine, the reference tools one run each; the Java row
@@ -189,8 +195,12 @@ A single file with no mode prints the result to stdout.
   -v, --version   print the version
 
 A file nishfmt cannot format exactly as the reference tool would (one that
-does not parse, say) is left untouched and counted as skipped. In C++, a
-`// nishfmt off` ... `// nishfmt on` region is left as written.
+does not parse, say, or one its formatter crashes on) is left untouched and
+counted as skipped. In C++, a `// nishfmt off` ... `// nishfmt on` region is
+left as written.
+
+Exit status: 0; 1 with --check when a file would change; 2 for a bad command
+line. A skipped file does not change it.
 ```
 
 Directories are walked recursively, skipping hidden entries and honouring
@@ -199,6 +209,13 @@ basic `.gitignore` patterns. Each run ends with a summary line:
 ```text
 nishfmt: 30194 files, reformatted 30163, skipped 0; 108.8 MB in 2040 ms (53 MB/s, 4 workers)
 ```
+
+A file whose formatter crashes (a nishfmt bug: please report it) takes down
+only the worker process formatting it. The rest of the run goes on, the file
+is left untouched with `nishfmt: skipped <path> (formatter crashed)` on
+stderr, even under `-q`, and the summary counts it among the skipped:
+`skipped 3 (1 crashed)`. Like any skipped file, it does not change the exit
+status, so one file nishfmt cannot handle never fails a run.
 
 ## Documentation
 

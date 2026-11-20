@@ -1,0 +1,7 @@
+/// Before parsing, `1️⃣` and `2️⃣` are removed.
+///
+/// The subtree matched in `1️⃣` will start at the first node after
+/// `1️⃣` that matches the root type.
+func foo() {
+    let x = 1
+}

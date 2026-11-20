@@ -46,8 +46,9 @@ ported parts give the same output in all three versions, and one credit,
 
 ## Corpus
 
-The corpus is the kt repositories of `bench/corpus/repos.txt`, 9604 files,
-of which the reference rejects 2 (with 0.64 and with 0.65).
+The corpus is the kt repositories of the first corpus,
+`bench/corpus/repos.txt`, 9604 files, of which the reference rejects 2 (with
+0.64 and with 0.65).
 
 | | ktfmt 0.64 reference | ktfmt 0.65 reference |
 | --- | ---: | ---: |
@@ -141,9 +142,9 @@ its last entry is a redundant semicolon in both styles, so `A, B,;` becomes
 
 ### Corpus
 
-The kt repositories of `bench/corpus/repos.txt` again, the reference built
-by `mk.sh kt` with `--kotlinlang-style`: 9604 files, of which the
-reference rejects 2.
+The kt repositories of the first corpus, `bench/corpus/repos.txt`, again,
+the reference built by `mk.sh kt` with `--kotlinlang-style`: 9604 files, of
+which the reference rejects 2.
 
 | | ktfmt 0.65, kotlinlang reference |
 | --- | ---: |
