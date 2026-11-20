@@ -99,12 +99,20 @@ combining scalar would move a Character boundary (todos, spaceInsideComments, do
 spaceInsideComments checks only the Character boundaries before bytes 1-3 of a comment body
 (`swUniCheckPrefix(s, 4)`), the most its first / second Character and `hasPrefix("===")`,
 `("---")`, `("**")`, `("*/")` can read. Checking byte 4 as well skipped swift-syntax's
-`Syntax+Assertions.swift` on ``/// `1️⃣` that ...``: keycap emoji are digit, U+FE0F, U+20E3,
-both marks Grapheme_Cluster_Break=Extend (GB9), one Character in every Unicode version, but
-the boundary after `1` is never read there. Cases: `keycap_comment` and
-`keycap_block_comment` fail on the base binary (skipped). Guard: `skip_comment_combining_prefix`
-(`//===` U+0301, where `hasPrefix("===")` is false Character-wise) passes on the base binary
-and fails with `swUniCheckPrefix(s, 3)`, which formats it byte-wise.
+`Syntax+Assertions.swift` on ``/// `1️⃣` that ...``, where U+FE0F sits at byte 4 of the body.
+Keycap emoji are digit, U+FE0F, U+20E3; both marks are Grapheme_Cluster_Break=Extend in the
+port's Unicode 15.0 table, so `swGraphemeCount` counts the sequence as one Character, and
+`oracle_graphemes.py` checked each mark alone in `"aXa"`. The whole sequence has not been
+run through SwiftFormat, but spaceInsideComments never reads the boundary after the digit.
+Regression cases `keycap_comment` and `keycap_block_comment` are pending SwiftFormat output.
+Guards, all skipped by the base and current binaries:
+
+- `skip_comment_combining_prefix` (`//===` U+0301, where `hasPrefix("===")` is false
+  Character-wise): fails with `swUniCheckPrefix(s, 3)` in the `//` loop.
+- `skip_block_comment_combining_dashes` (`/*---` U+0301, `hasPrefix("---")` false
+  Character-wise): fails with `swUniCheckPrefix(s, 3)` in the `/*` loop.
+- `skip_block_comment_combining_space` (`/*! ` U+0301, whose second Character is not a
+  space): fails with `swUniCheckPrefix(s, 2)` in the `/*` loop.
 
 ## Known differences
 
