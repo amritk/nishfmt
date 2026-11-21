@@ -71,6 +71,15 @@ count. **CI** (`.github/workflows/ci.yml`) builds, lints, runs the
 regression cases and smoke-runs the binary on every push; it cannot run the
 corpus gates, which need the reference tools.
 
+**A cloud session starts without the reference tools.** Install the versions
+[docs/benchmarks.md](docs/benchmarks.md) names ("Reference tools") outside
+the checkout before running a gate: `pip install clang-format==23.1.5`,
+`rustup toolchain install 1.99.1 --component rustfmt`, the Dart SDK 3.14.1
+zip from storage.googleapis.com/dart-archive, SwiftFormat 0.64.7's
+`swiftformat_linux.zip` from its GitHub release, `gem install rubocop -v
+1.92.3`. A PR names the base binary it compared against by the main SHA it
+was built from.
+
 **Read a check's exit status, never its piped tail.** `npm run lint | tail`
 reports success when lint fails. Run it bare, or check `$?` / `PIPESTATUS`.
 
@@ -94,6 +103,10 @@ stands in for the fix's own failing case.
 `.expected`.** `tests/run.sh` requires the "skipped" message, an unchanged
 file and a clean `--check`, so the case fails on a binary that formats the
 file. Never pin a skip with a `.expected` equal to the input.
+
+**The worker-crash cases in `tests/run.sh` need an input the release binary
+panics on** (see the comment above `crash_src`). A change that fixes that
+panic swaps the trigger for another panicking input in the same PR.
 
 **Skip what the reference rejects.** When a port makes a parser accept a new
 form (a new syntax, a top-level member, a module import), port the reference
