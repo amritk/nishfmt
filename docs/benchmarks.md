@@ -56,7 +56,7 @@ bash bench/corpus/mk.sh java
 WORK=bench/work/out2 bash bench/corpus/cmp.sh dist/nishfmt java
 ```
 
-`mk.sh rb` runs RuboCop under `LANG=C.UTF-8`: under US-ASCII, Style/WordArray
+`mk.sh rb` runs RuboCop under `LC_ALL=C.UTF-8`: under US-ASCII, Style/WordArray
 writes the non-ASCII words of a `%w[]` array as escapes.
 
 The harder corpora are built from a language's `raw/`:
@@ -98,26 +98,24 @@ settle ([below](#c-one-run-and-the-settled-output)).
 
 The 36 C++ files left are described in [C++](cpp.md#results-by-repository).
 
-On the second corpus, `repos2.txt`, measured on 2026-11-20 at main 42a489f,
-except C++, measured again on 2026-11-20 after the C++ long-tail fixes (C++
-against one run; against the settled output, 13825 of the 13901 files that
-settle):
+On the second corpus, `repos2.txt`, every language measured on 2026-11-20
+at main 0d672fc (C++ against one run; against the settled output, 13825 of
+the 13901 files that settle):
 
 | Corpus | Files | Identical |
 | --- | ---: | ---: |
 | C++ | 13902 | 13824 |
 | Java | 11914 | 11914 |
-| Kotlin | 6219 | 6199 |
+| Kotlin | 6219 | 6219 |
 | C# | 18673 | 18673 |
-| Dart, tall style | 10675 | 10672 |
-| Swift | 2140 | 2139 |
-| Rust | 3606 | 3579 |
+| Dart, tall style | 10675 | 10675 |
+| Swift | 2140 | 2140 |
+| Rust | 3606 | 3606 |
 | Ruby | 2000 | 2000 |
 
 The README's table stays on the first corpus; the second is a check that
-the ports hold on code they were not developed against. Its gaps: Kotlin's
-20 are kotest's JSON-assertion tests; Rust's 27 are rust-analyzer's parser
-test data; Swift's one is in swift-syntax, Dart's three in flutter.
+the ports hold on code they were not developed against. Only C++ has files
+left, described in [C++](cpp.md#results-by-repository).
 
 ### C++: one run and the settled output
 
