@@ -63,6 +63,7 @@ import {
   KW_IF,
   KW_INLINE,
   KW_NEW,
+  KW_MS,
   KW_NOEXCEPT,
   KW_OPERATOR,
   KW_PRIVATE,
@@ -186,6 +187,7 @@ export class Classifier {
   d: Doc;
   first: i32 = -1;
   line: i32 = -1;
+  subObjC: i32 = -1; // a subscript's `[` a `:` made an Objective-C message (subscriptColon)
   // Per-depth state.
   open: i32[]; // the opening token of each level (-1 at the top)
   expr: i32[]; // 1 when the level holds an expression
@@ -287,6 +289,23 @@ export class Classifier {
     if (this.d.final[t] === 0) {
       this.d.type[t] = tt;
     }
+  }
+
+  /** Whether `(` token `o` is an if's: `if (`, or `if constexpr (` / `if X (` (consumeToken's kw_if). */
+  isIfParen(o: i32): boolean {
+    const p = this.prev(o);
+    if (p < 0) {
+      return false;
+    }
+    const pk = this.k(p);
+    if (pk === KW_IF) {
+      return this.d.lType[this.line] !== LT_PREPROCESSOR;
+    }
+    if (pk !== KW_CONSTEXPR && pk !== K_IDENT) {
+      return false;
+    }
+    const pp = this.prev(p);
+    return pp >= 0 && this.k(pp) === KW_IF && this.d.lType[this.line] !== LT_PREPROCESSOR;
   }
 
   prev(t: i32): i32 {
@@ -1132,10 +1151,11 @@ export class Classifier {
         case P_LPAREN:
         case P_LSQUARE:
         case P_LBRACE: {
+          this.subObjC = -1;
           if (k === P_LSQUARE && d.type[t] !== TT_LAMBDA_LSQUARE) {
             const n = d.nxt[t];
             const p = this.prev(t);
-            if (n >= 0 && this.k(n) === P_LSQUARE && (p < 0 || this.k(p) !== P_LSQUARE)) {
+            if (this.isCppAttribute(t)) {
               this.set(t, TT_ATTRIBUTE_SQUARE);
               this.set(n, TT_ATTRIBUTE_SQUARE);
             } else if (p >= 0 && this.ty(p) === TT_ATTRIBUTE_SQUARE && this.k(p) === P_LSQUARE) {
@@ -1147,6 +1167,7 @@ export class Classifier {
               (this.k(p) === P_LBRACE || this.k(p) === P_COMMA)
             ) {
               this.set(t, TT_DESIGNATED_INITIALIZER_LSQUARE);
+              this.subscriptColon(t);
             } else if (
               p >= 0 &&
               (this.k(p) === KW_AUTO ||
@@ -1192,6 +1213,7 @@ export class Classifier {
               // message expression: no subscript.
             } else {
               this.set(t, TT_ARRAY_SUBSCRIPT_LSQUARE);
+              this.subscriptColon(t);
             }
           }
           if (k === P_LPAREN) {
@@ -1219,7 +1241,9 @@ export class Classifier {
             this.expr[nd] = 1;
           }
           this.asg[nd] = this.expr[nd];
-          this.bindAt[nd] = this.bindAt[dep] + (k === P_LSQUARE && d.type[t] === TT_ARRAY_SUBSCRIPT_LSQUARE ? 10 : 1);
+          this.bindAt[nd] =
+            this.bindAt[dep] +
+            (k === P_LSQUARE && (d.type[t] === TT_ARRAY_SUBSCRIPT_LSQUARE || this.subObjC === t) ? 10 : 1);
           break;
         }
         case P_RPAREN:
@@ -1469,6 +1493,20 @@ export class Classifier {
           // clang-format's modifyContext: what follows a `;` is an
           // expression (a for loop's condition, an if's after its initializer).
           this.expr[dep] = 1;
+          if (dep > 0 && this.isIfParen(this.open[dep])) {
+            // parseParens(IsIf): an if's initializer is a declaration; every
+            // `*`, `&` and `&&` before its first `=`, `(` or `{` is a pointer.
+            for (let q = d.nxt[this.open[dep]]; q >= 0 && q !== t; q = d.nxt[q]) {
+              const qk = this.k(q);
+              if (qk === P_EQUAL || qk === P_LPAREN || qk === P_LBRACE) {
+                break;
+              }
+              if (qk === P_STAR || qk === P_AMP || qk === P_AMPAMP) {
+                d.type[q] = TT_POINTER_OR_REFERENCE;
+                d.final[q] = 1;
+              }
+            }
+          }
           break;
         case KW_RETURN:
         case KW_THROW:
@@ -2013,7 +2051,23 @@ export class Classifier {
    */
   messageColon(t: i32): boolean {
     const d = this.d;
-    const r = d.nxt[t];
+    let r = d.nxt[t];
+    // (A bracketed receiver, `[[a b] c:d]`, ends at its closer.)
+    if (r >= 0 && (this.k(r) === P_LSQUARE || this.k(r) === P_LPAREN)) {
+      let dd = 0;
+      for (let q = r; q >= 0; q = d.nxt[q]) {
+        const k = this.k(q);
+        if (k === P_LPAREN || k === P_LSQUARE || k === P_LBRACE) {
+          dd++;
+        } else if (k === P_RPAREN || k === P_RSQUARE || k === P_RBRACE) {
+          dd--;
+          if (dd === 0) {
+            r = q;
+            break;
+          }
+        }
+      }
+    }
     const s = r >= 0 ? d.nxt[r] : -1;
     if (r < 0 || s < 0) {
       return false;
@@ -2031,10 +2085,108 @@ export class Classifier {
       } else if (depth === 0 && (k === P_COMMA || k === P_QUESTION || k === P_SEMI)) {
         return false;
       } else if (depth === 0 && k === P_COLON) {
-        return d.prv[q] !== r && isWordKind(this.k(d.prv[q]));
+        // (Right after the receiver too: `[a:b]`, the receiver a selector part.)
+        return isWordKind(this.k(d.prv[q]));
       }
     }
     return false;
+  }
+
+  /**
+   * clang-format's isCppAttribute: whether `[` at `t` opens `[[ ... ]]`, an
+   * attribute, rather than an Objective-C message or array literal (`[[a
+   * b:c] d:e]`): a word after `[[`, then no `:`, no two words in a row and
+   * no word after `)` before the closing `]]`.
+   */
+  isCppAttribute(t: i32): boolean {
+    const d = this.d;
+    const n = d.nxt[t];
+    if (n < 0 || this.k(n) !== P_LSQUARE) {
+      return false;
+    }
+    const p = d.prv[t];
+    if (p >= 0 && (this.k(p) === P_AT || this.k(p) === P_LSQUARE)) {
+      return false;
+    }
+    let a = d.nxt[n];
+    if (a < 0) {
+      return false;
+    }
+    const a1 = d.nxt[a];
+    if (this.k(a) === KW_USING && a1 >= 0 && this.k(a1) === K_IDENT) {
+      const a2 = d.nxt[a1];
+      if (a2 >= 0 && this.k(a2) === P_COLON) {
+        return true;
+      }
+    }
+    if (this.k(a) !== K_IDENT) {
+      return false;
+    }
+    while (a >= 0) {
+      const ak = this.k(a);
+      const an = d.nxt[a];
+      const ank = an >= 0 ? this.k(an) : -1;
+      if (ak === P_RSQUARE && ank === P_RSQUARE) {
+        return true;
+      }
+      if (ak === P_COLON || ((ak === K_IDENT || ak === P_RPAREN) && ank === K_IDENT)) {
+        return false;
+      }
+      if (ak === P_ELLIPSIS) {
+        return true;
+      }
+      a = an;
+    }
+    return false;
+  }
+
+  /**
+   * clang-format's parseSquare: a `:` at the level of a subscript's or a
+   * designated initializer's `[` (not a conditional's) makes it an
+   * Objective-C message, `x [a.b:c]`. Followed by `(`, clang-format makes
+   * it unknown again with its colons still a message's: the file is skipped.
+   */
+  subscriptColon(t: i32): void {
+    const d = this.d;
+    if (d.lType[this.line] === LT_PREPROCESSOR && d.ppKind[this.first] === PP_PRAGMA) {
+      return;
+    }
+    let depth = 0;
+    let ques = 0;
+    let colon = false;
+    for (let q = d.nxt[t]; q >= 0; q = d.nxt[q]) {
+      const k = this.k(q);
+      if (k === P_LPAREN || k === P_LSQUARE || k === P_LBRACE) {
+        depth++;
+      } else if (k === P_RPAREN || k === P_RSQUARE || k === P_RBRACE) {
+        if (depth > 0) {
+          depth--;
+          continue;
+        }
+        if (!colon || k !== P_RSQUARE) {
+          return;
+        }
+        const after = this.next(q);
+        if (after >= 0 && this.k(after) === P_LPAREN) {
+          d.failed = true;
+          return;
+        }
+        // (Its binding stays a subscript's: clang-format chose it first.)
+        if (d.type[t] === TT_ARRAY_SUBSCRIPT_LSQUARE) {
+          this.subObjC = t;
+        }
+        d.type[t] = TT_OBJC_METHOD_EXPR;
+        return;
+      } else if (depth === 0 && k === P_QUESTION) {
+        ques++;
+      } else if (depth === 0 && k === P_COLON) {
+        if (ques > 0) {
+          ques--;
+        } else {
+          colon = true;
+        }
+      }
+    }
   }
 
   /** Whether the brackets from `[` at `t` hold a `,` at their own level before any `:`. */
@@ -3432,6 +3584,10 @@ const CLANG_RESERVED_KEYWORDS: string =
  * nullability qualifiers, `__ptr32`, `__ptr64` and `__funcref`.
  */
 export const isPointerQualifierWord = (d: Doc, t: i32): boolean => {
+  // (`__ptr32` and `__ptr64` lex as Microsoft keywords, KW_MS.)
+  if (d.kind[t] === KW_MS) {
+    return d.is(t, "__ptr32") || d.is(t, "__ptr64");
+  }
   if (d.kind[t] !== K_IDENT) {
     return false;
   }

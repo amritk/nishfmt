@@ -1507,8 +1507,10 @@ export class Parser {
       // reads them with the `catch`, flushing them as lines of their own,
       // which ends the `}` line, and goes on with the chain.
       if (this.cur() === K_COMMENT && this.d.kind[this.nextNonComment(this.pos)] === KW_CATCH) {
-        // (A comment on the `}` line stays on it, and so does the `catch`.)
-        while (this.cur() === K_COMMENT && this.d.nl[this.pos] === 0) {
+        // (A comment on the `}` line stays on it, and so does the `catch`;
+        // so does one after an escaped newline, `\` in a #define: clang's
+        // isOnNewLine counts only an unescaped one.)
+        while (this.cur() === K_COMMENT && (this.d.nl[this.pos] === 0 || this.d.unesc[this.pos] === 0)) {
           this.push();
         }
         if (this.cur() === K_COMMENT) {

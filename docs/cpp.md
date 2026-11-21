@@ -60,14 +60,14 @@ kind of repositories, each capped at 250 KB, the reference one clang-format
 output (`ref-settled/`) on 10319 of the 10341 files that settle. Of the 36 left, 27 are files on which a
 second clang-format run changes its own output; nishfmt gives the settled
 output on 24 of them. Its times are in the [README](../README.md#languages-and-speed).
-The second corpus (`bench/corpus/repos2.txt`, 13902 files) matches on 13827
-against one run, and on 13829 of the 13901 files that settle against the
+The second corpus (`bench/corpus/repos2.txt`, 13902 files) matches on 13829
+against one run, and on 13830 of the 13901 files that settle against the
 settled output; both counts and how they are built are in
 [Benchmarks](benchmarks.md#c-one-run-and-the-settled-output).
 
-On the second corpus, 31 of the 75 files that differ from one run are files
+On the second corpus, 30 of the 73 files that differ from one run are files
 a rerun of clang-format changes. nishfmt gives the second run's output on 24.
-The other 7 match neither clang-format's first run nor its second, and are
+The other 6 match neither clang-format's first run nor its second, and are
 real gaps:
 
 | File (`repos2.txt`) | What differs |
@@ -78,9 +78,8 @@ real gaps:
 | brotli `common/brotli_platform.h` (in duckdb) | a run of macro invocations without semicolons, and a function under `#if`; never settles |
 | jemalloc `internal/rb.h` (in duckdb) | assembler-like macro bodies: the red-black tree generator macros, `*` spacing in declarations |
 | eigen `Eigen/src/Core/ProductEvaluators.h` (in taskflow) | continuation alignment in a template argument, and the space after `//` in commented-out code |
-| eigen `bench/btl/data/gnuplot_common_settings.hh` (in taskflow) | gnuplot settings, not C++, parsed as C++: `[*:*]` spacing |
 
-The 44 files that differ on the second corpus and that clang-format leaves
+The 43 files that differ on the second corpus and that clang-format leaves
 as they are on a rerun are the long tail, mostly one construct each:
 
 | What differs | Files (`repos2.txt`) |
@@ -90,17 +89,18 @@ as they are on a rerun are the long tail, mostly one construct each:
 | trailing comment alignment and reflow (a reflowed section inside an aligned run, an enum's comments, a comment before `// clang-format off`) | eigen `doc/tutorial.cpp`, `util/XprHelper.h`, `util/Constants.h`, `test/main.h`; flatbuffers `src/idl_gen_text.cpp`; tbb `rml/include/rml_base.h` |
 | string literals: a tab inside a string (clang-format's rerun emulation), emoji widths when splitting, macro-adjacent literals | duckdb `holistic_functions.hpp`, `string_functions.hpp`; utf8proc `utf8proc.cpp` (in duckdb); bitcoin `test/cluster_linearize_tests.cpp` |
 | line breaking: a conditional's operand column, designated initializers, `<<` chains, lambdas among arguments | bitcoin `test/fuzz/package_eval.cpp`, `test/checkqueue_tests.cpp`; eigen `Tutorial_commainit_02.cpp`; flatbuffers `src/idl_gen_ts.cpp`; grpc `xds_server_config_fetcher.cc`; tbb `graph/cholesky/cholesky.cpp` |
-| other: C++/CLI `[assembly: ...]` attributes, `__asm` statements | tbb `game_of_life/src/AssemblyInfo.cpp`, `tbb/scheduler.cpp` (in taskflow) |
+| other: `__asm` statements | tbb `tbb/scheduler.cpp` (in taskflow) |
 
 Some forms next to the fixed ones still differ, on both corpora's sources
 and on main alike:
 
-- the `*` of an if-initializer that is not `const`: `if (T *p{q}; p)`,
-  `if (a *b; c)` (clang-format: `T *p`, `a *b`);
-- casts to a type ending in the new qualifier words when a sign, `(` or `+`
-  follows: `(T *__restrict)-1`, `(T *__ptr64)(*q)`, `(T *__ptr64) + b`;
-- a comment before `catch` on a `#define` continuation line (`} /* c */`);
-- Objective-C nested messages `[[a b:c] d:e]`, `[a: b]`, and `x[a.b : c]`;
+- a subscript holding a `:` and followed by `(`, `x[a:b](c)`: clang-format
+  makes the bracket a message and then unknown again, keeping its colons a
+  message's; nishfmt skips the file;
+- a `switch` initializer's empty body, `switch (T * p{q}; *p) {}`, which
+  clang-format keeps on one line;
+- a stray `// clang-format on` keeps the blank lines before it
+  (computeNewlines), where nishfmt collapses them;
 - `}  /* blk */` then `// c1` under a namespace: `// c1` goes to column 0;
 - a `#pragma mark` line past the limit with a `.` in it: its `#pragma   mark`
   spacing is normalized, where clang-format, finding no layout, keeps it.
