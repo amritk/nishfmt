@@ -31,6 +31,8 @@ read `.nish/docs/AI.md` (the language as rules, traps first), then
   `src/java/layout/`.
 - `tests/cases/*.cpp` and `tests/cases/<lang>/<name>.<ext>` are regression
   cases, each with `<name>.expected`, the reference tool's output.
+  `tests/cases/worker/<name>/` holds files formatted in name order by one
+  worker, for state one file must not leave for the next.
 - `bench/corpus/` builds and checks the corpora; `tools/<lang>/` holds each
   port's generators, oracles and `NOTES.md`; `tools/dev/` the one-language
   drivers.

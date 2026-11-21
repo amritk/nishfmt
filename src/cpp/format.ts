@@ -253,6 +253,9 @@ export class Formatter {
   cfwStamp: i32[];
   cfwVal: i32[];
   fileStamp: i32 = 1;
+  // lineOfTok: the line each line-head token starts, for annotation stamp tlStamp.
+  tlHead: i32[];
+  tlStamp: i32 = 0;
   firstEmitted: boolean = false;
   acLev: i32[];
   // The file's name, for its main include: lowercased stem, and whether it is a source file.
@@ -346,6 +349,7 @@ export class Formatter {
     this.d = d;
     this.cls = new Classifier(d);
     this.ann = new Annot(d);
+    this.tlHead = new Array<i32>(0);
     this.ind = new Indenter(d, this.ann);
     this.ind.debug = getenv("FFDEBUG") !== null;
     const cap = d.ntok + 16;
@@ -461,6 +465,7 @@ export class Formatter {
 
   /** Readies the formatter for the next file of its Doc. */
   reset(): void {
+    this.ann.clear();
     this.nem = 0;
     this.npc = 0;
     this.nraw = 0;
@@ -5044,6 +5049,29 @@ export class Formatter {
     }
   }
 
+  /** The line whose token chain holds `t`, or -1. */
+  lineOfTok(t: i32): i32 {
+    const d = this.d;
+    let f = t;
+    while (d.prv[f] >= 0) {
+      f = d.prv[f];
+    }
+    if (this.tlStamp !== this.ann.stamp) {
+      this.tlStamp = this.ann.stamp;
+      if (toI32(this.tlHead.length) < d.ntok + 1) {
+        this.tlHead = new Array<i32>(d.ntok + 1);
+      }
+      this.tlHead.fill(-1);
+      for (let l = 0; l < d.nline; l++) {
+        const h = d.lFirst[l];
+        if (h >= 0 && h < d.ntok && this.tlHead[h] < 0) {
+          this.tlHead[h] = l;
+        }
+      }
+    }
+    return f < d.ntok ? this.tlHead[f] : -1;
+  }
+
   /**
    * clang-format's UnbreakableTailLength: the width of the tokens after `t`
    * on its line up to the first one a break may go before.
@@ -5051,6 +5079,13 @@ export class Formatter {
   unbreakableTail(t: i32): i32 {
     const d = this.d;
     const a = this.ann;
+    // clang-format computes every line's CanBreakBefore; here only the line
+    // breaker's lines have them, so annotate this token's line in full first
+    // (a line that fits, a directive, would otherwise show stale flags).
+    const l = this.lineOfTok(t);
+    if (l >= 0) {
+      a.annotateFull(l);
+    }
     let s = 0;
     for (let q = d.nxt[t]; q >= 0; q = d.nxt[q]) {
       if (a.canB[q] === 1 || d.kind[q] === K_COMMENT || d.kind[q] === K_STRING) {

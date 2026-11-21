@@ -267,6 +267,7 @@ export class Annot {
   lFnDecl: i32[];
   segParsed: i32[]; // per segment start: implicit parens already found
   stamp: i32 = 1;
+  used: i32 = 0; // the most token slots reset() sized since clear()
   // The expression walk.
   cur: i32 = -1;
   segEnd: i32 = -1;
@@ -331,6 +332,49 @@ export class Annot {
     this.sonStk = new Array<i32>(64); // grows with stk
   }
 
+  /**
+   * Forgets every token's annotation, as a fresh worker has it: reset()
+   * keeps what one #if pass leaves for the next, but nothing one file sets
+   * may show in the next (a reader of a line never annotated would see it).
+   */
+  clear(): void {
+    const n = this.used;
+    for (let i = 0; i < n; i++) {
+      uncheckedSet(this.nest, i, 0);
+      uncheckedSet(this.bind, i, 0);
+      uncheckedSet(this.fkHead, i, 0);
+      uncheckedSet(this.fakeR, i, 0);
+      uncheckedSet(this.sbin, i, 0);
+      uncheckedSet(this.ebin, i, 0);
+      uncheckedSet(this.opIdx, i, 0);
+      uncheckedSet(this.nextOp, i, 0);
+      uncheckedSet(this.canB, i, 0);
+      uncheckedSet(this.mustB, i, 0);
+      uncheckedSet(this.lateB, i, 0);
+      uncheckedSet(this.pen, i, 0);
+      uncheckedSet(this.tot, i, 0);
+      uncheckedSet(this.tail, i, 0);
+      uncheckedSet(this.pcnt, i, 0);
+      uncheckedSet(this.bpcnt, i, 0);
+      uncheckedSet(this.ctd, i, 0);
+      uncheckedSet(this.pmv, i, 0);
+      uncheckedSet(this.crc, i, 0);
+      uncheckedSet(this.rqc, i, 0);
+      uncheckedSet(this.role, i, 0);
+      uncheckedSet(this.joined, i, 0);
+      uncheckedSet(this.jnl, i, 0);
+      uncheckedSet(this.mf, i, 0);
+      uncheckedSet(this.nlc, i, 0);
+      uncheckedSet(this.nbb, i, 0);
+      uncheckedSet(this.cf, i, 0);
+      uncheckedSet(this.strTab, i, 0);
+      uncheckedSet(this.pnc, i, 0);
+      uncheckedSet(this.ilev, i, 0);
+      uncheckedSet(this.segParsed, i, 0);
+    }
+    this.used = 0;
+  }
+
   /** Prepares for a new file: sizes the columns and forgets every line. */
   reset(): void {
     const d = this.d;
@@ -367,6 +411,9 @@ export class Annot {
       this.pnc = new Array<i32>(n);
       this.jnl = new Array<i32>(n);
       this.segParsed = new Array<i32>(n);
+    }
+    if (n > this.used) {
+      this.used = n;
     }
     // (A line never annotated, verbatim or invalid, must not show another
     // pass's fake parentheses: the pool they point into starts over.)
