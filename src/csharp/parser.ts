@@ -145,6 +145,7 @@ import {
   K_WithKeyword,
 } from "./kinds";
 import { growI32 } from "../core/arr";
+import { fault } from "../core/fault";
 import { CsLexer, TF_HOLE_END } from "./lexer";
 import { CsTree } from "./tree";
 import { cspParameterModifiers } from "./pdecl";
@@ -243,8 +244,16 @@ export class CsParser {
   constructor(lx: CsLexer) {
     this.lx = lx;
     this.t = new CsTree(lx);
-    this.nreal = lx.nt;
-    this.stop = lx.nt - 1;
+    const nt = lx.nt;
+    this.nreal = nt;
+    // a token count, never the least i32
+    let stop = 0;
+    if (nt >= 0) {
+      stop = nt - 1;
+    } else {
+      fault();
+    }
+    this.stop = stop;
     this.convTok = new Array<i32>(64);
     this.convOld = new Array<i32>(64);
   }
@@ -252,8 +261,22 @@ export class CsParser {
   fail(msg: string): void {
     if (!this.err) {
       this.err = true;
-      const t = this.pos < this.nreal ? this.pos : this.nreal - 1;
-      this.errMsg = `${msg} at ${this.lx.start[t]}`;
+      const nreal = this.nreal;
+      let t = this.pos;
+      if (t >= nreal) {
+        if (nreal > 0) {
+          t = nreal - 1;
+        } else {
+          t = -1;
+        }
+      }
+      const start = this.lx.start;
+      if (t >= 0 && t < start.length) {
+        this.errMsg = `${msg} at ${start[t]}`;
+      } else {
+        fault();
+        this.errMsg = msg;
+      }
     }
   }
 
@@ -261,26 +284,102 @@ export class CsParser {
 
   /** The token index i ahead of the current one (the end of file when past a hole's end). */
   tokAt(i: i32): i32 {
-    const p = this.pos + i;
-    return p < this.stop ? p : this.stop;
+    // in i64, so a sum outside i32 (where pos + i overflowed) faults
+    const p = toI64(this.pos) + toI64(i);
+    const stop = this.stop;
+    if (p < toI64(stop)) {
+      if (p >= toI64(-2147483648)) {
+        return toI32(p);
+      }
+      fault();
+    } else if (p > toI64(2147483647)) {
+      fault();
+    }
+    return stop;
   }
 
   kindAt(i: i32): i32 {
-    const p = this.pos + i;
-    return p < this.stop ? this.lx.kind[p] : K_EndOfFileToken;
+    const p = toI64(this.pos) + toI64(i);
+    if (p < toI64(this.stop)) {
+      const kind = this.lx.kind;
+      const q = toI32(p);
+      if (p >= 0 && q >= 0 && q < kind.length) {
+        return kind[q];
+      }
+      fault();
+    } else if (p > toI64(2147483647)) {
+      fault();
+    }
+    return K_EndOfFileToken;
   }
 
   ckAt(i: i32): i32 {
-    const p = this.pos + i;
-    return p < this.stop ? this.lx.ck[p] : 0;
+    const p = toI64(this.pos) + toI64(i);
+    if (p < toI64(this.stop)) {
+      const ck = this.lx.ck;
+      const q = toI32(p);
+      if (p >= 0 && q >= 0 && q < ck.length) {
+        return ck[q];
+      }
+      fault();
+    } else if (p > toI64(2147483647)) {
+      fault();
+    }
+    return 0;
   }
 
   k(): i32 {
-    return this.pos < this.stop ? this.lx.kind[this.pos] : K_EndOfFileToken;
+    const pos = this.pos;
+    if (pos < this.stop) {
+      const kind = this.lx.kind;
+      if (pos >= 0 && pos < kind.length) {
+        return kind[pos];
+      }
+      fault();
+    }
+    return K_EndOfFileToken;
   }
 
   ck(): i32 {
-    return this.pos < this.stop ? this.lx.ck[this.pos] : 0;
+    const pos = this.pos;
+    if (pos < this.stop) {
+      const ck = this.lx.ck;
+      if (pos >= 0 && pos < ck.length) {
+        return ck[pos];
+      }
+      fault();
+    }
+    return 0;
+  }
+
+  /** The kind of token t. */
+  tokKind(t: i32): i32 {
+    const kind = this.lx.kind;
+    if (t >= 0 && t < kind.length) {
+      return kind[t];
+    }
+    fault();
+    return 0;
+  }
+
+  /** The contextual keyword kind of token t. */
+  tokCk(t: i32): i32 {
+    const ck = this.lx.ck;
+    if (t >= 0 && t < ck.length) {
+      return ck[t];
+    }
+    fault();
+    return 0;
+  }
+
+  /** The kind of node n. */
+  nodeKind(n: i32): i32 {
+    const kind = this.t.kind;
+    if (n >= 0 && n < kind.length) {
+      return kind[n];
+    }
+    fault();
+    return 0;
   }
 
   cur(): i32 {
@@ -288,11 +387,13 @@ export class CsParser {
   }
 
   eat(): i32 {
-    const t = this.cur();
-    if (this.pos < this.stop) {
-      this.pos = this.pos + 1;
+    const pos = this.pos;
+    const stop = this.stop;
+    if (pos < stop) {
+      this.pos = pos + 1;
+      return pos;
     }
-    return t;
+    return stop;
   }
 
   expect(kind: i32): i32 {
@@ -321,32 +422,98 @@ export class CsParser {
 
   /** ConvertToKeyword: the token becomes the keyword kind (undone on reset). */
   convert(t: i32, kind: i32): void {
-    if (this.nconv >= toI32(this.convTok.length)) {
-      this.convTok = growI32(this.convTok, this.nconv * 2);
-      this.convOld = growI32(this.convOld, this.nconv * 2);
+    const n = this.nconv;
+    let tok = this.convTok;
+    let old = this.convOld;
+    if (n >= toI32(tok.length)) {
+      // n * 2 fits: a count of tokens
+      if (n < 0 || n > 1073741823) {
+        fault();
+        return;
+      }
+      tok = growI32(tok, n * 2);
+      old = growI32(old, n * 2);
+      this.convTok = tok;
+      this.convOld = old;
     }
-    this.convTok[this.nconv] = t;
-    this.convOld[this.nconv] = this.lx.kind[t];
-    this.nconv = this.nconv + 1;
-    this.lx.kind[t] = kind;
+    const kinds = this.lx.kind;
+    if (n >= 0 && n < tok.length && n < old.length && t >= 0 && t < kinds.length) {
+      tok[n] = t;
+      old[n] = kinds[t];
+      this.nconv = n + 1;
+      kinds[t] = kind;
+    } else {
+      fault();
+    }
   }
 
   /** Whether tokens i and i+1 ahead touch (no trivia between them). */
   noTriviaBetween(i: i32): boolean {
     const a = this.tokAt(i);
     const b = this.tokAt(i + 1);
-    return this.lx.t0[a] === this.lx.t1[a] && this.lx.l0[b] === this.lx.l1[b] && this.lx.end[a] === this.lx.start[b];
+    const lx = this.lx;
+    const t0 = lx.t0;
+    const t1 = lx.t1;
+    const l0 = lx.l0;
+    const l1 = lx.l1;
+    const end = lx.end;
+    const start = lx.start;
+    // tokAt answers a token
+    if (a < 0 || a >= t0.length || a >= t1.length) {
+      fault();
+      return false;
+    }
+    if (t0[a] !== t1[a]) {
+      return false;
+    }
+    if (b < 0 || b >= l0.length || b >= l1.length) {
+      fault();
+      return false;
+    }
+    if (l0[b] !== l1[b]) {
+      return false;
+    }
+    if (a >= end.length || b >= start.length) {
+      fault();
+      return false;
+    }
+    return end[a] === start[b];
   }
 
   /** Joins tokens [cur, cur + n) into one token of `kind` (`>>`, `..`, ...). */
   eatMerged(kind: i32, n: i32): i32 {
     const lx = this.lx;
     const a = this.cur();
+    if (n < 2 || n > 3) {
+      // the merged operators are of two or three tokens
+      fault();
+      return -1;
+    }
     const b = this.tokAt(n - 1);
-    const t = lx.addToken(kind, lx.start[a], lx.end[b], lx.l0[a], lx.l1[a]);
-    lx.t0[t] = lx.t0[b];
-    lx.t1[t] = lx.t1[b];
-    this.pos = this.pos + n;
+    const start = lx.start;
+    const end = lx.end;
+    const l0 = lx.l0;
+    const l1 = lx.l1;
+    if (a < 0 || a >= start.length || a >= l0.length || a >= l1.length || b < 0 || b >= end.length) {
+      fault();
+      return -1;
+    }
+    const t = lx.addToken(kind, start[a], end[b], l0[a], l1[a]);
+    const t0 = lx.t0;
+    const t1 = lx.t1;
+    if (t < 0 || t >= t0.length || t >= t1.length || b >= t0.length || b >= t1.length) {
+      fault();
+      return -1;
+    }
+    t0[t] = t0[b];
+    t1[t] = t1[b];
+    const pos = this.pos;
+    // pos is a token index, below the array lengths
+    if (pos < 0 || pos > 1073741823) {
+      fault();
+      return t;
+    }
+    this.pos = pos + n;
     return t;
   }
 
@@ -363,10 +530,30 @@ export class CsParser {
     t.nl = m.nl;
     t.sp = m.sp;
     this.lx.nt = m.nt;
-    while (this.nconv > m.nconv) {
-      this.nconv = this.nconv - 1;
-      this.lx.kind[this.convTok[this.nconv]] = this.convOld[this.nconv];
+    const target = m.nconv;
+    const tok = this.convTok;
+    const old = this.convOld;
+    const kinds = this.lx.kind;
+    let nc = this.nconv;
+    while (nc > target) {
+      if (nc <= 0) {
+        fault();
+        break;
+      }
+      nc = nc - 1;
+      // every converted token was recorded by convert
+      if (nc < 0 || nc >= tok.length || nc >= old.length) {
+        fault();
+        break;
+      }
+      const t = tok[nc];
+      if (t < 0 || t >= kinds.length) {
+        fault();
+        break;
+      }
+      kinds[t] = old[nc];
     }
+    this.nconv = nc;
     this.err = m.err;
     this.lastScan = m.lastScan;
   }
@@ -765,6 +952,10 @@ class CsScanTA {
 const cspIsOpenName = (p: CsParser): boolean => {
   let n = 1;
   while (p.kindAt(n) === K_CommaToken) {
+    if (n >= 2147483647) {
+      fault();
+      return false;
+    }
     n++;
   }
   return p.kindAt(n) === K_GreaterThanToken;
@@ -940,18 +1131,18 @@ export const cspQualifiedName = (p: CsParser, options: i32): i32 => {
 const cspQualifiedNameRight = (p: CsParser, options: i32, left: i32, sep: i32): i32 => {
   const right = cspSimpleName(p, options);
   const m = p.sp();
-  if (p.lx.kind[sep] === K_DotToken) {
+  if (p.tokKind(sep) === K_DotToken) {
     p.push(left);
     p.push(sep);
     p.push(right);
     return p.node(K_QualifiedName, m);
   }
-  if (left < 0 || p.t.kind[left] !== K_IdentifierName) {
+  if (left < 0 || p.nodeKind(left) !== K_IdentifierName) {
     p.fail("unexpected aliased name");
     return -1;
   }
   const id = p.t.s(left, 0);
-  if (p.lx.kind[id] === K_IdentifierToken && p.lx.ck[id] === K_GlobalKeyword) {
+  if (p.tokKind(id) === K_IdentifierToken && p.tokCk(id) === K_GlobalKeyword) {
     p.convert(id, K_GlobalKeyword);
   }
   p.push(left);
@@ -1032,7 +1223,8 @@ export const cspScanType = (p: CsParser, mode: i32): i32 => {
   while (true) {
     const k = p.k();
     if (k === K_QuestionToken) {
-      const lk = p.lastScan >= 0 ? p.lx.kind[p.lastScan] : 0;
+      const ls = p.lastScan;
+      const lk = ls >= 0 ? p.tokKind(ls) : 0;
       if (lk === K_QuestionToken || lk === K_AsteriskToken) {
         break;
       }
@@ -1144,6 +1336,10 @@ const cspScanFunctionPointerType = (p: CsParser): i32 => {
   while (depth > 0 && p.k() !== K_EndOfFileToken) {
     const k = p.k();
     if (k === K_LessThanToken) {
+      if (depth >= 2147483647) {
+        fault();
+        break;
+      }
       depth++;
     } else if (k === K_GreaterThanToken) {
       depth--;
@@ -1154,13 +1350,15 @@ const cspScanFunctionPointerType = (p: CsParser): i32 => {
 };
 
 const cspPointerTypeModsFollowedByRankAndDimensionSpecifier = (p: CsParser): boolean => {
-  for (let i = 0; ; i++) {
+  for (let i = 0; i < 2147483647; i++) {
     const k = p.kindAt(i);
     if (k === K_AsteriskToken) {
       continue;
     }
     return k === K_OpenBracketToken;
   }
+  fault();
+  return false;
 };
 
 export const cspTypeOrVoid = (p: CsParser): i32 => {
@@ -1263,7 +1461,8 @@ const cspPointerTypeMods = (p: CsParser, type: i32): i32 => {
 };
 
 const cspTryEatNullableQualifierIfApplicable = (p: CsParser, typeSoFar: i32, mode: i32): i32 => {
-  if (typeSoFar >= 0 && (p.t.kind[typeSoFar] === K_NullableType || p.t.kind[typeSoFar] === K_PointerType)) {
+  const tk = typeSoFar >= 0 ? p.nodeKind(typeSoFar) : 0;
+  if (typeSoFar >= 0 && (tk === K_NullableType || tk === K_PointerType)) {
     return -1;
   }
   const m = p.mark();
@@ -1339,13 +1538,26 @@ export const cspArrayRankSpecifier = (p: CsParser): i32 => {
       p.push(-1);
       p.push(p.node(K_OmittedArraySizeExpression, om));
       p.push(p.eat());
+      // n counts the rank's tokens and sizes
+      if (n < 0 || n > 2147483645) {
+        fault();
+        break;
+      }
       n += 2;
     } else if (cspIsPossibleExpression(p)) {
       p.push(cspExpressionCore(p));
       sawSize = true;
+      if (n < 0 || n > 2147483645) {
+        fault();
+        break;
+      }
       n++;
       if (p.k() !== K_CloseBracketToken) {
         p.push(p.expect(K_CommaToken));
+        if (n < 0 || n > 2147483646) {
+          fault();
+          break;
+        }
         n++;
       }
     } else {
@@ -1378,6 +1590,10 @@ const cspTupleType = (p: CsParser): i32 => {
     while (p.k() === K_CommaToken && !p.err) {
       p.push(p.eat());
       p.push(cspTupleElement(p));
+      if (n >= 2147483647) {
+        fault();
+        break;
+      }
       n++;
     }
   }
@@ -1399,7 +1615,7 @@ const cspTupleElement = (p: CsParser): i32 => {
 const cspUnderlyingType = (p: CsParser, mode: i32, options: i32): i32 => {
   if (csIsPredefinedType(p.k())) {
     const tok = p.eat();
-    if (p.lx.kind[tok] === K_VoidKeyword && p.k() !== K_AsteriskToken) {
+    if (p.tokKind(tok) === K_VoidKeyword && p.k() !== K_AsteriskToken) {
       p.fail("void here");
     }
     const m = p.sp();
@@ -1427,7 +1643,7 @@ const cspFunctionPointerType = (p: CsParser): i32 => {
   if (p.k() === K_IdentifierToken && (p.ck() === K_ManagedKeyword || p.ck() === K_UnmanagedKeyword)) {
     const cm = p.sp();
     const kw = p.eat();
-    p.convert(kw, p.lx.ck[kw]);
+    p.convert(kw, p.tokCk(kw));
     p.push(kw);
     if (p.k() === K_OpenBracketToken) {
       const um = p.sp();

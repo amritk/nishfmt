@@ -11,6 +11,8 @@
 import { K_ElifDirectiveTrivia, K_ElseDirectiveTrivia, K_EndIfDirectiveTrivia, K_IfDirectiveTrivia } from "./kinds";
 import { CsLexer } from "./lexer";
 import { cswCultureCompare } from "./print";
+import { bytesText } from "../core/arr";
+import { fault } from "../core/fault";
 
 const BT_AND: i32 = 0;
 const BT_OR: i32 = 1;
@@ -72,8 +74,13 @@ const csbParse = (src: u8[], a: i32, b: i32): CsBoolExpr | null => {
   // tokenize
   const types: i32[] = [];
   const vals: string[] = [];
+  // a directive's condition, inside the source
+  if (a < b && (a < 0 || b > src.length)) {
+    fault();
+    return null;
+  }
   let x = a;
-  while (x < b) {
+  while (x >= 0 && x < b && x < src.length) {
     const c = toI32(src[x]);
     if (c === 32 || (c >= 9 && c <= 13)) {
       x++;
@@ -81,10 +88,10 @@ const csbParse = (src: u8[], a: i32, b: i32): CsBoolExpr | null => {
     }
     if (csbIsValueChar(c)) {
       const s = x;
-      while (x < b && csbIsValueChar(toI32(src[x]))) {
+      while (x >= 0 && x < b && x < src.length && csbIsValueChar(toI32(src[x]))) {
         x++;
       }
-      const v = String.fromBytes(src, s, x);
+      const v = bytesText(src, s, x);
       if (v === "true") {
         types.push(BT_TRUE);
       } else if (v === "false") {
@@ -112,6 +119,10 @@ const csbParse = (src: u8[], a: i32, b: i32): CsBoolExpr | null => {
       if (x + 1 >= b) {
         return null;
       }
+      if (x + 1 >= src.length) {
+        fault();
+        return null;
+      }
       if (toI32(src[x + 1]) === 61) {
         x++;
         types.push(BT_NE);
@@ -122,6 +133,10 @@ const csbParse = (src: u8[], a: i32, b: i32): CsBoolExpr | null => {
       return null;
     }
     vals.push("");
+    if (x >= 2147483647) {
+      fault();
+      return null;
+    }
     x++;
   }
   // shunting yard
@@ -131,11 +146,26 @@ const csbParse = (src: u8[], a: i32, b: i32): CsBoolExpr | null => {
   for (let i = 0; i < toI32(types.length); i++) {
     const t = types[i];
     if (t === BT_FALSE || t === BT_TRUE || t === BT_VAR) {
+      // vals has an entry per token
+      if (i >= vals.length) {
+        fault();
+        return null;
+      }
+      const v = vals[i];
       outT.push(t);
-      outV.push(vals[i]);
+      outV.push(v);
     } else if (t === BT_AND || t === BT_OR || t === BT_EQ || t === BT_NE) {
-      while (toI32(opT.length) > 0 && opT[toI32(opT.length) - 1] !== BT_LPAREN) {
-        outT.push(opT.pop());
+      while (true) {
+        const on = toI32(opT.length);
+        if (on <= 0 || opT[on - 1] === BT_LPAREN) {
+          break;
+        }
+        if (opT.length < 1) {
+          fault();
+          return null;
+        }
+        const top = opT.pop();
+        outT.push(top);
         outV.push("");
       }
       opT.push(t);
@@ -143,20 +173,32 @@ const csbParse = (src: u8[], a: i32, b: i32): CsBoolExpr | null => {
       opT.push(t);
     } else {
       while (true) {
-        if (toI32(opT.length) === 0) {
+        const on = toI32(opT.length);
+        if (on <= 0) {
           return null;
         }
-        if (opT[toI32(opT.length) - 1] === BT_LPAREN) {
+        if (opT[on - 1] === BT_LPAREN) {
           break;
         }
-        outT.push(opT.pop());
+        if (opT.length < 1) {
+          fault();
+          return null;
+        }
+        const top = opT.pop();
+        outT.push(top);
         outV.push("");
       }
-      opT.pop();
+      if (opT.length > 0) {
+        opT.pop();
+      } else {
+        fault();
+        return null;
+      }
     }
   }
-  while (toI32(opT.length) > 0) {
-    outT.push(opT.pop());
+  while (opT.length > 0) {
+    const top = opT.pop();
+    outT.push(top);
     outV.push("");
   }
   // check that it evaluates (the stack never underflows and ends with a value)
@@ -164,11 +206,25 @@ const csbParse = (src: u8[], a: i32, b: i32): CsBoolExpr | null => {
   let depth = 0;
   for (let i = 0; i < toI32(outT.length); i++) {
     const t = outT[i];
+    // outV has an entry per token
+    if (i >= outV.length) {
+      fault();
+      return null;
+    }
+    const v = outV[i];
     e.code.push(t);
     if (t === BT_VAR) {
-      e.code.push(e.paramIndex(outV[i]));
+      e.code.push(e.paramIndex(v));
+      if (depth >= 2147483647) {
+        fault();
+        return null;
+      }
       depth++;
     } else if (t === BT_TRUE || t === BT_FALSE) {
+      if (depth >= 2147483647) {
+        fault();
+        return null;
+      }
       depth++;
     } else if (t === BT_NOT) {
       if (depth < 1) {
@@ -203,10 +259,17 @@ const csbEval = (e: CsBoolExpr, combo: i32): boolean => {
   const st: boolean[] = [];
   let i = 0;
   const code = e.code;
+  // csbParse checked that the code evaluates: a parameter index follows
+  // BT_VAR and the stack never underflows, so the fault branches are never
+  // taken.
   while (i < toI32(code.length)) {
     const t = code[i];
     i++;
     if (t === BT_VAR) {
+      if (i >= code.length) {
+        fault();
+        return false;
+      }
       st.push((combo & (1 << code[i])) !== 0);
       i++;
     } else if (t === BT_TRUE) {
@@ -214,24 +277,37 @@ const csbEval = (e: CsBoolExpr, combo: i32): boolean => {
     } else if (t === BT_FALSE) {
       st.push(false);
     } else if (t === BT_NOT) {
-      st.push(!st.pop());
-    } else if (t === BT_AND) {
+      if (st.length < 1) {
+        fault();
+        return false;
+      }
+      const v = st.pop();
+      st.push(!v);
+    } else if (t === BT_AND || t === BT_OR || t === BT_EQ || t === BT_NE) {
+      if (st.length < 1) {
+        fault();
+        return false;
+      }
       const r = st.pop();
+      if (st.length < 1) {
+        fault();
+        return false;
+      }
       const l = st.pop();
-      st.push(l && r);
-    } else if (t === BT_OR) {
-      const r = st.pop();
-      const l = st.pop();
-      st.push(l || r);
-    } else if (t === BT_EQ) {
-      const r = st.pop();
-      const l = st.pop();
-      st.push(l === r);
-    } else if (t === BT_NE) {
-      const r = st.pop();
-      const l = st.pop();
-      st.push(l !== r);
+      if (t === BT_AND) {
+        st.push(l && r);
+      } else if (t === BT_OR) {
+        st.push(l || r);
+      } else if (t === BT_EQ) {
+        st.push(l === r);
+      } else {
+        st.push(l !== r);
+      }
     }
+  }
+  if (st.length < 1) {
+    fault();
+    return false;
   }
   return st.pop();
 };
@@ -254,14 +330,41 @@ const csbEvalNamed = (e: CsBoolExpr, names: string[], combo: i32): boolean => {
 
 const csbSortStrings = (xs: string[]): void => {
   const n = toI32(xs.length);
+  // an insertion sort: every index stays below i, inside xs
   for (let i = 1; i < n; i++) {
+    if (i >= xs.length) {
+      fault();
+      return;
+    }
     const v = xs[i];
     let j = i - 1;
-    while (j >= 0 && csbCompare(xs[j], v) > 0) {
-      xs[j + 1] = xs[j];
+    while (j >= 0) {
+      if (j >= xs.length) {
+        fault();
+        return;
+      }
+      const w = xs[j];
+      if (csbCompare(w, v) <= 0) {
+        break;
+      }
+      const k = j + 1;
+      if (k >= xs.length) {
+        fault();
+        return;
+      }
+      xs[k] = w;
       j--;
     }
-    xs[j + 1] = v;
+    if (j < -1 || j >= i) {
+      fault();
+      return;
+    }
+    const k = j + 1;
+    if (k < 0 || k >= xs.length) {
+      fault();
+      return;
+    }
+    xs[k] = v;
   }
 };
 
@@ -273,9 +376,9 @@ const csbCompare = (a: string, b: string): i32 => {
 
 const csbBytes = (s: string): u8[] => {
   const n = toI32(s.length);
-  const out = new Array<u8>(n);
+  const out: u8[] = [];
   for (let i = 0; i < n; i++) {
-    out[i] = toU8(s.charCodeAt(i));
+    out.push(toU8(s.charCodeAt(i)));
   }
   return out;
 };
@@ -290,9 +393,14 @@ const csbSymbols = (e: CsBoolExpr): string[] => {
   const total = 1 << n;
   for (let combo = 0; combo < total; combo++) {
     if (csbEval(e, combo)) {
+      const params = e.params;
       for (let i = 0; i < n; i++) {
         if ((combo & (1 << i)) !== 0) {
-          out.push(e.params[i]);
+          if (i >= params.length) {
+            fault();
+            return out;
+          }
+          out.push(params[i]);
         }
       }
       csbSortStrings(out);
@@ -300,6 +408,19 @@ const csbSymbols = (e: CsBoolExpr): string[] => {
     }
   }
   return out;
+};
+
+/** Appends s to set unless set holds it. */
+const csbAddNew = (set: string[], s: string): void => {
+  let seen = false;
+  for (let q = 0; q < toI32(set.length); q++) {
+    if (set[q] === s) {
+      seen = true;
+    }
+  }
+  if (!seen) {
+    set.push(s);
+  }
 };
 
 /** PreprocessorSymbols.GetSets over the directives of a lexed file. */
@@ -311,15 +432,32 @@ export const csSymbolSets = (lx: CsLexer): CsSymbolSets => {
   const root = new CsSymContext(new CsSymContext(null));
   let cur = root;
   const src = lx.src;
-  for (let i = 0; i < lx.ntr; i++) {
-    const k = lx.trKind[i];
+  const ntr = lx.ntr;
+  const trKind = lx.trKind;
+  const trAux = lx.trAux;
+  const trTextEnd = lx.trTextEnd;
+  for (let i = 0; i < ntr; i++) {
+    // ntr counts the trivia in the arrays
+    if (i >= trKind.length) {
+      fault();
+      return r;
+    }
+    const k = trKind[i];
     if (k === K_IfDirectiveTrivia || k === K_ElifDirectiveTrivia) {
       if (k === K_IfDirectiveTrivia) {
         cur = new CsSymContext(cur);
       }
-      const a = lx.trAux[i];
-      let b = lx.trTextEnd[i];
+      if (i >= trAux.length || i >= trTextEnd.length) {
+        fault();
+        return r;
+      }
+      const a = trAux[i];
+      let b = trTextEnd[i];
       for (let j = a; j < b; j++) {
+        if (j < 0 || j >= src.length) {
+          fault();
+          return r;
+        }
         if (toI32(src[j]) === 47) {
           if (j > a) {
             b = j;
@@ -373,6 +511,10 @@ export const csSymbolSets = (lx: CsLexer): CsSymbolSets => {
       e.allTrue = true;
       for (let j = n - 1; j >= 0; j--) {
         if ((found & (1 << j)) !== 0) {
+          if (j >= all.length) {
+            fault();
+            return r;
+          }
           e.params.push(all[j]);
         }
       }
@@ -384,23 +526,20 @@ export const csSymbolSets = (lx: CsLexer): CsSymbolSets => {
         return r;
       }
       let parentSymbols: string[] = [];
-      if (toI32(parent.exprs.length) !== 0) {
-        parentSymbols = csbSymbols(parent.exprs[toI32(parent.exprs.length) - 1]);
+      const pexprs = parent.exprs;
+      const pn = toI32(pexprs.length);
+      if (pn > 0) {
+        parentSymbols = csbSymbols(pexprs[pn - 1]);
       }
       for (let j = 0; j < toI32(cur.exprs.length); j++) {
         const own = csbSymbols(cur.exprs[j]);
         const set: string[] = [];
-        for (let m = 0; m < toI32(own.length) + toI32(parentSymbols.length); m++) {
-          const s = m < toI32(own.length) ? own[m] : parentSymbols[m - toI32(own.length)];
-          let seen = false;
-          for (let q = 0; q < toI32(set.length); q++) {
-            if (set[q] === s) {
-              seen = true;
-            }
-          }
-          if (!seen) {
-            set.push(s);
-          }
+        // own's symbols, then the parent's
+        for (let m = 0; m < toI32(own.length); m++) {
+          csbAddNew(set, own[m]);
+        }
+        for (let m = 0; m < toI32(parentSymbols.length); m++) {
+          csbAddNew(set, parentSymbols[m]);
         }
         if (toI32(set.length) <= 0) {
           continue;

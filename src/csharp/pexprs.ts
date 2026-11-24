@@ -525,8 +525,17 @@ import {
   cswBlock,
   cswNode,
   cswParameterList,
+  cswDepthDown,
+  cswDocKind,
+  cswFirstDoc,
+  cswTokEnd,
+  cswTokL0,
+  cswTokL1,
+  cswTokStart,
   cswUnhandled,
 } from "./pnodes";
+import { fault } from "../core/fault";
+import { add32, sub32, utf16Len } from "../core/arr";
 import { cswMemberChain } from "./pchain";
 
 /** The printers of the node types cswDispatch leaves to this module. */
@@ -1166,16 +1175,7 @@ export const cswArgumentList = (P: CsPrint, n: i32): i32 => {
 /** The UTF-16 length of an identifier name's identifier. */
 export const cswIdentLen = (P: CsPrint, n: i32): i32 => {
   const t = P.s(n, F_IdentifierName_Identifier);
-  const a = P.lx.start[t];
-  const b = P.lx.end[t];
-  let len = 0;
-  for (let i = a; i < b; i++) {
-    const c = toI32(P.src[i]);
-    if ((c & 0xc0) !== 0x80) {
-      len += c >= 0xf0 ? 2 : 1;
-    }
-  }
-  return len;
+  return utf16Len(P.src, cswTokStart(P.lx, t), cswTokEnd(P.lx, t));
 };
 
 export const cswBracketedArgumentList = (P: CsPrint, n: i32): i32 => {
@@ -1290,7 +1290,7 @@ const cswBinaryExpression = (P: CsPrint, n: i32): i32 => {
   for (let i = 1; i < toI32(docs.length); i++) {
     rest.push(docs[i]);
   }
-  return D.group([docs[0], D.indent(rest)]);
+  return D.group([cswFirstDoc(docs), D.indent(rest)]);
 };
 
 export const cswIsCoalesceWithNonBinaryLeft = (P: CsPrint, n: i32): boolean =>
@@ -1348,11 +1348,12 @@ export const cswBinaryParts = (P: CsPrint, n: i32): i32[] => {
   if (!P.is(n, Y_BinaryExpression)) {
     return [D.group1(cswNode(P, n))];
   }
-  if (P.depth > 200) {
+  const depth = P.depth;
+  if (depth > 200) {
     P.fail("We can't handle this deep of recursion yet.");
     return [DOC_NULL];
   }
-  P.depth = P.depth + 1;
+  P.depth = depth + 1;
   const docs: i32[] = [];
   const left = P.s(n, F_BinaryExpression_Left);
   const right = P.s(n, F_BinaryExpression_Right);
@@ -1385,19 +1386,19 @@ export const cswBinaryParts = (P: CsPrint, n: i32): i32[] => {
     docs.push(cswNode(P, possible));
   }
   if (isCoalesce) {
-    P.depth = P.depth - 1;
+    cswDepthDown(P);
     if (shouldGroup) {
       const rest: i32[] = [];
       for (let i = 1; i < toI32(docs.length); i++) {
         rest.push(docs[i]);
       }
-      return [docs[0], D.group(rest)];
+      return [cswFirstDoc(docs), D.group(rest)];
     }
     return docs;
   }
   const r = D.concat([DOC_LINE, cswTok(P, op), DOC_SPACE, cswNode(P, right)]);
   docs.push(shouldGroup ? D.group1(r) : r);
-  P.depth = P.depth - 1;
+  cswDepthDown(P);
   return docs;
 };
 
@@ -1493,11 +1494,21 @@ const cswAnyDescendant = (P: CsPrint, n: i32, skip: i32, excluded: i32, orCondit
     return false;
   }
   const shape = csTypeShape(P.t.ty(n));
-  const ns = P.t.nslot[n];
+  const nslot = P.t.nslot;
+  if (n < 0 || n >= nslot.length) {
+    fault();
+    return false;
+  }
+  const ns = nslot[n];
   for (let i = 0; i < ns; i++) {
     const v = P.s(n, i);
     if (v < 0) {
       continue;
+    }
+    // the shape has a letter per slot
+    if (i >= shape.length) {
+      fault();
+      return false;
     }
     const c = shape.charCodeAt(i) | 32;
     if (c === 110) {
@@ -1724,7 +1735,7 @@ const cswCollectionExpression = (P: CsPrint, n: i32): i32 => {
         ])
       : DOC_NULL;
   const after = ne > 0 ? (alwaysBreak ? DOC_HARDLINE : D.ifBreak(DOC_LINE, DOC_NULL, -1)) : DOC_NULL;
-  const closeLead = cswAnyCommentOrDirective(lx, lx.l0[close], lx.l1[close])
+  const closeLead = cswAnyCommentOrDirective(lx, cswTokL0(lx, close), cswTokL1(lx, close))
     ? D.concat([D.indent1(cswLeadingTriviaTok(P, close)), DOC_HARDLINE])
     : DOC_NULL;
   const result = D.concat([sep, open, items, after, closeLead, cswTokNoLead(P, close)]);
@@ -1854,7 +1865,11 @@ const cswInterpolatedString = (P: CsPrint, n: i32): i32 => {
     if (P.k(c) === K_Interpolation) {
       const a = P.t.spanStart(c);
       const b = P.t.spanEnd(c);
-      for (let j = a; j < b; j++) {
+      if (a < b && (a < 0 || b > src.length)) {
+        fault();
+        return DOC_NULL;
+      }
+      for (let j = a; j >= 0 && j < b && j < src.length; j++) {
         if (toI32(src[j]) === 10) {
           return D.concat([
             cswLeadingTrivia(P, cswLeadA(P, n), cswLeadB(P, n), false, false),
@@ -1881,13 +1896,17 @@ const cswRawInterpolatedString = (P: CsPrint, n: i32, start: i32, contents: i32,
   const D = P.D;
   const lx = P.lx;
   const src = P.src;
-  const ea = lx.start[end];
-  const eb = lx.end[end];
+  const ea = cswTokStart(lx, end);
+  const eb = cswTokEnd(lx, end);
+  if (ea < eb && (ea < 0 || eb > src.length)) {
+    fault();
+    return DOC_NULL;
+  }
   let fc = ea;
-  while (fc < eb && (toI32(src[fc]) === 13 || toI32(src[fc]) === 10)) {
+  while (fc >= 0 && fc < eb && fc < src.length && (toI32(src[fc]) === 13 || toI32(src[fc]) === 10)) {
     fc++;
   }
-  const indented = fc < eb && (toI32(src[fc]) === 9 || toI32(src[fc]) === 32);
+  const indented = fc >= 0 && fc < eb && fc < src.length && (toI32(src[fc]) === 9 || toI32(src[fc]) === 32);
   const out: i32[] = [cswTok(P, start), indented ? DOC_HARDLINE_NO_TRIM : DOC_LITERAL_LINE];
   const ia = cswRawIndentStart(src, ea, eb);
   const ib = cswRawIndentEnd(src, ia, eb);
@@ -1898,16 +1917,24 @@ const cswRawInterpolatedString = (P: CsPrint, n: i32, start: i32, contents: i32,
       out.push(cswInterpolation(P, c));
     } else if (P.k(c) === K_InterpolatedStringText) {
       const t = P.s(c, F_InterpolatedStringText_TextToken);
-      const buf = new CsBuf(lx.end[t] - lx.start[t] + 16);
-      cswRawValue(P, buf, lx.start[t], lx.end[t], ia, ib, i === 0);
+      const ta = cswTokStart(lx, t);
+      const tb = cswTokEnd(lx, t);
+      const buf = new CsBuf(add32(sub32(tb, ta), 16));
+      cswRawValue(P, buf, ta, tb, ia, ib, i === 0);
       if (buf.n === 0) {
         continue;
       }
       cswRawLinesExport(P, out, buf, indented, false);
     }
   }
-  const lastDoc = out[toI32(out.length) - 1];
-  const lastEmpty = D.kind[lastDoc] === D_STRING && D.textLen(lastDoc) === 0;
+  // out starts with two docs
+  const no = toI32(out.length);
+  if (no < 1) {
+    fault();
+    return DOC_NULL;
+  }
+  const lastDoc = out[no - 1];
+  const lastEmpty = cswDocKind(D, lastDoc) === D_STRING && D.textLen(lastDoc) === 0;
   out.push(indented ? (lastEmpty ? DOC_HARDLINE : DOC_HARDLINE_NO_TRIM) : DOC_LITERAL_LINE);
   out.push(cswTok(P, end));
   return D.indentIf(cswShouldIndentRawString(P, cswFindParent(P, n, Y_Argument)), D.concat(out));
@@ -1992,7 +2019,7 @@ const cswRecursivePattern = (P: CsPrint, n: i32, includeType: boolean): i32 => {
     const subs = P.s(prop, F_PropertyPatternClause_Subpatterns);
     docs.push(
       D.group([
-        type >= 0 && !cswAnyCommentOrDirective(lx, lx.l0[open], lx.l1[open]) ? DOC_LINE : DOC_NULL,
+        type >= 0 && !cswAnyCommentOrDirective(lx, cswTokL0(lx, open), cswTokL1(lx, open)) ? DOC_LINE : DOC_NULL,
         cswTok(P, open),
         D.indent([P.scount(subs) > 0 ? DOC_LINE : DOC_NULL, cswSepList(P, subs, SL_PROP_SUBPATTERN, DOC_LINE, 0, -1)]),
         DOC_LINE,
@@ -2033,7 +2060,7 @@ const cswSwitchArm = (P: CsPrint, n: i32): i32 => {
   const D = P.D;
   const arrow = P.s(n, F_SwitchExpressionArm_EqualsGreaterThanToken);
   const lx = P.lx;
-  const arrowHasComment = cswAnyComment(lx, lx.l0[arrow], lx.l1[arrow]);
+  const arrowHasComment = cswAnyComment(lx, cswTokL0(lx, arrow), cswTokL1(lx, arrow));
   const gid2 = arrowHasComment ? -1 : D.newGroupId();
   const expr = P.s(n, F_SwitchExpressionArm_Expression);
   let inner = DOC_NULL;

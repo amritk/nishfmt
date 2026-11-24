@@ -172,6 +172,7 @@ import {
   PREC_EXPRESSION,
   cspIsPatternKind,
 } from "./pexpr";
+import { fault } from "../core/fault";
 
 /** A block; `attrs` is its attribute list. */
 export const cspBlock = (p: CsParser, attrs: i32): i32 => {
@@ -305,13 +306,25 @@ const cspIsDefiniteStatement = (p: CsParser): boolean => {
 
 /** ParseStatementCore. */
 export const cspStatementCore = (p: CsParser, attrs: i32, isGlobal: boolean): i32 => {
-  p.depth = p.depth + 1;
-  if (p.depth > 400) {
+  const d = p.depth;
+  if (d >= 400) {
+    if (d < 2147483647) {
+      p.depth = d + 1;
+    } else {
+      fault();
+    }
     p.fail("too deep");
     return -1;
   }
+  p.depth = d + 1;
   const r = cspStatementCoreImpl(p, attrs, isGlobal);
-  p.depth = p.depth - 1;
+  // the depth counts this call, so it is at least 1
+  const e = p.depth;
+  if (e > 0) {
+    p.depth = e - 1;
+  } else {
+    fault();
+  }
   return r;
 };
 
@@ -362,7 +375,7 @@ const cspStatementCoreImpl = (p: CsParser, attrs: i32, isGlobal: boolean): i32 =
       if (k1 === K_OpenParenToken) {
         const m = p.mark();
         const r = cspLocalDeclarationStatement(p, attrs);
-        if (r >= 0 && !p.err && p.t.kind[r] === K_LocalFunctionStatement) {
+        if (r >= 0 && !p.err && p.nodeKind(r) === K_LocalFunctionStatement) {
           return r;
         }
         p.reset(m);
@@ -563,8 +576,20 @@ const cspIsPossibleFirstTypedIdentifierInLocalDeclarationStatement = (p: CsParse
     // a `.` at the end of a line followed by `a b` that is not a declaration
     const dt = p.tokAt(1);
     let eol = false;
-    for (let r = p.lx.t0[dt]; r < p.lx.t1[dt]; r++) {
-      if (p.lx.trKind[r] === 8539) {
+    const lx = p.lx;
+    const t0 = lx.t0;
+    const t1 = lx.t1;
+    const trKind = lx.trKind;
+    if (dt < 0 || dt >= t0.length || dt >= t1.length) {
+      fault();
+      return false;
+    }
+    for (let r = t0[dt]; r < t1[dt]; r++) {
+      if (r < 0 || r >= trKind.length) {
+        fault();
+        return false;
+      }
+      if (trKind[r] === 8539) {
         eol = true;
       }
     }
@@ -626,7 +651,7 @@ export const cspLocalDeclarationStatement = (p: CsParser, attrs: i32): i32 => {
   }
   let isConst = false;
   for (const t of mods) {
-    if (p.lx.kind[t] === K_ConstKeyword) {
+    if (p.tokKind(t) === K_ConstKeyword) {
       isConst = true;
     }
   }
@@ -653,7 +678,7 @@ export const cspLocalDeclarationStatement = (p: CsParser, attrs: i32): i32 => {
     p.reset(save);
   }
   if (canParseAsLocalFunction && p.t.count(attrs) === 0 && mods.length > 0) {
-    const k0 = p.lx.kind[mods[0]];
+    const k0 = p.tokKind(mods[0]);
     if (k0 === K_PublicKeyword || k0 === K_PrivateKeyword || k0 === K_ProtectedKeyword || k0 === K_InternalKeyword) {
       return -1;
     }
@@ -685,7 +710,7 @@ export const cspLocalDeclarationStatement = (p: CsParser, attrs: i32): i32 => {
   p.push(type);
   cspVariableDeclarators(p, type, flags, false, false);
   p.push(p.node(K_VariableDeclaration, dm));
-  if (type >= 0 && p.t.kind[type] === K_PredefinedType && p.lx.kind[p.t.s(type, 0)] === K_VoidKeyword) {
+  if (type >= 0 && p.nodeKind(type) === K_PredefinedType && p.tokKind(p.t.s(type, 0)) === K_VoidKeyword) {
     p.fail("void here");
     return -1;
   }
@@ -693,7 +718,7 @@ export const cspLocalDeclarationStatement = (p: CsParser, attrs: i32): i32 => {
   return p.node(K_LocalDeclarationStatement, m);
 };
 
-const cspTokenCk = (p: CsParser, t: i32): i32 => (p.lx.kind[t] === K_IdentifierToken ? p.lx.ck[t] : p.lx.kind[t]);
+const cspTokenCk = (p: CsParser, t: i32): i32 => (p.tokKind(t) === K_IdentifierToken ? p.tokCk(t) : p.tokKind(t));
 
 const cspLocalDeclarationStatementModifiers = (p: CsParser, mods: i32[], isUsing: boolean): void => {
   while (!p.err) {
@@ -755,8 +780,8 @@ export const cspTryLocalFunctionBody = (p: CsParser, type: i32, name: i32): i32 
 const cspLocalFunctionBody = (p: CsParser, attrs: i32, mods: i32[], scoped: i32, type: i32, name: i32): i32 => {
   const rp = p.mark();
   let force = true;
-  if (type >= 0 && p.t.kind[type] === K_IdentifierName) {
-    force = p.lx.ck[p.t.s(type, 0)] !== K_AwaitKeyword;
+  if (type >= 0 && p.nodeKind(type) === K_IdentifierName) {
+    force = p.tokCk(p.t.s(type, 0)) !== K_AwaitKeyword;
   }
   let isAsync = false;
   for (const t of mods) {
@@ -888,6 +913,10 @@ const cspTryStatement = (p: CsParser, attrs: i32): i32 => {
   let n = 0;
   while (p.k() === K_CatchKeyword && !p.err) {
     p.push(cspCatchClause(p));
+    if (n >= 2147483647) {
+      fault();
+      break;
+    }
     n++;
   }
   p.push(p.list(cm));
@@ -945,7 +974,7 @@ const cspCheckedStatement = (p: CsParser, attrs: i32): i32 => {
   const kw = p.eat();
   p.push(kw);
   p.push(cspBlock(p, cspAttributeDeclarations(p, false)));
-  return p.node(p.lx.kind[kw] === K_CheckedKeyword ? K_CheckedStatement : K_UncheckedStatement, m);
+  return p.node(p.tokKind(kw) === K_CheckedKeyword ? K_CheckedStatement : K_UncheckedStatement, m);
 };
 
 const cspDoStatement = (p: CsParser, attrs: i32): i32 => {
@@ -966,7 +995,7 @@ const cspForOrForEachStatement = (p: CsParser, attrs: i32): i32 => {
   p.eat();
   let isForEach = false;
   const op = p.eat();
-  if (p.lx.kind[op] === K_OpenParenToken && cspScanType(p, PT_NORMAL) !== ST_NOT_TYPE) {
+  if (p.tokKind(op) === K_OpenParenToken && cspScanType(p, PT_NORMAL) !== ST_NOT_TYPE) {
     if (p.k() === K_IdentifierToken) {
       p.eat();
       if (p.k() === K_InKeyword) {
@@ -1057,7 +1086,7 @@ const cspForEachStatement = (p: CsParser, attrs: i32, awaitTok: i32): i32 => {
   if (p.err) {
     return -1;
   }
-  const vk = p.t.kind[variable];
+  const vk = p.nodeKind(variable);
   if (
     !(
       vk === K_DeclarationExpression ||
@@ -1078,7 +1107,7 @@ const cspForEachStatement = (p: CsParser, attrs: i32, awaitTok: i32): i32 => {
   p.push(op);
   if (vk === K_DeclarationExpression) {
     const des = p.t.s(variable, 1);
-    const dk = p.t.kind[des];
+    const dk = p.nodeKind(des);
     if (dk === K_SingleVariableDesignation || dk === K_DiscardDesignation) {
       p.push(p.t.s(variable, 0));
       p.push(p.t.s(des, 0));
@@ -1113,7 +1142,7 @@ const cspGotoStatement = (p: CsParser, attrs: i32): i32 => {
   if (p.k() === K_CaseKeyword || p.k() === K_DefaultKeyword) {
     const t = p.eat();
     p.push(t);
-    if (p.lx.kind[t] === K_CaseKeyword) {
+    if (p.tokKind(t) === K_CaseKeyword) {
       kind = K_GotoCaseStatement;
       p.push(cspExpressionCore(p));
     } else {
@@ -1159,20 +1188,38 @@ const cspIfStatement = (p: CsParser, attrs: i32): i32 => {
   }
   let result = -1;
   for (let i = toI32(ifs.length) - 1; i >= 0; i--) {
+    // the six arrays grow together
+    if (
+      i >= ifs.length ||
+      i >= opens.length ||
+      i >= conds.length ||
+      i >= closes.length ||
+      i >= stmts.length ||
+      i >= elses.length
+    ) {
+      fault();
+      return -1;
+    }
+    const ifTok = ifs[i];
+    const openTok = opens[i];
+    const cond = conds[i];
+    const closeTok = closes[i];
+    const stmt = stmts[i];
+    const elseTok = elses[i];
     let elseClause = -1;
     if (alternative >= 0) {
       const em = p.sp();
-      p.push(elses[i]);
+      p.push(elseTok);
       p.push(alternative);
       elseClause = p.node(K_ElseClause, em);
     }
     const m = p.sp();
     p.push(i === 0 ? attrs : p.list(p.sp()));
-    p.push(ifs[i]);
-    p.push(opens[i]);
-    p.push(conds[i]);
-    p.push(closes[i]);
-    p.push(stmts[i]);
+    p.push(ifTok);
+    p.push(openTok);
+    p.push(cond);
+    p.push(closeTok);
+    p.push(stmt);
     p.push(elseClause);
     result = p.node(K_IfStatement, m);
     alternative = result;
@@ -1229,7 +1276,7 @@ const cspSwitchStatement = (p: CsParser, attrs: i32): i32 => {
   if (p.err) {
     return -1;
   }
-  const ek = p.t.kind[e];
+  const ek = p.nodeKind(e);
   if (ek === K_ParenthesizedExpression) {
     p.push(p.t.s(e, 0));
     p.push(p.t.s(e, 1));
@@ -1270,12 +1317,12 @@ const cspSwitchSection = (p: CsParser): i32 => {
       if (p.err) {
         return -1;
       }
-      if (p.k() === K_IdentifierToken && p.ck() === K_WhenKeyword && !cspIsPatternKind(p.t.kind[node])) {
+      if (p.k() === K_IdentifierToken && p.ck() === K_WhenKeyword && !cspIsPatternKind(p.nodeKind(node))) {
         const pm = p.sp();
         p.push(node);
         node = p.node(K_ConstantPattern, pm);
       }
-      if (cspIsPatternKind(p.t.kind[node])) {
+      if (cspIsPatternKind(p.nodeKind(node))) {
         p.push(caseKw);
         p.push(node);
         p.push(cspWhenClause(p, PREC_EXPRESSION));
@@ -1349,7 +1396,7 @@ const cspUsingStatement = (p: CsParser, attrs: i32, awaitTok: i32): i32 => {
             decl = cspParenthesizedVariableDeclaration(p, 0, -1);
             if (p.k() === K_ColonToken) {
               const ty = p.t.s(decl, 0);
-              if (p.t.kind[ty] === K_NullableType && p.t.scount(p.t.s(decl, 1)) === 1) {
+              if (p.nodeKind(ty) === K_NullableType && p.t.scount(p.t.s(decl, 1)) === 1) {
                 p.reset(rp);
                 decl = -1;
                 expr = cspExpressionCore(p);
