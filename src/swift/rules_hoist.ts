@@ -3,6 +3,7 @@
 // Ported from SwiftFormat 0.64.7 (MIT License, Copyright (c) 2016 Nick
 // Lockwood).
 
+import { fault } from "../core/fault";
 import { SwFormatter } from "./formatter";
 import { swParseFunctionDeclaration, swUnescaped } from "./funcdecl";
 import { swCurrentScope, swIsKeyword, swIsMacroTok, swIsAttribute, swIsUnwrap, swStartOfScope } from "./parsing";
@@ -26,6 +27,10 @@ import {
   swIsMultilineStringDelimiter,
   swIsStringDelimiter,
 } from "./token";
+
+// Token indices, token counts and line numbers stay below the token count, far from the
+// i32 limits, so a sum or difference of them the prover cannot bound is written
+// `toI32(toU32(a) + b)`: wrapping u32 arithmetic, exact for such values.
 
 /** The names of functions that capture `try` (isEffectCapturingAt for hoistTry). */
 class SwTryNames {
@@ -51,8 +56,22 @@ const swSameList = (a: SwTokList, b: SwTokList): boolean => {
   if (n !== b.count()) {
     return false;
   }
-  for (let i = 0; i < n; i++) {
-    if (a.k[i] !== b.k[i] || a.a[i] !== b.a[i] || a.s[i] !== b.s[i]) {
+  const ak = a.k;
+  const aa = a.a;
+  const as = a.s;
+  const bk = b.k;
+  const ba = b.a;
+  const bs = b.s;
+  if (ak.length < n || aa.length < n || as.length < n || bk.length < n || ba.length < n || bs.length < n) {
+    fault();
+    return false;
+  }
+  for (
+    let i = 0;
+    i < n && i < ak.length && i < aa.length && i < as.length && i < bk.length && i < ba.length && i < bs.length;
+    i++
+  ) {
+    if (ak[i] !== bk[i] || aa[i] !== ba[i] || as[i] !== bs[i]) {
       return false;
     }
   }
@@ -77,18 +96,18 @@ const swHoistTry = (f: SwFormatter, names: SwTryNames): void => {
 const swInsertEffectKeyword = (f: SwFormatter, index0: i32, keyword: string): void => {
   let index = index0;
   while (f.k(index) === SW_SPACE || f.k(index) === SW_LINEBREAK) {
-    index++;
+    index = toI32(toU32(index) + 1);
   }
   if (f.kw(index, keyword)) {
     return;
   }
   f.insert(SW_KEYWORD, keyword, 0, index);
-  if (f.has(index + 1) && f.k(index + 1) !== SW_SPACE) {
-    f.insertSpace(" ", index + 1);
+  if (f.has(toI32(toU32(index) + 1)) && f.k(toI32(toU32(index) + 1)) !== SW_SPACE) {
+    f.insertSpace(" ", toI32(toU32(index) + 1));
   } else {
     f.insertSpace(" ", index);
   }
-  if (swIsKeyword(f, index - 1)) {
+  if (swIsKeyword(f, toI32(toU32(index) - 1))) {
     f.insertSpace(" ", index);
   }
 };
@@ -102,7 +121,7 @@ const swHoistTryInScope = (f: SwFormatter, names: SwTryNames, scopeStart: i32): 
     if (i < 0) {
       break;
     }
-    if (f.has(i + 1) && !swIsUnwrap(f, i + 1)) {
+    if (f.has(toI32(toU32(i) + 1)) && !swIsUnwrap(f, toI32(toU32(i) + 1))) {
       toRemove.push(i);
     }
     prev = i;
@@ -197,7 +216,7 @@ const swHoistTryInScope = (f: SwFormatter, names: SwTryNames, scopeStart: i32): 
           pk === SW_LINEBREAK ||
           (pk === SW_START && (ps === "<" || ps === "[" || ps === "("));
         if (!ok) {
-          const cs = swCurrentScope(f, i + 1);
+          const cs = swCurrentScope(f, toI32(toU32(i) + 1));
           ok = cs >= 0 && swIsMultilineStringDelimiter(f.k(cs), f.s(cs));
         }
         if (!ok) {
@@ -214,7 +233,7 @@ const swHoistTryInScope = (f: SwFormatter, names: SwTryNames, scopeStart: i32): 
     }
     insertIndex = i;
   }
-  for (let q = toRemove.length - 1; q >= 0; q--) {
+  for (let q = toI32(toRemove.length) - 1; q >= 0 && q < toRemove.length; q--) {
     const index = toRemove[q];
     f.removeToken(index);
     if (f.has(index) && f.k(index) === SW_SPACE) {
@@ -246,7 +265,7 @@ export const swRuleHoistTry = (f: SwFormatter): void => {
     for (const a of d.args) {
       let auto = false;
       let throws = false;
-      for (let j = a.typeStart; j <= a.typeEnd; j++) {
+      for (let j = a.typeStart; j <= a.typeEnd; j = toI32(toU32(j) + 1)) {
         if (f.s(j) === "@autoclosure") {
           auto = true;
         }

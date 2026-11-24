@@ -25,6 +25,10 @@ import {
   swIsStringDelimiter,
 } from "./token";
 
+// Token indices, token counts and line numbers stay below the token count, far from the
+// i32 limits, so a sum or difference of them the prover cannot bound is written
+// `toI32(toU32(a) + b)`: wrapping u32 arithmetic, exact for such values.
+
 const swIsPostfixOp = (f: SwFormatter, i: i32): boolean => f.has(i) && f.k(i) === SW_OP && f.a(i) === SW_OP_POSTFIX;
 
 /** valuesInRangeAreConstant(_:). */
@@ -38,11 +42,11 @@ const swValuesInRangeAreConstant = (f: SwFormatter, lo: i32, hi: i32): boolean =
         return false;
       }
       i = e;
-      index = f.indexInType(SW_T_NON_SPACE_OR_COMMENT_OR_LINEBREAK, i + 1, hi);
+      index = f.indexInType(SW_T_NON_SPACE_OR_COMMENT_OR_LINEBREAK, toI32(toU32(i) + 1), hi);
     } else if (swIsConstant(f, i) || f.tok(i, SW_DELIM, ",") || f.tok(i, SW_DELIM, ":")) {
-      index = f.indexInType(SW_T_NON_SPACE_OR_COMMENT_OR_LINEBREAK, i + 1, hi);
+      index = f.indexInType(SW_T_NON_SPACE_OR_COMMENT_OR_LINEBREAK, toI32(toU32(i) + 1), hi);
     } else if (f.k(i) === SW_IDENT) {
-      const n = f.indexInType(SW_T_NON_SPACE_OR_COMMENT, i + 1, hi);
+      const n = f.indexInType(SW_T_NON_SPACE_OR_COMMENT, toI32(toU32(i) + 1), hi);
       if (n < 0 || !f.tok(n, SW_DELIM, ":")) {
         return false;
       }
@@ -58,7 +62,7 @@ const swValuesInRangeAreConstant = (f: SwFormatter, lo: i32, hi: i32): boolean =
 const swIsConstant = (f: SwFormatter, index0: i32): boolean => {
   let index = index0;
   while (swIsPostfixOp(f, index)) {
-    index--;
+    index = toI32(toU32(index) - 1);
   }
   if (!f.has(index)) {
     return false;
@@ -73,7 +77,7 @@ const swIsConstant = (f: SwFormatter, index0: i32): boolean => {
     if (si < 0 || swIsSubscriptOrFunctionCall(f, si)) {
       return false;
     }
-    return swValuesInRangeAreConstant(f, si + 1, index);
+    return swValuesInRangeAreConstant(f, toI32(toU32(si) + 1), index);
   }
   if (k === SW_START && (s === "[" || s === "(")) {
     if (swIsSubscriptOrFunctionCall(f, index)) {
@@ -83,15 +87,19 @@ const swIsConstant = (f: SwFormatter, index0: i32): boolean => {
     if (e < 0) {
       return false;
     }
-    return swValuesInRangeAreConstant(f, index + 1, e);
+    return swValuesInRangeAreConstant(f, toI32(toU32(index) + 1), e);
   }
   if (k === SW_START || k === SW_END) {
     return swIsStringDelimiter(k, s);
   }
-  if (f.op(index, ".", SW_OP_PREFIX) && f.has(index + 1) && f.k(index + 1) === SW_IDENT) {
+  if (f.op(index, ".", SW_OP_PREFIX) && f.has(toI32(toU32(index) + 1)) && f.k(toI32(toU32(index) + 1)) === SW_IDENT) {
     return true;
   }
-  if (k === SW_IDENT && f.op(index - 1, ".", SW_OP_PREFIX) && !f.op(index - 2, "\\", SW_OP_PREFIX)) {
+  if (
+    k === SW_IDENT &&
+    f.op(toI32(toU32(index) - 1), ".", SW_OP_PREFIX) &&
+    !f.op(toI32(toU32(index) - 2), "\\", SW_OP_PREFIX)
+  ) {
     return true;
   }
   return false;
@@ -114,7 +122,7 @@ const swYodaIsOperator = (f: SwFormatter, index: i32): boolean => {
 const swStartOfValue = (f: SwFormatter, index0: i32): i32 => {
   let index = index0;
   while (swIsPostfixOp(f, index)) {
-    index--;
+    index = toI32(toU32(index) - 1);
   }
   if (f.has(index) && f.k(index) === SW_END) {
     const i = f.indexBefore(SW_T_START_OF_SCOPE, index);
@@ -123,8 +131,12 @@ const swStartOfValue = (f: SwFormatter, index0: i32): i32 => {
     }
     index = i;
   }
-  while (f.has(index - 1) && f.k(index - 1) === SW_OP && f.a(index - 1) === SW_OP_PREFIX) {
-    index--;
+  while (
+    f.has(toI32(toU32(index) - 1)) &&
+    f.k(toI32(toU32(index) - 1)) === SW_OP &&
+    f.a(toI32(toU32(index) - 1)) === SW_OP_PREFIX
+  ) {
+    index = toI32(toU32(index) - 1);
   }
   return index;
 };
@@ -177,10 +189,10 @@ export const swRuleYodaConditions = (f: SwFormatter): void => {
     if (endIndex < 0) {
       continue;
     }
-    const expression = f.slice(nextIndex, endIndex + 1);
-    const constant = f.slice(startIndex, prevIndex + 1);
-    f.replaceTokens(nextIndex, endIndex + 1, constant);
+    const expression = f.slice(nextIndex, toI32(toU32(endIndex) + 1));
+    const constant = f.slice(startIndex, toI32(toU32(prevIndex) + 1));
+    f.replaceTokens(nextIndex, toI32(toU32(endIndex) + 1), constant);
     f.replaceToken(i, SW_OP, swInverseComparison(op), SW_OP_INFIX);
-    f.replaceTokens(startIndex, prevIndex + 1, expression);
+    f.replaceTokens(startIndex, toI32(toU32(prevIndex) + 1), expression);
   }
 };

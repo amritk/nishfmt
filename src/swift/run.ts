@@ -5,13 +5,14 @@
 // Ported from SwiftFormat 0.64.7 (MIT License, Copyright (c) 2016 Nick
 // Lockwood).
 
+import { fault } from "../core/fault";
 import { Out } from "../core/out";
 import { SwFormatter } from "./formatter";
 import { swRunRule } from "./dispatch";
 import { swRuleName, SW_RULE_COUNT, SW_RULE_INDENT, SW_RULE_TRAILING_SPACE, swRuleRunsOnce } from "./rules";
 import { SW_COMMENT, SW_ERROR, SW_OP, SwTokList } from "./token";
 import { swTokenize, swValidUtf8 } from "./tokenizer";
-import { SW_UNI_UNCERTAIN } from "./unicode";
+import { swUniIsUncertain, swUniResetUncertain } from "./unicode";
 import {
   SW_DIRECTIVES_OK,
   swHasDirectiveText,
@@ -42,8 +43,22 @@ const swSameTokens = (a: SwTokList, b: SwTokList): boolean => {
   if (n !== b.count()) {
     return false;
   }
-  for (let i = 0; i < n; i++) {
-    if (a.k[i] !== b.k[i] || a.a[i] !== b.a[i] || a.s[i] !== b.s[i]) {
+  const ak = a.k;
+  const aa = a.a;
+  const as = a.s;
+  const bk = b.k;
+  const ba = b.a;
+  const bs = b.s;
+  if (ak.length < n || aa.length < n || as.length < n || bk.length < n || ba.length < n || bs.length < n) {
+    fault();
+    return false;
+  }
+  for (
+    let i = 0;
+    i < n && i < ak.length && i < aa.length && i < as.length && i < bk.length && i < ba.length && i < bs.length;
+    i++
+  ) {
+    if (ak[i] !== bk[i] || aa[i] !== ba[i] || as[i] !== bs[i]) {
       return false;
     }
   }
@@ -52,13 +67,19 @@ const swSameTokens = (a: SwTokList, b: SwTokList): boolean => {
 
 /** parsingError: an error token, or a conflict marker. */
 const swHasParsingError = (t: SwTokList): boolean => {
-  for (let i = 0; i < t.count(); i++) {
-    const k = t.k[i];
+  const ks = t.k;
+  const ss = t.s;
+  if (ss.length < ks.length) {
+    fault();
+    return false;
+  }
+  for (let i = 0; i < ks.length && i < ss.length; i++) {
+    const k = ks[i];
     if (k === SW_ERROR) {
       return true;
     }
     if (k === SW_OP) {
-      const s = t.s[i];
+      const s = ss[i];
       if (s.startsWith("<<<<<") || s.startsWith("=====") || s.startsWith(">>>>>")) {
         return true;
       }
@@ -75,7 +96,7 @@ const swApplyRules = (e: SwiftEngine, path: string, tokens0: SwTokList, directiv
     names.push(swRuleName(r));
   }
   const ordered: i32[] = [];
-  for (let r = 0; r < SW_RULE_COUNT; r++) {
+  for (let r = 0; r < SW_RULE_COUNT && r < names.length; r++) {
     if (e.only.length !== 0 && names[r] !== e.only) {
       continue;
     }
@@ -103,6 +124,10 @@ const swApplyRules = (e: SwiftEngine, path: string, tokens0: SwTokList, directiv
       return null;
     }
     for (const r of rules) {
+      if (r < 0 || r >= names.length) {
+        fault();
+        return null;
+      }
       f.rule = names[r];
       f.ruleDisabled = false;
       f.disabled = false;
@@ -121,9 +146,10 @@ const swApplyRules = (e: SwiftEngine, path: string, tokens0: SwTokList, directiv
         }
         return null;
       }
-      if (f.errors.length !== 0) {
+      const errors = f.errors;
+      if (errors.length > 0) {
         if (e.debug) {
-          console.error(`${path}: ${f.errors[0]}`);
+          console.error(`${path}: ${errors[0]}`);
         }
         return null;
       }
@@ -170,12 +196,12 @@ export const formatSwift = (e: SwiftEngine, path: string, src: u8[], n: i32, out
     }
     return false;
   }
-  SW_UNI_UNCERTAIN[0] = 0;
+  swUniResetUncertain();
   const res = swApplyRules(e, path, tokens, directives);
   if (res === null) {
     return false;
   }
-  if (SW_UNI_UNCERTAIN[0] !== 0) {
+  if (swUniIsUncertain()) {
     // A character count or case test met a code point whose properties may differ in
     // SwiftFormat's Unicode version.
     if (e.debug) {
@@ -183,9 +209,15 @@ export const formatSwift = (e: SwiftEngine, path: string, src: u8[], n: i32, out
     }
     return false;
   }
+  const count = res.count();
+  const rs = res.s;
+  if (rs.length < count) {
+    fault();
+    return false;
+  }
   out.n = 0;
-  for (let i = 0; i < res.count(); i++) {
-    out.str(res.s[i]);
+  for (let i = 0; i < count && i < rs.length; i++) {
+    out.str(rs[i]);
   }
   return true;
 };

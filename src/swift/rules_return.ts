@@ -5,6 +5,7 @@
 // Ported from SwiftFormat 0.64.7 (MIT License, Copyright (c) 2016 Nick
 // Lockwood).
 
+import { fault } from "../core/fault";
 import { swEndOfPostfixIfdef, swIsUnsafeExpression, swParseExpressionEnd } from "./expr";
 import { SwFormatter } from "./formatter";
 import {
@@ -40,6 +41,10 @@ import {
   SW_T_NON_SPACE_OR_LINEBREAK,
   SW_T_START_OF_SCOPE,
 } from "./token";
+
+// Token indices, token counts and line numbers stay below the token count, far from the
+// i32 limits, so a sum or difference of them the prover cannot bound is written
+// `toI32(toU32(a) + b)`: wrapping u32 arithmetic, exact for such values.
 
 const swIsPrefixKeyword = (s: string): boolean => s === "await" || s === "try" || s === "repeat" || s === "each";
 
@@ -131,7 +136,7 @@ export const swIsSingleExpression = (f: SwFormatter, lo: i32, hi: i32, allowRetu
     if (!allowReturn) {
       return false;
     }
-    const e = f.indexInType(SW_T_NON_SPACE_OR_COMMENT_OR_LINEBREAK, startIndex + 1, hi);
+    const e = f.indexInType(SW_T_NON_SPACE_OR_COMMENT_OR_LINEBREAK, toI32(toU32(startIndex) + 1), hi);
     if (e < 0) {
       return false;
     }
@@ -171,7 +176,7 @@ const swIsFlatMapClosureWithInferredReturnType = (f: SwFormatter, closureStart: 
   if (inIndex < 0) {
     return true;
   }
-  return f.indexOfIn(SW_OP, "->", SW_OP_INFIX, closureStart + 1, inIndex) < 0;
+  return f.indexOfIn(SW_OP, "->", SW_OP_INFIX, toI32(toU32(closureStart) + 1), inIndex) < 0;
 };
 
 /** The first pass, for one `return`. */
@@ -206,7 +211,8 @@ const swRemoveBareReturn = (f: SwFormatter, i: i32, startIndex: i32): void => {
           const ks = f.s(pki);
           if (ks === "let" || ks === "var") {
             const ok =
-              f.op(prevIndex, "=", SW_OP_INFIX) || f.lastIndexOfIn(SW_OP, "=", SW_OP_INFIX, pki + 1, prevIndex) >= 0;
+              f.op(prevIndex, "=", SW_OP_INFIX) ||
+              f.lastIndexOfIn(SW_OP, "=", SW_OP_INFIX, toI32(toU32(pki) + 1), prevIndex) >= 0;
             if (!ok || swIsConditionalStatement(f, pki)) {
               return;
             }
@@ -254,7 +260,7 @@ const swRemoveBareReturn = (f: SwFormatter, i: i32, startIndex: i32): void => {
   if (f.indexAfter(SW_T_NON_SPACE_OR_LINEBREAK, i) === endIndex) {
     const s2 = f.indexBefore(SW_T_NON_SPACE_OR_LINEBREAK, i);
     if (s2 >= 0) {
-      f.removeTokens(s2 + 1, i + 1);
+      f.removeTokens(toI32(toU32(s2) + 1), toI32(toU32(i) + 1));
       return;
     }
   }
@@ -265,7 +271,7 @@ const swRemoveBareReturn = (f: SwFormatter, i: i32, startIndex: i32): void => {
     if (x >= 0) {
       nextIndex = x - 1;
     }
-    f.removeTokens(i, nextIndex + 1);
+    f.removeTokens(i, toI32(toU32(nextIndex) + 1));
   } else if (f.has(i) && f.k(i) === SW_SPACE) {
     f.removeToken(i);
   }
@@ -299,27 +305,35 @@ export const swRuleRedundantReturn = (f: SwFormatter): void => {
       continue;
     }
     const body = swStartOfBody(f, sos);
-    if (!swIsSingleExpression(f, body + 1, endOfScope, true)) {
+    if (!swIsSingleExpression(f, toI32(toU32(body) + 1), endOfScope, true)) {
       continue;
     }
-    const first = f.indexInType(SW_T_NON_SPACE_OR_COMMENT_OR_LINEBREAK, body + 1, endOfScope);
+    const first = f.indexInType(SW_T_NON_SPACE_OR_COMMENT_OR_LINEBREAK, toI32(toU32(body) + 1), endOfScope);
     if (first < 0 || !f.kw(first, "return") || returnIndices.indexOf(first) < 0) {
       continue;
     }
     const nextIndex = f.indexAfter(SW_T_NON_SPACE_OR_LINEBREAK, first);
-    if (nextIndex < 0 || f.indexInType(SW_T_NON_SPACE_OR_COMMENT_OR_LINEBREAK, first + 1, endOfScope) < 0) {
+    if (
+      nextIndex < 0 ||
+      f.indexInType(SW_T_NON_SPACE_OR_COMMENT_OR_LINEBREAK, toI32(toU32(first) + 1), endOfScope) < 0
+    ) {
       continue;
     }
-    const count = nextIndex - first;
-    for (let q = toI32(returnIndices.length) - 1; q >= 0; q--) {
+    // Token indices, first < nextIndex: the u32 differences are exact.
+    const count = toI32(toU32(nextIndex) - toU32(first));
+    for (let q = toI32(returnIndices.length) - 1; q >= 0 && q < returnIndices.length; q--) {
       const x = returnIndices[q];
       if (x >= first && x < nextIndex) {
-        for (let r = q; r + 1 < toI32(returnIndices.length); r++) {
+        for (let r = q; r < returnIndices.length - 1; r++) {
           returnIndices[r] = returnIndices[r + 1];
+        }
+        if (returnIndices.length < 1) {
+          fault();
+          return;
         }
         returnIndices.pop();
       } else if (x > first) {
-        returnIndices[q] = x - count;
+        returnIndices[q] = toI32(toU32(x) - toU32(count));
       }
     }
     f.removeTokens(first, nextIndex);

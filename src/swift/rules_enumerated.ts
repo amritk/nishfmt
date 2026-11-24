@@ -21,6 +21,10 @@ import {
   SW_T_NON_SPACE_OR_COMMENT_OR_LINEBREAK,
 } from "./token";
 
+// Token indices, token counts and line numbers stay below the token count, far from the
+// i32 limits, so a sum or difference of them the prover cannot bound is written
+// `toI32(toU32(a) + b)`: wrapping u32 arithmetic, exact for such values.
+
 /** startOfMemberCallReceiver(endingAt:stoppingAtLeadingNegation:), or -1. */
 export const swStartOfMemberCallReceiver = (f: SwFormatter, dotIndex: i32, stopAtNegation: boolean): i32 => {
   let start = dotIndex;
@@ -136,6 +140,8 @@ const swRemoveRedundantEnumerated = (f: SwFormatter, forIndex: i32): void => {
   if (b.length !== 2) {
     return;
   }
+  const indexBinding = b[0].lo;
+  const element = b[1].lo;
   for (const a of b) {
     if (a.labelIndex >= 0 || a.lo !== a.hi || f.k(a.lo) !== SW_IDENT) {
       return;
@@ -171,16 +177,15 @@ const swRemoveRedundantEnumerated = (f: SwFormatter, forIndex: i32): void => {
   if (be < 0) {
     return;
   }
-  const indexBinding = b[0].lo;
   const name = swUnescaped(f.s(indexBinding));
   if (name !== "_") {
     const names: string[] = [name];
     const data: i32[] = [indexBinding];
-    if (!swRemoveUsed(f, names, data, [], bs + 1, be)) {
+    if (!swRemoveUsed(f, names, data, [], toI32(toU32(bs) + 1), be)) {
       return;
     }
     if (f.kw(after, "where") && names.length !== 0) {
-      if (!swRemoveUsed(f, names, data, [], after + 1, bs)) {
+      if (!swRemoveUsed(f, names, data, [], toI32(toU32(after) + 1), bs)) {
         return;
       }
     }
@@ -188,12 +193,15 @@ const swRemoveRedundantEnumerated = (f: SwFormatter, forIndex: i32): void => {
       return;
     }
   }
-  const element = b[1].lo;
-  if (swHasCommentIn(f, dot, enumEnd + 1) || swHasCommentIn(f, ps, element) || swHasCommentIn(f, element + 1, pe + 1)) {
+  if (
+    swHasCommentIn(f, dot, toI32(toU32(enumEnd) + 1)) ||
+    swHasCommentIn(f, ps, element) ||
+    swHasCommentIn(f, toI32(toU32(element) + 1), toI32(toU32(pe) + 1))
+  ) {
     return;
   }
-  f.removeTokens(dot, enumEnd + 1);
-  f.removeTokens(element + 1, pe + 1);
+  f.removeTokens(dot, toI32(toU32(enumEnd) + 1));
+  f.removeTokens(toI32(toU32(element) + 1), toI32(toU32(pe) + 1));
   f.removeTokens(ps, element);
 };
 

@@ -32,6 +32,10 @@ import {
   SW_T_NON_SPACE_OR_LINEBREAK,
 } from "./token";
 
+// Token indices, token counts and line numbers stay below the token count, far from the
+// i32 limits, so a sum or difference of them the prover cannot bound is written
+// `toI32(toU32(a) + b)`: wrapping u32 arithmetic, exact for such values.
+
 /** redundantBreak. */
 export const swRuleRedundantBreak = (f: SwFormatter): void => {
   for (let i = f.enumStart(); i >= 0; i = f.enumNext()) {
@@ -56,7 +60,7 @@ export const swRuleRedundantBreak = (f: SwFormatter): void => {
       continue;
     }
     if (f.k(startIndex) !== SW_LINEBREAK || f.k(endIndex) !== SW_LINEBREAK) {
-      startIndex += 1;
+      startIndex = toI32(toU32(startIndex) + 1);
     }
     f.removeTokens(startIndex, endIndex);
   }
@@ -90,8 +94,8 @@ export const swRuleStrongOutlets = (f: SwFormatter): void => {
     if (lower.endsWith("delegate") || lower.endsWith("datasource")) {
       continue;
     }
-    if (f.k(weakIndex + 1) === SW_SPACE) {
-      f.removeToken(weakIndex + 1);
+    if (f.k(toI32(toU32(weakIndex) + 1)) === SW_SPACE) {
+      f.removeToken(toI32(toU32(weakIndex) + 1));
     } else if (f.k(weakIndex - 1) === SW_SPACE) {
       f.removeToken(weakIndex - 1);
     }
@@ -105,12 +109,21 @@ export const swRuleStrongOutlets = (f: SwFormatter): void => {
  *  which can match no ASCII key). */
 export const swLowercased = (s: string): string => {
   const n = toI32(s.length);
-  const b = new Array<u8>(n);
+  const parts: string[] = [];
+  let from = 0;
   for (let i = 0; i < n; i++) {
     const c = s.charCodeAt(i);
-    b[i] = toU8(c >= 65 && c <= 90 ? c + 32 : c);
+    if (c >= 65 && c <= 90) {
+      parts.push(s.substring(from, i));
+      parts.push(String.fromCharCode(c + 32));
+      from = i + 1;
+    }
   }
-  return String.fromBytes(b, 0, n);
+  if (from === 0) {
+    return s;
+  }
+  parts.push(s.substring(from));
+  return parts.join("");
 };
 
 /** index(before: i, where: one of `{`, `:`, `#if`): the (cached) current scope when it is one of
@@ -274,6 +287,6 @@ export const swRuleRedundantGet = (f: SwFormatter): void => {
       continue;
     }
     f.removeTokens(closeIndex, nextIndex);
-    f.removeTokens(prevIndex + 1, openIndex + 1);
+    f.removeTokens(toI32(toU32(prevIndex) + 1), toI32(toU32(openIndex) + 1));
   }
 };

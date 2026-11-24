@@ -27,6 +27,10 @@ import {
   SW_T_START_OF_SCOPE,
 } from "./token";
 
+// Token indices, token counts and line numbers stay below the token count, far from the
+// i32 limits, so a sum or difference of them the prover cannot bound is written
+// `toI32(toU32(a) + b)`: wrapping u32 arithmetic, exact for such values.
+
 /** indexIsWithinNestedClosure(_:startOfScopeIndex:). */
 export const swIndexIsWithinNestedClosure = (f: SwFormatter, index: i32, startOfScopeIndex: i32): boolean => {
   let i = index;
@@ -47,7 +51,7 @@ export const swIndexIsWithinNestedClosure = (f: SwFormatter, index: i32, startOf
       return sos !== startOfScopeIndex;
     }
     if (f.has(sos) && f.k(sos) === SW_START) {
-      i = sos - 1;
+      i = toI32(toU32(sos) - 1);
       continue;
     }
     return false;
@@ -142,11 +146,11 @@ export const swRuleRedundantClosure = (f: SwFormatter): void => {
       continue;
     }
     const body = swStartOfBody(f, closureStartIndex);
-    if (!swIsSingleExpression(f, body + 1, closureEndIndex, true)) {
+    if (!swIsSingleExpression(f, toI32(toU32(body) + 1), closureEndIndex, true)) {
       continue;
     }
     let bad = false;
-    for (let j = closureStartIndex; j <= closureEndIndex; j++) {
+    for (let j = closureStartIndex; j <= closureEndIndex; j = toI32(toU32(j) + 1)) {
       if (f.kw(j, "in") && !swIndexIsWithinNestedClosure(f, j, closureStartIndex)) {
         bad = true;
         break;
@@ -155,7 +159,7 @@ export const swRuleRedundantClosure = (f: SwFormatter): void => {
     if (bad) {
       continue;
     }
-    for (let j = closureStartIndex; j <= closureEndIndex; j++) {
+    for (let j = closureStartIndex; j <= closureEndIndex; j = toI32(toU32(j) + 1)) {
       if (
         (f.tok(j, SW_IDENT, "fatalError") || f.tok(j, SW_IDENT, "preconditionFailure") || f.kw(j, "throw")) &&
         !swIndexIsWithinNestedClosure(f, j, closureStartIndex)
@@ -193,28 +197,28 @@ export const swRuleRedundantClosure = (f: SwFormatter): void => {
         continue;
       }
     }
-    while (swIsSpaceOrBreakAt(f, closureStartIndex + 1)) {
-      f.removeToken(closureStartIndex + 1);
-      openParen--;
-      closeParen--;
-      closureEndIndex--;
+    while (swIsSpaceOrBreakAt(f, toI32(toU32(closureStartIndex) + 1))) {
+      f.removeToken(toI32(toU32(closureStartIndex) + 1));
+      openParen = toI32(toU32(openParen) - 1);
+      closeParen = toI32(toU32(closeParen) - 1);
+      closureEndIndex = toI32(toU32(closureEndIndex) - 1);
     }
-    while (swIsSpaceOrBreakAt(f, closureEndIndex - 1)) {
-      f.removeToken(closureEndIndex - 1);
-      openParen--;
-      closeParen--;
-      closureEndIndex--;
+    while (swIsSpaceOrBreakAt(f, toI32(toU32(closureEndIndex) - 1))) {
+      f.removeToken(toI32(toU32(closureEndIndex) - 1));
+      openParen = toI32(toU32(openParen) - 1);
+      closeParen = toI32(toU32(closeParen) - 1);
+      closureEndIndex = toI32(toU32(closureEndIndex) - 1);
     }
     f.removeToken(closeParen);
     f.removeToken(openParen);
     f.removeToken(closureEndIndex);
     const returnIndex = f.indexAfter(SW_T_NON_SPACE_OR_COMMENT_OR_LINEBREAK, closureStartIndex);
     if (returnIndex >= 0 && f.s(returnIndex) === "return") {
-      while (swIsSpaceOrBreakAt(f, returnIndex + 1)) {
-        f.removeToken(returnIndex + 1);
+      while (swIsSpaceOrBreakAt(f, toI32(toU32(returnIndex) + 1))) {
+        f.removeToken(toI32(toU32(returnIndex) + 1));
       }
       f.removeToken(returnIndex);
     }
-    f.removeTokens(startIndex, closureStartIndex + 1);
+    f.removeTokens(startIndex, toI32(toU32(closureStartIndex) + 1));
   }
 };

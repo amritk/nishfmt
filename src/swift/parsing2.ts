@@ -35,6 +35,10 @@ import {
   swStrIsMacroOrAttribute,
 } from "./token";
 
+// Token indices, token counts and line numbers stay below the token count, far from the
+// i32 limits, so a sum or difference of them the prover cannot bound is written
+// `toI32(toU32(a) + b)`: wrapping u32 arithmetic, exact for such values.
+
 export const SW_SCOPE_NONE: i32 = 0;
 export const SW_SCOPE_ARRAY: i32 = 1;
 export const SW_SCOPE_ARRAY_TYPE: i32 = 2;
@@ -137,7 +141,7 @@ export const swScopeType = (f: SwFormatter, index: i32): i32 => {
       } else if (f.op(prevIndex, "=", SW_OP_INFIX)) {
         isType = swLastSignificantKeyword(f, prevIndex) === "typealias";
       }
-      if (callCase && !swHasLinebreak(f, prevIndex + 1, index)) {
+      if (callCase && !swHasLinebreak(f, toI32(toU32(prevIndex) + 1), index)) {
         return s === "(" ? SW_SCOPE_FUNCTION_CALL : SW_SCOPE_SUBSCRIPT;
       }
     }
@@ -268,19 +272,21 @@ export const swShouldInsertSpaceAfterToken = (f: SwFormatter, index: i32): i32 =
     if (s === "await") {
       return SW_SPACE_YES;
     }
-    if (f.ks(index - 1, SW_OP, "::")) {
+    if (f.ks(toI32(toU32(index) - 1), SW_OP, "::")) {
       return SW_SPACE_NO;
     }
     return swStrIsMacroOrAttribute(s) ? SW_SPACE_NO : SW_SPACE_YES;
   }
   if (k === SW_IDENT) {
     if (s === "as" || s === "is" || s === "try") {
-      return !f.ks(index - 1, SW_OP, ".") && !f.ks(index - 1, SW_OP, "::") ? SW_SPACE_YES : SW_SPACE_NO;
+      return !f.ks(toI32(toU32(index) - 1), SW_OP, ".") && !f.ks(toI32(toU32(index) - 1), SW_OP, "::")
+        ? SW_SPACE_YES
+        : SW_SPACE_NO;
     }
     if (s === "unsafe") {
       return SW_SPACE_YES;
     }
-    return swIsKeywordInTypeContext(s) && !f.ks(index - 1, SW_OP, ".") && swIsTypePosition(f, index)
+    return swIsKeywordInTypeContext(s) && !f.ks(toI32(toU32(index) - 1), SW_OP, ".") && swIsTypePosition(f, index)
       ? SW_SPACE_YES
       : SW_SPACE_NO;
   }

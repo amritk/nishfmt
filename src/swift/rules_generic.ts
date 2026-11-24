@@ -3,7 +3,8 @@
 // Ported from SwiftFormat 0.64.7 (MIT License, Copyright (c) 2016 Nick
 // Lockwood).
 
-import { swStringExcludingLinebreaksAndComments } from "./decl";
+import { fault } from "../core/fault";
+import { swRefLo, swStringExcludingLinebreaksAndComments } from "./decl";
 import { SwFormatter } from "./formatter";
 import { swParseFunctionDeclaration } from "./funcdecl";
 import { swCharCount, swEndOfScope, swParseGenericValueEnd, swParseType } from "./parsing";
@@ -21,6 +22,10 @@ import {
   SW_T_NON_SPACE_OR_COMMENT_OR_LINEBREAK,
   SwTok,
 } from "./token";
+
+// Token indices, token counts and line numbers stay below the token count, far from the
+// i32 limits, so a sum or difference of them the prover cannot bound is written
+// `toI32(toU32(a) + b)`: wrapping u32 arithmetic, exact for such values.
 
 /** A GenericConformance: type 0 for a protocol constraint, 1 for a concrete type. */
 class SwGenConf {
@@ -103,7 +108,7 @@ const swParseGenericTypes = (f: SwFormatter, start: i32, types: SwGenType[]): i3
         cur = nt - 1;
       }
     }
-    const full = swStringExcludingLinebreaksAndComments(f, lhs, lhsEnd + 1);
+    const full = swStringExcludingLinebreaksAndComments(f, lhs, toI32(toU32(lhsEnd) + 1));
     const dot = full.indexOf(".");
     const base = dot >= 0 ? full.substring(0, dot) : full;
     let gi = -1;
@@ -118,9 +123,19 @@ const swParseGenericTypes = (f: SwFormatter, start: i32, types: SwGenType[]): i3
       gi = toI32(types.length) - 1;
     }
     if (rhsLo >= 0 && ct >= 0) {
-      types[gi].confs.push(
-        new SwGenConf(swStringExcludingLinebreaksAndComments(f, rhsLo, rhsHi + 1), full, ct, lhs, cur),
+      // A token index: the u32 sum is exact.
+      const conf = new SwGenConf(
+        swStringExcludingLinebreaksAndComments(f, rhsLo, toI32(toU32(rhsHi) + 1)),
+        full,
+        ct,
+        lhs,
+        cur,
       );
+      if (gi < 0 || gi >= types.length) {
+        fault();
+        return cur;
+      }
+      types[gi].confs.push(conf);
     }
     if (!more) {
       break;
@@ -141,9 +156,9 @@ const swIsGenericTypeDeclared = (f: SwFormatter, name: string, gs: i32): boolean
   if (ge < 0) {
     return false;
   }
-  let cur = gs + 1;
+  let cur = toI32(toU32(gs) + 1);
   while (cur < ge) {
-    const ti = f.indexAfter(SW_T_NON_SPACE_OR_COMMENT_OR_LINEBREAK, cur - 1);
+    const ti = f.indexAfter(SW_T_NON_SPACE_OR_COMMENT_OR_LINEBREAK, toI32(toU32(cur) - 1));
     if (ti < 0 || ti >= ge) {
       break;
     }
@@ -154,21 +169,24 @@ const swIsGenericTypeDeclared = (f: SwFormatter, name: string, gs: i32): boolean
     if (ci < 0) {
       break;
     }
-    cur = ci + 1;
+    cur = toI32(toU32(ci) + 1);
   }
   return false;
 };
 
 const swTokenizeAscii = (src: string): SwTok[] => {
   const n = toI32(src.length);
-  const b = new Array<u8>(n);
+  const b: u8[] = [];
   for (let j = 0; j < n; j++) {
-    b[j] = toU8(src.charCodeAt(j));
+    b.push(toU8(src.charCodeAt(j)));
   }
   const t = swTokenize(b, n);
   const out: SwTok[] = [];
-  for (let j = 0; j < t.count(); j++) {
-    out.push(new SwTok(t.k[j], t.s[j], t.a[j]));
+  const tk = t.k;
+  const ts = t.s;
+  const ta = t.a;
+  for (let j = 0; j < tk.length && j < ts.length && j < ta.length; j++) {
+    out.push(new SwTok(tk[j], ts[j], ta[j]));
   }
   return out;
 };
@@ -186,7 +204,7 @@ const swSimplifyGenericConstraints = (f: SwFormatter, genericStart: i32, whereIn
       if (c.type !== 0 || c.lo <= whereIndex || c.typeName !== t.name || !declaredInline) {
         continue;
       }
-      const last = f.indexBefore(SW_T_NON_SPACE_OR_COMMENT_OR_LINEBREAK, c.hi + 1);
+      const last = f.indexBefore(SW_T_NON_SPACE_OR_COMMENT_OR_LINEBREAK, toI32(toU32(c.hi) + 1));
       if (last < 0 || !f.onSameLine(c.lo, last)) {
         continue;
       }
@@ -200,13 +218,20 @@ const swSimplifyGenericConstraints = (f: SwFormatter, genericStart: i32, whereIn
   // group by generic type, in first-seen order
   const groupNames: string[] = [];
   const groups: SwGenConf[][] = [];
-  for (let q = 0; q < toI32(moveConfs.length); q++) {
-    const g = groupNames.indexOf(moveTypes[q]);
+  for (let q = 0; q < moveConfs.length && q < moveTypes.length; q++) {
+    const mt = moveTypes[q];
+    const mc = moveConfs[q];
+    const g = groupNames.indexOf(mt);
     if (g >= 0) {
-      groups[g].push(moveConfs[q]);
+      // groups is parallel to groupNames.
+      if (g >= groups.length) {
+        fault();
+        return;
+      }
+      groups[g].push(mc);
     } else {
-      groupNames.push(moveTypes[q]);
-      groups.push([moveConfs[q]]);
+      groupNames.push(mt);
+      groups.push([mc]);
     }
   }
   for (const g of groups) {
@@ -235,9 +260,9 @@ const swSimplifyGenericConstraints = (f: SwFormatter, genericStart: i32, whereIn
     }
   }
   for (const c of order) {
-    f.removeTokens(c.lo, c.hi + 1);
+    f.removeTokens(c.lo, toI32(toU32(c.hi) + 1));
   }
-  const w = f.refLo[wref];
+  const w = swRefLo(f, wref);
   const wt: SwGenType[] = [];
   swParseGenericTypes(f, whereIndex, wt);
   let allEmpty = true;
@@ -256,7 +281,7 @@ const swSimplifyGenericConstraints = (f: SwFormatter, genericStart: i32, whereIn
       if (lb >= 0) {
         f.removeTokens(startIndex, lb);
       } else if (!f.tok(ta, SW_END, "}")) {
-        let end = w + 1;
+        let end = toI32(toU32(w) + 1);
         while (end < f.count() && f.k(end) !== SW_LINEBREAK) {
           end++;
         }
@@ -264,7 +289,7 @@ const swSimplifyGenericConstraints = (f: SwFormatter, genericStart: i32, whereIn
       }
     }
   }
-  const ob = f.indexOfAfter(SW_START, "{", 0, f.refLo[wref]);
+  const ob = f.indexOfAfter(SW_START, "{", 0, swRefLo(f, wref));
   if (ob >= 0) {
     const ci = f.indexBefore(SW_T_NON_SPACE_OR_COMMENT_OR_LINEBREAK, ob);
     if (ci >= 0 && f.tok(ci, SW_DELIM, ",")) {
@@ -275,16 +300,17 @@ const swSimplifyGenericConstraints = (f: SwFormatter, genericStart: i32, whereIn
     }
   }
   f.unref(wref);
-  for (let g = 0; g < toI32(groups.length); g++) {
+  for (let g = 0; g < groups.length && g < groupNames.length; g++) {
     const typeName = groupNames[g];
-    const gs = f.refLo[gref];
+    const grp = groups[g];
+    const gs = swRefLo(f, gref);
     const ge = swEndOfScope(f, gs);
     if (ge < 0) {
       break;
     }
-    let cur = gs + 1;
+    let cur = toI32(toU32(gs) + 1);
     while (cur < ge) {
-      const ti = f.indexAfter(SW_T_NON_SPACE_OR_COMMENT_OR_LINEBREAK, cur - 1);
+      const ti = f.indexAfter(SW_T_NON_SPACE_OR_COMMENT_OR_LINEBREAK, toI32(toU32(cur) - 1));
       if (ti < 0 || ti >= ge) {
         break;
       }
@@ -310,7 +336,7 @@ const swSimplifyGenericConstraints = (f: SwFormatter, genericStart: i32, whereIn
           }
         }
         const names: string[] = [];
-        for (const c of groups[g]) {
+        for (const c of grp) {
           if (inline.indexOf(c.name) < 0 && names.indexOf(c.name) < 0) {
             names.push(c.name);
           }
@@ -319,14 +345,14 @@ const swSimplifyGenericConstraints = (f: SwFormatter, genericStart: i32, whereIn
           break;
         }
         const suffix = (hasInline ? " & " : ": ") + names.join(" & ");
-        f.insertToks(swTokenizeAscii(suffix), end + 1);
+        f.insertToks(swTokenizeAscii(suffix), toI32(toU32(end) + 1));
         break;
       }
       const ci = f.indexOfAfter(SW_DELIM, ",", 0, ti);
       if (ci < 0) {
         break;
       }
-      cur = ci + 1;
+      cur = toI32(toU32(ci) + 1);
     }
   }
   f.unref(gref);

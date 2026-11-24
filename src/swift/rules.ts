@@ -132,13 +132,15 @@ export const SW_RULE_YODA_CONDITIONS: i32 = 116;
 export const swRuleName = (r: i32): string => {
   let start = 0;
   let k = 0;
-  const n = toI32(SW_RULE_NAMES.length);
-  for (let i = 0; i <= n; i++) {
-    if (i === n || SW_RULE_NAMES.charCodeAt(i) === 32) {
+  const names = SW_RULE_NAMES;
+  const n = toI32(names.length);
+  // n is a string length, so i < 2147483647 changes nothing; k <= i keeps the u32 sum exact.
+  for (let i = 0; i <= n && i < 2147483647; i++) {
+    if (i === n || (i < n && names.charCodeAt(i) === 32)) {
       if (k === r) {
-        return SW_RULE_NAMES.substring(start, i);
+        return names.substring(start, i);
       }
-      k++;
+      k = toI32(toU32(k) + 1);
       start = i + 1;
     }
   }

@@ -6,6 +6,7 @@
 // Ported from SwiftFormat 0.64.7 (MIT License, Copyright (c) 2016 Nick
 // Lockwood).
 
+import { fault } from "../core/fault";
 import { swIsInStringLiteral } from "./expr";
 import { SwFormatter, swIndexAfterWhere } from "./formatter";
 import { swEndOfScope, swIsCommentedCode, swSpaceEquivalentToTokens } from "./parsing";
@@ -25,6 +26,10 @@ import {
   SW_T_NON_SPACE_OR_LINEBREAK,
   SwTok,
 } from "./token";
+
+// Token indices, token counts and line numbers stay below the token count, far from the
+// i32 limits, so a sum or difference of them the prover cannot bound is written
+// `toI32(toU32(a) + b)`: wrapping u32 arithmetic, exact for such values.
 
 const SW_INDENT_UNIT: string = "    ";
 
@@ -54,7 +59,7 @@ const swKeepParameterLabelsOnSameLine = (f: SwFormatter, i: i32, endOfScope0: i3
   let endOfScope = endOfScope0;
   let endIndex = endOfScope;
   while (true) {
-    const index = f.lastIndexInType(SW_T_LINEBREAK, i + 1, endIndex);
+    const index = f.lastIndexInType(SW_T_LINEBREAK, toI32(toU32(i) + 1), endIndex);
     if (index < 0) {
       break;
     }
@@ -68,17 +73,17 @@ const swKeepParameterLabelsOnSameLine = (f: SwFormatter, i: i32, endOfScope0: i3
       continue;
     }
     const lb = f.slice(index, nextIndex);
-    const count = nextIndex - (lastIndex + 1);
-    f.replaceTokens(lastIndex + 1, nextIndex, [new SwTok(SW_SPACE, " ", 0)]);
-    endOfScope -= count - 1;
+    const count = toI32(toU32(nextIndex) - toU32(lastIndex) - 1);
+    f.replaceTokens(toI32(toU32(lastIndex) + 1), nextIndex, [new SwTok(SW_SPACE, " ", 0)]);
+    endOfScope = toI32(toU32(endOfScope) - toU32(toI32(toU32(count) - 1)));
     const nextComma = f.indexOfAfter(SW_DELIM, ",", 0, index);
     if (nextComma >= 0) {
-      if (f.has(nextComma + 1) && f.k(nextComma + 1) === SW_SPACE) {
-        f.replaceTokens(nextComma + 1, nextComma + 2, lb);
-        endOfScope += toI32(lb.length) - 1;
+      if (f.has(toI32(toU32(nextComma) + 1)) && f.k(toI32(toU32(nextComma) + 1)) === SW_SPACE) {
+        f.replaceTokens(toI32(toU32(nextComma) + 1), toI32(toU32(nextComma) + 2), lb);
+        endOfScope = toI32(toU32(endOfScope) + toU32(toI32(lb.length)) - 1);
       } else {
-        f.insertToks(lb, nextComma + 1);
-        endOfScope += toI32(lb.length);
+        f.insertToks(lb, toI32(toU32(nextComma) + 1));
+        endOfScope = toI32(toU32(endOfScope) + toU32(toI32(lb.length)));
       }
     }
   }
@@ -91,10 +96,10 @@ const swWrapArgumentsBeforeFirst = (f: SwFormatter, i: i32, endOfScope0: i32): v
   let endOfScope = swKeepParameterLabelsOnSameLine(f, i, endOfScope0);
   let index = f.indexBefore(SW_T_NON_SPACE_OR_COMMENT_OR_LINEBREAK, endOfScope);
   if (!f.tok(index, SW_DELIM, ",")) {
-    index++;
+    index = toI32(toU32(index) + 1);
   }
   while (true) {
-    const commaIndex = f.lastIndexOfIn(SW_DELIM, ",", 0, i + 1, index);
+    const commaIndex = f.lastIndexOfIn(SW_DELIM, ",", 0, toI32(toU32(i) + 1), index);
     if (commaIndex < 0) {
       break;
     }
@@ -102,15 +107,26 @@ const swWrapArgumentsBeforeFirst = (f: SwFormatter, i: i32, endOfScope0: i32): v
     if (linebreakIndex < 0) {
       break;
     }
+    // Token indices: x + 1 and linebreakIndex + 1 cannot overflow.
     const x = f.indexBefore(SW_T_NON_SPACE, linebreakIndex);
+    if (x >= 2147483647) {
+      fault();
+      return;
+    }
     if (x >= 0) {
       linebreakIndex = x + 1;
+    }
+    if (linebreakIndex >= 2147483647) {
+      fault();
+      return;
     }
     if (!swIsCommentedCode(f, linebreakIndex + 1)) {
       if (f.k(linebreakIndex) === SW_LINEBREAK) {
         const nn = f.indexAfter(SW_T_NON_SPACE, linebreakIndex);
         if (nn >= 0 && f.k(nn) !== SW_LINEBREAK) {
-          endOfScope += f.insertSpace(indent + SW_INDENT_UNIT, linebreakIndex + 1);
+          endOfScope = toI32(
+            toU32(endOfScope) + toU32(f.insertSpace(indent + SW_INDENT_UNIT, toI32(toU32(linebreakIndex) + 1))),
+          );
         }
       }
     }
@@ -122,15 +138,15 @@ const swWrapArgumentsBeforeFirst = (f: SwFormatter, i: i32, endOfScope0: i32): v
     if (nextIndex >= 0) {
       if (f.k(nextIndex) !== SW_LINEBREAK) {
         f.insertLinebreak(nextIndex);
-        endOfScope++;
+        endOfScope = toI32(toU32(endOfScope) + 1);
       }
       const nsp = f.indexAfter(SW_T_NON_SPACE, nextIndex);
-      if (nextIndex + 1 < endOfScope && nsp >= 0 && f.k(nsp) !== SW_LINEBREAK) {
+      if (toI32(toU32(nextIndex) + 1) < endOfScope && nsp >= 0 && f.k(nsp) !== SW_LINEBREAK) {
         let ind = indent;
         if (nsp < endOfScope && !swIsCommentedCode(f, nsp)) {
           ind = ind + SW_INDENT_UNIT;
         }
-        endOfScope += f.insertSpace(ind, nextIndex + 1);
+        endOfScope = toI32(toU32(endOfScope) + toU32(f.insertSpace(ind, toI32(toU32(nextIndex) + 1))));
       }
     }
   }
@@ -139,10 +155,10 @@ const swWrapArgumentsBeforeFirst = (f: SwFormatter, i: i32, endOfScope0: i32): v
   if (hasLineBreakAfterOpeningParen) {
     const lastIndex = f.indexBefore(SW_T_NON_SPACE, endOfScope);
     if (lastIndex >= 0) {
-      endOfScope += f.insertSpace(indent, lastIndex + 1);
+      endOfScope = toI32(toU32(endOfScope) + toU32(f.insertSpace(indent, toI32(toU32(lastIndex) + 1))));
       if (f.k(lastIndex) !== SW_LINEBREAK) {
-        f.insertLinebreak(lastIndex + 1);
-        endOfScope++;
+        f.insertLinebreak(toI32(toU32(lastIndex) + 1));
+        endOfScope = toI32(toU32(endOfScope) + 1);
       }
     }
   }
@@ -150,14 +166,14 @@ const swWrapArgumentsBeforeFirst = (f: SwFormatter, i: i32, endOfScope0: i32): v
 
 /** wrapArgumentsAfterFirst (allowGrouping true, maxWidth 0). */
 const swWrapArgumentsAfterFirst = (f: SwFormatter, i: i32, endOfScope0: i32): void => {
-  let firstArgumentIndex = f.indexInType(SW_T_NON_SPACE_OR_LINEBREAK, i + 1, endOfScope0);
+  let firstArgumentIndex = f.indexInType(SW_T_NON_SPACE_OR_LINEBREAK, toI32(toU32(i) + 1), endOfScope0);
   if (firstArgumentIndex < 0) {
     return;
   }
   let endOfScope = swKeepParameterLabelsOnSameLine(f, i, endOfScope0);
-  f.removeTokens(i + 1, firstArgumentIndex);
-  endOfScope -= firstArgumentIndex - (i + 1);
-  firstArgumentIndex = i + 1;
+  f.removeTokens(toI32(toU32(i) + 1), firstArgumentIndex);
+  endOfScope = toI32(toU32(endOfScope) - toU32(firstArgumentIndex) + toU32(i) + 1);
+  firstArgumentIndex = toI32(toU32(i) + 1);
   const start = f.startOfLine(i);
   const indent = swSpaceEquivalentToTokens(f, start, firstArgumentIndex);
   endOfScope = swRemoveLinebreakBeforeEndOfScope(f, endOfScope);
@@ -171,16 +187,25 @@ const swWrapArgumentsAfterFirst = (f: SwFormatter, i: i32, endOfScope0: i32): vo
     if (linebreakIndex < 0) {
       break;
     }
+    // Token indices: x + 1 and linebreakIndex + 1 cannot overflow.
     const x = f.indexBefore(SW_T_NON_SPACE, linebreakIndex);
+    if (x >= 2147483647) {
+      fault();
+      return;
+    }
     if (x >= 0) {
       linebreakIndex = x + 1;
     }
+    if (linebreakIndex >= 2147483647) {
+      fault();
+      return;
+    }
     if (f.k(linebreakIndex) === SW_LINEBREAK) {
       if (linebreakIndex + 1 !== endOfScope && !swIsCommentedCode(f, linebreakIndex + 1)) {
-        endOfScope += f.insertSpace(indent, linebreakIndex + 1);
+        endOfScope = toI32(toU32(endOfScope) + toU32(f.insertSpace(indent, toI32(toU32(linebreakIndex) + 1))));
       }
     }
-    index = commaIndex + 1;
+    index = toI32(toU32(commaIndex) + 1);
   }
 };
 
@@ -202,7 +227,10 @@ export const swRuleWrapArguments = (f: SwFormatter): void => {
       if (!f.has(i - 1) || f.kw(i - 1, "#colorLiteral") || f.kw(i - 1, "#imageLiteral")) {
         continue;
       }
-      if (f.indexInType(SW_T_NON_SPACE_OR_COMMENT_OR_LINEBREAK, i + 1, endOfScope) < 0 && swIsParameterList(f, i)) {
+      if (
+        f.indexInType(SW_T_NON_SPACE_OR_COMMENT_OR_LINEBREAK, toI32(toU32(i) + 1), endOfScope) < 0 &&
+        swIsParameterList(f, i)
+      ) {
         if (f.nextIs(SW_T_NON_SPACE_OR_COMMENT_OR_LINEBREAK, endOfScope, SW_START, "{")) {
           swRemoveLinebreakBeforeEndOfScope(f, endOfScope);
           continue;
@@ -210,7 +238,7 @@ export const swRuleWrapArguments = (f: SwFormatter): void => {
       }
     }
     // (Side-effect free checks, cheapest first.)
-    const firstLinebreakIndex = f.indexInType(SW_T_LINEBREAK, i + 1, endOfScope);
+    const firstLinebreakIndex = f.indexInType(SW_T_LINEBREAK, toI32(toU32(i) + 1), endOfScope);
     if (firstLinebreakIndex < 0) {
       continue;
     }

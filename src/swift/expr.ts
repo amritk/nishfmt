@@ -41,6 +41,10 @@ import {
   swStrIsMacro,
 } from "./token";
 
+// Token indices, token counts and line numbers stay below the token count, far from the
+// i32 limits, so a sum or difference of them the prover cannot bound is written
+// `toI32(toU32(a) + b)`: wrapping u32 arithmetic, exact for such values.
+
 /** isUnsafeExpression(at:). */
 export const swIsUnsafeExpression = (f: SwFormatter, index: i32): boolean => {
   if (!f.tok(index, SW_IDENT, "unsafe")) {
@@ -70,7 +74,7 @@ export const swIsUnsafeExpression = (f: SwFormatter, index: i32): boolean => {
     return swIsStartOfClosure(f, n);
   }
   if (f.tok(n, SW_START, "(") || f.tok(n, SW_START, "[")) {
-    return n > index + 1;
+    return n > toI32(toU32(index) + 1);
   }
   if (k === SW_START && swIsStringDelimiter(k, f.s(n))) {
     return true;
@@ -90,11 +94,11 @@ export const swConditionalCompilationDirectives = (f: SwFormatter, ifIndex: i32)
   let depth = 0;
   for (let i = ifIndex; i < f.count(); i++) {
     if (f.tok(i, SW_START, "#if")) {
-      depth++;
+      depth = toI32(toU32(depth) + 1);
     } else if ((f.kw(i, "#elseif") || f.kw(i, "#else")) && depth === 1) {
       out.push(i);
     } else if (f.tok(i, SW_END, "#endif")) {
-      depth--;
+      depth = toI32(toU32(depth) - 1);
       if (depth === 0) {
         out.push(i);
         return out;
@@ -117,14 +121,17 @@ export const swEndOfPostfixIfdef = (f: SwFormatter, ifIndex: i32): i32 => {
   if (dirs === null) {
     return -1;
   }
+  const ds: i32[] = dirs;
   let last = -1;
-  for (let q = 0; q + 1 < toI32(dirs.length); q++) {
-    const eod = f.endOfLine(dirs[q]);
-    if (!(eod < dirs[q + 1])) {
+  for (let q = 0; q < ds.length - 1; q++) {
+    const d0 = ds[q];
+    const hi = ds[q + 1];
+    const eod = f.endOfLine(d0);
+    if (!(eod < hi)) {
       return -1;
     }
+    // eod < hi: the sum fits.
     const lo = eod + 1;
-    const hi = dirs[q + 1];
     if (!(swIsMemberAccessChain(f, lo, hi) || f.indexInType(SW_T_NON_SPACE_OR_COMMENT_OR_LINEBREAK, lo, hi) < 0)) {
       return -1;
     }
@@ -216,10 +223,15 @@ export const swParseExpressionEnd = (f: SwFormatter, start: i32, allowConditiona
       return -1;
     }
     const b = swConditionalBranches(f, start);
-    if (b === null || b.ends.length === 0) {
+    if (b === null) {
       return -1;
     }
-    end = b.ends[toI32(b.ends.length) - 1];
+    const ends = b.ends;
+    const ne = toI32(ends.length);
+    if (ne < 1) {
+      return -1;
+    }
+    end = ends[ne - 1];
   } else {
     return -1;
   }
@@ -370,14 +382,14 @@ export const swParsePropertyDeclaration = (f: SwFormatter, introducer: i32): SwP
     if (eb >= 0) {
       p.bodyStart = sb;
       p.bodyEnd = eb;
-      if (sb + 1 !== eb) {
+      if (toI32(toU32(sb) + 1) !== eb) {
         const ft = f.indexAfter(SW_T_NON_SPACE_OR_COMMENT_OR_LINEBREAK, sb);
         const lt = f.indexBefore(SW_T_NON_SPACE_OR_COMMENT_OR_LINEBREAK, eb);
         if (ft >= 0 && lt >= 0 && ft <= lt) {
           p.insideStart = ft;
           p.insideEnd = lt;
         } else {
-          p.insideStart = sb + 1;
+          p.insideStart = toI32(toU32(sb) + 1);
           p.insideEnd = eb - 1;
         }
       } else {
@@ -403,21 +415,20 @@ export const swIsInsideProtocol = (f: SwFormatter, index: i32): boolean => {
 export const swIsInStringLiteral = (f: SwFormatter, i: i32): boolean => {
   if (f.encMut !== f.mutations || toI32(f.enc.length) !== f.count()) {
     const n = f.count();
-    const enc = new Array<i32>(n);
+    // enc[j] is the string start enclosing token j, or -1.
+    const enc: i32[] = [];
     const stack: i32[] = [];
     for (let j = 0; j < n; j++) {
       const k = f.k(j);
       const m = toI32(stack.length);
+      const top = m > 0 ? stack[m - 1] : -1;
+      enc.push(top);
       if (k === SW_START && swIsStringDelimiter(k, f.s(j))) {
-        enc[j] = m === 0 ? -1 : stack[m - 1];
         stack.push(j);
       } else if (k === SW_END && swIsStringDelimiter(k, f.s(j))) {
-        enc[j] = m === 0 ? -1 : stack[m - 1];
-        if (m > 0) {
+        if (stack.length > 0) {
           stack.pop();
         }
-      } else {
-        enc[j] = m === 0 ? -1 : stack[m - 1];
       }
     }
     f.enc = enc;
@@ -437,7 +448,7 @@ export const swWrapStatementBody = (f: SwFormatter, i: i32): void => {
     if (eoc < 0) {
       return;
     }
-    const nob = f.indexOfAfter(SW_START, "{", 0, eoc + 1);
+    const nob = f.indexOfAfter(SW_START, "{", 0, toI32(toU32(eoc) + 1));
     if (nob < 0) {
       return;
     }
@@ -452,7 +463,7 @@ export const swWrapStatementBody = (f: SwFormatter, i: i32): void => {
     f.removeToken(first - 1);
     first -= 1;
   }
-  const moved = first + 1;
+  const moved = toI32(toU32(first) + 1);
   const indent = f.currentIndentForLine(i) + "    ";
   f.insertSpace(indent, moved);
   let closing = f.indexOfAfter(SW_END, "}", 0, moved);
@@ -461,10 +472,10 @@ export const swWrapStatementBody = (f: SwFormatter, i: i32): void => {
   }
   f.insertLinebreak(closing);
   const lb = closing;
-  closing += 1;
+  closing = toI32(toU32(closing) + 1);
   if (f.k(lb - 1) === SW_SPACE) {
     f.removeToken(lb - 1);
-    closing -= 1;
+    closing = toI32(toU32(closing) - 1);
   }
   f.insertSpace(f.currentIndentForLine(i), closing);
 };
@@ -487,14 +498,14 @@ export const swWrapIfFollowingOpeningBrace = (f: SwFormatter, i: i32): void => {
         insertAt -= 1;
       }
       f.insertLinebreak(insertAt);
-      f.insertSpace(closeIndent, insertAt + 1);
+      f.insertSpace(closeIndent, toI32(toU32(insertAt) + 1));
     }
   }
-  const ins = openBrace + 1;
+  const ins = toI32(toU32(openBrace) + 1);
   if (f.k(ins) === SW_SPACE) {
     f.removeToken(ins);
   }
   const indent = f.currentIndentForLine(openBrace) + "    ";
   f.insertLinebreak(ins);
-  f.insertSpace(indent, ins + 1);
+  f.insertSpace(indent, toI32(toU32(ins) + 1));
 };

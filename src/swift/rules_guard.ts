@@ -21,6 +21,10 @@ import {
   SwTok,
 } from "./token";
 
+// Token indices, token counts and line numbers stay below the token count, far from the
+// i32 limits, so a sum or difference of them the prover cannot bound is written
+// `toI32(toU32(a) + b)`: wrapping u32 arithmetic, exact for such values.
+
 export const SW_COND_BOOL: i32 = 0;
 export const SW_COND_BINDING: i32 = 1;
 export const SW_COND_PATTERN: i32 = 2;
@@ -58,9 +62,9 @@ export const swParseConditionalStatement = (f: SwFormatter, gi: i32): SwConditio
   if (endIndex < 0) {
     return c;
   }
-  let pos = gi + 1;
+  let pos = toI32(toU32(gi) + 1);
   while (pos < endIndex) {
-    const cs = f.indexAfter(SW_T_NON_SPACE_OR_COMMENT_OR_LINEBREAK, pos - 1);
+    const cs = f.indexAfter(SW_T_NON_SPACE_OR_COMMENT_OR_LINEBREAK, toI32(toU32(pos) - 1));
     if (cs < 0 || cs >= endIndex) {
       break;
     }
@@ -104,7 +108,7 @@ export const swParseConditionalStatement = (f: SwFormatter, gi: i32): SwConditio
 /** conditionsAreWrapped(after:before:). */
 const swGuardConditionsAreWrapped = (f: SwFormatter, keywordIndex: i32, endIndex: i32): boolean => {
   const last = f.indexBefore(SW_T_NON_SPACE_OR_COMMENT_OR_LINEBREAK, endIndex);
-  return last >= 0 && f.indexInType(SW_T_LINEBREAK, keywordIndex + 1, last) >= 0;
+  return last >= 0 && f.indexInType(SW_T_LINEBREAK, toI32(toU32(keywordIndex) + 1), last) >= 0;
 };
 
 /** repeatedGuardParts(at:) as [else, bodyStart, bodyEnd], or []. */
@@ -124,7 +128,7 @@ const swRepeatedGuardParts = (f: SwFormatter, gi: i32): i32[] => {
 const swBodiesMatch = (f: SwFormatter, a0: i32, a1: i32, b0: i32, b1: i32): boolean => {
   const la: i32[] = [];
   const lb: i32[] = [];
-  for (let j = a0; j <= a1; j++) {
+  for (let j = a0; j <= a1; j = toI32(toU32(j) + 1)) {
     if (f.k(j) !== SW_SPACE && f.k(j) !== SW_LINEBREAK) {
       if (f.isComment(j)) {
         return false;
@@ -132,7 +136,7 @@ const swBodiesMatch = (f: SwFormatter, a0: i32, a1: i32, b0: i32, b1: i32): bool
       la.push(j);
     }
   }
-  for (let j = b0; j <= b1; j++) {
+  for (let j = b0; j <= b1; j = toI32(toU32(j) + 1)) {
     if (f.k(j) !== SW_SPACE && f.k(j) !== SW_LINEBREAK) {
       if (f.isComment(j)) {
         return false;
@@ -143,7 +147,7 @@ const swBodiesMatch = (f: SwFormatter, a0: i32, a1: i32, b0: i32, b1: i32): bool
   if (la.length !== lb.length) {
     return false;
   }
-  for (let q = 0; q < toI32(la.length); q++) {
+  for (let q = 0; q < la.length && q < lb.length; q++) {
     if (!f.same(la[q], lb[q])) {
       return false;
     }
@@ -158,16 +162,22 @@ const swNamesDeclaredByGuard = (f: SwFormatter, gi: i32): string[] | null => {
     return null;
   }
   const names: string[] = [];
-  for (let q = 0; q < toI32(c.kinds.length); q++) {
-    const k = c.kinds[q];
+  const kinds = c.kinds;
+  const cnames = c.names;
+  const starts = c.starts;
+  const ends = c.ends;
+  for (let q = 0; q < kinds.length && q < cnames.length && q < starts.length && q < ends.length; q++) {
+    const k = kinds[q];
+    const start = starts[q];
     if (k === SW_COND_BINDING) {
-      names.push(c.names[q]);
+      names.push(cnames[q]);
     } else if (k === SW_COND_PATTERN) {
-      const eq = f.indexOfIn(SW_OP, "=", SW_OP_INFIX, c.starts[q], c.ends[q] + 1);
+      // A token index: the u32 sum is exact.
+      const eq = f.indexOfIn(SW_OP, "=", SW_OP_INFIX, start, toI32(toU32(ends[q]) + 1));
       if (eq < 0) {
         return null;
       }
-      for (let j = c.starts[q]; j < eq; j++) {
+      for (let j = start; j < eq; j++) {
         if (f.k(j) === SW_IDENT && f.s(j) !== "_") {
           names.push(f.s(j));
         }
@@ -179,43 +189,54 @@ const swNamesDeclaredByGuard = (f: SwFormatter, gi: i32): string[] | null => {
 
 /** mergeGuardFollowingGuard(at:). */
 const swMergeGuardFollowingGuard = (f: SwFormatter, gi: i32): boolean => {
+  // Each is [] or [else, body start, body end].
   const fg = swRepeatedGuardParts(f, gi);
-  if (fg.length === 0) {
+  if (fg.length < 3) {
     return false;
   }
-  const ng = f.indexAfter(SW_T_NON_SPACE_OR_LINEBREAK, fg[2]);
+  const fElse = fg[0];
+  const fStart = fg[1];
+  const fEnd = fg[2];
+  const ng = f.indexAfter(SW_T_NON_SPACE_OR_LINEBREAK, fEnd);
   if (ng < 0 || !f.kw(ng, "guard")) {
     return false;
   }
   const sg = swRepeatedGuardParts(f, ng);
-  if (sg.length === 0 || !swBodiesMatch(f, fg[1], fg[2], sg[1], sg[2])) {
+  if (sg.length < 3) {
+    return false;
+  }
+  const sElse = sg[0];
+  const sStart = sg[1];
+  const sEnd = sg[2];
+  if (!swBodiesMatch(f, fStart, fEnd, sStart, sEnd)) {
     return false;
   }
   const firstNames = swNamesDeclaredByGuard(f, gi);
   if (firstNames === null || swNamesDeclaredByGuard(f, ng) === null) {
     return false;
   }
-  for (let j = sg[1]; j <= sg[2]; j++) {
+  for (let j = sStart; j <= sEnd; j = toI32(toU32(j) + 1)) {
     if (f.k(j) === SW_IDENT && firstNames.indexOf(f.s(j)) >= 0) {
       return false;
     }
   }
-  const fce = f.indexBefore(SW_T_NON_SPACE_OR_COMMENT_OR_LINEBREAK, fg[0]);
+  const fce = f.indexBefore(SW_T_NON_SPACE_OR_COMMENT_OR_LINEBREAK, fElse);
   if (fce < 0) {
     return false;
   }
-  for (let j = fce + 1; j <= ng; j++) {
+  for (let j = toI32(toU32(fce) + 1); j <= ng; j = toI32(toU32(j) + 1)) {
     if (f.isComment(j)) {
       return false;
     }
   }
-  if (swGuardConditionsAreWrapped(f, gi, fg[0]) || swGuardConditionsAreWrapped(f, ng, sg[0])) {
+  if (swGuardConditionsAreWrapped(f, gi, fElse) || swGuardConditionsAreWrapped(f, ng, sElse)) {
     const c = swParseConditionalStatement(f, gi);
     const scs = f.indexAfter(SW_T_NON_SPACE_OR_LINEBREAK, ng);
-    if (c.starts.length !== 0 && scs >= 0) {
-      const lo = c.starts[0];
+    const cs = c.starts;
+    if (cs.length > 0 && scs >= 0) {
+      const lo = cs[0];
       const indent = swSpaceEquivalentToTokens(f, f.startOfLine(lo), lo);
-      f.replaceTokens(fce + 1, scs, [
+      f.replaceTokens(toI32(toU32(fce) + 1), scs, [
         new SwTok(SW_DELIM, ",", 0),
         new SwTok(SW_LINEBREAK, "\n", f.linebreakLine(gi)),
         new SwTok(SW_SPACE, indent, 0),
@@ -223,7 +244,7 @@ const swMergeGuardFollowingGuard = (f: SwFormatter, gi: i32): boolean => {
       return true;
     }
   }
-  f.replaceTokens(fce + 1, ng + 1, [new SwTok(SW_DELIM, ",", 0)]);
+  f.replaceTokens(toI32(toU32(fce) + 1), toI32(toU32(ng) + 1), [new SwTok(SW_DELIM, ",", 0)]);
   return true;
 };
 

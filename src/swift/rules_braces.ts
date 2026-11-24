@@ -4,6 +4,7 @@
 // Ported from SwiftFormat 0.64.7 (MIT License, Copyright (c) 2016 Nick
 // Lockwood).
 
+import { fault } from "../core/fault";
 import { SwFormatter, swIndexBeforeWhere } from "./formatter";
 import {
   swEndOfScope,
@@ -30,12 +31,16 @@ import {
   SwTok,
 } from "./token";
 
+// Token indices, token counts and line numbers stay below the token count, far from the
+// i32 limits, so a sum or difference of them the prover cannot bound is written
+// `toI32(toU32(a) + b)`: wrapping u32 arithmetic, exact for such values.
+
 /** Swift's String `<` for ASCII-ish strings: byte-wise lexicographic order. */
 export const swStrLess = (a: string, b: string): boolean => {
   const n = toI32(a.length);
   const m = toI32(b.length);
   const k = n < m ? n : m;
-  for (let i = 0; i < k; i++) {
+  for (let i = 0; i < k && i < n && i < m; i++) {
     const x = a.charCodeAt(i);
     const y = b.charCodeAt(i);
     if (x !== y) {
@@ -48,7 +53,7 @@ export const swStrLess = (a: string, b: string): boolean => {
 /** shouldWrapMultilineStatementBrace(at:). */
 export const swShouldWrapMultilineStatementBrace = (f: SwFormatter, index: i32): boolean => {
   const endIndex = swEndOfScope(f, index);
-  if (endIndex < 0 || !swHasLinebreak(f, index + 1, endIndex)) {
+  if (endIndex < 0 || !swHasLinebreak(f, toI32(toU32(index) + 1), endIndex)) {
     return false;
   }
   const prevIndex = f.indexBefore(SW_T_NON_SPACE_OR_COMMENT_OR_LINEBREAK, index);
@@ -75,7 +80,7 @@ export const swRuleBraces = (f: SwFormatter): void => {
       continue;
     }
     const closing = swEndOfScope(f, i);
-    if (closing < 0 || f.indexInType(SW_T_LINEBREAK, i + 1, closing) < 0) {
+    if (closing < 0 || f.indexInType(SW_T_LINEBREAK, toI32(toU32(i) + 1), closing) < 0) {
       continue;
     }
     const pt = f.indexBefore(SW_T_NON_SPACE_OR_COMMENT_OR_LINEBREAK, i);
@@ -93,6 +98,11 @@ export const swRuleBraces = (f: SwFormatter): void => {
     const prevIndex = f.indexBefore(SW_T_NON_SPACE_OR_LINEBREAK, i);
     if (prevIndex < 0 || !swHasLinebreak(f, prevIndex, i) || f.isComment(prevIndex) || f.tok(prevIndex, SW_END, "}")) {
       continue;
+    }
+    // A token index: prevIndex + 1 cannot overflow.
+    if (prevIndex >= 2147483647) {
+      fault();
+      return;
     }
     const sl = f.startOfLine(prevIndex, true);
     if (f.tok(sl, SW_START, "#if") || f.kw(sl, "#elseif") || f.kw(sl, "#else") || f.tok(sl, SW_END, "#endif")) {
@@ -121,7 +131,7 @@ export const swRuleWrapMultilineStatementBraces = (f: SwFormatter): void => {
     }
     const indent = f.currentIndentForLine(endIndex);
     f.insertLinebreak(i);
-    f.insertSpace(indent, i + 1);
+    f.insertSpace(indent, toI32(toU32(i) + 1));
     if (f.has(i - 1) && f.k(i - 1) === SW_SPACE) {
       f.removeToken(i - 1);
     }
@@ -167,6 +177,11 @@ export const swRuleElseOnSameLine = (f: SwFormatter): void => {
           prevIndex = p;
         }
       }
+      // Token indices: prevIndex + 1 and i + 1 cannot overflow.
+      if (prevIndex >= 2147483647 || i >= 2147483647) {
+        fault();
+        return;
+      }
       if (f.tok(prevIndex, SW_END, "}") && !swIsGuardElse(f, i)) {
         stage = 2;
       } else {
@@ -179,7 +194,8 @@ export const swRuleElseOnSameLine = (f: SwFormatter): void => {
           f.replaceTokensWith1(i + 1, nextIndex, SW_SPACE, " ", 0);
           if (!isOnNewLine) {
             f.replaceTokens(prevIndex + 1, i, [new SwTok(SW_LINEBREAK, "\n", f.linebreakLine(prevIndex + 1))]);
-            f.insertSpace(f.currentIndentForLine(guardIndex), prevIndex + 2);
+            // A token index: the u32 sum is exact.
+            f.insertSpace(f.currentIndentForLine(guardIndex), toI32(toU32(prevIndex) + 2));
           }
         } else if (isOnNewLine && !f.isComment(prevIndex)) {
           f.replaceTokensWith1(prevIndex + 1, i, SW_SPACE, " ", 0);
@@ -199,6 +215,11 @@ export const swRuleElseOnSameLine = (f: SwFormatter): void => {
         }
         const pb = f.indexBefore(SW_T_NON_SPACE_OR_LINEBREAK, prevIndex);
         if (pb >= 0 && f.tok(pb, SW_END, "}") && swBracesContainLinebreak(f, pb)) {
+          // A token index: pb + 1 cannot overflow.
+          if (pb >= 2147483647) {
+            fault();
+            return;
+          }
           f.replaceTokensWith1(pb + 1, i, SW_SPACE, " ", 0);
         }
       }
