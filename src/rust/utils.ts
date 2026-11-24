@@ -46,6 +46,8 @@ import {
   VIS_IN,
   VIS_RESTRICTED,
 } from "./ast";
+import { add32, atI32, sub32 } from "../core/arr";
+import { fault } from "../core/fault";
 import { rsTrimmedLastLineWidth } from "./comment";
 import { RsCtx } from "./context";
 import { T_RSTR } from "./lexer";
@@ -63,11 +65,12 @@ export const rsIdentStr = (ctx: RsCtx, tok: i32): string => {
 export const rsPathSegmentsStr = (ctx: RsCtx, path: i32): string => {
   const ast = ctx.ast;
   let out = "";
-  for (let i = 0; i < ast.ln[path]; i++) {
+  const n = atI32(ast.ln, path);
+  for (let i = 0; i < n; i++) {
     if (i > 0) {
       out = out + "::";
     }
-    out = out + rsIdentStr(ctx, ast.d[ast.kid(path, i)]);
+    out = out + rsIdentStr(ctx, atI32(ast.d, ast.kid(path, i)));
   }
   return out;
 };
@@ -78,12 +81,12 @@ export const rsFormatVisibility = (ctx: RsCtx, v: i32): string => {
     return "";
   }
   const ast = ctx.ast;
-  const f = ast.fl[v];
+  const f = atI32(ast.fl, v);
   if ((f & (VIS_CRATE | VIS_RESTRICTED)) === 0) {
     return "pub ";
   }
-  const pa = ast.a[v];
-  const path = pa >= 0 && ast.kind[pa] === N_PATH ? rsPathSegmentsStr(ctx, pa) : "";
+  const pa = atI32(ast.a, v);
+  const path = pa >= 0 && atI32(ast.kind, pa) === N_PATH ? rsPathSegmentsStr(ctx, pa) : "";
   const isKw = path === "crate" || path === "self" || path === "super";
   const inStr = isKw ? "" : "in ";
   return `pub(${inStr}${path}) `;
@@ -95,10 +98,10 @@ export const rsIsSameVisibility = (ctx: RsCtx, a: i32, b: i32): boolean => {
     return a < 0 && b < 0;
   }
   const ast = ctx.ast;
-  const ra = (ast.fl[a] & (VIS_CRATE | VIS_RESTRICTED)) !== 0;
-  const rb = (ast.fl[b] & (VIS_CRATE | VIS_RESTRICTED)) !== 0;
+  const ra = (atI32(ast.fl, a) & (VIS_CRATE | VIS_RESTRICTED)) !== 0;
+  const rb = (atI32(ast.fl, b) & (VIS_CRATE | VIS_RESTRICTED)) !== 0;
   if (ra && rb) {
-    return rsPathSegmentsStr(ctx, ast.a[a]) === rsPathSegmentsStr(ctx, ast.a[b]);
+    return rsPathSegmentsStr(ctx, atI32(ast.a, a)) === rsPathSegmentsStr(ctx, atI32(ast.a, b));
   }
   return !ra && !rb;
 };
@@ -106,15 +109,29 @@ export const rsIsSameVisibility = (ctx: RsCtx, a: i32, b: i32): boolean => {
 /** The unescaped text of an ABI string literal token. */
 export const rsAbiStr = (ctx: RsCtx, tok: i32): string => {
   const s = ctx.tokStr(tok);
-  if (ctx.f.t.kind[tok] === T_RSTR) {
+  const n = toI32(s.length);
+  if (atI32(ctx.f.t.kind, tok) === T_RSTR) {
     let i = 1;
-    while (i < toI32(s.length) && s.charCodeAt(i) === 35) {
+    while (i < n && s.charCodeAt(i) === 35) {
       i++;
     }
-    const h = i - 1;
-    return s.slice(i + 1, toI32(s.length) - 1 - h);
+    // r, i - 1 hashes, `"`, the text, `"` and the hashes again.
+    if (i >= n) {
+      fault();
+      return "";
+    }
+    return rsStrCut(s, i + 1, n - i);
   }
-  return s.slice(1, toI32(s.length) - 1);
+  return rsStrCut(s, 1, n - 1);
+};
+
+/** `s.slice(a, e)`, or "" after a fault where the slice would have panicked. */
+export const rsStrCut = (s: string, a: i32, e: i32): string => {
+  if (a >= 0 && a <= e && e <= s.length) {
+    return s.substring(a, e);
+  }
+  fault();
+  return "";
 };
 
 /** format_extern with force_explicit_abi = true: `extern` flag, abi token or -1. */
@@ -194,7 +211,7 @@ export const rsExtraOffset = (text: string, usedWidth: i32): i32 => {
   if (i < 0) {
     return toI32(text.length);
   }
-  const r = toI32(text.length) - (i + 1 + usedWidth);
+  const r = sub32(toI32(text.length), add32(i + 1, usedWidth));
   return r < 0 ? 0 : r;
 };
 
@@ -202,7 +219,12 @@ export const rsStartsWithNewline = (s: string): boolean => s.startsWith("\n") ||
 
 export const rsFirstLineEndsWith = (s: string, c: i32): boolean => {
   const l = rsFirstLineOpt(s);
-  return l !== null && l.length > 0 && l.charCodeAt(toI32(l.length) - 1) === c;
+  if (l === null) {
+    return false;
+  }
+  const t: string = l;
+  const n = toI32(t.length);
+  return n > 0 && t.charCodeAt(n - 1) === c;
 };
 
 /**
@@ -210,32 +232,33 @@ export const rsFirstLineEndsWith = (s: string, c: i32): boolean => {
  * attributes (those of its block) in the expression's attributes too.
  */
 export const rsExprHasAttrs = (ast: RsAst, e: i32): boolean => {
-  if (ast.atn[e] > 0) {
+  if (atI32(ast.atn, e) > 0) {
     return true;
   }
   const b = rsExprInnerBlock(ast, e);
-  return b >= 0 && ast.atn[b] > 0;
+  return b >= 0 && atI32(ast.atn, b) > 0;
 };
 
 /** The block whose inner attributes rustc files under block-like expression `e`, or -1. */
 export const rsExprInnerBlock = (ast: RsAst, e: i32): i32 => {
-  const k = ast.kind[e];
+  const k = atI32(ast.kind, e);
   if (k === N_EX_BLOCK || k === N_EX_ASYNC || k === N_EX_TRY_BLOCK || k === N_EX_CONST_BLOCK) {
-    return ast.a[e];
+    return atI32(ast.a, e);
   }
   if (k === N_EX_WHILE || k === N_EX_LOOP) {
-    return ast.b[e];
+    return atI32(ast.b, e);
   }
   if (k === N_EX_FOR) {
-    return ast.c[e];
+    return atI32(ast.c, e);
   }
   return -1;
 };
 
 /** Whether node `n` has outer attributes. */
 export const rsHasOuterAttrs = (ast: RsAst, n: i32): boolean => {
-  for (let i = 0; i < ast.atn[n]; i++) {
-    if ((ast.fl[ast.attr(n, i)] & AT_INNER) === 0) {
+  const na = atI32(ast.atn, n);
+  for (let i = 0; i < na; i++) {
+    if ((atI32(ast.fl, ast.attr(n, i)) & AT_INNER) === 0) {
       return true;
     }
   }
@@ -244,9 +267,10 @@ export const rsHasOuterAttrs = (ast: RsAst, n: i32): boolean => {
 
 /** The first outer attribute of `n`, or -1. */
 export const rsFirstOuterAttr = (ast: RsAst, n: i32): i32 => {
-  for (let i = 0; i < ast.atn[n]; i++) {
+  const na = atI32(ast.atn, n);
+  for (let i = 0; i < na; i++) {
     const a = ast.attr(n, i);
-    if ((ast.fl[a] & AT_INNER) === 0) {
+    if ((atI32(ast.fl, a) & AT_INNER) === 0) {
       return a;
     }
   }
@@ -256,14 +280,14 @@ export const rsFirstOuterAttr = (ast: RsAst, n: i32): i32 => {
 /** Spanned::span lo for a node with attributes (span_with_attrs). */
 export const rsLoWithAttrs = (ast: RsAst, n: i32): i32 => {
   const a = rsFirstOuterAttr(ast, n);
-  return a >= 0 ? ast.lo[a] : ast.lo[n];
+  return a >= 0 ? atI32(ast.lo, a) : atI32(ast.lo, n);
 };
 
 /** left_most_sub_expr. */
 export const rsLeftMostSubExpr = (ast: RsAst, e0: i32): i32 => {
   let e = e0;
   for (;;) {
-    const k = ast.kind[e];
+    const k = atI32(ast.kind, e);
     if (
       k === N_EX_CALL ||
       k === N_EX_BINARY ||
@@ -274,11 +298,11 @@ export const rsLeftMostSubExpr = (ast: RsAst, e0: i32): i32 => {
       k === N_EX_INDEX ||
       k === N_EX_TRY
     ) {
-      e = ast.a[e];
+      e = atI32(ast.a, e);
       continue;
     }
-    if (k === N_EX_RANGE && ast.a[e] >= 0) {
-      e = ast.a[e];
+    if (k === N_EX_RANGE && atI32(ast.a, e) >= 0) {
+      e = atI32(ast.a, e);
       continue;
     }
     return e;
@@ -288,7 +312,7 @@ export const rsLeftMostSubExpr = (ast: RsAst, e0: i32): i32 => {
 /** is_block_expr. */
 export const rsIsBlockExpr = (ctx: RsCtx, e: i32, repr: string): boolean => {
   const ast = ctx.ast;
-  const k = ast.kind[e];
+  const k = atI32(ast.kind, e);
   if (
     k === N_EX_MAC ||
     k === N_EX_CALL ||
@@ -308,16 +332,16 @@ export const rsIsBlockExpr = (ctx: RsCtx, e: i32, repr: string): boolean => {
     return rsHasByte(repr, 10);
   }
   if (k === N_EX_PAREN || k === N_EX_UNARY || k === N_EX_TRY) {
-    return rsIsBlockExpr(ctx, ast.a[e], repr);
+    return rsIsBlockExpr(ctx, atI32(ast.a, e), repr);
   }
   if (k === N_EX_BINARY || k === N_EX_INDEX) {
-    return rsIsBlockExpr(ctx, ast.b[e], repr);
+    return rsIsBlockExpr(ctx, atI32(ast.b, e), repr);
   }
   if (k === N_EX_YIELD) {
-    return ast.a[e] >= 0 ? rsIsBlockExpr(ctx, ast.a[e], repr) : false;
+    return atI32(ast.a, e) >= 0 ? rsIsBlockExpr(ctx, atI32(ast.a, e), repr) : false;
   }
   if (k === N_EX_CLOSURE) {
-    return rsIsBlockExpr(ctx, ast.a[e], repr);
+    return rsIsBlockExpr(ctx, atI32(ast.a, e), repr);
   }
   if (k === N_EX_LIT) {
     return rsHasByte(repr, 10) && rsTrimmedLastLineWidth(repr) <= ctx.cfg.tabSpaces;
@@ -337,7 +361,8 @@ export const rsFirstNonWs = (s: string): i32 => {
     if (w === 0) {
       return i;
     }
-    i += w;
+    // w (1 to 3) bytes of whitespace at i, inside s: the u32 sum is exact.
+    i = toI32(toU32(i) + toU32(w));
   }
   return -1;
 };
