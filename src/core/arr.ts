@@ -94,24 +94,36 @@ export const copyI32s = (dst: i32[], at: i32, src: i32[], from: i32, count: i32)
     fault();
     return;
   }
+  // Both ranges lie inside their arrays, so each index below stays in
+  // `[0, length]` and every step fits.
   if (at <= from) {
+    let s = from;
+    let d = at;
     for (let k = 0; k < count; k++) {
-      const s = from + k;
-      const d = at + k;
-      if (s < src.length && d < dst.length) {
-        dst[d] = src[s];
+      if (s < 0 || s >= src.length || d < 0 || d >= dst.length) {
+        fault();
+        return;
       }
+      dst[d] = src[s];
+      s = s + 1;
+      d = d + 1;
     }
     return;
   }
-  let k = count;
-  while (k > 0) {
-    k = k - 1;
-    const s = from + k;
-    const d = at + k;
-    if (s < src.length && d < dst.length) {
-      dst[d] = src[s];
+  let s = toI32(toI64(from) + toI64(count));
+  let d = toI32(toI64(at) + toI64(count));
+  for (let k = 0; k < count; k++) {
+    if (s <= 0 || d <= 0) {
+      fault();
+      return;
     }
+    s = s - 1;
+    d = d - 1;
+    if (s >= src.length || d >= dst.length) {
+      fault();
+      return;
+    }
+    dst[d] = src[s];
   }
 };
 

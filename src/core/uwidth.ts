@@ -227,8 +227,9 @@ export const utf8Width = (src: u8[], a: i32, b: i32): i32 => {
     fault();
     return 0;
   }
-  // `0 <= a < b <= src.length`, so every difference and sum below fits.
-  const all = b - a;
+  // `0 <= a < b <= src.length`, so every u32 difference and sum below is the
+  // true one.
+  const all = toI32(toU32(b) - toU32(a));
   let w = 0;
   let i = a;
   while (i >= 0 && i < b && i < src.length) {
@@ -260,12 +261,12 @@ export const utf8Width = (src: u8[], a: i32, b: i32): i32 => {
     } else {
       return all;
     }
-    if (n > b - i) {
+    if (n > toI32(toU32(b) - toU32(i))) {
       return all;
     }
     for (let k = 1; k < n; k++) {
-      const p = i + k;
-      if (p >= src.length) {
+      const p = toI32(toU32(i) + toU32(k));
+      if (p < 0 || p >= src.length) {
         fault();
         return 0;
       }
@@ -284,7 +285,7 @@ export const utf8Width = (src: u8[], a: i32, b: i32): i32 => {
       return 0;
     }
     w = w + cw;
-    i = i + n;
+    i = toI32(toU32(i) + toU32(n));
   }
   return w;
 };

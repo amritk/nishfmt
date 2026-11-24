@@ -88,7 +88,8 @@ export class Out {
       fault();
       return;
     }
-    this.reserve(b - a);
+    // `0 <= a < b`, so the u32 difference is the true one.
+    this.reserve(toI32(toU32(b) - toU32(a)));
     const buf = this.buf;
     let n = this.n;
     for (let i = a; i < b && i < src.length; i++) {
