@@ -166,7 +166,8 @@ export const dtKeyword = (src: u8[], a: i32, b: i32): i32 => {
     fault();
     return K_NONE;
   }
-  const n = b - a;
+  // 0 <= a <= b: the u32 difference is exact.
+  const n = toI32(toU32(b) - toU32(a));
   if (n < 2 || n > 10 || a >= src.length) {
     return K_NONE;
   }

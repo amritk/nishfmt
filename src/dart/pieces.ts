@@ -186,8 +186,9 @@ export const DT_STYLE = new Int32Array(4);
 
 /** Slot `i` of the style switches, read through a parameter the prover can see the length of. */
 const dtStyleOn = (style: Int32Array, i: i32): boolean => {
-  if (i >= 0 && i < style.length) {
-    return style[i] !== 0;
+  const ui = toU32(i);
+  if (ui < toU32(style.length)) {
+    return style[ui] !== 0;
   }
   fault();
   return false;

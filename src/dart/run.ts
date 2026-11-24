@@ -22,6 +22,9 @@ import { DtsVisitor } from "./shortvisit";
 export class DartEngine {
   debug: boolean = false;
   dump: string = "";
+  // The file's text, `String.fromBytes(src, 0, n)`: the caller sets it, and
+  // tokens cut their text from it.
+  text: string = "";
   constructor() {}
 }
 
@@ -29,7 +32,7 @@ export class DartEngine {
 export const formatDart = (e: DartEngine, path: string, src: u8[], n: i32, out: Out): boolean => {
   out.n = 0;
   const t0 = monotonicNanos();
-  let toks = dtScan(src, n);
+  let toks = dtScan(src, n, e.text);
   if (toks.failed) {
     if (e.debug) {
       console.error(`${path}: scan: ${toks.why}`);
@@ -83,7 +86,7 @@ export const formatDart = (e: DartEngine, path: string, src: u8[], n: i32, out: 
     if (e.debug) {
       console.error(`${path}: ${toks.npred} predicted >> splits did not hold`);
     }
-    toks = dtScanPlain(src, n);
+    toks = dtScanPlain(src, n, e.text);
     p = new DtParser(toks);
     p.patterns = patterns;
     p.primaryCtors = primaryCtors;

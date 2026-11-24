@@ -499,8 +499,9 @@ export class DtParser {
 
   k(i: i32): i32 {
     const kind = this.t.kind;
-    if (i >= 0 && i < kind.length) {
-      return kind[i];
+    const ui = toU32(i);
+    if (ui < toU32(kind.length)) {
+      return kind[ui];
     }
     this.bad();
     return T_EOF;
@@ -509,12 +510,13 @@ export class DtParser {
   kw(i: i32): i32 {
     const kind = this.t.kind;
     const kws = this.t.kw;
-    if (i >= 0 && i < kind.length) {
-      if (kind[i] !== T_IDENT) {
+    const ui = toU32(i);
+    if (ui < toU32(kind.length)) {
+      if (kind[ui] !== T_IDENT) {
         return K_NONE;
       }
-      if (i < kws.length) {
-        return kws[i];
+      if (ui < toU32(kws.length)) {
+        return kws[ui];
       }
     }
     this.bad();
@@ -524,8 +526,9 @@ export class DtParser {
   /** Token `i`'s keyword id, whatever its kind. */
   kwRaw(i: i32): i32 {
     const kws = this.t.kw;
-    if (i >= 0 && i < kws.length) {
-      return kws[i];
+    const ui = toU32(i);
+    if (ui < toU32(kws.length)) {
+      return kws[ui];
     }
     this.bad();
     return K_NONE;
@@ -534,8 +537,9 @@ export class DtParser {
   /** Token `i`'s first byte. */
   tokStart(i: i32): i32 {
     const xs = this.t.start;
-    if (i >= 0 && i < xs.length) {
-      return xs[i];
+    const ui = toU32(i);
+    if (ui < toU32(xs.length)) {
+      return xs[ui];
     }
     this.bad();
     return 0;
@@ -544,8 +548,9 @@ export class DtParser {
   /** Token `i`'s end byte. */
   tokEnd(i: i32): i32 {
     const xs = this.t.end;
-    if (i >= 0 && i < xs.length) {
-      return xs[i];
+    const ui = toU32(i);
+    if (ui < toU32(xs.length)) {
+      return xs[ui];
     }
     this.bad();
     return 0;
@@ -554,8 +559,9 @@ export class DtParser {
   /** The bracket matching the one at token `i`, or -1. */
   mtAt(i: i32): i32 {
     const mt = this.mt;
-    if (i >= 0 && i < mt.length) {
-      return mt[i];
+    const ui = toU32(i);
+    if (ui < toU32(mt.length)) {
+      return mt[ui];
     }
     this.bad();
     return -1;
@@ -680,8 +686,9 @@ export class DtParser {
   /** Marks token `i` as a `>` the parser took as a closing angle bracket. */
   setGt(i: i32): void {
     const gt = this.t.gt;
-    if (i >= 0 && i < gt.length) {
-      gt[i] = true;
+    const ui = toU32(i);
+    if (ui < toU32(gt.length)) {
+      gt[ui] = true;
       return;
     }
     this.bad();

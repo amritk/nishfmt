@@ -162,8 +162,9 @@ const dtIsPattern = (k: i32): boolean =>
 
 /** `xs[i]`, or -1 after a fault when `i` is outside `xs`. */
 const dtFtAt = (xs: i32[], i: i32): i32 => {
-  if (i >= 0 && i < xs.length) {
-    return xs[i];
+  const ui = toU32(i);
+  if (ui < toU32(xs.length)) {
+    return xs[ui];
   }
   fault();
   return -1;

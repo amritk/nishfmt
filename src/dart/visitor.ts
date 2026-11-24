@@ -241,10 +241,10 @@ import {
   T_RBRACKET,
   T_SEMI,
 } from "./tokens";
-import { C_LINE, DtTokens } from "./scanner";
+import { C_LINE, DtTokens, dtUtf16Units } from "./scanner";
 import { CT_LINE, CT_INLINE_BLOCK, DtComment, DtCommentWriter, DtComments, dtEmptyComments } from "./comments";
 import { dtPrecedence } from "./parser";
-import { add32, newI32s, strUtf16Len, sub32 } from "../core/arr";
+import { add32, newI32s, sub32 } from "../core/arr";
 import { fault } from "../core/fault";
 
 // NodeContext.
@@ -439,8 +439,9 @@ class DtListBuilder {
   /** Element `i`; the list has it. */
   elAt(i: i32): DtPiece {
     const els = this.elements;
-    if (i >= 0 && i < els.length) {
-      return els[i];
+    const ui = toU32(i);
+    if (ui < toU32(els.length)) {
+      return els[ui];
     }
     fault();
     return new DtPiece(0, PK_SPACE);
@@ -4227,8 +4228,9 @@ class DtChainBuilder {
   /** The type of call `i`; a type was pushed for each call. */
   typeAt(i: i32): i32 {
     const types = this.types;
-    if (i >= 0 && i < types.length) {
-      return types[i];
+    const ui = toU32(i);
+    if (ui < toU32(types.length)) {
+      return types[ui];
     }
     fault();
     return -1;
@@ -4447,7 +4449,7 @@ export const dtListHasBlockElement = (p: DtPiece): boolean => {
 
 const dtStyleDefault = (): DtListStyle => new DtListStyle(CM_TRAILING, 1, false);
 
-const dtStrUtf16 = (s: string): i32 => strUtf16Len(s);
+const dtStrUtf16 = (s: string): i32 => dtUtf16Units(s);
 
 /** A `with`, `implements`, etc. clause of a type header. */
 class DtClause {
