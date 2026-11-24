@@ -4,7 +4,7 @@
 // wide or fullwidth ones (plus U+4DC0-4DFF, U+1F300-1F5FF and U+1F900-1F9FF)
 // two. The ranges are generated from the Unicode 15.1 character database.
 
-import { uncheckedGet } from "nish:unsafe";
+import { fault } from "./fault";
 
 // [first, last] pairs, six hex digits each.
 const PRINTABLE: string =
@@ -160,10 +160,22 @@ const WIDE: string =
 
 /** The `k`-th six-hex-digit number of table `t`. */
 const entry = (t: string, k: i32): i32 => {
+  // Six hex digits are below 2^24, and the tables are far shorter than 2^28.
+  if (k < 0 || k > 300000000) {
+    fault();
+    return 0;
+  }
+  const at = k * 6;
   let v = 0;
-  for (let i = k * 6; i < k * 6 + 6; i++) {
-    const c = t.charCodeAt(i);
-    v = v * 16 + (c <= 57 ? c - 48 : c - 87);
+  for (let i = 0; i < 6; i++) {
+    const p = at + i;
+    if (p >= t.length) {
+      fault();
+      return 0;
+    }
+    const c = t.charCodeAt(p) & 0xff;
+    const d = c <= 57 ? c - 48 : c - 87;
+    v = ((v << 4) | (d & 15)) & 0xffffff;
   }
   return v;
 };
@@ -172,8 +184,13 @@ const entry = (t: string, k: i32): i32 => {
 const inRanges = (t: string, cp: i32): boolean => {
   let lo = 0;
   let hi = toI32(t.length) / 12 - 1;
-  while (lo <= hi) {
-    const mid = (lo + hi) >> 1;
+  while (lo >= 0 && lo <= hi) {
+    // `0 <= lo <= hi`, so the u32 sum is the true one and `mid` lies between them.
+    const mid = toI32((toU32(lo) + toU32(hi)) >> 1);
+    if (mid < 0 || mid > 100000000) {
+      fault();
+      return false;
+    }
     if (cp < entry(t, mid * 2)) {
       hi = mid - 1;
     } else if (cp > entry(t, mid * 2 + 1)) {
@@ -202,13 +219,28 @@ export const cpWidth = (cp: i32): i32 => {
  * printable or the bytes are not valid UTF-8.
  */
 export const utf8Width = (src: u8[], a: i32, b: i32): i32 => {
+  // A range outside `src` faults.
+  if (b <= a) {
+    return 0;
+  }
+  if (a < 0 || b > src.length) {
+    fault();
+    return 0;
+  }
+  // `0 <= a < b <= src.length`, so every difference and sum below fits.
+  const all = b - a;
   let w = 0;
   let i = a;
-  while (i < b) {
-    const c = toI32(uncheckedGet(src, i));
+  while (i >= 0 && i < b && i < src.length) {
+    const c = toI32(src[i]);
     if (c < 128) {
       if (c < 32 || c === 127) {
-        return b - a;
+        return all;
+      }
+      // A column a byte at most, so `w` stays below `b - a`.
+      if (w > 1073741823) {
+        fault();
+        return 0;
       }
       w++;
       i++;
@@ -226,21 +258,30 @@ export const utf8Width = (src: u8[], a: i32, b: i32): i32 => {
       n = 2;
       cp = c & 31;
     } else {
-      return b - a;
+      return all;
     }
-    if (i + n > b) {
-      return b - a;
+    if (n > b - i) {
+      return all;
     }
     for (let k = 1; k < n; k++) {
-      const cc = toI32(uncheckedGet(src, i + k));
-      if ((cc & 0xc0) !== 0x80) {
-        return b - a;
+      const p = i + k;
+      if (p >= src.length) {
+        fault();
+        return 0;
       }
-      cp = (cp << 6) | (cc & 63);
+      const cc = toI32(src[p]);
+      if ((cc & 0xc0) !== 0x80) {
+        return all;
+      }
+      cp = ((cp << 6) | (cc & 63)) & 0x1fffff;
     }
     const cw = cpWidth(cp);
     if (cw < 0) {
-      return b - a;
+      return all;
+    }
+    if (w > 1073741823 || cw > 2) {
+      fault();
+      return 0;
     }
     w = w + cw;
     i = i + n;

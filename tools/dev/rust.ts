@@ -1,10 +1,11 @@
 // A Rust-only driver for quick builds while porting:
-//   nish tools/dev/rust.ts --link /tmp/rustdev && /tmp/rustdev <file>
+//   nish tools/dev/rust.ts --allow-panics --link /tmp/rustdev && /tmp/rustdev <file>
 // prints the formatted file, or exits 1 when it cannot be formatted. With
 // more than one file it formats each and prints nothing (for profiling).
 // It formats as nishfmt does (edition 2024, style edition 2024, width 120);
 // FFEDITION, FFSTYLE (2015, 2018, 2021 or 2024) and FFWIDTH override each.
 
+import { faultReset, faulted } from "../../src/core/fault";
 import { Out } from "../../src/core/out";
 import { RustEngine, formatRust } from "../../src/rust/run";
 
@@ -39,7 +40,8 @@ const rsDevOne = (path: string, print: boolean): i32 => {
   if (width !== null) {
     e.maxWidth = parseInt(width);
   }
-  if (!formatRust(e, path, src, n, out)) {
+  faultReset();
+  if (!formatRust(e, path, src, n, out) || faulted()) {
     return 1;
   }
   if (print) {

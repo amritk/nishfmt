@@ -1,10 +1,11 @@
 // A Dart-only driver for quick builds while porting:
-//   nish tools/dev/dart.ts --link /tmp/dartdev && /tmp/dartdev <file>
+//   nish tools/dev/dart.ts --allow-panics --link /tmp/dartdev && /tmp/dartdev <file>
 // prints the formatted file, or exits 1 when it cannot be formatted.
 //   /tmp/dartdev -prof <list-of-paths>
 // formats every listed file and prints the time spent in each phase.
 
 import { free, regionWith } from "nish:region";
+import { faultReset, faulted } from "../../src/core/fault";
 import { Out } from "../../src/core/out";
 import { DartEngine, dtProfReport, formatDart } from "../../src/dart/run";
 
@@ -20,7 +21,8 @@ const dtDevOne = (path: string, print: boolean): i32 => {
   const e = new DartEngine();
   e.debug = getenv("FFDEBUG") !== null;
   e.dump = getenv("FFDTDUMP") ?? "";
-  if (!formatDart(e, path, src, n, out)) {
+  faultReset();
+  if (!formatDart(e, path, src, n, out) || faulted()) {
     return 1;
   }
   if (print) {

@@ -4,6 +4,7 @@
 // paths it is given, formats every source in parallel worker processes, and
 // prints a timing summary.
 
+import { faultReset, faulted } from "./core/fault";
 import { Out } from "./core/out";
 import { Ignore, walk } from "./core/files";
 import { CppEngine, formatCpp, isCppName } from "./cpp/run";
@@ -212,6 +213,8 @@ const runJob = (job: Job): JobRoot => {
     src.set(read);
     job.res[2 * k + 1] = n;
     const out = new Out(n + 1024);
+    testCrash(path);
+    faultReset();
     let ok = false;
     if (job.lang === LANG_KOTLIN) {
       const k0 = engines.kotlin;
@@ -256,6 +259,11 @@ const runJob = (job: Job): JobRoot => {
       cs.debug = getenv("FFDEBUG") !== null;
       ok = formatCSharp(cs, path, src, n, out);
     }
+    // A formatter that met a state its guards rule out faulted: its output
+    // is not used, as a panic's was not.
+    if (faulted()) {
+      ok = false;
+    }
     if (!ok) {
       job.res[2 * k] = 2;
       if (job.mode === MODE_STDOUT) {
@@ -293,6 +301,18 @@ const runJob = (job: Job): JobRoot => {
   }
   job.done = k;
   return root;
+};
+
+/**
+ * With NISHFMT_TEST_CRASH set to a suffix, a worker panics on each file whose
+ * path ends with it, before formatting it. No formatter panics on any input,
+ * so this is how tests/run.sh's worker-crash cases take a worker down.
+ */
+const testCrash = (path: string): void => {
+  const suffix = getenv("NISHFMT_TEST_CRASH");
+  if (suffix !== null && suffix.length > 0 && path.endsWith(suffix)) {
+    panic(`NISHFMT_TEST_CRASH: crashing on ${path}`);
+  }
 };
 
 /** Whether files of a language share an engine within a batch. */
@@ -415,7 +435,9 @@ const formatFile = (path: string, cli: Cli, stats: Stats, eng: Engine): i32 => {
   stats.bytes = stats.bytes + toI64(n);
   const out = eng.out;
   const tr0 = monotonicNanos();
-  const okRun = formatCpp(eng.cpp, path, src, n, out, stats.prof);
+  testCrash(path);
+  faultReset();
+  const okRun = formatCpp(eng.cpp, path, src, n, out, stats.prof) && !faulted();
   stats.prof[5] = stats.prof[5] + (monotonicNanos() - tr0);
   if (!okRun) {
     stats.skipped = stats.skipped + 1;
