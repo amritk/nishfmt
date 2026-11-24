@@ -4,6 +4,9 @@
 // Node kinds and field names follow package:analyzer (BSD-3-Clause,
 // Copyright the Dart project authors).
 
+import { add32, mul32 } from "../core/arr";
+import { fault } from "../core/fault";
+
 // Node kinds.
 export const N_NONE: i32 = 0;
 export const N_COMPILATION_UNIT: i32 = 1;
@@ -355,46 +358,98 @@ export class DtAst {
 
   constructor(cap: i32) {
     const c = cap < 64 ? 64 : cap;
-    this.kind = new Array<i32>(c);
-    this.beg = new Array<i32>(c);
-    this.end = new Array<i32>(c);
-    this.fs = new Array<i32>(c);
-    this.fld = new Array<i32>(c * 4);
-    this.lst = new Array<i32>(c);
-    this.lst[0] = 0; // the empty list
+    this.kind = dtAstZeros(c);
+    this.beg = dtAstZeros(c);
+    this.end = dtAstZeros(c);
+    this.fs = dtAstZeros(c);
+    this.fld = dtAstZeros(mul32(c, 4));
+    this.lst = dtAstZeros(c);
+    // lst[0] = 0 is the empty list, as the padding left it.
   }
 
   /** Adds a node with `k` fields, all -1; answers it. */
   add(kind: i32, beg: i32, end: i32, k: i32): i32 {
     const i = this.n;
     if (i >= toI32(this.kind.length)) {
-      const c = i * 2;
-      this.kind = dtGrow(this.kind, c);
-      this.beg = dtGrow(this.beg, c);
-      this.end = dtGrow(this.end, c);
-      this.fs = dtGrow(this.fs, c);
+      const c = mul32(i, 2);
+      dtPadI32(this.kind, c);
+      dtPadI32(this.beg, c);
+      dtPadI32(this.end, c);
+      dtPadI32(this.fs, c);
     }
-    if (this.nf + k > toI32(this.fld.length)) {
-      this.fld = dtGrow(this.fld, (this.nf + k) * 2);
+    const nf = this.nf;
+    const top = add32(nf, k);
+    if (top > toI32(this.fld.length)) {
+      dtPadI32(this.fld, mul32(top, 2));
     }
-    this.kind[i] = kind;
-    this.beg[i] = beg;
-    this.end[i] = end;
-    this.fs[i] = this.nf;
-    for (let j = 0; j < k; j++) {
-      this.fld[this.nf + j] = -1;
+    const kinds = this.kind;
+    const begs = this.beg;
+    const ends = this.end;
+    const fs = this.fs;
+    const fld = this.fld;
+    if (i < 0 || i >= kinds.length || i >= begs.length || i >= ends.length || i >= fs.length) {
+      fault();
+      return 0;
     }
-    this.nf = this.nf + k;
+    if (nf < 0 || top > fld.length) {
+      fault();
+      return 0;
+    }
+    kinds[i] = kind;
+    begs[i] = beg;
+    ends[i] = end;
+    fs[i] = nf;
+    for (let j = nf; j >= 0 && j < top && j < fld.length; j++) {
+      fld[j] = -1;
+    }
+    this.nf = top;
     this.n = i + 1;
     return i;
   }
 
+  // Guarded reads of one node's kind and token range: a node outside the
+  // tree faults and answers N_NONE or token 0.
+  kindOf(node: i32): i32 {
+    return dtAstAt(this.kind, node, N_NONE);
+  }
+  begOf(node: i32): i32 {
+    return dtAstAt(this.beg, node, 0);
+  }
+  endOf(node: i32): i32 {
+    return dtAstAt(this.end, node, 0);
+  }
+
   f(node: i32, i: i32): i32 {
-    return this.fld[this.fs[node] + i];
+    const fs = this.fs;
+    const fld = this.fld;
+    if (node >= 0 && node < fs.length && i >= 0) {
+      const j = fs[node];
+      if (j >= 0) {
+        // Two non-negative i32s: their u32 sum is exact.
+        const k = toI32(toU32(j) + toU32(i));
+        if (k >= 0 && k < fld.length) {
+          return fld[k];
+        }
+      }
+    }
+    fault();
+    return -1;
   }
 
   set(node: i32, i: i32, v: i32): void {
-    this.fld[this.fs[node] + i] = v;
+    const fs = this.fs;
+    const fld = this.fld;
+    if (node >= 0 && node < fs.length && i >= 0) {
+      const j = fs[node];
+      if (j >= 0) {
+        const k = toI32(toU32(j) + toU32(i));
+        if (k >= 0 && k < fld.length) {
+          fld[k] = v;
+          return;
+        }
+      }
+    }
+    fault();
   }
 
   /** Stores `xs` as a list; answers its id. */
@@ -403,15 +458,24 @@ export class DtAst {
     if (k === 0) {
       return 0;
     }
-    if (this.nl + k + 1 > toI32(this.lst.length)) {
-      this.lst = dtGrow(this.lst, (this.nl + k + 1) * 2);
-    }
     const id = this.nl;
-    this.lst[id] = k;
-    for (let j = 0; j < k; j++) {
-      this.lst[id + 1 + j] = xs[j];
+    const top = add32(add32(id, k), 1);
+    if (top > toI32(this.lst.length)) {
+      dtPadI32(this.lst, mul32(top, 2));
     }
-    this.nl = id + k + 1;
+    const lst = this.lst;
+    if (id < 0 || id >= lst.length || top > lst.length) {
+      fault();
+      return 0;
+    }
+    lst[id] = k;
+    let w = id + 1;
+    // top <= lst.length, so the copy never stops short.
+    for (let j = 0; j < xs.length && w >= 0 && w < lst.length; j++) {
+      lst[w] = xs[j];
+      w = w + 1;
+    }
+    this.nl = top;
     return id;
   }
 
@@ -419,22 +483,74 @@ export class DtAst {
     if (l < 0) {
       return 0;
     }
-    return this.lst[l];
+    const lst = this.lst;
+    if (l < lst.length) {
+      return lst[l];
+    }
+    fault();
+    return 0;
   }
 
   at(l: i32, i: i32): i32 {
-    return this.lst[l + 1 + i];
+    const lst = this.lst;
+    if (l >= -1 && l < lst.length && i >= 0) {
+      const k = toI32(toU32(l + 1) + toU32(i));
+      if (k >= 0 && k < lst.length) {
+        return lst[k];
+      }
+    }
+    fault();
+    return -1;
   }
 
   last(l: i32): i32 {
-    return this.lst[l + this.lst[l]];
+    const lst = this.lst;
+    if (l >= 0 && l < lst.length) {
+      const m = lst[l];
+      if (m >= 0) {
+        const k = toI32(toU32(l) + toU32(m));
+        if (k >= 0 && k < lst.length) {
+          return lst[k];
+        }
+      }
+    }
+    fault();
+    return -1;
   }
 }
 
-export const dtGrow = (xs: i32[], n: i32): i32[] => {
-  const out = new Array<i32>(n);
-  out.set(xs);
-  return out;
+/** `xs[i]`, or `none` after a fault when `i` is outside `xs`. */
+const dtAstAt = (xs: i32[], i: i32, none: i32): i32 => {
+  if (i >= 0 && i < xs.length) {
+    return xs[i];
+  }
+  fault();
+  return none;
+};
+
+/**
+ * `n` zeroes, as `new Array<i32>(n)` made them: an array of a u16 length
+ * needs no check, and only the rest past 65535 is pushed.
+ */
+const dtAstZeros = (n: i32): i32[] => {
+  if (n >= 0 && n <= 65535) {
+    return new Array<i32>(toU16(n));
+  }
+  if (n < 0) {
+    fault();
+    const none: i32[] = [];
+    return none;
+  }
+  const xs = new Array<i32>(65535);
+  dtPadI32(xs, n);
+  return xs;
+};
+
+/** Grows `xs` in place to `n` elements, the new ones 0. */
+const dtPadI32 = (xs: i32[], n: i32): void => {
+  while (xs.length < n) {
+    xs.push(0);
+  }
 };
 
 /** The analyzer's class name for node kind `k`. */

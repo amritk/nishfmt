@@ -6,6 +6,8 @@
 // Ported from dart_style 3.1.14-wip at 5a9534fad9ff, the commit Dart SDK
 // 3.14.1 pins (BSD-3-Clause, Copyright the Dart project authors).
 
+import { add32, sub32 } from "../core/arr";
+import { fault } from "../core/fault";
 import { Out } from "../core/out";
 import {
   ASSIGN_BLOCK_OR_HEADLINE_RIGHT,
@@ -196,7 +198,12 @@ export class DtSolution {
   }
 
   cost(): i32 {
-    return this.own + this.subtree;
+    const r = toI64(this.own) + toI64(this.subtree);
+    if (r >= toI64(-2147483648) && r <= toI64(2147483647)) {
+      return toI32(r);
+    }
+    fault();
+    return 0;
   }
 
   /** The state `piece` is pinned or bound to, or -1. */
@@ -221,8 +228,7 @@ export class DtSolution {
 
   /** Writes the bound states into `c`'s stamped arrays, for binding. */
   beginBinding(c: DtCache): void {
-    DT_GEN[1] = DT_GEN[1] + 1;
-    const stamp = DT_GEN[1];
+    const stamp = c.nextStamp();
     this.stamp = stamp;
     this.bc = c;
     const so = c.stampOf;
@@ -230,6 +236,11 @@ export class DtSolution {
     let b = this.binds;
     while (b !== null) {
       const id = b.piece.id;
+      // The cache holds a slot for every piece id.
+      if (id < 0 || id >= so.length || id >= st.length) {
+        fault();
+        return;
+      }
       if (so[id] !== stamp) {
         so[id] = stamp;
         st[id] = b.state;
@@ -246,7 +257,13 @@ export class DtSolution {
     const c = this.bc;
     if (c !== null) {
       const id = piece.id;
-      return c.stampOf[id] === this.stamp ? c.stateOf[id] : -1;
+      const so = c.stampOf;
+      const st = c.stateOf;
+      if (id < 0 || id >= so.length || id >= st.length) {
+        fault();
+        return -1;
+      }
+      return so[id] === this.stamp ? st[id] : -1;
     }
     return this.stateIfBound(piece);
   }
@@ -264,18 +281,30 @@ export class DtSolution {
     }
     const bound = this.boundState(piece);
     if (bound < 0) {
-      this.own = this.own + dtStateCost(piece, state);
+      this.own = add32(this.own, dtStateCost(piece, state));
       this.binds = new DtBind(piece, state, this.binds);
       const c = this.bc;
       if (c !== null) {
-        c.stampOf[piece.id] = this.stamp;
-        c.stateOf[piece.id] = state;
+        const id = piece.id;
+        const so = c.stampOf;
+        const st = c.stateOf;
+        if (id < 0 || id >= so.length || id >= st.length) {
+          fault();
+          return;
+        }
+        so[id] = this.stamp;
+        st[id] = state;
       }
       if (dtHasConstraints(piece)) {
         const ps: DtPiece[] = [];
         const ss: i32[] = [];
         dtConstraints(piece, state, ps, ss);
-        for (let i = 0; i < ps.length; i++) {
+        // dtConstraints adds a piece and its state together.
+        if (ss.length < ps.length) {
+          fault();
+          return;
+        }
+        for (let i = 0; i < ps.length && i < ss.length; i++) {
           this.bind(ps[i], ss[i]);
         }
       }
@@ -314,13 +343,13 @@ export class DtSolution {
       }
       const allowedUnsplit = !dtContainsNewline(off, S_UNSPLIT);
       const states = dtStates(off);
-      let nRemaining = 0;
+      let anyRemaining = false;
       for (const s of states) {
         if (!dtContainsNewline(off, s)) {
-          nRemaining++;
+          anyRemaining = true;
         }
       }
-      if (nRemaining === 0) {
+      if (!anyRemaining) {
         if (!allowedUnsplit) {
           this.deadEnd = true;
           this.valid = false;
@@ -395,12 +424,39 @@ export class DtCache {
   depth: i32 = 0;
   builder: DtBuilder | null = null;
 
+  // The last stamp handed out, and the last line-set generation. A cache
+  // formats one file, whose pieces and stamp arrays are its own.
+  stampGen: i32 = 0;
+  markGen: i32 = 0;
+
   constructor(pageWidth: i32, pieces: i32) {
     this.map = new Map<i64, DtSolution>();
     this.pageWidth = pageWidth;
-    this.stampOf = new Array<i32>(pieces + 1);
-    this.stateOf = new Array<i32>(pieces + 1);
+    this.stampOf = dtCacheZeros(add32(pieces, 1));
+    this.stateOf = dtCacheZeros(add32(pieces, 1));
     this.writers = [];
+  }
+
+  /** A stamp no solution of this cache has had yet. */
+  nextStamp(): i32 {
+    const g = this.stampGen;
+    if (g < 2147483647) {
+      this.stampGen = g + 1;
+      return g + 1;
+    }
+    fault();
+    return g;
+  }
+
+  /** A line-set generation no line of this cache has had yet. */
+  nextMark(): i32 {
+    const g = this.markGen;
+    if (g < 2147483647) {
+      this.markGen = g + 1;
+      return g + 1;
+    }
+    fault();
+    return g;
   }
 
   key(root: DtPiece, indent: i32, subsequent: i32): i64 {
@@ -424,7 +480,14 @@ export class DtCache {
     if (d >= toI32(this.writers.length)) {
       this.writers.push(new DtWriter(this));
     }
-    return this.writers[d];
+    const ws = this.writers;
+    if (d >= 0 && d < ws.length) {
+      return ws[d];
+    }
+    // The depth only grows a writer at a time.
+    fault();
+    const w = new DtWriter(this);
+    return w;
   }
 }
 
@@ -442,60 +505,115 @@ class DtQueue {
     this.bubbleUp(e, toI32(this.q.length) - 1);
   }
 
-  removeFirst(): DtSolution {
-    const result = this.q[0];
-    const last = this.q.pop();
-    if (this.q.length > 0) {
+  /** The first solution; the queue is not empty. */
+  removeFirst(first: DtSolution): DtSolution {
+    const q = this.q;
+    if (q.length < 1) {
+      fault();
+      return first;
+    }
+    const result = q[0];
+    const last = q.pop();
+    if (q.length > 0) {
       this.bubbleDown(last, 0);
     }
     return result;
   }
 
   bubbleUp(e: DtSolution, index0: i32): void {
+    const q = this.q;
     let index = index0;
     while (index > 0) {
       const pi = (index - 1) >> 1;
-      const parent = this.q[pi];
+      if (pi < 0 || pi >= q.length) {
+        fault();
+        return;
+      }
+      const parent = q[pi];
       if (e.compare(parent) > 0) {
         break;
       }
-      this.q[index] = parent;
+      if (index >= q.length) {
+        fault();
+        return;
+      }
+      q[index] = parent;
       index = pi;
     }
-    this.q[index] = e;
+    if (index < 0 || index >= q.length) {
+      fault();
+      return;
+    }
+    q[index] = e;
   }
 
   bubbleDown(e: DtSolution, index0: i32): void {
+    const q = this.q;
     let index = index0;
-    const len = toI32(this.q.length);
+    const len = toI32(q.length);
+    // Below this, 2 * index + 2 fits.
+    if (index < 0 || index > 1073741822) {
+      fault();
+      return;
+    }
     let right = index * 2 + 2;
     while (right < len) {
+      // The children of a heap slot, inside the heap.
+      if (right <= 0 || right >= q.length) {
+        fault();
+        return;
+      }
       const left = right - 1;
-      const lc = this.q[left];
-      const rc = this.q[right];
+      const lc = q[left];
+      const rc = q[right];
       let minI = right;
       let minC = rc;
       if (lc.compare(rc) < 0) {
         minI = left;
         minC = lc;
       }
-      if (e.compare(minC) <= 0) {
-        this.q[index] = e;
+      const stop = e.compare(minC) <= 0;
+      if (index < 0 || index >= q.length) {
+        fault();
         return;
       }
-      this.q[index] = minC;
+      if (stop) {
+        q[index] = e;
+        return;
+      }
+      q[index] = minC;
       index = minI;
+      if (index > 1073741822) {
+        fault();
+        return;
+      }
       right = index * 2 + 2;
+    }
+    if (right <= 0) {
+      fault();
+      return;
     }
     const left = right - 1;
     if (left < len) {
-      const child = this.q[left];
+      if (left >= q.length) {
+        fault();
+        return;
+      }
+      const child = q[left];
       if (e.compare(child) > 0) {
-        this.q[index] = child;
+        if (index < 0 || index >= q.length) {
+          fault();
+          return;
+        }
+        q[index] = child;
         index = left;
       }
     }
-    this.q[index] = e;
+    if (index < 0 || index >= q.length) {
+      fault();
+      return;
+    }
+    q[index] = e;
   }
 }
 
@@ -513,7 +631,7 @@ export const dtSolve = (cache: DtCache, root: DtPiece, rootState: i32, leading: 
   let best = first;
   let attempts = 0;
   while (queue.q.length > 0 && attempts < MAX_ATTEMPTS) {
-    const s = queue.removeFirst();
+    const s = queue.removeFirst(first);
     attempts++;
     if (s.valid) {
       if (s.overflow === 0) {
@@ -548,6 +666,10 @@ const dtExpand = (
   const base = new DtSolution(s.own, s.binds, ex.length > 1 ? dtCopyAllowed(al) : null);
   for (let i = 0; i < ex.length; i++) {
     const ep = ex[i];
+    let prev = ep;
+    if (i > 0) {
+      prev = ex[i - 1];
+    }
     let states = dtStates(ep);
     if (al !== null) {
       const st = al.get(ep.id);
@@ -561,7 +683,7 @@ const dtExpand = (
     if (i > 0) {
       const b = base;
       b.beginBinding(cache);
-      b.bind(ex[i - 1], S_UNSPLIT);
+      b.bind(prev, S_UNSPLIT);
       b.bc = null;
       if (b.deadEnd) {
         // Every later piece would bind this prefix too.
@@ -600,25 +722,36 @@ const dtCopyAllowed = (al: Map<i32, i32[]> | null): Map<i32, i32[]> | null => {
 /** Solution._format: runs a CodeWriter over the tree for `s`, measuring. */
 const dtRunWriter = (cache: DtCache, s: DtSolution, root: DtPiece, leading: i32, subsequent: i32, stamp: i32): void => {
   const w = cache.writer();
-  cache.depth = cache.depth + 1;
+  const d = cache.depth;
+  // writer() keeps a writer for every depth up to this one.
+  if (d < 0 || d >= toI32(cache.writers.length)) {
+    fault();
+    return;
+  }
+  cache.depth = d + 1;
   w.reset(s, leading, subsequent, false, stamp);
   w.format(root, false);
   w.finishLine();
   s.expand = w.expandPieces;
-  cache.depth = cache.depth - 1;
+  cache.depth = d;
 };
 
 /** Writes the code for solution `s` of `root` to the cache's builder. */
 export const dtEmit = (cache: DtCache, s: DtSolution, root: DtPiece, leading: i32, subsequent: i32): void => {
   const w = cache.writer();
-  cache.depth = cache.depth + 1;
+  const d = cache.depth;
+  if (d < 0 || d >= toI32(cache.writers.length)) {
+    fault();
+    return;
+  }
+  cache.depth = d + 1;
   w.reset(s, leading, subsequent, true, 0);
   const b = cache.builder;
   if (b !== null) {
     b.indent = leading;
   }
   w.format(root, false);
-  cache.depth = cache.depth - 1;
+  cache.depth = d;
 };
 
 // ---------------------------------------------------------------------------
@@ -630,10 +763,6 @@ const SM_BLOCK: i32 = 1;
 const SM_BEFORE_HEADLINE: i32 = 2;
 const SM_AFTER_HEADLINE: i32 = 3;
 const SM_OTHER: i32 = 4;
-
-// Unique marks for the set of pieces on the current line, and stamps for a
-// writer's materialized states.
-const DT_GEN = new Int32Array(2);
 
 export class DtWriter {
   cache: DtCache;
@@ -710,14 +839,18 @@ export class DtWriter {
       return;
     }
     // Materialize the solution's states.
-    DT_GEN[1] = DT_GEN[1] + 1;
-    const stamp = DT_GEN[1];
+    const stamp = this.cache.nextStamp();
     this.stamp = stamp;
     const so = this.cache.stampOf;
     const st = this.cache.stateOf;
     let b = sol.binds;
     while (b !== null) {
       const id = b.piece.id;
+      // The cache holds a slot for every piece id.
+      if (id < 0 || id >= so.length || id >= st.length) {
+        fault();
+        return;
+      }
       if (so[id] !== stamp) {
         so[id] = stamp;
         st[id] = b.state;
@@ -732,8 +865,14 @@ export class DtWriter {
       return piece.pinned;
     }
     const id = piece.id;
-    if (this.cache.stampOf[id] === this.stamp) {
-      return this.cache.stateOf[id];
+    const so = this.cache.stampOf;
+    const st = this.cache.stateOf;
+    if (id < 0 || id >= so.length || id >= st.length) {
+      fault();
+      return -1;
+    }
+    if (so[id] === this.stamp) {
+      return st[id];
     }
     return -1;
   }
@@ -756,6 +895,10 @@ export class DtWriter {
         break;
       }
       const id = b.piece.id;
+      if (id < 0 || id >= so.length || id >= st.length) {
+        fault();
+        return;
+      }
       if (so[id] !== this.stamp) {
         so[id] = this.stamp;
         st[id] = b.state;
@@ -771,33 +914,47 @@ export class DtWriter {
   pushIndColl(kind: i32, spaces: i32, coll: i32): void {
     const n = this.nInd;
     if (n >= toI32(this.indType.length)) {
-      const t = new Array<i32>(n * 2);
-      t.set(this.indType);
-      this.indType = t;
-      const s = new Array<i32>(n * 2);
-      s.set(this.indSpaces);
-      this.indSpaces = s;
-      const c = new Array<i32>(n * 2);
-      c.set(this.indColl);
-      this.indColl = c;
+      // Doubles the three, in place.
+      let cap = n;
+      if (n >= 0 && n <= 1073741823) {
+        cap = n + n;
+      }
+      dtPadInts(this.indType, cap);
+      dtPadInts(this.indSpaces, cap);
+      dtPadInts(this.indColl, cap);
     }
-    this.indType[n] = kind;
-    this.indSpaces[n] = spaces;
-    this.indColl[n] = coll;
+    const indType = this.indType;
+    const indSpaces = this.indSpaces;
+    const indColl = this.indColl;
+    if (n < 0 || n >= indType.length || n >= indSpaces.length || n >= indColl.length) {
+      fault();
+      return;
+    }
+    indType[n] = kind;
+    indSpaces[n] = spaces;
+    indColl[n] = coll;
     this.nInd = n + 1;
   }
 
   /** _pushIndent3Dot7. */
   pushIndent37(spaces: i32, canCollapse: boolean): void {
-    const top = this.nInd - 1;
-    const parentIndent = this.indSpaces[top];
-    const parentCollapse = this.indColl[top];
+    const n = this.nInd;
+    const indSpaces = this.indSpaces;
+    const indColl = this.indColl;
+    // reset pushed the first level, and pops match pushes.
+    if (n <= 0 || n > indSpaces.length || n > indColl.length) {
+      fault();
+      return;
+    }
+    const top = n - 1;
+    const parentIndent = indSpaces[top];
+    const parentCollapse = indColl[top];
     if (parentCollapse === spaces) {
       this.pushIndColl(IN_NONE, parentIndent, 0);
     } else if (canCollapse) {
-      this.pushIndColl(IN_NONE, parentIndent + spaces, spaces);
+      this.pushIndColl(IN_NONE, add32(parentIndent, spaces), spaces);
     } else {
-      this.pushIndColl(IN_NONE, parentIndent + spaces, 0);
+      this.pushIndColl(IN_NONE, add32(parentIndent, spaces), 0);
     }
   }
 
@@ -811,8 +968,17 @@ export class DtWriter {
 
   newGen(): void {
     this.nMarked = 0;
-    DT_GEN[0] = DT_GEN[0] + 1;
-    this.gen = DT_GEN[0];
+    this.gen = this.cache.nextMark();
+  }
+
+  /** items + 1. */
+  bumpItems(): void {
+    const k = this.items;
+    if (k < 2147483647) {
+      this.items = k + 1;
+    } else {
+      fault();
+    }
   }
 
   write(text: string, len: i32, soft: boolean): void {
@@ -822,27 +988,41 @@ export class DtWriter {
       if (b !== null) {
         b.text(text);
       }
-      this.items = this.items + 1;
+      this.bumpItems();
       return;
     }
-    this.column = this.column + len;
+    this.column = add32(this.column, len);
     if (soft) {
-      this.softChars = this.softChars + len;
+      this.softChars = add32(this.softChars, len);
     } else {
       this.softChars = 0;
     }
-    const nu = toI32(this.unsolved.length);
-    if (!this.foundExpandLine && nu > this.nMarked) {
-      for (let i = this.nMarked; i < nu; i++) {
-        const p = this.unsolved[i];
-        if (p.mark !== this.gen) {
-          p.mark = this.gen;
-          if (this.nLine < toI32(this.linePieces.length)) {
-            this.linePieces[this.nLine] = p;
-          } else {
-            this.linePieces.push(p);
+    const un = this.unsolved;
+    const nu = toI32(un.length);
+    const nMarked = this.nMarked;
+    if (!this.foundExpandLine && nu > nMarked) {
+      if (nMarked < 0) {
+        fault();
+        return;
+      }
+      const gen = this.gen;
+      const lp = this.linePieces;
+      for (let i = nMarked; i < nu && i < un.length; i++) {
+        const p = un[i];
+        if (p.mark !== gen) {
+          p.mark = gen;
+          const nl = this.nLine;
+          // nLine never passes linePieces' length.
+          if (nl < 0 || nl > lp.length || nl >= 2147483647) {
+            fault();
+            return;
           }
-          this.nLine = this.nLine + 1;
+          if (nl < lp.length) {
+            lp[nl] = p;
+          } else {
+            lp.push(p);
+          }
+          this.nLine = nl + 1;
         }
       }
       this.nMarked = nu;
@@ -854,19 +1034,43 @@ export class DtWriter {
       this.pushIndent37(dtIndentSpaces(kind), false);
       return;
     }
-    const top = this.nInd - 1;
-    const pt = this.indType[top];
+    const n = this.nInd;
+    const indType = this.indType;
+    const indSpaces = this.indSpaces;
+    if (n <= 0 || n > indType.length || n > indSpaces.length) {
+      fault();
+      return;
+    }
+    const top = n - 1;
+    const pt = indType[top];
+    const base = indSpaces[top];
     let offset = dtIndentSpaces(kind);
     if (pt === IN_ASSIGNMENT && kind === IN_INFIX) {
       offset = 0;
     } else if (pt === IN_CONTROL_FLOW_CLAUSE && (kind === IN_EXPRESSION || kind === IN_INFIX)) {
       offset = 0;
     }
-    this.pushInd(kind, this.indSpaces[top] + offset);
+    this.pushInd(kind, add32(base, offset));
   }
 
   popIndent(): void {
-    this.nInd = this.nInd - 1;
+    const n = this.nInd;
+    if (n > 0) {
+      this.nInd = n - 1;
+    } else {
+      fault();
+    }
+  }
+
+  /** The innermost indentation. */
+  topSpaces(): i32 {
+    const n = this.nInd;
+    const indSpaces = this.indSpaces;
+    if (n > 0 && n <= indSpaces.length) {
+      return indSpaces[n - 1];
+    }
+    fault();
+    return 0;
   }
 
   splitIf(cond: boolean, space: boolean = true, blank: boolean = false): void {
@@ -887,8 +1091,13 @@ export class DtWriter {
 
   whitespace(ws: i32, flushLeft: boolean): void {
     if (ws === WS_NEWLINE || ws === WS_BLANK) {
-      this.applyNewline(this.nFmt - 1, SH_OTHER);
-      this.pendingIndent = flushLeft ? 0 : this.indSpaces[this.nInd - 1];
+      const nf = this.nFmt;
+      if (nf < 0) {
+        fault();
+        return;
+      }
+      this.applyNewline(nf - 1, SH_OTHER);
+      this.pendingIndent = flushLeft ? 0 : this.topSpaces();
     }
     if (ws > this.pendingWs) {
       this.pendingWs = ws;
@@ -896,7 +1105,13 @@ export class DtWriter {
   }
 
   setShapeMode(mode: i32): void {
-    this.fmtMode[this.nFmt - 1] = mode;
+    const nf = this.nFmt;
+    const fmtMode = this.fmtMode;
+    if (nf > 0 && nf <= fmtMode.length) {
+      fmtMode[nf - 1] = mode;
+    } else {
+      fault();
+    }
   }
 
   format(piece: DtPiece, separate: boolean): void {
@@ -909,17 +1124,17 @@ export class DtWriter {
 
   formatSeparate(piece: DtPiece): void {
     const indent = this.pendingIndent;
-    const subsequent = this.indSpaces[this.nInd - 1];
+    const subsequent = this.topSpaces();
     const s = this.cache.find(piece, this.stateIfBound(piece), indent, subsequent);
     this.pendingIndent = 0;
     this.flushWhitespace();
     if (this.emit) {
       dtEmit(this.cache, s, piece, indent, subsequent);
-      this.items = this.items + 1;
+      this.bumpItems();
       return;
     }
-    this.sol.overflow = this.sol.overflow + s.overflow;
-    this.sol.subtree = this.sol.subtree + s.cost();
+    this.sol.overflow = add32(this.sol.overflow, s.overflow);
+    this.sol.subtree = add32(this.sol.subtree, s.cost());
   }
 
   formatInline(piece: DtPiece): void {
@@ -933,10 +1148,22 @@ export class DtWriter {
     ) {
       // The common leaf, measured: what the general path below does for
       // it, where its shape stays inline.
-      this.write(piece.lines[0], piece.lens[0], piece.soft);
+      const lines = piece.lines;
+      const lens = piece.lens;
+      // A text piece has a length for each line.
+      if (lines.length < 1 || lens.length < 1) {
+        fault();
+        return;
+      }
+      this.write(lines[0], lens[0], piece.soft);
       const n = this.nFmt;
       if (n > 0) {
-        const parent = this.fmtPiece[n - 1];
+        const fmtPiece = this.fmtPiece;
+        if (n > fmtPiece.length) {
+          fault();
+          return;
+        }
+        const parent = fmtPiece[n - 1];
         if (
           !dtIs37() &&
           dtMayRefuseInline(parent.kind) &&
@@ -950,7 +1177,12 @@ export class DtWriter {
     let unsolved = !this.emit && dtHasStates(piece) && this.stateIfBound(piece) < 0;
     if (unsolved && !dtV313()) {
       // Before 3.13, pieces are bound by page width while formatting.
-      const fixed = dtFixedState(piece, this.pageWidth - this.indSpaces[0]);
+      const indSpaces = this.indSpaces;
+      if (indSpaces.length < 1) {
+        fault();
+        return;
+      }
+      const fixed = dtFixedState(piece, sub32(this.pageWidth, indSpaces[0]));
       if (fixed >= 0) {
         this.bindNow(piece, fixed);
         unsolved = false;
@@ -961,32 +1193,60 @@ export class DtWriter {
     }
     const n0 = this.nFmt;
     if (n0 >= toI32(this.fmtShape.length)) {
-      const a = new Array<i32>(n0 * 2);
-      a.set(this.fmtShape);
-      this.fmtShape = a;
-      const b = new Array<i32>(n0 * 2);
-      b.set(this.fmtMode);
-      this.fmtMode = b;
+      // Doubles the two, in place.
+      let cap = n0;
+      if (n0 >= 0 && n0 <= 1073741823) {
+        cap = n0 + n0;
+      }
+      dtPadInts(this.fmtShape, cap);
+      dtPadInts(this.fmtMode, cap);
     }
-    if (n0 < toI32(this.fmtPiece.length)) {
-      this.fmtPiece[n0] = piece;
+    const fmtPiece = this.fmtPiece;
+    // nFmt never passes fmtPiece's length.
+    if (n0 < 0 || n0 > fmtPiece.length) {
+      fault();
+      return;
+    }
+    if (n0 < fmtPiece.length) {
+      fmtPiece[n0] = piece;
     } else {
-      this.fmtPiece.push(piece);
+      fmtPiece.push(piece);
     }
-    this.fmtShape[n0] = SH_INLINE;
-    this.fmtMode[n0] = SM_MERGE;
+    const fmtShape = this.fmtShape;
+    const fmtMode = this.fmtMode;
+    if (n0 >= fmtShape.length || n0 >= fmtMode.length) {
+      fault();
+      return;
+    }
+    fmtShape[n0] = SH_INLINE;
+    fmtMode[n0] = SM_MERGE;
     this.nFmt = n0 + 1;
     dtFormatPiece(this, piece, this.state(piece));
     this.nFmt = n0;
-    const shape = this.fmtShape[n0];
+    const shapes = this.fmtShape;
+    if (n0 >= shapes.length) {
+      fault();
+      return;
+    }
+    const shape = shapes[n0];
     if (unsolved) {
-      this.unsolved.pop();
-      if (this.nMarked > toI32(this.unsolved.length)) {
-        this.nMarked = toI32(this.unsolved.length);
+      const un = this.unsolved;
+      if (un.length < 1) {
+        fault();
+        return;
+      }
+      un.pop();
+      if (this.nMarked > toI32(un.length)) {
+        this.nMarked = toI32(un.length);
       }
     }
     if (n0 > 0 && !this.emit) {
-      const parent = this.fmtPiece[n0 - 1];
+      const pieces = this.fmtPiece;
+      if (n0 > pieces.length) {
+        fault();
+        return;
+      }
+      const parent = pieces[n0 - 1];
       if (dtIs37()) {
         if (shape !== SH_INLINE && dtAllowed(parent, this.state(parent), piece) === SH_INLINE) {
           this.sol.invalidate(parent);
@@ -1009,7 +1269,7 @@ export class DtWriter {
       if (b !== null) {
         b.enable(enabled, offset);
       }
-      this.items = this.items + 1;
+      this.bumpItems();
     }
   }
 
@@ -1026,7 +1286,7 @@ export class DtWriter {
         if (b !== null) {
           b.newline(ws === WS_BLANK, this.column);
         }
-        this.items = this.items + 1;
+        this.bumpItems();
       }
     } else if (ws === WS_SPACE) {
       if (this.emit) {
@@ -1034,32 +1294,48 @@ export class DtWriter {
         if (b !== null) {
           b.text(" ");
         }
-        this.items = this.items + 1;
+        this.bumpItems();
       }
-      this.column = this.column + 1;
-      this.softChars = this.softChars + 1;
+      const col = this.column;
+      const soft = this.softChars;
+      if (col < 2147483647 && soft < 2147483647) {
+        this.column = col + 1;
+        this.softChars = soft + 1;
+      } else {
+        fault();
+      }
     }
     this.pendingWs = WS_NONE;
   }
 
   finishLine(): void {
-    if (this.column > this.pageWidth) {
-      let overflow = this.column - this.pageWidth;
-      if (dtV313() && this.softChars > 0) {
-        if (this.softChars >= overflow) {
+    const column = this.column;
+    const pageWidth = this.pageWidth;
+    if (column > pageWidth) {
+      let overflow = sub32(column, pageWidth);
+      const softChars = this.softChars;
+      if (dtV313() && softChars > 0) {
+        if (softChars >= overflow) {
           overflow = 1;
         } else {
-          overflow = overflow - this.softChars + 1;
+          // overflow > softChars - 1 >= 0: the u32 difference is exact.
+          overflow = toI32(toU32(overflow) - toU32(softChars - 1));
         }
       }
-      this.sol.overflow = this.sol.overflow + overflow;
+      this.sol.overflow = add32(this.sol.overflow, overflow);
     }
     if (this.foundExpandLine) {
       return;
     }
-    if (this.nLine > 0 && (this.column > this.pageWidth || !this.sol.valid)) {
-      for (let i = 0; i < this.nLine; i++) {
-        this.expandPieces.push(this.linePieces[i]);
+    const nl = this.nLine;
+    if (nl > 0 && (this.column > this.pageWidth || !this.sol.valid)) {
+      const lp = this.linePieces;
+      if (nl > lp.length) {
+        fault();
+        return;
+      }
+      for (let i = 0; i < nl && i < lp.length; i++) {
+        this.expandPieces.push(lp[i]);
       }
       this.foundExpandLine = true;
     } else {
@@ -1073,8 +1349,14 @@ export class DtWriter {
     if (i < 0) {
       return;
     }
-    const mode = this.fmtMode[i];
-    const cur = this.fmtShape[i];
+    const fmtMode = this.fmtMode;
+    const fmtShape = this.fmtShape;
+    if (i >= fmtMode.length || i >= fmtShape.length) {
+      fault();
+      return;
+    }
+    const mode = fmtMode[i];
+    const cur = fmtShape[i];
     let r = cur;
     if (mode === SM_MERGE) {
       r = dtShapeMerge(cur, shape);
@@ -1087,29 +1369,67 @@ export class DtWriter {
     } else {
       r = SH_OTHER;
     }
-    this.fmtShape[i] = r;
+    fmtShape[i] = r;
   }
 
   /** TextPiece._formatLines. */
   formatLines(p: DtPiece, soft: boolean): void {
-    const n = toI32(p.lines.length);
+    const lines = p.lines;
+    const lens = p.lens;
+    const n = toI32(lines.length);
     if (n > 1) {
       this.setShapeMode(SM_BEFORE_HEADLINE);
     }
-    this.write(p.lines[0], p.lens[0], soft);
+    // A text piece has a length for each line, and a line at least.
+    if (lines.length < 1 || lens.length < 1) {
+      fault();
+      return;
+    }
+    this.write(lines[0], lens[0], soft);
     if (n > 1) {
       this.setShapeMode(SM_AFTER_HEADLINE);
     }
     for (let i = 1; i < n; i++) {
       this.newline(false, true);
-      this.write(p.lines[i], p.lens[i], soft);
+      if (i >= lines.length || i >= lens.length) {
+        fault();
+        return;
+      }
+      this.write(lines[i], lens[i], soft);
     }
   }
 }
 
+/**
+ * `n` zeroes, as `new Array<i32>(n)` made them: an array of a u16 length
+ * needs no check, and only the rest past 65535 is pushed.
+ */
+const dtCacheZeros = (n: i32): i32[] => {
+  if (n >= 0 && n <= 65535) {
+    return new Array<i32>(toU16(n));
+  }
+  if (n < 0) {
+    fault();
+    const none: i32[] = [];
+    return none;
+  }
+  const xs = new Array<i32>(65535);
+  dtPadInts(xs, n);
+  return xs;
+};
+
+/** Grows `xs` in place to `n` elements, the new ones 0. */
+const dtPadInts = (xs: i32[], n: i32): void => {
+  while (xs.length < n) {
+    xs.push(0);
+  }
+};
+
 const dtReq = (p: DtPiece | null): DtPiece => {
   if (p === null) {
-    panic("dart: missing piece");
+    // A piece's builder sets every child its format reads.
+    fault();
+    return new DtPiece(0, PK_SPACE);
   }
   return p;
 };
@@ -1199,20 +1519,27 @@ const dtFormatPiece = (w: DtWriter, p: DtPiece, s: i32): void => {
       const n = toI32(calls.length);
       if (s === S_UNSPLIT) {
         w.format(dtReq(p.a), false);
-        for (let i = 0; i < n; i++) {
+        for (let i = 0; i < n && i < calls.length; i++) {
           w.format(calls[i], false);
         }
       } else if (s === CHAIN_SPLIT_AFTER_PROPERTIES) {
         w.pushIndent(p.i2);
         w.setShapeMode(SM_BEFORE_HEADLINE);
         w.format(dtReq(p.a), false);
-        for (let i = 0; i < p.i0; i++) {
+        const i0 = p.i0;
+        // The properties are some of the calls.
+        if (i0 < 0 || i0 > n) {
+          fault();
+          return;
+        }
+        for (let i = 0; i < i0 && i < calls.length; i++) {
           w.format(calls[i], false);
         }
         w.setShapeMode(SM_AFTER_HEADLINE);
-        for (let i = p.i0; i < n; i++) {
+        for (let i = i0; i >= 0 && i < n && i < calls.length; i++) {
+          const call = calls[i];
           w.newline();
-          w.format(calls[i], i < n - 1);
+          w.format(call, i < n - 1);
         }
         w.popIndent();
       } else if (s === CHAIN_BLOCK_TRAILING_CALL) {
@@ -1220,7 +1547,7 @@ const dtFormatPiece = (w: DtWriter, p: DtPiece, s: i32): void => {
           w.setShapeMode(SM_OTHER);
         }
         w.format(dtReq(p.a), false);
-        for (let i = 0; i < n; i++) {
+        for (let i = 0; i < n && i < calls.length; i++) {
           w.format(calls[i], false);
         }
       } else {
@@ -1228,27 +1555,31 @@ const dtFormatPiece = (w: DtWriter, p: DtPiece, s: i32): void => {
         w.setShapeMode(SM_BEFORE_HEADLINE);
         w.format(dtReq(p.a), false);
         w.setShapeMode(SM_AFTER_HEADLINE);
-        for (let i = 0; i < n; i++) {
+        for (let i = 0; i < n && i < calls.length; i++) {
+          const call = calls[i];
           w.newline();
-          w.format(calls[i], i < n - 1);
+          w.format(call, i < n - 1);
         }
         w.popIndent();
       }
       return;
     }
-    case PK_CLAUSE:
+    case PK_CLAUSE: {
       w.format(dtReq(p.a), false);
       w.pushIndent(IN_EXPRESSION);
-      for (let i = 0; i < p.list.length; i++) {
+      const clauses = p.list;
+      for (let i = 0; i < clauses.length; i++) {
+        const clause = clauses[i];
         if (p.b0 && i === 0) {
           w.splitIf(s === S_SPLIT);
         } else {
           w.splitIf(s !== S_UNSPLIT);
         }
-        w.format(p.list[i], false);
+        w.format(clause, false);
       }
       w.popIndent();
       return;
+    }
     case PK_CONSTRUCTOR: {
       w.format(dtReq(p.a), false);
       const params = p.b;
@@ -1279,15 +1610,25 @@ const dtFormatPiece = (w: DtWriter, p: DtPiece, s: i32): void => {
       return;
     }
     case PK_CONTROL_FLOW: {
-      const n = toI32(p.list.length);
-      for (let i = 0; i < n; i++) {
-        const isBlock = p.ints[i] === 1;
-        w.format(p.list[i], false);
+      const heads = p.list;
+      const bodies = p.list2;
+      const ints = p.ints;
+      const n = toI32(heads.length);
+      // A body and a flag for each head.
+      if (bodies.length < n || ints.length < n) {
+        fault();
+        return;
+      }
+      for (let i = 0; i < n && i < heads.length && i < bodies.length && i < ints.length; i++) {
+        const isBlock = ints[i] === 1;
+        const head = heads[i];
+        const body = bodies[i];
+        w.format(head, false);
         if (!isBlock) {
           w.pushIndent(IN_BLOCK);
           w.splitIf(s === S_SPLIT);
         }
-        w.format(p.list2[i], false);
+        w.format(body, false);
         if (!isBlock) {
           w.popIndent();
         }
@@ -1359,7 +1700,7 @@ const dtFormatPiece = (w: DtWriter, p: DtPiece, s: i32): void => {
       w.pushIndent(p.i0);
       if (dtIs37()) {
         // _InfixPiece3Dot7.
-        for (let i = 0; i < n; i++) {
+        for (let i = 0; i < n && i < ops.length; i++) {
           w.format(ops[i], s === S_SPLIT && i > 0 && i < n - 1);
           if (i < n - 1) {
             w.splitIf(s === S_SPLIT);
@@ -1368,19 +1709,26 @@ const dtFormatPiece = (w: DtWriter, p: DtPiece, s: i32): void => {
         w.popIndent();
         return;
       }
+      // An infix piece has an operand at least.
+      if (ops.length < 1) {
+        fault();
+        return;
+      }
+      const op0 = ops[0];
       if (p.b0) {
         w.setShapeMode(SM_BEFORE_HEADLINE);
       }
-      w.format(ops[0], false);
+      w.format(op0, false);
       if (p.b0) {
         w.setShapeMode(SM_AFTER_HEADLINE);
       }
-      for (let i = 1; i < n; i++) {
+      for (let i = 1; i < n && i < ops.length; i++) {
+        const op = ops[i];
         w.splitIf(s === S_SPLIT);
         if (p.b0) {
           w.pushIndent(IN_BLOCK);
         }
-        w.format(ops[i], s === S_SPLIT && i < n - 1);
+        w.format(op, s === S_SPLIT && i < n - 1);
         if (p.b0) {
           w.popIndent();
         }
@@ -1409,7 +1757,7 @@ const dtFormatPiece = (w: DtWriter, p: DtPiece, s: i32): void => {
         }
         w.splitIf(s === S_SPLIT, p.b0 && n > 0);
       }
-      for (let i = 0; i < n; i++) {
+      for (let i = 0; i < n && i < els.length; i++) {
         const el = els[i];
         if (s === S_UNSPLIT && el.b1) {
           w.pushIndent(IN_EXPRESSION);
@@ -1442,11 +1790,19 @@ const dtFormatPiece = (w: DtWriter, p: DtPiece, s: i32): void => {
         w.space();
       }
       const content = p.a;
+      const rest = p.list2;
+      const i0 = p.i0;
+      // The first i0 of list2 follow the content.
+      if (i0 < 0 || (content !== null && i0 > rest.length)) {
+        fault();
+        return;
+      }
       if (content !== null) {
         w.format(content, false);
-        for (let i = 0; i < p.i0; i++) {
+        for (let i = 0; i < i0 && i < rest.length; i++) {
+          const x = rest[i];
           w.space();
-          w.format(p.list2[i], false);
+          w.format(x, false);
         }
         if (s === LIST_ELEMENT_APPEND_COMMA) {
           w.write(",", 1, true);
@@ -1456,11 +1812,12 @@ const dtFormatPiece = (w: DtWriter, p: DtPiece, s: i32): void => {
           w.write(p.delim, toI32(p.delim.length), false);
         }
       }
-      for (let i = p.i0; i < p.list2.length; i++) {
+      for (let i = i0; i >= 0 && i < rest.length; i++) {
+        const x = rest[i];
         if (i > 0 || content !== null) {
           w.space();
         }
-        w.format(p.list2[i], false);
+        w.format(x, false);
       }
       return;
     }
@@ -1468,12 +1825,18 @@ const dtFormatPiece = (w: DtWriter, p: DtPiece, s: i32): void => {
       const els = p.list;
       const n = toI32(els.length);
       w.pushIndent(IN_NONE);
-      for (let i = 0; i < n; i++) {
-        w.format(els[i], true);
+      for (let i = 0; i < n && i < els.length; i++) {
+        const el = els[i];
+        let next = el;
+        const j = i + 1;
+        if (j < els.length) {
+          next = els[j];
+        }
+        w.format(el, true);
         if (i < n - 1) {
           w.popIndent();
-          w.pushIndent(els[i + 1].i0);
-          w.newline(els[i].b0, false);
+          w.pushIndent(next.i0);
+          w.newline(el.b0, false);
         }
       }
       w.popIndent();
@@ -1540,9 +1903,11 @@ const dtFormatPiece = (w: DtWriter, p: DtPiece, s: i32): void => {
       if (indent) {
         w.pushIndent(IN_INFIX);
       }
-      for (let i = 0; i < nc; i++) {
+      const clauses = p.list;
+      for (let i = 0; i < nc && i < clauses.length; i++) {
+        const clause = clauses[i];
         w.splitIf(s === PRIMARY_BEFORE_CLAUSES || (s === PRIMARY_BETWEEN_CLAUSES && i !== 0) || s === S_SPLIT);
-        w.format(p.list[i], false);
+        w.format(clause, false);
       }
       if (indent) {
         w.popIndent();
@@ -1583,11 +1948,13 @@ const dtFormatPiece = (w: DtWriter, p: DtPiece, s: i32): void => {
         w.pushIndent(IN_EXPRESSION);
       }
       w.splitIf(s === VAR_AFTER_TYPE);
-      for (let i = 0; i < p.list.length; i++) {
+      const vars = p.list;
+      for (let i = 0; i < vars.length; i++) {
+        const v = vars[i];
         if (i > 0) {
           w.splitIf(s !== S_UNSPLIT);
         }
-        w.format(p.list[i], false);
+        w.format(v, false);
       }
       if (s === VAR_BETWEEN) {
         w.popIndent();
@@ -1595,6 +1962,8 @@ const dtFormatPiece = (w: DtWriter, p: DtPiece, s: i32): void => {
       return;
     }
     default:
-      panic(`dart: unknown piece ${p.kind}`);
+      // Every piece kind the builders make is a case above.
+      fault();
+      return;
   }
 };

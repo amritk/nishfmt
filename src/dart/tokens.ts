@@ -2,6 +2,8 @@
 // TokenType and Keyword (_fe_analyzer_shared, BSD-3-Clause, Copyright the
 // Dart project authors).
 
+import { fault } from "../core/fault";
+
 // Kinds.
 export const T_BOF: i32 = 0;
 export const T_EOF: i32 = 1;
@@ -159,8 +161,13 @@ export const dtIsBuiltIn = (k: i32): boolean => k >= K_ABSTRACT && k <= K_LAST_B
 
 /** The keyword id of the identifier `src[a, b)`, or K_NONE. */
 export const dtKeyword = (src: u8[], a: i32, b: i32): i32 => {
+  // The scanner passes an identifier's bounds, inside `src`.
+  if (a < 0 || b < a || b > src.length) {
+    fault();
+    return K_NONE;
+  }
   const n = b - a;
-  if (n < 2 || n > 10) {
+  if (n < 2 || n > 10 || a >= src.length) {
     return K_NONE;
   }
   const c = toI32(src[a]);
@@ -290,10 +297,17 @@ export const dtIs = (src: u8[], a: i32, n: i32, s: string): boolean => {
   if (toI32(s.length) !== n) {
     return false;
   }
-  for (let i = 0; i < n; i++) {
-    if (toI32(src[a + i]) !== s.charCodeAt(i)) {
+  let j = a;
+  for (let i = 0; i < n && i < s.length; i++) {
+    if (j < 0 || j >= src.length) {
+      fault();
       return false;
     }
+    const b = toI32(src[j]);
+    if (b !== s.charCodeAt(i)) {
+      return false;
+    }
+    j = j + 1;
   }
   return true;
 };
