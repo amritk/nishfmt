@@ -19,19 +19,19 @@ import sys
 OVERRIDES = {
     # call_op: tDOT / tANDDOT. The parser gem keeps [:dot, range]; a token whose
     # value is "." or "&." reads the same to the builder (call_type_for_dot).
-    726: "return this.a.token(\".\", this.a.tokS(v[0]), this.a.tokE(v[0]));",
-    727: "return this.a.token(\"&.\", this.a.tokS(v[0]), this.a.tokE(v[0]));",
+    726: "return this.a.token(\".\", this.a.tokS(this.va(v, 0)), this.a.tokE(this.va(v, 0)));",
+    727: "return this.a.token(\"&.\", this.a.tokS(this.va(v, 0)), this.a.tokE(this.va(v, 0)));",
     # mlhs_node: primary_value call_op tIDENTIFIER (and tCONSTANT)
-    110: "if (this.a.tokValue(v[1]) === \"&.\") {\n  return this.fail();\n}\nreturn this.b.attrAsgn(v[0], v[1], v[2]);",
-    112: "if (this.a.tokValue(v[1]) === \"&.\") {\n  return this.fail();\n}\nreturn this.b.attrAsgn(v[0], v[1], v[2]);",
+    110: "if (this.a.tokValue(this.va(v, 1)) === \"&.\") {\n  return this.fail();\n}\nreturn this.b.attrAsgn(this.va(v, 0), this.va(v, 1), this.va(v, 2));",
+    112: "if (this.a.tokValue(this.va(v, 1)) === \"&.\") {\n  return this.fail();\n}\nreturn this.b.attrAsgn(this.va(v, 0), this.va(v, 1), this.va(v, 2));",
     # numeric: tUNARY_NUM simple_numeric (Builders::Default has no negate).
     # Prism, which RuboCop parses 3.3 with, reads a sign followed by a space
     # as the unary method: `- 1` is (send (int 1) :-@).
-    607: "if (this.a.tokE(v[0]) !== this.a.exS(v[1])) {\n  return this.b.unaryOp(v[0], v[1]);\n}\nreturn this.b.unaryNum(v[0], v[1]);",
+    607: "if (this.a.tokE(this.va(v, 0)) !== this.a.exS(this.va(v, 1))) {\n  return this.b.unaryOp(this.va(v, 0), this.va(v, 1));\n}\nreturn this.b.unaryNum(this.va(v, 0), this.va(v, 1));",
     # mlhs_item: tLPAREN mlhs_inner rparen (Prism's nesting).
-    102: "return this.b.mlhsItem(v[0], v[1], v[2]);",
+    102: "return this.b.mlhsItem(this.va(v, 0), this.va(v, 1), this.va(v, 2));",
     # p_kw_label: tLABEL / tSTRING_BEG string_contents tLABEL_END
-    520: "return this.a.list2(this.a.scalar(1), v[0]);",
+    520: "return this.a.list2(this.a.scalar(1), this.va(v, 0));",
 }
 
 # Ruby builder method -> RbBuilder method, and leading arguments the TS takes.
@@ -533,7 +533,7 @@ def translate(n, body):
             if splat_first and i == 0:
                 name = t[1:]
                 declare(name, "h")
-                emit(f"{name} = this.a.slice({src}, 0, this.a.len({src}) - {len(targets) - 1});")
+                emit(f"{name} = this.a.slice({src}, 0, this.lenLess({src}, {len(targets) - 1}));")
                 continue
             idx = -(len(targets) - i) if splat_first else i
             if isinstance(t, list):

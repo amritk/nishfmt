@@ -5,6 +5,7 @@
 // Batsov).
 
 import { NT_DSTR, NT_STR } from "../ast";
+import { sub32 } from "../../core/arr";
 import { RbCop } from "../cop";
 import { RbSource } from "../source";
 import { ssxIs } from "./style_syntax_help";
@@ -46,7 +47,7 @@ export class CopLintImplicitStringConcatenation {
       if (a.type(n) !== NT_DSTR) {
         continue;
       }
-      for (let i = 0; i + 1 < a.nKid(n); i++) {
+      for (let i = 0; i < a.nKid(n) && i + 1 < a.nKid(n); i++) {
         const l = a.kid(n, i);
         const r = a.kid(n, i + 1);
         if (!this.strLit(src, l) || !this.strLit(src, r)) {
@@ -57,7 +58,7 @@ export class CopLintImplicitStringConcatenation {
         }
         // source[-1] == ending_delimiter: the first character is ' or " and the last is the same.
         const f = src.at(a.exS(l));
-        if ((f !== 39 && f !== 34) || a.exE(l) <= a.exS(l) || src.at(a.exE(l) - 1) !== f) {
+        if ((f !== 39 && f !== 34) || a.exE(l) <= a.exS(l) || src.at(sub32(a.exE(l), 1)) !== f) {
           continue;
         }
         const k = this.c.offense(a.exS(l), a.exE(r));

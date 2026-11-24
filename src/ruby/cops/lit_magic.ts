@@ -5,6 +5,8 @@
 // Ported from RuboCop 1.92.3 (MIT License, Copyright (c) 2012-24 Bozhidar
 // Batsov).
 
+import { add32 } from "../../core/arr";
+import { fault } from "../../core/fault";
 import { rbLitChars, rbLitSpaceC } from "./lit_help";
 import { rbLitUAlnum } from "./lit_unicode";
 
@@ -20,6 +22,11 @@ const rbMcLower = (c: i32): i32 => (c >= 65 && c <= 90 ? c + 32 : c);
 const rbMcStr = (cs: i32[], s: i32, e: i32): string => {
   const out: string[] = [];
   for (let i = s; i < e; i++) {
+    // [s, e) lies in cs.
+    if (i < 0 || i >= cs.length) {
+      fault();
+      return "";
+    }
     const c = cs[i];
     if (c < 0x80) {
       out.push(String.fromCharCode(c));
@@ -44,17 +51,39 @@ const rbMcStr = (cs: i32[], s: i32, e: i32): string => {
 const rbMcLit = (cs: i32[], i: i32, w: string, ci: boolean): i32 => {
   const n = toI32(cs.length);
   const k = toI32(w.length);
-  if (i + k > n) {
+  if (i > n - k) {
     return -1;
   }
+  // q runs over i .. i + k - 1, inside cs after the test above.
+  let q = i;
   for (let j = 0; j < k; j++) {
-    const c = cs[i + j];
+    if (q < 0 || q >= cs.length) {
+      fault();
+      return -1;
+    }
+    const c = cs[q];
     const d = w.charCodeAt(j);
     if (ci ? rbMcLower(c) !== rbMcLower(d) : c !== d) {
       return -1;
     }
+    q++;
   }
-  return i + k;
+  return q;
+};
+
+/** Whether `-*-` starts at q (0 <= q <= cs.length - 3). */
+const rbMcDashStarAt = (cs: i32[], q: i32): boolean => {
+  if (q < 0 || q > toI32(cs.length) - 3) {
+    fault();
+    return false;
+  }
+  const q1 = q + 1;
+  const q2 = q + 2;
+  if (q1 >= cs.length || q2 >= cs.length) {
+    fault();
+    return false;
+  }
+  return cs[q] === 45 && cs[q1] === 42 && cs[q2] === 45;
 };
 
 /** A keyword pattern at `i`: its end, or -1. Keywords: "encoding" `(?:en)?coding`, others `a[_-]b[_-]c`. */
@@ -73,14 +102,19 @@ const rbMcKw = (cs: i32[], i: i32, kw: string, ci: boolean): i32 => {
   let p = i;
   let from = 0;
   const k = toI32(kw.length);
+  // The loop runs to the length inclusive.
+  if (k >= 2147483647) {
+    fault();
+    return -1;
+  }
   for (let j = 0; j <= k; j++) {
-    if (j === k || kw.charCodeAt(j) === 45) {
+    if (j >= k || kw.charCodeAt(j) === 45) {
       p = rbMcLit(cs, p, kw.substring(from, j), ci);
       if (p < 0) {
         return -1;
       }
       if (j < k) {
-        if (p >= toI32(cs.length) || (cs[p] !== 95 && cs[p] !== 45)) {
+        if (p >= cs.length || (cs[p] !== 95 && cs[p] !== 45)) {
           return -1;
         }
         p++;
@@ -93,7 +127,12 @@ const rbMcKw = (cs: i32[], i: i32, kw: string, ci: boolean): i32 => {
 
 const rbMcWs = (cs: i32[], i0: i32): i32 => {
   let i = i0;
-  while (i < toI32(cs.length) && rbLitSpaceC(cs[i])) {
+  // Every caller passes a position in cs.
+  if (i < 0) {
+    fault();
+    return i;
+  }
+  while (i >= 0 && i < cs.length && rbLitSpaceC(cs[i])) {
     i++;
   }
   return i;
@@ -104,7 +143,12 @@ const rbMcTokenC = (c: i32): boolean => rbLitUAlnum(c) || c === 45 || c === 95;
 /** TOKEN at `i`: its end (maximal), or -1 when empty. */
 const rbMcToken = (cs: i32[], i0: i32): i32 => {
   let i = i0;
-  while (i < toI32(cs.length) && rbMcTokenC(cs[i])) {
+  // Every caller passes a position in cs.
+  if (i < 0) {
+    fault();
+    return -1;
+  }
+  while (i >= 0 && i < cs.length && rbMcTokenC(cs[i])) {
     i++;
   }
   return i > i0 ? i : -1;
@@ -112,8 +156,9 @@ const rbMcToken = (cs: i32[], i0: i32): i32 => {
 
 /** SimpleComment: /\A\s*#\s*KW:\s*TOKEN\s*\z/io's token, or null. */
 const rbMcSimpleExtract = (cs: i32[], kw: string): string | null => {
+  // rbMcWs answers a position no less than the one it was given.
   let i = rbMcWs(cs, 0);
-  if (i >= toI32(cs.length) || cs[i] !== 35) {
+  if (i < 0 || i >= cs.length || cs[i] !== 35) {
     return null;
   }
   i = rbMcWs(cs, i + 1);
@@ -131,8 +176,9 @@ const rbMcSimpleExtract = (cs: i32[], kw: string): string | null => {
 
 /** SimpleComment#encoding: /\A\s*\#\s*(frozen_string_literal:\s*(true|false))?\s*(?:en)?coding: (TOKEN)/io. */
 const rbMcSimpleEncoding = (cs: i32[]): string | null => {
+  // rbMcWs answers a position no less than the one it was given.
   let i = rbMcWs(cs, 0);
-  if (i >= toI32(cs.length) || cs[i] !== 35) {
+  if (i < 0 || i >= cs.length || cs[i] !== 35) {
     return null;
   }
   i = rbMcWs(cs, i + 1);
@@ -199,21 +245,26 @@ export class RbMagicComment {
   private emacsToken(): string | null {
     const cs = this.cs;
     const n = toI32(cs.length);
-    for (let s = 0; s + 2 < n; s++) {
-      if (!(cs[s] === 45 && cs[s + 1] === 42 && cs[s + 2] === 45)) {
+    for (let s = 0; s < n - 2; s++) {
+      if (!rbMcDashStarAt(cs, s)) {
         continue;
       }
       // the last `-*-` at least one character past the first
-      for (let q = n - 3; q >= s + 4; q--) {
-        if (cs[q] === 45 && cs[q + 1] === 42 && cs[q + 2] === 45) {
+      for (let q = n - 3; q >= 4 && q - 4 >= s; q--) {
+        if (rbMcDashStarAt(cs, q)) {
           let nl = false;
-          for (let j = s + 3; j < q; j++) {
+          for (let j = add32(s, 3); j < q; j++) {
+            // s + 3 <= j < q <= n - 3: inside cs.
+            if (j < 0 || j >= cs.length) {
+              fault();
+              return null;
+            }
             if (cs[j] === 10) {
               nl = true;
             }
           }
           if (!nl) {
-            return rbMcStr(cs, s + 3, q);
+            return rbMcStr(cs, add32(s, 3), q);
           }
         }
       }
@@ -225,7 +276,7 @@ export class RbMagicComment {
   private vimToken(): string | null {
     const cs = this.cs;
     const n = toI32(cs.length);
-    for (let s = 0; s < n; s++) {
+    for (let s = 0; s < n && s < cs.length; s++) {
       if (cs[s] !== 35) {
         continue;
       }
@@ -256,8 +307,9 @@ export class RbMagicComment {
       if (i < 0) {
         continue;
       }
+      // rbMcWs answers a position no less than the one it was given.
       i = rbMcWs(cs, i);
-      if (i >= toI32(cs.length) || cs[i] !== op) {
+      if (i < 0 || i >= cs.length || cs[i] !== op) {
         continue;
       }
       i = rbMcWs(cs, i + 1);
@@ -267,6 +319,11 @@ export class RbMagicComment {
       }
       const v: i32[] = [];
       for (let j = i; j < e; j++) {
+        // [i, e) lies in cs.
+        if (j < 0 || j >= cs.length) {
+          fault();
+          return null;
+        }
         v.push(rbMcLower(cs[j]));
       }
       return rbMcStr(v, 0, toI32(v.length));
@@ -384,17 +441,31 @@ const rbMcSplitStrip = (s: string, sep: string): string[] => {
   const k = toI32(sep.length);
   let i = 0;
   while (i <= n - k) {
-    if (s.substring(i, i + k) === sep) {
+    const ik = add32(i, k);
+    if (s.substring(i, ik) === sep) {
       fields.push(s.substring(from, i));
-      from = i + k;
-      i += k;
+      from = ik;
+      // A separator is never empty, so i moves on.
+      if (ik <= i) {
+        fault();
+        break;
+      }
+      i = ik;
       continue;
+    }
+    if (i >= n) {
+      fault();
+      break;
     }
     i++;
   }
   fields.push(s.substring(from, n));
-  while (fields.length > 0 && fields[fields.length - 1].length === 0) {
-    fields.pop();
+  let m = toI32(fields.length);
+  while (m > 0 && m <= fields.length && fields[m - 1].length === 0) {
+    if (fields.length > 0) {
+      fields.pop();
+    }
+    m = toI32(fields.length);
   }
   const out: string[] = [];
   for (const f of fields) {
@@ -403,7 +474,7 @@ const rbMcSplitStrip = (s: string, sep: string): string[] => {
     while (a < b && rbMcStripC(f.charCodeAt(a))) {
       a++;
     }
-    while (b > a && rbMcStripC(f.charCodeAt(b - 1))) {
+    while (b > a && b > 0 && b <= f.length && rbMcStripC(f.charCodeAt(b - 1))) {
       b--;
     }
     out.push(f.substring(a, b));

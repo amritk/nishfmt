@@ -6,6 +6,7 @@
 // Batsov).
 
 import { NT_ARRAY, NT_STR, NT_SYM } from "../ast";
+import { fault } from "../../core/fault";
 import { RbCop } from "../cop";
 import { RbSource } from "../source";
 import { rbLitChars, rbLitIsPercent, rbLitPctType, rbLitWordC } from "./lit_help";
@@ -24,11 +25,16 @@ const lnplDigit = (c: i32): boolean => c >= 48 && c <= 57;
 
 /** The positions after `\d+\$` from p (none: empty). */
 const lnplDigitDollar = (cs: i32[], p: i32, out: i32[]): void => {
+  // Positions start at 1 and only grow.
+  if (p < 0) {
+    fault();
+    return;
+  }
   let i = p;
-  while (i < toI32(cs.length) && lnplDigit(cs[i])) {
+  while (i >= 0 && i < cs.length && lnplDigit(cs[i])) {
     i++;
   }
-  if (i > p && i < toI32(cs.length) && cs[i] === 36) {
+  if (i > p && i >= 0 && i < cs.length && cs[i] === 36) {
     lnplAdd(out, i + 1);
   }
 };
@@ -38,7 +44,12 @@ const lnplFlags = (cs: i32[], p: i32): i32[] => {
   const out: i32[] = [p];
   for (let k = 0; k < toI32(out.length); k++) {
     const q = out[k];
-    if (q < toI32(cs.length)) {
+    // Positions start at 1 and only grow.
+    if (q < 0) {
+      fault();
+      return out;
+    }
+    if (q < cs.length) {
       const c = cs[q];
       if (c === 32 || c === 35 || c === 48 || c === 43 || c === 45) {
         lnplAdd(out, q + 1);
@@ -51,18 +62,23 @@ const lnplFlags = (cs: i32[], p: i32): i32[] => {
 
 /** NUMBER from p: `\d+`, `\*(\d+\$)?` or `#\{.*?\}`. */
 const lnplNumber = (cs: i32[], p: i32, out: i32[]): void => {
-  const n = toI32(cs.length);
+  // Positions start at 1 and only grow.
+  if (p < 0) {
+    fault();
+    return;
+  }
   let i = p;
-  while (i < n && lnplDigit(cs[i])) {
+  while (i >= 0 && i < cs.length && lnplDigit(cs[i])) {
     i++;
     lnplAdd(out, i);
   }
-  if (p < n && cs[p] === 42) {
-    lnplAdd(out, p + 1);
-    lnplDigitDollar(cs, p + 1, out);
+  if (p < cs.length && cs[p] === 42) {
+    const p1 = p + 1;
+    lnplAdd(out, p1);
+    lnplDigitDollar(cs, p1, out);
   }
-  if (p + 1 < n && cs[p] === 35 && cs[p + 1] === 123) {
-    for (let j = p + 2; j < n && cs[j] !== 10; j++) {
+  if (p < cs.length && p + 1 < cs.length && cs[p] === 35 && cs[p + 1] === 123) {
+    for (let j = p + 2; j >= 0 && j < cs.length && cs[j] !== 10; j++) {
       if (cs[j] === 125) {
         lnplAdd(out, j + 1);
       }
@@ -85,9 +101,15 @@ const lnplPrecisionOpt = (cs: i32[], ps: i32[]): i32[] => {
   const out: i32[] = [];
   for (const p of ps) {
     lnplAdd(out, p);
-    if (p < toI32(cs.length) && cs[p] === 46) {
-      lnplAdd(out, p + 1);
-      lnplNumber(cs, p + 1, out);
+    // Positions start at 1 and only grow.
+    if (p < 0) {
+      fault();
+      return out;
+    }
+    if (p < cs.length && cs[p] === 46) {
+      const p1 = p + 1;
+      lnplAdd(out, p1);
+      lnplNumber(cs, p1, out);
     }
   }
   return out;
@@ -100,12 +122,18 @@ const lnplName = (cs: i32[], ps: i32[], opt: boolean): i32[] => {
     if (opt) {
       lnplAdd(out, p);
     }
-    if (p < toI32(cs.length) && cs[p] === 60) {
-      let i = p + 1;
-      while (i < toI32(cs.length) && rbLitWordC(cs[i])) {
+    // Positions start at 1 and only grow.
+    if (p < 0) {
+      fault();
+      return out;
+    }
+    if (p < cs.length && cs[p] === 60) {
+      const p1 = p + 1;
+      let i = p1;
+      while (i >= 0 && i < cs.length && rbLitWordC(cs[i])) {
         i++;
       }
-      if (i > p + 1 && i < toI32(cs.length) && cs[i] === 62) {
+      if (i > p1 && i >= 0 && i < cs.length && cs[i] === 62) {
         lnplAdd(out, i + 1);
       }
     }
@@ -116,7 +144,17 @@ const lnplName = (cs: i32[], ps: i32[], opt: boolean): i32[] => {
 /** Whether TYPE ends the string at one of ps. */
 const lnplTypeEnds = (cs: i32[], ps: i32[]): boolean => {
   for (const p of ps) {
-    if (p + 1 === toI32(cs.length) && cs[p] < 128 && "bBdiouxXeEfgGaAcps".indexOf(String.fromCharCode(cs[p])) >= 0) {
+    // Positions start at 1 and only grow.
+    if (p < 0) {
+      fault();
+      return false;
+    }
+    if (
+      p < cs.length &&
+      p + 1 === toI32(cs.length) &&
+      cs[p] < 128 &&
+      "bBdiouxXeEfgGaAcps".indexOf(String.fromCharCode(cs[p])) >= 0
+    ) {
       return true;
     }
   }
@@ -126,7 +164,10 @@ const lnplTypeEnds = (cs: i32[], ps: i32[]): boolean => {
 /** FORMAT_SEQUENCE: the whole string is one format sequence (Utils::FormatString::SEQUENCE). */
 const lnplFormatSequence = (cs: i32[]): boolean => {
   const n = toI32(cs.length);
-  if (n < 2 || cs[0] !== 37) {
+  if (cs.length < 2) {
+    return false;
+  }
+  if (cs[0] !== 37) {
     return false;
   }
   if (n === 2 && cs[1] === 37) {
@@ -154,12 +195,19 @@ const lnplFormatSequence = (cs: i32[]): boolean => {
   }
   // WIDTH? PRECISION? TEMPLATE_NAME
   for (const p of lnplPrecisionOpt(cs, lnplWidthOpt(cs, f))) {
-    if (p < n && cs[p] === 123 && cs[p - 1] !== 35) {
-      let i = p + 1;
-      while (i < n && rbLitWordC(cs[i])) {
+    // Positions start at 1 and only grow.
+    if (p < 0) {
+      fault();
+      return false;
+    }
+    // cs[0] is `%`, so a `{` lies past it.
+    if (p < cs.length && cs[p] === 123 && p >= 1 && cs[p - 1] !== 35) {
+      const p1 = p + 1;
+      let i = p1;
+      while (i >= 0 && i < cs.length && rbLitWordC(cs[i])) {
         i++;
       }
-      if (i > p + 1 && i === n - 1 && cs[i] === 125) {
+      if (i > p1 && i === n - 1 && i >= 0 && i < cs.length && cs[i] === 125) {
         return true;
       }
     }
@@ -169,17 +217,19 @@ const lnplFormatSequence = (cs: i32[]): boolean => {
 
 /** REGEXES: `/\A#{type}\W/` for a PERCENT_LITERAL_TYPES type. */
 const lnplStartsLikeLiteral = (cs: i32[]): boolean => {
-  const n = toI32(cs.length);
-  if (n < 2 || cs[0] !== 37) {
+  if (cs.length < 2) {
     return false;
   }
-  if (!rbLitWordC(cs[1])) {
-    return true;
+  if (cs[0] !== 37) {
+    return false;
   }
   const c = cs[1];
+  if (!rbLitWordC(c)) {
+    return true;
+  }
   const typed =
     c === 105 || c === 73 || c === 113 || c === 81 || c === 114 || c === 115 || c === 119 || c === 87 || c === 120;
-  return typed && n >= 3 && !rbLitWordC(cs[2]);
+  return typed && cs.length >= 3 && !rbLitWordC(cs[2]);
 };
 
 export class CopLintNestedPercentLiteral {

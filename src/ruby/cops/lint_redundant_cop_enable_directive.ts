@@ -9,6 +9,8 @@
 // Batsov).
 
 import { V_NIL } from "../ast";
+import { add32, sub32 } from "../../core/arr";
+import { fault } from "../../core/fault";
 import { RbCop } from "../cop";
 import { rbSpaceEnd } from "../help";
 import { RbRewriter } from "../rewriter";
@@ -22,8 +24,15 @@ const lrceWord = (c: i32): boolean => (c >= 48 && c <= 57) || (c >= 65 && c <= 9
 /** The first position of `name` (not followed by \w) within [s, e), or -1. */
 export const lrceIndex = (src: RbSource, s: i32, e: i32, name: string): i32 => {
   const n = toI32(name.length);
-  for (let p = s; p + n <= e; p++) {
-    if (src.src(p, p + n) === name && !lrceWord(src.at(p + n))) {
+  // p + n <= e: p up to e - n, a position in the comment.
+  const lim = sub32(e, n);
+  if (lim >= 2147483647) {
+    fault();
+    return -1;
+  }
+  for (let p = s; p <= lim; p++) {
+    const pn = add32(p, n);
+    if (src.src(p, pn) === name && !lrceWord(src.at(pn))) {
       return p;
     }
   }
@@ -37,7 +46,7 @@ const lrceBump = (count: Map<string, i32>, keys: string[], name: string, by: i32
     keys.push(name);
     count.set(name, by);
   } else {
-    count.set(name, v + by);
+    count.set(name, add32(v, by));
   }
 };
 
@@ -68,11 +77,16 @@ export class CopLintRedundantCopEnableDirective {
     }
     let hasEnable = false;
     let hasPop = false;
-    for (let i = 0; i + 3 <= src.n && !(hasEnable && hasPop); i++) {
-      if (src.at(i) === 101 && i + 6 <= src.n && src.src(i, i + 6) === "enable") {
-        hasEnable = true;
-      } else if (src.at(i) === 112 && src.at(i + 1) === 111 && src.at(i + 2) === 112) {
-        hasPop = true;
+    const n = src.n;
+    // i + 3 <= n, which no i meets when n < 3.
+    if (n >= 3) {
+      const lim = n - 3;
+      for (let i = 0; i <= lim && !(hasEnable && hasPop); i++) {
+        if (src.at(i) === 101 && i <= n - 6 && src.src(i, add32(i, 6)) === "enable") {
+          hasEnable = true;
+        } else if (src.at(i) === 112 && src.at(i + 1) === 111 && src.at(i + 2) === 112) {
+          hasPop = true;
+        }
       }
     }
     if (!hasEnable && !hasPop) {
@@ -93,7 +107,7 @@ export class CopLintRedundantCopEnableDirective {
     let depth = 0;
     for (const d of cfg.dirs) {
       if (d.mode === "push") {
-        depth++;
+        depth = add32(depth, 1);
       } else if (d.mode === "pop") {
         if (depth > 0) {
           depth--;
@@ -143,7 +157,8 @@ export class CopLintRedundantCopEnableDirective {
           const v = count.get(key) ?? 0;
           if (v > 0) {
             count.set(key, v - 1);
-            enabled++;
+            // Only whether any was enabled matters.
+            enabled = 1;
           }
         }
         if (enabled === 0) {
@@ -162,14 +177,26 @@ export class CopLintRedundantCopEnableDirective {
         }
       }
     }
+    const dirs = cfg.dirs;
     for (let i = 0; i < toI32(exDir.length); i++) {
-      this.registerOffense(src, reg, cfg.dirs[exDir[i]], exNames[i]);
+      // exDir holds comment indexes, one directive each, beside exNames.
+      const di = exDir[i];
+      if (di < 0 || di >= dirs.length || i >= exNames.length) {
+        fault();
+        return;
+      }
+      this.registerOffense(src, reg, dirs[di], exNames[i]);
     }
   }
 
   private extra(exDir: i32[], exNames: string[][], ci: i32): string[] {
     for (let i = 0; i < toI32(exDir.length); i++) {
       if (exDir[i] === ci) {
+        // extra pushes onto both together.
+        if (i >= exNames.length) {
+          fault();
+          break;
+        }
         return exNames[i];
       }
     }
@@ -190,14 +217,15 @@ export class CopLintRedundantCopEnableDirective {
       if (p < 0) {
         continue;
       }
-      const k = this.c.offense(p, p + toI32(name.length));
+      const pe = add32(p, toI32(name.length));
+      const k = this.c.offense(p, pe);
       if (k === null) {
         continue;
       }
       if (d.matchNames(reg, names)) {
         this.removeDirective(src, k, d);
       } else {
-        this.removeWithComma(src, k, d, p, p + toI32(name.length));
+        this.removeWithComma(src, k, d, p, pe);
       }
       this.c.commit(k);
     }
@@ -205,23 +233,26 @@ export class CopLintRedundantCopEnableDirective {
 
   /** range_with_comma. */
   private removeWithComma(src: RbSource, k: RbRewriter, d: LdhDirective, s0: i32, e0: i32): void {
+    const cs = d.cs;
+    const ce = d.ce;
     let s = s0;
     let e = e0;
-    while (s > d.cs && (src.at(s - 1) === 32 || src.at(s - 1) === 9)) {
+    // cs >= 0, so s > cs leaves s - 1 a position.
+    while (s > cs && s > 0 && (src.at(s - 1) === 32 || src.at(s - 1) === 9)) {
       s--;
     }
-    while (e < d.ce && (src.at(e) === 32 || src.at(e) === 9)) {
+    while (e < ce && (src.at(e) === 32 || src.at(e) === 9)) {
       e++;
     }
-    if (s > d.cs && src.at(s - 1) === 44) {
+    if (s > cs && s > 0 && src.at(s - 1) === 44) {
       k.remove(s - 1, e);
-    } else if (e < d.ce && src.at(e) === 44) {
-      if (!(e + 1 < d.ce && src.at(e + 1) === 32)) {
-        s++;
+    } else if (e < ce && src.at(e) === 44) {
+      if (!(e + 1 < ce && src.at(e + 1) === 32)) {
+        s = add32(s, 1);
       }
       k.remove(s, e + 1);
     } else {
-      k.remove(d.cs, d.ce);
+      k.remove(cs, ce);
     }
   }
 }

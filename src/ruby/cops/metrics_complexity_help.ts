@@ -73,6 +73,7 @@ import {
   NT_ZSUPER,
   V_NIL,
 } from "../ast";
+import { add32, mul32, sub32 } from "../../core/arr";
 import { RbSource } from "../source";
 import { MtxCsend, mtxBody, mtxDefineMethodName, mtxIterating } from "./metrics_help";
 import { scnElsif } from "./style_cond_help";
@@ -156,26 +157,26 @@ const mcxPerceivedScore = (src: RbSource, cs: MtxCsend, n: i32): i32 => {
   const t = a.type(n);
   if (t === NT_CASE) {
     const k = a.nKid(n);
-    const nb = k - 2 + (a.kid(n, k - 1) !== V_NIL ? 1 : 0);
+    const nb = add32(sub32(k, 2), a.kid(n, sub32(k, 1)) !== V_NIL ? 1 : 0);
     if (a.kid(n, 0) === V_NIL) {
       return nb;
     }
     // ((nb * 0.2) + 0.8).round, in tenths (never a half).
-    return (2 * nb + 8 + 5) / 10;
+    return add32(mul32(2, nb), 13) / 10;
   }
   if (t === NT_CASE_MATCH) {
     const k = a.nKid(n);
     let tenths = 0;
-    for (let i = 1; i < k - 1; i++) {
+    for (let i = 1; i < k && i + 1 < k; i++) {
       const br = a.kid(n, i);
       const pat = a.kid(br, 0);
       const simple = a.kid(br, 1) === V_NIL && a.isNode(pat) && (mcxLiteral(a.type(pat)) || a.type(pat) === NT_CONST);
-      tenths += simple ? 2 : 10;
+      tenths = add32(tenths, simple ? 2 : 10);
     }
-    if (a.kid(n, k - 1) !== V_NIL) {
-      tenths += 2;
+    if (a.kid(n, sub32(k, 1)) !== V_NIL) {
+      tenths = add32(tenths, 2);
     }
-    return (tenths + 5) / 10;
+    return add32(tenths, 5) / 10;
   }
   if (t === NT_IF) {
     return a.has(a.map(n), F_ELSE) && !scnElsif(src, n) ? 2 : 1;
@@ -189,15 +190,21 @@ export const mcxComplexity = (src: RbSource, body: i32, perceived: boolean): i32
   let score = 1;
   const stack: i32[] = [body];
   while (stack.length > 0) {
-    const n = stack[stack.length - 1];
-    stack.pop();
+    const sn = toI32(stack.length);
+    if (sn <= 0) {
+      break;
+    }
+    const n = stack[sn - 1];
+    if (stack.length > 0) {
+      stack.pop();
+    }
     const t = src.a.type(n);
     if (t === NT_LVASGN) {
       cs.resetOn(src, n);
     } else if (perceived ? mcxPerceivedCounted(t) : mcxCycloCounted(t)) {
-      score += perceived ? mcxPerceivedScore(src, cs, n) : mcxCycloScore(src, cs, n);
+      score = add32(score, perceived ? mcxPerceivedScore(src, cs, n) : mcxCycloScore(src, cs, n));
     }
-    for (let i = src.a.nKid(n) - 1; i >= 0; i--) {
+    for (let i = sub32(src.a.nKid(n), 1); i >= 0; i--) {
       const k = src.a.kid(n, i);
       if (src.a.isNode(k)) {
         stack.push(k);
@@ -277,7 +284,7 @@ export class McxAbc {
   /** AbcSizeCalculator#calculate: A² + B² + C² (the cop compares its root, rounded, with Max). */
   run(src: RbSource, body: i32): i32 {
     this.visit(src, body);
-    return this.asg * this.asg + this.br * this.br + this.cond * this.cond;
+    return add32(add32(mul32(this.asg, this.asg), mul32(this.br, this.br)), mul32(this.cond, this.cond));
   }
 
   /** visit_depth_last: children first. */
@@ -293,27 +300,27 @@ export class McxAbc {
 
   private calc(src: RbSource, n: i32): void {
     if (this.assignment(src, n)) {
-      this.asg = this.asg + 1;
+      this.asg = add32(this.asg, 1);
     }
     const t = src.a.type(n);
     if (t === NT_SEND || t === NT_CSEND || t === NT_YIELD) {
       // evaluate_branch_nodes
       const m = t === NT_YIELD ? "yield" : src.a.text(src.a.kid(n, 1));
       if (m === "==" || m === "===" || m === "!=" || m === "<=" || m === ">=" || m === ">" || m === "<") {
-        this.cond = this.cond + 1;
+        this.cond = add32(this.cond, 1);
       } else {
-        this.br = this.br + 1;
+        this.br = add32(this.br, 1);
         if (t === NT_CSEND && !this.cs.discount(src, n)) {
-          this.cond = this.cond + 1;
+          this.cond = add32(this.cond, 1);
         }
       }
     } else if (mtxIterating(src, n) !== 0 && mcxCycloCounted(t)) {
       // evaluate_condition_node (else_branch?: an if with a literal `else`)
       const m = src.a.map(n);
       if (t === NT_IF && src.a.has(m, F_ELSE) && src.src(src.a.fS(m, F_ELSE), src.a.fE(m, F_ELSE)) === "else") {
-        this.cond = this.cond + 1;
+        this.cond = add32(this.cond, 1);
       }
-      this.cond = this.cond + 1;
+      this.cond = add32(this.cond, 1);
     }
   }
 
@@ -335,7 +342,7 @@ export class McxAbc {
       }
       for (const k of kids) {
         if (mcxDispatch(a.type(k)) && !a.has(a.map(k), F_OPERATOR)) {
-          this.asg = this.asg + 1;
+          this.asg = add32(this.asg, 1);
         }
       }
       return false;

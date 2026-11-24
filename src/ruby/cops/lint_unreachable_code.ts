@@ -24,6 +24,7 @@ import {
   NT_SEND,
   V_NIL,
 } from "../ast";
+import { add32, sub32 } from "../../core/arr";
 import { RbCop } from "../cop";
 import { RbSource } from "../source";
 import { ldhNilOrKernel } from "./lint_detect_help";
@@ -62,7 +63,7 @@ export class CopLintUnreachableCode {
     const a = src.a;
     const t = a.type(n);
     if ((t === NT_BLOCK || t === NT_NUMBLOCK) && this.instanceEvalBlock(src, n)) {
-      this.instanceEval = this.instanceEval + 1;
+      this.instanceEval = add32(this.instanceEval, 1);
     }
     if (t === NT_BEGIN || t === NT_KWBEGIN) {
       let reached = false;
@@ -71,7 +72,7 @@ export class CopLintUnreachableCode {
         const e = a.kid(n, i);
         if (reached) {
           this.c.offense(a.exS(e), a.exE(e));
-        } else if (i < k - 1 && this.flowExpression(src, e)) {
+        } else if (i + 1 < k && this.flowExpression(src, e)) {
           reached = true;
         }
       }
@@ -84,7 +85,7 @@ export class CopLintUnreachableCode {
     }
     // after_block (there is no after_numblock)
     if (t === NT_BLOCK && this.instanceEvalBlock(src, n)) {
-      this.instanceEval = this.instanceEval - 1;
+      this.instanceEval = sub32(this.instanceEval, 1);
     }
   }
 
@@ -142,7 +143,7 @@ export class CopLintUnreachableCode {
       if (e === V_NIL || !this.flowExpression(src, e)) {
         return false;
       }
-      for (let i = 1; i < a.nKid(n) - 1; i++) {
+      for (let i = 1; i < a.nKid(n) && i + 1 < a.nKid(n); i++) {
         const body = a.kid(a.kid(n, i), -1);
         if (body === V_NIL || !this.flowExpression(src, body)) {
           return false;

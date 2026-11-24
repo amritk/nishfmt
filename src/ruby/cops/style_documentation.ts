@@ -5,6 +5,8 @@
 // Batsov).
 
 import { F_NAME, NT_BEGIN, NT_CASGN, NT_CLASS, NT_CONST, NT_MODULE, NT_SEND, NT_STR, NT_SYM, V_NIL } from "../ast";
+import { add32, atI32, sub32 } from "../../core/arr";
+import { fault } from "../../core/fault";
 import { RbCop } from "../cop";
 import { RbSource } from "../source";
 import { ScnAssoc, scnIsDirective } from "./style_cond_help";
@@ -24,7 +26,12 @@ const rbDocLineStarts = (t: string): i32[] => {
 /** The index after `\s*` from i. */
 const rbDocWs = (t: string, i0: i32): i32 => {
   let i = i0;
-  while (i < toI32(t.length) && ssxIsSpace(t.charCodeAt(i))) {
+  // Every caller passes a position in t.
+  if (i < 0) {
+    fault();
+    return i;
+  }
+  while (i >= 0 && i < t.length && ssxIsSpace(t.charCodeAt(i))) {
     i++;
   }
   return i;
@@ -45,48 +52,66 @@ export const rbDocAnnotation = (t: string): boolean => {
   const kws = ["OPTIMIZE", "REVIEW", "FIXME", "TODO", "HACK", "NOTE"];
   const k = toI32(t.length);
   for (const st of rbDocLineStarts(t)) {
-    if (st >= k || t.charCodeAt(st) !== 35) {
+    // Line starts are positions in t.
+    if (st < 0) {
+      fault();
+      return false;
+    }
+    if (st >= t.length || t.charCodeAt(st) !== 35) {
       continue;
     }
     const starts: i32[] = [];
-    if (st + 1 < k && t.charCodeAt(st + 1) === 32) {
+    if (st + 1 < t.length && t.charCodeAt(st + 1) === 32) {
       starts.push(st + 2);
     }
     starts.push(st + 1);
     for (const p of starts) {
+      if (p < 0) {
+        fault();
+        return false;
+      }
       for (const kw of kws) {
         const kl = toI32(kw.length);
-        if (p + kl > k) {
+        if (p > k - kl) {
           continue;
         }
         let ok = true;
+        // q runs over p .. p + kl - 1, inside t after the test above.
+        let q0 = p;
         for (let i = 0; i < kl; i++) {
-          if (rbDocUp(t.charCodeAt(p + i)) !== kw.charCodeAt(i)) {
+          if (q0 < 0 || q0 >= t.length) {
+            fault();
+            return false;
+          }
+          if (rbDocUp(t.charCodeAt(q0)) !== kw.charCodeAt(i)) {
             ok = false;
             break;
           }
+          q0++;
         }
-        if (!ok || (p + kl < k && rbDocWordByte(t.charCodeAt(p + kl)))) {
+        const pk = add32(p, kl);
+        if (!ok || (pk < k && pk >= 0 && pk < t.length && rbDocWordByte(t.charCodeAt(pk)))) {
           continue;
         }
         // The first match: keyword, (\s*:)?, (\s+)?, (\S+)?
-        const word = t.substring(p, p + kl);
-        let q = p + kl;
+        const word = t.substring(p, pk);
+        let q = pk;
+        // rbDocWs answers a position no less than the one it was given.
         const r = rbDocWs(t, q);
         let colon = false;
-        if (r < k && t.charCodeAt(r) === 58) {
+        if (r >= 0 && r < k && r < t.length && t.charCodeAt(r) === 58) {
           colon = true;
           q = r + 1;
         }
         const sp = rbDocWs(t, q);
         const space = sp > q;
-        const note = sp < k && !ssxIsSpace(t.charCodeAt(sp));
+        const note = sp >= 0 && sp < k && sp < t.length && !ssxIsSpace(t.charCodeAt(sp));
         if (!colon && !space) {
           return false;
         }
         // just_keyword_of_sentence?: keyword == keyword.capitalize
-        let cap = word.charCodeAt(0) >= 65 && word.charCodeAt(0) <= 90;
-        for (let i = 1; i < kl; i++) {
+        let cap = word.length > 0 && word.charCodeAt(0) >= 65 && word.charCodeAt(0) <= 90;
+        for (let i = 1; i < kl && i < word.length; i++) {
           const c = word.charCodeAt(i);
           if (c >= 65 && c <= 90) {
             cap = false;
@@ -102,11 +127,16 @@ export const rbDocAnnotation = (t: string): boolean => {
 /** /^#\s*(frozen_string_literal|encoding):/ */
 const rbDocInterpreterDirective = (t: string): boolean => {
   for (const st of rbDocLineStarts(t)) {
-    if (st >= toI32(t.length) || t.charCodeAt(st) !== 35) {
+    // Line starts are positions in t.
+    if (st < 0) {
+      fault();
+      return false;
+    }
+    if (st >= t.length || t.charCodeAt(st) !== 35) {
       continue;
     }
     const p = rbDocWs(t, st + 1);
-    if (t.substring(p, p + 22) === "frozen_string_literal:" || t.substring(p, p + 9) === "encoding:") {
+    if (t.substring(p, add32(p, 22)) === "frozen_string_literal:" || t.substring(p, add32(p, 9)) === "encoding:") {
       return true;
     }
   }
@@ -117,27 +147,35 @@ const rbDocInterpreterDirective = (t: string): boolean => {
 const rbDocNodocText = (t: string, all: boolean): boolean => {
   const k = toI32(t.length);
   for (const st of rbDocLineStarts(t)) {
-    if (st >= k || t.charCodeAt(st) !== 35) {
+    // Line starts are positions in t.
+    if (st < 0) {
+      fault();
+      return false;
+    }
+    if (st >= t.length || t.charCodeAt(st) !== 35) {
       continue;
     }
     let p = rbDocWs(t, st + 1);
-    if (t.substring(p, p + 7) !== ":nodoc:") {
+    const p7 = add32(p, 7);
+    if (t.substring(p, p7) !== ":nodoc:") {
       continue;
     }
     if (!all) {
       return true;
     }
-    p += 7;
+    p = p7;
     // \s+all\s*$
     const q = rbDocWs(t, p);
-    if (q === p || t.substring(q, q + 3) !== "all") {
+    const q3 = add32(q, 3);
+    if (q === p || t.substring(q, q3) !== "all") {
       continue;
     }
-    let e = q + 3;
-    while (e < k && t.charCodeAt(e) !== 10 && ssxIsSpace(t.charCodeAt(e))) {
+    let e = q3;
+    while (e >= 0 && e < k && e < t.length && t.charCodeAt(e) !== 10 && ssxIsSpace(t.charCodeAt(e))) {
       e++;
     }
-    if (e >= k || t.charCodeAt(e) === 10) {
+    // e >= q + 3 > 0.
+    if (e >= k || (e >= 0 && e < t.length && t.charCodeAt(e) === 10)) {
       return true;
     }
   }
@@ -275,23 +313,25 @@ export class CopStyleDocumentation {
     const line = src.line(src.a.exS(n));
     const pre: i32[] = [];
     for (const ci of this.as.of(n)) {
-      if (src.line(src.commS[ci]) < line) {
+      if (src.line(atI32(src.commS, ci)) < line) {
         pre.push(ci);
       }
     }
-    if (pre.length === 0) {
+    const np = toI32(pre.length);
+    if (np <= 0) {
       return false;
     }
-    const last = pre[pre.length - 1];
-    if (line - src.line(src.commS[last]) !== 1) {
+    const last = pre[np - 1];
+    if (sub32(line, src.line(atI32(src.commS, last))) !== 1) {
       return false;
     }
     // comment_line?(source): /^\s*#/
-    const lt = src.src(src.commS[last], src.commE[last]);
+    const lt = src.src(atI32(src.commS, last), atI32(src.commE, last));
     let commentLine = false;
     for (const st of rbDocLineStarts(lt)) {
+      // rbDocWs answers a position no less than the one it was given.
       const p = rbDocWs(lt, st);
-      if (p < toI32(lt.length) && lt.charCodeAt(p) === 35) {
+      if (p >= 0 && p < lt.length && lt.charCodeAt(p) === 35) {
         commentLine = true;
       }
     }
@@ -299,7 +339,7 @@ export class CopStyleDocumentation {
       return false;
     }
     for (const ci of pre) {
-      const t = src.src(src.commS[ci], src.commE[ci]);
+      const t = src.src(atI32(src.commS, ci), atI32(src.commE, ci));
       if (!rbDocAnnotation(t) && !rbDocInterpreterDirective(t) && !scnIsDirective(t)) {
         return true;
       }
@@ -322,8 +362,8 @@ export class CopStyleDocumentation {
         if (cs.length > 0) {
           const ci = cs[0];
           if (
-            src.line(src.commS[ci]) === src.line(a.exS(n)) &&
-            rbDocNodocText(src.src(src.commS[ci], src.commE[ci]), all)
+            src.line(atI32(src.commS, ci)) === src.line(a.exS(n)) &&
+            rbDocNodocText(src.src(atI32(src.commS, ci), atI32(src.commE, ci)), all)
           ) {
             return true;
           }

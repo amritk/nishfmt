@@ -31,6 +31,8 @@ import {
   V_NIL,
   vTag,
 } from "../ast";
+import { add32, atI32, sub32 } from "../../core/arr";
+import { fault } from "../../core/fault";
 import { RbRewriter } from "../rewriter";
 import { RbSource } from "../source";
 import { TK_tSEMI } from "../tables";
@@ -114,7 +116,7 @@ export const sbhLambdaLiteral = (src: RbSource, n: i32): boolean => {
     return false;
   }
   const s = src.a.exS(n);
-  return src.a.exE(n) - s === 2 && src.at(s) === 45 && src.at(s + 1) === 62;
+  return sub32(src.a.exE(n), s) === 2 && src.at(s) === 45 && src.at(add32(s, 1)) === 62;
 };
 
 /** Node#chained?: the receiver of a call parent. */
@@ -142,7 +144,7 @@ export const sbhIsNumblock = (src: RbSource, n: i32): boolean => src.a.isNode(n)
 /** RescueNode#resbody_branches. */
 export const sbhResbodies = (src: RbSource, n: i32): i32[] => {
   const out: i32[] = [];
-  for (let i = 1; i < src.a.nKid(n) - 1; i++) {
+  for (let i = 1; i < src.a.nKid(n) && i + 1 < src.a.nKid(n); i++) {
     const c = src.a.kid(n, i);
     if (src.a.isNode(c) && src.a.type(c) === NT_RESBODY) {
       out.push(c);
@@ -173,10 +175,10 @@ export const sbhResbodyExceptions = (src: RbSource, n: i32): i32[] => {
 /** Whether `text` holds `sub` at byte `at`. */
 const sbhHasAt = (text: string, at: i32, sub: string): boolean => {
   const m = toI32(sub.length);
-  if (at < 0 || at + m > toI32(text.length)) {
+  if (at < 0 || at > toI32(text.length) - m) {
     return false;
   }
-  return text.substring(at, at + m) === sub;
+  return text.substring(at, add32(at, m)) === sub;
 };
 
 /** comment.text.match?(DirectiveComment::DIRECTIVE_COMMENT_REGEXP): `# rubocop : <mode>\b` anywhere. */
@@ -191,7 +193,8 @@ export const sbhDirectiveComment = (text: string): boolean => {
     while (q < k && ssxIsSpace(text.charCodeAt(q))) {
       q++;
     }
-    if (!sbhHasAt(text, q, "rubocop")) {
+    // sbhHasAt holding, q + 7 <= k.
+    if (!sbhHasAt(text, q, "rubocop") || q > k - 7) {
       continue;
     }
     q += 7;
@@ -207,8 +210,17 @@ export const sbhDirectiveComment = (text: string): boolean => {
     }
     for (const m of modes) {
       const ml = toI32(m.length);
-      if (sbhHasAt(text, q, m) && (q + ml >= k || !ssxIsWord(text.charCodeAt(q + ml)))) {
+      if (!sbhHasAt(text, q, m)) {
+        continue;
+      }
+      const qe = add32(q, ml);
+      if (qe >= k || (qe >= 0 && qe < text.length && !ssxIsWord(text.charCodeAt(qe)))) {
         return true;
+      }
+      // sbhHasAt holding, 0 <= q + ml <= k.
+      if (qe < 0) {
+        fault();
+        return false;
       }
     }
   }
@@ -257,10 +269,10 @@ export const sbhCorrectTrailingBody = (src: RbSource, k: RbRewriter, n: i32, kwS
       ci = i;
     }
   }
-  k.insertBefore(sbhFirstPartS(src, body), sbhFirstPartE(src, body), `\n${rmlSpaces(col + 2)}`);
+  k.insertBefore(sbhFirstPartS(src, body), sbhFirstPartE(src, body), `\n${rmlSpaces(add32(col, 2))}`);
   if (ci >= 0) {
-    const cs = src.commS[ci];
-    const ce = src.commE[ci];
+    const cs = atI32(src.commS, ci);
+    const ce = atI32(src.commE, ci);
     k.insertBefore(a.exS(n), a.exE(n), `${src.src(cs, ce)}\n${rmlSpaces(col)}`);
     k.remove(cs, ce);
   }
@@ -269,19 +281,22 @@ export const sbhCorrectTrailingBody = (src: RbSource, k: RbRewriter, n: i32, kwS
   const bl = src.line(a.exS(body));
   const bc = src.column(a.exS(body));
   let best = -1;
+  const tokS = src.tokS;
+  const tokE = src.tokE;
   for (let i = 0; i < toI32(src.tokT.length); i++) {
-    if (src.tokT[i] !== TK_tSEMI || src.tokE[i] <= a.exS(n)) {
+    if (src.tokT[i] !== TK_tSEMI || atI32(tokE, i) <= a.exS(n)) {
       continue;
     }
-    if (src.line(src.tokS[i]) !== bl || src.column(src.tokS[i]) >= bc) {
+    const ts = atI32(tokS, i);
+    if (src.line(ts) !== bl || src.column(ts) >= bc) {
       continue;
     }
-    if (best < 0 || src.tokS[i] < src.tokS[best]) {
+    if (best < 0 || ts < atI32(tokS, best)) {
       best = i;
     }
   }
   if (best >= 0) {
-    k.remove(src.tokS[best], src.tokE[best]);
+    k.remove(atI32(tokS, best), atI32(tokE, best));
   }
 };
 
@@ -311,8 +326,9 @@ const sbhRotate = (n: SbhTree): SbhTree => {
     return n;
   }
   const l: SbhTree[] = [n.kids[0], right.kids[0]];
+  const right1 = right.kids[1];
   const rotatedLeft = sbhRotate(new SbhTree(n.t, "", l));
-  const r: SbhTree[] = [rotatedLeft, right.kids[1]];
+  const r: SbhTree[] = [rotatedLeft, right1];
   return sbhRotate(new SbhTree(n.t, "", r));
 };
 
@@ -355,12 +371,22 @@ export const sbhTreeEq = (x: SbhTree, y: SbhTree): boolean => {
   if (x.t !== y.t || x.leaf !== y.leaf || x.kids.length !== y.kids.length) {
     return false;
   }
-  for (let i = 0; i < toI32(x.kids.length); i++) {
+  // Both hold as many kids.
+  for (let i = 0; i < toI32(x.kids.length) && i < y.kids.length; i++) {
     if (!sbhTreeEq(x.kids[i], y.kids[i])) {
       return false;
     }
   }
   return true;
+};
+
+/** s.charCodeAt(i) for an i inside s. */
+const sbhByte = (s: string, i: i32): i32 => {
+  if (i >= 0 && i < s.length) {
+    return s.charCodeAt(i);
+  }
+  fault();
+  return 0;
 };
 
 /** UTF-8 bytes of a nish string to code points. */
@@ -374,17 +400,30 @@ export const sbhCodePoints = (s: string): i32[] => {
       out.push(c);
       i++;
     } else if (c < 0xe0) {
-      out.push(((c & 0x1f) << 6) | (s.charCodeAt(i + 1) & 0x3f));
+      // A sequence cut short by the end of the string reads past it.
+      if (i > n - 2) {
+        fault();
+        return out;
+      }
+      out.push(((c & 0x1f) << 6) | (sbhByte(s, i + 1) & 0x3f));
       i += 2;
     } else if (c < 0xf0) {
-      out.push(((c & 0x0f) << 12) | ((s.charCodeAt(i + 1) & 0x3f) << 6) | (s.charCodeAt(i + 2) & 0x3f));
+      if (i > n - 3) {
+        fault();
+        return out;
+      }
+      out.push(((c & 0x0f) << 12) | ((sbhByte(s, i + 1) & 0x3f) << 6) | (sbhByte(s, i + 2) & 0x3f));
       i += 3;
     } else {
+      if (i > n - 4) {
+        fault();
+        return out;
+      }
       out.push(
         ((c & 0x07) << 18) |
-          ((s.charCodeAt(i + 1) & 0x3f) << 12) |
-          ((s.charCodeAt(i + 2) & 0x3f) << 6) |
-          (s.charCodeAt(i + 3) & 0x3f),
+          ((sbhByte(s, i + 1) & 0x3f) << 12) |
+          ((sbhByte(s, i + 2) & 0x3f) << 6) |
+          (sbhByte(s, i + 3) & 0x3f),
       );
       i += 4;
     }
@@ -395,13 +434,26 @@ export const sbhCodePoints = (s: string): i32[] => {
 /** Whether the code points [s, e) contain the ASCII text `lit`. */
 const sbhRangeIncludes = (pts: i32[], s: i32, e: i32, lit: string): boolean => {
   const k = toI32(lit.length);
-  for (let i = s; i + k <= e; i++) {
+  // i + k <= e: i up to e - k.
+  const lim = sub32(e, k);
+  if (lim >= 2147483647) {
+    fault();
+    return false;
+  }
+  for (let i = s; i <= lim; i++) {
     let ok = true;
+    let q = i;
     for (let j = 0; j < k; j++) {
-      if (pts[i + j] !== lit.charCodeAt(j)) {
+      // [s, e) lies in pts.
+      if (q < 0 || q >= pts.length) {
+        fault();
+        return false;
+      }
+      if (pts[q] !== lit.charCodeAt(j)) {
         ok = false;
         break;
       }
+      q++;
     }
     if (ok) {
       return true;
@@ -452,8 +504,14 @@ export class SbhReparse {
     const to = scope === V_NIL ? src.n : src.a.exE(scope);
     if (sbhRangeIncludes(src.pts, from, to, "__LINE__")) {
       const op: i32[] = [];
+      const pts = src.pts;
       for (let p = from; p < to; p++) {
-        op.push(src.pts[p]);
+        // The scope lies in the source.
+        if (p < 0 || p >= pts.length) {
+          fault();
+          return null;
+        }
+        op.push(pts[p]);
       }
       const os = new RbSource(op, src.p.st.path);
       if (!os.valid) {
@@ -476,20 +534,30 @@ export class SbhReparse {
     const src = this.src;
     const rw = new RbRewriter(src.n);
     for (const i of idx) {
+      // idx holds indexes of ks.
+      if (i < 0 || i >= ks.length) {
+        fault();
+        return false;
+      }
       if (!rw.merge(ks[i])) {
         return false;
       }
     }
     const corrected = sbhCodePoints(rw.process(src.pts));
-    const delta = toI32(corrected.length) - src.n;
+    const delta = sub32(toI32(corrected.length), src.n);
     let from = 0;
     let to = toI32(corrected.length);
     if (scope !== V_NIL) {
       from = src.a.exS(scope);
-      to = src.a.exE(scope) + delta;
+      to = add32(src.a.exE(scope), delta);
     }
     const frag: i32[] = [];
-    for (let p = from; p < to && p < toI32(corrected.length); p++) {
+    for (let p = from; p < to && p < corrected.length; p++) {
+      // A scope starts inside the source.
+      if (p < 0) {
+        fault();
+        return false;
+      }
       frag.push(corrected[p]);
     }
     const orig = this.original(scope);
@@ -537,6 +605,11 @@ export class SbhReparse {
     const scopes: i32[] = [];
     const groups: i32[][] = [];
     for (let i = 0; i < toI32(ss.length); i++) {
+      // ss and es hold an item each.
+      if (i >= es.length) {
+        fault();
+        return scopes;
+      }
       const sc = sbhReparseScope(src, ss[i], es[i]);
       let g = -1;
       for (let j = 0; j < toI32(scopes.length); j++) {
@@ -551,19 +624,29 @@ export class SbhReparse {
         groups.push(fresh);
         g = toI32(scopes.length) - 1;
       }
+      // scopes and groups grow together.
+      if (g < 0 || g >= groups.length) {
+        fault();
+        return scopes;
+      }
       groups[g].push(i);
     }
     const out: i32[] = [];
     for (let j = 0; j < toI32(scopes.length); j++) {
+      if (j >= groups.length) {
+        fault();
+        return out;
+      }
       const sc = scopes[j];
-      const size = sc === V_NIL ? src.n : src.a.exE(sc) - src.a.exS(sc);
+      const grp = groups[j];
+      const size = sc === V_NIL ? src.n : sub32(src.a.exE(sc), src.a.exS(sc));
       if (size > 64 * 1024) {
-        for (const i of groups[j]) {
+        for (const i of grp) {
           out.push(i);
         }
         continue;
       }
-      this.subset(sc, ks, groups[j], out);
+      this.subset(sc, ks, grp, out);
     }
     return out;
   }

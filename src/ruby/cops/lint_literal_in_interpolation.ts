@@ -29,6 +29,8 @@ import {
   V_NIL,
   rbInspectStr,
 } from "../ast";
+import { add32, sub32 } from "../../core/arr";
+import { fault } from "../../core/fault";
 import { RbCop } from "../cop";
 import { rnHeredoc } from "../node";
 import { rbReplaceAll } from "../util";
@@ -39,28 +41,44 @@ import { ssxBasicLiteral, ssxFE, ssxFS, ssxHas, ssxIs } from "./style_syntax_hel
 export const lliValidUtf8 = (s: string): boolean => {
   const k = toI32(s.length);
   let i = 0;
-  while (i < k) {
+  while (i >= 0 && i < k) {
     const c = s.charCodeAt(i);
     if (c < 0x80) {
       i++;
       continue;
     }
-    const n = c >= 0xf8 ? 0 : c >= 0xf0 ? 4 : c >= 0xe0 ? 3 : c >= 0xc2 ? 2 : 0;
-    if (n === 0 || i + n > k) {
+    let n = 0;
+    if (c >= 0xf8) {
+      n = 0;
+    } else if (c >= 0xf0) {
+      n = 4;
+    } else if (c >= 0xe0) {
+      n = 3;
+    } else if (c >= 0xc2) {
+      n = 2;
+    }
+    if (n === 0 || i > k - n) {
       return false;
     }
     let cp = n === 2 ? c & 0x1f : n === 3 ? c & 0x0f : c & 0x07;
+    // q runs over i + 1 .. i + n - 1, inside the string after the test above.
+    let q = i + 1;
     for (let j = 1; j < n; j++) {
-      const d = s.charCodeAt(i + j);
+      if (q < 0 || q >= k || q >= s.length) {
+        fault();
+        return false;
+      }
+      const d = s.charCodeAt(q);
       if (d < 0x80 || d >= 0xc0) {
         return false;
       }
       cp = (cp << 6) | (d & 0x3f);
+      q++;
     }
     if ((n === 3 && cp < 0x800) || (n === 4 && (cp < 0x10000 || cp > 0x10ffff)) || (cp >= 0xd800 && cp <= 0xdfff)) {
       return false;
     }
-    i += n;
+    i = q;
   }
   return true;
 };
@@ -69,19 +87,33 @@ export const lliValidUtf8 = (s: string): boolean => {
 const lliAllSpace = (s: string): boolean => {
   const k = toI32(s.length);
   let i = 0;
-  while (i < k) {
+  while (i >= 0 && i < k) {
     const c = s.charCodeAt(i);
     if (c === 32 || (c >= 9 && c <= 13)) {
       i++;
       continue;
     }
-    const n = c >= 0xf0 ? 4 : c >= 0xe0 ? 3 : c >= 0xc0 ? 2 : 1;
-    if (n === 1 || i + n > k) {
+    let n = 1;
+    if (c >= 0xf0) {
+      n = 4;
+    } else if (c >= 0xe0) {
+      n = 3;
+    } else if (c >= 0xc0) {
+      n = 2;
+    }
+    if (n === 1 || i > k - n) {
       return false;
     }
     let cp = n === 2 ? c & 0x1f : n === 3 ? c & 0x0f : c & 0x07;
+    // q runs over i + 1 .. i + n - 1, inside the string after the test above.
+    let q = i + 1;
     for (let j = 1; j < n; j++) {
-      cp = (cp << 6) | (s.charCodeAt(i + j) & 0x3f);
+      if (q < 0 || q >= k || q >= s.length) {
+        fault();
+        return false;
+      }
+      cp = (cp << 6) | (s.charCodeAt(q) & 0x3f);
+      q++;
     }
     const sp =
       cp === 0x85 ||
@@ -96,7 +128,7 @@ const lliAllSpace = (s: string): boolean => {
     if (!sp) {
       return false;
     }
-    i += n;
+    i = q;
   }
   return true;
 };
@@ -134,7 +166,7 @@ const lliIntText = (t: string): string => {
   }
   let s = ds.join("");
   let z = 0;
-  while (z + 1 < toI32(s.length) && s.charCodeAt(z) === 48) {
+  while (z >= 0 && z < toI32(s.length) && z + 1 < toI32(s.length) && s.charCodeAt(z) === 48) {
     z++;
   }
   s = s.substring(z, toI32(s.length));
@@ -170,7 +202,7 @@ export const lliFloatText = (t: string): string => {
     const c = t.charCodeAt(i);
     if (c >= 48 && c <= 57) {
       digits.push(t.substring(i, i + 1));
-      nd++;
+      nd = add32(nd, 1);
     } else if (c === 46) {
       point = nd;
     } else if (c === 101 || c === 69) {
@@ -184,6 +216,11 @@ export const lliFloatText = (t: string): string => {
       while (i < k) {
         const d = t.charCodeAt(i);
         if (d >= 48 && d <= 57) {
+          // e is at most 100000 here: a larger e returned below.
+          if (e < 0 || e > 100000) {
+            fault();
+            return "";
+          }
           e = e * 10 + (d - 48);
           if (e > 100000) {
             return "";
@@ -191,7 +228,7 @@ export const lliFloatText = (t: string): string => {
         }
         i++;
       }
-      exp = eneg ? -e : e;
+      exp = eneg ? sub32(0, e) : e;
       break;
     } else if (c !== 95) {
       return "";
@@ -207,7 +244,7 @@ export const lliFloatText = (t: string): string => {
   while (lead < toI32(ds.length) && ds.charCodeAt(lead) === 48) {
     lead++;
   }
-  const decpt = point - lead + exp;
+  const decpt = add32(sub32(point, lead), exp);
   ds = ds.substring(lead, toI32(ds.length));
   let tail = toI32(ds.length);
   while (tail > 0 && ds.charCodeAt(tail - 1) === 48) {
@@ -229,10 +266,10 @@ export const lliFloatText = (t: string): string => {
     return `${sign}${ds.substring(0, decpt)}.${ds.substring(decpt, n)}`;
   }
   if (decpt <= 0 && decpt > -4) {
-    return `${sign}0.${lliZeros(-decpt)}${ds}`;
+    return `${sign}0.${lliZeros(sub32(0, decpt))}${ds}`;
   }
-  const e = decpt - 1;
-  const ae = e < 0 ? -e : e;
+  const e = sub32(decpt, 1);
+  const ae = e < 0 ? sub32(0, e) : e;
   const es = ae < 10 ? `0${ae}` : `${ae}`;
   const frac = n > 1 ? ds.substring(1, n) : "0";
   return `${sign}${ds.substring(0, 1)}.${frac}e${e < 0 ? "-" : "+"}${es}`;
@@ -251,13 +288,13 @@ export const lliSymInspect = (s: string): string => {
   const k = toI32(s.length);
   let i = 0;
   let kind = 0;
-  if (k > 0 && s.charCodeAt(0) === 36) {
+  if (s.length > 0 && s.charCodeAt(0) === 36) {
     i = 1;
     kind = 2;
-  } else if (k > 1 && s.charCodeAt(0) === 64 && s.charCodeAt(1) === 64) {
+  } else if (s.length > 1 && s.charCodeAt(0) === 64 && s.charCodeAt(1) === 64) {
     i = 2;
     kind = 1;
-  } else if (k > 0 && s.charCodeAt(0) === 64) {
+  } else if (s.length > 0 && s.charCodeAt(0) === 64) {
     i = 1;
     kind = 1;
   }
@@ -404,7 +441,7 @@ export class CopLintLiteralInInterpolation {
       const val = a.text(a.kid(n, 0));
       if (lliValidUtf8(val) && lliAllSpace(val) && gp !== V_NIL && a.type(gp) === NT_DSTR && rnHeredoc(src, gp)) {
         const l = src.line(a.exE(n));
-        if (src.lineEnd(l) - src.lineStart(l) === src.column(a.exE(p))) {
+        if (sub32(src.lineEnd(l), src.lineStart(l)) === src.column(a.exE(p))) {
           return false;
         }
       }
@@ -432,11 +469,17 @@ export class CopLintLiteralInInterpolation {
       const k = toI32(v.length);
       while (i < k) {
         let j = i;
-        while (j < k && v.charCodeAt(j) === 92) {
+        while (j >= 0 && j < k && v.charCodeAt(j) === 92) {
           j++;
         }
-        if (j < k && v.charCodeAt(j) === 47) {
-          const need = 2 * toI32((j - i + 1) / 4) + 1;
+        if (j >= 0 && j < k && v.charCodeAt(j) === 47) {
+          // j - i backslashes, 0 <= i <= j < k.
+          const run = sub32(j, i);
+          if (run < 0 || run >= 2147483647) {
+            fault();
+            return null;
+          }
+          const need = 2 * ((run + 1) >> 2) + 1;
           for (let q = 0; q < need; q++) {
             out.push("\\");
           }
@@ -457,17 +500,18 @@ export class CopLintLiteralInInterpolation {
     const fst = v.length > 0 ? v.charCodeAt(0) : nx;
     if (
       (fst === 123 || fst === 64 || fst === 36) &&
-      src.at(a.exS(b) - 1) === 35 &&
+      src.at(sub32(a.exS(b), 1)) === 35 &&
       this.unescapedHashBefore(src, a.exS(b))
     ) {
       return null;
     }
     // escape_trailing_hash_sign
     if ((nx === 123 || nx === 64 || nx === 36) && v.endsWith("#")) {
+      // Only the parity of the backslash run matters.
       let bs = 0;
       let j = toI32(v.length) - 2;
       while (j >= 0 && v.charCodeAt(j) === 92) {
-        bs++;
+        bs = bs === 0 ? 1 : 0;
         j--;
       }
       if (bs % 2 === 0) {
@@ -512,7 +556,7 @@ export class CopLintLiteralInInterpolation {
     if (a.mapKind(a.map(lit)) === M_HEREDOC || !ssxHas(src, lit, F_BEGIN) || !ssxHas(src, lit, F_END)) {
       return false;
     }
-    const opening = src.at(ssxFE(src, lit, F_BEGIN) - 1);
+    const opening = src.at(sub32(ssxFE(src, lit, F_BEGIN), 1));
     const closing = src.at(ssxFS(src, lit, F_END));
     const k = toI32(v.length);
     if (opening !== closing) {
@@ -521,10 +565,10 @@ export class CopLintLiteralInInterpolation {
       for (let i = 0; i < k; i++) {
         const c = v.charCodeAt(i);
         if (c === opening) {
-          depth++;
+          depth = add32(depth, 1);
         }
         if (c === closing) {
-          depth--;
+          depth = sub32(depth, 1);
         }
         if (depth < 0) {
           return true;
@@ -549,10 +593,11 @@ export class CopLintLiteralInInterpolation {
 
   /** unescaped_hash_sign?(source[0...pos]): a `#` just before pos after an even run of backslashes. */
   private unescapedHashBefore(src: RbSource, pos: i32): boolean {
+    // Only the parity of the backslash run matters.
     let bs = 0;
-    let j = pos - 2;
+    let j = sub32(pos, 2);
     while (j >= 0 && src.at(j) === 92) {
-      bs++;
+      bs = bs === 0 ? 1 : 0;
       j--;
     }
     return bs % 2 === 0;

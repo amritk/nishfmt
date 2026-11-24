@@ -5,6 +5,8 @@
 // Batsov).
 
 import { F_DOT, F_END, F_OPERATOR, NT_CSEND, NT_KWSPLAT, NT_SEND, NT_SPLAT, NT_SUPER, V_NIL } from "../ast";
+import { add32, atI32, sub32 } from "../../core/arr";
+import { fault } from "../../core/fault";
 import { RbCop } from "../cop";
 import { rnE, rnHas, rnS } from "../node";
 import { RbSource } from "../source";
@@ -60,17 +62,17 @@ export class CopLayoutFirstArgumentIndentation {
       if (t !== NT_SUPER && rnHas(src, n, F_OPERATOR)) {
         continue; // setter_method?
       }
-      const first = args[0];
+      const first = atI32(args, 0);
       if (lalFirstLine(src, n) === lalFirstLine(src, first)) {
         continue;
       }
-      const indent = this.baseIndentation(src, L, n, first) + 2;
+      const indent = add32(this.baseIndentation(src, L, n, first), 2);
       // check_alignment([first], indent)
       const s = a.exS(first);
       if (!lalBeginsItsLine(src, s)) {
         continue;
       }
-      const delta = indent - this.al.dispCol(src, s);
+      const delta = sub32(indent, this.al.dispCol(src, s));
       if (delta === 0) {
         continue;
       }
@@ -98,7 +100,7 @@ export class CopLayoutFirstArgumentIndentation {
       // should_correct_entire_chain?
       const outer = src.parent(top);
       if (outer !== V_NIL && a.type(outer) === NT_SEND && lalParentheses(src, outer)) {
-        const ad = delta < 0 ? -delta : delta;
+        const ad = delta < 0 ? sub32(0, delta) : delta;
         if (this.al.dispCol(src, a.exS(send)) < ad && delta <= 0) {
           if (top !== send) {
             target = top;
@@ -118,7 +120,7 @@ export class CopLayoutFirstArgumentIndentation {
       return false;
     }
     const s = rnS(src, n, F_DOT);
-    return rnE(src, n, F_DOT) === s + 1 && src.at(s) === 46;
+    return rnE(src, n, F_DOT) === add32(s, 1) && src.at(s) === 46;
   }
 
   /** special_inner_call_indentation?. */
@@ -141,22 +143,42 @@ export class CopLayoutFirstArgumentIndentation {
       const p = src.parent(n);
       const start = p !== V_NIL && (a.type(p) === NT_SPLAT || a.type(p) === NT_KWSPLAT) ? a.exS(p) : a.exS(n);
       const end = a.exS(first);
+      const pts = src.pts;
       let s = start;
       let e = end;
-      while (s < e && lalIsStripWs(src.pts[s])) {
+      while (s < e) {
+        // Node ranges lie in the source.
+        if (s < 0 || s >= pts.length) {
+          fault();
+          return 0;
+        }
+        if (!lalIsStripWs(pts[s])) {
+          break;
+        }
         s++;
       }
-      while (e > s && lalIsStripWs(src.pts[e - 1])) {
+      while (e > s) {
+        if (e <= 0 || e > pts.length) {
+          fault();
+          return 0;
+        }
+        if (!lalIsStripWs(pts[e - 1])) {
+          break;
+        }
         e--;
       }
       let nl = 0;
       for (let q = s; q < e; q++) {
-        if (src.pts[q] === 10) {
-          nl++;
+        if (q < 0 || q >= pts.length) {
+          fault();
+          return 0;
+        }
+        if (pts[q] === 10) {
+          nl = add32(nl, 1);
         }
       }
       if (nl > 0) {
-        return this.firstNonWs(src, L, this.previousCodeLine(L, src.line(start) + nl + 1));
+        return this.firstNonWs(src, L, this.previousCodeLine(L, add32(add32(src.line(start), nl), 1)));
       }
       return this.al.dispCol(src, start);
     }
@@ -168,15 +190,17 @@ export class CopLayoutFirstArgumentIndentation {
     let ln = line0;
     let blank = true;
     let guard = 0;
+    // guard bounds the walk, whatever a fault answers.
     while (blank || this.commentLines.has(ln)) {
-      ln -= 1;
-      blank = L.blank(ln - 1) || !L.has(ln - 1);
-      guard++;
-      if (guard > 100000) {
+      ln = sub32(ln, 1);
+      const prev = sub32(ln, 1);
+      blank = L.blank(prev) || !L.has(prev);
+      if (guard >= 100000) {
         break;
       }
+      guard++;
     }
-    return ln - 1;
+    return sub32(ln, 1);
   }
 
   /** `line =~ /\S/` of lines[i]. */
@@ -185,10 +209,21 @@ export class CopLayoutFirstArgumentIndentation {
     if (j < 0) {
       return 0;
     }
-    let p = L.s[j];
-    while (p < L.e[j] && lalIsWs(src.pts[p])) {
+    const pts = src.pts;
+    const ps = atI32(L.s, j);
+    const pe = atI32(L.e, j);
+    let p = ps;
+    while (p < pe) {
+      // A line lies in the source.
+      if (p < 0 || p >= pts.length) {
+        fault();
+        return 0;
+      }
+      if (!lalIsWs(pts[p])) {
+        break;
+      }
       p++;
     }
-    return p - L.s[j];
+    return sub32(p, ps);
   }
 }

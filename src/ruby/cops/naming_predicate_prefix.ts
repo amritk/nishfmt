@@ -7,6 +7,8 @@
 // Batsov).
 
 import { F_NAME, NT_DEF, NT_DEFS, NT_SEND, NT_SYM, V_NIL } from "../ast";
+import { add32 } from "../../core/arr";
+import { fault } from "../../core/fault";
 import { RbCop } from "../cop";
 import { RbSource } from "../source";
 import { ssxDefName, ssxFE, ssxFS } from "./style_syntax_help";
@@ -20,12 +22,19 @@ const nppExcluded = (path0: string): boolean => {
   if (!path.startsWith("spec/") || path.length <= 5) {
     return false;
   }
+  const k = toI32(path.length);
+  // The loop runs to the length inclusive.
+  if (k >= 2147483647) {
+    fault();
+    return false;
+  }
   let a = 5;
-  for (let i = 5; i <= toI32(path.length); i++) {
+  for (let i = 5; i <= k; i++) {
     if (i < toI32(path.length) && path.charCodeAt(i) !== 47) {
       continue;
     }
-    if (i > a && path.charCodeAt(a) === 46) {
+    // a < i <= k: a is in the path.
+    if (i > a && a >= 0 && a < path.length && path.charCodeAt(a) === 46) {
       return false;
     }
     a = i + 1;
@@ -36,7 +45,8 @@ const nppExcluded = (path0: string): boolean => {
 /** expected_name: the prefix dropped (every prefix is forbidden), with a `?`. */
 const nppExpected = (name: string, prefix: string): string => {
   const i = name.indexOf(prefix);
-  const s = i >= 0 ? `${name.substring(0, i)}${name.substring(i + toI32(prefix.length), toI32(name.length))}` : name;
+  const s =
+    i >= 0 ? `${name.substring(0, i)}${name.substring(add32(i, toI32(prefix.length)), toI32(name.length))}` : name;
   return name.endsWith("?") ? s : `${s}?`;
 };
 
