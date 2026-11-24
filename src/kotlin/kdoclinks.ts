@@ -7,6 +7,9 @@
 // Ported from the Kotlin compiler 2.4.10's KDoc.flex, KDocParser and
 // KDocLinkParser (Apache License 2.0, Copyright JetBrains s.r.o.).
 
+import { atI32, bytesText } from "../core/arr";
+import { fault } from "../core/fault";
+
 // Token kinds.
 const KD_WS: i32 = 1;
 const KD_START: i32 = 2;
@@ -40,7 +43,9 @@ const BT_CODE: i32 = 2;
 /** The KDoc tokens of src[a, b): kinds and ranges in parallel lists. */
 class KDocLexer {
   src: u8[];
-  e: i32 = 0;
+  // The comment's end; positions stay within a few bytes of it, so a
+  // position plus a length below 2^30 fits.
+  e: integer<0, 1000000000> = 0;
   p: i32 = 0;
   state: i32 = 0;
   breaks: i32 = 0;
@@ -55,27 +60,64 @@ class KDocLexer {
 
   constructor(src: u8[], a: i32, b: i32) {
     this.src = src;
-    this.p = a;
-    this.e = b;
     this.kinds = [];
     this.starts = [];
     this.ends = [];
+    // A comment's range lies in a source the lexer took, which is below 2^30
+    // bytes; one past 10^9 bytes is given up on.
+    if (a < 0 || b < a || b < 0 || b > src.length || b > 1000000000) {
+      fault();
+      return;
+    }
+    this.p = a;
+    this.e = b;
+  }
+
+  /** Gives up on the comment (and so the file): run() ends. */
+  stop(): void {
+    fault();
+    this.p = this.e;
   }
 
   at(i: i32): i32 {
-    return i < this.e ? toI32(this.src[i]) : -1;
+    if (i >= this.e) {
+      return -1;
+    }
+    const src = this.src;
+    if (i >= 0 && i < src.length) {
+      return toI32(src[i]);
+    }
+    fault();
+    return -1;
   }
 
   beginAndUpdate(s: i32): void {
-    this.breaks = s === KS_LINE_BEGINNING || s === KS_CODE_BLOCK_LINE_BEGINNING ? this.breaks + 1 : 0;
+    if (s === KS_LINE_BEGINNING || s === KS_CODE_BLOCK_LINE_BEGINNING) {
+      // One a token, so below the comment's length.
+      const b = this.breaks;
+      if (b < 0 || b > 1073741823) {
+        this.stop();
+        return;
+      }
+      this.breaks = b + 1;
+    } else {
+      this.breaks = 0;
+    }
     this.state = s;
   }
 
   emit(kind: i32, len: i32): void {
+    const p = this.p;
+    // Positions and lengths stay inside the comment.
+    if (p < 0 || p > 1073741823 || len < 0 || len > 1073741823) {
+      this.stop();
+      return;
+    }
+    const q = p + len;
     this.kinds.push(kind);
-    this.starts.push(this.p);
-    this.ends.push(this.p + len);
-    this.p = this.p + len;
+    this.starts.push(p);
+    this.ends.push(q);
+    this.p = q;
   }
 
   run(): void {
@@ -86,14 +128,24 @@ class KDocLexer {
 
   step(): void {
     const p = this.p;
+    const e = this.e;
+    // run() steps from inside the comment.
+    if (p < 0 || p >= e) {
+      this.stop();
+      return;
+    }
     const c = this.at(p);
     const s = this.state;
     // "*"+ "/" in every state.
-    let stars = 0;
-    while (this.at(p + stars) === 42) {
-      stars++;
+    let q0 = p;
+    while (q0 < e && this.at(q0) === 42) {
+      q0++;
     }
-    const endLen = stars > 0 && this.at(p + stars) === 47 ? stars + 1 : 0;
+    const stars = q0 - p;
+    let endLen = 0;
+    if (stars > 0 && q0 < e && this.at(q0) === 47) {
+      endLen = q0 + 1 - p;
+    }
     if (s === KS_INITIAL) {
       if (c === 47 && this.at(p + 1) === 42 && this.at(p + 2) === 42 && endLen < 3) {
         this.emit(KD_START, 3);
@@ -108,6 +160,10 @@ class KDocLexer {
       return;
     }
     const ws = kdWsRun(this, p);
+    if (ws < 0 || ws > 1073741823) {
+      this.stop();
+      return;
+    }
     if (s === KS_LINE_BEGINNING && (ws > 0 || stars > 0)) {
       if (ws > 0) {
         this.emit(KD_WS, ws);
@@ -132,7 +188,10 @@ class KDocLexer {
         return;
       }
       const link = kdCodeLink(this, p);
-      const qn = s === KS_TAG_BEGINNING ? kdQualifiedName(this, p) : 0;
+      let qn = 0;
+      if (s === KS_TAG_BEGINNING) {
+        qn = kdQualifiedName(this, p);
+      }
       const best = link > qn ? link : qn;
       if (best > 0 && best >= endLen) {
         this.emit(KD_LINK, best);
@@ -195,6 +254,10 @@ class KDocLexer {
     if (s === KS_LINE_BEGINNING || s === KS_CONTENTS_BEGINNING || s === KS_CONTENTS) {
       if (s === KS_CONTENTS_BEGINNING && c === 64) {
         const id = kdPlainIdent(this, p + 1);
+        if (id < 0 || id > 1073741823) {
+          this.stop();
+          return;
+        }
         if (id > 0 && 1 + id >= endLen) {
           this.block = BT_PARAGRAPH;
           const ref = kdTagRequiresReference(this.src, p + 1, p + 1 + id);
@@ -209,7 +272,8 @@ class KDocLexer {
         return;
       }
       if (ws > 0) {
-        const tab = toI32(this.src[p]) === 9 || toI32(this.src[p + ws - 1]) === 9;
+        // Both bytes lie in the comment, where at() reads the source.
+        const tab = c === 9 || this.at(p + ws - 1) === 9;
         if (s === KS_CONTENTS_BEGINNING && (ws >= 4 || tab) && (this.block !== BT_PARAGRAPH || this.breaks >= 2)) {
           this.state = KS_INDENTED_CODE_BLOCK;
           this.block = BT_CODE;
@@ -225,8 +289,12 @@ class KDocLexer {
       // the end of the line.
       if (s === KS_CONTENTS_BEGINNING && (c === 96 || c === 126)) {
         const k = kdRun(this, p, c);
+        if (k < 0 || k > 1073741823) {
+          this.stop();
+          return;
+        }
         let q = p + k;
-        while (q < this.e && this.at(q) !== 10 && this.at(q) !== 13 && !(c === 96 && this.at(q) === 96)) {
+        while (q < e && this.at(q) !== 10 && this.at(q) !== 13 && !(c === 96 && this.at(q) === 96)) {
           q++;
         }
         if (k >= 3 && (this.at(q) === 10 || this.at(q) === 13)) {
@@ -249,6 +317,10 @@ class KDocLexer {
       }
       const link = kdCodeLink(this, p);
       if (link > 0 && link >= endLen) {
+        if (link > 1073741823) {
+          this.stop();
+          return;
+        }
         const after = this.at(p + link);
         if (after >= 0 && after !== 40 && after !== 91) {
           this.block = BT_PARAGRAPH;
@@ -289,8 +361,12 @@ class KDocLexer {
       // closes it; any other run is code.
       if (c === 96 || c === 126) {
         const k = kdRun(this, p, c);
+        if (k < 0 || k > 1073741823) {
+          this.stop();
+          return;
+        }
         let q = p + k;
-        while (this.at(q) === 32 || this.at(q) === 9 || this.at(q) === 12) {
+        while (q < e && (this.at(q) === 32 || this.at(q) === 9 || this.at(q) === 12)) {
           q++;
         }
         if (this.at(q) === 10) {
@@ -326,8 +402,9 @@ class KDocLexer {
 
 /** The length of a run of [ \t\f] at `p`. */
 const kdWsRun = (lx: KDocLexer, p: i32): i32 => {
+  const e = lx.e;
   let q = p;
-  while (true) {
+  while (q < e) {
     const c = lx.at(q);
     if (c === 32 || c === 9 || c === 12) {
       q++;
@@ -340,8 +417,10 @@ const kdWsRun = (lx: KDocLexer, p: i32): i32 => {
 
 /** The length of the run of byte `c` at `p` (countRepeating). */
 const kdRun = (lx: KDocLexer, p: i32, c: i32): i32 => {
+  const e = lx.e;
   let q = p;
-  while (lx.at(q) === c) {
+  // c is a byte, which at() answers before e only.
+  while (q < e && lx.at(q) === c) {
     q++;
   }
   return q - p;
@@ -361,11 +440,22 @@ const kdIsPart = (c: i32): boolean => kdIsLetter(c) || (c >= 48 && c <= 57) || (
 
 /** PLAIN_IDENTIFIER at `p`: its length, or 0. */
 const kdPlainIdent = (lx: KDocLexer, p: i32): i32 => {
-  if (!kdIsLetter(lx.at(p))) {
+  const e = lx.e;
+  const c = lx.at(p);
+  // A letter lies before e, where a position is not negative.
+  if (!kdIsLetter(c) || p < 0 || p >= e) {
     return 0;
   }
-  let q = p + kdCharLen(lx.at(p));
-  while (q < lx.e && kdIsPart(lx.at(q))) {
+  // kdCharLen(c), the letter's length.
+  let q = p + 1;
+  if (c >= 0xf0) {
+    q = p + 4;
+  } else if (c >= 0xe0) {
+    q = p + 3;
+  } else if (c >= 0xc0) {
+    q = p + 2;
+  }
+  while (q < e && kdIsPart(lx.at(q))) {
     q++;
   }
   return q - p;
@@ -373,26 +463,47 @@ const kdPlainIdent = (lx: KDocLexer, p: i32): i32 => {
 
 /** IDENTIFIER: a plain one or a backquoted one. */
 const kdIdent = (lx: KDocLexer, p: i32): i32 => {
-  if (lx.at(p) === 96) {
+  const e = lx.e;
+  // A backquote lies before e, where a position is not negative.
+  if (lx.at(p) === 96 && p >= 0 && p < e) {
     let q = p + 1;
-    while (q < lx.e && lx.at(q) !== 96 && lx.at(q) !== 10) {
+    while (q < e && lx.at(q) !== 96 && lx.at(q) !== 10) {
       q++;
     }
-    return q > p + 1 && lx.at(q) === 96 ? q + 1 - p : 0;
+    if (q > p + 1 && q < e && lx.at(q) === 96) {
+      return q + 1 - p;
+    }
+    return 0;
   }
   return kdPlainIdent(lx, p);
 };
 
 /** QUALIFIED_NAME = IDENTIFIER ([.] IDENTIFIER?)*. */
 const kdQualifiedName = (lx: KDocLexer, p: i32): i32 => {
+  const e = lx.e;
   const first = kdIdent(lx, p);
   if (first === 0) {
     return 0;
   }
+  // Names lie inside the comment.
+  if (p < 0 || p > e || first < 0 || first > 1073741823) {
+    fault();
+    return 0;
+  }
   let q = p + first;
-  while (lx.at(q) === 46) {
+  while (q >= 0 && q < e && lx.at(q) === 46) {
     q++;
-    q += kdIdent(lx, q);
+    const id = kdIdent(lx, q);
+    // Positions stay within a few bytes of e, at most 10^9.
+    if (id < 0 || id > 1073741823 || q > 1000000000) {
+      fault();
+      return 0;
+    }
+    q += id;
+  }
+  if (q < 0) {
+    fault();
+    return 0;
   }
   return q - p;
 };
@@ -408,6 +519,12 @@ const kdCodeLink = (lx: KDocLexer, p: i32): i32 => {
   if (qn === 0) {
     return 0;
   }
+  // A name inside the comment.
+  const e = lx.e;
+  if (p < 0 || p > e || qn > 1073741823) {
+    fault();
+    return 0;
+  }
   for (let len = qn; len > 0; len--) {
     if (lx.at(p + 1 + len) === 93) {
       return len + 2;
@@ -419,6 +536,10 @@ const kdCodeLink = (lx: KDocLexer, p: i32): i32 => {
 /** KDocKnownTag.isReferenceRequired for the tag name src[a, b) (no `@`). */
 const kdTagRequiresReference = (src: u8[], a: i32, b: i32): boolean => {
   let name = "";
+  if (a < 0 || b > src.length) {
+    fault();
+    return false;
+  }
   for (let i = a; i < b; i++) {
     const c = toI32(src[i]);
     name = name + String.fromCharCode(c >= 97 && c <= 122 ? c - 32 : c);
@@ -437,15 +558,15 @@ const kdTagRequiresReference = (src: u8[], a: i32, b: i32): boolean => {
 export const kdocReferences = (src: u8[], a: i32, b: i32, out: string[]): void => {
   const lx = new KDocLexer(src, a, b);
   lx.run();
-  const n = toI32(lx.kinds.length);
+  const kinds = lx.kinds;
   // Walk the tags: a tag runs from its name to the END, or to a leading
   // asterisk followed (past one TEXT) by the next tag name.
   let i = 0;
   let tagStart = -1;
   let firstLinkInTag = true;
   let dropFirst = false;
-  while (i < n) {
-    const k = lx.kinds[i];
+  while (i < kinds.length) {
+    const k = kinds[i];
     if (k === KD_TAG_NAME) {
       tagStart = i;
       firstLinkInTag = true;
@@ -454,10 +575,10 @@ export const kdocReferences = (src: u8[], a: i32, b: i32, out: string[]): void =
       tagStart = -1;
     } else if (k === KD_LEADING_ASTERISK && tagStart >= 0) {
       let j = kdNextNonWs(lx, i + 1);
-      if (j < n && lx.kinds[j] === KD_TEXT) {
+      if (j >= 0 && j < kinds.length && kinds[j] === KD_TEXT) {
         j = kdNextNonWs(lx, j + 1);
       }
-      if (j < n && lx.kinds[j] === KD_TAG_NAME) {
+      if (j >= 0 && j < kinds.length && kinds[j] === KD_TAG_NAME) {
         tagStart = -1;
       }
     } else if (k === KD_LINK) {
@@ -466,7 +587,7 @@ export const kdocReferences = (src: u8[], a: i32, b: i32, out: string[]): void =
         firstLinkInTag = false;
       }
       if (!skip) {
-        const name = kdLinkFirstName(src, lx.starts[i], lx.ends[i]);
+        const name = kdLinkFirstName(src, atI32(lx.starts, i), atI32(lx.ends, i));
         if (name !== null) {
           out.push(name);
         }
@@ -476,12 +597,42 @@ export const kdocReferences = (src: u8[], a: i32, b: i32, out: string[]): void =
   }
 };
 
+/** The first token from `i` (not negative) that is not whitespace, or the token count. */
 const kdNextNonWs = (lx: KDocLexer, i: i32): i32 => {
+  const kinds = lx.kinds;
   let j = i;
-  while (j < toI32(lx.kinds.length) && lx.kinds[j] === KD_WS) {
+  if (j < 0) {
+    fault();
+    return toI32(kinds.length);
+  }
+  while (j < kinds.length && kinds[j] === KD_WS) {
     j++;
   }
   return j;
+};
+
+/** Whether src[a, b) spells `s`. */
+const kdBytesAre = (src: u8[], a: i32, b: i32, s: string): boolean => {
+  if (a < 0 || b < a || b > src.length) {
+    fault();
+    return false;
+  }
+  const k = toI32(s.length);
+  if (b < 0 || b - a !== k) {
+    return false;
+  }
+  let p = a;
+  for (let t = 0; t < k; t++) {
+    if (p >= src.length) {
+      fault();
+      return false;
+    }
+    if (toI32(src[p]) !== s.charCodeAt(t)) {
+      return false;
+    }
+    p++;
+  }
+  return true;
 };
 
 /**
@@ -490,26 +641,30 @@ const kdNextNonWs = (lx: KDocLexer, i: i32): i32 => {
  */
 const kdSkipFirstReference = (lx: KDocLexer, i: i32): boolean => {
   const src = lx.src;
-  const a = lx.starts[i];
-  const name = String.fromBytes(src, a, lx.ends[i]);
-  if (name !== "@param" && name !== "@property") {
+  const a = atI32(lx.starts, i);
+  const ai = atI32(lx.ends, i);
+  if (!kdBytesAre(src, a, ai, "@param") && !kdBytesAre(src, a, ai, "@property")) {
     return false;
   }
   // The tag's extent.
-  const n = toI32(lx.kinds.length);
+  const kinds = lx.kinds;
+  if (i < 0) {
+    fault();
+    return false;
+  }
   let last = i;
   let j = i + 1;
-  while (j < n) {
-    const k = lx.kinds[j];
+  while (j < kinds.length) {
+    const k = kinds[j];
     if (k === KD_END) {
       break;
     }
     if (k === KD_LEADING_ASTERISK) {
       let q = kdNextNonWs(lx, j + 1);
-      if (q < n && lx.kinds[q] === KD_TEXT) {
+      if (q >= 0 && q < kinds.length && kinds[q] === KD_TEXT) {
         q = kdNextNonWs(lx, q + 1);
       }
-      if (q < n && lx.kinds[q] === KD_TAG_NAME) {
+      if (q >= 0 && q < kinds.length && kinds[q] === KD_TAG_NAME) {
         break;
       }
     }
@@ -518,8 +673,13 @@ const kdSkipFirstReference = (lx: KDocLexer, i: i32): boolean => {
     }
     j++;
   }
-  const e = lx.ends[last];
-  const b = lx.ends[i];
+  const e = atI32(lx.ends, last);
+  const b = atI32(lx.ends, i);
+  // Token ends lie in the source.
+  if (b < 0 || e > src.length) {
+    fault();
+    return false;
+  }
   // A single space, then at least one character, all on one line.
   if (b >= e || toI32(src[b]) !== 32 || b + 1 >= e) {
     return false;
@@ -535,6 +695,11 @@ const kdSkipFirstReference = (lx: KDocLexer, i: i32): boolean => {
 
 /** The first segment of a link's qualified name, unquoted, or null when it has none. */
 const kdLinkFirstName = (src: u8[], a: i32, b: i32): string | null => {
+  // A token's range lies in the source.
+  if (a < 0 || b > src.length) {
+    fault();
+    return null;
+  }
   let p = a;
   if (p < b && toI32(src[p]) === 91) {
     p++;
@@ -544,9 +709,13 @@ const kdLinkFirstName = (src: u8[], a: i32, b: i32): string | null => {
     while (q < b && toI32(src[q]) !== 96) {
       q++;
     }
-    return q < b ? String.fromBytes(src, p + 1, q) : null;
+    return q < b ? bytesText(src, p + 1, q) : null;
   }
   // A Kotlin identifier: letters, digits and `_` (no `$`).
+  if (p >= src.length) {
+    fault();
+    return null;
+  }
   const c0 = toI32(src[p]);
   if (!((c0 >= 65 && c0 <= 90) || (c0 >= 97 && c0 <= 122) || c0 === 95 || c0 >= 0xc0)) {
     return null;
@@ -560,5 +729,5 @@ const kdLinkFirstName = (src: u8[], a: i32, b: i32): string | null => {
       break;
     }
   }
-  return String.fromBytes(src, p, q);
+  return bytesText(src, p, q);
 };
