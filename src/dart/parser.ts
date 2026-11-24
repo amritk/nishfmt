@@ -182,6 +182,8 @@ import {
   N_WITH_CLAUSE,
   N_YIELD_STATEMENT,
 } from "./ast";
+import { add32, copyI32s, mul32, newI32s } from "../core/arr";
+import { fault } from "../core/fault";
 import { DtTokens } from "./scanner";
 import {
   K_ABSTRACT,
@@ -434,6 +436,23 @@ const FP_FUNCTION_TYPE: i32 = 1; // the parameters of `Function(...)`
 // `>` characters already taken from a compound `>>`-like token.
 const NO: i32 = -1;
 
+/**
+ * `i + d` for a token index, a cursor or a count of tokens (or -1), and a
+ * small step `d`. Each lies within a few of 4 * the token count, and there
+ * are fewer tokens than source bytes, so the sum is far from 2^31 and the
+ * u32 sum is the exact one.
+ */
+const dtTok = (i: i32, d: i32): i32 => toI32(toU32(i) + toU32(d));
+
+/** The precedence above `level`, a P_ value; past them all after a fault. */
+const dtPrecAbove = (level: i32): i32 => {
+  if (level >= 0 && level < 64) {
+    return level + 1;
+  }
+  fault();
+  return 1000;
+};
+
 export class DtParser {
   t: DtTokens;
   a: DtAst;
@@ -449,8 +468,8 @@ export class DtParser {
 
   constructor(t: DtTokens) {
     this.t = t;
-    this.a = new DtAst(t.count * 2 + 16);
-    this.mt = new Array<i32>(t.count + 8);
+    this.a = new DtAst(add32(mul32(t.count, 2), 16));
+    this.mt = newI32s(add32(t.count, 8));
     this.svP = [];
     this.svN = [];
     this.svF = [];
@@ -461,35 +480,128 @@ export class DtParser {
   fail(why: string): void {
     if (!this.failed) {
       this.failed = true;
-      this.why = `${why} at ${this.t.start[this.p]} (${this.t.text(this.p)})`;
+      this.why = `${why} at ${this.tokStart(this.p)} (${this.t.text(this.p)})`;
+    }
+  }
+
+  /** A state the parser's own invariants rule out: fault, and stop parsing. */
+  bad(): void {
+    fault();
+    if (!this.failed) {
+      this.failed = true;
+      this.why = "fault";
     }
   }
 
   // ---------------------------------------------------------------------
-  // Tokens.
+  // Tokens. Each read is checked against its array: a token index outside
+  // it faults, and the answer then (EOF, no keyword) ends any lookahead.
 
   k(i: i32): i32 {
-    return this.t.kind[i];
+    const kind = this.t.kind;
+    if (i >= 0 && i < kind.length) {
+      return kind[i];
+    }
+    this.bad();
+    return T_EOF;
   }
 
   kw(i: i32): i32 {
-    if (this.t.kind[i] !== T_IDENT) {
-      return K_NONE;
+    const kind = this.t.kind;
+    const kws = this.t.kw;
+    if (i >= 0 && i < kind.length) {
+      if (kind[i] !== T_IDENT) {
+        return K_NONE;
+      }
+      if (i < kws.length) {
+        return kws[i];
+      }
     }
-    return this.t.kw[i];
+    this.bad();
+    return K_NONE;
+  }
+
+  /** Token `i`'s keyword id, whatever its kind. */
+  kwRaw(i: i32): i32 {
+    const kws = this.t.kw;
+    if (i >= 0 && i < kws.length) {
+      return kws[i];
+    }
+    this.bad();
+    return K_NONE;
+  }
+
+  /** Token `i`'s first byte. */
+  tokStart(i: i32): i32 {
+    const xs = this.t.start;
+    if (i >= 0 && i < xs.length) {
+      return xs[i];
+    }
+    this.bad();
+    return 0;
+  }
+
+  /** Token `i`'s end byte. */
+  tokEnd(i: i32): i32 {
+    const xs = this.t.end;
+    if (i >= 0 && i < xs.length) {
+      return xs[i];
+    }
+    this.bad();
+    return 0;
+  }
+
+  /** The bracket matching the one at token `i`, or -1. */
+  mtAt(i: i32): i32 {
+    const mt = this.mt;
+    if (i >= 0 && i < mt.length) {
+      return mt[i];
+    }
+    this.bad();
+    return -1;
+  }
+
+  /** Node `n`'s first token. */
+  begOf(n: i32): i32 {
+    const xs = this.a.beg;
+    if (n >= 0 && n < xs.length) {
+      return xs[n];
+    }
+    this.bad();
+    return 0;
+  }
+
+  /** Node `n`'s last token. */
+  endOf(n: i32): i32 {
+    const xs = this.a.end;
+    if (n >= 0 && n < xs.length) {
+      return xs[n];
+    }
+    this.bad();
+    return 0;
+  }
+
+  /** Node `n`'s kind. */
+  kindOf(n: i32): i32 {
+    const xs = this.a.kind;
+    if (n >= 0 && n < xs.length) {
+      return xs[n];
+    }
+    this.bad();
+    return -1;
   }
 
   /** Whether token `i` is an identifier: not a reserved word. */
   isId(i: i32): boolean {
-    return this.t.kind[i] === T_IDENT && !dtIsReserved(this.t.kw[i]);
+    return this.k(i) === T_IDENT && !dtIsReserved(this.kwRaw(i));
   }
 
   /** An identifier that is not a keyword of any kind, or a contextual one. */
   isPlainOrPseudo(i: i32): boolean {
-    if (this.t.kind[i] !== T_IDENT) {
+    if (this.k(i) !== T_IDENT) {
       return false;
     }
-    const kw = this.t.kw[i];
+    const kw = this.kwRaw(i);
     return kw === K_NONE || (!dtIsReserved(kw) && !dtIsBuiltIn(kw));
   }
 
@@ -500,11 +612,11 @@ export class DtParser {
   /** Consumes the current token, which must be of kind `kind`. */
   expect(kind: i32): i32 {
     const i = this.p;
-    if (this.t.kind[i] !== kind) {
+    if (this.k(i) !== kind) {
       this.fail(`expected ${kind}`);
       return i;
     }
-    this.p = i + 1;
+    this.p = dtTok(i, 1);
     return i;
   }
 
@@ -514,7 +626,7 @@ export class DtParser {
       this.fail(`expected keyword ${kw}`);
       return i;
     }
-    this.p = i + 1;
+    this.p = dtTok(i, 1);
     return i;
   }
 
@@ -524,14 +636,14 @@ export class DtParser {
       this.fail("expected identifier");
       return i;
     }
-    this.p = i + 1;
+    this.p = dtTok(i, 1);
     return i;
   }
 
   optional(kind: i32): i32 {
     const i = this.p;
-    if (this.t.kind[i] === kind) {
-      this.p = i + 1;
+    if (this.k(i) === kind) {
+      this.p = dtTok(i, 1);
       return i;
     }
     return -1;
@@ -540,7 +652,7 @@ export class DtParser {
   optionalKw(kw: i32): i32 {
     const i = this.p;
     if (this.kw(i) === kw) {
-      this.p = i + 1;
+      this.p = dtTok(i, 1);
       return i;
     }
     return -1;
@@ -549,37 +661,62 @@ export class DtParser {
   /** Consumes one `>` from the current token, splitting `>>` and friends. */
   expectGt(): i32 {
     const i = this.p;
-    const k = this.t.kind[i];
+    const k = this.k(i);
     if (k === T_GT) {
-      this.t.gt[i] = true;
-      this.p = i + 1;
+      this.setGt(i);
+      this.p = dtTok(i, 1);
       return i;
     }
     if (k === T_SHR || k === T_USHR || k === T_GE || k === T_SHR_EQ || k === T_USHR_EQ) {
       this.splitGt(i);
-      this.t.gt[i] = true;
-      this.p = i + 1;
+      this.setGt(i);
+      this.p = dtTok(i, 1);
       return i;
     }
     this.fail("expected >");
     return i;
   }
 
+  /** Marks token `i` as a `>` the parser took as a closing angle bracket. */
+  setGt(i: i32): void {
+    const gt = this.t.gt;
+    if (i >= 0 && i < gt.length) {
+      gt[i] = true;
+      return;
+    }
+    this.bad();
+  }
+
   splitGt(i: i32): void {
     this.t.splitGt(i);
     const n = this.t.count;
-    if (n + 2 > toI32(this.mt.length)) {
-      const m = new Array<i32>(n * 2);
-      m.set(this.mt);
+    let mt = this.mt;
+    if (add32(n, 2) > toI32(mt.length)) {
+      const m = newI32s(mul32(n, 2));
+      copyI32s(m, 0, mt, 0, toI32(mt.length));
+      mt = m;
       this.mt = m;
     }
-    for (let j = n - 1; j > i + 1; j--) {
-      this.mt[j] = this.mt[j - 1];
+    const i1 = dtTok(i, 1);
+    for (let j = dtTok(n, -1); j > i1; j--) {
+      if (j <= 0 || j >= mt.length) {
+        this.bad();
+        return;
+      }
+      mt[j] = mt[j - 1];
     }
-    this.mt[i + 1] = -1;
+    if (i1 < 0 || i1 >= mt.length) {
+      this.bad();
+      return;
+    }
+    mt[i1] = -1;
     for (let j = 0; j < n; j++) {
-      if (this.mt[j] > i) {
-        this.mt[j] = this.mt[j] + 1;
+      if (j >= mt.length) {
+        this.bad();
+        return;
+      }
+      if (mt[j] > i) {
+        mt[j] = dtTok(mt[j], 1);
       }
     }
   }
@@ -587,27 +724,45 @@ export class DtParser {
   /** Pairs up brackets; answers false when they don't balance. */
   matchBrackets(): boolean {
     const n = this.t.count;
-    const stack = new Array<i32>(n + 1);
+    const stack = newI32s(add32(n, 1));
+    const mt = this.mt;
+    const kind = this.t.kind;
     let sp = 0;
     for (let i = 0; i < n; i++) {
-      this.mt[i] = -1;
-      const k = this.t.kind[i];
+      if (i >= mt.length || i >= kind.length) {
+        this.bad();
+        return false;
+      }
+      mt[i] = -1;
+      const k = kind[i];
       if (k === T_LPAREN || k === T_LBRACKET || k === T_LBRACE || k === T_INTERP_EXPR) {
+        if (sp < 0 || sp >= stack.length) {
+          this.bad();
+          return false;
+        }
         stack[sp] = i;
         sp++;
       } else if (k === T_RPAREN || k === T_RBRACKET || k === T_RBRACE) {
-        if (sp === 0) {
+        if (sp <= 0) {
           return false;
         }
         sp--;
+        if (sp >= stack.length) {
+          this.bad();
+          return false;
+        }
         const o = stack[sp];
-        const ok = this.t.kind[o];
+        if (o < 0 || o >= kind.length || o >= mt.length) {
+          this.bad();
+          return false;
+        }
+        const ok = kind[o];
         const want = ok === T_LPAREN ? T_RPAREN : ok === T_LBRACKET ? T_RBRACKET : T_RBRACE;
         if (want !== k) {
           return false;
         }
-        this.mt[o] = i;
-        this.mt[i] = o;
+        mt[o] = i;
+        mt[i] = o;
       }
     }
     return sp === 0;
@@ -621,7 +776,7 @@ export class DtParser {
   ck(c: i32): i32 {
     const i = c >> 2;
     const s = c & 3;
-    const k = this.t.kind[i];
+    const k = this.k(i);
     if (s === 0) {
       return k;
     }
@@ -666,7 +821,7 @@ export class DtParser {
       return this.cn(c);
     }
     if (k === T_SHR || k === T_USHR || k === T_GE || k === T_SHR_EQ || k === T_USHR_EQ) {
-      return c + 1;
+      return dtTok(c, 1);
     }
     return NO;
   }
@@ -676,11 +831,11 @@ export class DtParser {
     if ((c & 3) !== 0) {
       return NO;
     }
-    const m = this.mt[toI32(c >> 2)];
+    const m = this.mtAt(toI32(c >> 2));
     if (m < 0) {
       return NO;
     }
-    return (m + 1) << 2;
+    return dtTok(m, 1) << 2;
   }
 
   /** fasta's looksLikeName. */
@@ -692,7 +847,7 @@ export class DtParser {
     if (this.k(i) !== T_IDENT) {
       return false;
     }
-    const kw = this.t.kw[i];
+    const kw = this.kwRaw(i);
     if (kw === K_NONE || kw === K_THIS || kw === K_SUPER) {
       return true;
     }
@@ -716,7 +871,7 @@ export class DtParser {
     if (this.k(i) !== T_IDENT) {
       return false;
     }
-    const kw = this.t.kw[i];
+    const kw = this.kwRaw(i);
     if (kw === K_NONE) {
       return true;
     }
@@ -739,7 +894,7 @@ export class DtParser {
   }
 
   isPossibleRecordType(c: i32): boolean {
-    return (c & 3) === 0 && this.k(toI32(c >> 2)) === T_LPAREN && this.mt[toI32(c >> 2)] >= 0;
+    return (c & 3) === 0 && this.k(toI32(c >> 2)) === T_LPAREN && this.mtAt(toI32(c >> 2)) >= 0;
   }
 
   // What computeType found.
@@ -945,9 +1100,9 @@ export class DtParser {
 
   /** fasta's computeRecordType at the `(` at cursor `c`. */
   computeRecordType(c: i32, required: boolean): i32 {
-    const close = this.mt[toI32(c >> 2)];
+    const close = this.mtAt(toI32(c >> 2));
     const recovered = !this.recordTypeContentsOk(c >> 2, close);
-    let token = (close + 1) << 2;
+    let token = dtTok(close, 1) << 2;
     if (!required) {
       let next = token;
       if (this.ck(next) === T_QUESTION) {
@@ -1028,7 +1183,7 @@ export class DtParser {
         c = this.cn(c);
         break;
       }
-      count++;
+      count = dtTok(count, 1);
       if (!named && this.ck(c) === T_LBRACE) {
         named = true;
         c = this.cn(c);
@@ -1217,8 +1372,8 @@ export class DtParser {
 
   mk(kind: i32, beg: i32, ...fs: i32[]): i32 {
     const n = toI32(fs.length);
-    const id = this.a.add(kind, beg, this.p - 1, n);
-    for (let i = 0; i < n; i++) {
+    const id = this.a.add(kind, beg, dtTok(this.p, -1), n);
+    for (let i = 0; i < fs.length; i++) {
       this.a.set(id, i, fs[i]);
     }
     return id;
@@ -1228,7 +1383,7 @@ export class DtParser {
   mkEnd(kind: i32, beg: i32, end: i32, ...fs: i32[]): i32 {
     const n = toI32(fs.length);
     const id = this.a.add(kind, beg, end, n);
-    for (let i = 0; i < n; i++) {
+    for (let i = 0; i < fs.length; i++) {
       this.a.set(id, i, fs[i]);
     }
     return id;
@@ -1246,7 +1401,7 @@ export class DtParser {
       this.fail("expected identifier");
       return -1;
     }
-    this.p = t + 1;
+    this.p = dtTok(t, 1);
     return this.mk(N_SIMPLE_IDENTIFIER, t, t);
   }
 
@@ -1261,7 +1416,7 @@ export class DtParser {
     let script = -1;
     if (this.k(this.p) === T_SCRIPT) {
       const t = this.p;
-      this.p = t + 1;
+      this.p = dtTok(t, 1);
       script = this.mk(N_SCRIPT_TAG, t, t);
     }
     const dirs: i32[] = [];
@@ -1270,12 +1425,12 @@ export class DtParser {
       const start = this.p;
       const meta = this.parseMetadata();
       const kw = this.kw(this.p);
-      const nk = this.k(this.p + 1);
+      const nk = this.k(dtTok(this.p, 1));
       if (
         (kw === K_IMPORT && nk === T_STRING) ||
         (kw === K_EXPORT && nk === T_STRING) ||
-        (kw === K_PART && (nk === T_STRING || this.kw(this.p + 1) === K_OF)) ||
-        (kw === K_LIBRARY && (nk === T_SEMI || (nk === T_IDENT && this.isId(this.p + 1))))
+        (kw === K_PART && (nk === T_STRING || this.kw(dtTok(this.p, 1)) === K_OF)) ||
+        (kw === K_LIBRARY && (nk === T_SEMI || (nk === T_IDENT && this.isId(dtTok(this.p, 1)))))
       ) {
         if (decls.length > 0) {
           this.fail("directive after declaration");
@@ -1293,7 +1448,7 @@ export class DtParser {
   parseDirective(meta: i32, start: i32): i32 {
     const kwTok = this.p;
     const kw = this.kw(kwTok);
-    this.p = kwTok + 1;
+    this.p = dtTok(kwTok, 1);
     if (kw === K_LIBRARY) {
       let name = -1;
       if (this.k(this.p) !== T_SEMI) {
@@ -1305,7 +1460,7 @@ export class DtParser {
     if (kw === K_PART) {
       if (this.kw(this.p) === K_OF) {
         const of = this.p;
-        this.p = of + 1;
+        this.p = dtTok(of, 1);
         let name = -1;
         let uri = -1;
         if (this.k(this.p) === T_STRING) {
@@ -1342,7 +1497,7 @@ export class DtParser {
         break;
       }
       const ct = this.p;
-      this.p = ct + 1;
+      this.p = dtTok(ct, 1);
       const names: i32[] = [];
       names.push(this.ident());
       while (this.optional(T_COMMA) >= 0) {
@@ -1370,14 +1525,14 @@ export class DtParser {
     const cs: i32[] = [];
     while (!this.failed && this.kw(this.p) === K_IF) {
       const ifTok = this.p;
-      this.p = ifTok + 1;
+      this.p = dtTok(ifTok, 1);
       const lp = this.expect(T_LPAREN);
       const name = this.parseDottedName();
       let eq = -1;
       let value = -1;
       if (this.k(this.p) === T_EQEQ) {
         eq = this.p;
-        this.p = eq + 1;
+        this.p = dtTok(eq, 1);
         value = this.parseStringLiteral();
       }
       const rp = this.expect(T_RPAREN);
@@ -1393,7 +1548,7 @@ export class DtParser {
     toks.push(this.expectId());
     while (this.k(this.p) === T_DOT && !this.failed) {
       toks.push(this.p);
-      this.p = this.p + 1;
+      this.p = dtTok(this.p, 1);
       toks.push(this.expectId());
     }
     return this.mk(N_DOTTED_NAME, start, this.a.list(toks));
@@ -1417,11 +1572,11 @@ export class DtParser {
   parseAnnotation(): i32 {
     const at = this.expect(T_AT);
     let name = this.ident();
-    if (this.k(this.p) === T_DOT && this.isId(this.p + 1)) {
+    if (this.k(this.p) === T_DOT && this.isId(dtTok(this.p, 1))) {
       const dot = this.p;
-      this.p = dot + 1;
+      this.p = dtTok(dot, 1);
       const id = this.ident();
-      name = this.mk(N_PREFIXED_IDENTIFIER, this.a.beg[name], name, dot, id);
+      name = this.mk(N_PREFIXED_IDENTIFIER, this.begOf(name), name, dot, id);
     }
     let targs = -1;
     if (this.k(this.p) === T_LT) {
@@ -1431,12 +1586,12 @@ export class DtParser {
     let ctor = -1;
     if (this.k(this.p) === T_DOT) {
       period = this.p;
-      this.p = period + 1;
+      this.p = dtTok(period, 1);
       ctor = this.identAny();
     }
     let args = -1;
     // Arguments must follow the name with no space between.
-    if (this.k(this.p) === T_LPAREN && this.t.start[this.p] === this.t.end[this.p - 1]) {
+    if (this.k(this.p) === T_LPAREN && this.tokStart(this.p) === this.tokEnd(dtTok(this.p, -1))) {
       args = this.parseArgumentList();
     }
     return this.mk(N_ANNOTATION, at, at, name, targs, period, ctor, args);
@@ -1461,31 +1616,37 @@ export class DtParser {
     // Class-like declarations.
     let j = this.p;
     while (this.isClassModifier(this.kw(j))) {
-      if (this.kw(j) === K_MIXIN && this.kw(j + 1) !== K_CLASS) {
+      if (this.kw(j) === K_MIXIN && this.kw(dtTok(j, 1)) !== K_CLASS) {
         break;
       }
-      j++;
+      j = dtTok(j, 1);
     }
     const kj = this.kw(j);
     if (kj === K_CLASS) {
       return this.parseClassOrAlias(meta, start);
     }
-    if (kj === K_MIXIN && this.isId(j + 1)) {
+    if (kj === K_MIXIN && this.isId(dtTok(j, 1))) {
       return this.parseMixin(meta, start);
     }
-    if (kj === K_ENUM && j === this.p && this.isId(j + 1)) {
+    if (kj === K_ENUM && j === this.p && this.isId(dtTok(j, 1))) {
       return this.parseEnum(meta, start);
     }
     const kw = this.kw(this.p);
-    if (kw === K_EXTENSION && (this.isId(this.p + 1) || this.kw(this.p + 1) === K_ON || this.k(this.p + 1) === T_LT)) {
-      if (this.kw(this.p + 1) === K_TYPE && (this.isId(this.p + 2) || this.kw(this.p + 2) === K_CONST)) {
+    if (
+      kw === K_EXTENSION &&
+      (this.isId(dtTok(this.p, 1)) || this.kw(dtTok(this.p, 1)) === K_ON || this.k(dtTok(this.p, 1)) === T_LT)
+    ) {
+      if (
+        this.kw(dtTok(this.p, 1)) === K_TYPE &&
+        (this.isId(dtTok(this.p, 2)) || this.kw(dtTok(this.p, 2)) === K_CONST)
+      ) {
         return this.parseExtensionType(meta, start);
       }
       return this.parseExtension(meta, start);
     }
     if (
       kw === K_TYPEDEF &&
-      (this.isId(this.p + 1) || this.k(this.p + 1) === T_LPAREN || this.kw(this.p + 1) === K_VOID)
+      (this.isId(dtTok(this.p, 1)) || this.k(dtTok(this.p, 1)) === T_LPAREN || this.kw(dtTok(this.p, 1)) === K_VOID)
     ) {
       return this.parseTypedef(meta, start);
     }
@@ -1496,7 +1657,7 @@ export class DtParser {
     let external = -1;
     if (this.kw(this.p) === K_EXTERNAL) {
       external = this.p;
-      this.p = this.p + 1;
+      this.p = dtTok(this.p, 1);
     } else if (this.kw(this.p) === K_AUGMENT) {
       this.fail("augment");
       return -1;
@@ -1506,13 +1667,13 @@ export class DtParser {
     const kw = this.kw(this.p);
     if (kw === K_FINAL || kw === K_VAR || kw === K_CONST) {
       keyword = this.p;
-      this.p = this.p + 1;
+      this.p = dtTok(this.p, 1);
     } else if (kw === K_LATE) {
       late = this.p;
-      this.p = this.p + 1;
+      this.p = dtTok(this.p, 1);
       if (this.kw(this.p) === K_FINAL) {
         keyword = this.p;
-        this.p = this.p + 1;
+        this.p = dtTok(this.p, 1);
       }
     }
     const beforeType = this.p;
@@ -1527,11 +1688,11 @@ export class DtParser {
     }
     let getSet = -1;
     const gkw = this.kw(afterType);
-    if ((gkw === K_GET || gkw === K_SET) && this.isId(afterType + 1)) {
+    if ((gkw === K_GET || gkw === K_SET) && this.isId(dtTok(afterType, 1))) {
       getSet = afterType;
     }
-    const nameTok = getSet >= 0 ? afterType + 1 : afterType;
-    const after = this.k(nameTok + 1);
+    const nameTok = getSet >= 0 ? dtTok(afterType, 1) : afterType;
+    const after = this.k(dtTok(nameTok, 1));
     if (
       getSet >= 0 ||
       after === T_LPAREN ||
@@ -1550,10 +1711,10 @@ export class DtParser {
       }
       if (getSet >= 0) {
         getSet = this.p;
-        this.p = getSet + 1;
+        this.p = dtTok(getSet, 1);
       }
       const name = this.expectId();
-      const fe = this.parseFunctionExpressionRest(name + 1, true);
+      const fe = this.parseFunctionExpressionRest(dtTok(name, 1), true);
       return this.mk(N_FUNCTION_DECLARATION, start, meta, external, ret, getSet, name, fe);
     }
     // A variable.
@@ -1577,7 +1738,7 @@ export class DtParser {
       let init = -1;
       if (this.k(this.p) === T_EQ) {
         eq = this.p;
-        this.p = eq + 1;
+        this.p = dtTok(eq, 1);
         init = this.parseExpression();
       }
       vs.push(this.mk(N_VARIABLE_DECLARATION, name, name, eq, init));
@@ -1602,7 +1763,7 @@ export class DtParser {
         break;
       }
       const t = this.p;
-      this.p = t + 1;
+      this.p = dtTok(t, 1);
       if (kw === K_ABSTRACT) {
         abs = t;
       } else if (kw === K_BASE) {
@@ -1622,9 +1783,9 @@ export class DtParser {
     }
     const classTok = this.expectKw(K_CLASS);
     // A mixin application class?
-    let j = classTok + 1;
+    let j = dtTok(classTok, 1);
     if (this.isId(j)) {
-      j++;
+      j = dtTok(j, 1);
       if (this.k(j) === T_LT) {
         const e = this.typeArgsTok(j, true);
         if (e >= 0 && (e & 3) === 0) {
@@ -1669,11 +1830,11 @@ export class DtParser {
     const namePart = this.parseClassNamePart();
     const saveClass = this.className;
     this.className =
-      this.a.kind[namePart] === N_PRIMARY_CONSTRUCTOR_DECLARATION ? this.a.f(namePart, 1) : this.a.f(namePart, 0);
+      this.kindOf(namePart) === N_PRIMARY_CONSTRUCTOR_DECLARATION ? this.a.f(namePart, 1) : this.a.f(namePart, 0);
     let ext = -1;
     if (this.kw(this.p) === K_EXTENDS) {
       const et = this.p;
-      this.p = et + 1;
+      this.p = dtTok(et, 1);
       const xs: i32[] = [];
       xs.push(this.parseNamedType());
       ext = this.mk(N_EXTENDS_CLAUSE, et, et, this.a.list(xs));
@@ -1683,7 +1844,7 @@ export class DtParser {
     let native = -1;
     if (this.kw(this.p) === K_NATIVE) {
       const nt = this.p;
-      this.p = nt + 1;
+      this.p = dtTok(nt, 1);
       let s = -1;
       if (this.k(this.p) === T_STRING) {
         s = this.parseStringLiteral();
@@ -1718,7 +1879,7 @@ export class DtParser {
     let cst = -1;
     if (this.kw(this.p) === K_CONST) {
       cst = this.p;
-      this.p = cst + 1;
+      this.p = dtTok(cst, 1);
     }
     const name = this.expectId();
     let tps = -1;
@@ -1728,12 +1889,12 @@ export class DtParser {
     if (
       cst >= 0 ||
       this.k(this.p) === T_LPAREN ||
-      (this.k(this.p) === T_DOT && this.isId(this.p + 1) && this.k(this.p + 2) === T_LPAREN)
+      (this.k(this.p) === T_DOT && this.isId(dtTok(this.p, 1)) && this.k(dtTok(this.p, 2)) === T_LPAREN)
     ) {
       let cname = -1;
       if (this.k(this.p) === T_DOT) {
         const d = this.p;
-        this.p = d + 1;
+        this.p = dtTok(d, 1);
         const nm = this.expectId();
         cname = this.mk(N_PRIMARY_CONSTRUCTOR_NAME, d, d, nm);
       }
@@ -1749,7 +1910,7 @@ export class DtParser {
       return -1;
     }
     const wt = this.p;
-    this.p = wt + 1;
+    this.p = dtTok(wt, 1);
     return this.mk(N_WITH_CLAUSE, wt, wt, this.parseTypeList());
   }
 
@@ -1758,7 +1919,7 @@ export class DtParser {
       return -1;
     }
     const it = this.p;
-    this.p = it + 1;
+    this.p = dtTok(it, 1);
     return this.mk(N_IMPLEMENTS_CLAUSE, it, it, this.parseTypeList());
   }
 
@@ -1775,7 +1936,7 @@ export class DtParser {
   parseClassBody(): i32 {
     if (this.k(this.p) === T_SEMI) {
       const s = this.p;
-      this.p = s + 1;
+      this.p = dtTok(s, 1);
       return this.mk(N_EMPTY_CLASS_BODY, s, s);
     }
     const lb = this.expect(T_LBRACE);
@@ -1795,7 +1956,7 @@ export class DtParser {
     let base = -1;
     if (this.kw(this.p) === K_BASE) {
       base = this.p;
-      this.p = base + 1;
+      this.p = dtTok(base, 1);
     }
     const mixinTok = this.expectKw(K_MIXIN);
     const name = this.expectId();
@@ -1808,7 +1969,7 @@ export class DtParser {
     let on = -1;
     if (this.kw(this.p) === K_ON) {
       const ot = this.p;
-      this.p = ot + 1;
+      this.p = dtTok(ot, 1);
       on = this.mk(N_MIXIN_ON_CLAUSE, ot, ot, this.parseTypeList());
     }
     const impl = this.parseImplementsClause();
@@ -1842,7 +2003,7 @@ export class DtParser {
     const ext = this.expectKw(K_EXTENSION);
     const typeTok = this.expectKw(K_TYPE);
     const namePart = this.parseClassNamePart();
-    if (this.a.kind[namePart] !== N_PRIMARY_CONSTRUCTOR_DECLARATION) {
+    if (this.kindOf(namePart) !== N_PRIMARY_CONSTRUCTOR_DECLARATION) {
       this.fail("extension type without representation");
       return -1;
     }
@@ -1859,13 +2020,13 @@ export class DtParser {
     const namePart = this.parseClassNamePart();
     const saveClass = this.className;
     this.className =
-      this.a.kind[namePart] === N_PRIMARY_CONSTRUCTOR_DECLARATION ? this.a.f(namePart, 1) : this.a.f(namePart, 0);
+      this.kindOf(namePart) === N_PRIMARY_CONSTRUCTOR_DECLARATION ? this.a.f(namePart, 1) : this.a.f(namePart, 0);
     const withC = this.parseWithClause();
     const impl = this.parseImplementsClause();
     let body = -1;
     if (this.k(this.p) === T_SEMI) {
       const s = this.p;
-      this.p = s + 1;
+      this.p = dtTok(s, 1);
       body = this.mk(N_EMPTY_ENUM_BODY, s, s);
     } else {
       const lb = this.expect(T_LBRACE);
@@ -1885,7 +2046,7 @@ export class DtParser {
         }
         if (this.k(this.p) === T_DOT) {
           const d = this.p;
-          this.p = d + 1;
+          this.p = dtTok(d, 1);
           const nm = this.identAny();
           sel = this.mk(N_CONSTRUCTOR_SELECTOR, d, d, nm);
         }
@@ -1906,7 +2067,7 @@ export class DtParser {
       const members: i32[] = [];
       if (this.k(this.p) === T_SEMI) {
         semi = this.p;
-        this.p = semi + 1;
+        this.p = dtTok(semi, 1);
         while (!this.failed && this.k(this.p) !== T_RBRACE) {
           if (this.k(this.p) === T_EOF) {
             this.fail("eof in enum");
@@ -1927,7 +2088,7 @@ export class DtParser {
     // `typedef Name<T> = Type;`
     let j = this.p;
     if (this.isId(j)) {
-      j++;
+      j = dtTok(j, 1);
       if (this.k(j) === T_LT) {
         const e = this.typeArgsTok(j, true);
         if (e >= 0 && (e & 3) === 0) {
@@ -1974,16 +2135,32 @@ export class DtParser {
     if (c < 0 || this.k(i) !== T_IDENT) {
       return false;
     }
-    const a = this.t.start[c];
-    const n = this.t.end[c] - a;
-    const b = this.t.start[i];
-    if (this.t.end[i] - b !== n) {
+    const starts = this.t.start;
+    const ends = this.t.end;
+    if (c >= starts.length || c >= ends.length || i < 0 || i >= starts.length || i >= ends.length) {
+      this.bad();
       return false;
     }
+    // A token ends at or after its start, inside the source: the lengths are exact.
+    const a = starts[c];
+    const n = toI32(toU32(ends[c]) - toU32(a));
+    const b = starts[i];
+    if (toI32(toU32(ends[i]) - toU32(b)) !== n) {
+      return false;
+    }
+    const src = this.t.src;
+    let x = a;
+    let y = b;
     for (let j = 0; j < n; j++) {
-      if (this.t.src[a + j] !== this.t.src[b + j]) {
+      if (x < 0 || x >= src.length || y < 0 || y >= src.length) {
+        this.bad();
         return false;
       }
+      if (src[x] !== src[y]) {
+        return false;
+      }
+      x = x + 1;
+      y = y + 1;
     }
     return true;
   }
@@ -2002,7 +2179,7 @@ export class DtParser {
       const kw = this.kw(this.p);
       const t = this.p;
       // A modifier only if something declarable follows.
-      const nk = this.k(t + 1);
+      const nk = this.k(dtTok(t, 1));
       if (nk !== T_IDENT && nk !== T_LPAREN) {
         break;
       }
@@ -2023,7 +2200,7 @@ export class DtParser {
       } else {
         break;
       }
-      this.p = t + 1;
+      this.p = dtTok(t, 1);
     }
     // Constructors.
     const p = this.p;
@@ -2032,28 +2209,30 @@ export class DtParser {
     }
     if (
       this.kw(p) === K_NEW &&
-      (this.k(p + 1) === T_LPAREN || this.k(p + 1) === T_DOT || (this.isId(p + 1) && this.k(p + 2) === T_LPAREN))
+      (this.k(dtTok(p, 1)) === T_LPAREN ||
+        this.k(dtTok(p, 1)) === T_DOT ||
+        (this.isId(dtTok(p, 1)) && this.k(dtTok(p, 2)) === T_LPAREN))
     ) {
       return this.parseConstructor(meta, start, external, keyword, -1);
     }
     if (
       this.isClassName(p) &&
-      (this.k(p + 1) === T_LPAREN || (this.k(p + 1) === T_DOT && this.k(p + 3) === T_LPAREN))
+      (this.k(dtTok(p, 1)) === T_LPAREN || (this.k(dtTok(p, 1)) === T_DOT && this.k(dtTok(p, 3)) === T_LPAREN))
     ) {
       return this.parseConstructor(meta, start, external, keyword, -1);
     }
     if (
       this.kw(p) === K_THIS &&
       keyword < 0 &&
-      (this.k(p + 1) === T_COLON || this.k(p + 1) === T_LBRACE || this.k(p + 1) === T_SEMI)
+      (this.k(dtTok(p, 1)) === T_COLON || this.k(dtTok(p, 1)) === T_LBRACE || this.k(dtTok(p, 1)) === T_SEMI)
     ) {
       const th = this.p;
-      this.p = th + 1;
+      this.p = dtTok(th, 1);
       let colon = -1;
       const inits: i32[] = [];
       if (this.k(this.p) === T_COLON) {
         colon = this.p;
-        this.p = colon + 1;
+        this.p = dtTok(colon, 1);
         this.parseInitializers(inits);
       }
       const body = this.parseFunctionBody(false, true);
@@ -2072,13 +2251,13 @@ export class DtParser {
     const akw = this.kw(afterType);
     let getSet = -1;
     let operator = -1;
-    if ((akw === K_GET || akw === K_SET) && this.isId(afterType + 1)) {
+    if ((akw === K_GET || akw === K_SET) && this.isId(dtTok(afterType, 1))) {
       getSet = afterType;
-    } else if (akw === K_OPERATOR && this.isOperatorName(afterType + 1)) {
+    } else if (akw === K_OPERATOR && this.isOperatorName(dtTok(afterType, 1))) {
       operator = afterType;
     }
-    const nameTok = getSet >= 0 || operator >= 0 ? afterType + 1 : afterType;
-    const after = this.k(nameTok + 1);
+    const nameTok = getSet >= 0 || operator >= 0 ? dtTok(afterType, 1) : afterType;
+    const after = this.k(dtTok(nameTok, 1));
     if (
       getSet >= 0 ||
       operator >= 0 ||
@@ -2098,10 +2277,10 @@ export class DtParser {
       let name = -1;
       if (getSet >= 0) {
         getSet = this.p;
-        this.p = getSet + 1;
+        this.p = dtTok(getSet, 1);
       } else if (operator >= 0) {
         operator = this.p;
-        this.p = operator + 1;
+        this.p = dtTok(operator, 1);
       }
       if (operator >= 0) {
         name = this.p;
@@ -2110,7 +2289,7 @@ export class DtParser {
           this.fail("operator name");
           return -1;
         }
-        this.p = name + 1;
+        this.p = dtTok(name, 1);
       } else {
         name = this.expectId();
       }
@@ -2146,7 +2325,7 @@ export class DtParser {
       type = this.parseType();
     }
     const vars = this.parseVariableDeclarations();
-    const vl = this.mkEnd(N_VARIABLE_DECLARATION_LIST, listBeg, this.p - 1, 0, late, keyword, type, vars);
+    const vl = this.mkEnd(N_VARIABLE_DECLARATION_LIST, listBeg, dtTok(this.p, -1), 0, late, keyword, type, vars);
     const semi = this.expect(T_SEMI);
     // The list starts at the first modifier that belongs to it.
     return this.mk(N_FIELD_DECLARATION, start, meta, external, stat, abs, cov, vl, semi);
@@ -2156,7 +2335,7 @@ export class DtParser {
   isOperatorName(i: i32): boolean {
     const k = this.k(i);
     if (k === T_LT) {
-      return this.k(i + 1) === T_LPAREN;
+      return this.k(dtTok(i, 1)) === T_LPAREN;
     }
     return (
       k === T_GT ||
@@ -2195,28 +2374,33 @@ export class DtParser {
     let name = -1;
     if (this.kw(this.p) === K_NEW) {
       newTok = this.p;
-      this.p = newTok + 1;
-      if (this.isId(this.p) && this.k(this.p + 1) === T_LPAREN) {
+      this.p = dtTok(newTok, 1);
+      if (this.isId(this.p) && this.k(dtTok(this.p, 1)) === T_LPAREN) {
         name = this.p;
-        this.p = name + 1;
+        this.p = dtTok(name, 1);
       }
-    } else if (factory >= 0 && this.isId(this.p) && !this.isClassName(this.p) && this.k(this.p + 1) === T_LPAREN) {
+    } else if (
+      factory >= 0 &&
+      this.isId(this.p) &&
+      !this.isClassName(this.p) &&
+      this.k(dtTok(this.p, 1)) === T_LPAREN
+    ) {
       // `factory name(...)`
       name = this.p;
-      this.p = name + 1;
+      this.p = dtTok(name, 1);
     } else if (factory < 0 || this.k(this.p) === T_IDENT) {
       typeName = this.ident();
     }
     let period = -1;
     if (this.k(this.p) === T_DOT) {
       period = this.p;
-      this.p = period + 1;
+      this.p = dtTok(period, 1);
       name = this.p;
       if (this.k(name) !== T_IDENT) {
         this.fail("constructor name");
         return -1;
       }
-      this.p = name + 1;
+      this.p = dtTok(name, 1);
     }
     const params = this.parseFormalParameterList(FP_NORMAL);
     let sep = -1;
@@ -2224,11 +2408,11 @@ export class DtParser {
     let redirect = -1;
     if (this.k(this.p) === T_COLON) {
       sep = this.p;
-      this.p = sep + 1;
+      this.p = dtTok(sep, 1);
       this.parseInitializers(inits);
     } else if (this.k(this.p) === T_EQ && factory >= 0) {
       sep = this.p;
-      this.p = sep + 1;
+      this.p = dtTok(sep, 1);
       redirect = this.parseConstructorName();
     }
     let body = -1;
@@ -2265,7 +2449,7 @@ export class DtParser {
     let name = -1;
     if (this.k(this.p) === T_DOT) {
       period = this.p;
-      this.p = period + 1;
+      this.p = dtTok(period, 1);
       name = this.identAny();
     }
     return this.mk(N_CONSTRUCTOR_NAME, beg, type, period, name);
@@ -2291,14 +2475,15 @@ export class DtParser {
     }
     if (
       kw === K_SUPER ||
-      (kw === K_THIS && (this.k(beg + 1) === T_LPAREN || (this.k(beg + 1) === T_DOT && this.k(beg + 3) === T_LPAREN)))
+      (kw === K_THIS &&
+        (this.k(dtTok(beg, 1)) === T_LPAREN || (this.k(dtTok(beg, 1)) === T_DOT && this.k(dtTok(beg, 3)) === T_LPAREN)))
     ) {
-      this.p = beg + 1;
+      this.p = dtTok(beg, 1);
       let period = -1;
       let name = -1;
       if (this.k(this.p) === T_DOT) {
         period = this.p;
-        this.p = period + 1;
+        this.p = dtTok(period, 1);
         name = this.identAny();
       }
       const args = this.parseArgumentList();
@@ -2315,7 +2500,7 @@ export class DtParser {
     let period = -1;
     if (kw === K_THIS) {
       th = beg;
-      this.p = beg + 1;
+      this.p = dtTok(beg, 1);
       period = this.expect(T_DOT);
     }
     const field = this.ident();
@@ -2361,8 +2546,8 @@ export class DtParser {
     const p = this.p;
     if (
       this.kw(p) === K_FUNCTION &&
-      (this.k(p + 1) === T_LT || this.k(p + 1) === T_LPAREN) &&
-      !(this.tyEnd >= 0 && p + 1 >= this.tyEnd)
+      (this.k(dtTok(p, 1)) === T_LT || this.k(dtTok(p, 1)) === T_LPAREN) &&
+      !(this.tyEnd >= 0 && dtTok(p, 1) >= this.tyEnd)
     ) {
       t = this.parseGenericFunctionType(-1);
     } else if (this.k(p) === T_LPAREN) {
@@ -2374,7 +2559,7 @@ export class DtParser {
       !this.failed &&
       !this.atTyEnd() &&
       this.kw(this.p) === K_FUNCTION &&
-      (this.k(this.p + 1) === T_LT || this.k(this.p + 1) === T_LPAREN)
+      (this.k(dtTok(this.p, 1)) === T_LT || this.k(dtTok(this.p, 1)) === T_LPAREN)
     ) {
       t = this.parseGenericFunctionType(t);
     }
@@ -2386,17 +2571,17 @@ export class DtParser {
     const beg = this.p;
     let prefix = -1;
     let period = -1;
-    if (this.k(beg) !== T_IDENT || (dtIsReserved(this.t.kw[beg]) && this.t.kw[beg] !== K_VOID)) {
+    if (this.k(beg) !== T_IDENT || (dtIsReserved(this.kwRaw(beg)) && this.kwRaw(beg) !== K_VOID)) {
       this.fail("expected type");
       return -1;
     }
-    if (this.k(beg + 1) === T_DOT && this.k(beg + 2) === T_IDENT) {
+    if (this.k(dtTok(beg, 1)) === T_DOT && this.k(dtTok(beg, 2)) === T_IDENT) {
       prefix = beg;
-      period = beg + 1;
-      this.p = beg + 2;
+      period = dtTok(beg, 1);
+      this.p = dtTok(beg, 2);
     }
     const name = this.p;
-    this.p = name + 1;
+    this.p = dtTok(name, 1);
     let targs = -1;
     if (this.k(this.p) === T_LT && !this.atTyEnd()) {
       targs = this.parseTypeArgumentList();
@@ -2408,14 +2593,14 @@ export class DtParser {
   optQuestion(): i32 {
     if (this.k(this.p) === T_QUESTION && this.p !== this.noQ) {
       const q = this.p;
-      this.p = q + 1;
+      this.p = dtTok(q, 1);
       return q;
     }
     return -1;
   }
 
   parseGenericFunctionType(ret: i32): i32 {
-    const beg = ret >= 0 ? this.a.beg[ret] : this.p;
+    const beg = ret >= 0 ? this.begOf(ret) : this.p;
     const fn = this.expectKw(K_FUNCTION);
     let tps = -1;
     if (this.k(this.p) === T_LT) {
@@ -2433,7 +2618,7 @@ export class DtParser {
     while (!this.failed && this.k(this.p) !== T_RPAREN) {
       if (this.k(this.p) === T_LBRACE) {
         const lb = this.p;
-        this.p = lb + 1;
+        this.p = dtTok(lb, 1);
         const fs: i32[] = [];
         while (!this.failed && this.k(this.p) !== T_RBRACE) {
           const fb = this.p;
@@ -2455,7 +2640,7 @@ export class DtParser {
       let name = -1;
       if (this.isId(this.p)) {
         name = this.p;
-        this.p = name + 1;
+        this.p = dtTok(name, 1);
       }
       pos.push(this.mk(N_RECORD_TYPE_POSITIONAL_FIELD, fb, meta, type, name));
       if (this.optional(T_COMMA) < 0) {
@@ -2491,7 +2676,7 @@ export class DtParser {
       let bound = -1;
       if (this.kw(this.p) === K_EXTENDS) {
         ext = this.p;
-        this.p = ext + 1;
+        this.p = dtTok(ext, 1);
         bound = this.parseType();
       }
       xs.push(this.mk(N_TYPE_PARAMETER, beg, meta, name, ext, bound));
@@ -2525,12 +2710,12 @@ export class DtParser {
       if (kind === 0 && (k === T_LBRACKET || k === T_LBRACE)) {
         leftDelim = this.p;
         kind = k === T_LBRACKET ? 1 : 2;
-        this.p = this.p + 1;
+        this.p = dtTok(this.p, 1);
         continue;
       }
       if (kind !== 0 && (k === T_RBRACKET || k === T_RBRACE)) {
         rightDelim = this.p;
-        this.p = this.p + 1;
+        this.p = dtTok(this.p, 1);
         break;
       }
       params.push(this.parseFormalParameter(kind, ctx));
@@ -2539,7 +2724,7 @@ export class DtParser {
           const ck = this.k(this.p);
           if ((kind === 1 && ck === T_RBRACKET) || (kind === 2 && ck === T_RBRACE)) {
             rightDelim = this.p;
-            this.p = this.p + 1;
+            this.p = dtTok(this.p, 1);
           } else {
             this.fail("expected closing delimiter");
           }
@@ -2557,7 +2742,7 @@ export class DtParser {
 
   /** Whether a modifier at `i` is one: something that declares follows. */
   modifierFollows(i: i32): boolean {
-    const k = this.k(i + 1);
+    const k = this.k(dtTok(i, 1));
     return k === T_IDENT || k === T_LPAREN;
   }
 
@@ -2569,16 +2754,16 @@ export class DtParser {
     let mutable = -1;
     if (this.kw(this.p) === K_REQUIRED && this.modifierFollows(this.p)) {
       req = this.p;
-      this.p = req + 1;
+      this.p = dtTok(req, 1);
     }
     if (this.kw(this.p) === K_COVARIANT && this.modifierFollows(this.p)) {
       cov = this.p;
-      this.p = cov + 1;
+      this.p = dtTok(cov, 1);
     }
     const mk = this.kw(this.p);
     if ((mk === K_VAR || mk === K_FINAL || mk === K_CONST) && this.modifierFollows(this.p)) {
       mutable = this.p;
-      this.p = mutable + 1;
+      this.p = dtTok(mutable, 1);
       // Before primary constructors (3.13), `var` and `final` were fine on
       // any parameter.
       if ((this.primaryCtors && !this.inPrimary) || mk === K_CONST) {
@@ -2591,7 +2776,7 @@ export class DtParser {
     let period = -1;
     const p = this.p;
     const pk = this.kw(p);
-    if (!((pk === K_THIS || pk === K_SUPER) && this.k(p + 1) === T_DOT)) {
+    if (!((pk === K_THIS || pk === K_SUPER) && this.k(dtTok(p, 1)) === T_DOT)) {
       const te = this.computeType(p << 2, false);
       if (te !== NO && ctx !== FP_FUNCTION_TYPE) {
         type = this.parseTypeTo(te);
@@ -2600,15 +2785,15 @@ export class DtParser {
       }
     }
     const fk = this.kw(this.p);
-    if ((fk === K_THIS || fk === K_SUPER) && this.k(this.p + 1) === T_DOT) {
+    if ((fk === K_THIS || fk === K_SUPER) && this.k(dtTok(this.p, 1)) === T_DOT) {
       fieldKw = this.p;
-      period = this.p + 1;
-      this.p = this.p + 2;
+      period = dtTok(this.p, 1);
+      this.p = dtTok(this.p, 2);
     }
     let name = -1;
     if (this.isId(this.p) || (fieldKw >= 0 && this.k(this.p) === T_IDENT)) {
       name = this.p;
-      this.p = name + 1;
+      this.p = dtTok(name, 1);
     } else if (ctx !== FP_FUNCTION_TYPE || fieldKw >= 0) {
       this.fail("expected parameter name");
       return -1;
@@ -2634,7 +2819,7 @@ export class DtParser {
     const dk = this.k(this.p);
     if ((dk === T_EQ || dk === T_COLON) && kind !== 0) {
       const sep = this.p;
-      this.p = sep + 1;
+      this.p = dtTok(sep, 1);
       const v = this.parseExpression();
       def = this.mk(N_FORMAL_PARAMETER_DEFAULT_CLAUSE, sep, sep, v);
     }
@@ -2676,13 +2861,13 @@ export class DtParser {
     const kw = this.kw(beg);
     if (
       (kw === K_ASYNC || kw === K_SYNC) &&
-      (this.k(beg + 1) === T_LBRACE || this.k(beg + 1) === T_ARROW || this.k(beg + 1) === T_STAR)
+      (this.k(dtTok(beg, 1)) === T_LBRACE || this.k(dtTok(beg, 1)) === T_ARROW || this.k(dtTok(beg, 1)) === T_STAR)
     ) {
       keyword = beg;
-      this.p = beg + 1;
+      this.p = dtTok(beg, 1);
       if (this.k(this.p) === T_STAR) {
         star = this.p;
-        this.p = star + 1;
+        this.p = dtTok(star, 1);
       } else if (kw === K_SYNC) {
         this.fail("sync without *");
         return -1;
@@ -2698,7 +2883,7 @@ export class DtParser {
         return -1;
       }
       const arrow = this.p;
-      this.p = arrow + 1;
+      this.p = dtTok(arrow, 1);
       const e = this.parseExpression();
       let semi = -1;
       if (!inExpression) {
@@ -2710,11 +2895,11 @@ export class DtParser {
       body = this.mk(N_BLOCK_FUNCTION_BODY, beg, keyword, star, block);
     } else if (k === T_SEMI && allowEmpty && keyword < 0) {
       const s = this.p;
-      this.p = s + 1;
+      this.p = dtTok(s, 1);
       body = this.mk(N_EMPTY_FUNCTION_BODY, s, s);
     } else if (this.kw(this.p) === K_NATIVE && allowEmpty && keyword < 0) {
       const nt = this.p;
-      this.p = nt + 1;
+      this.p = dtTok(nt, 1);
       let s = -1;
       if (this.k(this.p) === T_STRING) {
         s = this.parseStringLiteral();
@@ -2748,26 +2933,26 @@ export class DtParser {
     const p = this.p;
     const k = this.k(p);
     if (k === T_LBRACE) {
-      const m = this.mt[p];
-      if (m >= 0 && this.k(m + 1) === T_EQ) {
+      const m = this.mtAt(p);
+      if (m >= 0 && this.k(dtTok(m, 1)) === T_EQ) {
         return this.parseExpressionStatement();
       }
       return this.parseBlock();
     }
     if (k === T_SEMI) {
-      this.p = p + 1;
+      this.p = dtTok(p, 1);
       return this.mk(N_EMPTY_STATEMENT, p, p);
     }
     if (k !== T_IDENT) {
       return this.parseExpressionStatementOrDeclaration();
     }
-    const kw = this.t.kw[p];
-    if (this.isId(p) && this.k(p + 1) === T_COLON) {
+    const kw = this.kwRaw(p);
+    if (this.isId(p) && this.k(dtTok(p, 1)) === T_COLON) {
       return this.parseLabeled();
     }
     switch (kw) {
       case K_RETURN: {
-        this.p = p + 1;
+        this.p = dtTok(p, 1);
         let e = -1;
         if (this.k(this.p) !== T_SEMI) {
           e = this.parseExpression();
@@ -2780,13 +2965,13 @@ export class DtParser {
       case K_FOR:
         return this.parseFor(-1);
       case K_AWAIT:
-        if (this.kw(p + 1) === K_FOR) {
-          this.p = p + 1;
+        if (this.kw(dtTok(p, 1)) === K_FOR) {
+          this.p = dtTok(p, 1);
           return this.parseFor(p);
         }
         return this.parseExpressionStatement();
       case K_WHILE: {
-        this.p = p + 1;
+        this.p = dtTok(p, 1);
         const lp = this.expect(T_LPAREN);
         const c = this.parseExpression();
         const rp = this.expect(T_RPAREN);
@@ -2794,7 +2979,7 @@ export class DtParser {
         return this.mk(N_WHILE_STATEMENT, p, p, lp, c, rp, body);
       }
       case K_DO: {
-        this.p = p + 1;
+        this.p = dtTok(p, 1);
         const body = this.parseStatement();
         const wh = this.expectKw(K_WHILE);
         const lp = this.expect(T_LPAREN);
@@ -2809,11 +2994,11 @@ export class DtParser {
         return this.parseSwitchStatement();
       case K_BREAK:
       case K_CONTINUE: {
-        this.p = p + 1;
+        this.p = dtTok(p, 1);
         let label = -1;
         if (this.isId(this.p)) {
           const lt = this.p;
-          this.p = lt + 1;
+          this.p = dtTok(lt, 1);
           label = this.mk(N_LABEL_REFERENCE, lt, lt);
         }
         const semi = this.expect(T_SEMI);
@@ -2823,7 +3008,7 @@ export class DtParser {
         return this.parseAssert(false);
       case K_YIELD: {
         if (this.asyncState !== 0 || this.looksLikeExprAfter(p, false)) {
-          this.p = p + 1;
+          this.p = dtTok(p, 1);
           const star = this.optional(T_STAR);
           const e = this.parseExpression();
           const semi = this.expect(T_SEMI);
@@ -2841,10 +3026,10 @@ export class DtParser {
   parseLabeled(): i32 {
     const beg = this.p;
     const labels: i32[] = [];
-    while (this.isId(this.p) && this.k(this.p + 1) === T_COLON) {
+    while (this.isId(this.p) && this.k(dtTok(this.p, 1)) === T_COLON) {
       const n = this.p;
-      this.p = n + 2;
-      labels.push(this.mkEnd(N_LABEL, n, n + 1, n, n + 1));
+      this.p = dtTok(n, 2);
+      labels.push(this.mkEnd(N_LABEL, n, dtTok(n, 1), n, dtTok(n, 1)));
     }
     const s = this.parseStatement();
     return this.mk(N_LABELED_STATEMENT, beg, this.a.list(labels), s);
@@ -2867,7 +3052,7 @@ export class DtParser {
     let msg = -1;
     if (this.k(this.p) === T_COMMA) {
       comma = this.p;
-      this.p = comma + 1;
+      this.p = dtTok(comma, 1);
       if (this.k(this.p) !== T_RPAREN) {
         msg = this.parseExpression();
         this.optional(T_COMMA);
@@ -2891,13 +3076,13 @@ export class DtParser {
   skipOuterPattern(i: i32): i32 {
     if (this.isId(i)) {
       let j = i;
-      if (this.k(j + 1) === T_DOT) {
-        if (!this.isId(j + 2)) {
+      if (this.k(dtTok(j, 1)) === T_DOT) {
+        if (!this.isId(dtTok(j, 2))) {
           return -1;
         }
-        j = j + 2;
+        j = dtTok(j, 2);
       }
-      let a = j + 1;
+      let a = dtTok(j, 1);
       if (this.k(a) === T_LT) {
         const e = this.typeArgsTok(a, false);
         if (e < 0 || (e & 3) !== 0) {
@@ -2908,7 +3093,7 @@ export class DtParser {
       if (this.k(a) !== T_LPAREN) {
         return -1;
       }
-      return this.mt[a];
+      return this.mtAt(a);
     }
     let a = i;
     let hasArgs = false;
@@ -2924,10 +3109,10 @@ export class DtParser {
     }
     const k = this.k(a);
     if (k === T_LBRACKET || k === T_LBRACE) {
-      return this.mt[a];
+      return this.mtAt(a);
     }
     if (!hasArgs && k === T_LPAREN) {
-      return this.mt[a];
+      return this.mtAt(a);
     }
     return -1;
   }
@@ -2945,21 +3130,21 @@ export class DtParser {
     if (kw === K_VAR || kw === K_FINAL || kw === K_CONST) {
       if (kw !== K_CONST || this.constStartsDeclaration(this.p)) {
         keyword = this.p;
-        this.p = this.p + 1;
+        this.p = dtTok(this.p, 1);
       }
-    } else if (kw === K_LATE && (this.k(this.p + 1) === T_IDENT || this.k(this.p + 1) === T_LPAREN)) {
+    } else if (kw === K_LATE && (this.k(dtTok(this.p, 1)) === T_IDENT || this.k(dtTok(this.p, 1)) === T_LPAREN)) {
       late = this.p;
-      this.p = this.p + 1;
+      this.p = dtTok(this.p, 1);
       if (this.kw(this.p) === K_VAR || this.kw(this.p) === K_FINAL) {
         keyword = this.p;
-        this.p = this.p + 1;
+        this.p = dtTok(this.p, 1);
       }
     }
     const beforeType = this.p;
     // A pattern variable declaration.
     if (keyword >= 0 && this.kw(keyword) !== K_CONST) {
       const e = this.skipOuterPattern(beforeType);
-      if (e >= 0 && this.k(e + 1) === T_EQ) {
+      if (e >= 0 && this.k(dtTok(e, 1)) === T_EQ) {
         const decl = this.parsePatternDeclaration(start, meta, keyword);
         const semi = this.expect(T_SEMI);
         return this.mk(N_PATTERN_VARIABLE_DECLARATION_STATEMENT, start, decl, semi);
@@ -2983,7 +3168,7 @@ export class DtParser {
         ret = this.parseType();
       }
       const name = this.expectId();
-      const fe = this.parseFunctionExpressionRest(name + 1, true);
+      const fe = this.parseFunctionExpressionRest(dtTok(name, 1), true);
       const fd = this.mk(N_FUNCTION_DECLARATION, start, meta, -1, ret, -1, name, fe);
       return this.mk(N_FUNCTION_DECLARATION_STATEMENT, start, fd);
     }
@@ -2992,13 +3177,13 @@ export class DtParser {
       // `a ? b : c` scanned as the type `a?` and the name `b`.
       const next = afterType;
       if (this.looksLikeName(next << 2)) {
-        const ai = next + 1;
+        const ai = dtTok(next, 1);
         if (this.k(ai) === T_EQ) {
-          if (this.speculateConditional(ai + 1)) {
+          if (this.speculateConditional(dtTok(ai, 1))) {
             te = NO;
           }
         } else if (
-          !(this.k(ai) === T_IDENT && this.t.kw[ai] !== K_NONE) &&
+          !(this.k(ai) === T_IDENT && this.kwRaw(ai) !== K_NONE) &&
           !(this.k(ai) === T_SEMI || this.k(ai) === T_COMMA || this.k(ai) === T_RPAREN || this.k(ai) === T_EOF)
         ) {
           te = NO;
@@ -3014,7 +3199,7 @@ export class DtParser {
     if (te !== NO && plain && couldBeExpr) {
       const nkw = this.kw(afterType);
       if (nkw === K_AS || nkw === K_IS) {
-        const kk = this.k(afterType + 1);
+        const kk = this.k(dtTok(afterType, 1));
         if (kk !== T_EQ && kk !== T_SEMI && kk !== T_COMMA) {
           return this.parseExpressionStatement();
         }
@@ -3034,13 +3219,13 @@ export class DtParser {
 
   /** fasta's parseExpressionStatementOrConstDeclaration test for `const` at `c`. */
   constStartsDeclaration(c: i32): boolean {
-    const te = this.computeType((c + 1) << 2, false);
+    const te = this.computeType(dtTok(c, 1) << 2, false);
     if (te === NO) {
-      const next = c + 1;
+      const next = dtTok(c, 1);
       if (!this.isId(next)) {
         return false;
       }
-      const n2 = this.k(next + 1);
+      const n2 = this.k(dtTok(next, 1));
       if (!(n2 === T_EQ || n2 === T_IDENT || n2 === T_SEMI || n2 === T_COMMA || n2 === T_LBRACE)) {
         return false;
       }
@@ -3053,7 +3238,7 @@ export class DtParser {
     if (!this.isId(i)) {
       return false;
     }
-    let j = i + 1;
+    let j = dtTok(i, 1);
     if (this.k(j) === T_LT) {
       const e = this.typeArgsTok(j, false);
       if (e < 0 || (e & 3) !== 0) {
@@ -3062,11 +3247,11 @@ export class DtParser {
       j = toI32(e >> 2);
     }
     if (this.k(j) === T_LPAREN) {
-      const m = this.mt[j];
+      const m = this.mtAt(j);
       if (m < 0) {
         return false;
       }
-      return this.looksLikeFunctionBody(m + 1);
+      return this.looksLikeFunctionBody(dtTok(m, 1));
     }
     return this.k(j) === T_ARROW;
   }
@@ -3104,26 +3289,46 @@ export class DtParser {
   }
 
   restore(s: i32): void {
-    this.p = this.svP[s];
-    this.a.n = this.svN[s];
-    this.a.nf = this.svF[s];
-    this.a.nl = this.svL[s];
-    this.failed = this.svFailed[s];
-    this.svP.pop();
-    this.svN.pop();
-    this.svF.pop();
-    this.svL.pop();
-    this.svFailed.pop();
+    const svP = this.svP;
+    const svN = this.svN;
+    const svF = this.svF;
+    const svL = this.svL;
+    const svFailed = this.svFailed;
+    // The five stacks are pushed together, and `s` is their top.
+    if (s < 0 || s >= svP.length || s >= svN.length || s >= svF.length || s >= svL.length || s >= svFailed.length) {
+      this.bad();
+      return;
+    }
+    this.p = svP[s];
+    this.a.n = svN[s];
+    this.a.nf = svF[s];
+    this.a.nl = svL[s];
+    this.failed = svFailed[s];
+    if (svP.length > 0) {
+      svP.pop();
+    }
+    if (svN.length > 0) {
+      svN.pop();
+    }
+    if (svF.length > 0) {
+      svF.pop();
+    }
+    if (svL.length > 0) {
+      svL.pop();
+    }
+    if (svFailed.length > 0) {
+      svFailed.pop();
+    }
   }
 
   /** Whether the text from `i` parses as `?` expr `:` expr. */
   canParseAsConditional(q: i32): boolean {
     const s = this.save();
-    this.p = q + 1;
+    this.p = dtTok(q, 1);
     this.parseExpressionNoCascade();
     let ok = false;
     if (!this.failed && this.k(this.p) === T_COLON) {
-      this.p = this.p + 1;
+      this.p = dtTok(this.p, 1);
       this.parseExpressionNoCascade();
       ok = !this.failed;
     }
@@ -3150,7 +3355,7 @@ export class DtParser {
     let els = -1;
     if (this.kw(this.p) === K_ELSE) {
       elseTok = this.p;
-      this.p = elseTok + 1;
+      this.p = dtTok(elseTok, 1);
       els = this.parseStatement();
     }
     return this.mk(N_IF_STATEMENT, ifTok, ifTok, lp, e, cc, rp, then, elseTok, els);
@@ -3162,7 +3367,7 @@ export class DtParser {
       return -1;
     }
     const ct = this.p;
-    this.p = ct + 1;
+    this.p = dtTok(ct, 1);
     const gp = this.parseGuardedPattern();
     return this.mk(N_CASE_CLAUSE, ct, ct, gp);
   }
@@ -3173,7 +3378,7 @@ export class DtParser {
     let when = -1;
     if (this.kw(this.p) === K_WHEN) {
       const wt = this.p;
-      this.p = wt + 1;
+      this.p = dtTok(wt, 1);
       const e = this.parseExpression();
       when = this.mk(N_WHEN_CLAUSE, wt, wt, e);
     }
@@ -3201,23 +3406,23 @@ export class DtParser {
     const kw = this.kw(this.p);
     if (kw === K_VAR || kw === K_FINAL || kw === K_CONST) {
       keyword = this.p;
-      this.p = this.p + 1;
+      this.p = dtTok(this.p, 1);
     } else if (kw === K_LATE) {
       late = this.p;
-      this.p = this.p + 1;
+      this.p = dtTok(this.p, 1);
       if (this.kw(this.p) === K_VAR || this.kw(this.p) === K_FINAL) {
         keyword = this.p;
-        this.p = this.p + 1;
+        this.p = dtTok(this.p, 1);
       }
     }
     const beforeType = this.p;
     if (keyword >= 0 && this.kw(keyword) !== K_CONST) {
       const e = this.skipOuterPattern(beforeType);
-      if (e >= 0 && (this.k(e + 1) === T_EQ || this.kw(e + 1) === K_IN)) {
+      if (e >= 0 && (this.k(dtTok(e, 1)) === T_EQ || this.kw(dtTok(e, 1)) === K_IN)) {
         const pat = this.parsePattern(PC_DECLARATION, 1);
         if (this.kw(this.p) === K_IN) {
           const inTok = this.p;
-          this.p = inTok + 1;
+          this.p = dtTok(inTok, 1);
           const it = this.parseExpression();
           return this.mk(N_FOR_EACH_PARTS_WITH_PATTERN, start, meta, keyword, pat, inTok, it);
         }
@@ -3240,8 +3445,8 @@ export class DtParser {
     const plain = beforeType === start;
     if (te !== NO && plain && this.tyCouldBeExpr) {
       const nkw = this.kw(afterType);
-      if ((nkw === K_AS || nkw === K_IS) && this.kw(afterType + 1) !== K_IN) {
-        const kk = this.k(afterType + 1);
+      if ((nkw === K_AS || nkw === K_IS) && this.kw(dtTok(afterType, 1)) !== K_IN) {
+        const kk = this.k(dtTok(afterType, 1));
         if (kk !== T_EQ && kk !== T_SEMI && kk !== T_COMMA) {
           te = NO;
         }
@@ -3249,7 +3454,7 @@ export class DtParser {
     }
     if (te === NO && plain) {
       // An expression, or an identifier before `in`.
-      if (this.isId(this.p) && this.kw(this.p + 1) === K_IN) {
+      if (this.isId(this.p) && this.kw(dtTok(this.p, 1)) === K_IN) {
         const id = this.ident();
         const inTok = this.expectKw(K_IN);
         const it = this.parseExpression();
@@ -3267,7 +3472,7 @@ export class DtParser {
     if (te !== NO) {
       type = this.parseType();
     }
-    if (this.isId(this.p) && this.kw(this.p + 1) === K_IN) {
+    if (this.isId(this.p) && this.kw(dtTok(this.p, 1)) === K_IN) {
       const name = this.expectId();
       const di = this.mk(N_DECLARED_IDENTIFIER, start, meta, keyword, type, name);
       const inTok = this.expectKw(K_IN);
@@ -3295,7 +3500,7 @@ export class DtParser {
         break;
       }
     }
-    return this.mk(kind, init >= 0 ? this.a.beg[init] : ls, init, ls, cond, rs, this.a.list(ups));
+    return this.mk(kind, init >= 0 ? this.begOf(init) : ls, init, ls, cond, rs, this.a.list(ups));
   }
 
   parseTry(): i32 {
@@ -3308,7 +3513,7 @@ export class DtParser {
       let type = -1;
       if (this.kw(this.p) === K_ON) {
         on = this.p;
-        this.p = on + 1;
+        this.p = dtTok(on, 1);
         type = this.parseType();
       }
       let catchTok = -1;
@@ -3319,13 +3524,13 @@ export class DtParser {
       let rp = -1;
       if (this.kw(this.p) === K_CATCH) {
         catchTok = this.p;
-        this.p = catchTok + 1;
+        this.p = dtTok(catchTok, 1);
         lp = this.expect(T_LPAREN);
         const e = this.expectId();
         ep = this.mk(N_CATCH_CLAUSE_PARAMETER, e, e);
         if (this.k(this.p) === T_COMMA) {
           comma = this.p;
-          this.p = comma + 1;
+          this.p = dtTok(comma, 1);
           const s = this.expectId();
           sp = this.mk(N_CATCH_CLAUSE_PARAMETER, s, s);
         }
@@ -3338,7 +3543,7 @@ export class DtParser {
     let finBlock = -1;
     if (this.kw(this.p) === K_FINALLY) {
       fin = this.p;
-      this.p = fin + 1;
+      this.p = dtTok(fin, 1);
       finBlock = this.parseBlock();
     }
     if (catches.length === 0 && fin < 0) {
@@ -3358,15 +3563,15 @@ export class DtParser {
     while (!this.failed && this.k(this.p) !== T_RBRACE) {
       const mb = this.p;
       const labels: i32[] = [];
-      while (this.isId(this.p) && this.k(this.p + 1) === T_COLON) {
+      while (this.isId(this.p) && this.k(dtTok(this.p, 1)) === T_COLON) {
         const n = this.p;
-        this.p = n + 2;
-        labels.push(this.mkEnd(N_LABEL, n, n + 1, n, n + 1));
+        this.p = dtTok(n, 2);
+        labels.push(this.mkEnd(N_LABEL, n, dtTok(n, 1), n, dtTok(n, 1)));
       }
       const kw = this.kw(this.p);
       if (kw === K_CASE) {
         const ct = this.p;
-        this.p = ct + 1;
+        this.p = dtTok(ct, 1);
         if (!this.patterns) {
           // Before 3.0, a case holds an expression.
           const e = this.parseExpression();
@@ -3381,7 +3586,7 @@ export class DtParser {
         members.push(this.mk(N_SWITCH_PATTERN_CASE, mb, this.a.list(labels), ct, gp, colon, stmts));
       } else if (kw === K_DEFAULT) {
         const dt = this.p;
-        this.p = dt + 1;
+        this.p = dtTok(dt, 1);
         const colon = this.expect(T_COLON);
         const stmts = this.parseSwitchStatements();
         members.push(this.mk(N_SWITCH_DEFAULT, mb, this.a.list(labels), dt, colon, stmts));
@@ -3407,8 +3612,8 @@ export class DtParser {
       }
       // A label before `case`?
       let j = this.p;
-      while (this.isId(j) && this.k(j + 1) === T_COLON) {
-        j = j + 2;
+      while (this.isId(j) && this.k(dtTok(j, 1)) === T_COLON) {
+        j = dtTok(j, 2);
       }
       if (j > this.p && (this.kw(j) === K_CASE || this.kw(j) === K_DEFAULT)) {
         break;
@@ -3431,37 +3636,47 @@ export class DtParser {
   depth: i32 = 0;
 
   parseExpr(allowCascades: boolean): i32 {
-    this.depth = this.depth + 1;
-    if (this.depth > 400) {
+    const depth = this.depth;
+    if (depth >= 400) {
       this.fail("expression too deep");
-      this.depth = this.depth - 1;
       return -1;
     }
+    this.depth = depth + 1;
     const p = this.p;
     let r = -1;
     const e = this.skipOuterPattern(p);
-    if (e >= 0 && this.k(e + 1) === T_EQ) {
+    if (e >= 0 && this.k(dtTok(e, 1)) === T_EQ) {
       const pat = this.parsePattern(PC_ASSIGNMENT, 1);
       const eq = this.expect(T_EQ);
       const rhs = this.parseExpr(allowCascades);
       r = this.mk(N_PATTERN_ASSIGNMENT, p, pat, eq, rhs);
     } else if (this.kw(p) === K_THROW) {
-      this.p = p + 1;
+      this.p = dtTok(p, 1);
       const ex = this.parseExpr(allowCascades);
       r = this.mk(N_THROW_EXPRESSION, p, p, ex);
     } else {
       r = this.parsePrecedence(P_ASSIGNMENT, allowCascades, false);
     }
-    this.depth = this.depth - 1;
+    // Back to the depth on entry, which was below 400.
+    const d = this.depth;
+    if (d > 0) {
+      this.depth = d - 1;
+    } else {
+      this.bad();
+    }
     return r;
   }
 
   /** Whether `.` at `i` (or `const .` there) starts a dot shorthand. */
   isDotShorthand(i: i32): boolean {
-    if (this.k(i) === T_DOT && (this.isId(i + 1) || this.kw(i + 1) === K_NEW)) {
+    if (this.k(i) === T_DOT && (this.isId(dtTok(i, 1)) || this.kw(dtTok(i, 1)) === K_NEW)) {
       return true;
     }
-    if (this.kw(i) === K_CONST && this.k(i + 1) === T_DOT && (this.isId(i + 2) || this.kw(i + 2) === K_NEW)) {
+    if (
+      this.kw(i) === K_CONST &&
+      this.k(dtTok(i, 1)) === T_DOT &&
+      (this.isId(dtTok(i, 2)) || this.kw(dtTok(i, 2)) === K_NEW)
+    ) {
       return true;
     }
     return false;
@@ -3484,7 +3699,7 @@ export class DtParser {
     let cst = -1;
     if (this.kw(beg) === K_CONST) {
       cst = beg;
-      this.p = beg + 1;
+      this.p = dtTok(beg, 1);
     }
     const dot = this.expect(T_DOT);
     const name = this.identAny();
@@ -3515,8 +3730,8 @@ export class DtParser {
     left = this.precedenceLoop(P_SELECTOR, allowCascades, left, false);
     if (this.k(this.p) === T_BANG) {
       const b = this.p;
-      this.p = b + 1;
-      left = this.mk(N_POSTFIX_EXPRESSION, this.a.beg[left], left, b);
+      this.p = dtTok(b, 1);
+      left = this.mk(N_POSTFIX_EXPRESSION, this.begOf(left), left, b);
     }
     return left;
   }
@@ -3525,20 +3740,20 @@ export class DtParser {
   precOf(i: i32): i32 {
     const k = this.k(i);
     if (k === T_BANG) {
-      const n = this.k(i + 1);
+      const n = this.k(dtTok(i, 1));
       if (n === T_DOT || n === T_QUESTION || n === T_LPAREN || n === T_LBRACKET || n === T_QDOT) {
         return P_SELECTOR;
       }
       return P_POSTFIX;
     }
-    if (k === T_QUESTION && this.k(i + 1) === T_LBRACKET) {
+    if (k === T_QUESTION && this.k(dtTok(i, 1)) === T_LBRACKET) {
       if (!this.canParseAsConditional(i)) {
         return P_SELECTOR;
       }
       return P_CONDITIONAL;
     }
     if (k === T_IDENT) {
-      const kw = this.t.kw[i];
+      const kw = this.kwRaw(i);
       if (kw === K_IS || kw === K_AS) {
         return P_RELATIONAL;
       }
@@ -3559,17 +3774,17 @@ export class DtParser {
     let left = left0;
     // fasta looks past a `!` for the type arguments: `e!<T>(a)`.
     const bang = this.k(this.p) === T_BANG ? this.p : -1;
-    const e = this.methodTypeArgsEnd(bang >= 0 ? bang + 1 : this.p);
+    const e = this.methodTypeArgsEnd(bang >= 0 ? dtTok(bang, 1) : this.p);
     if (e === NO) {
       return left;
     }
     if (bang >= 0) {
-      this.p = bang + 1;
-      left = this.mk(N_POSTFIX_EXPRESSION, this.a.beg[left], left, bang);
+      this.p = dtTok(bang, 1);
+      left = this.mk(N_POSTFIX_EXPRESSION, this.begOf(left), left, bang);
     }
     const ta = this.parseTypeArgumentList();
     if (this.k(this.p) !== T_LPAREN) {
-      return this.mk(N_FUNCTION_REFERENCE, this.a.beg[left], left, ta);
+      return this.mk(N_FUNCTION_REFERENCE, this.begOf(left), left, ta);
     }
     this.pendingTargs = ta;
     return left;
@@ -3591,7 +3806,7 @@ export class DtParser {
       const op = this.p;
       const k = this.k(op);
       if (sections.length > 0 && tokenLevel !== P_CASCADE) {
-        left = this.mk(N_CASCADE_EXPRESSION, this.a.beg[left], left, this.a.list(sections));
+        left = this.mk(N_CASCADE_EXPRESSION, this.begOf(left), left, this.a.list(sections));
         sections = [];
       }
       if (tokenLevel === P_CASCADE) {
@@ -3600,41 +3815,41 @@ export class DtParser {
         }
         sections.push(this.parseCascadeSection());
       } else if (tokenLevel === P_ASSIGNMENT) {
-        this.p = op + 1;
+        this.p = dtTok(op, 1);
         const rhs = this.parseExpr(allowCascades);
-        left = this.mk(N_ASSIGNMENT_EXPRESSION, this.a.beg[left], left, op, rhs);
+        left = this.mk(N_ASSIGNMENT_EXPRESSION, this.begOf(left), left, op, rhs);
       } else if (tokenLevel === P_POSTFIX) {
-        this.p = op + 1;
-        left = this.mk(N_POSTFIX_EXPRESSION, this.a.beg[left], left, op);
+        this.p = dtTok(op, 1);
+        left = this.mk(N_POSTFIX_EXPRESSION, this.begOf(left), left, op);
       } else if (tokenLevel === P_SELECTOR) {
         if (k === T_DOT || k === T_QDOT) {
-          this.p = op + 1;
+          this.p = dtTok(op, 1);
           left = this.dotSelector(left, op);
           left = this.typeArgApplication(left);
         } else if (k === T_LPAREN || k === T_LBRACKET || k === T_QUESTION) {
           left = this.argumentOrIndexStar(left, k === T_QUESTION);
         } else if (k === T_BANG) {
-          this.p = op + 1;
-          left = this.mk(N_POSTFIX_EXPRESSION, this.a.beg[left], left, op);
+          this.p = dtTok(op, 1);
+          left = this.mk(N_POSTFIX_EXPRESSION, this.begOf(left), left, op);
         } else {
           this.fail("unexpected selector");
           return left;
         }
-      } else if (k === T_IDENT && this.t.kw[op] === K_IS) {
-        this.p = op + 1;
+      } else if (k === T_IDENT && this.kwRaw(op) === K_IS) {
+        this.p = dtTok(op, 1);
         const not = this.optional(T_BANG);
         const type = this.parseTypeAfterIsOrAs();
-        left = this.mk(N_IS_EXPRESSION, this.a.beg[left], left, op, not, type);
-      } else if (k === T_IDENT && this.t.kw[op] === K_AS) {
-        this.p = op + 1;
+        left = this.mk(N_IS_EXPRESSION, this.begOf(left), left, op, not, type);
+      } else if (k === T_IDENT && this.kwRaw(op) === K_AS) {
+        this.p = dtTok(op, 1);
         const type = this.parseTypeAfterIsOrAs();
-        left = this.mk(N_AS_EXPRESSION, this.a.beg[left], left, op, type);
+        left = this.mk(N_AS_EXPRESSION, this.begOf(left), left, op, type);
       } else if (k === T_QUESTION) {
-        this.p = op + 1;
+        this.p = dtTok(op, 1);
         const then = this.parseExpressionNoCascade();
         const colon = this.expect(T_COLON);
         const els = this.parseExpressionNoCascade();
-        left = this.mk(N_CONDITIONAL_EXPRESSION, this.a.beg[left], left, op, then, colon, els);
+        left = this.mk(N_CONDITIONAL_EXPRESSION, this.begOf(left), left, op, then, colon, els);
       } else {
         if (level === P_EQUALITY || level === P_RELATIONAL) {
           if (lastBinaryLevel === level) {
@@ -3643,9 +3858,9 @@ export class DtParser {
           }
           lastBinaryLevel = level;
         }
-        this.p = op + 1;
-        const rhs = this.parsePrecedence(level + 1, allowCascades, false);
-        left = this.mk(N_BINARY_EXPRESSION, this.a.beg[left], left, op, rhs);
+        this.p = dtTok(op, 1);
+        const rhs = this.parsePrecedence(dtPrecAbove(level), allowCascades, false);
+        left = this.mk(N_BINARY_EXPRESSION, this.begOf(left), left, op, rhs);
       }
       tokenLevel = this.precOf(this.p);
       if (constPattern && this.constPatternStop()) {
@@ -3661,7 +3876,7 @@ export class DtParser {
       }
     }
     if (sections.length > 0) {
-      left = this.mk(N_CASCADE_EXPRESSION, this.a.beg[left], left, this.a.list(sections));
+      left = this.mk(N_CASCADE_EXPRESSION, this.begOf(left), left, this.a.list(sections));
     }
     return left;
   }
@@ -3670,9 +3885,9 @@ export class DtParser {
   constPatternStop(): boolean {
     const k = this.k(this.p);
     if (k === T_BANG) {
-      return this.precOf(this.p) === P_POSTFIX || this.k(this.p + 1) === T_QUESTION;
+      return this.precOf(this.p) === P_POSTFIX || this.k(dtTok(this.p, 1)) === T_QUESTION;
     }
-    return k === T_IDENT && this.t.kw[this.p] === K_AS;
+    return k === T_IDENT && this.kwRaw(this.p) === K_AS;
   }
 
   /** A type after `is` or `as`: fasta's computeTypeAfterIsOrAs decides a `?`. */
@@ -3683,7 +3898,7 @@ export class DtParser {
       const next = toI32(te >> 2);
       const nk = this.k(next);
       const nkw = this.kw(next);
-      const q = next - 1;
+      const q = dtTok(next, -1);
       let keep = false;
       if (
         nk === T_RPAREN ||
@@ -3726,13 +3941,13 @@ export class DtParser {
         targs = this.parseTypeArgumentList();
       }
     }
-    const lb = this.a.beg[left];
+    const lb = this.begOf(left);
     if (this.k(this.p) === T_LPAREN) {
       const args = this.parseArgumentList();
-      const lk = this.a.kind[left];
-      if (lk === N_FUNCTION_REFERENCE && targs < 0 && this.t.kind[op] === T_DOT) {
+      const lk = this.kindOf(left);
+      if (lk === N_FUNCTION_REFERENCE && targs < 0 && this.k(op) === T_DOT) {
         const fn = this.a.f(left, 0);
-        const fk = this.a.kind[fn];
+        const fk = this.kindOf(fn);
         if (fk === N_SIMPLE_IDENTIFIER || fk === N_PREFIXED_IDENTIFIER) {
           // `Foo<T>.name(...)`: an implicit `new`.
           let prefix = -1;
@@ -3746,8 +3961,8 @@ export class DtParser {
             tname = this.a.f(this.a.f(fn, 2), 0);
           }
           const ta = this.a.f(left, 1);
-          const nt = this.mkEnd(N_NAMED_TYPE, lb, this.a.end[ta], prefix, period, tname, ta, -1);
-          const cn = this.mkEnd(N_CONSTRUCTOR_NAME, lb, this.a.end[name], nt, op, name);
+          const nt = this.mkEnd(N_NAMED_TYPE, lb, this.endOf(ta), prefix, period, tname, ta, -1);
+          const cn = this.mkEnd(N_CONSTRUCTOR_NAME, lb, this.endOf(name), nt, op, name);
           return this.mk(N_INSTANCE_CREATION_EXPRESSION, lb, -1, cn, args);
         }
       }
@@ -3757,7 +3972,7 @@ export class DtParser {
       this.fail("type arguments without call");
       return -1;
     }
-    if (this.a.kind[left] === N_SIMPLE_IDENTIFIER && this.t.kind[op] === T_DOT) {
+    if (this.kindOf(left) === N_SIMPLE_IDENTIFIER && this.k(op) === T_DOT) {
       return this.mk(N_PREFIXED_IDENTIFIER, lb, left, op, name);
     }
     return this.mk(N_PROPERTY_ACCESS, lb, left, op, name);
@@ -3770,7 +3985,7 @@ export class DtParser {
     while (!this.failed) {
       const p = this.p;
       const k = this.k(p);
-      let nullAware = k === T_QUESTION && this.k(p + 1) === T_LBRACKET;
+      let nullAware = k === T_QUESTION && this.k(dtTok(p, 1)) === T_LBRACKET;
       if (nullAware && !checked) {
         if (this.canParseAsConditional(p)) {
           nullAware = false;
@@ -3781,7 +3996,7 @@ export class DtParser {
         let q = -1;
         if (nullAware) {
           q = p;
-          this.p = p + 1;
+          this.p = dtTok(p, 1);
         }
         const lb = this.expect(T_LBRACKET);
         const old = this.mayFn;
@@ -3789,13 +4004,13 @@ export class DtParser {
         const idx = this.parseExpression();
         this.mayFn = old;
         const rb = this.expect(T_RBRACKET);
-        left = this.mk(N_INDEX_EXPRESSION, this.a.beg[left], left, -1, q, lb, idx, rb);
+        left = this.mk(N_INDEX_EXPRESSION, this.begOf(left), left, -1, q, lb, idx, rb);
         left = this.typeArgApplication(left);
       } else if (k === T_LPAREN) {
         const ta = this.pendingTargs;
         this.pendingTargs = -1;
         const args = this.parseArgumentList();
-        left = this.mk(N_FUNCTION_EXPRESSION_INVOCATION, this.a.beg[left], left, ta, args);
+        left = this.mk(N_FUNCTION_EXPRESSION_INVOCATION, this.begOf(left), left, ta, args);
         left = this.typeArgApplication(left);
       } else {
         break;
@@ -3806,11 +4021,11 @@ export class DtParser {
 
   parseCascadeSection(): i32 {
     const op = this.p;
-    this.p = op + 1;
+    this.p = dtTok(op, 1);
     let sec = -1;
     if (this.k(this.p) === T_LBRACKET) {
       const lb = this.p;
-      this.p = lb + 1;
+      this.p = dtTok(lb, 1);
       const old = this.mayFn;
       this.mayFn = true;
       const idx = this.parseExpression();
@@ -3840,11 +4055,11 @@ export class DtParser {
       const k = this.k(this.p);
       if (k === T_DOT || k === T_QDOT) {
         const d = this.p;
-        this.p = d + 1;
+        this.p = dtTok(d, 1);
         sec = this.dotSelector(sec, d);
       } else if (k === T_BANG) {
         const b = this.p;
-        this.p = b + 1;
+        this.p = dtTok(b, 1);
         sec = this.mk(N_POSTFIX_EXPRESSION, op, sec, b);
       }
       sec = this.typeArgApplication(sec);
@@ -3855,7 +4070,7 @@ export class DtParser {
     }
     if (dtPrecedence(this.k(this.p), K_NONE) === P_ASSIGNMENT) {
       const aop = this.p;
-      this.p = aop + 1;
+      this.p = dtTok(aop, 1);
       const rhs = this.parseExpressionNoCascade();
       sec = this.mk(N_ASSIGNMENT_EXPRESSION, op, sec, aop, rhs);
     }
@@ -3864,16 +4079,16 @@ export class DtParser {
 
   /** fasta's looksLikeExpressionAfterAwaitOrYield for the keyword at `i`. */
   looksLikeExprAfter(i: i32, unary: boolean): boolean {
-    const n = i + 1;
+    const n = dtTok(i, 1);
     if (this.isId(n)) {
-      const m = n + 1;
+      const m = dtTok(n, 1);
       const mk = this.k(m);
       if (mk === T_LPAREN) {
-        const e = this.mt[m];
+        const e = this.mtAt(m);
         if (e < 0) {
           return false;
         }
-        const ak = this.k(e + 1);
+        const ak = this.k(dtTok(e, 1));
         if (
           ak === T_SEMI ||
           ak === T_DOT ||
@@ -3885,7 +4100,7 @@ export class DtParser {
         ) {
           return true;
         }
-        return this.isBinaryOperator(e + 1);
+        return this.isBinaryOperator(dtTok(e, 1));
       }
       if (mk === T_DOT || mk === T_RPAREN || mk === T_RBRACKET) {
         return true;
@@ -3913,13 +4128,13 @@ export class DtParser {
   parseUnary(allowCascades: boolean): i32 {
     const p = this.p;
     const k = this.k(p);
-    if (k === T_IDENT && this.t.kw[p] === K_AWAIT && (this.asyncState !== 0 || this.looksLikeExprAfter(p, true))) {
-      this.p = p + 1;
+    if (k === T_IDENT && this.kwRaw(p) === K_AWAIT && (this.asyncState !== 0 || this.looksLikeExprAfter(p, true))) {
+      this.p = dtTok(p, 1);
       const e = this.parsePrecedence(P_POSTFIX, allowCascades, false);
       return this.mk(N_AWAIT_EXPRESSION, p, p, e);
     }
     if (k === T_MINUS || k === T_BANG || k === T_TILDE || k === T_INC || k === T_DEC) {
-      this.p = p + 1;
+      this.p = dtTok(p, 1);
       const e = this.parsePrecedence(P_POSTFIX, allowCascades, false);
       return this.mk(N_PREFIX_EXPRESSION, p, p, e);
     }
@@ -3930,11 +4145,11 @@ export class DtParser {
     // An implicit creation: `Foo<T>.name(...)` or `p.Foo<T>.name(...)`.
     if (this.isId(p)) {
       let id = p;
-      if (this.k(p + 1) === T_DOT && this.isId(p + 2)) {
-        id = p + 2;
+      if (this.k(dtTok(p, 1)) === T_DOT && this.isId(dtTok(p, 2))) {
+        id = dtTok(p, 2);
       }
-      if (this.k(id + 1) === T_LT) {
-        const e = this.typeArgsTok(id + 1, false);
+      if (this.k(dtTok(id, 1)) === T_LT) {
+        const e = this.typeArgsTok(dtTok(id, 1), false);
         if (e >= 0 && this.ck(e) === T_DOT) {
           const ap = this.cn(e);
           if ((this.cIsId(ap) || this.ckw(ap) === K_NEW) && this.ck(this.cn(ap)) === T_LPAREN) {
@@ -3957,13 +4172,13 @@ export class DtParser {
       this.fail("expected type name");
       return -1;
     }
-    if (this.k(beg + 1) === T_DOT && this.k(beg + 2) === T_IDENT) {
+    if (this.k(dtTok(beg, 1)) === T_DOT && this.k(dtTok(beg, 2)) === T_IDENT) {
       prefix = beg;
-      period = beg + 1;
-      this.p = beg + 2;
+      period = dtTok(beg, 1);
+      this.p = dtTok(beg, 2);
     }
     const name = this.p;
-    this.p = name + 1;
+    this.p = dtTok(name, 1);
     let targs = -1;
     if (this.k(this.p) === T_LT) {
       targs = this.parseTypeArgumentList();
@@ -3973,7 +4188,7 @@ export class DtParser {
     let cname = -1;
     if (this.k(this.p) === T_DOT) {
       cp = this.p;
-      this.p = cp + 1;
+      this.p = dtTok(cp, 1);
       cname = this.identAny();
     }
     return this.mk(N_CONSTRUCTOR_NAME, beg, nt, cp, cname);
@@ -3984,10 +4199,10 @@ export class DtParser {
     const k = this.k(p);
     switch (k) {
       case T_INT:
-        this.p = p + 1;
+        this.p = dtTok(p, 1);
         return this.mk(N_INTEGER_LITERAL, p, p);
       case T_DOUBLE:
-        this.p = p + 1;
+        this.p = dtTok(p, 1);
         return this.mk(N_DOUBLE_LITERAL, p, p);
       case T_STRING:
         return this.parseStringLiteral();
@@ -4007,26 +4222,26 @@ export class DtParser {
         this.fail("expected expression");
         return -1;
     }
-    const kw = this.t.kw[p];
+    const kw = this.kwRaw(p);
     switch (kw) {
       case K_TRUE:
       case K_FALSE:
-        this.p = p + 1;
+        this.p = dtTok(p, 1);
         return this.mk(N_BOOLEAN_LITERAL, p, p);
       case K_NULL:
-        this.p = p + 1;
+        this.p = dtTok(p, 1);
         return this.mk(N_NULL_LITERAL, p, p);
       case K_THIS:
-        this.p = p + 1;
+        this.p = dtTok(p, 1);
         return this.mk(N_THIS_EXPRESSION, p, p);
       case K_SUPER:
-        this.p = p + 1;
+        this.p = dtTok(p, 1);
         return this.mk(N_SUPER_EXPRESSION, p, p);
       case K_RETHROW:
-        this.p = p + 1;
+        this.p = dtTok(p, 1);
         return this.mk(N_RETHROW_EXPRESSION, p, p);
       case K_NEW: {
-        this.p = p + 1;
+        this.p = dtTok(p, 1);
         const cn = this.parseConstructorReference();
         const args = this.parseArgumentList();
         return this.mk(N_INSTANCE_CREATION_EXPRESSION, p, p, cn, args);
@@ -4061,14 +4276,14 @@ export class DtParser {
     }
     if (this.k(this.p) === T_LPAREN) {
       const args = this.parseArgumentList();
-      return this.mk(N_METHOD_INVOCATION, this.a.beg[id], -1, -1, id, targs, args);
+      return this.mk(N_METHOD_INVOCATION, this.begOf(id), -1, -1, id, targs, args);
     }
     return id;
   }
 
   parseConst(): i32 {
     const c = this.p;
-    this.p = c + 1;
+    this.p = dtTok(c, 1);
     const k = this.k(this.p);
     if (k === T_LBRACKET) {
       return this.parseListLiteral(c, -1);
@@ -4116,11 +4331,11 @@ export class DtParser {
     this.mayFn = true;
     const xs: i32[] = [];
     while (!this.failed && this.k(this.p) !== T_RPAREN) {
-      if (this.k(this.p) === T_IDENT && this.k(this.p + 1) === T_COLON) {
+      if (this.k(this.p) === T_IDENT && this.k(dtTok(this.p, 1)) === T_COLON) {
         const name = this.p;
-        this.p = name + 2;
+        this.p = dtTok(name, 2);
         const e = this.parseExpression();
-        xs.push(this.mk(N_NAMED_ARGUMENT, name, name, name + 1, e));
+        xs.push(this.mk(N_NAMED_ARGUMENT, name, name, dtTok(name, 1), e));
       } else {
         xs.push(this.parseExpression());
       }
@@ -4134,7 +4349,7 @@ export class DtParser {
     for (let i = 0; i < xs.length; i++) {
       const x = xs[i];
       // An argument that failed to parse is -1.
-      if (x >= 0 && this.a.kind[x] === N_ADJACENT_STRINGS) {
+      if (x >= 0 && this.kindOf(x) === N_ADJACENT_STRINGS) {
         let other = false;
         for (let j = 0; j < xs.length; j++) {
           if (j !== i && this.isStringLiteral(xs[j])) {
@@ -4151,16 +4366,16 @@ export class DtParser {
     if (n < 0) {
       return false;
     }
-    const k = this.a.kind[n];
+    const k = this.kindOf(n);
     return k === N_SIMPLE_STRING_LITERAL || k === N_STRING_INTERPOLATION || k === N_ADJACENT_STRINGS;
   }
 
   /** Sets AdjacentStrings.indentStrings for an assert's condition and message. */
   markAdjacentStrings(c: i32, m: i32): void {
-    if (c >= 0 && this.a.kind[c] === N_ADJACENT_STRINGS) {
+    if (c >= 0 && this.kindOf(c) === N_ADJACENT_STRINGS) {
       this.a.set(c, 1, this.isStringLiteral(m) ? 1 : 0);
     }
-    if (m >= 0 && this.a.kind[m] === N_ADJACENT_STRINGS) {
+    if (m >= 0 && this.kindOf(m) === N_ADJACENT_STRINGS) {
       this.a.set(m, 1, this.isStringLiteral(c) ? 1 : 0);
     }
   }
@@ -4169,8 +4384,8 @@ export class DtParser {
   parseParenOrFunction(): i32 {
     const lp = this.p;
     if (this.mayFn) {
-      const m = this.mt[lp];
-      const n = m + 1;
+      const m = this.mtAt(lp);
+      const n = dtTok(m, 1);
       const nk = this.k(n);
       const nkw = this.kw(n);
       if (nk === T_ARROW || nk === T_LBRACE || nkw === K_ASYNC || nkw === K_SYNC) {
@@ -4201,17 +4416,17 @@ export class DtParser {
         }
         break;
       }
-      if (xs.length === 0 && k === T_COMMA && this.k(this.p + 1) === T_RPAREN) {
+      if (xs.length === 0 && k === T_COMMA && this.k(dtTok(this.p, 1)) === T_RPAREN) {
         this.fail("record with no fields and a comma");
         return -1;
       }
-      if (k === T_IDENT && this.k(this.p + 1) === T_COLON) {
+      if (k === T_IDENT && this.k(dtTok(this.p, 1)) === T_COLON) {
         isRecord = true;
         named = true;
         const name = this.p;
-        this.p = name + 2;
+        this.p = dtTok(name, 2);
         const e = this.parseExpression();
-        xs.push(this.mk(N_RECORD_LITERAL_NAMED_FIELD, name, name, name + 1, e));
+        xs.push(this.mk(N_RECORD_LITERAL_NAMED_FIELD, name, name, dtTok(name, 1), e));
       } else {
         xs.push(this.parseExpression());
       }
@@ -4220,7 +4435,7 @@ export class DtParser {
       }
       isRecord = true;
       named = true;
-      this.p = this.p + 1;
+      this.p = dtTok(this.p, 1);
     }
     this.mayFn = old;
     const rp = this.expect(T_RPAREN);
@@ -4231,11 +4446,15 @@ export class DtParser {
       }
       return this.mk(N_RECORD_LITERAL, cst >= 0 ? cst : lp, cst, lp, this.a.list(xs), rp);
     }
+    if (xs.length < 1) {
+      this.bad();
+      return -1;
+    }
     return this.mk(N_PARENTHESIZED_EXPRESSION, lp, lp, xs[0], rp);
   }
 
   parseListLiteral(cst: i32, targs: i32): i32 {
-    const beg = cst >= 0 ? cst : targs >= 0 ? this.a.beg[targs] : this.p;
+    const beg = cst >= 0 ? cst : targs >= 0 ? this.begOf(targs) : this.p;
     const lb = this.expect(T_LBRACKET);
     const old = this.mayFn;
     this.mayFn = true;
@@ -4252,7 +4471,7 @@ export class DtParser {
   }
 
   parseSetOrMapLiteral(cst: i32, targs: i32): i32 {
-    const beg = cst >= 0 ? cst : targs >= 0 ? this.a.beg[targs] : this.p;
+    const beg = cst >= 0 ? cst : targs >= 0 ? this.begOf(targs) : this.p;
     const lb = this.expect(T_LBRACE);
     const old = this.mayFn;
     this.mayFn = true;
@@ -4274,7 +4493,7 @@ export class DtParser {
     const k = this.k(p);
     const kw = this.kw(p);
     if (kw === K_IF) {
-      this.p = p + 1;
+      this.p = dtTok(p, 1);
       const lp = this.expect(T_LPAREN);
       const e = this.parseExpression();
       const cc = this.parseCaseClauseOpt();
@@ -4284,16 +4503,16 @@ export class DtParser {
       let els = -1;
       if (this.kw(this.p) === K_ELSE) {
         elseTok = this.p;
-        this.p = elseTok + 1;
+        this.p = dtTok(elseTok, 1);
         els = this.parseElement(inBraces);
       }
       return this.mk(N_IF_ELEMENT, p, p, lp, e, cc, rp, then, elseTok, els);
     }
-    if (kw === K_FOR || (kw === K_AWAIT && this.kw(p + 1) === K_FOR)) {
+    if (kw === K_FOR || (kw === K_AWAIT && this.kw(dtTok(p, 1)) === K_FOR)) {
       let aw = -1;
       if (kw === K_AWAIT) {
         aw = p;
-        this.p = p + 1;
+        this.p = dtTok(p, 1);
       }
       const forTok = this.expectKw(K_FOR);
       const lp = this.expect(T_LPAREN);
@@ -4303,12 +4522,12 @@ export class DtParser {
       return this.mk(N_FOR_ELEMENT, p, aw, forTok, lp, parts, rp, body);
     }
     if (k === T_ELLIPSIS || k === T_ELLIPSIS_Q) {
-      this.p = p + 1;
+      this.p = dtTok(p, 1);
       const e = this.parseExpression();
       return this.mk(N_SPREAD_ELEMENT, p, p, e);
     }
     if (k === T_QUESTION) {
-      this.p = p + 1;
+      this.p = dtTok(p, 1);
       const e = this.parseExpression();
       if (inBraces && this.k(this.p) === T_COLON) {
         return this.mapEntryRest(p, p, e);
@@ -4327,7 +4546,7 @@ export class DtParser {
     let vq = -1;
     if (this.k(this.p) === T_QUESTION) {
       vq = this.p;
-      this.p = vq + 1;
+      this.p = dtTok(vq, 1);
     }
     const v = this.parseExpression();
     return this.mk(N_MAP_LITERAL_ENTRY, beg, keyQ, key, colon, vq, v);
@@ -4352,19 +4571,19 @@ export class DtParser {
 
   parseSingleString(): i32 {
     const first = this.p;
-    const fk = this.k(first + 1);
+    const fk = this.k(dtTok(first, 1));
     if (fk !== T_INTERP_EXPR && fk !== T_INTERP_IDENT) {
-      this.p = first + 1;
+      this.p = dtTok(first, 1);
       return this.mk(N_SIMPLE_STRING_LITERAL, first, first);
     }
     const els: i32[] = [];
-    this.p = first + 1;
+    this.p = dtTok(first, 1);
     els.push(this.mkEnd(N_INTERPOLATION_STRING, first, first, first));
     while (!this.failed) {
       const ik = this.k(this.p);
       if (ik === T_INTERP_EXPR) {
         const lb = this.p;
-        this.p = lb + 1;
+        this.p = dtTok(lb, 1);
         const old = this.mayFn;
         this.mayFn = true;
         const e = this.parseExpression();
@@ -4373,8 +4592,8 @@ export class DtParser {
         els.push(this.mk(N_INTERPOLATION_EXPRESSION, lb, lb, e, rb));
       } else if (ik === T_INTERP_IDENT) {
         const d = this.p;
-        const id = d + 1;
-        this.p = id + 1;
+        const id = dtTok(d, 1);
+        this.p = dtTok(id, 1);
         let e = -1;
         if (this.kw(id) === K_THIS) {
           e = this.mkEnd(N_THIS_EXPRESSION, id, id, id);
@@ -4397,16 +4616,16 @@ export class DtParser {
     const k = this.k(this.p);
     if (k === T_IDENT) {
       comps.push(this.p);
-      this.p = this.p + 1;
-      while (this.k(this.p) === T_DOT && this.k(this.p + 1) === T_IDENT) {
-        this.p = this.p + 1;
+      this.p = dtTok(this.p, 1);
+      while (this.k(this.p) === T_DOT && this.k(dtTok(this.p, 1)) === T_IDENT) {
+        this.p = dtTok(this.p, 1);
         comps.push(this.p);
-        this.p = this.p + 1;
+        this.p = dtTok(this.p, 1);
       }
     } else if (k !== T_EOF && k !== T_LPAREN && k !== T_RPAREN && k !== T_SEMI && k !== T_COMMA) {
       // An operator.
       comps.push(this.p);
-      this.p = this.p + 1;
+      this.p = dtTok(this.p, 1);
     } else {
       this.fail("bad symbol");
       return -1;
@@ -4452,7 +4671,7 @@ export class DtParser {
       let level = 0;
       if (k === T_BANG || k === T_QUESTION) {
         level = P_SELECTOR;
-      } else if (k === T_IDENT && this.t.kw[p] === K_AS) {
+      } else if (k === T_IDENT && this.kwRaw(p) === K_AS) {
         level = P_RELATIONAL;
       } else if (k === T_AMPAMP) {
         level = P_LOGICAL_AND;
@@ -4464,19 +4683,19 @@ export class DtParser {
       if (level < prec) {
         return left;
       }
-      if (k === T_IDENT && this.t.kw[p] === K_AS) {
-        this.p = p + 1;
+      if (k === T_IDENT && this.kwRaw(p) === K_AS) {
+        this.p = dtTok(p, 1);
         const type = this.parseTypeAfterIsOrAs();
         left = this.mk(N_CAST_PATTERN, beg, left, p, type);
       } else if (k === T_BANG) {
-        this.p = p + 1;
+        this.p = dtTok(p, 1);
         left = this.mk(N_NULL_ASSERT_PATTERN, beg, left, p);
       } else if (k === T_QUESTION) {
-        this.p = p + 1;
+        this.p = dtTok(p, 1);
         left = this.mk(N_NULL_CHECK_PATTERN, beg, left, p);
       } else if (k === T_AMPAMP || k === T_BARBAR) {
-        this.p = p + 1;
-        const rhs = this.parsePattern(ctx, level + 1);
+        this.p = dtTok(p, 1);
+        const rhs = this.parsePattern(ctx, dtPrecAbove(level));
         left = this.mk(k === T_AMPAMP ? N_LOGICAL_AND_PATTERN : N_LOGICAL_OR_PATTERN, beg, left, p, rhs);
       } else {
         return left;
@@ -4512,27 +4731,27 @@ export class DtParser {
       return this.parseVariablePattern(ctx, true);
     }
     if (k === T_LPAREN) {
-      const m = this.mt[beg];
-      const ai = m + 1;
-      if (this.isId(ai) || (this.k(ai) === T_QUESTION && this.isId(ai + 1))) {
+      const m = this.mtAt(beg);
+      const ai = dtTok(m, 1);
+      if (this.isId(ai) || (this.k(ai) === T_QUESTION && this.isId(dtTok(ai, 1)))) {
         const te = this.computeVariablePatternType(beg << 2, true);
         if (te !== NO && this.tyRecord && !this.tyRecovered) {
           return this.parseVariablePattern(ctx, false);
         }
       }
-      if (this.k(beg + 1) === T_RPAREN) {
-        this.p = beg + 2;
-        return this.mk(N_RECORD_PATTERN, beg, beg, 0, beg + 1);
+      if (this.k(dtTok(beg, 1)) === T_RPAREN) {
+        this.p = dtTok(beg, 2);
+        return this.mk(N_RECORD_PATTERN, beg, beg, 0, dtTok(beg, 1));
       }
       return this.parseParenOrRecordPattern(ctx);
     }
     if (kw === K_CONST) {
-      this.p = beg + 1;
+      this.p = dtTok(beg, 1);
       const e = this.parsePrecedence(P_EQUALITY, false, true);
       return this.mk(N_CONSTANT_PATTERN, beg, beg, e);
     }
     if (k === T_EQEQ || k === T_NE || k === T_LT || k === T_GT || k === T_LE || k === T_GE) {
-      this.p = beg + 1;
+      this.p = dtTok(beg, 1);
       const e = this.parsePrecedence(P_BITWISE_OR, false, false);
       return this.mk(N_RELATIONAL_PATTERN, beg, beg, e);
     }
@@ -4544,11 +4763,11 @@ export class DtParser {
     if (this.isId(beg)) {
       let j = beg;
       let dot = false;
-      if (this.k(j + 1) === T_DOT && this.isId(j + 2)) {
-        j = j + 2;
+      if (this.k(dtTok(j, 1)) === T_DOT && this.isId(dtTok(j, 2))) {
+        j = dtTok(j, 2);
         dot = true;
       }
-      let a = j + 1;
+      let a = dtTok(j, 1);
       let ok = true;
       if (this.k(a) === T_LT) {
         const e = this.typeArgsTok(a, false);
@@ -4592,7 +4811,7 @@ export class DtParser {
     let type = -1;
     if (hasKeyword) {
       keyword = beg;
-      this.p = beg + 1;
+      this.p = dtTok(beg, 1);
       const nextIsParen = this.k(this.p) === T_LPAREN;
       const te = this.computeVariablePatternType(this.p << 2, nextIsParen);
       if (te !== NO) {
@@ -4626,7 +4845,7 @@ export class DtParser {
     while (!this.failed && this.k(this.p) !== T_RBRACKET) {
       if (this.k(this.p) === T_ELLIPSIS) {
         const d = this.p;
-        this.p = d + 1;
+        this.p = dtTok(d, 1);
         let pat = -1;
         const nk = this.k(this.p);
         if (nk !== T_COMMA && nk !== T_RBRACKET) {
@@ -4653,7 +4872,7 @@ export class DtParser {
     while (!this.failed && this.k(this.p) !== T_RBRACE) {
       if (this.k(this.p) === T_ELLIPSIS) {
         const d = this.p;
-        this.p = d + 1;
+        this.p = dtTok(d, 1);
         xs.push(this.mk(N_REST_PATTERN_ELEMENT, d, d, -1));
       } else {
         const eb = this.p;
@@ -4679,12 +4898,12 @@ export class DtParser {
       let name = -1;
       if (this.k(this.p) === T_COLON) {
         const c = this.p;
-        this.p = c + 1;
+        this.p = dtTok(c, 1);
         name = this.mkEnd(N_PATTERN_FIELD_NAME, c, c, -1, c);
-      } else if (this.k(this.p) === T_IDENT && this.k(this.p + 1) === T_COLON) {
+      } else if (this.k(this.p) === T_IDENT && this.k(dtTok(this.p, 1)) === T_COLON) {
         const n = this.p;
-        this.p = n + 2;
-        name = this.mkEnd(N_PATTERN_FIELD_NAME, n, n + 1, n, n + 1);
+        this.p = dtTok(n, 2);
+        name = this.mkEnd(N_PATTERN_FIELD_NAME, n, dtTok(n, 1), n, dtTok(n, 1));
       }
       const pat = this.parsePattern(ctx, 1);
       xs.push(this.mk(N_PATTERN_FIELD, fb, name, pat));
@@ -4701,7 +4920,7 @@ export class DtParser {
     this.mayFn = true;
     const fb = this.p;
     // `(pattern)` is parenthesized unless it has a name or a comma.
-    if (this.k(fb) !== T_COLON && !(this.k(fb) === T_IDENT && this.k(fb + 1) === T_COLON)) {
+    if (this.k(fb) !== T_COLON && !(this.k(fb) === T_IDENT && this.k(dtTok(fb, 1)) === T_COLON)) {
       const pat = this.parsePattern(ctx, 1);
       if (this.k(this.p) === T_RPAREN) {
         this.mayFn = old;

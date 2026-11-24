@@ -76,6 +76,7 @@ import {
   N_WHEN_CLAUSE,
   N_WILDCARD_PATTERN,
 } from "./ast";
+import { fault } from "../core/fault";
 import { DtTokens } from "./scanner";
 import { K_NEW, T_DOUBLE, T_INT, T_USHR, T_USHR_EQ } from "./tokens";
 
@@ -96,10 +97,29 @@ const dtNeed = (f: DtFeature, ver: i32, name: string): void => {
 /** The newest language feature the syntax under `unit` needs, into `f`. */
 export const dtFeatures = (a: DtAst, t: DtTokens, unit: i32, f: DtFeature): void => {
   // digit-separators (3.6): an underscore in a number.
-  for (let i = 0; i < t.count; i++) {
-    if (t.kind[i] === T_INT || t.kind[i] === T_DOUBLE) {
-      for (let j = t.start[i]; j < t.end[i]; j++) {
-        if (toI32(t.src[j]) === 95) {
+  const kinds = t.kind;
+  const starts = t.start;
+  const ends = t.end;
+  const src = t.src;
+  const count = t.count;
+  if (count > kinds.length) {
+    fault();
+    return;
+  }
+  for (let i = 0; i < count && i < kinds.length; i++) {
+    const ki = kinds[i];
+    if (ki === T_INT || ki === T_DOUBLE) {
+      if (i >= starts.length || i >= ends.length) {
+        fault();
+        return;
+      }
+      const e = ends[i];
+      for (let j = starts[i]; j < e; j++) {
+        if (j < 0 || j >= src.length) {
+          fault();
+          return;
+        }
+        if (toI32(src[j]) === 95) {
           dtNeed(f, 3006, "digit-separators");
           break;
         }
@@ -140,9 +160,26 @@ const dtIsPattern = (k: i32): boolean =>
   k === N_NULL_ASSERT_PATTERN ||
   k === N_REST_PATTERN_ELEMENT;
 
+/** `xs[i]`, or -1 after a fault when `i` is outside `xs`. */
+const dtFtAt = (xs: i32[], i: i32): i32 => {
+  if (i >= 0 && i < xs.length) {
+    return xs[i];
+  }
+  fault();
+  return -1;
+};
+
 const dtFeatureNode = (a: DtAst, t: DtTokens, node: i32, parent: i32, f: DtFeature): void => {
-  const k = a.kind[node];
-  const pk = parent >= 0 ? a.kind[parent] : -1;
+  const kinds = a.kind;
+  if (node < 0 || node >= kinds.length || parent >= kinds.length) {
+    fault();
+    return;
+  }
+  const k = kinds[node];
+  let pk = -1;
+  if (parent >= 0) {
+    pk = kinds[parent];
+  }
   if (dtIsPattern(k)) {
     dtNeed(f, 3000, "patterns");
   } else if (k === N_RECORD_LITERAL || k === N_RECORD_TYPE_ANNOTATION) {
@@ -150,7 +187,7 @@ const dtFeatureNode = (a: DtAst, t: DtTokens, node: i32, parent: i32, f: DtFeatu
   } else if (k === N_GENERIC_TYPE_ALIAS) {
     // typedef T = <a type that is not a function type>;
     const ty = a.f(node, 5);
-    if (ty >= 0 && a.kind[ty] !== N_GENERIC_FUNCTION_TYPE) {
+    if (ty >= 0 && dtFtAt(a.kind, ty) !== N_GENERIC_FUNCTION_TYPE) {
       dtNeed(f, 2013, "nonfunction-type-aliases");
     }
   } else if (k === N_ANNOTATION) {
@@ -158,20 +195,20 @@ const dtFeatureNode = (a: DtAst, t: DtTokens, node: i32, parent: i32, f: DtFeatu
       dtNeed(f, 2014, "generic-metadata");
     }
   } else if (k === N_BINARY_EXPRESSION || k === N_ASSIGNMENT_EXPRESSION) {
-    const op = t.kind[a.f(node, 1)];
+    const op = dtFtAt(t.kind, a.f(node, 1));
     if (op === T_USHR || op === T_USHR_EQ) {
       dtNeed(f, 2014, "triple-shift");
     }
   } else if (k === N_METHOD_DECLARATION) {
     const name = a.f(node, 6);
-    if (a.f(node, 5) >= 0 && name >= 0 && t.kind[name] === T_USHR) {
+    if (a.f(node, 5) >= 0 && name >= 0 && dtFtAt(t.kind, name) === T_USHR) {
       dtNeed(f, 2014, "triple-shift");
     }
   } else if (k === N_FUNCTION_REFERENCE) {
     dtNeed(f, 2015, "constructor-tearoffs");
   } else if (k === N_SIMPLE_IDENTIFIER) {
     // `C.new`, `C.new()`, a constructor named `C.new`.
-    if (t.kw[a.f(node, 0)] === K_NEW) {
+    if (dtFtAt(t.kw, a.f(node, 0)) === K_NEW) {
       dtNeed(f, 2015, "constructor-tearoffs");
     }
   } else if (k === N_SUPER_FORMAL_PARAMETER) {
@@ -180,7 +217,7 @@ const dtFeatureNode = (a: DtAst, t: DtTokens, node: i32, parent: i32, f: DtFeatu
     const l = a.f(node, 1);
     let named = false;
     for (let j = 0; l > 0 && j < a.len(l); j++) {
-      if (a.kind[a.at(l, j)] === N_NAMED_ARGUMENT) {
+      if (dtFtAt(a.kind, a.at(l, j)) === N_NAMED_ARGUMENT) {
         named = true;
       } else if (named) {
         dtNeed(f, 2017, "named-arguments-anywhere");
@@ -190,7 +227,7 @@ const dtFeatureNode = (a: DtAst, t: DtTokens, node: i32, parent: i32, f: DtFeatu
   } else if (k === N_ENUM_DECLARATION) {
     const np = a.f(node, 2);
     if (
-      (np >= 0 && a.kind[np] === N_NAME_WITH_TYPE_PARAMETERS && a.f(np, 1) >= 0) ||
+      (np >= 0 && dtFtAt(a.kind, np) === N_NAME_WITH_TYPE_PARAMETERS && a.f(np, 1) >= 0) ||
       a.f(node, 3) >= 0 ||
       a.f(node, 4) >= 0
     ) {
@@ -248,7 +285,7 @@ const dtFeatureNode = (a: DtAst, t: DtTokens, node: i32, parent: i32, f: DtFeatu
     }
     // `C.new()`: the unnamed constructor written out.
     const name = a.f(node, 7);
-    if (name >= 0 && t.kw[name] === K_NEW) {
+    if (name >= 0 && dtFtAt(t.kw, name) === K_NEW) {
       dtNeed(f, 2015, "constructor-tearoffs");
     }
   }

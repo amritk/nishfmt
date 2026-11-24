@@ -5,6 +5,8 @@
 // Ported from dart_style 3.1.14-wip at 5a9534fad9ff, the commit Dart SDK
 // 3.14.1 pins (BSD-3-Clause, Copyright the Dart project authors).
 
+import { add32, bytesText, newBools } from "../core/arr";
+import { fault } from "../core/fault";
 import { C_LINE, DtTokens } from "./scanner";
 import { T_SCRIPT } from "./tokens";
 
@@ -61,18 +63,36 @@ export class DtComments {
   }
 
   linesBefore(i: i32): i32 {
-    return this.lines[i];
+    const ls = this.lines;
+    if (i >= 0 && i < ls.length) {
+      return ls[i];
+    }
+    fault();
+    return 0;
   }
 
   linesAfter(i: i32): i32 {
-    return this.lines[i + 1];
+    const ls = this.lines;
+    if (i >= -1 && i < ls.length) {
+      const j = i + 1;
+      if (j >= 0 && j < ls.length) {
+        return ls[j];
+      }
+    }
+    fault();
+    return 0;
   }
 
   isHanging(i: i32): boolean {
     if (this.linesBefore(i) !== 0) {
       return false;
     }
-    const t = this.cs[i].type;
+    const cs = this.cs;
+    if (i < 0 || i >= cs.length) {
+      fault();
+      return false;
+    }
+    const t = cs[i].type;
     return t === CT_INLINE_BLOCK || t === CT_LINE;
   }
 
@@ -80,11 +100,22 @@ export class DtComments {
     if (this.linesAfter(i) > 0) {
       return false;
     }
-    return this.cs[i].type === CT_INLINE_BLOCK;
+    const cs = this.cs;
+    if (i < 0 || i >= cs.length) {
+      fault();
+      return false;
+    }
+    return cs[i].type === CT_INLINE_BLOCK;
   }
 
   linesBeforeNextToken(): i32 {
-    return this.lines[this.lines.length - 1];
+    const ls = this.lines;
+    const n = ls.length;
+    if (n > 0) {
+      return ls[n - 1];
+    }
+    fault();
+    return 0;
   }
 
   containsBlankLine(): boolean {
@@ -105,13 +136,21 @@ export class DtComments {
       return this;
     }
     const r = new DtComments();
-    const n = toI32(this.lines.length);
-    for (let i = 0; i < n - 1; i++) {
-      r.lines.push(this.lines[i]);
+    const ls = this.lines;
+    const ol = o.lines;
+    const n = ls.length;
+    if (n < 1 || ol.length < 1) {
+      fault();
+      return r;
     }
-    r.lines.push(this.lines[n - 1] + o.lines[0]);
-    for (let i = 1; i < o.lines.length; i++) {
-      r.lines.push(o.lines[i]);
+    // Newline counts are differences of line numbers, so the sum fits.
+    const joined = toI32(toU32(ls[n - 1]) + toU32(ol[0]));
+    for (let i = 0; i < n - 1 && i < ls.length; i++) {
+      r.lines.push(ls[i]);
+    }
+    r.lines.push(joined);
+    for (let i = 1; i < ol.length; i++) {
+      r.lines.push(ol[i]);
     }
     for (const c of this.cs) {
       r.cs.push(c);
@@ -131,11 +170,17 @@ export class DtComments {
       return this;
     }
     const r = new DtComments();
-    for (let i = 0; i <= index; i++) {
-      r.lines.push(this.lines[i]);
+    const ls = this.lines;
+    const cs = this.cs;
+    if (index >= ls.length || index > cs.length) {
+      fault();
+      return r;
     }
-    for (let i = 0; i < index; i++) {
-      r.cs.push(this.cs[i]);
+    for (let i = 0; i <= index && i < ls.length; i++) {
+      r.lines.push(ls[i]);
+    }
+    for (let i = 0; i < index && i < cs.length; i++) {
+      r.cs.push(cs[i]);
     }
     return r;
   }
@@ -150,11 +195,19 @@ export class DtComments {
     }
     const r = new DtComments();
     r.lines.push(0);
-    for (let i = index + 1; i < this.lines.length; i++) {
-      r.lines.push(this.lines[i]);
+    const ls = this.lines;
+    const cs = this.cs;
+    if (index < 0) {
+      fault();
+      return r;
     }
-    for (let i = index; i < this.cs.length; i++) {
-      r.cs.push(this.cs[i]);
+    if (index < ls.length) {
+      for (let i = index + 1; i < ls.length; i++) {
+        r.lines.push(ls[i]);
+      }
+    }
+    for (let i = index; i < cs.length; i++) {
+      r.cs.push(cs[i]);
     }
     return r;
   }
@@ -174,27 +227,47 @@ export class DtCommentWriter {
 
   constructor(t: DtTokens) {
     this.t = t;
-    this.taken = new Array<boolean>(t.count + 8);
+    this.taken = newBools(add32(t.count, 8));
     this.none = dtEmptyComments();
   }
 
   hasComments(tok: i32): boolean {
-    return this.t.cCount[tok] > 0;
+    const cCount = this.t.cCount;
+    if (tok >= 0 && tok < cCount.length) {
+      return cCount[tok] > 0;
+    }
+    fault();
+    return false;
   }
 
   takeCommentsBefore(tok: i32): DtComments {
-    if (this.taken[tok]) {
+    const taken = this.taken;
+    if (tok < 0 || tok >= taken.length) {
+      fault();
       return this.none;
     }
-    this.taken[tok] = true;
+    if (taken[tok]) {
+      return this.none;
+    }
+    taken[tok] = true;
     return this.commentsBeforeRaw(tok);
   }
 
   commentsBefore(tok: i32): DtComments {
-    if (this.t.cCount[tok] === 0) {
+    const cCount = this.t.cCount;
+    const taken = this.taken;
+    if (tok < 0 || tok >= cCount.length) {
+      fault();
       return this.none;
     }
-    if (this.taken[tok]) {
+    if (cCount[tok] === 0) {
+      return this.none;
+    }
+    if (tok >= taken.length) {
+      fault();
+      return this.none;
+    }
+    if (taken[tok]) {
       return this.none;
     }
     return this.commentsBeforeRaw(tok);
@@ -202,20 +275,59 @@ export class DtCommentWriter {
 
   commentsBeforeRaw(tok: i32): DtComments {
     const t = this.t;
-    let previousLine = t.lineE[tok - 1];
-    const tokenLine = t.lineS[tok];
-    if (t.kind[tok - 1] === T_SCRIPT) {
+    const r = new DtComments();
+    const lineE = t.lineE;
+    const lineS = t.lineS;
+    const kind = t.kind;
+    const cFirst = t.cFirst;
+    const cCount = t.cCount;
+    if (
+      tok <= 0 ||
+      tok >= lineE.length ||
+      tok >= lineS.length ||
+      tok >= kind.length ||
+      tok >= cFirst.length ||
+      tok >= cCount.length
+    ) {
+      fault();
+      return r;
+    }
+    let previousLine = lineE[tok - 1];
+    const tokenLine = lineS[tok];
+    if (kind[tok - 1] === T_SCRIPT) {
       previousLine = tokenLine;
     }
-    const r = new DtComments();
-    const first = t.cFirst[tok];
-    const n = t.cCount[tok];
+    const n = cCount[tok];
+    const cLineS = t.cLineS;
+    const cLineE = t.cLineE;
+    const cStart = t.cStart;
+    const cEnd = t.cEnd;
+    const cKind = t.cKind;
+    const cCol1 = t.cCol1;
+    let ci = cFirst[tok];
     for (let k = 0; k < n; k++) {
-      const ci = first + k;
-      const commentLine = t.cLineS[ci];
-      const text = dtTrimmed(t.src, t.cStart[ci], t.cEnd[ci]);
-      let linesBefore = commentLine - previousLine;
-      let flushLeft = t.cCol1[ci];
+      // The comment arrays grow together, so one range covers them all.
+      if (
+        ci < 0 ||
+        ci >= cLineS.length ||
+        ci >= cLineE.length ||
+        ci >= cStart.length ||
+        ci >= cEnd.length ||
+        ci >= cKind.length ||
+        ci >= cCol1.length
+      ) {
+        fault();
+        return r;
+      }
+      const commentLine = cLineS[ci];
+      const start = cStart[ci];
+      const isLine = cKind[ci] === C_LINE;
+      const endLine = cLineE[ci];
+      const col1 = cCol1[ci];
+      const text = dtTrimmed(t.src, start, cEnd[ci]);
+      // Line numbers are positive and below the source length, so differences fit.
+      let linesBefore = toI32(toU32(commentLine) - toU32(previousLine));
+      let flushLeft = col1;
       const isLineDoc = text.startsWith("///") && !text.startsWith("////");
       if (isLineDoc) {
         flushLeft = false;
@@ -226,21 +338,28 @@ export class DtCommentWriter {
       let type = CT_BLOCK;
       if (isLineDoc || (text.startsWith("/**") && text !== "/**/")) {
         type = CT_DOC;
-      } else if (t.cKind[ci] === C_LINE) {
+      } else if (isLine) {
         type = CT_LINE;
       } else if (commentLine === previousLine || commentLine === tokenLine) {
         type = CT_INLINE_BLOCK;
       }
       r.lines.push(linesBefore);
-      r.cs.push(new DtComment(text, type, flushLeft, t.cStart[ci]));
-      previousLine = t.cLineE[ci];
+      r.cs.push(new DtComment(text, type, flushLeft, start));
+      previousLine = endLine;
+      ci = ci + 1;
     }
-    r.lines.push(tokenLine - previousLine);
+    r.lines.push(toI32(toU32(tokenLine) - toU32(previousLine)));
     return r;
   }
 
   hasNewlineBetween(a: i32, b: i32): boolean {
-    return this.t.lineE[a] < this.t.lineS[b];
+    const lineE = this.t.lineE;
+    const lineS = this.t.lineS;
+    if (a >= 0 && a < lineE.length && b >= 0 && b < lineS.length) {
+      return lineE[a] < lineS[b];
+    }
+    fault();
+    return false;
   }
 }
 
@@ -249,16 +368,31 @@ const dtWsBefore = (src: u8[], a: i32, e: i32): i32 => {
   if (e <= a) {
     return 0;
   }
+  if (e <= 0 || e > src.length) {
+    fault();
+    return 0;
+  }
   const c = toI32(src[e - 1]);
   if (c === 32 || (c >= 9 && c <= 13)) {
     return 1;
   }
-  if (e - 2 >= a && toI32(src[e - 2]) === 0xc2 && (c === 0x85 || c === 0xa0)) {
+  if (e - 2 < a) {
+    return 0;
+  }
+  if (e < 2) {
+    fault();
+    return 0;
+  }
+  const b1 = toI32(src[e - 2]);
+  if (b1 === 0xc2 && (c === 0x85 || c === 0xa0)) {
     return 2;
   }
   if (e - 3 >= a) {
+    if (e < 3) {
+      fault();
+      return 0;
+    }
     const b0 = toI32(src[e - 3]);
-    const b1 = toI32(src[e - 2]);
     if (b0 === 0xe1 && b1 === 0x9a && c === 0x80) {
       return 3; // U+1680
     }
@@ -286,7 +420,8 @@ export const dtTrimmed = (src: u8[], a: i32, b: i32): string => {
     if (w === 0) {
       break;
     }
-    e -= w;
+    // dtWsBefore read src[e - w], so w <= e and the difference is exact.
+    e = toI32(toU32(e) - toU32(w));
   }
-  return String.fromBytes(src, a, e);
+  return bytesText(src, a, e);
 };
