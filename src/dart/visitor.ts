@@ -244,6 +244,8 @@ import {
 import { C_LINE, DtTokens } from "./scanner";
 import { CT_LINE, CT_INLINE_BLOCK, DtComment, DtCommentWriter, DtComments, dtEmptyComments } from "./comments";
 import { dtPrecedence } from "./parser";
+import { add32, newI32s, strUtf16Len, sub32 } from "../core/arr";
+import { fault } from "../core/fault";
 
 // NodeContext.
 const NC_NONE: i32 = 0;
@@ -398,10 +400,10 @@ class DtListBuilder {
 
   visit(node: i32): void {
     const v = this.v;
-    this.addCommentsBefore(v.a.beg[node]);
+    this.addCommentsBefore(v.a.begOf(node));
     this.add(v.nodePiece(node, false, NC_NONE));
-    const next = v.a.end[node] + 1;
-    if (v.t.kind[next] === T_COMMA) {
+    const next = add32(v.a.endOf(node), 1);
+    if (v.t.kindAt(next) === T_COMMA) {
       this.beforeComma = v.cw.takeCommentsBefore(next);
     }
   }
@@ -419,7 +421,29 @@ class DtListBuilder {
   leftDelimiter(delim: i32): void {
     const v = this.v;
     this.beforeComma = this.beforeComma.concatenate(v.cw.takeCommentsBefore(delim));
-    this.elements[this.elements.length - 1].delim = v.t.text(delim);
+    const last = this.lastEl();
+    last.delim = v.t.text(delim);
+  }
+
+  /** The last element; the list has one. */
+  lastEl(): DtPiece {
+    const els = this.elements;
+    const k = toI32(els.length);
+    if (k > 0 && k <= els.length) {
+      return els[k - 1];
+    }
+    fault();
+    return new DtPiece(0, PK_SPACE);
+  }
+
+  /** Element `i`; the list has it. */
+  elAt(i: i32): DtPiece {
+    const els = this.elements;
+    if (i >= 0 && i < els.length) {
+      return els[i];
+    }
+    fault();
+    return new DtPiece(0, PK_SPACE);
   }
 
   addComments(comments: DtComments, hasElementAfter: boolean): void {
@@ -435,15 +459,24 @@ class DtListBuilder {
       this.beforeComma = this.beforeComma.concatenate(before);
       before = dtEmptyComments();
     }
-    if (!before.isEmpty() && before.cs[0].type === CT_LINE && before.linesBefore(0) === 0) {
+    const beforeCs = before.cs;
+    if (beforeCs.length > 0 && beforeCs[0].type === CT_LINE && before.linesBefore(0) === 0) {
       this.beforeComma = this.beforeComma.concatenate(before.head(1));
       before = before.tail(1);
     }
     const bc = this.beforeComma;
     let inlineCount = 0;
     if (this.elements.length > 0) {
+      const bcs = bc.cs;
       while (inlineCount < bc.len()) {
-        if (!bc.isHanging(inlineCount) || bc.cs[inlineCount].type !== CT_INLINE_BLOCK) {
+        if (!bc.isHanging(inlineCount)) {
+          break;
+        }
+        if (inlineCount < 0 || inlineCount >= bcs.length) {
+          fault();
+          break;
+        }
+        if (bcs[inlineCount].type !== CT_INLINE_BLOCK) {
           break;
         }
         inlineCount++;
@@ -465,45 +498,47 @@ class DtListBuilder {
     let leadingCount = 0;
     if (hasElementAfter && !before.isEmpty()) {
       while (leadingCount < before.len()) {
-        const ci = before.len() - leadingCount - 1;
+        const ci = sub32(sub32(before.len(), leadingCount), 1);
         if (!before.isLeading(ci)) {
           break;
         }
         leadingCount++;
       }
     }
-    const separateAfter = before.head(before.len() - leadingCount);
-    const leadingComments = before.tail(before.len() - leadingCount);
+    const separateAfter = before.head(sub32(before.len(), leadingCount));
+    const leadingComments = before.tail(sub32(before.len(), leadingCount));
     const separate = separateBefore.concatenate(separateAfter);
 
     const v = this.v;
     for (const c of inlineComments.cs) {
       const cp = v.commentPiece(c, WS_NONE);
-      const last = this.elements[this.elements.length - 1];
+      const last = this.lastEl();
       last.list2.push(cp);
-      last.i0 = last.i0 + 1;
+      last.i0 = add32(last.i0, 1);
     }
     for (const c of hanging.cs) {
       const cp = v.commentPiece(c, WS_NONE);
-      this.elements[this.elements.length - 1].list2.push(cp);
+      this.lastEl().list2.push(cp);
     }
     let wroteBlank = false;
     if (!hasElementAfter && this.elements.length > 0 && comments.linesBeforeNextToken() > 1) {
-      this.elements[this.elements.length - 1].b2 = true;
+      this.lastEl().b2 = true;
       wroteBlank = true;
     }
-    for (let i = 0; i < separate.len(); i++) {
+    const separateCs = separate.cs;
+    for (let i = 0; i < separate.len() && i < separateCs.length; i++) {
+      const sc = separateCs[i];
       if (separate.linesBefore(i) > 1 && this.elements.length > 0) {
-        this.elements[this.elements.length - 1].b2 = true;
+        this.lastEl().b2 = true;
         wroteBlank = true;
       }
-      const cp = v.commentPiece(separate.cs[i], WS_NONE);
+      const cp = v.commentPiece(sc, WS_NONE);
       const el = v.pf.make(PK_LIST_ELEMENT);
       el.list2.push(cp);
       this.elements.push(el);
     }
     if (!wroteBlank && this.elements.length > 0 && comments.linesBeforeNextToken() > 1) {
-      this.elements[this.elements.length - 1].b2 = true;
+      this.lastEl().b2 = true;
     }
     for (const c of leadingComments.cs) {
       this.leading.push(v.commentPiece(c, WS_NONE));
@@ -518,24 +553,24 @@ class DtListBuilder {
     if (ci === -1) {
       return;
     }
-    if (a.kind[a.at(list, ci)] === N_NAMED_ARGUMENT) {
+    if (a.kindOf(a.at(list, ci)) === N_NAMED_ARGUMENT) {
       return;
     }
-    if (ci < n - 2) {
+    if (ci < sub32(n, 2)) {
       return;
     }
-    if (ci === 1 && v.blockFormatNode(a.at(list, 1)) === BF_FUNCTION && a.kind[a.at(list, 0)] !== N_NAMED_ARGUMENT) {
+    if (ci === 1 && v.blockFormatNode(a.at(list, 1)) === BF_FUNCTION && a.kindOf(a.at(list, 0)) !== N_NAMED_ARGUMENT) {
       const ft = v.blockFormatNode(a.at(list, 0));
       if (ft === BF_UNINDENTED_ADJACENT || ft === BF_INDENTED_ADJACENT) {
-        this.elements[0].b0 = true;
+        this.elAt(0).b0 = true;
         if (ft === BF_UNINDENTED_ADJACENT) {
-          this.elements[0].b1 = true;
+          this.elAt(0).b1 = true;
         }
-        this.elements[1].b0 = true;
+        this.elAt(1).b0 = true;
         return;
       }
     }
-    this.elements[ci].b0 = true;
+    this.elAt(ci).b0 = true;
   }
 
   candidateBlockArgument(list: i32): i32 {
@@ -560,6 +595,20 @@ class DtListBuilder {
     return -1;
   }
 }
+
+/** Appends `text`, `len` UTF-16 units, to piece `p`'s last line; it has one. */
+const dtAppendLast = (p: DtPiece, text: string, len: i32): void => {
+  const lines = p.lines;
+  const lens = p.lens;
+  const k = toI32(lines.length);
+  if (k < 1 || k > lines.length || k > lens.length) {
+    fault();
+    return;
+  }
+  const last = k - 1;
+  lines[last] = lines[last] + text;
+  lens[last] = add32(lens[last], len);
+};
 
 /** SequenceBuilder. */
 class DtSeqBuilder {
@@ -597,7 +646,7 @@ class DtSeqBuilder {
       }
       return v.end();
     }
-    this.elements[this.elements.length - 1].b0 = false;
+    this.lastEl().b0 = false;
     const seq = v.pf.make(PK_SEQUENCE);
     seq.list = this.elements;
     const l = this.left;
@@ -610,6 +659,17 @@ class DtSeqBuilder {
       return b;
     }
     return seq;
+  }
+
+  /** The last element; the sequence has one. */
+  lastEl(): DtPiece {
+    const els = this.elements;
+    const k = toI32(els.length);
+    if (k > 0 && k <= els.length) {
+      return els[k - 1];
+    }
+    fault();
+    return new DtPiece(0, PK_SPACE);
   }
 
   leftBracket(tok: i32, soft: boolean = false): void {
@@ -631,7 +691,7 @@ class DtSeqBuilder {
 
   visit(node: i32, indent: i32 = 0, blankBefore: boolean = false): void {
     const v = this.v;
-    const tok = v.a.beg[node];
+    const tok = v.a.begOf(node);
     const wrote = this.addCommentsBefore(tok, indent, blankBefore);
     if (blankBefore && !wrote) {
       this.addBlank();
@@ -646,7 +706,7 @@ class DtSeqBuilder {
     if (!this.allowBlank) {
       return;
     }
-    this.elements[this.elements.length - 1].b0 = true;
+    this.lastEl().b0 = true;
   }
 
   addCommentsBefore(tok: i32, indent: i32 = 0, blankBefore: boolean = false): boolean {
@@ -657,10 +717,11 @@ class DtSeqBuilder {
       this.addBlank();
       wrote = true;
     }
-    for (let i = 0; i < comments.len(); i++) {
-      const c = v.commentPiece(comments.cs[i], WS_NONE);
+    const cs = comments.cs;
+    for (let i = 0; i < comments.len() && i < cs.length; i++) {
+      const c = v.commentPiece(cs[i], WS_NONE);
       if (this.elements.length > 0 && comments.isHanging(i)) {
-        this.elements[this.elements.length - 1].list.push(c);
+        this.lastEl().list.push(c);
       } else {
         if (comments.linesBefore(i) > 1) {
           this.allowBlank = true;
@@ -695,9 +756,9 @@ export class DtVisitor {
   stack: DtPiece[][];
   current: DtPiece | null = null;
   pendingSpace: boolean = false;
-  // Text appended to the current code piece's last line, kept as bytes
-  // until the piece stops being current (see flushText).
-  tb: u8[];
+  // Text appended to the current code piece's last line, kept as parts
+  // until the piece stops being current (see flushText); tbN counts their bytes.
+  tb: string[];
   tbN: i32 = 0;
   tbLen: i32 = 0; // in UTF-16 units
   tbPiece: DtPiece | null = null;
@@ -722,7 +783,7 @@ export class DtVisitor {
     this.parent = [];
     this.pf = new DtPieces();
     this.cw = new DtCommentWriter(t);
-    this.tb = new Array<u8>(256);
+    this.tb = [];
     this.stack = [];
     this.metaStack = [];
     this.ecType = [];
@@ -743,11 +804,23 @@ export class DtVisitor {
   }
 
   f(n: i32, i: i32): i32 {
-    return this.a.fld[this.a.fs[n] + i];
+    return this.a.f(n, i);
   }
 
   kind(n: i32): i32 {
-    return this.a.kind[n];
+    return this.a.kindOf(n);
+  }
+
+  /** The innermost piece list being built; begin and end pair up. */
+  top(): DtPiece[] {
+    const stack = this.stack;
+    const k = toI32(stack.length);
+    if (k > 0 && k <= stack.length) {
+      return stack[k - 1];
+    }
+    fault();
+    const none: DtPiece[] = [];
+    return none;
   }
 
   // -------------------------------------------------------------------------
@@ -761,29 +834,53 @@ export class DtVisitor {
       this.flushText();
       this.tbPiece = p;
     }
-    let n = this.tbN;
-    // One byte to spare, for a space after.
-    if (n + b - a + 1 > toI32(this.tb.length)) {
-      let cap = toI32(this.tb.length) * 2;
-      while (cap < n + b - a + 1) {
-        cap = cap * 2;
-      }
-      const g = new Array<u8>(cap);
-      for (let i = 0; i < n; i++) {
-        g[i] = this.tb[i];
-      }
-      this.tb = g;
+    const n = this.tbN;
+    // n + b - a + 1, each step in i32: the bytes held, and one to spare for a space.
+    const lo = toI64(-2147483648);
+    const hi = toI64(2147483647);
+    const s1 = toI64(n) + toI64(b);
+    if (s1 < lo || s1 > hi) {
+      fault();
+      return;
+    }
+    const s2 = toI64(toI32(s1)) - toI64(a);
+    if (s2 < lo || s2 > hi) {
+      fault();
+      return;
+    }
+    const s3 = toI64(toI32(s2)) + toI64(1);
+    if (s3 > hi) {
+      fault();
+      return;
+    }
+    const src = this.src;
+    // A token's bytes lie inside the source.
+    if (a < b && (a < 0 || b > src.length)) {
+      fault();
+      return;
+    }
+    if (a < b) {
+      this.tb.push(this.t.rangeText(a, b));
     }
     let len = this.tbLen;
-    for (let i = a; i < b; i++) {
-      const c = this.src[i];
-      this.tb[n] = c;
-      n++;
+    for (let i = a; i >= 0 && i < b && i < src.length; i++) {
+      const c = src[i];
       if (c < 0x80 || c >= 0xc0) {
-        len += c >= 0xf0 ? 2 : 1;
+        if (len > 2147483645) {
+          fault();
+          return;
+        }
+        if (c >= 0xf0) {
+          len = len + 2;
+        } else {
+          len = len + 1;
+        }
       }
     }
-    this.tbN = n;
+    // n + b - a, the bytes added, fits: s2 above.
+    if (a < b) {
+      this.tbN = toI32(s2);
+    }
     this.tbLen = len;
   }
 
@@ -797,14 +894,14 @@ export class DtVisitor {
     if (this.tbN === 0) {
       return;
     }
-    const text = String.fromBytes(this.tb, 0, this.tbN);
+    const parts = this.tb;
+    const text = parts.join("");
+    this.tb = [];
     if (p.lines.length === 0) {
       p.lines.push(text);
       p.lens.push(this.tbLen);
     } else {
-      const last = toI32(p.lines.length) - 1;
-      p.lines[last] = p.lines[last] + text;
-      p.lens[last] = p.lens[last] + this.tbLen;
+      dtAppendLast(p, text, this.tbLen);
     }
     this.tbN = 0;
     this.tbLen = 0;
@@ -824,10 +921,8 @@ export class DtVisitor {
       p.lines.push("");
       p.lens.push(0);
     }
-    const last = toI32(p.lines.length) - 1;
     if (!multiline) {
-      p.lines[last] = p.lines[last] + text;
-      p.lens[last] = p.lens[last] + dtStrUtf16(text);
+      dtAppendLast(p, text, dtStrUtf16(text));
       return;
     }
     // Split on \r\n, \r or \n.
@@ -841,21 +936,26 @@ export class DtVisitor {
       if (i === n) {
         end = n;
       } else {
+        if (i < 0 || i >= n) {
+          fault();
+          break;
+        }
         const c = text.charCodeAt(i);
         if (c === 10) {
           end = i;
           skip = 1;
         } else if (c === 13) {
           end = i;
-          skip = i + 1 < n && text.charCodeAt(i + 1) === 10 ? 2 : 1;
+          skip = 1;
+          if (i + 1 < n && text.charCodeAt(i + 1) === 10) {
+            skip = 2;
+          }
         }
       }
       if (end >= 0) {
-        const line = text.slice(start, end);
+        const line = text.substring(start, end);
         if (first) {
-          const li = toI32(p.lines.length) - 1;
-          p.lines[li] = p.lines[li] + line;
-          p.lens[li] = p.lens[li] + dtStrUtf16(line);
+          dtAppendLast(p, line, dtStrUtf16(line));
           first = false;
         } else {
           p.lines.push(line);
@@ -864,16 +964,25 @@ export class DtVisitor {
         if (i === n) {
           break;
         }
-        i += skip;
+        // i < n, and skip is 1 or 2 and ends on a byte of the text.
+        if (i >= 2147483646) {
+          fault();
+          break;
+        }
+        i = i + skip;
         start = i;
       } else {
-        i++;
+        if (i >= n) {
+          fault();
+          break;
+        }
+        i = i + 1;
       }
     }
   }
 
   lexeme(tok: i32): string {
-    return String.fromBytes(this.src, this.t.start[tok], this.t.end[tok]);
+    return this.t.text(tok);
   }
 
   token(tok: i32, spaceBefore: boolean = false, spaceAfter: boolean = false, soft0: boolean = false): void {
@@ -891,12 +1000,18 @@ export class DtVisitor {
     } else if (cur !== null && cur.soft === soft) {
       if (this.pendingSpace) {
         this.appendSrc(cur, -1, -1);
-        this.tb[this.tbN] = 32;
-        this.tbN = this.tbN + 1;
-        this.tbLen = this.tbLen + 1;
+        const tbN = this.tbN;
+        const tbLen = this.tbLen;
+        if (tbN >= 2147483647 || tbLen >= 2147483647) {
+          fault();
+          return;
+        }
+        this.tb.push(" ");
+        this.tbN = tbN + 1;
+        this.tbLen = tbLen + 1;
         this.pendingSpace = false;
       }
-      this.appendSrc(cur, this.t.start[tok], this.t.end[tok]);
+      this.appendSrc(cur, this.t.startAt(tok), this.t.endAt(tok));
     } else {
       this.beginCodeToken(tok, soft);
     }
@@ -925,7 +1040,7 @@ export class DtVisitor {
 
   add(p: DtPiece): void {
     this.flushSpace();
-    this.stack[this.stack.length - 1].push(p);
+    this.top().push(p);
     this.flushText();
     this.current = null;
   }
@@ -942,8 +1057,14 @@ export class DtVisitor {
     this.flushSpace();
     this.flushText();
     this.current = null;
-    const built = this.stack.pop();
-    if (built.length === 1) {
+    const stack = this.stack;
+    // end follows begin.
+    if (stack.length < 1) {
+      fault();
+      return this.pf.make(PK_ADJACENT);
+    }
+    const built = stack.pop();
+    if (built.length === 1 && built.length > 0) {
       return built[0];
     }
     if (built.length === 0) {
@@ -966,7 +1087,7 @@ export class DtVisitor {
       for (let i = 0; i < n; i++) {
         leading.push(this.nodePiece(this.a.at(meta, i), false, NC_NONE));
       }
-      const after = this.a.end[this.a.at(meta, n - 1)] + 1;
+      const after = add32(this.a.endOf(this.a.at(meta, n - 1)), 1);
       for (const c of this.takeCommentsBefore(after)) {
         leading.push(c);
       }
@@ -978,7 +1099,13 @@ export class DtVisitor {
 
   endMeta(inline: boolean): DtPiece {
     const built = this.end();
-    const leading = this.metaStack.pop();
+    const metaStack = this.metaStack;
+    // endMeta follows beginMeta.
+    if (metaStack.length < 1) {
+      fault();
+      return built;
+    }
+    const leading = metaStack.pop();
     if (leading.length === 0) {
       return built;
     }
@@ -1016,8 +1143,8 @@ export class DtVisitor {
   tokenPiece(tok: i32, discarded: i32 = -1, commaAfter: boolean = false, soft: boolean = false): DtPiece {
     const p = this.makeCodePiece(tok, discarded, soft);
     if (commaAfter) {
-      const next = tok + 1;
-      if (this.t.kind[next] === T_COMMA) {
+      const next = add32(tok, 1);
+      if (this.t.kindAt(next) === T_COMMA) {
         const adj = this.pf.make(PK_ADJACENT);
         adj.list.push(p);
         adj.list.push(this.makeCodePiece(next, -1, soft));
@@ -1033,7 +1160,7 @@ export class DtVisitor {
     const p = this.pf.make(off || on ? PK_ENABLE_FORMATTING : PK_COMMENT);
     if (off || on) {
       p.b0 = on;
-      p.i1 = c.offset + toI32(c.text.length);
+      p.i1 = add32(c.offset, toI32(c.text.length));
     }
     p.i0 = trailing;
     p.soft = dtV313();
@@ -1060,7 +1187,7 @@ export class DtVisitor {
   beginCodeToken(tok: i32, soft: boolean): void {
     this.flushSpace();
     const code = this.makeCodePiece(tok, -1, soft);
-    this.stack[this.stack.length - 1].push(code);
+    this.top().push(code);
     this.flushText();
     this.current = code;
   }
@@ -1069,7 +1196,7 @@ export class DtVisitor {
     if (!this.pendingSpace) {
       return;
     }
-    this.stack[this.stack.length - 1].push(this.pf.make(PK_SPACE));
+    this.top().push(this.pf.make(PK_SPACE));
     this.pendingSpace = false;
   }
 
@@ -1092,9 +1219,10 @@ export class DtVisitor {
       return leading;
     }
     let afterHanging = false;
-    const k = this.t.kind[tok];
-    for (let i = 0; i < comments.len(); i++) {
-      const c = comments.cs[i];
+    const k = this.t.kindAt(tok);
+    const cs = comments.cs;
+    for (let i = 0; i < comments.len() && i < cs.length; i++) {
+      const c = cs[i];
       let trailing = WS_SPACE;
       if (c.requiresNewline()) {
         trailing = WS_NEWLINE;
@@ -1121,8 +1249,8 @@ export class DtVisitor {
     this.visitNode(node, context);
     let r = this.end();
     if (commaAfter) {
-      const next = this.a.end[node] + 1;
-      if (this.t.kind[next] === T_COMMA) {
+      const next = add32(this.a.endOf(node), 1);
+      if (this.t.kindAt(next) === T_COMMA) {
         const comma = this.tokenPiece(next, -1, false, false);
         const adj = this.pf.make(PK_ADJACENT);
         adj.list.push(r);
@@ -1157,7 +1285,7 @@ export class DtVisitor {
   visitNode(node: i32, context: i32): void {
     const prev = this.parentContext;
     this.parentContext = context;
-    const first = this.a.beg[node];
+    const first = this.a.begOf(node);
     if (this.cw.hasComments(first)) {
       const comments = this.takeCommentsBefore(first);
       this.begin();
@@ -1405,16 +1533,44 @@ export class DtVisitor {
 
   /** Whether the string token's lexeme opens with three quotes. */
   isMultilineString(tok: i32): boolean {
-    let i = this.t.start[tok];
-    const e = this.t.end[tok];
-    if (i < e && toI32(this.src[i]) === 114) {
-      i++;
+    const src = this.src;
+    let i = this.t.startAt(tok);
+    const e = this.t.endAt(tok);
+    if (i < e) {
+      // A token lies inside the source.
+      if (i < 0 || i >= src.length) {
+        fault();
+        return false;
+      }
+      if (toI32(src[i]) === 114) {
+        i++;
+      }
     }
-    if (i + 2 >= e) {
+    if (toI64(i) + toI64(2) >= toI64(e)) {
       return false;
     }
-    const q = toI32(this.src[i]);
-    return (q === 39 || q === 34) && toI32(this.src[i + 1]) === q && toI32(this.src[i + 2]) === q;
+    if (i < 0 || i >= src.length) {
+      fault();
+      return false;
+    }
+    const q = toI32(src[i]);
+    if (!(q === 39 || q === 34)) {
+      return false;
+    }
+    const i1 = i + 1;
+    if (i1 >= src.length) {
+      fault();
+      return false;
+    }
+    if (toI32(src[i1]) !== q) {
+      return false;
+    }
+    const i2 = i1 + 1;
+    if (i2 >= src.length) {
+      fault();
+      return false;
+    }
+    return toI32(src[i2]) === q;
   }
 
   isMultilineInterpolation(n: i32): boolean {
@@ -1470,27 +1626,40 @@ export class DtVisitor {
   }
 
   looksLikeClassName(tok: i32): boolean {
-    const s = this.t.start[tok];
-    const e = this.t.end[tok];
+    const s = this.t.startAt(tok);
+    const e = this.t.endAt(tok);
     const t = this.t;
     if (t.is(tok, "bool") || t.is(tok, "double") || t.is(tok, "int") || t.is(tok, "num")) {
       return true;
     }
+    const src = this.src;
     let i = s;
-    let c = toI32(this.src[i]);
+    if (i < 0 || i >= src.length) {
+      fault();
+      return false;
+    }
+    let c = toI32(src[i]);
     i++;
     if (c === 95) {
-      if (e - s === 1) {
+      if (e === i) {
         return false;
       }
-      c = toI32(this.src[i]);
+      if (i >= src.length) {
+        fault();
+        return false;
+      }
+      c = toI32(src[i]);
       i++;
     }
     if (c < 65 || c > 90) {
       return false;
     }
     for (let j = i; j < e; j++) {
-      const d = toI32(this.src[j]);
+      if (j < 0 || j >= src.length) {
+        fault();
+        return false;
+      }
+      const d = toI32(src[j]);
       if (d >= 97 && d <= 122) {
         return true;
       }
@@ -1532,9 +1701,10 @@ export class DtVisitor {
 
   hasLineCommentBefore(tok: i32): boolean {
     const t = this.t;
-    const first = t.cFirst[tok];
-    for (let k = 0; k < t.cCount[tok]; k++) {
-      if (t.cKind[first + k] === C_LINE) {
+    const first = t.cFirstAt(tok);
+    const count = t.cCountAt(tok);
+    for (let k = 0; k < count; k++) {
+      if (t.cKindAt(add32(first, k)) === C_LINE) {
         return true;
       }
     }
@@ -1543,7 +1713,7 @@ export class DtVisitor {
 
   containsLineComments(list: i32, right: i32): boolean {
     for (let i = 0; i < this.a.len(list); i++) {
-      if (this.hasLineCommentBefore(this.a.beg[this.a.at(list, i)])) {
+      if (this.hasLineCommentBefore(this.a.begOf(this.a.at(list, i)))) {
         return true;
       }
     }
@@ -1552,12 +1722,12 @@ export class DtVisitor {
 
   /** commaAfter: the comma token after `n`, or -1. */
   commaAfter(n: i32): i32 {
-    const next = this.a.end[n] + 1;
-    if (this.t.kind[next] === T_COMMA) {
+    const next = add32(this.a.endOf(n), 1);
+    if (this.t.kindAt(next) === T_COMMA) {
       return next;
     }
-    if (this.t.kind[next] === T_QUESTION && this.t.kind[next + 1] === T_COMMA) {
-      return next + 1;
+    if (this.t.kindAt(next) === T_QUESTION && this.t.kindAt(add32(next, 1)) === T_COMMA) {
+      return add32(next, 1);
     }
     return -1;
   }
@@ -1570,7 +1740,7 @@ export class DtVisitor {
     if (k === N_NULL_LITERAL || k === N_BOOLEAN_LITERAL || k === N_INTEGER_LITERAL || k === N_DOUBLE_LITERAL) {
       return true;
     }
-    if (k === N_PREFIX_EXPRESSION && this.t.kind[this.f(n, 0)] === T_MINUS) {
+    if (k === N_PREFIX_EXPRESSION && this.t.kindAt(this.f(n, 0)) === T_MINUS) {
       return this.isTrivial(this.f(n, 1));
     }
     return false;
@@ -1590,13 +1760,38 @@ export class DtVisitor {
   ecPopNested: i32 = 0;
 
   ecEnd(): void {
-    this.ecPopType = this.ecType.pop();
-    this.ecPopCollections = this.ecCollections.pop();
-    this.ecPopNamed = this.ecNamed.pop();
-    this.ecPopNested = this.ecNested.pop();
-    const top = toI32(this.ecType.length) - 1;
-    this.ecCollections[top] = this.ecCollections[top] + this.ecPopCollections;
-    this.ecNested[top] = this.ecNested[top] + this.ecPopNamed + this.ecPopNested;
+    const ecType = this.ecType;
+    const ecCollections = this.ecCollections;
+    const ecNamed = this.ecNamed;
+    const ecNested = this.ecNested;
+    // The constructor pushed the outermost level, and each end follows a push.
+    if (ecType.length < 1) {
+      fault();
+      return;
+    }
+    this.ecPopType = ecType.pop();
+    if (ecCollections.length < 1) {
+      fault();
+      return;
+    }
+    this.ecPopCollections = ecCollections.pop();
+    if (ecNamed.length < 1) {
+      fault();
+      return;
+    }
+    this.ecPopNamed = ecNamed.pop();
+    if (ecNested.length < 1) {
+      fault();
+      return;
+    }
+    this.ecPopNested = ecNested.pop();
+    const top = sub32(toI32(ecType.length), 1);
+    if (top < 0 || top >= ecCollections.length || top >= ecNested.length) {
+      fault();
+      return;
+    }
+    ecCollections[top] = add32(ecCollections[top], this.ecPopCollections);
+    ecNested[top] = add32(add32(ecNested[top], this.ecPopNamed), this.ecPopNested);
   }
 
   beginCall(args: i32): void {
@@ -1607,7 +1802,7 @@ export class DtVisitor {
       if (this.kind(x) === N_NAMED_ARGUMENT) {
         type = EC_CALL_WITH_NAMED;
         if (!this.isTrivial(this.f(x, 2))) {
-          named++;
+          named = add32(named, 1);
         }
       }
     }
@@ -1616,13 +1811,18 @@ export class DtVisitor {
 
   endCall(): boolean {
     this.ecEnd();
-    const total = this.ecPopNamed + this.ecPopNested;
+    const total = add32(this.ecPopNamed, this.ecPopNested);
     return total > 2 && this.ecPopNamed > 0 && this.ecPopNested > 0;
   }
 
   beginCollection(isNamed: boolean): void {
-    const top = toI32(this.ecType.length) - 1;
-    this.ecCollections[top] = this.ecCollections[top] + 1;
+    const ecCollections = this.ecCollections;
+    const top = sub32(toI32(this.ecType.length), 1);
+    if (top < 0 || top >= ecCollections.length) {
+      fault();
+      return;
+    }
+    ecCollections[top] = add32(ecCollections[top], 1);
     this.ecPush(isNamed ? EC_NAMED_COLLECTION : EC_COLLECTION, 0);
   }
 
@@ -1631,7 +1831,9 @@ export class DtVisitor {
     if (this.ecPopCollections > 0) {
       return true;
     }
-    return this.a.len(elements) > 1 && this.ecPopType === EC_NAMED_COLLECTION && this.ecPopNamed + this.ecPopNested > 0;
+    return (
+      this.a.len(elements) > 1 && this.ecPopType === EC_NAMED_COLLECTION && add32(this.ecPopNamed, this.ecPopNested) > 0
+    );
   }
 
   // -------------------------------------------------------------------------
@@ -1847,7 +2049,7 @@ export class DtVisitor {
       const ls = this.f(parts, 1);
       const rs = this.f(parts, 3);
       if (init >= 0) {
-        pl.addCommentsBefore(this.a.beg[init]);
+        pl.addCommentsBefore(this.a.begOf(init));
         this.begin();
         this.visit(init, false, false, NC_FOR_LOOP_VARIABLE);
         this.token(ls);
@@ -1858,7 +2060,7 @@ export class DtVisitor {
       }
       const cond = this.f(parts, 2);
       if (cond >= 0) {
-        pl.addCommentsBefore(this.a.beg[cond]);
+        pl.addCommentsBefore(this.a.begOf(cond));
         this.begin();
         this.visit(cond);
         this.token(rs);
@@ -1869,7 +2071,7 @@ export class DtVisitor {
       }
       const ups = this.f(parts, 4);
       if (this.a.len(ups) > 0) {
-        pl.addCommentsBefore(this.a.beg[this.a.at(ups, 0)]);
+        pl.addCommentsBefore(this.a.begOf(this.a.at(ups, 0)));
         const ub = new DtListBuilder(this, new DtListStyle(CM_NON_TRAILING, 1, false));
         for (let i = 0; i < this.a.len(ups); i++) {
           ub.visit(this.a.at(ups, i));
@@ -1897,7 +2099,7 @@ export class DtVisitor {
       const keyword = this.f(parts, 1);
       this.begin();
       this.token(lp);
-      const first = this.a.len(meta) > 0 ? this.a.beg[this.a.at(meta, 0)] : keyword;
+      const first = this.a.len(meta) > 0 ? this.a.begOf(this.a.at(meta, 0)) : keyword;
       const leading = this.takeCommentsBefore(first);
       this.beginMeta(meta);
       this.token(keyword);
@@ -1956,7 +2158,7 @@ export class DtVisitor {
         }
       }
       if (first < 0) {
-        first = this.a.beg[returnType];
+        first = this.a.begOf(returnType);
       }
       const leading = this.takeCommentsBefore(first);
       this.begin();
@@ -2041,7 +2243,7 @@ export class DtVisitor {
       }
     }
     if (first < 0) {
-      first = this.a.beg[returnType];
+      first = this.a.begOf(returnType);
     }
     const leading = this.takeCommentsBefore(first);
     this.begin();
@@ -2072,7 +2274,7 @@ export class DtVisitor {
     if (!dtIs37()) {
       this.add(parameter);
     }
-    const isEq = this.t.kind[separator] === T_EQ;
+    const isEq = this.t.kindAt(separator) === T_EQ;
     if (isEq) {
       this.space();
     }
@@ -2152,7 +2354,7 @@ export class DtVisitor {
         this.add(pb.build(false, true));
       }
       this.space();
-      this.writeBlock(this.f(c, 8), i < nc - 1 || this.f(n, 4) >= 0);
+      this.writeBlock(this.f(c, 8), i + 1 < nc || this.f(n, 4) >= 0);
     }
     const fin = this.f(n, 4);
     if (fin >= 0) {
@@ -2261,7 +2463,7 @@ export class DtVisitor {
   infixTraverse(e: i32, kind: i32, prec: i32, operands: DtPiece[]): void {
     if (this.kind(e) === kind) {
       const op = this.f(e, 1);
-      if (prec < 0 || dtPrecedence(this.t.kind[op], this.t.kw[op]) === prec) {
+      if (prec < 0 || dtPrecedence(this.t.kindAt(op), this.t.kwAt(op)) === prec) {
         // `operands.add(build(...))` builds before traversing the right side.
         this.infixTraverse(this.f(e, 0), kind, prec, operands);
         this.space();
@@ -2307,13 +2509,13 @@ export class DtVisitor {
     const n = this.a.len(elements);
     for (let i = 0; i < n; i++) {
       const el = this.a.at(elements, i);
-      if (!atLineStart && this.cw.hasNewlineBetween(this.a.end[this.a.at(elements, i - 1)], this.a.beg[el])) {
+      if (!atLineStart && this.cw.hasNewlineBetween(this.a.endOf(this.a.at(elements, i - 1)), this.a.begOf(el))) {
         b.addInner(line, false);
         line = new DtListBuilder(this, lineStyle);
         atLineStart = true;
       }
       if (atLineStart) {
-        b.addCommentsBefore(this.a.beg[el]);
+        b.addCommentsBefore(this.a.begOf(el));
       }
       line.visit(el);
       atLineStart = false;
@@ -2409,7 +2611,7 @@ export class DtVisitor {
     }
     this.begin();
     this.visit(lhs, false, false, lhsContext);
-    if (this.t.kind[op] !== T_COLON) {
+    if (this.t.kindAt(op) !== T_COLON) {
       this.space();
     }
     this.token(op);
@@ -2429,7 +2631,7 @@ export class DtVisitor {
     const canBlockSplitRight = this.canBlockSplitAny(rhs);
     const lp = this.nodePiece(lhs, false, lhsContext);
     this.begin();
-    if (this.t.kind[op] !== T_COLON) {
+    if (this.t.kindAt(op) !== T_COLON) {
       this.space();
     }
     this.token(op);
@@ -2442,7 +2644,7 @@ export class DtVisitor {
     if (dtIs37()) {
       const cbsr = this.canBlockSplitAny(rhs);
       this.begin();
-      if (this.t.kind[op] !== T_COLON) {
+      if (this.t.kindAt(op) !== T_COLON) {
         this.space();
       }
       this.token(op);
@@ -2453,7 +2655,7 @@ export class DtVisitor {
     }
     this.begin();
     this.token(lhs);
-    if (this.t.kind[op] !== T_COLON) {
+    if (this.t.kindAt(op) !== T_COLON) {
       this.space();
     }
     this.token(op);
@@ -2463,7 +2665,7 @@ export class DtVisitor {
   }
 
   writeForIn(lhs: i32, inTok: i32, seq: i32): void {
-    const leading = this.takeCommentsBefore(this.a.beg[lhs]);
+    const leading = this.takeCommentsBefore(this.a.begOf(lhs));
     const lp = this.nodePiece(lhs, false, NC_FOR_LOOP_VARIABLE);
     const sp = this.createForInSequence(inTok, seq);
     const p = this.pf.make(PK_FOR_IN);
@@ -2474,7 +2676,7 @@ export class DtVisitor {
   }
 
   writeDeclaredForIn(ident: i32, inTok: i32, seq: i32): void {
-    const leading = this.takeCommentsBefore(this.a.beg[ident]);
+    const leading = this.takeCommentsBefore(this.a.begOf(ident));
     this.beginMeta(this.f(ident, 0));
     this.begin();
     const mods: i32[] = [];
@@ -2554,15 +2756,25 @@ export class DtVisitor {
         continue;
       }
       if (c === 78) {
-        this.parent[v] = n;
+        this.setParent(v, n);
         this.setParents(v);
       } else if (c === 76) {
         for (let j = 0; j < this.a.len(v); j++) {
           const x = this.a.at(v, j);
-          this.parent[x] = n;
+          this.setParent(x, n);
           this.setParents(x);
         }
       }
+    }
+  }
+
+  // The parent array holds a slot for every node.
+  setParent(x: i32, n: i32): void {
+    const parent = this.parent;
+    if (x >= 0 && x < parent.length) {
+      parent[x] = n;
+    } else {
+      fault();
     }
   }
 
@@ -2573,7 +2785,7 @@ export class DtVisitor {
   /** The piece for the whole compilation unit. */
   buildUnit(unit: i32): DtPiece {
     if (!dtV313()) {
-      this.parent = new Array<i32>(this.a.n + 1);
+      this.parent = newI32s(add32(this.a.n, 1));
       this.parent.fill(-1);
       this.setParents(unit);
     }
@@ -2625,7 +2837,7 @@ export class DtVisitor {
       seq.visit(d, IN_NONE, needsBlank || addBlankLines);
       needsBlank = addBlankLines || this.hasNonEmptyBody(d);
     }
-    seq.addCommentsBefore(this.a.end[unit], IN_NONE, false);
+    seq.addCommentsBefore(this.a.endOf(unit), IN_NONE, false);
     this.flushText();
     return seq.build(false);
   }
@@ -2642,17 +2854,41 @@ export class DtVisitor {
     }
     // stringValue: the literal without its quotes (raw or not).
     const tok = this.f(uri, 0);
-    let i = this.t.start[tok];
-    const e = this.t.end[tok];
-    if (toI32(this.src[i]) === 114) {
+    const src = this.src;
+    let i = this.t.startAt(tok);
+    const e = this.t.endAt(tok);
+    // A token lies inside the source.
+    if (i < 0 || i >= src.length) {
+      fault();
+      return 3;
+    }
+    if (toI32(src[i]) === 114) {
       i++;
+      if (i >= src.length) {
+        fault();
+        return 3;
+      }
     }
-    const q = toI32(this.src[i]);
-    if (i + 2 < e && toI32(this.src[i + 1]) === q && toI32(this.src[i + 2]) === q) {
-      i += 3;
-    } else {
-      i += 1;
+    const q = toI32(src[i]);
+    const i1 = i + 1;
+    let from = i1;
+    if (toI64(i) + toI64(2) < toI64(e)) {
+      if (i1 >= src.length) {
+        fault();
+        return 3;
+      }
+      if (toI32(src[i1]) === q) {
+        const i2 = i1 + 1;
+        if (i2 >= src.length) {
+          fault();
+          return 3;
+        }
+        if (toI32(src[i2]) === q) {
+          from = i2 + 1;
+        }
+      }
     }
+    i = from;
     if (this.startsAt(i, e, "dart:")) {
       return 0;
     }
@@ -2664,13 +2900,20 @@ export class DtVisitor {
 
   startsAt(i: i32, e: i32, s: string): boolean {
     const n = toI32(s.length);
-    if (i + n > e) {
+    if (toI64(i) + toI64(n) > toI64(e)) {
       return false;
     }
-    for (let j = 0; j < n; j++) {
-      if (toI32(this.src[i + j]) !== s.charCodeAt(j)) {
+    const src = this.src;
+    let k = i;
+    for (let j = 0; j < n && j < s.length; j++) {
+      if (k < 0 || k >= src.length) {
+        fault();
         return false;
       }
+      if (toI32(src[k]) !== s.charCodeAt(j)) {
+        return false;
+      }
+      k = k + 1;
     }
     return true;
   }
@@ -2733,7 +2976,7 @@ export class DtVisitor {
         this.writeInfixChain(
           n,
           N_BINARY_EXPRESSION,
-          dtPrecedence(this.t.kind[op], this.t.kw[op]),
+          dtPrecedence(this.t.kindAt(op), this.t.kwAt(op)),
           !dtIs37() || this.parentContext !== NC_ASSIGNMENT,
         );
         return;
@@ -2813,7 +3056,7 @@ export class DtVisitor {
         const eq = this.f(n, 3);
         if (eq >= 0) {
           const name = this.f(n, 2);
-          const leading = this.takeCommentsBefore(this.a.beg[name]);
+          const leading = this.takeCommentsBefore(this.a.begOf(name));
           this.begin();
           this.visit(name);
           this.space();
@@ -3207,7 +3450,7 @@ export class DtVisitor {
         this.writeInfixChain(
           n,
           N_LOGICAL_AND_PATTERN,
-          dtPrecedence(this.t.kind[op], K_NONE),
+          dtPrecedence(this.t.kindAt(op), K_NONE),
           !dtIs37() || this.parentContext !== NC_ASSIGNMENT,
         );
         return;
@@ -3218,7 +3461,7 @@ export class DtVisitor {
         if (dtIs37() && this.parentContext === NC_ASSIGNMENT) {
           indent = false;
         }
-        this.writeInfixChain(n, N_LOGICAL_OR_PATTERN, dtPrecedence(this.t.kind[op], K_NONE), indent);
+        this.writeInfixChain(n, N_LOGICAL_OR_PATTERN, dtPrecedence(this.t.kindAt(op), K_NONE), indent);
         return;
       }
       case N_MAP_LITERAL_ENTRY: {
@@ -3396,9 +3639,9 @@ export class DtVisitor {
         const op = this.f(n, 0);
         const operand = this.f(n, 1);
         let space = false;
-        const ok = this.t.kind[op];
+        const ok = this.t.kindAt(op);
         if ((ok === T_MINUS || ok === T_DEC) && this.kind(operand) === N_PREFIX_EXPRESSION) {
-          const ik = this.t.kind[this.f(operand, 0)];
+          const ik = this.t.kindAt(this.f(operand, 0));
           space = ik === T_MINUS || ik === T_DEC;
         }
         this.writePrefix(op, operand, space);
@@ -3508,7 +3751,7 @@ export class DtVisitor {
         for (let i = 0; i < this.a.len(comps); i++) {
           const c = this.a.at(comps, i);
           if (i > 0) {
-            this.token(c - 1);
+            this.token(sub32(c, 1));
           }
           this.token(c);
         }
@@ -3977,8 +4220,18 @@ class DtChainBuilder {
   }
 
   canSplit(i: i32): boolean {
-    const t = this.types[i];
+    const t = this.typeAt(i);
     return t === CT_SPLITTABLE || t === CT_BLOCK_FORMAT;
+  }
+
+  /** The type of call `i`; a type was pushed for each call. */
+  typeAt(i: i32): i32 {
+    const types = this.types;
+    if (i >= 0 && i < types.length) {
+      return types[i];
+    }
+    fault();
+    return -1;
   }
 
   make(cascade: boolean, indent: i32, leadingProperties: i32, blockCallIndex: i32): DtPiece {
@@ -4031,7 +4284,7 @@ class DtChainBuilder {
       return t;
     }
     let leadingProperties = 0;
-    while (leadingProperties < n && this.types[leadingProperties] === CT_PROPERTY) {
+    while (leadingProperties < n && this.typeAt(leadingProperties) === CT_PROPERTY) {
       leadingProperties++;
     }
     let leadingUnsplittable = leadingProperties;
@@ -4039,13 +4292,13 @@ class DtChainBuilder {
       leadingUnsplittable++;
     }
     let lastCall = n - 1;
-    if (!this.canSplit(lastCall) && n > 1 && this.types[lastCall - 1] === CT_BLOCK_FORMAT) {
+    if (!this.canSplit(lastCall) && n > 1 && this.typeAt(sub32(lastCall, 1)) === CT_BLOCK_FORMAT) {
       lastCall = n - 2;
     }
     let blockCall = -1;
     if (leadingUnsplittable === lastCall && this.canSplit(lastCall)) {
       blockCall = lastCall;
-    } else if (this.types[lastCall] === CT_BLOCK_FORMAT) {
+    } else if (this.typeAt(lastCall) === CT_BLOCK_FORMAT) {
       blockCall = lastCall;
     }
     return this.make(false, isCascadeTarget ? IN_CASCADE : IN_EXPRESSION, leadingProperties, blockCall);
@@ -4117,7 +4370,7 @@ class DtChainBuilder {
       this.postfixFinish(v.end());
       return;
     }
-    if (k === N_POSTFIX_EXPRESSION && v.t.kind[v.f(e, 1)] === T_BANG) {
+    if (k === N_POSTFIX_EXPRESSION && v.t.kindAt(v.f(e, 1)) === T_BANG) {
       this.unwrapCall(v.f(e, 0));
       this.postfixPrepare(e);
       v.begin();
@@ -4148,14 +4401,27 @@ class DtChainBuilder {
       }
       return t;
     }
-    return this.calls[this.calls.length - 1];
+    const calls = this.calls;
+    const k = toI32(calls.length);
+    if (k > 0 && k <= calls.length) {
+      return calls[k - 1];
+    }
+    // A postfix follows a call when it is not on the target.
+    fault();
+    return this.v.pf.make(PK_ADJACENT);
   }
 
   postfixFinish(p: DtPiece): void {
     if (this.postfixOnTarget) {
       this.target = p;
     } else {
-      this.calls[this.calls.length - 1] = p;
+      const calls = this.calls;
+      const k = toI32(calls.length);
+      if (k > 0 && k <= calls.length) {
+        calls[k - 1] = p;
+      } else {
+        fault();
+      }
     }
   }
 
@@ -4181,17 +4447,7 @@ export const dtListHasBlockElement = (p: DtPiece): boolean => {
 
 const dtStyleDefault = (): DtListStyle => new DtListStyle(CM_TRAILING, 1, false);
 
-const dtStrUtf16 = (s: string): i32 => {
-  let n = 0;
-  const k = toI32(s.length);
-  for (let i = 0; i < k; i++) {
-    const c = s.charCodeAt(i);
-    if (c < 0x80 || c >= 0xc0) {
-      n += c >= 0xf0 ? 2 : 1;
-    }
-  }
-  return n;
-};
+const dtStrUtf16 = (s: string): i32 => strUtf16Len(s);
 
 /** A `with`, `implements`, etc. clause of a type header. */
 class DtClause {
@@ -4413,8 +4669,8 @@ class DtTypeBuilder {
     const n = v.a.len(consts);
     for (let i = 0; i < n; i++) {
       const c = v.a.at(consts, i);
-      const isLast = i === n - 1;
-      b.addCommentsBefore(v.a.beg[c]);
+      const isLast = i + 1 === n;
+      b.addCommentsBefore(v.a.begOf(c));
       b.add(v.createEnumConstant(c, !isLast, isLast ? v.f(body, 2) : -1), IN_NONE, true);
     }
     b.addBlank();
