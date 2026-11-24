@@ -288,7 +288,6 @@ import {
   T_WHITE_SPACE,
   ktIsSoft,
   ktKeywordText,
-  ktSoftKeyword,
 } from "./types";
 
 /** A token set: a bitset over type ids, every one below 12 * 32. */
@@ -950,7 +949,7 @@ export class KParser {
     }
     const token = this.tt();
     if (token === T_IDENTIFIER) {
-      const kw = ktSoftKeyword(this.b.tokenText());
+      const kw = this.b.softKeyword();
       if (kw >= 0 && tsHas(set, kw)) {
         this.b.remapCurrentToken(kw);
         return true;

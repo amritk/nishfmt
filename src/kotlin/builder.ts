@@ -28,6 +28,56 @@ import {
   T_WHITE_SPACE,
   N_CONSTRUCTOR_DELEGATION_CALL,
   N_CONSTRUCTOR_DELEGATION_REFERENCE,
+  T_ABSTRACT_KEYWORD,
+  T_ACTUAL_KEYWORD,
+  T_ALL_KEYWORD,
+  T_ANNOTATION_KEYWORD,
+  T_BY_KEYWORD,
+  T_CATCH_KEYWORD,
+  T_COMPANION_KEYWORD,
+  T_CONSTRUCTOR_KEYWORD,
+  T_CONST_KEYWORD,
+  T_CONTEXT_KEYWORD,
+  T_CONTRACT_KEYWORD,
+  T_CROSSINLINE_KEYWORD,
+  T_DATA_KEYWORD,
+  T_DELEGATE_KEYWORD,
+  T_DYNAMIC_KEYWORD,
+  T_ENUM_KEYWORD,
+  T_EXPECT_KEYWORD,
+  T_EXTERNAL_KEYWORD,
+  T_FIELD_KEYWORD,
+  T_FILE_KEYWORD,
+  T_FINALLY_KEYWORD,
+  T_FINAL_KEYWORD,
+  T_GET_KEYWORD,
+  T_IMPORT_KEYWORD,
+  T_INFIX_KEYWORD,
+  T_INIT_KEYWORD,
+  T_INLINE_KEYWORD,
+  T_INNER_KEYWORD,
+  T_INTERNAL_KEYWORD,
+  T_LATEINIT_KEYWORD,
+  T_NOINLINE_KEYWORD,
+  T_OPEN_KEYWORD,
+  T_OPERATOR_KEYWORD,
+  T_OUT_KEYWORD,
+  T_OVERRIDE_KEYWORD,
+  T_PARAM_KEYWORD,
+  T_PRIVATE_KEYWORD,
+  T_PROPERTY_KEYWORD,
+  T_PROTECTED_KEYWORD,
+  T_PUBLIC_KEYWORD,
+  T_RECEIVER_KEYWORD,
+  T_REIFIED_KEYWORD,
+  T_SEALED_KEYWORD,
+  T_SETPARAM_KEYWORD,
+  T_SET_KEYWORD,
+  T_SUSPEND_KEYWORD,
+  T_TAILREC_KEYWORD,
+  T_VALUE_KEYWORD,
+  T_VARARG_KEYWORD,
+  T_WHERE_KEYWORD,
 } from "./types";
 
 // Edge binders.
@@ -565,6 +615,180 @@ export class KBuilder {
   tokenEnd(): i32 {
     const c = this.cur;
     return c < this.lx.count ? this.le(c) : this.lx.n;
+  }
+
+  /**
+   * `ktSoftKeyword` of the current token's text, compared byte by byte so
+   * no string is made: the soft keyword token, or -1.
+   */
+  softKeyword(): i32 {
+    const c = this.cur;
+    if (c >= this.lx.count) {
+      return -1;
+    }
+    const len = toI64(this.le(c)) - toI64(this.ls(c));
+    if (len === toI64(2)) {
+      if (this.tokenIs("by")) {
+        return T_BY_KEYWORD;
+      }
+    } else if (len === toI64(3)) {
+      if (this.tokenIs("get")) {
+        return T_GET_KEYWORD;
+      }
+      if (this.tokenIs("set")) {
+        return T_SET_KEYWORD;
+      }
+      if (this.tokenIs("out")) {
+        return T_OUT_KEYWORD;
+      }
+      if (this.tokenIs("all")) {
+        return T_ALL_KEYWORD;
+      }
+    } else if (len === toI64(4)) {
+      if (this.tokenIs("file")) {
+        return T_FILE_KEYWORD;
+      }
+      if (this.tokenIs("init")) {
+        return T_INIT_KEYWORD;
+      }
+      if (this.tokenIs("enum")) {
+        return T_ENUM_KEYWORD;
+      }
+      if (this.tokenIs("open")) {
+        return T_OPEN_KEYWORD;
+      }
+      if (this.tokenIs("data")) {
+        return T_DATA_KEYWORD;
+      }
+    } else if (len === toI64(5)) {
+      if (this.tokenIs("field")) {
+        return T_FIELD_KEYWORD;
+      }
+      if (this.tokenIs("param")) {
+        return T_PARAM_KEYWORD;
+      }
+      if (this.tokenIs("where")) {
+        return T_WHERE_KEYWORD;
+      }
+      if (this.tokenIs("inner")) {
+        return T_INNER_KEYWORD;
+      }
+      if (this.tokenIs("catch")) {
+        return T_CATCH_KEYWORD;
+      }
+      if (this.tokenIs("final")) {
+        return T_FINAL_KEYWORD;
+      }
+      if (this.tokenIs("value")) {
+        return T_VALUE_KEYWORD;
+      }
+      if (this.tokenIs("infix")) {
+        return T_INFIX_KEYWORD;
+      }
+      if (this.tokenIs("const")) {
+        return T_CONST_KEYWORD;
+      }
+    } else if (len === toI64(6)) {
+      if (this.tokenIs("import")) {
+        return T_IMPORT_KEYWORD;
+      }
+      if (this.tokenIs("public")) {
+        return T_PUBLIC_KEYWORD;
+      }
+      if (this.tokenIs("vararg")) {
+        return T_VARARG_KEYWORD;
+      }
+      if (this.tokenIs("sealed")) {
+        return T_SEALED_KEYWORD;
+      }
+      if (this.tokenIs("inline")) {
+        return T_INLINE_KEYWORD;
+      }
+      if (this.tokenIs("expect")) {
+        return T_EXPECT_KEYWORD;
+      }
+      if (this.tokenIs("actual")) {
+        return T_ACTUAL_KEYWORD;
+      }
+    } else if (len === toI64(7)) {
+      if (this.tokenIs("context")) {
+        return T_CONTEXT_KEYWORD;
+      }
+      if (this.tokenIs("private")) {
+        return T_PRIVATE_KEYWORD;
+      }
+      if (this.tokenIs("reified")) {
+        return T_REIFIED_KEYWORD;
+      }
+      if (this.tokenIs("dynamic")) {
+        return T_DYNAMIC_KEYWORD;
+      }
+      if (this.tokenIs("finally")) {
+        return T_FINALLY_KEYWORD;
+      }
+      if (this.tokenIs("tailrec")) {
+        return T_TAILREC_KEYWORD;
+      }
+      if (this.tokenIs("suspend")) {
+        return T_SUSPEND_KEYWORD;
+      }
+    } else if (len === toI64(8)) {
+      if (this.tokenIs("property")) {
+        return T_PROPERTY_KEYWORD;
+      }
+      if (this.tokenIs("receiver")) {
+        return T_RECEIVER_KEYWORD;
+      }
+      if (this.tokenIs("setparam")) {
+        return T_SETPARAM_KEYWORD;
+      }
+      if (this.tokenIs("delegate")) {
+        return T_DELEGATE_KEYWORD;
+      }
+      if (this.tokenIs("abstract")) {
+        return T_ABSTRACT_KEYWORD;
+      }
+      if (this.tokenIs("contract")) {
+        return T_CONTRACT_KEYWORD;
+      }
+      if (this.tokenIs("override")) {
+        return T_OVERRIDE_KEYWORD;
+      }
+      if (this.tokenIs("internal")) {
+        return T_INTERNAL_KEYWORD;
+      }
+      if (this.tokenIs("lateinit")) {
+        return T_LATEINIT_KEYWORD;
+      }
+      if (this.tokenIs("noinline")) {
+        return T_NOINLINE_KEYWORD;
+      }
+      if (this.tokenIs("external")) {
+        return T_EXTERNAL_KEYWORD;
+      }
+      if (this.tokenIs("operator")) {
+        return T_OPERATOR_KEYWORD;
+      }
+    } else if (len === toI64(9)) {
+      if (this.tokenIs("protected")) {
+        return T_PROTECTED_KEYWORD;
+      }
+      if (this.tokenIs("companion")) {
+        return T_COMPANION_KEYWORD;
+      }
+    } else if (len === toI64(10)) {
+      if (this.tokenIs("annotation")) {
+        return T_ANNOTATION_KEYWORD;
+      }
+    } else if (len === toI64(11)) {
+      if (this.tokenIs("constructor")) {
+        return T_CONSTRUCTOR_KEYWORD;
+      }
+      if (this.tokenIs("crossinline")) {
+        return T_CROSSINLINE_KEYWORD;
+      }
+    }
+    return -1;
   }
 
   /** Whether the current token's text is `s`. */
