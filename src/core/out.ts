@@ -4,18 +4,21 @@
 // `buf[0, n)` and lower `n`. Every write is guarded, and one past what the
 // buffer can hold faults (src/core/fault.ts) rather than panicking.
 
-import { newU8s } from "./arr";
 import { fault } from "./fault";
 
 export class Out {
   buf: u8[];
   n: i32 = 0;
 
+  /**
+   * `cap` is a size hint the buffer no longer needs: it grows as bytes are
+   * written, so it is never zero-filled first.
+   */
   constructor(cap: i32) {
-    this.buf = newU8s(cap < 64 ? 64 : cap);
+    this.buf = [];
   }
 
-  /** Makes room for `extra` more bytes after `n`, doubling the buffer as it grows. */
+  /** Makes room for `extra` more bytes after `n`, for callers that then write `buf` by index. */
   reserve(extra: i32): void {
     const n = this.n;
     if (extra <= 0) {
@@ -27,46 +30,39 @@ export class Out {
       return;
     }
     const need = toI32(need64);
-    const len = toI32(this.buf.length);
-    if (need <= len) {
-      return;
-    }
-    let cap = len <= 1073741823 ? len + len : 2147483647;
-    if (cap < need) {
-      cap = need;
-    }
     const buf = this.buf;
-    while (buf.length < cap) {
+    while (buf.length < need) {
       buf.push(0);
     }
   }
 
   byte(c: i32): void {
-    this.reserve(1);
     const buf = this.buf;
     const n = this.n;
     if (n >= 0 && n < buf.length) {
       buf[n] = toU8(c);
-      this.n = n + 1;
+    } else if (n === buf.length && n < 2147483647) {
+      buf.push(toU8(c));
     } else {
       fault();
+      return;
     }
+    this.n = n + 1;
   }
 
   /** Writes `k` copies of byte `c`. */
   fill(k: i32, c: u8): void {
-    if (k <= 0) {
-      return;
-    }
-    this.reserve(k);
     const buf = this.buf;
     let n = this.n;
     for (let i = 0; i < k; i++) {
-      if (n < 0 || n >= buf.length) {
+      if (n >= 0 && n < buf.length) {
+        buf[n] = c;
+      } else if (n === buf.length && n < 2147483647) {
+        buf.push(c);
+      } else {
         fault();
         return;
       }
-      buf[n] = c;
       n = n + 1;
     }
     this.n = n;
@@ -88,16 +84,18 @@ export class Out {
       fault();
       return;
     }
-    // `0 <= a < b`, so the u32 difference is the true one.
-    this.reserve(toI32(toU32(b) - toU32(a)));
     const buf = this.buf;
     let n = this.n;
     for (let i = a; i < b && i < src.length; i++) {
-      if (n < 0 || n >= buf.length) {
+      const c = src[i];
+      if (n >= 0 && n < buf.length) {
+        buf[n] = c;
+      } else if (n === buf.length && n < 2147483647) {
+        buf.push(c);
+      } else {
         fault();
         return;
       }
-      buf[n] = src[i];
       n = n + 1;
     }
     this.n = n;
@@ -105,15 +103,18 @@ export class Out {
 
   str(s: string): void {
     const k = toI32(s.length);
-    this.reserve(k);
     const buf = this.buf;
     let n = this.n;
     for (let i = 0; i < k; i++) {
-      if (n < 0 || n >= buf.length) {
+      const c = toU8(s.charCodeAt(i));
+      if (n >= 0 && n < buf.length) {
+        buf[n] = c;
+      } else if (n === buf.length && n < 2147483647) {
+        buf.push(c);
+      } else {
         fault();
         return;
       }
-      buf[n] = toU8(s.charCodeAt(i));
       n = n + 1;
     }
     this.n = n;
