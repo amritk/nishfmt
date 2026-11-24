@@ -127,8 +127,28 @@ export const formatRust = (e: RustEngine, path: string, src0: u8[], n0: i32, out
     }
     return false;
   }
-  out.range(r.bytes, 0, r.nb);
+  // The text's bytes become the buffer, which holds them and nothing more.
+  const b = rsTextBytes(r.text);
+  out.buf = b;
+  out.n = toI32(b.length);
   return true;
+};
+
+/** The bytes of `s`: one zeroed allocation up to 65,535, else one `push` a byte. */
+const rsTextBytes = (s: string): u8[] => {
+  const k = toI32(s.length);
+  if (k <= 65535) {
+    const b = new Array<u8>(toU16(k));
+    for (let i = 0; i < k && i < b.length; i++) {
+      b[i] = toU8(s.charCodeAt(i));
+    }
+    return b;
+  }
+  const b: u8[] = [];
+  for (let i = 0; i < k; i++) {
+    b.push(toU8(s.charCodeAt(i)));
+  }
+  return b;
 };
 
 export const isRustName = (name: string): boolean => name.endsWith(".rs");

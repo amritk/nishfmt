@@ -314,21 +314,21 @@ export class RsAst {
 
   constructor(cap: i32) {
     const c = cap < 64 ? 64 : cap;
-    // The node arrays grow a node at a time (`add`); `kids` starts `c` long.
-    this.kind = [];
-    this.lo = [];
-    this.hi = [];
-    this.a = [];
-    this.b = [];
-    this.c = [];
-    this.d = [];
-    this.e = [];
-    this.x = [];
-    this.fl = [];
-    this.ls = [];
-    this.ln = [];
-    this.ats = [];
-    this.atn = [];
+    // Room for `c` nodes; past that the node arrays grow a node at a time (`add`).
+    this.kind = newI32s(c);
+    this.lo = newI32s(c);
+    this.hi = newI32s(c);
+    this.a = newI32s(c);
+    this.b = newI32s(c);
+    this.c = newI32s(c);
+    this.d = newI32s(c);
+    this.e = newI32s(c);
+    this.x = newI32s(c);
+    this.fl = newI32s(c);
+    this.ls = newI32s(c);
+    this.ln = newI32s(c);
+    this.ats = newI32s(c);
+    this.atn = newI32s(c);
     this.kids = newI32s(c);
   }
 
@@ -369,7 +369,7 @@ export class RsAst {
       i < atss.length &&
       i < atns.length
     ) {
-      // A node the parser backtracked over: made again in place.
+      // A node in the room the arrays have (or one the parser backtracked over).
       kinds[i] = kind;
       los[i] = lo;
       his[i] = lo;

@@ -112,6 +112,50 @@ export class RsStrBuf {
     return s;
   }
 
+  /** The newlines in the buffer. */
+  newlineCount(): i32 {
+    return rsCountNewlines(this.str());
+  }
+
+  /** The newlines that end the buffer. */
+  trailingNewlines(): i32 {
+    this.sync();
+    const ps = this.parts;
+    let k = 0;
+    for (let i = toI32(ps.length) - 1; i >= 0 && i < ps.length; i--) {
+      const p = ps[i];
+      let j = toI32(p.length) - 1;
+      while (j >= 0 && j < p.length && p.charCodeAt(j) === 10) {
+        // At most one per byte of the buffer, whose length is an i32.
+        if (k > 1073741823) {
+          fault();
+          return 0;
+        }
+        k = k + 1;
+        j--;
+      }
+      if (j >= 0) {
+        break;
+      }
+    }
+    return k;
+  }
+
+  /** The final byte, or -1 when the buffer is empty. */
+  lastByte(): i32 {
+    this.sync();
+    const ps = this.parts;
+    const k = toI32(ps.length);
+    if (k > 0) {
+      const p = ps[k - 1];
+      const m = toI32(p.length);
+      if (m > 0) {
+        return p.charCodeAt(m - 1);
+      }
+    }
+    return -1;
+  }
+
   /** Drops the final byte (the caller knows there is one). */
   dropLast(): void {
     this.sync();
@@ -544,23 +588,25 @@ export const rsLastLine = (s: string): string => {
 /** The display width of `s`, as unicode-width's `UnicodeWidthStr::width` counts it. */
 export const rsWidth = (s: string): i32 => {
   const n = toI32(s.length);
-  let w = 0;
+  // The bytes that take no column: a line feed, and a carriage return before one.
+  let k = 0;
   for (let i = 0; i < n; i++) {
     const c = s.charCodeAt(i);
-    if (c >= 128) {
+    if (c <= 13) {
+      if (c === 10 || (c === 13 && i + 1 < n && s.charCodeAt(i + 1) === 10)) {
+        // k <= i < n.
+        if (k >= n) {
+          fault();
+          return 0;
+        }
+        k++;
+      }
+    } else if (c >= 128) {
       return rsUnicodeStrWidth(s);
     }
-    // A line feed takes no column, nor a carriage return before one.
-    if (c !== 10 && !(c === 13 && i + 1 < n && s.charCodeAt(i + 1) === 10)) {
-      // w <= i < n.
-      if (w >= n) {
-        fault();
-        return 0;
-      }
-      w++;
-    }
   }
-  return w;
+  // Exact: 0 <= k <= n.
+  return toI32(toU32(n) - toU32(k));
 };
 
 /** The number of chars (code points) in `s`. */

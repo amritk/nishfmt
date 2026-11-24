@@ -4,26 +4,21 @@
 // Ported from rustfmt 1.10.0 (MIT OR Apache-2.0, Copyright The Rust Project
 // Developers): formatting.rs, lib.rs.
 
-import { Out } from "../core/out";
 import { RsAst } from "./ast";
 import { rsAttrsContainSkip } from "./attr";
 import { rsCharClasses, rsIndentNextLine, rsKindIsComment, rsKindIsString, rsLineClasses, rsSliceStr } from "./comment";
-import { RsCtx, RsFile, RsRanges, rsBytesText } from "./context";
+import { RsCtx, RsFile, RsRanges } from "./context";
 import { RsTokens, rsLex, rsZeroU8s } from "./lexer";
 import { RsParser } from "./parser";
 import { RsConfig, rsIndentStr } from "./shape";
-import { rsWsLenAt, rsWsLenAtBytes } from "./str";
+import { rsWsLenAt } from "./str";
 import { RsVisitor } from "./visitor";
 import { add32, atI32, sub32 } from "../core/arr";
 import { fault } from "../core/fault";
 
 /** What formatting one source gave. */
 export class RsFormatted {
-  // The formatted text: `bytes[0, nb)`, as a string on first use.
-  bytes: u8[] = [];
-  nb: i32 = 0;
   text: string = "";
-  hasText: boolean = false;
   parseFailed: boolean = false;
   failAt: i32 = -1; // the byte offset of the token the parser failed at
   unsupported: boolean = false;
@@ -34,15 +29,6 @@ export class RsFormatted {
   skipped: RsRanges;
   constructor() {
     this.skipped = new RsRanges();
-  }
-
-  /** The formatted text. */
-  str(): string {
-    if (!this.hasText) {
-      this.text = rsBytesText(this.bytes, 0, this.nb);
-      this.hasText = true;
-    }
-    return this.text;
   }
 }
 
@@ -69,17 +55,10 @@ export const rsFormatSource = (src: u8[], n: i32, text: string, cfg: RsConfig, i
   const f = new RsFile(src, n, text, t, ast, cfg);
   // #![rustfmt::skip] on the crate: the source is echoed back.
   if (rsAttrsContainSkip(new RsCtx(f), root)) {
-    // The file is `src[0, n)`.
-    if (n < 0 || n > src.length) {
-      fault();
-      return r;
-    }
-    r.bytes = src;
-    r.nb = n;
+    r.text = text;
     return r;
   }
   const v = new RsVisitor(f);
-  v.buf = new Out(add32(add32(n, n / 4), 1024));
   v.isMacroDef = isMacroDef;
   v.lastPos = 0;
   v.skipEmptyLines(n);
@@ -91,19 +70,13 @@ export const rsFormatSource = (src: u8[], n: i32, text: string, cfg: RsConfig, i
     return r;
   }
   // append_newline; format_lines then makes a run of trailing newlines one.
-  v.buf.byte(10);
-  const b = v.buf.buf;
-  let m = v.buf.n;
-  // The output is `buf[0, n)`.
-  if (m < 0 || m > b.length) {
-    fault();
-    return r;
-  }
-  while (m >= 2 && toI32(b[m - 2]) === 10) {
+  v.out.add("\n");
+  const s = v.text();
+  let m = toI32(s.length);
+  while (m >= 2 && m <= s.length && s.charCodeAt(m - 2) === 10) {
     m--;
   }
-  r.bytes = b;
-  r.nb = m;
+  r.text = m < toI32(s.length) ? s.substring(0, m) : s;
   r.macroFailure = v.macroRewriteFailure;
   r.lostComment = f.lostComment;
   r.skipped = v.skipped;
@@ -130,26 +103,22 @@ const strBytes = (s: string): u8[] => {
 };
 
 /** Whether a line of `s` ends in a whitespace char (the error's precondition, without classifying chars). */
-const anyLineEndsInWhitespace = (s: u8[], n: i32): boolean => {
-  // The text is `s[0, n)`.
-  if (n < 0 || n > s.length) {
-    fault();
-    return false;
-  }
+const anyLineEndsInWhitespace = (s: string): boolean => {
+  const n = toI32(s.length);
   let lineStart = 0;
-  for (let i = 0; i < n && i < s.length; i++) {
-    if (toI32(s[i]) !== 10) {
+  for (let i = 0; i < n; i++) {
+    if (s.charCodeAt(i) !== 10) {
       continue;
     }
     // The last char of the line, a carriage return aside.
     let j = i - 1;
-    while (j >= lineStart && j >= 0 && toI32(s[j]) === 13) {
+    while (j >= lineStart && j >= 0 && s.charCodeAt(j) === 13) {
       j--;
     }
-    while (j > lineStart && j >= 0 && (toI32(s[j]) & 0xc0) === 0x80) {
+    while (j > lineStart && j >= 0 && (s.charCodeAt(j) & 0xc0) === 0x80) {
       j--;
     }
-    if (j >= lineStart && j >= 0 && j < s.length && rsWsLenAtBytes(s, j, n) > 0) {
+    if (j >= lineStart && j >= 0 && rsWsLenAt(s, j) > 0) {
       return true;
     }
     lineStart = i + 1;
@@ -166,10 +135,10 @@ const anyLineEndsInWhitespace = (s: u8[], n: i32): boolean => {
  * error; a macro body with it keeps the definition as written.
  */
 export const rsHasTrailingWhitespaceError = (r: RsFormatted, errorOnUnformatted: boolean): boolean => {
-  if (!anyLineEndsInWhitespace(r.bytes, r.nb)) {
+  const s = r.text;
+  if (!anyLineEndsInWhitespace(s)) {
     return false;
   }
-  const s = r.str();
   const skipped = r.skipped;
   const cc = rsCharClasses(s);
   let line = 1;
@@ -216,13 +185,13 @@ export const rsFormatSnippet = (parent: RsCtx, code: string, cfg: RsConfig, isMa
   if (r.parseFailed || r.broken) {
     return null;
   }
-  if (r.macroFailure || (r.nb === 0 && n !== 0)) {
+  if (r.macroFailure || (r.text.length === 0 && n !== 0)) {
     return null;
   }
   if (isMacroDef && (r.lostComment || rsHasTrailingWhitespaceError(r, true))) {
     return null;
   }
-  return new RsSnippet(r.str(), r.skipped);
+  return new RsSnippet(r.text, r.skipped);
 };
 
 const FN_MAIN_PREFIX: string = "fn main() {\n";

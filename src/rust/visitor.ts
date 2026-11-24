@@ -8,7 +8,6 @@
 import { add32, sub32 } from "../core/arr";
 
 import { fault } from "../core/fault";
-import { Out } from "../core/out";
 import {
   AT_DOC,
   AT_INNER,
@@ -96,7 +95,6 @@ import { rsNA, rsNAtn, rsNC, rsND, rsNE, rsNFl, rsNHi, rsNKind, rsNLastI32, rsNL
 export class RsVisitor {
   f: RsFile;
   ast: RsAst;
-  buf: Out;
   lastPos: i32 = 0;
   bi: i32 = 0; // block_indent.block_indent
   al: i32 = 0; // block_indent.alignment
@@ -107,8 +105,7 @@ export class RsVisitor {
   assocKind: i32 = 1;
   macroRewriteFailure: boolean = false;
   skipped: RsRanges;
-  // `buf` again as strings, for `text`: every write to `buf` goes to both
-  // (but the final newline format.ts adds after the walk).
+  // The output so far.
   out: RsStrBuf;
   // Reads the source for `snippet`.
   srcCtx: RsCtx;
@@ -119,7 +116,6 @@ export class RsVisitor {
   constructor(f: RsFile) {
     this.f = f;
     this.ast = f.ast;
-    this.buf = new Out(256);
     this.endPos = f.n;
     this.skipped = new RsRanges();
     this.out = new RsStrBuf();
@@ -153,24 +149,7 @@ export class RsVisitor {
 
   /** line_number: the newlines in the buffer. */
   lineNumber(): i32 {
-    let k = 0;
-    const b = this.buf.buf;
-    const n = this.buf.n;
-    if (n > b.length) {
-      fault();
-      return 0;
-    }
-    for (let i = 0; i < n && i < b.length; i++) {
-      if (toI32(b[i]) === 10) {
-        // k <= i.
-        if (k >= b.length) {
-          fault();
-          return 0;
-        }
-        k++;
-      }
-    }
-    return k;
+    return this.out.newlineCount();
   }
 
   /** The source text [lo, hi), as the context reads it (RsCtx.snippet). */
@@ -204,7 +183,6 @@ export class RsVisitor {
   }
 
   pushStr(s: string): void {
-    this.buf.str(s);
     this.out.add(s);
   }
 
@@ -214,43 +192,13 @@ export class RsVisitor {
   }
 
   bufTrailingNewlines(): i32 {
-    const b = this.buf.buf;
-    const n = this.buf.n;
-    if (n <= 0) {
-      return 0;
-    }
-    if (n > b.length) {
-      fault();
-      return 0;
-    }
-    let k = 0;
-    let i = n - 1;
-    while (i >= 0 && i < b.length && toI32(b[i]) === 10) {
-      // k = n - 1 - i <= i.
-      if (k >= b.length) {
-        fault();
-        return 0;
-      }
-      k++;
-      i--;
-    }
-    return k;
+    return this.out.trailingNewlines();
   }
 
   /** Drops the buffer's final byte when it is a newline. */
   dropFinalNewline(): void {
-    const ob = this.buf;
-    const b = ob.buf;
-    const n = ob.n;
-    if (n > 0) {
-      if (n > b.length) {
-        fault();
-        return;
-      }
-      if (toI32(b[n - 1]) === 10) {
-        ob.n = n - 1;
-        this.out.dropLast();
-      }
+    if (this.out.lastByte() === 10) {
+      this.out.dropLast();
     }
   }
 
@@ -281,7 +229,7 @@ export class RsVisitor {
       return;
     }
     this.pushStr(rsTrimEnd(last));
-    if (isSame && this.buf.n !== 0) {
+    if (isSame && this.out.len() !== 0) {
       this.pushStr("\n");
     }
     if (mode === 1) {
@@ -292,7 +240,7 @@ export class RsVisitor {
   formatMissingInner(end: i32, mode: i32): void {
     const start = this.lastPos;
     if (start === end) {
-      if (this.buf.n !== 0) {
+      if (this.out.len() !== 0) {
         this.processLast(mode, "", "", true);
       }
       return;
@@ -330,7 +278,6 @@ export class RsVisitor {
     } else if (total < lower) {
       nc = offset >= lower ? 0 : lower - offset;
     }
-    this.buf.newlines(nc);
     for (let i = 0; i < nc; i++) {
       this.out.add("\n");
     }

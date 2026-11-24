@@ -56,7 +56,7 @@ import { rsFormatCodeBlock, rsFormatSnippet } from "./format";
 import { rsRewriteTy } from "./types";
 import { rsFormatVisibility, rsIdentStr } from "./utils";
 import { RsVisitor } from "./visitor";
-import { add32, atI32, bytesText, sub32 } from "../core/arr";
+import { add32, atI32, sub32 } from "../core/arr";
 import { fault } from "../core/fault";
 
 export const MP_ITEM: i32 = 0;
@@ -133,7 +133,7 @@ const rewriteItemAsArg = (ctx: RsCtx, item: i32, shape: RsShape): string | null 
   v.lastPos = rsItemSpanLo(ctx.ast, item);
   v.visitItem(item);
   v.giveTo(ctx);
-  return bytesText(v.buf.buf, 0, v.buf.n);
+  return v.text();
 };
 
 const rsItemSpanLo = (ast: RsAst, item: i32): i32 =>
@@ -460,7 +460,7 @@ const rewriteMacroWithItems = (
     v.visitItem(it);
   }
   v.giveTo(ctx);
-  const buf = rsTrim(bytesText(v.buf.buf, 0, v.buf.n));
+  const buf = rsTrim(v.text());
   return name + opener + rsIndentStrNl(cfg, v.bi, v.al) + buf + rsIndentStrNl(cfg, shape.bi, shape.al) + closer + semi;
 };
 

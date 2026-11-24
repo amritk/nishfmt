@@ -8,11 +8,8 @@ import { RsAst } from "./ast";
 import { rsFindUncommented, rsFindUncommentedIn, rsSliceStr } from "./comment";
 import { RsTokens } from "./lexer";
 import { RsConfig } from "./shape";
-import { add32, atI32, bytesText, sub32 } from "../core/arr";
+import { add32, atI32, sub32 } from "../core/arr";
 import { fault } from "../core/fault";
-
-/** `String.fromBytes(src, a, n)`, through the shared `bytesText`. */
-export const rsBytesText = (src: u8[], a: i32, n: i32): string => bytesText(src, a, n);
 
 /** What one formatting run over a source shares: the source, its tokens and AST, and failure flags. */
 export class RsFile {
