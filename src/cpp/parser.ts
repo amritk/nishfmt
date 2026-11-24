@@ -156,8 +156,9 @@ import {
 
 /** `xs[i]`, or 0 (K_EOF) after a fault. */
 const psAt = (xs: i32[], i: i32): i32 => {
-  if (i >= 0 && i < xs.length) {
-    return xs[i];
+  const u = toU32(i);
+  if (u < toU32(xs.length)) {
+    return xs[u];
   }
   fault();
   return 0;
@@ -165,8 +166,9 @@ const psAt = (xs: i32[], i: i32): i32 => {
 
 /** A link column's `xs[i]` (a token or line index), or -1 after a fault. */
 const psLink = (xs: i32[], i: i32): i32 => {
-  if (i >= 0 && i < xs.length) {
-    return xs[i];
+  const u = toU32(i);
+  if (u < toU32(xs.length)) {
+    return xs[u];
   }
   fault();
   return -1;
@@ -174,8 +176,9 @@ const psLink = (xs: i32[], i: i32): i32 => {
 
 /** `xs[i] = v`, or a fault. */
 const psPut = (xs: i32[], i: i32, v: i32): void => {
-  if (i >= 0 && i < xs.length) {
-    xs[i] = v;
+  const u = toU32(i);
+  if (u < toU32(xs.length)) {
+    xs[u] = v;
     return;
   }
   fault();

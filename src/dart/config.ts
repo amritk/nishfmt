@@ -15,8 +15,39 @@
 // wherever this reader cannot follow a file exactly (YAML or a URI form it
 // does not take), the answer is false and the Dart file is left untouched.
 
-import { add32, bytesText, sub32 } from "../core/arr";
+import { add32, bytesText, newU8s, sub32 } from "../core/arr";
 import { fault, faulted } from "../core/fault";
+
+/**
+ * The file at `path` as text, or null when it cannot be read. Its readers
+ * cut their strings from the text and scan its bytes (dtcBytesOf).
+ */
+const dtcReadText = (path: string): string | null => readFileSyncOrNull(path);
+
+/** The bytes of `s`, one element a byte. */
+const dtcBytesOf = (s: string): u8[] => {
+  const n = toI32(s.length);
+  const b = newU8s(n);
+  for (let i = 0; i < n && i < b.length; i++) {
+    b[i] = toU8(s.charCodeAt(i));
+  }
+  return b;
+};
+
+/**
+ * `b[a, e)` as a string, as bytesText makes it: cut from `text` when it is
+ * those bytes as a string (as the file readers give it), else built.
+ */
+const dtcCut = (b: u8[], text: string, a: i32, e: i32): string => {
+  if (a < 0 || e < a || e > b.length) {
+    fault();
+    return "";
+  }
+  if (toI32(text.length) === toI32(b.length)) {
+    return text.substring(a, e);
+  }
+  return bytesText(b, a, e);
+};
 
 /** One file's project settings. */
 export class DtFileConfig {
@@ -62,8 +93,9 @@ const dtcHash = (k: string): i32 => {
 
 /** `xs[i]` of a cache table, or 0 after a fault. */
 const dtcGet = (xs: Int32Array, i: i32): i32 => {
-  if (i >= 0 && i < xs.length) {
-    return xs[i];
+  const ui = toU32(i);
+  if (ui < toU32(xs.length)) {
+    return xs[ui];
   }
   fault();
   return 0;
@@ -71,8 +103,9 @@ const dtcGet = (xs: Int32Array, i: i32): i32 => {
 
 /** Sets `xs[i]` of a cache table; faults when `i` is outside it. */
 const dtcSet = (xs: Int32Array, i: i32, v: i32): void => {
-  if (i >= 0 && i < xs.length) {
-    xs[i] = v;
+  const ui = toU32(i);
+  if (ui < toU32(xs.length)) {
+    xs[ui] = v;
     return;
   }
   fault();
@@ -454,11 +487,14 @@ const dtUtf8Ok = (b: u8[], n: i32): boolean => {
 class DtJson {
   b: u8[];
   n: i32;
+  /** `b` as a string, or "" (dtcCut). */
+  text: string;
   p: i32 = 0;
   failed: boolean = false;
-  constructor(b: u8[], n: i32) {
+  constructor(b: u8[], n: i32, text: string) {
     this.b = b;
     this.n = n;
+    this.text = text;
   }
 
   at(i: i32): i32 {
@@ -466,8 +502,9 @@ class DtJson {
       return -1;
     }
     const b = this.b;
-    if (i >= 0 && i < b.length) {
-      return toI32(b[i]);
+    const ui = toU32(i);
+    if (ui < toU32(b.length)) {
+      return toI32(b[ui]);
     }
     fault();
     this.failed = true;
@@ -670,6 +707,10 @@ class DtJson {
   str(): string {
     this.adv(1);
     const out = new Array<u8>(0);
+    // With no escape the string is the bytes [s0, q) as they are.
+    const s0 = this.p;
+    let q = s0;
+    let esc = false;
     while (true) {
       const c = this.at(this.p);
       if (c < 0) {
@@ -677,6 +718,7 @@ class DtJson {
         return "";
       }
       if (c === 34) {
+        q = this.p;
         this.adv(1);
         break;
       }
@@ -689,6 +731,7 @@ class DtJson {
         this.adv(1);
         continue;
       }
+      esc = true;
       this.adv(1);
       const e = this.at(this.p);
       this.adv(1);
@@ -749,6 +792,9 @@ class DtJson {
         return "";
       }
     }
+    if (!esc) {
+      return dtcCut(this.b, this.text, s0, q);
+    }
     return bytesText(out, 0, toI32(out.length));
   }
 }
@@ -762,6 +808,8 @@ class DtJson {
 class DtYaml {
   b: u8[];
   n: i32;
+  /** `b` as a string, or "" (dtcCut). */
+  text: string;
   ls: i32[];
   le: i32[];
   /** The line's indent, or -1 for a blank or comment line. */
@@ -770,9 +818,10 @@ class DtYaml {
   /** The end of the last inline value parsed. */
   pos: i32 = 0;
   failed: boolean = false;
-  constructor(b: u8[], n: i32) {
+  constructor(b: u8[], n: i32, text: string) {
     this.b = b;
     this.n = n;
+    this.text = text;
     this.ls = [];
     this.le = [];
     this.ind = [];
@@ -1204,7 +1253,7 @@ class DtYaml {
       this.failed = true;
       return "";
     }
-    const v = dtYamlPlain(bytesText(this.b, p, j));
+    const v = dtYamlPlain(dtcCut(this.b, this.text, p, j));
     if (v.kind !== DTV_STR) {
       this.failed = true;
       return "";
@@ -1275,7 +1324,7 @@ class DtYaml {
         return this.fail();
       }
       this.pos = i + 1;
-      return dtValStr(bytesText(this.b, a, i));
+      return dtValStr(dtcCut(this.b, this.text, a, i));
     }
     if (c === 39) {
       if (p >= n) {
@@ -1284,6 +1333,8 @@ class DtYaml {
       }
       const out = new Array<u8>(0);
       let i = p + 1;
+      // With no `''` the string is the bytes [p + 1, i) as they are.
+      let esc = false;
       while (true) {
         if (i >= e) {
           return this.fail();
@@ -1293,6 +1344,7 @@ class DtYaml {
           const q = i + 1;
           if (q < e && this.at(q) === 39) {
             out.push(toU8(39));
+            esc = true;
             i = q + 1;
             continue;
           }
@@ -1306,6 +1358,9 @@ class DtYaml {
         return this.fail();
       }
       this.pos = i + 1;
+      if (!esc) {
+        return dtValStr(dtcCut(this.b, this.text, p + 1, i));
+      }
       return dtValStr(bytesText(out, 0, toI32(out.length)));
     }
     if (c === 91 || c === 123) {
@@ -1341,7 +1396,7 @@ class DtYaml {
       j--;
     }
     this.pos = j;
-    const v = dtYamlPlain(bytesText(this.b, p, j));
+    const v = dtYamlPlain(dtcCut(this.b, this.text, p, j));
     if (v.kind < 0) {
       return this.fail();
     }
@@ -1859,11 +1914,11 @@ const dtLanguageVersion = (s: string, out: i32[]): boolean => {
 };
 
 /** Parses a package_config.json whose path (dot segments removed) is `file`; null when dart format would report an error. */
-const dtParsePackageConfig = (file: string, b: u8[], n: i32): DtPkgs | null => {
+const dtParsePackageConfig = (file: string, b: u8[], n: i32, text: string): DtPkgs | null => {
   if (!dtUtf8Ok(b, n)) {
     return null;
   }
-  const j = new DtJson(b, n);
+  const j = new DtJson(b, n, text);
   const top = j.value(0);
   j.ws();
   if (j.failed || j.p !== n || top.kind !== DTV_MAP) {
@@ -1979,12 +2034,13 @@ const dtPackageConfig = (file: string): DtPkgs | null => {
     }
     return ps;
   }
-  const read = readFileBytesSync(file);
-  if (read === null) {
+  const text = dtcReadText(file);
+  if (text === null) {
     dtcPut(key, 2, 0, 0, 0);
     return null;
   }
-  const ps = dtParsePackageConfig(file, read, toI32(read.length));
+  const read = dtcBytesOf(text);
+  const ps = dtParsePackageConfig(file, read, toI32(read.length), text);
   if (ps === null) {
     dtcPut(key, 2, 0, 0, 0);
     return null;
@@ -2107,16 +2163,16 @@ const dtReadOptions = (o: DtOptions, path: string, depth: i32): DtVal => {
   if (depth > 16) {
     return dtOptFail(o, `${path}: includes nest too deep`);
   }
-  const read = readFileBytesSync(path);
-  if (read === null) {
+  const text = dtcReadText(path);
+  if (text === null) {
     return dtOptFail(o, `cannot read ${path}`);
   }
-  const b = read;
-  const n = toI32(read.length);
+  const b = dtcBytesOf(text);
+  const n = toI32(b.length);
   if (!dtUtf8Ok(b, n)) {
     return dtOptFail(o, `${path}: not UTF-8`);
   }
-  const y = new DtYaml(b, n);
+  const y = new DtYaml(b, n, text);
   const doc = y.doc();
   if (y.failed) {
     return dtOptFail(o, `${path}: YAML this reader does not take`);

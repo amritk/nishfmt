@@ -10,7 +10,8 @@
 // Ported from dart_style 3.1.14-wip at 5a9534fad9ff, the commit Dart SDK
 // 3.14.1 pins (BSD-3-Clause, Copyright the Dart project authors).
 
-import { add32, sliceI32s, strUtf16Len, sub32 } from "../core/arr";
+import { add32, sliceI32s, sub32 } from "../core/arr";
+import { dtUtf16Units } from "./scanner";
 import { fault } from "../core/fault";
 
 // Cost.
@@ -91,7 +92,7 @@ const dtsNextId = (): i32 => dtsBump(0);
 const dtsStamp = (): i32 => dtsBump(1);
 
 /** String length in UTF-16 code units, for a UTF-8 string. */
-export const dtsLen16 = (s: string): i32 => strUtf16Len(s);
+export const dtsLen16 = (s: string): i32 => dtUtf16Units(s);
 
 // ---------------------------------------------------------------------------
 // Rules.
@@ -1523,8 +1524,9 @@ export class DtsSplitSet {
   /** The column chunk `i` starts at; it splits. */
   column(i: i32): i32 {
     const columns = this.columns;
-    if (i >= 0 && i < columns.length) {
-      return columns[i];
+    const ui = toU32(i);
+    if (ui < toU32(columns.length)) {
+      return columns[ui];
     }
     fault();
     return 0;

@@ -422,12 +422,14 @@ export class DtAst {
   f(node: i32, i: i32): i32 {
     const fs = this.fs;
     const fld = this.fld;
-    if (node >= 0 && node < fs.length && i >= 0) {
-      const j = fs[node];
-      if (j >= 0) {
-        // Two non-negative i32s: their u32 sum is exact.
-        const k = toI32(toU32(j) + toU32(i));
-        if (k >= 0 && k < fld.length) {
+    // (A negative node is a u32 past any length: one compare tests both ends.)
+    const un = toU32(node);
+    if (un < toU32(fs.length)) {
+      const j = fs[un];
+      // Two non-negative i32s (their sign bits clear): their u32 sum is exact.
+      if ((j | i) >= 0) {
+        const k = toU32(j) + toU32(i);
+        if (k < toU32(fld.length)) {
           return fld[k];
         }
       }
@@ -439,11 +441,12 @@ export class DtAst {
   set(node: i32, i: i32, v: i32): void {
     const fs = this.fs;
     const fld = this.fld;
-    if (node >= 0 && node < fs.length && i >= 0) {
-      const j = fs[node];
-      if (j >= 0) {
-        const k = toI32(toU32(j) + toU32(i));
-        if (k >= 0 && k < fld.length) {
+    const un = toU32(node);
+    if (un < toU32(fs.length)) {
+      const j = fs[un];
+      if ((j | i) >= 0) {
+        const k = toU32(j) + toU32(i);
+        if (k < toU32(fld.length)) {
           fld[k] = v;
           return;
         }
@@ -521,8 +524,9 @@ export class DtAst {
 
 /** `xs[i]`, or `none` after a fault when `i` is outside `xs`. */
 const dtAstAt = (xs: i32[], i: i32, none: i32): i32 => {
-  if (i >= 0 && i < xs.length) {
-    return xs[i];
+  const ui = toU32(i);
+  if (ui < toU32(xs.length)) {
+    return xs[ui];
   }
   fault();
   return none;

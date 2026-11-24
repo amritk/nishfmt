@@ -127,6 +127,35 @@ const dtGrowI32 = (a: i32[], cap: i32): void => {
   }
 };
 
+/**
+ * The UTF-16 code units of the UTF-8 string `s`, as Java's String.length
+ * counts them (core's strUtf16Len): a unit for each byte that is not a
+ * continuation byte, and one more for each four-byte lead.
+ */
+export const dtUtf16Units = (s: string): i32 => {
+  const k = toI32(s.length);
+  // Each below k: u32 counts that cannot wrap.
+  let cont: u32 = 0;
+  let four: u32 = 0;
+  for (let i = 0; i < k; i++) {
+    const c = s.charCodeAt(i);
+    if (c >= 0x80) {
+      if (c < 0xc0) {
+        cont = cont + 1;
+      } else if (c >= 0xf0) {
+        four = four + 1;
+      }
+    }
+  }
+  const n = toI64(k) - toI64(cont) + toI64(four);
+  // (Where the count passed i32 and its sum panicked.)
+  if (n > toI64(2147483647)) {
+    fault();
+    return 0;
+  }
+  return toI32(n);
+};
+
 /** Grows `a` in place to `cap` elements, the new ones false. */
 const dtGrowBool = (a: boolean[], cap: i32): void => {
   while (a.length < cap) {
@@ -159,8 +188,9 @@ const dtSourceText = (src: u8[], n: i32): string => {
 
 /** `xs[i]`, or `none` after a fault when `i` is outside `xs`. */
 const dtTokAt = (xs: i32[], i: i32, none: i32): i32 => {
-  if (i >= 0 && i < xs.length) {
-    return xs[i];
+  const ui = toU32(i);
+  if (ui < toU32(xs.length)) {
+    return xs[ui];
   }
   fault();
   return none;
@@ -221,14 +251,19 @@ export class DtTokens {
   verMinor: i32 = -1;
   failed: boolean = false;
   why: string = "";
-  // src[0, n) as a string, made at its first use: a token's text is cut
-  // from it, as no proof covers String.fromBytes.
+  // src[0, n) as a string, which the caller makes with String.fromBytes
+  // (no proof covers it here), else made from the bytes at its first use: a
+  // token's text is cut from it.
   srcText: string = "";
   srcTextReady: boolean = false;
 
-  constructor(src: u8[], n: i32) {
+  constructor(src: u8[], n: i32, text: string) {
     this.src = src;
     this.n = n;
+    if (toI32(text.length) === n) {
+      this.srcText = text;
+      this.srcTextReady = true;
+    }
     // About one token per four bytes and a comment per 64; both grow.
     const cap = (n >> 2) + 16;
     this.kind = dtTokZeros(cap);
@@ -364,15 +399,17 @@ export class DtTokens {
     }
     let j = a;
     for (let i = 0; i < k && i < s.length; i++) {
-      if (j < 0 || j >= src.length) {
+      const uj = toU32(j);
+      if (uj >= toU32(src.length)) {
         fault();
         return false;
       }
-      const b = toI32(src[j]);
+      const b = toI32(src[uj]);
       if (b !== s.charCodeAt(i)) {
         return false;
       }
-      j = j + 1;
+      // uj < src.length: the sum fits.
+      j = toI32(uj + 1);
     }
     return true;
   }
@@ -545,8 +582,9 @@ export class DtScanner {
   at(i: i32): i32 {
     if (i < this.n) {
       const src = this.src;
-      if (i >= 0 && i < src.length) {
-        return toI32(src[i]);
+      const ui = toU32(i);
+      if (ui < toU32(src.length)) {
+        return toI32(src[ui]);
       }
       fault();
     }
@@ -797,22 +835,24 @@ export class DtScanner {
     const src = this.src;
     while (this.p < n) {
       const p = this.p;
-      if (p < 0 || p >= src.length) {
+      const up = toU32(p);
+      if (up >= toU32(src.length)) {
         fault();
         return -1;
       }
-      const c = toI32(src[p]);
+      const c = toI32(src[up]);
+      // up < src.length: p + 1 fits.
+      const p1 = toI32(up + 1);
       if (c === 32 || c === 9 || c === 12 || c === 11) {
-        this.p = p + 1;
+        this.p = p1;
         continue;
       }
       if (c === 10 || c === 13) {
         this.newlineAt(c, p);
-        this.p = p + 1;
+        this.p = p1;
         continue;
       }
       if (c === 47) {
-        const p1 = p + 1;
         const d = this.at(p1);
         if (d === 47) {
           // `d` is the byte at p1, inside the source.
@@ -822,12 +862,13 @@ export class DtScanner {
           }
           const a = p;
           let i = p1 + 1;
-          while (i < n) {
-            if (i < 0 || i >= src.length) {
+          while (i >= 0 && i < n) {
+            const ui = toU32(i);
+            if (ui >= toU32(src.length)) {
               fault();
               return -1;
             }
-            const e = toI32(src[i]);
+            const e = toI32(src[ui]);
             if (e === 10 || e === 13) {
               break;
             }
@@ -851,11 +892,12 @@ export class DtScanner {
           let i = p1 + 1;
           let depth = 1;
           while (i < n && depth > 0) {
-            if (i < 0 || i >= src.length) {
+            const ui = toU32(i);
+            if (ui >= toU32(src.length)) {
               fault();
               return -1;
             }
-            const e = toI32(src[i]);
+            const e = toI32(src[ui]);
             const i1 = i + 1;
             if (e === 42 && this.at(i1) === 47) {
               // The `/` is at i1, inside the source.
@@ -915,7 +957,7 @@ export class DtScanner {
     }
     // `@dart` is inside the comment, which ends at a newline or the end.
     if (
-      i >= b - 4 ||
+      toI64(i) >= toI64(b) - toI64(4) ||
       !(
         this.at(i) === 64 &&
         this.peek(i, 1) === 100 &&
@@ -1014,12 +1056,13 @@ export class DtScanner {
       }
       const src = this.src;
       let i = p + 1;
-      while (i < n) {
-        if (i < 0 || i >= src.length) {
+      while (i >= 0 && i < n) {
+        const ui = toU32(i);
+        if (ui >= toU32(src.length)) {
           fault();
           return;
         }
-        if (!dtIsIdPart(toI32(src[i]))) {
+        if (!dtIsIdPart(toI32(src[ui]))) {
           break;
         }
         i++;
@@ -1392,11 +1435,12 @@ export class DtScanner {
         this.fail("unterminated string");
         return;
       }
-      if (i < 0 || i >= src.length) {
+      const ui = toU32(i);
+      if (ui >= toU32(src.length)) {
         fault();
         return;
       }
-      const c = toI32(src[i]);
+      const c = toI32(src[ui]);
       const i1 = i + 1;
       if (c === quote) {
         if (!triple) {
@@ -1472,11 +1516,12 @@ export class DtScanner {
           this.add(T_INTERP_IDENT, i, i1);
           let j = i1 + 1;
           while (j < n) {
-            if (j < 0 || j >= src.length) {
+            const uj = toU32(j);
+            if (uj >= toU32(src.length)) {
               fault();
               return;
             }
-            const e = toI32(src[j]);
+            const e = toI32(src[uj]);
             if ((e >= 97 && e <= 122) || (e >= 65 && e <= 90) || e === 95 || (e >= 48 && e <= 57)) {
               j++;
             } else {
@@ -1499,17 +1544,17 @@ export class DtScanner {
   }
 }
 
-/** Scans `src[0, n)`. */
-export const dtScan = (src: u8[], n: i32): DtTokens => {
-  const t = new DtTokens(src, n);
+/** Scans `src[0, n)`; `text` is those bytes as a string, or "" to make it from them. */
+export const dtScan = (src: u8[], n: i32, text: string): DtTokens => {
+  const t = new DtTokens(src, n, text);
   const s = new DtScanner(t);
   s.scan();
   return t;
 };
 
 /** Scans without splitting any `>>` up front (see DtTokens.pred). */
-export const dtScanPlain = (src: u8[], n: i32): DtTokens => {
-  const t = new DtTokens(src, n);
+export const dtScanPlain = (src: u8[], n: i32, text: string): DtTokens => {
+  const t = new DtTokens(src, n, text);
   const s = new DtScanner(t);
   s.predict = false;
   s.scan();

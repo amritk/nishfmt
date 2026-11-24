@@ -18,7 +18,10 @@ const dtDevOne = (path: string, print: boolean): i32 => {
   const src = new Array<u8>(n);
   src.set(read);
   const out = new Out(n + 1024);
+  // As src/main.ts sizes it.
+  out.buf = new Array<u8>(n + 1024);
   const e = new DartEngine();
+  e.text = String.fromBytes(src, 0, n);
   e.debug = getenv("FFDEBUG") !== null;
   e.dump = getenv("FFDTDUMP") ?? "";
   faultReset();

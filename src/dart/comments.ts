@@ -5,7 +5,7 @@
 // Ported from dart_style 3.1.14-wip at 5a9534fad9ff, the commit Dart SDK
 // 3.14.1 pins (BSD-3-Clause, Copyright the Dart project authors).
 
-import { add32, bytesText, newBools } from "../core/arr";
+import { add32, newBools } from "../core/arr";
 import { fault } from "../core/fault";
 import { C_LINE, DtTokens } from "./scanner";
 import { T_SCRIPT } from "./tokens";
@@ -64,8 +64,9 @@ export class DtComments {
 
   linesBefore(i: i32): i32 {
     const ls = this.lines;
-    if (i >= 0 && i < ls.length) {
-      return ls[i];
+    const ui = toU32(i);
+    if (ui < toU32(ls.length)) {
+      return ls[ui];
     }
     fault();
     return 0;
@@ -324,7 +325,7 @@ export class DtCommentWriter {
       const isLine = cKind[ci] === C_LINE;
       const endLine = cLineE[ci];
       const col1 = cCol1[ci];
-      const text = dtTrimmed(t.src, start, cEnd[ci]);
+      const text = dtTrimmed(t, start, cEnd[ci]);
       // Line numbers are positive and below the source length, so differences fit.
       let linesBefore = toI32(toU32(commentLine) - toU32(previousLine));
       let flushLeft = col1;
@@ -412,8 +413,9 @@ const dtWsBefore = (src: u8[], a: i32, e: i32): i32 => {
   return 0;
 };
 
-/** The comment `src[a, b)` with surrounding whitespace removed, as Dart's trim(). */
-export const dtTrimmed = (src: u8[], a: i32, b: i32): string => {
+/** The comment `src[a, b)` of `t` with surrounding whitespace removed, as Dart's trim(). */
+export const dtTrimmed = (t: DtTokens, a: i32, b: i32): string => {
+  const src = t.src;
   let e = b;
   while (true) {
     const w = dtWsBefore(src, a, e);
@@ -423,5 +425,5 @@ export const dtTrimmed = (src: u8[], a: i32, b: i32): string => {
     // dtWsBefore read src[e - w], so w <= e and the difference is exact.
     e = toI32(toU32(e) - toU32(w));
   }
-  return bytesText(src, a, e);
+  return t.rangeText(a, e);
 };

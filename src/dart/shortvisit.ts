@@ -275,8 +275,9 @@ const dtsLastOf = (xs: i32[]): i32 => {
 
 /** `xs[i]`, or -1 after a fault when `i` is outside `xs`. */
 const dtsAt = (xs: i32[], i: i32): i32 => {
-  if (i >= 0 && i < xs.length) {
-    return xs[i];
+  const ui = toU32(i);
+  if (ui < toU32(xs.length)) {
+    return xs[ui];
   }
   fault();
   return -1;
@@ -835,7 +836,7 @@ export class DtsVisitor {
       if (k === 0 && t.kindAt(before) === T_BOF) {
         previousLine = commentLine;
       }
-      const text = dtTrimmed(t.src, t.cStartAt(c), t.cEndAt(c));
+      const text = dtTrimmed(t, t.cStartAt(c), t.cEndAt(c));
       let linesBefore = sub32(commentLine, previousLine);
       let flushLeft = t.cCol1At(c);
       const isDocLine = text.startsWith("///") && !text.startsWith("////");
@@ -1771,7 +1772,7 @@ export class DtsVisitor {
         return;
       case N_SCRIPT_TAG: {
         const tok = this.f(n, 0);
-        this.writeText(dtTrimmed(this.src, this.t.startAt(tok), this.t.endAt(tok)), tok, true);
+        this.writeText(dtTrimmed(this.t, this.t.startAt(tok), this.t.endAt(tok)), tok, true);
         this.twoNewlines();
         return;
       }

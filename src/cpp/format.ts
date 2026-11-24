@@ -8,7 +8,7 @@
 import { LT_OTHER, P_ARROW, P_ARROWSTAR, P_COLONCOLON, P_LPAREN, P_PERIOD } from "./tok";
 import { Classifier, isTrailingComment, spaceBefore } from "./classify";
 import { Doc } from "./doc";
-import { add32, atI32, bytesText, growI32, newI32s, newI64s, sliceU8s, sub32 } from "../core/arr";
+import { add32, bytesText, copyU8s, growI32, newI32s, newI64s, sliceU8s, sub32 } from "../core/arr";
 import { fault, faulted } from "../core/fault";
 import { Annot } from "./annotate";
 import { Indenter } from "./indenter";
@@ -111,17 +111,52 @@ const utf8LenOf = (c: i32): i32 => (c < 0xc0 ? 1 : c < 0xe0 ? 2 : c < 0xf0 ? 3 :
  * -1, which ends any token or line chain it would have continued.
  */
 const fwAt = (xs: i32[], i: i32): i32 => {
-  if (i >= 0 && i < xs.length) {
-    return xs[i];
+  const u = toU32(i);
+  if (u < toU32(xs.length)) {
+    return xs[u];
   }
   fault();
   return -1;
 };
 
+/** `xs[i]`; an `i` outside `xs` (where indexing panicked) faults and answers 0. */
+const fwAt0 = (xs: i32[], i: i32): i32 => {
+  const u = toU32(i);
+  if (u < toU32(xs.length)) {
+    return xs[u];
+  }
+  fault();
+  return 0;
+};
+
+/**
+ * Writes `src[a, b)` to `out` as `out.range` does, faults included, with one
+ * copy in place of a test per byte.
+ */
+const fwRange = (out: Out, src: u8[], a: i32, b: i32): void => {
+  if (b <= a) {
+    return;
+  }
+  if (a < 0 || b > src.length) {
+    fault();
+    return;
+  }
+  const n = out.n;
+  // `0 <= a < b`, so the u32 difference is the true length.
+  const k = toI32(toU32(b) - toU32(a));
+  if (!out.room(toI64(n) + toI64(k))) {
+    return;
+  }
+  copyU8s(out.buf, n, src, a, k);
+  // `room` held `n + k` below 2^31.
+  out.n = toI32(toU32(n) + toU32(k));
+};
+
 /** `xs[i] = v`; an `i` outside `xs` faults and writes nothing. */
 const fwPut = (xs: i32[], i: i32, v: i32): void => {
-  if (i >= 0 && i < xs.length) {
-    xs[i] = v;
+  const u = toU32(i);
+  if (u < toU32(xs.length)) {
+    xs[u] = v;
     return;
   }
   fault();
@@ -3839,7 +3874,7 @@ export class Formatter {
     for (let k = 0; k < ord.length; k++) {
       const o = ord[k];
       const eo = fwAt(e0, o);
-      out.range(b0.buf, pos, eo);
+      fwRange(out, b0.buf, pos, eo);
       pos = eo;
       let q = fwAdd(o, 1);
       while (q < n) {
@@ -3868,7 +3903,7 @@ export class Formatter {
         this.emitRun(out, q, r);
       }
     }
-    out.range(b0.buf, pos, b0.n);
+    fwRange(out, b0.buf, pos, b0.n);
   }
 
   /** Writes the tokens [q, r), which pass 0 skipped. */
@@ -3916,13 +3951,13 @@ export class Formatter {
           fault();
           return;
         }
-        out.range(outs[p].buf, lo, hi);
+        fwRange(out, outs[p].buf, lo, hi);
         return;
       }
     }
     // No pass saw these tokens: as written.
     const d = this.d;
-    out.range(d.src, fwAt(this.sEnd, fwSub(q, 1)), fwAt(this.sEnd, fwSub(r, 1)));
+    fwRange(out, d.src, fwAt(this.sEnd, fwSub(q, 1)), fwAt(this.sEnd, fwSub(r, 1)));
   }
 
   // ---- Using-declarations -------------------------------------------------------
@@ -5183,13 +5218,13 @@ export class Formatter {
       }
       const pi = prevI;
       prevI = i;
-      const nli = atI32(emNl, i);
+      const nli = fwAt0(emNl, i);
       newlines = add32(newlines, nli);
       if (!this.isTrailingAt(i)) {
         prevJoined = false;
         continue;
       }
-      const t = atI32(emTok, i);
+      const t = fwAt0(emTok, i);
       // The token's columns, when it is one.
       let tk = -1;
       let ty = -1;
@@ -5245,18 +5280,18 @@ export class Formatter {
         tp === 0 &&
         !this.verbatimAt(i)
       ) {
-        const pt = atI32(emTok, i - 1);
+        const pt = fwAt0(emTok, i - 1);
         if (
           pt >= 0 &&
-          atI32(kind, pt) === K_COMMENT &&
-          atI32(type, pt) === TT_LINE_COMMENT &&
-          atI32(inPP, pt) === 1 &&
-          atI32(d.prv, pt) >= 0 &&
+          fwAt0(kind, pt) === K_COMMENT &&
+          fwAt0(type, pt) === TT_LINE_COMMENT &&
+          fwAt0(inPP, pt) === 1 &&
+          fwAt0(d.prv, pt) >= 0 &&
           this.origColumn(t) >= this.origColumn(pt) &&
-          atI32(this.finCol, atI32(this.map, pt)) >= 0
+          fwAt0(this.finCol, fwAt0(this.map, pt)) >= 0
         ) {
           joined = true;
-          cppfSet(emCol, i, atI32(this.finCol, atI32(this.map, pt)));
+          cppfSet(emCol, i, fwAt0(this.finCol, fwAt0(this.map, pt)));
         }
       }
       if (
@@ -5271,20 +5306,20 @@ export class Formatter {
         tp === 0 &&
         !this.verbatimAt(i)
       ) {
-        const pt = atI32(emTok, i - 1);
+        const pt = fwAt0(emTok, i - 1);
         if (
           pt >= 0 &&
-          atI32(kind, pt) === K_COMMENT &&
-          atI32(type, pt) === TT_LINE_COMMENT &&
-          (atI32(inPP, pt) === 1 || prevJoined) &&
+          fwAt0(kind, pt) === K_COMMENT &&
+          fwAt0(type, pt) === TT_LINE_COMMENT &&
+          (fwAt0(inPP, pt) === 1 || prevJoined) &&
           this.origColumn(t) >= this.origColumn(pt)
         ) {
           joined = true;
-          cppfSet(emCol, i, atI32(emCol, i - 1));
+          cppfSet(emCol, i, fwAt0(emCol, i - 1));
         }
       }
       prevJoined = joined;
-      const cmin = atI32(emCol, i);
+      const cmin = fwAt0(emCol, i);
       let w = 0;
       if (t >= 0) {
         w = tk === K_COMMENT && tm === 0 ? sub32(te, ts) : tw;
@@ -5300,7 +5335,7 @@ export class Formatter {
         tk === K_COMMENT &&
         ty === TT_LINE_COMMENT &&
         !this.verbatimAt(i) &&
-        !(tpp >= 0 && atI32(ppKind, tpp) === PP_INCLUDE) &&
+        !(tpp >= 0 && fwAt0(ppKind, tpp) === PP_INCLUDE) &&
         d.opts.reflowComments &&
         i + 1 < n &&
         this.continuesSection(i + 1) &&
@@ -5317,7 +5352,7 @@ export class Formatter {
         tk === K_COMMENT &&
         ty === TT_LINE_COMMENT &&
         !this.verbatimAt(i) &&
-        !(tpp >= 0 && atI32(ppKind, tpp) === PP_INCLUDE)
+        !(tpp >= 0 && fwAt0(ppKind, tpp) === PP_INCLUDE)
       ) {
         w = this.commentPieceMax(t, cmin);
       } else if (
@@ -5363,22 +5398,22 @@ export class Formatter {
         // Nothing after it: the end of the file is the next line.
         const eof = sub32(d.ntok, 1);
         wasAligned =
-          atI32(kind, eof) === K_EOF && (cc === atI32(tcol, eof) || cc === add32(atI32(tcol, eof), d.opts.indentWidth));
+          fwAt0(kind, eof) === K_EOF && (cc === fwAt0(tcol, eof) || cc === add32(fwAt0(tcol, eof), d.opts.indentWidth));
         for (let j = i + 1; j < n; j++) {
-          const tj = atI32(emTok, j);
-          if (tj >= 0 && atI32(kind, tj) === K_COMMENT) {
+          const tj = fwAt0(emTok, j);
+          if (tj >= 0 && fwAt0(kind, tj) === K_COMMENT) {
             continue;
           }
           if (tj < 0 && tj > PIECE) {
             continue;
           }
-          const nt = tj <= PIECE ? atI32(this.pcTok, sub32(PIECE, tj)) : tj;
-          const nc = atI32(tcol, nt);
+          const nt = tj <= PIECE ? fwAt0(this.pcTok, sub32(PIECE, tj)) : tj;
+          const nc = fwAt0(tcol, nt);
           wasAligned = cc === nc || cc === add32(nc, d.opts.indentWidth);
           break;
         }
       }
-      if (pi >= 0 && nli === 0 && this.dontAlignAfter(atI32(emTok, pi))) {
+      if (pi >= 0 && nli === 0 && this.dontAlignAfter(fwAt0(emTok, pi))) {
         this.alignRun(startSeq, i, minCol);
         minCol = 0;
         maxCol = 1 << 30;
@@ -5417,18 +5452,18 @@ export class Formatter {
    */
   endsInTokenChange(i: i32): boolean {
     const d = this.d;
-    const t = atI32(this.emTok, i);
+    const t = fwAt0(this.emTok, i);
     if (
       t < 0 ||
-      atI32(d.kind, t) !== K_COMMENT ||
-      atI32(d.type, t) !== TT_LINE_COMMENT ||
+      fwAt0(d.kind, t) !== K_COMMENT ||
+      fwAt0(d.type, t) !== TT_LINE_COMMENT ||
       this.verbatimAt(i) ||
       !d.opts.reflowComments
     ) {
       return false;
     }
-    this.lineGeom(t, atI32(this.emCol, i));
-    if (sub32(this.gStart, atI32(this.emCol, i)) === this.gPre) {
+    this.lineGeom(t, fwAt0(this.emCol, i));
+    if (sub32(this.gStart, fwAt0(this.emCol, i)) === this.gPre) {
       return false; // the prefix is kept as written
     }
     return add32(this.gStart, this.colsAt(this.gA, this.gE, this.gStart)) <= d.opts.columnLimit;
@@ -5437,7 +5472,7 @@ export class Formatter {
   /** Token `t`'s column as written, tabs expanded. */
   origColumn(t: i32): i32 {
     const d = this.d;
-    const st = atI32(d.start, t);
+    const st = fwAt0(d.start, t);
     let ls = st;
     while (ls > 0 && d.at(ls - 1) !== 10) {
       ls--;
@@ -5451,8 +5486,8 @@ export class Formatter {
   /** Whether token `t` holds a tab. */
   hasTab(t: i32): boolean {
     const d = this.d;
-    const st = atI32(d.start, t);
-    const en = atI32(d.end, t);
+    const st = fwAt0(d.start, t);
+    const en = fwAt0(d.end, t);
     for (let i = st; i < en; i++) {
       if (d.at(i) === 9) {
         return true;
@@ -5464,7 +5499,7 @@ export class Formatter {
   /** Moves the trailing comments of entries [s, e) right to `col`. */
   alignRun(s: i32, e: i32, col: i32): void {
     for (let i = s; i < e; i++) {
-      if (this.isTrailingAt(i) && atI32(this.emCol, i) < col && !this.isFin(i)) {
+      if (this.isTrailingAt(i) && fwAt0(this.emCol, i) < col && !this.isFin(i)) {
         cppfSet(this.emCol, i, col);
       }
     }
@@ -5478,14 +5513,14 @@ export class Formatter {
     if (t < 0) {
       return false;
     }
-    if (atI32(d.kind, t) === P_SEMI) {
+    if (fwAt0(d.kind, t) === P_SEMI) {
       t = a.prevNonComment(t);
       if (t < 0) {
         return false;
       }
     }
-    if (atI32(d.kind, t) === P_RPAREN) {
-      t = atI32(d.match, t);
+    if (fwAt0(d.kind, t) === P_RPAREN) {
+      t = fwAt0(d.match, t);
       if (t < 0) {
         return false;
       }
@@ -5493,7 +5528,7 @@ export class Formatter {
       if (t < 0) {
         return false;
       }
-      if (atI32(d.kind, t) === KW_WHILE && atI32(d.type, t) === TT_DO_WHILE) {
+      if (fwAt0(d.kind, t) === KW_WHILE && fwAt0(d.type, t) === TT_DO_WHILE) {
         const p = a.prevNonComment(t);
         if (p < 0) {
           return true;
@@ -5526,7 +5561,7 @@ export class Formatter {
     // Whether that `}` starts a line of the output: on its next run
     // clang-format sees the output, and its result stops changing there.
     const outNl = this.outNl;
-    const onl = t >= 0 && t < outNl.length && atI32(this.outNlStamp, t) === this.fileStamp ? outNl[t] : atI32(d.nl, t);
+    const onl = t >= 0 && t < outNl.length && fwAt0(this.outNlStamp, t) === this.fileStamp ? outNl[t] : fwAt0(d.nl, t);
     return onl > 0;
   }
 
@@ -5609,10 +5644,10 @@ export class Formatter {
     if (emNl[i1] > 0) {
       return true;
     }
-    if (nx >= 0 && atI32(this.d.kind, nx) === K_EOF) {
+    if (nx >= 0 && fwAt0(this.d.kind, nx) === K_EOF) {
       return true;
     }
-    return t >= 0 && atI32(this.d.multi, t) === 1 && atI32(this.d.type, t) === TT_BLOCK_COMMENT && !this.verbatimAt(i);
+    return t >= 0 && fwAt0(this.d.multi, t) === 1 && fwAt0(this.d.type, t) === TT_BLOCK_COMMENT && !this.verbatimAt(i);
   }
 
   /** The column a trailing comment at `i` needs: one past the code before it. */
@@ -5621,8 +5656,8 @@ export class Formatter {
       fault();
       return 0;
     }
-    const p = atI32(this.emTok, i - 1);
-    return add32(add32(atI32(this.emCol, i - 1), this.emWidth(p)), 1);
+    const p = fwAt0(this.emTok, i - 1);
+    return add32(add32(fwAt0(this.emCol, i - 1), this.emWidth(p)), 1);
   }
 
   lastLineWidth(t: i32): i32 {
@@ -5640,8 +5675,8 @@ export class Formatter {
       }
       return width[t];
     }
-    const st = atI32(d.start, t);
-    const en = atI32(d.end, t);
+    const st = fwAt0(d.start, t);
+    const en = fwAt0(d.end, t);
     let a = sub32(en, 1);
     while (a > st && a > 0 && d.at(a) !== 10) {
       a--;
@@ -5684,17 +5719,17 @@ export class Formatter {
       }
       if (nl > 0 && i > 0) {
         const pp = this.entryPP(t);
-        if (pp >= 0 && pp === this.entryPP(atI32(emTok, i - 1))) {
-          const pt = atI32(emTok, i - 1);
-          if (t >= 0 && pt >= 0 && atI32(tEnd, pt) <= atI32(tStart, t) && this.verbatimAt(i)) {
+        if (pp >= 0 && pp === this.entryPP(fwAt0(emTok, i - 1))) {
+          const pt = fwAt0(emTok, i - 1);
+          if (t >= 0 && pt >= 0 && fwAt0(tEnd, pt) <= fwAt0(tStart, t) && this.verbatimAt(i)) {
             // Left as written, escaped newlines and all.
-            out.range(src, atI32(tEnd, pt), atI32(tEnd, t));
-            col = atI32(multi, t) === 1 ? this.lastLineWidth(t) : add32(atI32(d.col, t), atI32(width, t));
+            fwRange(out, src, fwAt0(tEnd, pt), fwAt0(tEnd, t));
+            col = fwAt0(multi, t) === 1 ? this.lastLineWidth(t) : add32(fwAt0(d.col, t), fwAt0(width, t));
             continue;
           }
           // A break inside a directive: each newline is escaped, `\` at the directive's column.
           out.trimSpaces();
-          const esc = atI32(this.escCol, pp);
+          const esc = fwAt0(this.escCol, pp);
           let sp = sub32(sub32(esc, sub32(col, this.asmSkew)), 1);
           const esc1 = sub32(esc, 1);
           for (let k = 0; k < nl; k++) {
@@ -5705,15 +5740,15 @@ export class Formatter {
           }
           col = 0;
           this.asmSkew = 0;
-          const c0 = atI32(emCol, i);
+          const c0 = fwAt0(emCol, i);
           if (t <= PIECE && t > RAW && t < 0) {
             const k = -1 - t - 1048575; // PIECE - t
-            const pt = atI32(this.pcTok, k);
+            const pt = fwAt0(this.pcTok, k);
             out.spaces(c0);
             const pl = this.pieceLen(pt);
-            const ps = atI32(tStart, pt);
-            out.range(src, ps, add32(ps, pl));
-            out.range(src, atI32(this.pcA, k), atI32(this.pcB, k));
+            const ps = fwAt0(tStart, pt);
+            fwRange(out, src, ps, add32(ps, pl));
+            fwRange(out, src, fwAt0(this.pcA, k), fwAt0(this.pcB, k));
             out.byte(34);
             col = add32(c0, this.pieceWidth(k));
             continue;
@@ -5723,24 +5758,24 @@ export class Formatter {
           // (A block comment over the limit is reflowed there too.)
           if (
             t >= 0 &&
-            atI32(kind, t) === K_COMMENT &&
-            atI32(type, t) !== TT_LINE_COMMENT &&
-            (atI32(multi, t) === 1 || add32(c0, atI32(width, t)) > sub32(lim, 2)) &&
+            fwAt0(kind, t) === K_COMMENT &&
+            fwAt0(type, t) !== TT_LINE_COMMENT &&
+            (fwAt0(multi, t) === 1 || add32(c0, fwAt0(width, t)) > sub32(lim, 2)) &&
             !this.verbatimAt(i)
           ) {
             col = this.writeComment(out, t, col, i);
             continue;
           }
-          out.range(src, atI32(tStart, t), atI32(tEnd, t));
-          col = add32(col, atI32(multi, t) === 1 ? sub32(this.lastLineWidth(t), col) : atI32(width, t));
+          fwRange(out, src, fwAt0(tStart, t), fwAt0(tEnd, t));
+          col = add32(col, fwAt0(multi, t) === 1 ? sub32(this.lastLineWidth(t), col) : fwAt0(width, t));
           continue;
         }
       }
       if (t <= RAW && t < 0) {
         const k = -1 - t - 2097151; // RAW - t
-        const ra = atI32(this.rawA, k);
-        const rb = atI32(this.rawB, k);
-        out.range(src, ra, rb);
+        const ra = fwAt0(this.rawA, k);
+        const rb = fwAt0(this.rawB, k);
+        fwRange(out, src, ra, rb);
         // Raw bytes spanning lines end at their last line's width.
         let multiLine = false;
         for (let q = ra; q < rb; q++) {
@@ -5754,21 +5789,21 @@ export class Formatter {
       }
       if (t <= PIECE && t < 0) {
         const k = -1 - t - 1048575; // PIECE - t
-        const pt = atI32(this.pcTok, k);
+        const pt = fwAt0(this.pcTok, k);
         if (nl > 0) {
           out.trimSpaces();
           out.newlines(nl);
           col = 0;
         }
-        const pc = atI32(emCol, i);
+        const pc = fwAt0(emCol, i);
         if (pc > col) {
           out.spaces(sub32(pc, col));
           col = pc;
         }
         const pl = this.pieceLen(pt);
-        const ps = atI32(tStart, pt);
-        out.range(src, ps, add32(ps, pl));
-        out.range(src, atI32(this.pcA, k), atI32(this.pcB, k));
+        const ps = fwAt0(tStart, pt);
+        fwRange(out, src, ps, add32(ps, pl));
+        fwRange(out, src, fwAt0(this.pcA, k), fwAt0(this.pcB, k));
         out.byte(34);
         col = add32(col, this.pieceWidth(k));
         continue;
@@ -5781,7 +5816,7 @@ export class Formatter {
           return;
         }
         const txt = synth[si];
-        const c0 = atI32(emCol, i);
+        const c0 = fwAt0(emCol, i);
         if (c0 > col) {
           out.spaces(sub32(c0, col));
           col = c0;
@@ -5818,13 +5853,13 @@ export class Formatter {
       const tpp = ppId[t];
       const unt = keepWs[t] === 1 ? 3 : this.untouchedKind(t);
       const ws0 = unt > 0 ? this.wsStart(t) : -1;
-      if (ws0 >= 0 && (nl === 0 || unt === 3 || (unt === 1 && this.hasOff && atI32(this.offTok, t) === 1))) {
+      if (ws0 >= 0 && (nl === 0 || unt === 3 || (unt === 1 && this.hasOff && fwAt0(this.offTok, t) === 1))) {
         // Whitespace clang-format does not touch: as written.
-        out.range(src, ws0, ts);
+        fwRange(out, src, ws0, ts);
         for (let k = ws0; k < ts; k++) {
           col = d.at(k) === 10 ? 0 : add32(col, 1);
         }
-        out.range(src, ts, te);
+        fwRange(out, src, ts, te);
         col = tm === 1 ? this.lastLineWidth(t) : add32(col, tw);
         // After a newline before an implicit string literal clang-format's
         // column is the 1-based spelling column, one past the written one,
@@ -5840,15 +5875,15 @@ export class Formatter {
         col = 0;
         this.asmSkew = 0;
       }
-      let c = add32(atI32(emCol, i), this.asmSkew);
-      if (d.anyAsm && nl === 0 && t > 0 && atI32(d.prv, t) >= 0 && atI32(d.asmFin, atI32(d.prv, t)) === 1) {
+      let c = add32(fwAt0(emCol, i), this.asmSkew);
+      if (d.anyAsm && nl === 0 && t > 0 && fwAt0(d.prv, t) >= 0 && fwAt0(d.asmFin, fwAt0(d.prv, t)) === 1) {
         // After inline assembly's text (columns as written): its own space,
         // and what follows keeps its distance.
-        if (atI32(d.ws, t) === 1) {
+        if (fwAt0(d.ws, t) === 1) {
           out.spaces(1);
           col = add32(col, 1);
         }
-        this.asmSkew = sub32(col, atI32(emCol, i));
+        this.asmSkew = sub32(col, fwAt0(emCol, i));
         c = col;
       } else if (c > col) {
         out.spaces(sub32(c, col));
@@ -5864,7 +5899,7 @@ export class Formatter {
         this.checkTabStringRerun(t, c > col ? c : col);
       }
       // clang-format never breaks or reflows an include line's comment.
-      const inInclude = tpp >= 0 && atI32(d.ppKind, tpp) === PP_INCLUDE;
+      const inInclude = tpp >= 0 && fwAt0(d.ppKind, tpp) === PP_INCLUDE;
       // (A line comment a backslash spliced over lines is written as it is:
       // clang-format's multiline token.)
       if (tk === K_COMMENT && ty === TT_LINE_COMMENT && !this.verbatimAt(i) && !inInclude && tm === 0) {
@@ -5894,7 +5929,7 @@ export class Formatter {
         const o0 = out.n;
         col = this.writeComment(out, t, col, i);
         // Broken over lines: the tokens after it on its line follow its end.
-        if (tm === 0 && i + 1 < n && atI32(emNl, i + 1) === 0) {
+        if (tm === 0 && i + 1 < n && fwAt0(emNl, i + 1) === 0) {
           let broke = false;
           const buf = out.buf;
           const on = out.n;
@@ -5904,34 +5939,34 @@ export class Formatter {
               break;
             }
           }
-          const nt = atI32(emTok, i + 1);
+          const nt = fwAt0(emTok, i + 1);
           if (broke && nt >= 0) {
-            const delta = sub32(add32(col, atI32(d.spaces, nt)), atI32(emCol, i + 1));
-            for (let j = i + 1; j < n && (j === i + 1 || atI32(emNl, j) === 0); j++) {
-              cppfSet(emCol, j, add32(atI32(emCol, j), delta));
+            const delta = sub32(add32(col, fwAt0(d.spaces, nt)), fwAt0(emCol, i + 1));
+            for (let j = i + 1; j < n && (j === i + 1 || fwAt0(emNl, j) === 0); j++) {
+              cppfSet(emCol, j, add32(fwAt0(emCol, j), delta));
             }
           }
         }
       } else if (tm === 1) {
-        out.range(src, ts, te);
+        fwRange(out, src, ts, te);
         col = this.lastLineWidth(t);
       } else {
-        out.range(src, ts, te);
+        fwRange(out, src, ts, te);
         col = add32(col, tw);
         // A string holding a tab is as wide as where it lands, which the
         // layout may have measured differently: clang-format writes the
         // spaces the next token needs, whatever the columns say.
-        if (tk === K_STRING && i + 1 < n && atI32(emNl, i + 1) === 0 && this.hasTab(t)) {
-          const nt = atI32(emTok, i + 1);
-          if (nt >= 0 && atI32(kind, nt) !== K_COMMENT) {
-            col = sub32(atI32(emCol, i + 1), atI32(d.spaces, nt));
+        if (tk === K_STRING && i + 1 < n && fwAt0(emNl, i + 1) === 0 && this.hasTab(t)) {
+          const nt = fwAt0(emTok, i + 1);
+          if (nt >= 0 && fwAt0(kind, nt) !== K_COMMENT) {
+            col = sub32(fwAt0(emCol, i + 1), fwAt0(d.spaces, nt));
           }
         }
       }
     }
     out.trimSpaces();
     if (this.rec && this.recCur >= 0) {
-      cppfSet(this.uE, atI32(this.map, this.recCur), out.n);
+      cppfSet(this.uE, fwAt0(this.map, this.recCur), out.n);
     }
     // End with one newline when the source did.
     const dn = d.n;
@@ -5973,7 +6008,7 @@ export class Formatter {
       }
       // A newline kept as written (a line with no layout, inline assembly)
       // is no line break of clang-format's: it moves no escapes.
-      if (t >= 0 && (atI32(d.keepWs, t) === 1 || this.untouchedKind(t) === 3)) {
+      if (t >= 0 && (fwAt0(d.keepWs, t) === 1 || this.untouchedKind(t) === 3)) {
         continue;
       }
       const escStamp = this.escStamp;
@@ -5986,16 +6021,16 @@ export class Formatter {
         escStamp[pp] = this.fileStamp;
         escCol[pp] = d.opts.columnLimit;
       }
-      let end = add32(add32(atI32(emCol, i - 1), this.emWidth(p)), 2);
-      if (p >= 0 && atI32(d.multi, p) === 1) {
+      let end = add32(add32(fwAt0(emCol, i - 1), this.emWidth(p)), 2);
+      if (p >= 0 && fwAt0(d.multi, p) === 1) {
         // A token over several lines ends on its last: a raw string where
         // it was, a block comment's lines moved with it.
         end = add32(
           add32(this.lastLineWidth(p), 2),
-          atI32(d.kind, p) === K_COMMENT ? sub32(atI32(emCol, i - 1), atI32(d.col, p)) : 0,
+          fwAt0(d.kind, p) === K_COMMENT ? sub32(fwAt0(emCol, i - 1), fwAt0(d.col, p)) : 0,
         );
       }
-      if (end > atI32(this.escCol, pp)) {
+      if (end > fwAt0(this.escCol, pp)) {
         cppfSet(this.escCol, pp, end);
       }
     }
@@ -6008,8 +6043,8 @@ export class Formatter {
    */
   finalizedTok(t: i32): boolean {
     const d = this.d;
-    if (atI32(d.kind, t) === P_HASH) {
-      const pk = atI32(d.ppKind, t);
+    if (fwAt0(d.kind, t) === P_HASH) {
+      const pk = fwAt0(d.ppKind, t);
       if (pk === PP_IF || pk === PP_ELIF || pk === PP_ELSE || pk === PP_ENDIF) {
         return false;
       }
@@ -6019,7 +6054,7 @@ export class Formatter {
 
   /** Whether pass token `t` was seen by an earlier #if pass. */
   seenTok(t: i32): boolean {
-    return this.rec && this.curPass > 0 && t >= 0 && atI32(this.seenBefore, atI32(this.map, t)) === 1;
+    return this.rec && this.curPass > 0 && t >= 0 && fwAt0(this.seenBefore, fwAt0(this.map, t)) === 1;
   }
 
   /**
@@ -6031,12 +6066,12 @@ export class Formatter {
     if (!this.rec || this.curPass === 0) {
       return false;
     }
-    let t = atI32(this.emTok, i);
+    let t = fwAt0(this.emTok, i);
     if (t <= RAW) {
       return false;
     }
     if (t <= PIECE && t < 0) {
-      t = atI32(this.pcTok, -1 - t - 1048575); // PIECE - t
+      t = fwAt0(this.pcTok, -1 - t - 1048575); // PIECE - t
     } else if (t < 0) {
       return false;
     }
@@ -6045,14 +6080,14 @@ export class Formatter {
 
   /** Whether emitted entry `i` lies in a `clang-format off` region. */
   verbatimAt(i: i32): boolean {
-    const t = atI32(this.emTok, i);
-    if (this.untouchedKind(t) > 0 || (t >= 0 && atI32(this.d.keepWs, t) === 1)) {
+    const t = fwAt0(this.emTok, i);
+    if (this.untouchedKind(t) > 0 || (t >= 0 && fwAt0(this.d.keepWs, t) === 1)) {
       return true;
     }
     if (!this.hasOff) {
       return false;
     }
-    return t >= 0 && atI32(this.offTok, t) === 1;
+    return t >= 0 && fwAt0(this.offTok, t) === 1;
   }
 
   /** Writes comment `t` at column `col`, reflowing a line comment that overflows. */
@@ -6097,7 +6132,7 @@ export class Formatter {
         !this.switchesFormatting(t) &&
         (tm === 1 || add32(add32(col, tw), this.unbreakableTail(t)) > lim)
       ) {
-        const pre0 = i >= 0 && i < this.nem ? atI32(this.emColPre, i) : col;
+        const pre0 = i >= 0 && i < this.nem ? fwAt0(this.emColPre, i) : col;
         if (pre0 < col) {
           // Reflowed where the line formatter put it; trailing comment
           // alignment then shifts every line alike, as clang-format does.
@@ -6128,8 +6163,8 @@ export class Formatter {
       const pp = this.entryPP(t);
       // (A single line is reflowed where it was placed, before trailing
       // comments were aligned; an include's comment never breaks.)
-      const inInclude = tpp >= 0 && atI32(d.ppKind, tpp) === PP_INCLUDE;
-      const pre = i >= 0 && i < this.nem ? atI32(this.emColPre, i) : col;
+      const inInclude = tpp >= 0 && fwAt0(d.ppKind, tpp) === PP_INCLUDE;
+      const pre = i >= 0 && i < this.nem ? fwAt0(this.emColPre, i) : col;
       if (
         d.opts.reflowComments &&
         tp === 1 &&
@@ -6138,7 +6173,7 @@ export class Formatter {
         pp >= 0 &&
         !this.switchesFormatting(t)
       ) {
-        this.bcEsc = atI32(this.escStamp, pp) === this.fileStamp ? atI32(this.escCol, pp) : lim;
+        this.bcEsc = fwAt0(this.escStamp, pp) === this.fileStamp ? fwAt0(this.escCol, pp) : lim;
         this.bcPP = true;
         if (tm === 0) {
           this.rerun = true;
@@ -6149,7 +6184,7 @@ export class Formatter {
         return r;
       }
       if (tm === 0) {
-        out.range(src, ts, te);
+        fwRange(out, src, ts, te);
         // (A tab inside it is as wide as where the comment now starts.)
         return add32(col, this.colsAt(ts, te, col));
       }
@@ -6159,7 +6194,7 @@ export class Formatter {
       let j = a;
       while (j < te) {
         if (d.at(j) === 10) {
-          out.range(src, a, j);
+          fwRange(out, src, a, j);
           out.trimSpaces();
           out.byte(10);
           const k0 = j + 1;
@@ -6175,10 +6210,10 @@ export class Formatter {
         }
         j++;
       }
-      out.range(src, a, te);
+      fwRange(out, src, a, te);
       return this.lastLineWidth(t);
     }
-    out.range(src, ts, te);
+    fwRange(out, src, ts, te);
     return add32(col, tw);
   }
 
@@ -6195,9 +6230,9 @@ export class Formatter {
     const d = this.d;
     const lim = sub32(d.opts.columnLimit, this.bcPP ? 2 : 0);
     this.bcTail = this.unbreakableTail(t);
-    const tStart = atI32(d.start, t);
+    const tStart = fwAt0(d.start, t);
     const s0 = add32(tStart, 2);
-    const s1 = sub32(atI32(d.end, t), 2);
+    const s1 = sub32(fwAt0(d.end, t), 2);
     // Lines[i] = [la, le); Content[i] = [ca, ce); ContentColumn[i] = cc.
     let nL = 1;
     for (let q = s0; q < s1; q++) {
@@ -6272,8 +6307,8 @@ export class Formatter {
     for (let i = 1; i < nL; i++) {
       // adjustWhitespace: trim the previous line's end, skip this one's indent
       // (and a directive's `\` before it).
-      const lap = atI32(la, i - 1);
-      let lnb = sub32(atI32(le, i - 1), 1);
+      const lap = fwAt0(la, i - 1);
+      let lnb = sub32(fwAt0(le, i - 1), 1);
       if (this.bcPP && lnb >= lap && d.at(lnb) === 92) {
         lnb = sub32(lnb, 1);
       }
@@ -6282,10 +6317,10 @@ export class Formatter {
         lnb--;
       }
       const endPrev = lnb >= lap ? add32(lnb, 1) : lap;
-      const cap = atI32(ca, i - 1);
+      const cap = fwAt0(ca, i - 1);
       cppfSet(ce, i - 1, endPrev > cap ? endPrev : cap);
-      const lai = atI32(la, i);
-      const lei = atI32(le, i);
+      const lai = fwAt0(la, i);
+      const lei = fwAt0(le, i);
       let sol = lai;
       while (sol < lei && isBlankByte(d.at(sol))) {
         sol++;
@@ -6296,20 +6331,20 @@ export class Formatter {
     }
     let decoCol = add32(col, 1);
     if (nL >= 2) {
-      const ca1 = atI32(ca, 1);
-      if (sub32(atI32(ce, 1), ca1) >= 2 && d.at(ca1) === 42 && d.at(add32(ca1, 1)) === 42 && atI32(cc, 1) === col) {
+      const ca1 = fwAt0(ca, 1);
+      if (sub32(fwAt0(ce, 1), ca1) >= 2 && d.at(ca1) === 42 && d.at(add32(ca1, 1)) === 42 && fwAt0(cc, 1) === col) {
         decoCol = col;
       }
     }
     // The decoration: a prefix of "* " every middle line starts with.
     let deco = 2;
-    const firstInLine = atI32(d.prv, t) < 0 || this.lineFirstAt(t);
+    const firstInLine = fwAt0(d.prv, t) < 0 || this.lineFirstAt(t);
     if (nL === 1 && !firstInLine) {
       deco = 0;
     }
     for (let i = 1; i < nL && deco > 0; i++) {
-      const cai = atI32(ca, i);
-      const cei = atI32(ce, i);
+      const cai = fwAt0(ca, i);
+      const cei = fwAt0(ce, i);
       const len = sub32(cei, cai);
       if (i + 1 === nL) {
         if (len === 0) {
@@ -6322,13 +6357,13 @@ export class Formatter {
         deco--;
       }
     }
-    let indentAtBreak = add32(atI32(cc, 0), 1);
+    let indentAtBreak = add32(fwAt0(cc, 0), 1);
     // An empty last line puts the closing star under the decoration; a last
     // line that held only decoration still writes it.
     let lastNeedsDeco = true;
     for (let i = 1; i < nL; i++) {
-      const cai = atI32(ca, i);
-      const cei = atI32(ce, i);
+      const cai = fwAt0(ca, i);
+      const cei = fwAt0(ce, i);
       if (cei === cai) {
         if (i + 1 === nL) {
           lastNeedsDeco = false;
@@ -6347,7 +6382,7 @@ export class Formatter {
       const cai2 = add32(cai, decoSize);
       cppfSet(ca, i, cai2);
       if (!this.decoStartsWith(deco, cai2, cei)) {
-        const cci = atI32(cc, i);
+        const cci = fwAt0(cc, i);
         const c0 = cci < 0 ? 0 : cci;
         if (c0 < indentAtBreak) {
           indentAtBreak = c0;
@@ -6364,17 +6399,17 @@ export class Formatter {
     const outStart = out.n;
     out.byte(47);
     out.byte(42);
-    let seg = atI32(ca, 0);
+    let seg = fwAt0(ca, 0);
     let off = 0;
-    const cc0 = atI32(cc, 0);
+    const cc0 = fwAt0(cc, 0);
     let csc = cc0 < 0 ? 0 : cc0;
     let rem = this.bcRemaining(0, off, csc);
     let reflowing = false;
     for (let i = 0; i < nL; i++) {
       let newBreak = false;
       let tryReflow = reflowing;
-      const a = atI32(ca, i);
-      const e = atI32(ce, i);
+      const a = fwAt0(ca, i);
+      const e = fwAt0(ce, i);
       while (add32(csc, rem) > lim) {
         // (After a fault the values are no guide: stop.)
         if (faulted()) {
@@ -6401,7 +6436,7 @@ export class Formatter {
         if (add32(csc, toNext) <= lim) {
           // Compress the blanks to one space and keep going on this line.
           tryReflow = true;
-          out.range(src, seg, atA);
+          fwRange(out, src, seg, atA);
           out.byte(32);
           seg = after;
           csc = add32(add32(csc, toSplit), 1);
@@ -6416,7 +6451,7 @@ export class Formatter {
         }
         // insertBreak
         this.bcBreaks = add32(this.bcBreaks, 1);
-        out.range(src, seg, atA);
+        fwRange(out, src, seg, atA);
         this.bcNewline(out);
         let ind = indentAtBreak;
         let prefix = deco;
@@ -6441,8 +6476,8 @@ export class Formatter {
         reflowing = false;
         if (tryReflow) {
           const csc2 = add32(add32(csc, rem), 1);
-          const na = atI32(ca, i + 1);
-          const ne = atI32(ce, i + 1);
+          const na = fwAt0(ca, i + 1);
+          const ne = fwAt0(ce, i + 1);
           if (this.bcMayReflow(i + 1)) {
             let lead = na;
             while (lead < ne && isBlankByte(d.at(lead))) {
@@ -6466,7 +6501,7 @@ export class Formatter {
               if (newBreak) {
                 this.bcBreaks = sub32(this.bcBreaks, 1);
               }
-              out.range(src, seg, e);
+              fwRange(out, src, seg, e);
               out.byte(32);
               seg = add32(na, off2);
               off = off2;
@@ -6477,13 +6512,13 @@ export class Formatter {
         }
         if (!reflowing) {
           // adaptStartOfLine
-          out.range(src, seg, e);
+          fwRange(out, src, seg, e);
           this.bcNewline(out);
           const j = i + 1;
-          const caj = atI32(ca, j);
-          const ccj = atI32(cc, j);
+          const caj = fwAt0(ca, j);
+          const ccj = fwAt0(cc, j);
           let prefix = deco;
-          if (atI32(ce, j) === caj) {
+          if (fwAt0(ce, j) === caj) {
             if (j === nL - 1) {
               if (!lastNeedsDeco) {
                 prefix = 0;
@@ -6503,7 +6538,7 @@ export class Formatter {
           rem = this.bcRemaining(j, 0, csc);
         }
       } else {
-        out.range(src, seg, e);
+        fwRange(out, src, seg, e);
         out.byte(42);
         out.byte(47);
       }
@@ -6579,16 +6614,16 @@ export class Formatter {
 
   /** getRemainingLength: the columns of content line `i` from `off`, with the closing delimiter on the last. */
   bcRemaining(i: i32, off: i32, startCol: i32): i32 {
-    const a = add32(atI32(this.bcCa, i), off);
-    const e = atI32(this.bcCe, i);
+    const a = add32(fwAt0(this.bcCa, i), off);
+    const e = fwAt0(this.bcCe, i);
     // (clang-format counts the unbreakable tail on every line.)
     let len = add32(a < e ? this.colsAt(a, e, startCol) : 0, this.bcTail);
     if (i === this.bcLast) {
       len = add32(len, 2);
       if (a >= e) {
         // Only `*/` remains: no decoration needed before it.
-        const lei = atI32(this.bcLe, i);
-        let q = atI32(this.bcLa, i);
+        const lei = fwAt0(this.bcLe, i);
+        let q = fwAt0(this.bcLa, i);
         while (q < lei && isBlankByte(this.d.at(q))) {
           q++;
         }
@@ -6647,8 +6682,8 @@ export class Formatter {
    */
   checkTabStringRerun(t: i32, col: i32): void {
     const d = this.d;
-    const st = atI32(d.start, t);
-    const en = atI32(d.end, t);
+    const st = fwAt0(d.start, t);
+    const en = fwAt0(d.end, t);
     let tab = false;
     for (let k = st; k < en; k++) {
       if (d.at(k) === 9) {
@@ -6680,30 +6715,30 @@ export class Formatter {
       fault();
       return;
     }
-    const t = atI32(this.emTok, i);
-    let pt = atI32(this.emTok, i - 1);
-    if (pt < 0 || atI32(d.prv, t) !== pt || !tokenCanStartNewLine(d, t)) {
+    const t = fwAt0(this.emTok, i);
+    let pt = fwAt0(this.emTok, i - 1);
+    if (pt < 0 || fwAt0(d.prv, t) !== pt || !tokenCanStartNewLine(d, t)) {
       return;
     }
     // `MACRO(args)` then the break: a function-like macro of any length.
     let functionLike = false;
-    if (atI32(d.kind, pt) === P_RPAREN) {
-      const m = atI32(d.match, pt);
+    if (fwAt0(d.kind, pt) === P_RPAREN) {
+      const m = fwAt0(d.match, pt);
       if (m >= 0 && m < pt) {
-        const w = atI32(d.prv, m);
-        if (w < 0 || atI32(d.prv, w) >= 0 || atI32(d.kind, w) !== K_IDENT) {
+        const w = fwAt0(d.prv, m);
+        if (w < 0 || fwAt0(d.prv, w) >= 0 || fwAt0(d.kind, w) !== K_IDENT) {
           return;
         }
         pt = w;
         functionLike = true;
       }
     }
-    if (atI32(d.prv, pt) >= 0 || atI32(d.kind, pt) !== K_IDENT || atI32(d.inPP, pt) === 1) {
+    if (fwAt0(d.prv, pt) >= 0 || fwAt0(d.kind, pt) !== K_IDENT || fwAt0(d.inPP, pt) === 1) {
       return;
     }
-    const ps = atI32(d.start, pt);
-    const pe = atI32(d.end, pt);
-    if (!functionLike && ((i > 1 && atI32(this.emNl, i - 1) === 0) || sub32(pe, ps) < 5)) {
+    const ps = fwAt0(d.start, pt);
+    const pe = fwAt0(d.end, pt);
+    if (!functionLike && ((i > 1 && fwAt0(this.emNl, i - 1) === 0) || sub32(pe, ps) < 5)) {
       return;
     }
     for (let k = ps; k < pe; k++) {
@@ -6729,30 +6764,30 @@ export class Formatter {
     const emTok = this.emTok;
     const emNl = this.emNl;
     const emCol = this.emCol;
-    const t = atI32(emTok, i);
-    const pt = atI32(emTok, i - 1);
+    const t = fwAt0(emTok, i);
+    const pt = fwAt0(emTok, i - 1);
     if (
       pt < 0 ||
-      atI32(emNl, i - 1) !== 0 ||
-      atI32(d.kind, pt) !== K_COMMENT ||
-      atI32(d.type, pt) !== TT_LINE_COMMENT ||
-      atI32(d.prv, t) !== pt
+      fwAt0(emNl, i - 1) !== 0 ||
+      fwAt0(d.kind, pt) !== K_COMMENT ||
+      fwAt0(d.type, pt) !== TT_LINE_COMMENT ||
+      fwAt0(d.prv, t) !== pt
     ) {
       return;
     }
-    if (atI32(emCol, i) === atI32(emCol, i - 1)) {
+    if (fwAt0(emCol, i) === fwAt0(emCol, i - 1)) {
       return;
     }
     let j = i - 1;
-    while (j > 0 && atI32(emNl, j) === 0) {
+    while (j > 0 && fwAt0(emNl, j) === 0) {
       j--;
     }
-    const mt = atI32(emTok, j);
+    const mt = fwAt0(emTok, j);
     const minCol = add32(
-      atI32(emCol, j),
-      mt >= 0 && atI32(d.kind, mt) === K_COMMENT && atI32(d.type, mt) === TT_LINE_COMMENT ? 0 : 1,
+      fwAt0(emCol, j),
+      mt >= 0 && fwAt0(d.kind, mt) === K_COMMENT && fwAt0(d.type, mt) === TT_LINE_COMMENT ? 0 : 1,
     );
-    if (atI32(emCol, i) >= minCol) {
+    if (fwAt0(emCol, i) >= minCol) {
       this.rerun = true;
     }
   }
@@ -6799,7 +6834,7 @@ export class Formatter {
         }
       }
     }
-    return f < d.ntok ? atI32(this.tlHead, f) : -1;
+    return f < d.ntok ? fwAt0(this.tlHead, f) : -1;
   }
 
   /**
@@ -6823,7 +6858,7 @@ export class Formatter {
     const width = d.width;
     let s = 0;
     // (A token's nxt is after it.)
-    let q = atI32(nxt, t);
+    let q = fwAt0(nxt, t);
     while (q >= 0) {
       if (q >= canB.length || q >= kind.length || q >= spaces.length || q >= width.length || q >= nxt.length) {
         fault();
@@ -6846,8 +6881,8 @@ export class Formatter {
       return false;
     }
     // A comment pragma (IWYU) never reflows.
-    const lei = atI32(this.bcLe, i);
-    let q = atI32(this.bcLa, i);
+    const lei = fwAt0(this.bcLe, i);
+    let q = fwAt0(this.bcLa, i);
     while (q < lei && isBlankByte(d.at(q))) {
       q++;
     }
@@ -6857,7 +6892,7 @@ export class Formatter {
     if (sub32(lei, q) > 13 && this.textAt(q, " IWYU pragma:")) {
       return false;
     }
-    return this.mayReflowContent(atI32(this.bcCa, i), atI32(this.bcCe, i));
+    return this.mayReflowContent(fwAt0(this.bcCa, i), fwAt0(this.bcCe, i));
   }
 
   /** Whether `t` is the first token of an emitted line (no code before it on its line). */
@@ -6893,24 +6928,24 @@ export class Formatter {
     const kind = d.kind;
     const type = d.type;
     const prv = d.prv;
-    const t = atI32(emTok, j);
-    const p = atI32(emTok, j - 1);
+    const t = fwAt0(emTok, j);
+    const p = fwAt0(emTok, j - 1);
     if (
       t < 0 ||
       p < 0 ||
-      atI32(kind, t) !== K_COMMENT ||
-      atI32(type, t) !== TT_LINE_COMMENT ||
-      atI32(kind, p) !== K_COMMENT ||
-      atI32(type, p) !== TT_LINE_COMMENT
+      fwAt0(kind, t) !== K_COMMENT ||
+      fwAt0(type, t) !== TT_LINE_COMMENT ||
+      fwAt0(kind, p) !== K_COMMENT ||
+      fwAt0(type, p) !== TT_LINE_COMMENT
     ) {
       return false;
     }
     if (
-      atI32(emNl, j) !== 1 ||
-      atI32(d.nl, t) !== 1 ||
-      atI32(emCol, j) !== atI32(emCol, j - 1) ||
+      fwAt0(emNl, j) !== 1 ||
+      fwAt0(d.nl, t) !== 1 ||
+      fwAt0(emCol, j) !== fwAt0(emCol, j - 1) ||
       this.verbatimAt(j) ||
-      atI32(d.multi, t) === 1
+      fwAt0(d.multi, t) === 1
     ) {
       return false;
     }
@@ -6922,12 +6957,12 @@ export class Formatter {
     // Under a comment that starts its own line, clang-format's
     // continuesLineComment wants it written at or right of that one, or
     // right of a `{` the run of comments follows.
-    if (atI32(emNl, j - 1) > 0 && this.origColumn(t) < this.origColumn(p)) {
+    if (fwAt0(emNl, j - 1) > 0 && this.origColumn(t) < this.origColumn(p)) {
       return false;
     }
     // (The run within this line, by its token links; a token's prv is
     // before it.)
-    let before = atI32(prv, p);
+    let before = fwAt0(prv, p);
     while (before >= 0) {
       if (before >= kind.length || before >= type.length || before >= prv.length) {
         fault();
@@ -6938,13 +6973,13 @@ export class Formatter {
       }
       before = prv[before];
     }
-    if (before >= 0 && atI32(kind, before) === P_LBRACE && this.origColumn(t) < add32(this.origColumn(before), 1)) {
+    if (before >= 0 && fwAt0(kind, before) === P_LBRACE && this.origColumn(t) < add32(this.origColumn(before), 1)) {
       return false;
     }
     // A section trailing code takes only the comments the parser put on its
     // line (BreakableLineCommentSection reads its own unwrapped line): one
     // that starts a line of its own is another section.
-    if (before >= 0 && atI32(prv, t) < 0) {
+    if (before >= 0 && fwAt0(prv, t) < 0) {
       return false;
     }
     return !this.isPragma(t) && !this.isPragma(p);
@@ -6956,7 +6991,7 @@ export class Formatter {
     if (this.switchesFormatting(t)) {
       return true;
     }
-    const a = add32(atI32(d.start, t), 2);
+    const a = add32(fwAt0(d.start, t), 2);
     return d.len(t) > 14 && this.textAt(a, " IWYU pragma:");
   }
 
@@ -6974,8 +7009,8 @@ export class Formatter {
   /** Splits line `t` into its prefix (known prefix plus spaces) and content; fills the sc* fields for slot `k`. */
   scLine(k: i32, t: i32, startCol: i32): void {
     const d = this.d;
-    const a = atI32(d.start, t);
-    const e = atI32(d.end, t);
+    const a = fwAt0(d.start, t);
+    const e = fwAt0(d.end, t);
     let kp = 2;
     const c2 = d.at(add32(a, 2));
     if (c2 === 47 && d.at(add32(a, 3)) === 60) {
@@ -7059,22 +7094,22 @@ export class Formatter {
     const scCol = this.scCol;
     let first = 0;
     for (let k = 0; k < n; k++) {
-      const t = atI32(this.emTok, add32(i, k));
-      const a = atI32(scStart, k);
-      const kp = atI32(scKnown, k);
-      const keepk = atI32(scKeep, k);
+      const t = fwAt0(this.emTok, add32(i, k));
+      const a = fwAt0(scStart, k);
+      const kp = fwAt0(scKnown, k);
+      const keepk = fwAt0(scKeep, k);
       const sp = add32(a, keepk);
       const spaces = sub32(keepk, kp);
-      const sak = atI32(scA, k);
-      const has = sak < atI32(d.end, t);
+      const sak = fwAt0(scA, k);
+      const has = sak < fwAt0(d.end, t);
       let noSpace = false;
       let c = 0;
       if (has) {
         c = d.at(sak);
         noSpace = c < 128 && (c === 92 || isPunct(c) || c === 32 || c === 9) && c !== 35;
       }
-      let samePrefix = k > 0 && atI32(scKnown, k - 1) === kp;
-      const pa = samePrefix ? atI32(scStart, k - 1) : 0;
+      let samePrefix = k > 0 && fwAt0(scKnown, k - 1) === kp;
+      const pa = samePrefix ? fwAt0(scStart, k - 1) : 0;
       for (let q = 0; samePrefix && q < kp; q++) {
         if (d.at(add32(a, q)) !== d.at(add32(pa, q))) {
           samePrefix = false;
@@ -7099,7 +7134,7 @@ export class Formatter {
       cppfSet(scExtra, k, extra);
       cppfSet(scCol, k, add32(add32(startCol, sub32(sp, a)), extra));
       if (!has) {
-        cppfSet(scCol, k, add32(startCol, atI32(scKeep, k)));
+        cppfSet(scCol, k, add32(startCol, fwAt0(scKeep, k)));
       }
     }
   }
@@ -7122,10 +7157,10 @@ export class Formatter {
     }
     const scA = this.scA;
     const scStart = this.scStart;
-    const s0 = atI32(scStart, k - 1);
-    const s1 = atI32(scStart, k);
-    const la = sub32(atI32(scA, k - 1), s0);
-    const lb = sub32(atI32(scA, k), s1);
+    const s0 = fwAt0(scStart, k - 1);
+    const s1 = fwAt0(scStart, k);
+    const la = sub32(fwAt0(scA, k - 1), s0);
+    const lb = sub32(fwAt0(scA, k), s1);
     if (la !== lb) {
       return false;
     }
@@ -7142,11 +7177,11 @@ export class Formatter {
     const d = this.d;
     let owner = this.recCur;
     if (t >= 0) {
-      if (atI32(d.kind, t) !== K_EOF) {
+      if (fwAt0(d.kind, t) !== K_EOF) {
         owner = t;
       }
     } else if (t > RAW && t <= PIECE && t < 0) {
-      owner = atI32(this.pcTok, -1 - t - 1048575); // PIECE - t
+      owner = fwAt0(this.pcTok, -1 - t - 1048575); // PIECE - t
     }
     if (owner === this.recCur) {
       return;
@@ -7155,11 +7190,11 @@ export class Formatter {
       out.trimSpaces();
     }
     if (this.recCur >= 0) {
-      cppfSet(this.uE, atI32(this.map, this.recCur), out.n);
+      cppfSet(this.uE, fwAt0(this.map, this.recCur), out.n);
     }
-    cppfSet(this.uS, atI32(this.map, owner), out.n);
+    cppfSet(this.uS, fwAt0(this.map, owner), out.n);
     if (this.recOrd) {
-      this.ord.push(atI32(this.map, owner));
+      this.ord.push(fwAt0(this.map, owner));
     }
     this.recCur = owner;
   }
@@ -7186,7 +7221,7 @@ export class Formatter {
 
   /** colsAt for bytes [a, b) of token `t`: their count when the token is plain. */
   cw(t: i32, a: i32, b: i32, c: i32): i32 {
-    return atI32(this.d.plain, t) === 1 ? sub32(b, a) : this.colsAt(a, b, c);
+    return fwAt0(this.d.plain, t) === 1 ? sub32(b, a) : this.colsAt(a, b, c);
   }
 
   /** Whether content [a, e) may take the previous line's words (clang-format's rule). */
@@ -7257,14 +7292,14 @@ export class Formatter {
     const lim = d.opts.columnLimit;
     // (clang-format's trailing comment alignment counts a comment's bytes,
     // not its columns: a tab or a multibyte character is one, or several.)
-    const bytes = sub32(atI32(d.end, t), atI32(d.start, t));
-    const tm = atI32(d.multi, t);
+    const bytes = sub32(fwAt0(d.end, t), fwAt0(d.start, t));
+    const tm = fwAt0(d.multi, t);
     if (!d.opts.reflowComments || this.isPragma(t) || this.switchesFormatting(t) || tm === 1) {
-      return tm === 1 ? atI32(d.width, t) : bytes;
+      return tm === 1 ? fwAt0(d.width, t) : bytes;
     }
     // (With the space clang-format puts after a bare `//`.)
     const sp = this.missingCommentSpace(t);
-    if (add32(add32(col, atI32(d.width, t)), sp) <= lim) {
+    if (add32(add32(col, fwAt0(d.width, t)), sp) <= lim) {
       return add32(bytes, sp);
     }
     this.commentPenalty(t, col);
@@ -7274,8 +7309,8 @@ export class Formatter {
   /** 1 when clang-format puts a space after line comment `t`'s `//`, else 0. */
   missingCommentSpace(t: i32): i32 {
     const d = this.d;
-    const a0 = atI32(d.start, t);
-    const e0 = atI32(d.end, t);
+    const a0 = fwAt0(d.start, t);
+    const e0 = fwAt0(d.end, t);
     let kp = 2;
     const c2 = d.at(add32(a0, 2));
     if (c2 === 47 || c2 === 33) {
@@ -7302,14 +7337,14 @@ export class Formatter {
    */
   blockCommentPenalty(t: i32, col: i32): i64 {
     const d = this.d;
-    const tp = atI32(d.inPP, t);
+    const tp = fwAt0(d.inPP, t);
     const lim = sub32(d.opts.columnLimit, tp === 1 ? 2 : 0);
-    const a = add32(atI32(d.start, t), 2);
-    const e = sub32(atI32(d.end, t), 2);
+    const a = add32(fwAt0(d.start, t), 2);
+    const e = sub32(fwAt0(d.end, t), 2);
     if (!d.opts.reflowComments || e < a || this.switchesFormatting(t)) {
-      return excessPenalty(sub32(add32(col, atI32(d.width, t)), lim));
+      return excessPenalty(sub32(add32(col, fwAt0(d.width, t)), lim));
     }
-    if (atI32(d.multi, t) === 1) {
+    if (fwAt0(d.multi, t) === 1) {
       // Several lines: a dry run of the writer, then its breaks and overflow.
       const o = this.bcScratch;
       o.n = 0;
@@ -7346,7 +7381,7 @@ export class Formatter {
     const ind = add32(col, 3);
     let pen: i64 = 0;
     this.splitDecoStar = false;
-    this.bcFirstW = atI32(d.width, t);
+    this.bcFirstW = fwAt0(d.width, t);
     this.bcShrink = 0;
     while (add32(csc, rem) > lim) {
       // (After a fault the values are no guide: stop.)
@@ -7389,7 +7424,7 @@ export class Formatter {
     }
     // Kept on its line with its blanks squeezed: that much narrower.
     if (pen === 0) {
-      this.bcShrink = sub32(add32(col, atI32(d.width, t)), sub32(add32(csc, rem), tail));
+      this.bcShrink = sub32(add32(col, fwAt0(d.width, t)), sub32(add32(csc, rem), tail));
     }
     return cppfAddPen(pen, excessPenalty(sub32(add32(csc, rem), lim)));
   }
@@ -7441,11 +7476,11 @@ export class Formatter {
   commentPenaltyAt(t: i32, col: i32): i64 {
     const d = this.d;
     const lim = d.opts.columnLimit;
-    if (!d.opts.reflowComments || this.isPragma(t) || this.switchesFormatting(t) || atI32(d.multi, t) === 1) {
-      return excessPenalty(sub32(add32(col, atI32(d.width, t)), lim));
+    if (!d.opts.reflowComments || this.isPragma(t) || this.switchesFormatting(t) || fwAt0(d.multi, t) === 1) {
+      return excessPenalty(sub32(add32(col, fwAt0(d.width, t)), lim));
     }
-    const a0 = atI32(d.start, t);
-    const e0 = atI32(d.end, t);
+    const a0 = fwAt0(d.start, t);
+    const e0 = fwAt0(d.end, t);
     let kp = 2;
     const c2 = d.at(add32(a0, 2));
     if (c2 === 47 || c2 === 33) {
@@ -7545,13 +7580,13 @@ export class Formatter {
   /** The line comment continuing `t`'s section on the next line, or -1. */
   sectionNext(t: i32): i32 {
     const d = this.d;
-    const n = atI32(d.nxt, t);
+    const n = fwAt0(d.nxt, t);
     if (
       n < 0 ||
-      atI32(d.kind, n) !== K_COMMENT ||
-      atI32(d.type, n) !== TT_LINE_COMMENT ||
-      atI32(d.nl, n) !== 1 ||
-      atI32(d.multi, n) === 1 ||
+      fwAt0(d.kind, n) !== K_COMMENT ||
+      fwAt0(d.type, n) !== TT_LINE_COMMENT ||
+      fwAt0(d.nl, n) !== 1 ||
+      fwAt0(d.multi, n) === 1 ||
       this.switchesFormatting(n)
     ) {
       return -1;
@@ -7567,8 +7602,8 @@ export class Formatter {
    */
   lineGeom(t: i32, col: i32): void {
     const d = this.d;
-    const a0 = atI32(d.start, t);
-    const e0 = atI32(d.end, t);
+    const a0 = fwAt0(d.start, t);
+    const e0 = fwAt0(d.end, t);
     let kp = 2;
     const c2 = d.at(add32(a0, 2));
     if (c2 === 47 || c2 === 33) {
@@ -7676,10 +7711,10 @@ export class Formatter {
         // (Only the last line's excess is left to the caller.)
         pen = cppfAddPen(pen, excessPenalty(sub32(add32(csc, rem), lim)));
       }
-      const pa0 = atI32(d.start, cur);
+      const pa0 = fwAt0(d.start, cur);
       const ppre = this.gPre;
       this.lineGeom(nx, col);
-      const na0 = atI32(d.start, nx);
+      const na0 = fwAt0(d.start, nx);
       let same = ppre === this.gPre;
       for (let q = 0; same && q < ppre; q++) {
         if (d.at(add32(pa0, q)) !== d.at(add32(na0, q))) {
@@ -7730,12 +7765,12 @@ export class Formatter {
   reflowsIntoNext(t: i32, kp: i32, ccsc: i32): boolean {
     const d = this.d;
     const lim = d.opts.columnLimit;
-    const n = atI32(d.nxt, t);
+    const n = fwAt0(d.nxt, t);
     if (
       n < 0 ||
-      atI32(d.kind, n) !== K_COMMENT ||
-      atI32(d.type, n) !== TT_LINE_COMMENT ||
-      atI32(d.nl, n) !== 1 ||
+      fwAt0(d.kind, n) !== K_COMMENT ||
+      fwAt0(d.type, n) !== TT_LINE_COMMENT ||
+      fwAt0(d.nl, n) !== 1 ||
       this.isPragma(n) ||
       this.switchesFormatting(n)
     ) {
@@ -7744,8 +7779,8 @@ export class Formatter {
     if (!this.ind.continuesSection(n, t)) {
       return false;
     }
-    const a0 = atI32(d.start, n);
-    const e0 = atI32(d.end, n);
+    const a0 = fwAt0(d.start, n);
+    const e0 = fwAt0(d.end, n);
     let nkp = 2;
     const c2 = d.at(add32(a0, 2));
     if (c2 === 47 || c2 === 33) {
@@ -7754,7 +7789,7 @@ export class Formatter {
     if (nkp !== kp || sub32(e0, a0) < kp) {
       return false;
     }
-    const ta0 = atI32(d.start, t);
+    const ta0 = fwAt0(d.start, t);
     for (let q = 0; q < kp; q++) {
       if (d.at(add32(a0, q)) !== d.at(add32(ta0, q))) {
         return false;
@@ -7896,9 +7931,9 @@ export class Formatter {
   /** Writes line `k`'s prefix (known prefix, its spaces, and any added space). */
   scPrefix(out: Out, k: i32): void {
     const d = this.d;
-    const ss = atI32(this.scStart, k);
-    out.range(d.src, ss, add32(ss, atI32(this.scKeep, k)));
-    out.spaces(atI32(this.scExtra, k));
+    const ss = fwAt0(this.scStart, k);
+    fwRange(out, d.src, ss, add32(ss, fwAt0(this.scKeep, k)));
+    out.spaces(fwAt0(this.scExtra, k));
   }
 
   /**
@@ -7930,7 +7965,7 @@ export class Formatter {
     }
     const emTok = this.emTok;
     for (let k = 0; k < n; k++) {
-      this.scLine(k, atI32(emTok, add32(i, k)), col);
+      this.scLine(k, fwAt0(emTok, add32(i, k)), col);
     }
     this.scSpaceChanges(i, n, col);
     const scA = this.scA;
@@ -7943,16 +7978,16 @@ export class Formatter {
     const lim = d.opts.columnLimit;
     const reflow = d.opts.reflowComments;
     let off = 0; // bytes into the current line's content
-    let csc = atI32(scCol, 0);
-    let rem = this.cw(atI32(emTok, i), atI32(scA, 0), atI32(scE, 0), csc);
-    let seg = atI32(scA, 0);
+    let csc = fwAt0(scCol, 0);
+    let rem = this.cw(fwAt0(emTok, i), fwAt0(scA, 0), fwAt0(scE, 0), csc);
+    let seg = fwAt0(scA, 0);
     let reflowing = false;
     this.scPrefix(out, 0);
     let lastCol = col;
     for (let k = 0; k < n; k++) {
-      const tk = atI32(emTok, add32(i, k));
-      const a = atI32(scA, k);
-      const e = atI32(scE, k);
+      const tk = fwAt0(emTok, add32(i, k));
+      const a = fwAt0(scA, k);
+      const e = fwAt0(scE, k);
       const pragma = this.isPragma(tk);
       let newBreak = false;
       let tryReflow = reflowing;
@@ -7980,7 +8015,7 @@ export class Formatter {
         if (add32(csc, toNext) <= lim) {
           // Keep going on this line, the blanks squeezed to one space.
           tryReflow = true;
-          out.range(src, seg, aoA);
+          fwRange(out, src, seg, aoA);
           out.byte(32);
           seg = after;
           csc = add32(add32(csc, toSplit), 1);
@@ -7993,19 +8028,19 @@ export class Formatter {
         // the breaks after it: run again.
         if (
           !this.rerun &&
-          add32(sub32(atI32(scKeep, k), atI32(scKnown, k)), atI32(scExtra, k)) === 0 &&
+          add32(sub32(fwAt0(scKeep, k), fwAt0(scKnown, k)), fwAt0(scExtra, k)) === 0 &&
           after < e &&
           this.wantsPrefixSpace(tk, d.at(after))
         ) {
           this.rerun = true;
         }
         const pad = 0;
-        const ncsc = add32(atI32(scCol, k), pad);
+        const ncsc = add32(fwAt0(scCol, k), pad);
         const nrem = this.cw(tk, after, e, ncsc);
         if (nrem >= rem) {
           break;
         }
-        out.range(src, seg, aoA);
+        fwRange(out, src, seg, aoA);
         out.trimSpaces();
         out.byte(10);
         out.spaces(col);
@@ -8020,7 +8055,7 @@ export class Formatter {
         newBreak = true;
         // A comment split inside brackets (a braced list's item): on the
         // next run it is a section of lines, which can change the layout.
-        if (!this.rerun && k === 0 && atI32(d.nest, atI32(emTok, i)) > 0) {
+        if (!this.rerun && k === 0 && fwAt0(d.nest, fwAt0(emTok, i)) > 0) {
           this.rerun = true;
         }
       }
@@ -8033,9 +8068,9 @@ export class Formatter {
         let roff = 0;
         if (tryReflow && reflow) {
           const ccsc = add32(add32(csc, rem), 1);
-          const na = atI32(scA, k1);
-          const ne = atI32(scE, k1);
-          const tk1 = atI32(emTok, add32(i, k1));
+          const na = fwAt0(scA, k1);
+          const ne = fwAt0(scE, k1);
+          const tk1 = fwAt0(emTok, add32(i, k1));
           if (this.scSamePrefix(k1) && this.mayReflowContent(na, ne) && !this.isPragma(tk1)) {
             // (A tab after the prefix is content: clang-format keeps it, but
             // measures and splits the line without it. The next run measures
@@ -8065,7 +8100,7 @@ export class Formatter {
               if (mlead > lead) {
                 this.rerun = true;
               }
-              out.range(src, seg, e);
+              fwRange(out, src, seg, e);
               out.byte(32);
               seg = lead;
               csc = ccsc;
@@ -8075,18 +8110,18 @@ export class Formatter {
           }
         }
         if (!reflowing) {
-          out.range(src, seg, e);
+          fwRange(out, src, seg, e);
           out.trimSpaces();
           out.byte(10);
           out.spaces(col);
           this.scPrefix(out, k1);
           off = 0;
-          csc = atI32(scCol, k1);
-          rem = this.cw(atI32(emTok, add32(i, k1)), atI32(scA, k1), atI32(scE, k1), csc);
-          seg = atI32(scA, k1);
+          csc = fwAt0(scCol, k1);
+          rem = this.cw(fwAt0(emTok, add32(i, k1)), fwAt0(scA, k1), fwAt0(scE, k1), csc);
+          seg = fwAt0(scA, k1);
         }
       } else {
-        out.range(src, seg, e);
+        fwRange(out, src, seg, e);
         lastCol = add32(csc, rem);
       }
     }
@@ -8313,8 +8348,9 @@ const scanAfterDirective = (kind: i32[], inPP: i32[], n: i32, vis: i32[] | null,
 
 /** `xs[i] = v`, or a fault when `i` is outside `xs`. */
 const cppfSet = (xs: i32[], i: i32, v: i32): void => {
-  if (i >= 0 && i < xs.length) {
-    xs[i] = v;
+  const u = toU32(i);
+  if (u < toU32(xs.length)) {
+    xs[u] = v;
     return;
   }
   fault();

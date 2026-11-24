@@ -235,9 +235,10 @@ export class DtSolution {
     const st = c.stateOf;
     let b = this.binds;
     while (b !== null) {
-      const id = b.piece.id;
-      // The cache holds a slot for every piece id.
-      if (id < 0 || id >= so.length || id >= st.length) {
+      // The cache holds a slot for every piece id. (A negative id is a u32
+      // past any length: one compare an array tests both ends.)
+      const id = toU32(b.piece.id);
+      if (id >= toU32(so.length) || id >= toU32(st.length)) {
         fault();
         return;
       }
@@ -845,9 +846,10 @@ export class DtWriter {
     const st = this.cache.stateOf;
     let b = sol.binds;
     while (b !== null) {
-      const id = b.piece.id;
-      // The cache holds a slot for every piece id.
-      if (id < 0 || id >= so.length || id >= st.length) {
+      // The cache holds a slot for every piece id. (A negative id is a u32
+      // past any length: one compare an array tests both ends.)
+      const id = toU32(b.piece.id);
+      if (id >= toU32(so.length) || id >= toU32(st.length)) {
         fault();
         return;
       }
@@ -864,10 +866,10 @@ export class DtWriter {
     if (piece.pinned >= 0) {
       return piece.pinned;
     }
-    const id = piece.id;
+    const id = toU32(piece.id);
     const so = this.cache.stampOf;
     const st = this.cache.stateOf;
-    if (id < 0 || id >= so.length || id >= st.length) {
+    if (id >= toU32(so.length) || id >= toU32(st.length)) {
       fault();
       return -1;
     }
