@@ -7,7 +7,8 @@
 //
 // Ported from google-java-format 2.0.0 (Apache License 2.0, Copyright 2016 Google Inc.).
 
-import { strUtf16Len } from "../core/arr";
+import { add32, strUtf16Len, sub32 } from "../core/arr";
+import { fault } from "../core/fault";
 import { splitLines } from "../gdoc/comments";
 
 // Token types.
@@ -67,21 +68,48 @@ class JdToks {
   size(): i32 {
     return toI32(this.types.length);
   }
+  /** types[i], for i below size(). */
+  typeAt(i: i32): i32 {
+    const ty = this.types;
+    if (i >= 0 && i < ty.length) {
+      return ty[i];
+    }
+    fault();
+    return 0;
+  }
+  /** values[i], for i below size(), which values.length equals. */
+  valueAt(i: i32): string {
+    const va = this.values;
+    if (i >= 0 && i < va.length) {
+      return va[i];
+    }
+    fault();
+    return "";
+  }
 }
 
-/** Whether `s` has `p` at byte `i`. */
-const startsAt = (s: string, p: string, i: i32): boolean => {
+/** Where `p` ends when `s` has it at byte `i`, else -1. */
+const jdMatchEnd = (s: string, p: string, i: i32): i32 => {
   const k = toI32(p.length);
-  if (i < 0 || i + k > toI32(s.length)) {
-    return false;
+  if (i < 0 || i > toI32(s.length) - k) {
+    return -1;
   }
-  for (let q = 0; q < k; q++) {
-    if (s.charCodeAt(i + q) !== p.charCodeAt(q)) {
-      return false;
+  let j = i;
+  for (let q = 0; q < p.length; q++) {
+    if (j >= s.length) {
+      fault(); // i + k is within s
+      return -1;
     }
+    if (s.charCodeAt(j) !== p.charCodeAt(q)) {
+      return -1;
+    }
+    j++;
   }
-  return true;
+  return j;
 };
+
+/** Whether `s` has `p` at byte `i`. */
+const startsAt = (s: string, p: string, i: i32): boolean => jdMatchEnd(s, p, i) >= 0;
 
 const isWordChar = (c: i32): boolean =>
   (c >= 65 && c <= 90) || (c >= 97 && c <= 122) || (c >= 48 && c <= 57) || c === 95;
@@ -108,8 +136,17 @@ class JdLexer {
     this.stack = [];
   }
 
+  /** The character at `i`, or -1 at or past the end. */
   at(i: i32): i32 {
-    return i < this.n ? this.s.charCodeAt(i) : -1;
+    if (i >= this.n) {
+      return -1;
+    }
+    const s = this.s;
+    if (i >= 0 && i < s.length) {
+      return s.charCodeAt(i);
+    }
+    fault(); // n is s's length and positions are not negative
+    return -1;
   }
 
   contains(v: i32): boolean {
@@ -136,65 +173,80 @@ class JdLexer {
     if (!this.contains(v)) {
       return;
     }
+    const stack = this.stack;
     let popped = -1;
     while (popped !== v) {
-      popped = this.stack[this.stack.length - 1];
-      this.stack.pop();
+      const k = toI32(stack.length);
+      if (k < 1 || stack.length < 1) {
+        fault(); // v is on the stack
+        return;
+      }
+      popped = stack[k - 1];
+      stack.pop();
     }
   }
 
   /** NestingStack.popIfIn(BRACE_CONTEXTS): the context popped, or 0. */
   popIfBrace(): i32 {
-    const k = toI32(this.stack.length);
+    const stack = this.stack;
+    const k = toI32(stack.length);
     if (k === 0) {
       return 0;
     }
-    const top = this.stack[k - 1];
+    const top = stack[k - 1];
     if (!isJdBraceContext(top)) {
       return 0;
     }
-    this.stack.pop();
+    if (stack.length > 0) {
+      stack.pop();
+    }
     return top;
   }
 
   /** NEWLINE_PATTERN: [ \t]*\n ; answers the end or -1. */
   newline(): i32 {
+    const n = this.n;
     let i = this.pos;
-    while (isJdSpaceOrTab(this.at(i))) {
+    while (i < n && isJdSpaceOrTab(this.at(i))) {
       i++;
     }
-    return this.at(i) === 10 ? i + 1 : -1;
+    if (i < n && this.at(i) === 10) {
+      return i + 1;
+    }
+    return -1;
   }
 
   /** FOOTER_TAG_PATTERN: @(param\s+<\w+>|[a-z]\w*). */
   footer(): i32 {
+    const n = this.n;
     let i = this.pos;
-    if (this.at(i) !== 64) {
+    if (i >= n || this.at(i) !== 64) {
       return -1;
     }
     i++;
-    if (startsAt(this.s, "param", i)) {
-      let j = i + 5;
-      let ws = 0;
-      while (isJdWs(this.at(j))) {
+    const pe = jdMatchEnd(this.s, "param", i);
+    if (pe >= 0) {
+      let j = pe;
+      let ws = false;
+      while (j < n && isJdWs(this.at(j))) {
         j++;
-        ws++;
+        ws = true;
       }
-      if (ws > 0 && this.at(j) === 60) {
+      if (ws && j < n && this.at(j) === 60) {
         let k = j + 1;
         const k0 = k;
-        while (isWordChar(this.at(k))) {
+        while (k < n && isWordChar(this.at(k))) {
           k++;
         }
-        if (k > k0 && this.at(k) === 62) {
+        if (k > k0 && k < n && this.at(k) === 62) {
           return k + 1;
         }
       }
     }
     const c = this.at(i);
-    if (c >= 97 && c <= 122) {
+    if (i < n && c >= 97 && c <= 122) {
       i++;
-      while (isWordChar(this.at(i))) {
+      while (i < n && isWordChar(this.at(i))) {
         i++;
       }
       return i;
@@ -204,13 +256,14 @@ class JdLexer {
 
   /** <(?:names)\b[^>]*> (case-insensitive); `close` adds the slash. */
   tag(names: string[], close: boolean): i32 {
+    const n = this.n;
     let i = this.pos;
-    if (this.at(i) !== 60) {
+    if (i >= n || this.at(i) !== 60) {
       return -1;
     }
     i++;
     if (close) {
-      if (this.at(i) !== 47) {
+      if (i >= n || this.at(i) !== 47) {
         return -1;
       }
       i++;
@@ -218,9 +271,14 @@ class JdLexer {
     let matched = -1;
     for (const nm of names) {
       let ok = true;
+      let j = i;
       for (let q = 0; q < toI32(nm.length); q++) {
+        if (j >= n) {
+          ok = false; // the end reads as -1, which no name character matches
+          break;
+        }
         const want = nm.charCodeAt(q);
-        const got = jdLower(this.at(i + q));
+        const got = jdLower(this.at(j));
         if (want === 63) {
           // `?` stands for a digit 1-6 (h[1-6]).
           if (got < 49 || got > 54) {
@@ -231,9 +289,10 @@ class JdLexer {
           ok = false;
           break;
         }
+        j++;
       }
-      if (ok && !isWordChar(this.at(i + toI32(nm.length)))) {
-        matched = i + toI32(nm.length);
+      if (ok && !isWordChar(this.at(j))) {
+        matched = j;
         break;
       }
     }
@@ -241,10 +300,10 @@ class JdLexer {
       return -1;
     }
     let j = matched;
-    while (j < this.n && this.at(j) !== 62) {
+    while (j < n && this.at(j) !== 62) {
       j++;
     }
-    if (j >= this.n) {
+    if (j >= n) {
       return -1;
     }
     return j + 1;
@@ -252,8 +311,13 @@ class JdLexer {
 
   /** CLASSIC_LITERAL_PATTERN: .[^ \t\n@<{}*]* */
   literal(): i32 {
-    let i = this.pos + 1;
-    while (i < this.n) {
+    const n = this.n;
+    let i = this.pos;
+    if (i >= n) {
+      return add32(i, 1);
+    }
+    i++;
+    while (i < n) {
       const c = this.at(i);
       if (c === 32 || c === 9 || c === 10 || c === 64 || c === 60 || c === 123 || c === 125 || c === 42) {
         break;
@@ -265,33 +329,33 @@ class JdLexer {
 
   /** <!--.*?--> */
   htmlComment(): i32 {
-    if (!startsAt(this.s, "<!--", this.pos)) {
+    const s = this.s;
+    const b = jdMatchEnd(s, "<!--", this.pos);
+    if (b < 0) {
       return -1;
     }
-    const e = this.s.indexOf("-->", this.pos + 4);
-    return e < 0 ? -1 : e + 3;
+    const e = s.indexOf("-->", b);
+    return e < 0 ? -1 : jdMatchEnd(s, "-->", e);
   }
 
   /** <!--\s*MOE:begin_intracomment_strip\s*--> and the end variant. */
   moe(word: string): i32 {
-    if (!startsAt(this.s, "<!--", this.pos)) {
+    const n = this.n;
+    let i = jdMatchEnd(this.s, "<!--", this.pos);
+    if (i < 0) {
       return -1;
     }
-    let i = this.pos + 4;
-    while (isJdWs(this.at(i))) {
+    while (i < n && isJdWs(this.at(i))) {
       i++;
     }
-    if (!startsAt(this.s, word, i)) {
+    i = jdMatchEnd(this.s, word, i);
+    if (i < 0) {
       return -1;
     }
-    i += toI32(word.length);
-    while (isJdWs(this.at(i))) {
+    while (i < n && isJdWs(this.at(i))) {
       i++;
     }
-    if (!startsAt(this.s, "-->", i)) {
-      return -1;
-    }
-    return i + 3;
+    return jdMatchEnd(this.s, "-->", i);
   }
 
   /** An open or close tag that pushes or pops `ctx`; answers its token type, or 0. */
@@ -313,6 +377,14 @@ class JdLexer {
 
   /** JavadocLexer.consumeToken for classic javadoc: answers its type and sets `end`. */
   next(): i32 {
+    const n = this.n;
+    const pos = this.pos;
+    if (pos < 0 || pos >= n) {
+      fault(); // lexJavadoc calls it below n
+      this.end = n;
+      return T_LITERAL;
+    }
+    const p1 = pos + 1;
     const preserving = this.preserve();
     let e = this.newline();
     if (e >= 0) {
@@ -320,9 +392,9 @@ class JdLexer {
       this.somethingSinceNewline = false;
       return preserving ? T_FORCED_NEWLINE : T_WS;
     }
-    const c = this.at(this.pos);
+    const c = this.at(pos);
     if (isJdSpaceOrTab(c)) {
-      this.end = this.pos + 1;
+      this.end = p1;
       return preserving ? T_LITERAL : T_WS;
     }
     if (!this.somethingSinceNewline) {
@@ -338,9 +410,11 @@ class JdLexer {
       }
     }
     this.somethingSinceNewline = true;
-    if (c === 123 && this.at(this.pos + 1) === 64) {
-      if (startsAt(this.s, "snippet", this.pos + 2) && !isWordChar(this.at(this.pos + 9))) {
-        this.end = this.pos + 9;
+    if (c === 123 && p1 < n && this.at(p1) === 64) {
+      const p2 = p1 + 1;
+      const se = jdMatchEnd(this.s, "snippet", p2);
+      if (se >= 0 && !isWordChar(this.at(se))) {
+        this.end = se;
         if (this.inBraceContext()) {
           this.stack.push(NC_BRACE);
           return T_LITERAL;
@@ -348,8 +422,8 @@ class JdLexer {
         this.stack.push(NC_SNIPPET);
         return T_SNIPPET_BEGIN;
       }
-      let i = this.pos + 2;
-      while (isWordChar(this.at(i))) {
+      let i = p2;
+      while (i < n && isWordChar(this.at(i))) {
         i++;
       }
       this.end = i;
@@ -357,14 +431,14 @@ class JdLexer {
       return T_LITERAL;
     }
     if (c === 123) {
-      this.end = this.pos + 1;
+      this.end = p1;
       if (this.inBraceContext()) {
         this.stack.push(NC_BRACE);
       }
       return T_LITERAL;
     }
     if (c === 125) {
-      this.end = this.pos + 1;
+      this.end = p1;
       return this.popIfBrace() === NC_SNIPPET ? T_SNIPPET_END : T_LITERAL;
     }
     if (this.inTagContext()) {
@@ -461,7 +535,8 @@ const isJdWs = (c: i32): boolean => c === 32 || c === 9 || c === 10 || c === 13 
 const countNewlines = (s: string): i32 => {
   let n = 0;
   for (let i = 0; i < toI32(s.length); i++) {
-    if (s.charCodeAt(i) === 10) {
+    // n counts among the first i characters, so stays below the length.
+    if (s.charCodeAt(i) === 10 && n < i + 1) {
       n++;
     }
   }
@@ -550,6 +625,10 @@ const jdClassicCommentText = (input: string): string => {
   const starLen = starPrefixLength < 0 ? 0 : starPrefixLength;
   const nonStarLen = nonStarMinLeading < 0 ? 0 : nonStarMinLeading;
   const nonStarStripCount = starLen < nonStarLen ? starLen : nonStarLen;
+  if (lines.length < 1) {
+    fault(); // splitLines answers at least one line
+    return "";
+  }
   const processed: string[] = [lines[0]];
   for (let i = 1; i < toI32(lines.length); i++) {
     const l = lines[i];
@@ -611,7 +690,13 @@ const jdLetterOrDigitAt = (s: string, i: i32): i32 => {
 };
 
 /** isWordChar (letter, digit or `_`) at byte `i`, as jdLetterOrDigitAt answers. */
-const jdWordCharAt = (s: string, i: i32): i32 => (s.charCodeAt(i) === 95 ? 1 : jdLetterOrDigitAt(s, i));
+const jdWordCharAt = (s: string, i: i32): i32 => {
+  if (i < 0 || i >= s.length) {
+    fault(); // callers pass a character of s
+    return 0;
+  }
+  return s.charCodeAt(i) === 95 ? 1 : jdLetterOrDigitAt(s, i);
+};
 
 /** jdIsHyphenatedWordEnd: ends in `-` after a word character. */
 const jdIsHyphenatedWordEnd = (s: string): i32 => {
@@ -637,42 +722,42 @@ const joinAdjacent = (input: JdToks): JdToks => {
   let i = 0;
   const n = input.size();
   while (i < n) {
-    if (input.types[i] === T_LITERAL) {
-      acc = acc + input.values[i];
+    if (input.typeAt(i) === T_LITERAL) {
+      acc = acc + input.valueAt(i);
       i++;
       continue;
     }
     if (acc.length === 0) {
-      if (input.types[i] === T_WS) {
+      if (input.typeAt(i) === T_WS) {
         let ws = "";
-        while (i < n && input.types[i] === T_WS) {
-          ws = ws + input.values[i];
+        while (i < n && input.typeAt(i) === T_WS) {
+          ws = ws + input.valueAt(i);
           i++;
         }
         out.add(T_WS, ws);
       } else {
-        out.add(input.types[i], input.values[i]);
+        out.add(input.typeAt(i), input.valueAt(i));
         i++;
       }
       continue;
     }
     let ws = "";
-    while (i < n && input.types[i] === T_WS) {
-      ws = ws + input.values[i];
+    while (i < n && input.typeAt(i) === T_WS) {
+      ws = ws + input.valueAt(i);
       i++;
     }
-    const nextLiteral = i < n && input.types[i] === T_LITERAL;
-    if (nextLiteral && input.values[i].startsWith("@")) {
-      acc = `${acc} ${input.values[i]}`;
+    const nextLiteral = i < n && input.typeAt(i) === T_LITERAL;
+    if (nextLiteral && i < n && input.valueAt(i).startsWith("@")) {
+      acc = `${acc} ${input.valueAt(i)}`;
       i++;
       continue;
     }
     // A word hyphenated across a line break is joined back together (but not "pre- and post-").
-    if (nextLiteral && countNewlines(ws) === 1 && input.values[i] !== "and" && input.values[i] !== "or") {
+    if (nextLiteral && i < n && countNewlines(ws) === 1 && input.valueAt(i) !== "and" && input.valueAt(i) !== "or") {
       const end = jdIsHyphenatedWordEnd(acc);
-      const start = end === 0 ? 0 : jdIsWordStart(input.values[i]);
+      const start = end === 0 ? 0 : jdIsWordStart(input.valueAt(i));
       if (end === 1 && start === 1) {
-        acc = acc + input.values[i];
+        acc = acc + input.valueAt(i);
         i++;
         continue;
       }
@@ -694,18 +779,18 @@ const inferParagraphTags = (input: JdToks): JdToks => {
   let i = 0;
   const n = input.size();
   while (i < n) {
-    if (input.types[i] === T_LITERAL) {
-      out.add(T_LITERAL, input.values[i]);
+    if (input.typeAt(i) === T_LITERAL) {
+      out.add(T_LITERAL, input.valueAt(i));
       i++;
-      if (i < n && input.types[i] === T_WS && countNewlines(input.values[i]) > 1) {
-        out.add(T_WS, input.values[i]);
+      if (i < n && input.typeAt(i) === T_WS && countNewlines(input.valueAt(i)) > 1) {
+        out.add(T_WS, input.valueAt(i));
         i++;
-        if (i < n && input.types[i] === T_LITERAL) {
+        if (i < n && input.typeAt(i) === T_LITERAL) {
           out.add(T_P_OPEN, "<p>");
         }
       }
     } else {
-      out.add(input.types[i], input.values[i]);
+      out.add(input.typeAt(i), input.valueAt(i));
       i++;
     }
   }
@@ -726,15 +811,15 @@ const optionalizeSpacesAfterLinks = (input: JdToks): JdToks => {
   let i = 0;
   const n = input.size();
   while (i < n) {
-    if (input.types[i] === T_LITERAL && isHrefLiteral(input.values[i])) {
-      out.add(T_LITERAL, input.values[i]);
+    if (input.typeAt(i) === T_LITERAL && isHrefLiteral(input.valueAt(i))) {
+      out.add(T_LITERAL, input.valueAt(i));
       i++;
-      if (i < n && input.types[i] === T_WS) {
-        out.add(T_OPTIONAL_BREAK, input.values[i]);
+      if (i < n && input.typeAt(i) === T_WS) {
+        out.add(T_OPTIONAL_BREAK, input.valueAt(i));
         i++;
       }
     } else {
-      out.add(input.types[i], input.values[i]);
+      out.add(input.typeAt(i), input.valueAt(i));
       i++;
     }
   }
@@ -756,7 +841,7 @@ const trimJ = (s: string): string => {
   while (a < b && s.charCodeAt(a) <= 32) {
     a++;
   }
-  while (b > a && s.charCodeAt(b - 1) <= 32) {
+  while (b > a && b > 0 && b <= s.length && s.charCodeAt(b - 1) <= 32) {
     b--;
   }
   return s.substring(a, b);
@@ -767,35 +852,35 @@ const deindentPreCodeBlocks = (input: JdToks): JdToks => {
   let i = 0;
   const n = input.size();
   while (i < n) {
-    if (input.types[i] !== T_PRE_OPEN) {
-      out.add(input.types[i], input.values[i]);
+    if (input.typeAt(i) !== T_PRE_OPEN) {
+      out.add(input.typeAt(i), input.valueAt(i));
       i++;
       continue;
     }
-    out.add(input.types[i], input.values[i]);
+    out.add(input.typeAt(i), input.valueAt(i));
     i++;
     const nl0 = i;
-    while (i < n && input.types[i] === T_FORCED_NEWLINE) {
+    while (i < n && input.typeAt(i) === T_FORCED_NEWLINE) {
       i++;
     }
-    if (i >= n || input.types[i] !== T_LITERAL || !isBraceCode(input.values[i])) {
+    if (i >= n || input.typeAt(i) !== T_LITERAL || !isBraceCode(input.valueAt(i))) {
       for (let q = nl0; q < i; q++) {
-        out.add(input.types[q], input.values[q]);
+        out.add(input.typeAt(q), input.valueAt(q));
       }
       if (i < n) {
-        out.add(input.types[i], input.values[i]);
+        out.add(input.typeAt(i), input.valueAt(i));
         i++;
       }
       continue;
     }
     // deindentPreCodeBlock
-    out.add(T_LITERAL, trimJ(input.values[i]));
+    out.add(T_LITERAL, trimJ(input.valueAt(i)));
     i++;
     const st: i32[] = [];
     const sv: string[] = [];
-    while (i < n && input.types[i] !== T_PRE_CLOSE) {
-      st.push(input.types[i]);
-      sv.push(input.values[i]);
+    while (i < n && input.typeAt(i) !== T_PRE_CLOSE) {
+      st.push(input.typeAt(i));
+      sv.push(input.valueAt(i));
       i++;
     }
     let lo = 0;
@@ -803,23 +888,40 @@ const deindentPreCodeBlocks = (input: JdToks): JdToks => {
     while (lo < hi && st[lo] === T_FORCED_NEWLINE) {
       lo++;
     }
-    while (hi > lo && st[hi - 1] === T_FORCED_NEWLINE) {
+    while (hi > lo && hi > 0 && hi <= st.length && st[hi - 1] === T_FORCED_NEWLINE) {
       hi--;
     }
     if (lo >= hi) {
       continue;
     }
+    // st and sv grew together, so both hold [lo, hi).
     const types: i32[] = [];
     const vals: string[] = [];
-    for (let q = lo; q < hi; q++) {
-      types.push(st[q]);
-      vals.push(sv[q]);
+    for (let q = lo; q >= 0 && q < hi; q++) {
+      if (q >= st.length || q >= sv.length) {
+        fault();
+        break;
+      }
+      const tq = st[q];
+      const vq = sv[q];
+      types.push(tq);
+      vals.push(vq);
+    }
+    const nt = toI32(types.length);
+    const nv = toI32(vals.length);
+    if (nt < 1 || nv < 1) {
+      fault(); // lo < hi
+      continue;
     }
     let trailingBrace = false;
-    const lastV = vals[vals.length - 1];
-    if (types[types.length - 1] === T_LITERAL && lastV.endsWith("}")) {
-      types.pop();
-      vals.pop();
+    const lastV = vals[nv - 1];
+    if (types[nt - 1] === T_LITERAL && lastV.endsWith("}")) {
+      if (types.length > 0) {
+        types.pop();
+      }
+      if (vals.length > 0) {
+        vals.pop();
+      }
       if (lastV.length > 1) {
         types.push(T_LITERAL);
         vals.push(lastV.substring(0, toI32(lastV.length) - 1));
@@ -828,9 +930,14 @@ const deindentPreCodeBlocks = (input: JdToks): JdToks => {
       }
       trailingBrace = true;
     }
+    // types and vals keep one entry each per token.
     let trim = -1;
     for (let q = 0; q < toI32(types.length); q++) {
       if (types[q] === T_LITERAL) {
+        if (q >= vals.length) {
+          fault();
+          break;
+        }
         const v = vals[q];
         let idx = -1;
         for (let k = 0; k < toI32(v.length); k++) {
@@ -846,11 +953,16 @@ const deindentPreCodeBlocks = (input: JdToks): JdToks => {
     }
     out.add(T_FORCED_NEWLINE, "\n");
     for (let q = 0; q < toI32(types.length); q++) {
-      if (types[q] === T_LITERAL) {
-        const v = vals[q];
+      if (q >= vals.length) {
+        fault();
+        break;
+      }
+      const ty = types[q];
+      const v = vals[q];
+      if (ty === T_LITERAL) {
         out.add(T_LITERAL, trim > 0 && toI32(v.length) > trim ? v.substring(trim, toI32(v.length)) : v);
       } else {
-        out.add(types[q], vals[q]);
+        out.add(ty, v);
       }
     }
     if (trailingBrace) {
@@ -919,7 +1031,7 @@ class JdWriter {
   innerIndent(): i32 {
     let ii = this.continuingFooterTag ? 4 : 0;
     for (const w of this.indentWidths) {
-      ii += w;
+      ii = add32(ii, w);
     }
     return ii;
   }
@@ -934,30 +1046,41 @@ class JdWriter {
     if (this.indentKinds.indexOf(kind) < 0) {
       return;
     }
+    const kinds = this.indentKinds;
+    const widths = this.indentWidths;
     let popped = -1;
     while (popped !== kind) {
-      popped = this.indentKinds[this.indentKinds.length - 1];
-      this.indentKinds.pop();
-      this.indentWidths.pop();
+      const k = toI32(kinds.length);
+      if (k < 1 || kinds.length < 1) {
+        fault(); // kind is on the stack
+        return;
+      }
+      popped = kinds[k - 1];
+      kinds.pop();
+      if (widths.length < 1) {
+        fault(); // the two stacks grow together
+        return;
+      }
+      widths.pop();
     }
   }
 
   newline(auto: boolean): void {
     this.append("\n");
-    this.spaces(this.blockIndent + 1);
+    this.spaces(add32(this.blockIndent, 1));
     this.append("*");
     this.spaces(1);
-    this.remainingOnLine = MAX_LINE_LENGTH - this.blockIndent - 3;
+    this.remainingOnLine = sub32(sub32(MAX_LINE_LENGTH, this.blockIndent), 3);
     if (auto) {
       this.spaces(this.innerIndent());
-      this.remainingOnLine -= this.innerIndent();
+      this.remainingOnLine = sub32(this.remainingOnLine, this.innerIndent());
     }
     this.atStartOfLine = true;
   }
 
   blankLine(): void {
     this.append("\n");
-    this.spaces(this.blockIndent + 1);
+    this.spaces(add32(this.blockIndent, 1));
     this.append("*");
     this.newline(true);
   }
@@ -991,12 +1114,16 @@ class JdWriter {
     this.flushWhitespace();
     const needWhitespace = this.requested === RW_WHITESPACE;
     const len = strUtf16Len(value);
-    if (!this.atStartOfLine && len + (needWhitespace ? 1 : 0) > this.remainingOnLine) {
+    let want = len;
+    if (needWhitespace) {
+      want = add32(len, 1);
+    }
+    if (!this.atStartOfLine && want > this.remainingOnLine) {
       this.newline(true);
     }
     if (!this.atStartOfLine && needWhitespace) {
       this.append(" ");
-      this.remainingOnLine -= 1;
+      this.remainingOnLine = sub32(this.remainingOnLine, 1);
     }
     if (this.hasMoeBegin) {
       this.append(this.moeBegin);
@@ -1012,7 +1139,7 @@ class JdWriter {
     if (type !== T_LI_OPEN && type !== T_P_OPEN && type !== T_H_OPEN && type !== T_BQ_OPEN) {
       this.atStartOfLine = false;
     }
-    this.remainingOnLine -= len;
+    this.remainingOnLine = sub32(this.remainingOnLine, len);
     this.requested = RW_NONE;
     this.wroteAnythingSignificant = true;
   }
@@ -1050,15 +1177,18 @@ class JdWriter {
         this.writeToken(type, value);
         this.continuingListItemOfInnermostList = false;
         this.pushIndent(IND_LIST, 2);
-        this.postWriteModifiedContinuingListDepth = this.postWriteModifiedContinuingListDepth + 1;
+        this.postWriteModifiedContinuingListDepth = add32(this.postWriteModifiedContinuingListDepth, 1);
         this.request(RW_NEWLINE);
         break;
       case T_LIST_CLOSE:
         this.request(RW_NEWLINE);
         this.popIndentUntil(IND_LIST);
         this.writeToken(type, value);
-        if (this.postWriteModifiedContinuingListDepth > 0) {
-          this.postWriteModifiedContinuingListDepth = this.postWriteModifiedContinuingListDepth - 1;
+        {
+          const depth = this.postWriteModifiedContinuingListDepth;
+          if (depth > 0) {
+            this.postWriteModifiedContinuingListDepth = depth - 1;
+          }
         }
         this.request(RW_BLANK_LINE);
         break;
@@ -1122,11 +1252,16 @@ class JdWriter {
         this.request(RW_NEWLINE);
         // A comment over several lines keeps their text, each after a bare ` * `.
         const lines = splitLines(value);
+        if (lines.length < 1) {
+          fault(); // splitLines answers at least one line
+          return;
+        }
         this.writeToken(type, lines[0]);
         for (let i = 1; i < toI32(lines.length); i++) {
+          const line = lines[i];
           this.newline(false);
-          this.append(lines[i]);
-          this.remainingOnLine -= strUtf16Len(lines[i]);
+          this.append(line);
+          this.remainingOnLine = sub32(this.remainingOnLine, strUtf16Len(line));
         }
         this.request(RW_NEWLINE);
         break;
@@ -1171,7 +1306,7 @@ const standardizeTag = (value: string, std: string): string => {
   while (i < n && isJdWs(value.charCodeAt(i))) {
     i++;
   }
-  if (i === n - 1 && value.charCodeAt(i) === 62) {
+  if (i < n && i === n - 1 && value.charCodeAt(i) === 62) {
     return std;
   }
   return value;
@@ -1192,14 +1327,14 @@ export const formatJavadoc = (input: string, blockIndent: i32): string | null =>
   }
   const w = new JdWriter(blockIndent);
   for (let i = 0; i < toks.size(); i++) {
-    const type = toks.types[i];
+    const type = toks.typeAt(i);
     if (type === T_END) {
       w.append("\n");
-      w.spaces(blockIndent + 1);
+      w.spaces(add32(blockIndent, 1));
       w.append("*/");
       break;
     }
-    w.write(type, toks.values[i]);
+    w.write(type, toks.valueAt(i));
   }
   const result = w.out.join("");
   return makeSingleLineIfPossible(blockIndent, result);
@@ -1212,24 +1347,24 @@ const makeSingleLineIfPossible = (blockIndent: i32, input: string): string => {
   while (i < n && input.charCodeAt(i) === 32) {
     i++;
   }
-  if (!startsAt(input, "/**\n", i)) {
+  i = jdMatchEnd(input, "/**\n", i);
+  if (i < 0) {
     return input;
   }
-  i += 4;
   while (i < n && input.charCodeAt(i) === 32) {
     i++;
   }
-  if (!startsAt(input, "* ", i)) {
+  i = jdMatchEnd(input, "* ", i);
+  if (i < 0) {
     return input;
   }
-  i += 2;
   const nl = input.indexOf("\n", i);
   if (nl < 0) {
     return input;
   }
   const line = input.substring(i, nl);
-  let j = nl + 1;
-  while (j < n && input.charCodeAt(j) === 32) {
+  let j = add32(nl, 1);
+  while (j >= 0 && j < n && input.charCodeAt(j) === 32) {
     j++;
   }
   if (j !== n - 2 || !startsAt(input, "*/", j)) {
@@ -1238,7 +1373,7 @@ const makeSingleLineIfPossible = (blockIndent: i32, input: string): string => {
   if (line.length === 0) {
     return "/** */";
   }
-  const limit = MAX_LINE_LENGTH - 7 - blockIndent;
+  const limit = sub32(MAX_LINE_LENGTH - 7, blockIndent);
   if (strUtf16Len(line) > limit) {
     return input;
   }

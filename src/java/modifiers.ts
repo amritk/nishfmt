@@ -4,7 +4,9 @@
 //
 // Ported from google-java-format 2.0.0 (Apache License 2.0, Copyright 2016 Google Inc.).
 
+import { fault } from "../core/fault";
 import { Out } from "../core/out";
+import { stableSort } from "../core/sort";
 import { GInput } from "../gdoc/input";
 
 /** Modifier.SEALED's and Modifier.NON_SEALED's ordinals. */
@@ -29,25 +31,38 @@ export const modifierRank = (inp: GInput, t: i32): i32 => {
   return -1;
 };
 
-const RANK_NAMES: string =
-  "public protected private abstract default static sealed non-sealed final transient volatile synchronized native strictfp";
-
+/** A Modifier ordinal's name. */
 const rankName = (r: i32): string => {
-  let i = 0;
-  let k = 0;
-  const s = RANK_NAMES;
-  while (k < r) {
-    while (s.charCodeAt(i) !== 32) {
-      i++;
+  if (r <= 0) return "public";
+  if (r === 1) return "protected";
+  if (r === 2) return "private";
+  if (r === 3) return "abstract";
+  if (r === 4) return "default";
+  if (r === 5) return "static";
+  if (r === RANK_SEALED) return "sealed";
+  if (r === RANK_NON_SEALED) return "non-sealed";
+  if (r === 8) return "final";
+  if (r === 9) return "transient";
+  if (r === 10) return "volatile";
+  if (r === 11) return "synchronized";
+  if (r === 12) return "native";
+  if (r === 13) return "strictfp";
+  fault();
+  return "";
+};
+
+/** The source offset where token k starts, or with `end` where it ends. */
+const modTokEdge = (inp: GInput, k: i32, end: boolean): i32 => {
+  const kTok = inp.kTok;
+  if (k >= 0 && k < kTok.length) {
+    const t = kTok[k];
+    const edges = end ? inp.tEnd : inp.tPos;
+    if (t >= 0 && t < edges.length) {
+      return edges[t];
     }
-    i++;
-    k++;
   }
-  let e = i;
-  while (e < toI32(s.length) && s.charCodeAt(e) !== 32) {
-    e++;
-  }
-  return s.substring(i, e);
+  fault();
+  return 0;
 };
 
 /** Writes the text with every modifier run sorted into `out`; answers whether anything moved. */
@@ -65,6 +80,8 @@ export const reorderModifiers = (inp: GInput, out: Out): boolean => {
     if (r0 < 0) {
       continue;
     }
+    const runFirst = sc.first;
+    let runLast = sc.last;
     const firsts: i32[] = [sc.first];
     const lasts: i32[] = [sc.last];
     const ranks: i32[] = [r0];
@@ -76,6 +93,7 @@ export const reorderModifiers = (inp: GInput, out: Out): boolean => {
       }
       firsts.push(sc.first);
       lasts.push(sc.last);
+      runLast = sc.last;
       ranks.push(r);
     }
     let ordered = true;
@@ -87,18 +105,26 @@ export const reorderModifiers = (inp: GInput, out: Out): boolean => {
     if (ordered) {
       continue;
     }
-    const sorted = ranks.slice(0, ranks.length);
-    sorted.sort((a, b) => a - b);
-    const begin = inp.tPos[inp.kTok[firsts[0]]];
-    const end = inp.tEnd[inp.kTok[lasts[lasts.length - 1]]];
+    const sorted: i32[] = [];
+    for (const r of ranks) {
+      sorted.push(r);
+    }
+    stableSort(sorted, (a: i32, b: i32): i32 => (a < b ? -1 : a > b ? 1 : 0));
+    const begin = modTokEdge(inp, runFirst, false);
+    const end = modTokEdge(inp, runLast, true);
     out.range(inp.src, at, begin);
-    for (let i = 0; i < toI32(sorted.length); i++) {
+    // firsts, lasts and sorted hold one entry per modifier.
+    for (let i = 0; i < toI32(sorted.length) && i < firsts.length && i < lasts.length; i++) {
+      const first = firsts[i];
+      const last = lasts[i];
+      const rank = sorted[i];
+      const more = i < toI32(sorted.length) - 1;
       if (i > 0) {
-        triviaBefore(inp, firsts[i], out);
+        triviaBefore(inp, first, out);
       }
-      out.str(rankName(sorted[i]));
-      if (i < toI32(sorted.length) - 1) {
-        triviaAfter(inp, lasts[i], out);
+      out.str(rankName(rank));
+      if (more) {
+        triviaAfter(inp, last, out);
       }
     }
     at = end;
@@ -117,39 +143,85 @@ class ModScan {
   last: i32 = 0;
   next: i32 = 0;
 
-  /** getModifierTokens at token k: its rank, or -1. */
+  /** getModifierTokens at token k (below nk): its rank, or -1. */
   take(inp: GInput, k: i32, nk: i32): i32 {
-    const t = inp.kTok[k];
+    const kTok = inp.kTok;
     this.first = k;
     this.last = k;
-    this.next = k + 1;
+    if (k < 0 || k >= kTok.length) {
+      // kTok holds every token below nk.
+      fault();
+      this.next = nk;
+      return -1;
+    }
+    const k1 = k + 1;
+    this.next = k1;
+    const t = kTok[k];
     if (!inp.is(t, "non")) {
       return modifierRank(inp, t);
     }
-    if (k + 1 >= nk) {
+    if (k1 >= nk) {
       return -1;
     }
-    this.next = k + 2;
-    if (!inp.is(inp.kTok[k + 1], "-") || k + 2 >= nk) {
+    if (k1 >= kTok.length) {
+      fault();
+      this.next = nk;
       return -1;
     }
-    this.next = k + 3;
-    this.last = k + 2;
-    const r = modifierRank(inp, inp.kTok[k + 2]);
+    const k2 = k1 + 1;
+    this.next = k2;
+    if (!inp.is(kTok[k1], "-") || k2 >= nk) {
+      return -1;
+    }
+    if (k2 >= kTok.length) {
+      fault();
+      this.next = nk;
+      return -1;
+    }
+    this.next = k2 + 1;
+    this.last = k2;
+    const r = modifierRank(inp, kTok[k2]);
     return r === RANK_SEALED ? RANK_NON_SEALED : -1;
   }
 }
 
-const triviaBefore = (inp: GInput, k: i32, out: Out): void => {
-  for (let j = 0; j < inp.kBeforeN[k]; j++) {
-    const t = inp.refs[inp.kBefore[k] + j];
-    out.range(inp.src, inp.tPos[t], inp.tEnd[t]);
+/** Writes the comments and whitespace of the `n` refs from `from`. */
+const modTrivia = (inp: GInput, from: i32, n: i32, out: Out): void => {
+  const refs = inp.refs;
+  const tPos = inp.tPos;
+  const tEnd = inp.tEnd;
+  let r = from;
+  for (let j = 0; j < n; j++) {
+    if (r < 0 || r >= refs.length) {
+      fault();
+      return;
+    }
+    const t = refs[r];
+    r = r + 1;
+    if (t < 0 || t >= tPos.length || t >= tEnd.length) {
+      fault();
+      return;
+    }
+    out.range(inp.src, tPos[t], tEnd[t]);
   }
 };
 
-const triviaAfter = (inp: GInput, k: i32, out: Out): void => {
-  for (let j = 0; j < inp.kAfterN[k]; j++) {
-    const t = inp.refs[inp.kAfter[k] + j];
-    out.range(inp.src, inp.tPos[t], inp.tEnd[t]);
+const triviaBefore = (inp: GInput, k: i32, out: Out): void => {
+  const kBefore = inp.kBefore;
+  const kBeforeN = inp.kBeforeN;
+  if (k >= 0 && k < kBefore.length && k < kBeforeN.length) {
+    modTrivia(inp, kBefore[k], kBeforeN[k], out);
+    return;
   }
+  fault();
+};
+
+const triviaAfter = (inp: GInput, k: i32, out: Out): void => {
+  const kAfter = inp.kAfter;
+  const kAfterN = inp.kAfterN;
+  if (k >= 0 && k < kAfter.length && k < kAfterN.length) {
+    modTrivia(inp, kAfter[k], kAfterN[k], out);
+    return;
+  }
+  fault();
 };
