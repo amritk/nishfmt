@@ -125,6 +125,7 @@ import { rsRewritePat } from "./patterns";
 import { RsShape, rsIndentStr, rsIndentStrNl, rsShapeIndented, rsShapeLegacy } from "./shape";
 import {
   rsCountNewlines,
+  rsCut,
   rsHasByte,
   rsLines,
   rsTrim,
@@ -144,6 +145,24 @@ import {
 } from "./types";
 import { rsExprHasAttrs, rsFirstLineEndsWith, rsIdentStr, rsLastLineExtendable, rsLoWithAttrs } from "./utils";
 import { RsVisitor } from "./visitor";
+import {
+  rsNA,
+  rsNAtn,
+  rsNB,
+  rsNC,
+  rsND,
+  rsNE,
+  rsNFl,
+  rsNHi,
+  rsNKind,
+  rsNLastI32,
+  rsNLn,
+  rsNLo,
+  rsNX,
+  rsTokAt,
+} from "./nodes";
+import { add32, sub32 } from "../core/arr";
+import { fault } from "../core/fault";
 
 export const EXPR_STMT: i32 = 0;
 export const EXPR_SUB: i32 = 1;
@@ -163,7 +182,7 @@ export const RT_ALLOW_OVERFLOW: i32 = 2;
 /** The Rewrite trait over any node: dispatches by kind. */
 export const rsRewriteNode = (ctx: RsCtx, n: i32, shape: RsShape): string | null => {
   const ast = ctx.ast;
-  const k = ast.kind[n];
+  const k = rsNKind(ast, n);
   if (rsIsExprKind(k)) {
     return rsFormatExpr(ctx, n, EXPR_SUB, shape);
   }
@@ -174,7 +193,7 @@ export const rsRewriteNode = (ctx: RsCtx, n: i32, shape: RsShape): string | null
     return rsRewritePat(ctx, n, shape);
   }
   if (k === N_LIFETIME) {
-    return ctx.tokStr(ast.d[n]);
+    return ctx.tokStr(rsND(ast, n));
   }
   if (k === N_GPARAM) {
     return rsRewriteGenericParam(ctx, n, shape);
@@ -197,7 +216,8 @@ export const rsRewriteNode = (ctx: RsCtx, n: i32, shape: RsShape): string | null
 
 /** The Spanned lo of any node (with outer attributes for exprs, params and fields). */
 export const rsSpanLo = (ast: RsAst, n: i32): i32 => rsLoWithAttrs(ast, n);
-export const rsSpanHi = (ast: RsAst, n: i32): i32 => (ast.kind[n] === N_FIELD ? ast.hi[ast.a[n]] : ast.hi[n]);
+export const rsSpanHi = (ast: RsAst, n: i32): i32 =>
+  rsNKind(ast, n) === N_FIELD ? rsNHi(ast, rsNA(ast, n)) : rsNHi(ast, n);
 
 /** Rewrite for ast::Expr. */
 export const rsRewriteExpr = (ctx: RsCtx, e: i32, shape: RsShape): string | null =>
@@ -209,9 +229,9 @@ const unaryOpStr = (op: i32): string => (op === UN_DEREF ? "*" : op === UN_NOT ?
 export const rsFormatExpr = (ctx: RsCtx, e: i32, exprType: i32, shape0: RsShape): string | null => {
   const ast = ctx.ast;
   if (rsExprAttrsContainSkip(ctx, e)) {
-    return ctx.snippet(rsLoWithAttrs(ast, e), ast.hi[e]);
+    return ctx.snippet(rsLoWithAttrs(ast, e), rsNHi(ast, e));
   }
-  const k = ast.kind[e];
+  const k = rsNKind(ast, e);
   let sh = shape0;
   if (exprType === EXPR_STMT && rsSemicolonForExpr(ctx, e)) {
     const s1 = shape0.subWidth(1);
@@ -228,50 +248,50 @@ export const rsFormatExpr = (ctx: RsCtx, e: i32, exprType: i32, shape0: RsShape)
       "",
       items,
       OC_EXPR,
-      ast.lo[e],
-      ast.hi[e],
+      rsNLo(ast, e),
+      rsNHi(ast, e),
       sh,
-      chooseSeparatorTactic(ctx, ast.lo[e], ast.hi[e]),
+      chooseSeparatorTactic(ctx, rsNLo(ast, e), rsNHi(ast, e)),
       -1,
     );
   } else if (k === N_EX_LIT) {
-    rw = rsRewriteLiteral(ctx, ast.d[e], sh);
+    rw = rsRewriteLiteral(ctx, rsND(ast, e), sh);
   } else if (k === N_EX_CALL) {
-    const callee = ast.a[e];
+    const callee = rsNA(ast, e);
     const cs = rsRewriteExpr(ctx, callee, sh);
     if (cs === null) {
       return null;
     }
-    rw = rsRewriteCall(ctx, cs, listOf(ast, e), ast.hi[callee], ast.hi[e], sh);
+    rw = rsRewriteCall(ctx, cs, listOf(ast, e), rsNHi(ast, callee), rsNHi(ast, e), sh);
   } else if (k === N_EX_PAREN) {
-    rw = rsRewriteParen(ctx, ast.a[e], sh, ast.lo[e], ast.hi[e]);
+    rw = rsRewriteParen(ctx, rsNA(ast, e), sh, rsNLo(ast, e), rsNHi(ast, e));
   } else if (k === N_EX_BINARY) {
     rw = rsRewriteAllPairs(ctx, e, sh);
     if (rw === null) {
-      const op = ctx.tokStr(ast.c[e]);
-      rw = rsRewritePair(ctx, ast.a[e], ast.b[e], new RsPairParts("", ` ${op} `, ""), sh, SPB_FRONT);
+      const op = ctx.tokStr(rsNC(ast, e));
+      rw = rsRewritePair(ctx, rsNA(ast, e), rsNB(ast, e), new RsPairParts("", ` ${op} `, ""), sh, SPB_FRONT);
     }
   } else if (k === N_EX_UNARY) {
-    rw = rsRewriteUnaryPrefix(ctx, unaryOpStr(ast.x[e]), ast.a[e], sh);
+    rw = rsRewriteUnaryPrefix(ctx, unaryOpStr(rsNX(ast, e)), rsNA(ast, e), sh);
   } else if (k === N_EX_STRUCT) {
     rw = rewriteStructLit(ctx, e, sh);
   } else if (k === N_EX_TUP) {
     const items = listOf(ast, e);
-    rw = rsRewriteTuple(ctx, items, OC_EXPR, ast.lo[e], ast.hi[e], sh, items.length === 1);
+    rw = rsRewriteTuple(ctx, items, OC_EXPR, rsNLo(ast, e), rsNHi(ast, e), sh, items.length === 1);
   } else if (k === N_EX_LET) {
-    rw = rewriteLet(ctx, sh, ast.a[e], ast.b[e]);
+    rw = rewriteLet(ctx, sh, rsNA(ast, e), rsNB(ast, e));
   } else if (k === N_EX_IF || k === N_EX_FOR || k === N_EX_LOOP || k === N_EX_WHILE) {
     const cf = toControlFlow(ctx, e, exprType);
     rw = cf === null ? null : cf.rewrite(ctx, sh);
   } else if (k === N_EX_CONST_BLOCK) {
-    const r = rsRewriteBlock(ctx, ast.a[e], true, -1, sh);
+    const r = rsRewriteBlock(ctx, rsNA(ast, e), true, -1, sh);
     rw = r === null ? null : "const " + r;
   } else if (k === N_EX_BLOCK) {
-    const block = ast.a[e];
-    const label = ast.d[e];
+    const block = rsNA(ast, e);
+    const label = rsND(ast, e);
     if (exprType === EXPR_STMT) {
-      if ((ast.fl[block] & BLK_UNSAFE) !== 0) {
-        rw = rewriteBlockInner(ctx, block, true, label, ast.atn[e] === 0, sh);
+      if ((rsNFl(ast, block) & BLK_UNSAFE) !== 0) {
+        rw = rewriteBlockInner(ctx, block, true, label, rsNAtn(ast, e) === 0, sh);
       } else {
         const eb = rewriteEmptyBlock(ctx, block, true, label, "", sh);
         if (eb !== null) {
@@ -283,64 +303,64 @@ export const rsFormatExpr = (ctx: RsCtx, e: i32, exprType: i32, shape0: RsShape)
       }
     } else {
       // is_simple_block also needs the expression's outer attributes empty.
-      rw = rewriteBlockInner(ctx, block, true, label, ast.atn[e] === 0, sh);
+      rw = rewriteBlockInner(ctx, block, true, label, rsNAtn(ast, e) === 0, sh);
     }
   } else if (k === N_EX_MATCH) {
     rw = rsRewriteMatch(ctx, e, sh);
   } else if (k === N_EX_PATH) {
-    rw = rsRewritePath(ctx, PC_EXPR, ast.a[e], ast.b[e], sh);
+    rw = rsRewritePath(ctx, PC_EXPR, rsNA(ast, e), rsNB(ast, e), sh);
   } else if (k === N_EX_ASSIGN) {
-    rw = rewriteAssignment(ctx, ast.a[e], ast.b[e], "=", sh);
+    rw = rewriteAssignment(ctx, rsNA(ast, e), rsNB(ast, e), "=", sh);
   } else if (k === N_EX_ASSIGN_OP) {
-    rw = rewriteAssignment(ctx, ast.a[e], ast.b[e], assignOpStr(ast.x[e]), sh);
+    rw = rewriteAssignment(ctx, rsNA(ast, e), rsNB(ast, e), assignOpStr(rsNX(ast, e)), sh);
   } else if (k === N_EX_CONTINUE) {
-    rw = "continue" + (ast.d[e] >= 0 ? " " + ctx.tokStr(ast.d[e]) : "");
+    rw = "continue" + (rsND(ast, e) >= 0 ? " " + ctx.tokStr(rsND(ast, e)) : "");
   } else if (k === N_EX_BREAK) {
-    const id = ast.d[e] >= 0 ? " " + ctx.tokStr(ast.d[e]) : "";
-    if (ast.a[e] >= 0) {
-      rw = rsRewriteUnaryPrefix(ctx, `break${id} `, ast.a[e], sh);
+    const id = rsND(ast, e) >= 0 ? " " + ctx.tokStr(rsND(ast, e)) : "";
+    if (rsNA(ast, e) >= 0) {
+      rw = rsRewriteUnaryPrefix(ctx, `break${id} `, rsNA(ast, e), sh);
     } else {
       rw = "break" + id;
     }
   } else if (k === N_EX_YIELD) {
-    rw = ast.a[e] >= 0 ? rsRewriteUnaryPrefix(ctx, "yield ", ast.a[e], sh) : "yield";
+    rw = rsNA(ast, e) >= 0 ? rsRewriteUnaryPrefix(ctx, "yield ", rsNA(ast, e), sh) : "yield";
   } else if (k === N_EX_CLOSURE) {
     rw = rsRewriteClosure(ctx, e, sh);
   } else if (k === N_EX_TRY || k === N_EX_FIELD || k === N_EX_METHOD || k === N_EX_AWAIT) {
     rw = rsRewriteChain(ctx, e, sh);
   } else if (k === N_EX_MAC) {
-    rw = rsRewriteMacro(ctx, ast.a[e], sh, rsMacroPosExpr());
+    rw = rsRewriteMacro(ctx, rsNA(ast, e), sh, rsMacroPosExpr());
     if (rw === null && !ctx.f.unsupported) {
-      rw = rsWrapStr(ctx.snippet(ast.lo[e], ast.hi[e]), ctx.cfg, sh);
+      rw = rsWrapStr(ctx.snippet(rsNLo(ast, e), rsNHi(ast, e)), ctx.cfg, sh);
     }
   } else if (k === N_EX_RET) {
-    rw = ast.a[e] >= 0 ? rsRewriteUnaryPrefix(ctx, "return ", ast.a[e], sh) : "return";
+    rw = rsNA(ast, e) >= 0 ? rsRewriteUnaryPrefix(ctx, "return ", rsNA(ast, e), sh) : "return";
   } else if (k === N_EX_BECOME) {
-    rw = rsRewriteUnaryPrefix(ctx, "become ", ast.a[e], sh);
+    rw = rsRewriteUnaryPrefix(ctx, "become ", rsNA(ast, e), sh);
   } else if (k === N_EX_YEET) {
-    rw = ast.a[e] >= 0 ? rsRewriteUnaryPrefix(ctx, "do yeet ", ast.a[e], sh) : "do yeet";
+    rw = rsNA(ast, e) >= 0 ? rsRewriteUnaryPrefix(ctx, "do yeet ", rsNA(ast, e), sh) : "do yeet";
   } else if (k === N_EX_ADDR_OF) {
-    const f = ast.fl[e];
+    const f = rsNFl(ast, e);
     let op = "&";
     if ((f & ADDR_RAW) !== 0) {
       op = (f & MUT) !== 0 ? "&raw mut " : "&raw const ";
     } else if ((f & MUT) !== 0) {
       op = "&mut ";
     }
-    rw = rsRewriteUnaryPrefix(ctx, op, ast.a[e], sh);
+    rw = rsRewriteUnaryPrefix(ctx, op, rsNA(ast, e), sh);
   } else if (k === N_EX_CAST) {
-    rw = rsRewritePair(ctx, ast.a[e], ast.b[e], new RsPairParts("", " as ", ""), sh, SPB_FRONT);
+    rw = rsRewritePair(ctx, rsNA(ast, e), rsNB(ast, e), new RsPairParts("", " as ", ""), sh, SPB_FRONT);
   } else if (k === N_EX_INDEX) {
-    rw = rewriteIndex(ctx, ast.a[e], ast.b[e], sh);
+    rw = rewriteIndex(ctx, rsNA(ast, e), rsNB(ast, e), sh);
   } else if (k === N_EX_REPEAT) {
-    rw = rsRewritePair(ctx, ast.a[e], ast.b[e], new RsPairParts("[", "; ", "]"), sh, SPB_BACK);
+    rw = rsRewritePair(ctx, rsNA(ast, e), rsNB(ast, e), new RsPairParts("[", "; ", "]"), sh, SPB_BACK);
   } else if (k === N_EX_RANGE) {
-    rw = rsRewriteRange(ctx, sh, ast.a[e], ast.b[e], (ast.fl[e] & RANGE_CLOSED) !== 0 ? "..=" : "..");
+    rw = rsRewriteRange(ctx, sh, rsNA(ast, e), rsNB(ast, e), (rsNFl(ast, e) & RANGE_CLOSED) !== 0 ? "..=" : "..");
   } else if (k === N_EX_TRY_BLOCK) {
     rw = rewritePrefixedBlockExpr(ctx, e, "try ", 9, sh);
   } else if (k === N_EX_ASYNC) {
     // `{kind} {mover}`: a `use` capture clause is not printed.
-    const f = ast.fl[e];
+    const f = rsNFl(ast, e);
     const kind = (f & CL_GEN) === 0 ? "async" : (f & CL_ASYNC) !== 0 ? "async gen" : "gen";
     const mover = (f & CL_MOVE) !== 0 ? "move " : "";
     rw = rewritePrefixedBlockExpr(ctx, e, kind + " " + mover, 6, sh);
@@ -353,12 +373,12 @@ export const rsFormatExpr = (ctx: RsCtx, e: i32, exprType: i32, shape0: RsShape)
   if (rw === null) {
     return null;
   }
-  const exprStr = rsRecoverCommentRemoved(ctx, rw, ast.lo[e], ast.hi[e]);
+  const exprStr = rsRecoverCommentRemoved(ctx, rw, rsNLo(ast, e), rsNHi(ast, e));
   // The outer attributes.
   const attrs: i32[] = [];
-  for (let i = 0; i < ast.atn[e]; i++) {
+  for (let i = 0; i < rsNAtn(ast, e); i++) {
     const a = ast.attr(e, i);
-    if ((ast.fl[a] & AT_INNER) === 0) {
+    if ((rsNFl(ast, a) & AT_INNER) === 0) {
       attrs.push(a);
     }
   }
@@ -369,15 +389,8 @@ export const rsFormatExpr = (ctx: RsCtx, e: i32, exprType: i32, shape0: RsShape)
   if (attrsStr === null) {
     return null;
   }
-  return rsCombineStrsWithMissingComments(
-    ctx,
-    attrsStr,
-    exprStr,
-    ast.hi[attrs[attrs.length - 1]],
-    ast.lo[e],
-    sh,
-    false,
-  );
+  const lastAttr = rsNLastI32(attrs);
+  return rsCombineStrsWithMissingComments(ctx, attrsStr, exprStr, rsNHi(ast, lastAttr), rsNLo(ast, e), sh, false);
 };
 
 const assignOpStr = (k: i32): string => {
@@ -397,7 +410,7 @@ const assignOpStr = (k: i32): string => {
 
 export const listOf = (ast: RsAst, n: i32): i32[] => {
   const out: i32[] = [];
-  for (let i = 0; i < ast.ln[n]; i++) {
+  for (let i = 0; i < rsNLn(ast, n); i++) {
     out.push(ast.kid(n, i));
   }
   return out;
@@ -408,7 +421,7 @@ export const rsSemicolonForExpr = (ctx: RsCtx, e: i32): boolean => {
   if (ctx.isMacroDef) {
     return false;
   }
-  const k = ctx.ast.kind[e];
+  const k = rsNKind(ctx.ast, e);
   return k === N_EX_RET || k === N_EX_CONTINUE || k === N_EX_BREAK;
 };
 
@@ -428,8 +441,8 @@ export const rsRewriteArray = (
 // ---------------------------------------------------------------- blocks
 
 const blockHasStatements = (ast: RsAst, b: i32): boolean => {
-  for (let i = 0; i < ast.ln[b]; i++) {
-    if (ast.kind[ast.kid(b, i)] !== N_STMT_EMPTY) {
+  for (let i = 0; i < rsNLn(ast, b); i++) {
+    if (rsNKind(ast, ast.kid(b, i)) !== N_STMT_EMPTY) {
       return true;
     }
   }
@@ -437,8 +450,8 @@ const blockHasStatements = (ast: RsAst, b: i32): boolean => {
 };
 
 const blockHasInnerAttrs = (ast: RsAst, b: i32): boolean => {
-  for (let i = 0; i < ast.atn[b]; i++) {
-    if ((ast.fl[ast.attr(b, i)] & AT_INNER) !== 0) {
+  for (let i = 0; i < rsNAtn(ast, b); i++) {
+    if ((rsNFl(ast, ast.attr(b, i)) & AT_INNER) !== 0) {
       return true;
     }
   }
@@ -446,21 +459,21 @@ const blockHasInnerAttrs = (ast: RsAst, b: i32): boolean => {
 };
 
 export const rsBlockContainsComment = (ctx: RsCtx, b: i32): boolean =>
-  rsContainsComment(ctx.snippet(ctx.ast.lo[b], ctx.ast.hi[b]));
+  rsContainsComment(ctx.snippet(rsNLo(ctx.ast, b), rsNHi(ctx.ast, b)));
 
 /** is_simple_block (attrs: None, or the block's inner attributes when `withAttrs`). */
 export const rsIsSimpleBlock = (ctx: RsCtx, b: i32, withAttrs: boolean): boolean => {
   const ast = ctx.ast;
   return (
-    ast.ln[b] === 1 &&
-    ast.kind[ast.kid(b, 0)] === N_STMT_EXPR &&
+    rsNLn(ast, b) === 1 &&
+    rsNKind(ast, ast.kid(b, 0)) === N_STMT_EXPR &&
     !rsBlockContainsComment(ctx, b) &&
-    (!withAttrs || ast.atn[b] === 0)
+    (!withAttrs || rsNAtn(ast, b) === 0)
   );
 };
 
 export const rsIsSimpleBlockStmt = (ctx: RsCtx, b: i32): boolean =>
-  ctx.ast.ln[b] <= 1 && !rsBlockContainsComment(ctx, b);
+  rsNLn(ctx.ast, b) <= 1 && !rsBlockContainsComment(ctx, b);
 
 /** is_empty_block with attrs None. */
 export const rsIsEmptyBlock = (ctx: RsCtx, b: i32): boolean =>
@@ -487,10 +500,15 @@ const rewriteEmptyBlock = (
   if (!rsBlockContainsComment(ctx, b) && shape.width >= 2) {
     return `${prefix}${labelStr}{}`;
   }
-  const user = rsTrim(ctx.snippet(ast.lo[b], ast.hi[b]));
+  const user = rsTrim(ctx.snippet(rsNLo(ast, b), rsNHi(ast, b)));
   if (user.startsWith("{") && user.endsWith("}")) {
-    const cs = rsTrim(user.slice(1, toI32(user.length) - 1));
-    if (ast.ln[b] === 0 && !rsHasByte(cs, 10) && !cs.startsWith("//") && toI32(cs.length) + 4 <= shape.width) {
+    const cs = rsTrim(user.substring(1, toI32(user.length) - 1));
+    if (
+      rsNLn(ast, b) === 0 &&
+      !rsHasByte(cs, 10) &&
+      !cs.startsWith("//") &&
+      add32(toI32(cs.length), 4) <= shape.width
+    ) {
       return `${prefix}${labelStr}{ ${cs} }`;
     }
   }
@@ -499,20 +517,20 @@ const rewriteEmptyBlock = (
 
 const blockPrefix = (ctx: RsCtx, b: i32, shape: RsShape): string | null => {
   const ast = ctx.ast;
-  if ((ast.fl[b] & BLK_UNSAFE) === 0) {
+  if ((rsNFl(ast, b) & BLK_UNSAFE) === 0) {
     return "";
   }
-  const snippet = ctx.snippet(ast.lo[b], ast.hi[b]);
+  const snippet = ctx.snippet(rsNLo(ast, b), rsNHi(ast, b));
   const op = rsFindUncommented(snippet, "{");
   if (op < 0) {
     return null;
   }
-  const trimmed = rsTrim(snippet.slice(6, op));
+  const trimmed = rsTrim(rsCut(snippet, 6, op));
   if (trimmed.length !== 0) {
     if (shape.width < 9) {
       return null;
     }
-    const c = rsRewriteComment(trimmed, rsShapeLegacy(shape.width - 9, shape.bi, shape.al + 7), ctx.cfg);
+    const c = rsRewriteComment(trimmed, rsShapeLegacy(sub32(shape.width, 9), shape.bi, add32(shape.al, 7)), ctx.cfg);
     if (c === null) {
       return null;
     }
@@ -528,15 +546,15 @@ const blockPrefix = (ctx: RsCtx, b: i32, shape: RsShape): string | null => {
  */
 const rewritePrefixedBlockExpr = (ctx: RsCtx, e: i32, prefix: string, reserve: i32, sh: RsShape): string | null => {
   const ast = ctx.ast;
-  const block = ast.a[e];
-  const simple = ast.atn[e] === 0;
+  const block = rsNA(ast, e);
+  const simple = rsNAtn(ast, e) === 0;
   if (simple) {
     const sl = rewriteSingleLineBlock(ctx, prefix, block, true, -1, sh);
     if (sl !== null) {
       return sl;
     }
   }
-  let budget = sh.width - reserve;
+  let budget = sub32(sh.width, reserve);
   if (budget < 0) {
     budget = 0;
   }
@@ -592,21 +610,21 @@ export const rsRewriteBlockWithVisitor = (
   v.al = shape.al;
   v.isIfElseBlock = ctx.isIfElseBlock;
   v.isLoopBlock = ctx.isLoopBlock;
-  if ((ast.fl[b] & BLK_UNSAFE) !== 0 || label >= 0) {
-    const snippet = ctx.snippet(ast.lo[b], ast.hi[b]);
+  if ((rsNFl(ast, b) & BLK_UNSAFE) !== 0 || label >= 0) {
+    const snippet = ctx.snippet(rsNLo(ast, b), rsNHi(ast, b));
     const op = rsFindUncommented(snippet, "{");
     if (op < 0) {
       return null;
     }
-    v.lastPos = ast.lo[b] + op;
+    v.lastPos = add32(rsNLo(ast, b), op);
   } else {
-    v.lastPos = ast.lo[b];
+    v.lastPos = rsNLo(ast, b);
   }
   const labelStr = rewriteLabel(ctx, label);
   v.visitBlockWith(b, withAttrs, hasBraces);
   ctx.skipped.append(v.skipped);
   v.giveTo(ctx);
-  return prefix + labelStr + String.fromBytes(v.buf.buf, 0, v.buf.n);
+  return prefix + labelStr + v.text();
 };
 
 /** Rewrite for ast::Block (attrs None). */
@@ -675,11 +693,11 @@ class ControlFlow {
     if (eb < 0) {
       return null;
     }
-    const fixed = toI32(this.keyword.length) + 16;
-    if (ast.kind[eb] !== N_EX_BLOCK) {
+    const fixed = add32(toI32(this.keyword.length), 16);
+    if (rsNKind(ast, eb) !== N_EX_BLOCK) {
       return null;
     }
-    const elseNode = ast.a[eb];
+    const elseNode = rsNA(ast, eb);
     if (
       !rsIsSimpleBlock(ctx, this.block, false) ||
       !rsIsSimpleBlock(ctx, elseNode, false) ||
@@ -687,7 +705,7 @@ class ControlFlow {
     ) {
       return null;
     }
-    let nw = width - (toI32(patExprStr.length) + fixed);
+    let nw = sub32(width, add32(toI32(patExprStr.length), fixed));
     if (nw < 0) {
       return null;
     }
@@ -695,7 +713,7 @@ class ControlFlow {
     if (ifStr === null) {
       return null;
     }
-    nw = nw - toI32(ifStr.length);
+    nw = sub32(nw, toI32(ifStr.length));
     if (nw < 0) {
       return null;
     }
@@ -733,7 +751,7 @@ class ControlFlow {
       if (patStr === null) {
         return null;
       }
-      const commentsLo = ctx.spanAfter(ast.hi[this.pat], this.hi, rsTrim(this.connector));
+      const commentsLo = ctx.spanAfter(rsNHi(ast, this.pat), this.hi, rsTrim(this.connector));
       return rsRewriteAssignRhsWithComments(
         ctx,
         matcher + patStr + this.connector,
@@ -771,13 +789,13 @@ class ControlFlow {
       cs = c7;
     }
     const labelString = rewriteLabel(ctx, this.label);
-    const lo = this.label >= 0 ? ctx.f.t.hi[this.label] : this.lo;
+    const lo = this.label >= 0 ? rsTokAt(ctx.f.t.hi, this.label) : this.lo;
     const keyword = this.keyword;
     let afterKwd = 0;
     // rustfmt 1.10 finds the whole keyword, `for await` included (a panic when
     // spaced otherwise: the span lookup fails and the file is skipped).
     afterKwd = ctx.spanAfter(lo, this.hi, rsTrim(this.keyword));
-    const offset = rsLastLineWidth(keyword, cfg.tabSpaces) + toI32(labelString.length) + 1;
+    const offset = add32(add32(rsLastLineWidth(keyword, cfg.tabSpaces), toI32(labelString.length)), 1);
     let patExprString = "";
     if (this.cond >= 0) {
       const r = this.rewritePatExpr(ctx, this.cond, cs, offset);
@@ -786,7 +804,7 @@ class ControlFlow {
       }
       patExprString = r;
     }
-    let olb = cfg.maxWidth - (cs.usedWidth() + offset + 2);
+    let olb = sub32(cfg.maxWidth, add32(add32(cs.usedWidth(), offset), 2));
     if (olb < 0) {
       olb = 0;
     }
@@ -804,22 +822,22 @@ class ControlFlow {
     let condLo = 0;
     let condHi = 0;
     if (this.cond >= 0) {
-      condLo = ast.lo[this.cond];
-      condHi = ast.hi[this.cond];
+      condLo = rsNLo(ast, this.cond);
+      condHi = rsNHi(ast, this.cond);
     } else {
-      condLo = ast.lo[this.block];
-      condHi = ast.lo[this.block];
+      condLo = rsNLo(ast, this.block);
+      condHi = rsNLo(ast, this.block);
     }
     let bkcHi = 0;
     if (this.pat < 0) {
       bkcHi = condLo;
     } else if (this.matcher.length === 0) {
-      bkcHi = ast.lo[this.pat];
+      bkcHi = rsNLo(ast, this.pat);
     } else {
       bkcHi = ctx.spanBefore(this.lo, this.hi, rsTrim(this.matcher));
     }
     const betweenKwdCond = extractComment(ctx, afterKwd, bkcHi, shape);
-    const afterCond = extractComment(ctx, condHi, ast.lo[this.block], shape);
+    const afterCond = extractComment(ctx, condHi, rsNLo(ast, this.block), shape);
     let blockSep = " ";
     if (this.cond < 0 && betweenKwdCond !== null) {
       blockSep = "";
@@ -830,7 +848,10 @@ class ControlFlow {
     if (rsHasByte(patExprString, 10)) {
       used = rsLastLineWidth(patExprString, cfg.tabSpaces);
     } else {
-      used = toI32(labelString.length) + rsLastLineWidth(keyword, cfg.tabSpaces) + toI32(patExprString.length) + 2;
+      used = add32(
+        add32(add32(toI32(labelString.length), rsLastLineWidth(keyword, cfg.tabSpaces)), toI32(patExprString.length)),
+        2,
+      );
     }
     this.usedWidth = used;
     let mid = "";
@@ -853,7 +874,7 @@ class ControlFlow {
     if (used === 0) {
       return condStr;
     }
-    let bw = shape.width - used;
+    let bw = sub32(shape.width, used);
     if (bw < 0) {
       bw = 0;
     }
@@ -877,9 +898,9 @@ class ControlFlow {
       const sh2 = rsShapeIndented(shape.bi, shape.al, ctx.cfg);
       let lastInChain = false;
       let rw: string | null = null;
-      if (ast.kind[eb] === N_EX_IF) {
+      if (rsNKind(ast, eb) === N_EX_IF) {
         const cf = newIf(ast, eb, false, true);
-        cf.lo = ast.lo[eb];
+        cf.lo = rsNLo(ast, eb);
         cf.hi = this.hi;
         rw = cf.rewrite(ctx, sh2);
       } else {
@@ -887,7 +908,7 @@ class ControlFlow {
         const es = sh2.withWidth(sh2.width < 1 ? sh2.width : 1);
         rw = rsFormatExpr(ctx, eb, EXPR_STMT, es);
       }
-      const elseKw = rsRewriteElseKwWithComments(false, lastInChain, ctx, ast.hi[this.block], ast.lo[eb], sh2);
+      const elseKw = rsRewriteElseKwWithComments(false, lastInChain, ctx, rsNHi(ast, this.block), rsNLo(ast, eb), sh2);
       result = result + elseKw;
       if (rw === null) {
         return null;
@@ -900,64 +921,64 @@ class ControlFlow {
 
 const newIf = (ast: RsAst, e: i32, allowSingleLine: boolean, nestedIf: boolean): ControlFlow => {
   const cf = new ControlFlow();
-  const cond = ast.a[e];
-  if (ast.kind[cond] === N_EX_LET) {
-    cf.pat = ast.a[cond];
-    cf.cond = ast.b[cond];
+  const cond = rsNA(ast, e);
+  if (rsNKind(ast, cond) === N_EX_LET) {
+    cf.pat = rsNA(ast, cond);
+    cf.cond = rsNB(ast, cond);
     cf.matcher = "let";
   } else {
     cf.cond = cond;
   }
-  cf.block = ast.b[e];
-  cf.elseBlock = ast.c[e];
+  cf.block = rsNB(ast, e);
+  cf.elseBlock = rsNC(ast, e);
   cf.keyword = "if";
   cf.connector = " =";
   cf.allowSingleLine = allowSingleLine;
   cf.nestedIf = nestedIf;
-  cf.lo = ast.lo[e];
-  cf.hi = ast.hi[e];
+  cf.lo = rsNLo(ast, e);
+  cf.hi = rsNHi(ast, e);
   return cf;
 };
 
 const toControlFlow = (ctx: RsCtx, e: i32, exprType: i32): ControlFlow | null => {
   const ast = ctx.ast;
-  const k = ast.kind[e];
+  const k = rsNKind(ast, e);
   if (k === N_EX_IF) {
     return newIf(ast, e, exprType === EXPR_SUB, false);
   }
   const cf = new ControlFlow();
-  cf.lo = ast.lo[e];
-  cf.hi = ast.hi[e];
+  cf.lo = rsNLo(ast, e);
+  cf.hi = rsNHi(ast, e);
   // rustfmt 1.10 rewrites a loop body without its inner attributes, which
   // trim_spaces_after_opening_brace then skips over: they are dropped.
   cf.withInner = false;
   cf.isLoop = true;
   if (k === N_EX_FOR) {
-    cf.cond = ast.b[e];
-    cf.block = ast.c[e];
-    cf.label = ast.d[e];
-    cf.pat = ast.a[e];
-    cf.keyword = (ast.fl[e] & FOR_AWAIT) !== 0 ? "for await" : "for";
+    cf.cond = rsNB(ast, e);
+    cf.block = rsNC(ast, e);
+    cf.label = rsND(ast, e);
+    cf.pat = rsNA(ast, e);
+    cf.keyword = (rsNFl(ast, e) & FOR_AWAIT) !== 0 ? "for await" : "for";
     cf.connector = " in";
     return cf;
   }
   if (k === N_EX_LOOP) {
-    cf.block = ast.b[e];
-    cf.label = ast.d[e];
+    cf.block = rsNB(ast, e);
+    cf.label = rsND(ast, e);
     cf.keyword = "loop";
     return cf;
   }
   if (k === N_EX_WHILE) {
-    const cond = ast.a[e];
-    if (ast.kind[cond] === N_EX_LET) {
-      cf.pat = ast.a[cond];
-      cf.cond = ast.b[cond];
+    const cond = rsNA(ast, e);
+    if (rsNKind(ast, cond) === N_EX_LET) {
+      cf.pat = rsNA(ast, cond);
+      cf.cond = rsNB(ast, cond);
       cf.matcher = "let";
     } else {
       cf.cond = cond;
     }
-    cf.block = ast.b[e];
-    cf.label = ast.d[e];
+    cf.block = rsNB(ast, e);
+    cf.label = rsND(ast, e);
     cf.keyword = "while";
     cf.connector = " =";
     return cf;
@@ -968,12 +989,12 @@ const toControlFlow = (ctx: RsCtx, e: i32, exprType: i32): ControlFlow | null =>
 /** rewrite_cond: the condition part of a control flow (or a match's scrutinee). */
 export const rsRewriteCond = (ctx: RsCtx, e: i32, shape: RsShape): string | null => {
   const ast = ctx.ast;
-  if (ast.kind[e] === N_EX_MATCH) {
+  if (rsNKind(ast, e) === N_EX_MATCH) {
     const cs = shape.offsetLeft(8);
     if (cs === null) {
       return null;
     }
-    return rsRewriteExpr(ctx, ast.a[e], cs);
+    return rsRewriteExpr(ctx, rsNA(ast, e), cs);
   }
   const cf = toControlFlow(ctx, e, EXPR_SUB);
   if (cf === null) {
@@ -991,6 +1012,11 @@ const lastLineOffsetted = (startColumn: i32, s: string): boolean => {
       break;
     }
     if (c === 32 || c === 9 || c === 13) {
+      // lead counts characters of `s`.
+      if (lead >= s.length) {
+        fault();
+        return false;
+      }
       lead++;
     } else {
       lead = 0;
@@ -1049,7 +1075,7 @@ const continuedLines = (s: string): boolean => {
  */
 export const rsRewriteLiteralTok = (ctx: RsCtx, tok: i32, shape: RsShape): string | null => {
   const s = ctx.tokStr(tok);
-  if (ctx.f.t.kind[tok] === T_STR && ctx.cfg.styleEdition >= 2024 && continuedLines(s)) {
+  if (rsTokAt(ctx.f.t.kind, tok) === T_STR && ctx.cfg.styleEdition >= 2024 && continuedLines(s)) {
     return s;
   }
   return rsWrapStr(s, ctx.cfg, shape);
@@ -1063,7 +1089,7 @@ export const rsRewriteLiteral = (ctx: RsCtx, tok: i32, shape: RsShape): string |
     return r;
   }
   // A raw string that does not fit is kept as written.
-  const k = ctx.f.t.kind[tok];
+  const k = rsTokAt(ctx.f.t.kind, tok);
   if (k === 10) {
     return rsTrim(s);
   }
@@ -1101,18 +1127,18 @@ export const rsRewriteCall = (
 
 /** is_simple_expr. */
 export const rsIsSimpleExpr = (ast: RsAst, e: i32): boolean => {
-  const k = ast.kind[e];
+  const k = rsNKind(ast, e);
   if (k === N_EX_LIT) {
     return true;
   }
   if (k === N_EX_PATH) {
-    return ast.a[e] < 0 && ast.ln[ast.b[e]] <= 1;
+    return rsNA(ast, e) < 0 && rsNLn(ast, rsNB(ast, e)) <= 1;
   }
   if (k === N_EX_ADDR_OF || k === N_EX_CAST || k === N_EX_FIELD || k === N_EX_TRY || k === N_EX_UNARY) {
-    return rsIsSimpleExpr(ast, ast.a[e]);
+    return rsIsSimpleExpr(ast, rsNA(ast, e));
   }
   if (k === N_EX_INDEX || k === N_EX_REPEAT) {
-    return rsIsSimpleExpr(ast, ast.a[e]) && rsIsSimpleExpr(ast, ast.b[e]);
+    return rsIsSimpleExpr(ast, rsNA(ast, e)) && rsIsSimpleExpr(ast, rsNB(ast, e));
   }
   return false;
 };
@@ -1123,7 +1149,7 @@ export const rsCanBeOverflowedExpr = (ctx: RsCtx, e: i32, len: i32): boolean => 
   if (rsExprHasAttrs(ast, e)) {
     return false;
   }
-  const k = ast.kind[e];
+  const k = rsNKind(ast, e);
   if (k === N_EX_MATCH) {
     return len === 1;
   }
@@ -1140,31 +1166,31 @@ export const rsCanBeOverflowedExpr = (ctx: RsCtx, e: i32, len: i32): boolean => 
     return len === 1;
   }
   if (k === N_EX_ADDR_OF || k === N_EX_TRY || k === N_EX_UNARY || k === N_EX_CAST) {
-    return rsCanBeOverflowedExpr(ctx, ast.a[e], len);
+    return rsCanBeOverflowedExpr(ctx, rsNA(ast, e), len);
   }
   return false;
 };
 
 /** is_nested_call. */
 export const rsIsNestedCall = (ast: RsAst, e: i32): boolean => {
-  const k = ast.kind[e];
+  const k = rsNKind(ast, e);
   if (k === N_EX_CALL || k === N_EX_MAC) {
     return true;
   }
   if (k === N_EX_ADDR_OF || k === N_EX_TRY || k === N_EX_UNARY || k === N_EX_CAST) {
-    return rsIsNestedCall(ast, ast.a[e]);
+    return rsIsNestedCall(ast, rsNA(ast, e));
   }
   return false;
 };
 
 /** is_method_call. */
 export const rsIsMethodCall = (ast: RsAst, e: i32): boolean => {
-  const k = ast.kind[e];
+  const k = rsNKind(ast, e);
   if (k === N_EX_METHOD) {
     return true;
   }
   if (k === N_EX_ADDR_OF || k === N_EX_CAST || k === N_EX_TRY || k === N_EX_UNARY) {
-    return rsIsMethodCall(ast, ast.a[e]);
+    return rsIsMethodCall(ast, rsNA(ast, e));
   }
   return false;
 };
@@ -1181,6 +1207,10 @@ export const rsSpanEndsWithComma = (ctx: RsCtx, lo: i32, hi: i32): boolean => {
       break;
     }
     const i = sc.cs;
+    if (i < 0 || i >= src.length) {
+      fault();
+      return false;
+    }
     const c = toI32(src[i]);
     if (rsKindIsComment(k) || rsWsLenAtBytes(src, i, hi) > 0) {
       continue;
@@ -1209,20 +1239,28 @@ export const rsRewriteParen = (ctx: RsCtx, sub0: i32, shape: RsShape, lo0: i32, 
   let pre: string | null = "";
   let post: string | null = "";
   for (;;) {
-    preLo = lo + 1;
+    const postHi64 = toI64(hi) - toI64(1);
+    if (lo < 2147483647 && postHi64 >= toI64(-2147483648)) {
+      preLo = lo + 1;
+      postHi = toI32(postHi64);
+    } else {
+      fault();
+      return null;
+    }
+
     preHi = rsLoWithAttrs(ast, sub);
-    postLo = ast.hi[sub];
-    postHi = hi - 1;
+    postLo = rsNHi(ast, sub);
+
     pre = rsRewriteMissingComment(ctx.snippet(preLo, preHi), shape, ctx.cfg);
     post = rsRewriteMissingComment(ctx.snippet(postLo, postHi), shape, ctx.cfg);
     if (pre === null || post === null) {
       return null;
     }
     // rustfmt 1.10 removes the nested parentheses even when they carry attributes, dropping those.
-    if (ast.kind[sub] === N_EX_PAREN && pre.length === 0 && post.length === 0) {
-      lo = ast.lo[sub];
-      hi = ast.hi[sub];
-      sub = ast.a[sub];
+    if (rsNKind(ast, sub) === N_EX_PAREN && pre.length === 0 && post.length === 0) {
+      lo = rsNLo(ast, sub);
+      hi = rsNHi(ast, sub);
+      sub = rsNA(ast, sub);
       continue;
     }
     break;
@@ -1246,7 +1284,7 @@ export const rsRewriteParen = (ctx: RsCtx, sub0: i32, shape: RsShape, lo0: i32, 
   }
   // rewrite_paren_in_multi_line.
   const cfg = ctx.cfg;
-  const nbi = shape.bi + cfg.tabSpaces;
+  const nbi = add32(shape.bi, cfg.tabSpaces);
   const ns = rsShapeIndented(nbi, shape.al, cfg);
   const pc = rsRewriteMissingComment(ctx.snippet(preLo, preHi), ns, cfg);
   const pc2 = rsRewriteMissingComment(ctx.snippet(postLo, postHi), ns, cfg);
@@ -1272,12 +1310,12 @@ const rewriteIndex = (ctx: RsCtx, expr: i32, index: i32, shape: RsShape): string
   if (exprStr === null) {
     return null;
   }
-  const offset = rsLastLineWidth(exprStr, cfg.tabSpaces) + 1;
+  const offset = add32(rsLastLineWidth(exprStr, cfg.tabSpaces), 1);
   const rhsOverhead = shape.rhsOverhead(cfg);
   let is: RsShape | null = null;
   if (rsHasByte(exprStr, 10)) {
     const s1 = rsShapeLegacy(cfg.maxWidth, shape.bi, shape.al).offsetLeft(offset);
-    is = s1 === null ? null : s1.subWidth(1 + rhsOverhead);
+    is = s1 === null ? null : s1.subWidth(add32(1, rhsOverhead));
   } else {
     const s1 = shape.offsetLeft(offset);
     is = s1 === null ? null : s1.subWidth(1);
@@ -1286,12 +1324,12 @@ const rewriteIndex = (ctx: RsCtx, expr: i32, index: i32, shape: RsShape): string
   if (orig !== null && !rsHasByte(orig, 10)) {
     return `${exprStr}[${orig}]`;
   }
-  const nbi = shape.bi + cfg.tabSpaces;
+  const nbi = add32(shape.bi, cfg.tabSpaces);
   const s2 = rsShapeIndented(nbi, shape.al, cfg).offsetLeft(1);
   if (s2 === null) {
     return null;
   }
-  const is2 = s2.subWidth(1 + rhsOverhead);
+  const is2 = s2.subWidth(add32(1, rhsOverhead));
   if (is2 === null) {
     return null;
   }
@@ -1316,18 +1354,18 @@ const exFieldLo = (ast: RsAst, f: i32): i32 => rsLoWithAttrs(ast, f);
 
 const rewriteStructLit = (ctx: RsCtx, e: i32, shape: RsShape): string | null => {
   const ast = ctx.ast;
-  const lo = ast.lo[e];
-  const hi = ast.hi[e];
+  const lo = rsNLo(ast, e);
+  const hi = rsNHi(ast, e);
   const ps = shape.subWidth(2);
   if (ps === null) {
     return null;
   }
-  const pathStr = rsRewritePath(ctx, PC_EXPR, ast.a[e], ast.b[e], ps);
+  const pathStr = rsRewritePath(ctx, PC_EXPR, rsNA(ast, e), rsNB(ast, e), ps);
   if (pathStr === null) {
     return null;
   }
-  const nf = ast.ln[e];
-  const f = ast.fl[e];
+  const nf = rsNLn(ast, e);
+  const f = rsNFl(ast, e);
   const hasRest = (f & ST_REST) !== 0;
   const hasBase = (f & ST_BASE) !== 0;
   if (!hasRest && !hasBase && nf === 0) {
@@ -1337,14 +1375,14 @@ const rewriteStructLit = (ctx: RsCtx, e: i32, shape: RsShape): string | null => 
     return `${pathStr} { .. }`;
   }
   const hasBaseOrRest = hasRest || hasBase;
-  const pair = rsStructLitShape(shape, ctx, toI32(pathStr.length) + 3, 2);
+  const pair = rsStructLitShape(shape, ctx, add32(toI32(pathStr.length), 3), 2);
   const hShape = pair.h;
   const vShape = pair.v;
   const oneLineWidth = hShape === null ? 0 : hShape.width;
   const bodyLo = ctx.spanAfter(lo, hi, "{");
-  const n = nf + (hasBaseOrRest ? 1 : 0);
-  const lastFieldHi = nf > 0 ? ast.hi[ast.kid(e, nf - 1)] : lo;
-  const base = ast.c[e];
+  const n = hasBaseOrRest ? add32(nf, 1) : nf;
+  const lastFieldHi = nf > 0 ? rsNHi(ast, ast.kid(e, nf - 1)) : lo;
+  const base = rsNC(ast, e);
   const items = rsItemizeList(
     ctx,
     n,
@@ -1355,19 +1393,19 @@ const rewriteStructLit = (ctx: RsCtx, e: i32, shape: RsShape): string | null => 
         return exFieldLo(ast, ast.kid(e, i));
       }
       if (hasBase) {
-        const sn = ctx.snippet(lastFieldHi, ast.lo[base]);
-        return lastFieldHi + rsFindUncommented(sn, "..");
+        const sn = ctx.snippet(lastFieldHi, rsNLo(ast, base));
+        return add32(lastFieldHi, rsFindUncommented(sn, ".."));
       }
-      return ast.e[e];
+      return rsNE(ast, e);
     },
     (i: i32): i32 => {
       if (i < nf) {
-        return ast.hi[ast.kid(e, i)];
+        return rsNHi(ast, ast.kid(e, i));
       }
       if (hasBase) {
-        return ast.hi[base];
+        return rsNHi(ast, base);
       }
-      return ast.e[e] + 2;
+      return add32(rsNE(ast, e), 2);
     },
     (i: i32): string | null => {
       if (i < nf) {
@@ -1417,29 +1455,30 @@ const wrapStructField = (ctx: RsCtx, fieldsStr: string, shape: RsShape, nested: 
 export const rsRewriteField = (ctx: RsCtx, f: i32, shape: RsShape, prefixMaxWidth: i32): string | null => {
   const ast = ctx.ast;
   if (rsAttrsContainSkip(ctx, f)) {
-    return ctx.snippet(exFieldLo(ast, f), ast.hi[f]);
+    return ctx.snippet(exFieldLo(ast, f), rsNHi(ast, f));
   }
   const attrs0 = rsRewriteNodeAttrs(ctx, f, shape);
   if (attrs0 === null) {
     return null;
   }
   const attrsStr = attrs0.length !== 0 ? attrs0 + rsIndentStrNl(ctx.cfg, shape.bi, shape.al) : attrs0;
-  const name = ctx.tokStr(ast.d[f]);
-  if ((ast.fl[f] & SHORTHAND) !== 0) {
+  const name = ctx.tokStr(rsND(ast, f));
+  if ((rsNFl(ast, f) & SHORTHAND) !== 0) {
     return attrsStr + name;
   }
   let sep = ": ";
-  for (let i = 0; i < prefixMaxWidth - toI32(name.length); i++) {
+  const pad = sub32(prefixMaxWidth, toI32(name.length));
+  for (let i = 0; i < pad; i++) {
     sep = sep + " ";
   }
-  const overhead = toI32(name.length) + toI32(sep.length);
+  const overhead = add32(toI32(name.length), toI32(sep.length));
   const es = shape.offsetLeft(overhead);
-  const ex: string | null = es === null ? null : rsRewriteExpr(ctx, ast.a[f], es);
+  const ex: string | null = es === null ? null : rsRewriteExpr(ctx, rsNA(ast, f), es);
   if (ex !== null) {
     return attrsStr + name + sep + ex;
   }
-  const ebi = shape.bi + ctx.cfg.tabSpaces;
-  const e2 = rsRewriteExpr(ctx, ast.a[f], rsShapeIndented(ebi, shape.al, ctx.cfg));
+  const ebi = add32(shape.bi, ctx.cfg.tabSpaces);
+  const e2 = rsRewriteExpr(ctx, rsNA(ast, f), rsShapeIndented(ebi, shape.al, ctx.cfg));
   if (e2 === null) {
     return null;
   }
@@ -1459,7 +1498,7 @@ const rewriteLet = (ctx: RsCtx, shape: RsShape, pat: i32, expr: i32): string | n
     return null;
   }
   const result = "let " + patStr + " =";
-  const commentsLo = ctx.spanAfter(ast.hi[pat], ast.hi[expr], "=");
+  const commentsLo = ctx.spanAfter(rsNHi(ast, pat), rsNHi(ast, expr), "=");
   return rsRewriteAssignRhsWithComments(
     ctx,
     result,
@@ -1512,7 +1551,7 @@ const rsRewriteUnarySuffix = (ctx: RsCtx, suffix: string, n: i32, shape: RsShape
 };
 
 const rewriteAssignment = (ctx: RsCtx, lhs: i32, rhs: i32, op: string, shape: RsShape): string | null => {
-  const ls = shape.subWidth(toI32(op.length) + 1);
+  const ls = shape.subWidth(add32(toI32(op.length), 1));
   if (ls === null) {
     return null;
   }
@@ -1569,14 +1608,14 @@ const rewriteAssignRhsExpr = (
   tactics: i32,
 ): string | null => {
   const cfg = ctx.cfg;
-  let llw = rsLastLineWidth(lhs, cfg.tabSpaces) - (rsHasByte(lhs, 10) ? shape.iw() : 0);
+  let llw = sub32(rsLastLineWidth(lhs, cfg.tabSpaces), rsHasByte(lhs, 10) ? shape.iw() : 0);
   if (llw < 0) {
     llw = 0;
   }
-  const orig0 = shape.offsetLeft(llw + 1);
-  const orig = orig0 !== null ? orig0 : new RsShape(0, shape.bi, shape.al, shape.off + llw + 1);
+  const orig0 = shape.offsetLeft(add32(llw, 1));
+  const orig = orig0 !== null ? orig0 : new RsShape(0, shape.bi, shape.al, add32(add32(shape.off, llw), 1));
   const k = rsFindLastUncommented(lhs, "=");
-  const hasRhsComment = k >= 0 ? toI32(rsTrimEnd(lhs).length) > k + 1 : false;
+  const hasRhsComment = k >= 0 ? toI32(rsTrimEnd(lhs).length) > add32(k, 1) : false;
   const origRhs = rewriteRhsNode(ctx, n, kind, orig);
   return chooseRhs(ctx, n, kind, orig, origRhs, tactics, hasRhsComment);
 };
@@ -1632,13 +1671,13 @@ const chooseRhs = (
   if (tactics === RT_FORCE_NEXT_LINE_WITHOUT_INDENT) {
     ns = shape.withMaxWidth(cfg).subWidth(shape.iw());
   } else {
-    ns = rsShapeIndented(shape.bi + cfg.tabSpaces, shape.al, cfg).subWidth(shape.rhsOverhead(cfg));
+    ns = rsShapeIndented(add32(shape.bi, cfg.tabSpaces), shape.al, cfg).subWidth(shape.rhsOverhead(cfg));
   }
   if (ns === null) {
     return null;
   }
   const newRhs = rewriteRhsNode(ctx, n, kind, ns);
-  const newIndent = rsIndentStrNl(cfg, shape.bi + cfg.tabSpaces, shape.al);
+  const newIndent = rsIndentStrNl(cfg, add32(shape.bi, cfg.tabSpaces), shape.al);
   const beforeSpace = hasRhsComment ? "" : " ";
   if (origRhs !== null && newRhs !== null) {
     if (!rsFilteredStrFits(newRhs, cfg.maxWidth, cfg.tabSpaces, ns)) {
@@ -1672,7 +1711,7 @@ export const rsPreferNextLine = (orig: string, next: string, tactics: i32): bool
 const preferNextLine = (orig: string, next: string, tactics: i32): boolean =>
   tactics === RT_FORCE_NEXT_LINE_WITHOUT_INDENT ||
   !rsHasByte(next, 10) ||
-  rsCountNewlines(orig) > rsCountNewlines(next) + 1 ||
+  rsCountNewlines(orig) > add32(rsCountNewlines(next), 1) ||
   (rsFirstLineEndsWith(orig, 40) && !rsFirstLineEndsWith(next, 40)) ||
   (rsFirstLineEndsWith(orig, 123) && !rsFirstLineEndsWith(next, 123)) ||
   (rsFirstLineEndsWith(orig, 91) && !rsFirstLineEndsWith(next, 91));
@@ -1682,34 +1721,34 @@ const preferNextLine = (orig: string, next: string, tactics: i32): boolean =>
 /** lit_ends_in_dot (float_literal_trailing_zero is Preserve). */
 export const rsLitEndsInDot = (ctx: RsCtx, e: i32): boolean => {
   const ast = ctx.ast;
-  if (ast.kind[e] !== N_EX_LIT) {
+  if (rsNKind(ast, e) !== N_EX_LIT) {
     return false;
   }
-  const tok = ast.d[e];
-  if (ctx.f.t.kind[tok] !== 4) {
+  const tok = rsND(ast, e);
+  if (rsTokAt(ctx.f.t.kind, tok) !== 4) {
     return false;
   }
   const s = ctx.tokStr(tok);
   // No suffix: the symbol is the whole token.
-  return ctx.f.t.suf[tok] === ctx.f.t.hi[tok] && s.endsWith(".");
+  return rsTokAt(ctx.f.t.suf, tok) === rsTokAt(ctx.f.t.hi, tok) && s.endsWith(".");
 };
 
 const needsSpaceBeforeRange = (ctx: RsCtx, lhs: i32): boolean => {
   const ast = ctx.ast;
-  const k = ast.kind[lhs];
+  const k = rsNKind(ast, lhs);
   if (k === N_EX_LIT) {
     return rsLitEndsInDot(ctx, lhs);
   }
   if (k === N_EX_UNARY) {
-    return needsSpaceBeforeRange(ctx, ast.a[lhs]);
+    return needsSpaceBeforeRange(ctx, rsNA(ast, lhs));
   }
   if (k === N_EX_BINARY) {
-    return needsSpaceBeforeRange(ctx, ast.b[lhs]);
+    return needsSpaceBeforeRange(ctx, rsNB(ast, lhs));
   }
   return false;
 };
 
-const needsSpaceAfterRange = (ast: RsAst, rhs: i32): boolean => ast.kind[rhs] === N_EX_RANGE && ast.a[rhs] < 0;
+const needsSpaceAfterRange = (ast: RsAst, rhs: i32): boolean => rsNKind(ast, rhs) === N_EX_RANGE && rsNA(ast, rhs) < 0;
 
 /** range.rs rewrite_range, for range expressions and (since rustfmt 1.10.0) range patterns. */
 export const rsRewriteRange = (ctx: RsCtx, shape: RsShape, lhs: i32, rhs: i32, delim: string): string | null => {
@@ -1734,13 +1773,13 @@ export const rsRewriteRange = (ctx: RsCtx, shape: RsShape, lhs: i32, rhs: i32, d
 /** Stmt::rewrite / format_stmt for statement `s` (`isLast`: the last of its block). */
 export const rsFormatStmt = (ctx: RsCtx, shape: RsShape, s: i32, isLast: boolean): string | null => {
   const ast = ctx.ast;
-  const k = ast.kind[s];
+  const k = rsNKind(ast, s);
   let result: string | null = null;
   if (k === N_LOCAL) {
     result = rsRewriteLocal(ctx, s, shape);
   } else if (k === N_STMT_EXPR || k === N_STMT_SEMI) {
-    const ex = ast.a[s];
-    const ek = ast.kind[ex];
+    const ex = rsNA(ast, s);
+    const ek = rsNKind(ast, ex);
     let isLastExpr = false;
     if (isLast && k === N_STMT_EXPR) {
       isLastExpr = !(ek === N_EX_RET || ek === N_EX_CONTINUE || ek === N_EX_BREAK);
@@ -1766,14 +1805,14 @@ export const rsFormatStmt = (ctx: RsCtx, shape: RsShape, s: i32, isLast: boolean
   if (result === null) {
     return null;
   }
-  return rsRecoverCommentRemoved(ctx, result, stmtSpannedLo(ast, s), ast.hi[s]);
+  return rsRecoverCommentRemoved(ctx, result, stmtSpannedLo(ast, s), rsNHi(ast, s));
 };
 
 /** The Spanned lo of a statement. */
 export const stmtSpannedLo = (ast: RsAst, s: i32): i32 => {
-  const k = ast.kind[s];
+  const k = rsNKind(ast, s);
   if (k === N_STMT_EXPR || k === N_STMT_SEMI) {
-    return rsLoWithAttrs(ast, ast.a[s]);
+    return rsLoWithAttrs(ast, rsNA(ast, s));
   }
   return rsLoWithAttrs(ast, s);
 };
@@ -1781,7 +1820,7 @@ export const stmtSpannedLo = (ast: RsAst, s: i32): i32 => {
 export const rsFormatStmtOfBlock = (ctx: RsCtx, b: i32, shape: RsShape): string | null =>
   rsFormatStmt(ctx, shape, ctx.ast.kid(b, 0), true);
 
-export const rsIsBlockKind = (ast: RsAst, n: i32): boolean => ast.kind[n] === N_BLOCK;
-export const rsIsExFieldKind = (ast: RsAst, n: i32): boolean => ast.kind[n] === N_EXFIELD;
-export const rsIsAttrKind = (ast: RsAst, n: i32): boolean => ast.kind[n] === N_ATTR;
+export const rsIsBlockKind = (ast: RsAst, n: i32): boolean => rsNKind(ast, n) === N_BLOCK;
+export const rsIsExFieldKind = (ast: RsAst, n: i32): boolean => rsNKind(ast, n) === N_EXFIELD;
+export const rsIsAttrKind = (ast: RsAst, n: i32): boolean => rsNKind(ast, n) === N_ATTR;
 export const rsExprListItemType = (it: RsListItem): string => it.inner();

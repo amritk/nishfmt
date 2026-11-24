@@ -91,7 +91,18 @@ import { rsMacroPosItem, rsRewriteMacro } from "./macros";
 import { OC_FIELD_DEF, OC_GENERIC_PARAM, rsRewriteWithAngleBrackets, rsRewriteWithParens } from "./overflow";
 import { rsRewritePat } from "./patterns";
 import { RsShape, rsIndentStr, rsIndentStrNl, rsShapeIndented, rsShapeLegacy } from "./shape";
-import { rsHasByte, rsIndexOfByte, rsIsBlank, rsLines, rsTrim, rsTrimEnd, rsTrimStart, rsWidth } from "./str";
+import {
+  rsCut,
+  rsHasByte,
+  rsIndexOfByte,
+  rsIsBlank,
+  rsLastOf,
+  rsLines,
+  rsTrim,
+  rsTrimEnd,
+  rsTrimStart,
+  rsWidth,
+} from "./str";
 import {
   rsRewriteBounds,
   rsRewriteLifetimeTok,
@@ -112,6 +123,8 @@ import {
   rsPathSegmentsStr,
 } from "./utils";
 import { RsVisitor } from "./visitor";
+import { rsNA, rsNAtn, rsNB, rsNC, rsND, rsNE, rsNFl, rsNHi, rsNKind, rsNLn, rsNLo, rsNX, rsTokAt } from "./nodes";
+import { add32, sub32 } from "../core/arr";
 
 // ---------------------------------------------------------------- Local (let)
 
@@ -123,7 +136,7 @@ export const rsRewriteLocal = (ctx: RsCtx, s: i32, shape: RsShape): string | nul
     return null;
   }
   // FIXME (rustfmt): deletes any comments in between super and let
-  const let_ = (ast.fl[s] & LOCAL_SUPER) !== 0 ? "super let " : "let ";
+  const let_ = (rsNFl(ast, s) & LOCAL_SUPER) !== 0 ? "super let " : "let ";
   const attrsStr = rsRewriteNodeAttrs(ctx, s, shape);
   if (attrsStr === null) {
     return null;
@@ -132,8 +145,8 @@ export const rsRewriteLocal = (ctx: RsCtx, s: i32, shape: RsShape): string | nul
   if (attrsStr.length === 0) {
     result = let_;
   } else {
-    const lastAttr = ast.attr(s, ast.atn[s] - 1);
-    const r = rsCombineStrsWithMissingComments(ctx, attrsStr, let_, ast.hi[lastAttr], ast.lo[s], shape, false);
+    const lastAttr = ast.attr(s, sub32(rsNAtn(ast, s), 1));
+    const r = rsCombineStrsWithMissingComments(ctx, attrsStr, let_, rsNHi(ast, lastAttr), rsNLo(ast, s), shape, false);
     if (r === null) {
       return null;
     }
@@ -148,18 +161,18 @@ export const rsRewriteLocal = (ctx: RsCtx, s: i32, shape: RsShape): string | nul
   if (patShape === null) {
     return null;
   }
-  const pat = ast.a[s];
+  const pat = rsNA(ast, s);
   const patStr = rsRewritePat(ctx, pat, patShape);
   if (patStr === null) {
     return null;
   }
   result = result + patStr;
   let infix = "";
-  const ty = ast.b[s];
+  const ty = rsNB(ast, s);
   if (ty >= 0) {
     const sep = ": ";
     const base = rsHasByte(patStr, 10) ? shape.withMaxWidth(cfg) : shape;
-    const s1 = base.offsetLeft(rsLastLineWidth(result, cfg.tabSpaces) + toI32(sep.length));
+    const s1 = base.offsetLeft(add32(rsLastLineWidth(result, cfg.tabSpaces), toI32(sep.length)));
     if (s1 === null) {
       return null;
     }
@@ -173,7 +186,7 @@ export const rsRewriteLocal = (ctx: RsCtx, s: i32, shape: RsShape): string | nul
     }
     infix = infix + sep + rw;
   }
-  const init = ast.c[s];
+  const init = rsNC(ast, s);
   if (init >= 0) {
     infix = infix + " =";
   }
@@ -188,21 +201,21 @@ export const rsRewriteLocal = (ctx: RsCtx, s: i32, shape: RsShape): string | nul
       return null;
     }
     result = r;
-    const block = ast.x[s];
+    const block = rsNX(ast, s);
     if (block >= 0) {
-      const ekLo = ast.hi[init];
-      const ekHi = ast.lo[block];
+      const ekLo = rsNHi(ast, init);
+      const ekHi = rsNLo(ast, block);
       // At style edition 2024 the attributes and comments before `let` do
       // not count (#5901).
       const fromLo = cfg.styleEdition >= 2024 ? letKwOffset : 0;
       const forceNewlineElse =
         rsHasByte(patStr, 10) ||
-        !sameLineElseKwAndBrace(ctx, result.slice(fromLo, toI32(result.length)), ekLo, ekHi, nested);
+        !sameLineElseKwAndBrace(ctx, rsCut(result, fromLo, toI32(result.length)), ekLo, ekHi, nested);
       const elseKw = rsRewriteElseKwWithComments(forceNewlineElse, true, ctx, ekLo, ekHi, shape);
       result = result + elseKw;
       const maxWidth = shape.width < cfg.singleLineLetElseMaxWidth ? shape.width : cfg.singleLineLetElseMaxWidth;
-      const withElseKw = result.slice(fromLo, toI32(result.length));
-      let avail = maxWidth - toI32(withElseKw.length);
+      const withElseKw = rsCut(result, fromLo, toI32(result.length));
+      let avail = sub32(maxWidth, toI32(withElseKw.length));
       if (avail < 0) {
         avail = 0;
       }
@@ -213,7 +226,7 @@ export const rsRewriteLocal = (ctx: RsCtx, s: i32, shape: RsShape): string | nul
       }
       let rwElse = rwElse0;
       const singleLineElse = !rsHasByte(rwElse, 10);
-      const exceeds = toI32(rwElse.length) + 1 > avail;
+      const exceeds = add32(toI32(rwElse.length), 1) > avail;
       if (allowSingle && singleLineElse && exceeds) {
         const rwElse1 = rsRewriteLetElseBlock(ctx, block, false, shape);
         if (rwElse1 === null) {
@@ -229,7 +242,7 @@ export const rsRewriteLocal = (ctx: RsCtx, s: i32, shape: RsShape): string | nul
 
 const sameLineElseKwAndBrace = (ctx: RsCtx, initStr: string, ekLo: i32, ekHi: i32, initShape: RsShape): boolean => {
   if (!rsHasByte(initStr, 10)) {
-    let w = initShape.width - toI32(initStr.length);
+    let w = sub32(initShape.width, toI32(initStr.length));
     if (w < 0) {
       w = 0;
     }
@@ -243,11 +256,11 @@ const sameLineElseKwAndBrace = (ctx: RsCtx, initStr: string, ekLo: i32, ekHi: i3
   }
   const indent = rsIndentStr(ctx.cfg, initShape.bi, initShape.al);
   const ls = rsLines(initStr);
-  const last = ls[ls.length - 1];
+  const last = rsLastOf(ls);
   if (!last.startsWith(indent)) {
     return false;
   }
-  const rest = last.slice(toI32(indent.length), toI32(last.length));
+  const rest = rsCut(last, toI32(indent.length), toI32(last.length));
   return !(
     rest.length > 0 &&
     (rest.charCodeAt(0) === 32 || rest.charCodeAt(0) === 9 || rest.charCodeAt(0) === 10 || rest.charCodeAt(0) === 13)
@@ -258,7 +271,7 @@ const allowSingleLineLetElseBlock = (ast: RsAst, result: string, block: i32): bo
   if (rsHasByte(result, 10)) {
     return false;
   }
-  return ast.ln[block] <= 1;
+  return rsNLn(ast, block) <= 1;
 };
 
 // ---------------------------------------------------------------- extern blocks
@@ -267,12 +280,12 @@ const allowSingleLineLetElseBlock = (ast: RsAst, result: string, block: i32): bo
 export const rsFormatForeignMod = (v: RsVisitor, item: i32): void => {
   const ast = v.ast;
   const ctx = v.ctx();
-  if ((ast.fl[item] & IT_UNSAFE) !== 0) {
+  if ((rsNFl(ast, item) & IT_UNSAFE) !== 0) {
     v.pushStr("unsafe ");
   }
-  v.pushStr(rsFormatExtern(ctx, true, ast.x[item]));
-  const lo = ast.lo[item];
-  const hi = ast.hi[item];
+  v.pushStr(rsFormatExtern(ctx, true, rsNX(ast, item)));
+  const lo = rsNLo(ast, item);
+  const hi = rsNHi(ast, item);
   const snippet = ctx.snippet(lo, hi);
   const bracePos = rsFindUncommented(snippet, "{");
   if (bracePos < 0) {
@@ -280,14 +293,14 @@ export const rsFormatForeignMod = (v: RsVisitor, item: i32): void => {
     return;
   }
   v.pushStr("{");
-  const n = ast.ln[item];
-  if (n > 0 || rsContainsComment(snippet.slice(bracePos, toI32(snippet.length)))) {
-    v.lastPos = lo + bracePos + 1;
+  const n = rsNLn(ast, item);
+  if (n > 0 || rsContainsComment(rsCut(snippet, bracePos, toI32(snippet.length)))) {
+    v.lastPos = add32(add32(lo, bracePos), 1);
     v.blockIndent();
     for (let i = 0; i < n; i++) {
       formatForeignItem(v, ast.kid(item, i));
     }
-    v.formatMissingNoIndent(hi - 1);
+    v.formatMissingNoIndent(sub32(hi, 1));
     v.blockUnindent();
     v.pushStr(v.indentStr());
   }
@@ -298,8 +311,8 @@ export const rsFormatForeignMod = (v: RsVisitor, item: i32): void => {
 const formatForeignItem = (v: RsVisitor, item: i32): void => {
   const ast = v.ast;
   const rw = rsRewriteForeignItem(v.ctx(), item, v.shape());
-  const hi = ast.hi[item];
-  const lo = ast.atn[item] === 0 ? ast.lo[item] : ast.lo[ast.attr(item, 0)];
+  const hi = rsNHi(ast, item);
+  const lo = rsNAtn(ast, item) === 0 ? rsNLo(ast, item) : rsNLo(ast, ast.attr(item, 0));
   v.pushRewrite(lo, hi, rw);
   v.lastPos = hi;
 };
@@ -311,39 +324,39 @@ const rsRewriteForeignItem = (ctx: RsCtx, item: i32, shape: RsShape): string | n
   if (attrsStr === null) {
     return null;
   }
-  const lo = ast.lo[item];
-  const hi = ast.hi[item];
-  const k = ast.kind[item];
+  const lo = rsNLo(ast, item);
+  const hi = rsNHi(ast, item);
+  const k = rsNKind(ast, item);
   let itemStr: string | null = null;
   if (k === N_FN) {
-    if (ast.c[item] >= 0) {
+    if (rsNC(ast, item) >= 0) {
       const sub = new RsVisitor(ctx.f);
       sub.bi = shape.bi;
       sub.al = shape.al;
       sub.lastPos = lo;
       visitFn(sub, item);
       sub.giveTo(ctx);
-      itemStr = String.fromBytes(sub.buf.buf, 0, sub.buf.n);
+      itemStr = sub.text();
     } else {
-      const fb = rewriteFnBase(ctx, shape.bi, shape.al, item, lo, hi - 1, FBS_NONE);
+      const fb = rewriteFnBase(ctx, shape.bi, shape.al, item, lo, sub32(hi, 1), FBS_NONE);
       itemStr = fb === null ? null : fb.result + ";";
     }
   } else if (k === N_STATIC) {
-    const vis = rsFormatVisibility(ctx, ast.e[item]);
-    const f = ast.fl[item];
+    const vis = rsFormatVisibility(ctx, rsNE(ast, item));
+    const f = rsNFl(ast, item);
     const safety = (f & IT_UNSAFE) !== 0 ? "unsafe " : (f & IT_SAFE) !== 0 ? "safe " : "";
     const mutStr = (f & IT_MUT) !== 0 ? "mut " : "";
-    const prefix = `${vis}${safety}static ${mutStr}${rsIdentStr(ctx, ast.d[item])}:`;
+    const prefix = `${vis}${safety}static ${mutStr}${rsIdentStr(ctx, rsND(ast, item))}:`;
     const sh = shape.subWidth(1);
     if (sh === null) {
       return null;
     }
-    const r = rsRewriteAssignRhs(ctx, prefix, ast.b[item], RHS_TY, sh);
+    const r = rsRewriteAssignRhs(ctx, prefix, rsNB(ast, item), RHS_TY, sh);
     itemStr = r === null ? null : r + ";";
   } else if (k === N_TYPE_ALIAS) {
     itemStr = rsRewriteTypeAlias(ctx, item, shape.bi, shape.al, IVK_FOREIGN);
   } else if (k === N_MAC_ITEM) {
-    itemStr = rsRewriteMacro(ctx, ast.a[item], shape, rsMacroPosItem());
+    itemStr = rsRewriteMacro(ctx, rsNA(ast, item), shape, rsMacroPosItem());
   } else {
     ctx.unsupported("foreign item");
     return null;
@@ -351,7 +364,7 @@ const rsRewriteForeignItem = (ctx: RsCtx, item: i32, shape: RsShape): string | n
   if (itemStr === null) {
     return null;
   }
-  const mlo = ast.atn[item] === 0 ? lo : ast.hi[ast.attr(item, ast.atn[item] - 1)];
+  const mlo = rsNAtn(ast, item) === 0 ? lo : rsNHi(ast, ast.attr(item, sub32(rsNAtn(ast, item), 1)));
   return rsCombineStrsWithMissingComments(ctx, attrsStr, itemStr, mlo, lo, shape, false);
 };
 
@@ -364,26 +377,26 @@ export const FBS_NONE: i32 = 2;
 /** visit_item / visit_assoc_item for a fn: with a body or required. */
 export const rsVisitFnItem = (v: RsVisitor, item: i32): void => {
   const ast = v.ast;
-  if (ast.c[item] >= 0) {
+  if (rsNC(ast, item) >= 0) {
     visitFn(v, item);
   } else {
     const rw = rewriteRequiredFn(v, item);
-    v.pushRewrite(ast.lo[item], ast.hi[item], rw);
+    v.pushRewrite(rsNLo(ast, item), rsNHi(ast, item), rw);
   }
 };
 
 /** visit_fn: the signature, then the body block. */
 const visitFn = (v: RsVisitor, item: i32): void => {
   const ast = v.ast;
-  const block = ast.c[item];
-  const lo = ast.lo[item];
-  const rw = rewriteFnBeforeBlock(v, item, lo, ast.lo[block]);
+  const block = rsNC(ast, item);
+  const lo = rsNLo(ast, item);
+  const rw = rewriteFnBeforeBlock(v, item, lo, rsNLo(ast, block));
   if (rw !== null) {
     v.formatMissingWithIndent(lo);
     const sl = singleLineFn(v, rw.result, block);
     if (sl !== null) {
       v.pushStr(sl);
-      v.lastPos = ast.hi[item];
+      v.lastPos = rsNHi(ast, item);
       return;
     }
     v.pushStr(rw.result);
@@ -392,9 +405,9 @@ const visitFn = (v: RsVisitor, item: i32): void => {
     } else {
       v.pushStr(v.indentStrNl());
     }
-    v.lastPos = ast.lo[block];
+    v.lastPos = rsNLo(ast, block);
   } else {
-    v.formatMissing(ast.lo[block]);
+    v.formatMissing(rsNLo(ast, block));
   }
   v.visitBlock(block, true);
 };
@@ -408,9 +421,9 @@ class FnBeforeBlock {
   }
 }
 
-const whereOf = (ast: RsAst, item: i32): i32 => ast.a[ast.a[item]];
+const whereOf = (ast: RsAst, item: i32): i32 => rsNA(ast, rsNA(ast, item));
 
-const newlineForBrace = (ast: RsAst, w: i32): i32 => (ast.ln[w] > 0 ? FBS_NEXT_LINE : FBS_SAME_LINE);
+const newlineForBrace = (ast: RsAst, w: i32): i32 => (rsNLn(ast, w) > 0 ? FBS_NEXT_LINE : FBS_SAME_LINE);
 
 const rewriteFnBeforeBlock = (v: RsVisitor, item: i32, lo: i32, hi: i32): FnBeforeBlock | null => {
   const ctx = v.ctx();
@@ -420,7 +433,7 @@ const rewriteFnBeforeBlock = (v: RsVisitor, item: i32, lo: i32, hi: i32): FnBefo
   if (fb === null) {
     return null;
   }
-  if (fb.forceNewlineBrace || rsLastLineWidth(fb.result, ctx.cfg.tabSpaces) + 2 > v.shape().width) {
+  if (fb.forceNewlineBrace || add32(rsLastLineWidth(fb.result, ctx.cfg.tabSpaces), 2) > v.shape().width) {
     bs = FBS_NEXT_LINE;
   }
   return new FnBeforeBlock(fb.result, bs);
@@ -429,7 +442,7 @@ const rewriteFnBeforeBlock = (v: RsVisitor, item: i32, lo: i32, hi: i32): FnBefo
 const rewriteRequiredFn = (v: RsVisitor, item: i32): string | null => {
   const ast = v.ast;
   const ctx = v.ctx();
-  const fb = rewriteFnBase(ctx, v.bi, v.al, item, ast.lo[item], ast.hi[item] - 1, FBS_NONE);
+  const fb = rewriteFnBase(ctx, v.bi, v.al, item, rsNLo(ast, item), sub32(rsNHi(ast, item), 1), FBS_NONE);
   if (fb === null) {
     return null;
   }
@@ -444,8 +457,8 @@ const singleLineFn = (v: RsVisitor, fnStr: string, block: i32): string | null =>
   const ast = v.ast;
   // Inner attributes of the body block count as the fn's.
   let hasInner = false;
-  for (let i = 0; i < ast.atn[block]; i++) {
-    if ((ast.fl[ast.attr(block, i)] & AT_INNER) !== 0) {
+  for (let i = 0; i < rsNAtn(ast, block); i++) {
+    if ((rsNFl(ast, ast.attr(block, i)) & AT_INNER) !== 0) {
       hasInner = true;
     }
   }
@@ -455,7 +468,7 @@ const singleLineFn = (v: RsVisitor, fnStr: string, block: i32): string | null =>
   const ctx = v.ctx();
   if (
     rsIsEmptyBlock(ctx, block) &&
-    v.bi + v.al + toI32(fnStr.length) + 3 <= ctx.cfg.maxWidth &&
+    add32(add32(add32(v.bi, v.al), toI32(fnStr.length)), 3) <= ctx.cfg.maxWidth &&
     !rsLastLineContainsSingleLineComment(fnStr)
   ) {
     return fnStr + " {}";
@@ -477,14 +490,14 @@ class FnBase {
 
 /** The return type's span end: `-> Ty` or the FnRetTy::Default span (just after `)`). */
 const retSpanHi = (ast: RsAst, decl: i32): i32 => {
-  const out = ast.a[decl];
-  return out >= 0 ? ast.hi[out] : ast.hi[decl];
+  const out = rsNA(ast, decl);
+  return out >= 0 ? rsNHi(ast, out) : rsNHi(ast, decl);
 };
 
 /** Rewrite for FnRetTy: the return type of fn decl `decl`, with its arrow. */
 export const rsRewriteFnRetTy = (ctx: RsCtx, decl: i32, shape: RsShape): string | null => {
   const ast = ctx.ast;
-  const out = ast.a[decl];
+  const out = rsNA(ast, decl);
   if (out < 0) {
     return "";
   }
@@ -493,7 +506,7 @@ export const rsRewriteFnRetTy = (ctx: RsCtx, decl: i32, shape: RsShape): string 
     if (shape.width < 3) {
       return null;
     }
-    const r = rsRewriteTy(ctx, out, rsShapeLegacy(shape.width - 3, shape.bi, shape.al + 3));
+    const r = rsRewriteTy(ctx, out, rsShapeLegacy(sub32(shape.width, 3), shape.bi, add32(shape.al, 3)));
     return r === null ? null : "-> " + r;
   }
   const sh = shape.offsetLeft(3);
@@ -509,21 +522,21 @@ const rewriteFnBase = (ctx: RsCtx, bi: i32, al: i32, item: i32, lo: i32, hi: i32
   const ast = ctx.ast;
   const cfg = ctx.cfg;
   let forceNewlineBrace = false;
-  const g = ast.a[item];
-  const w = ast.a[g];
-  const decl = ast.b[item];
-  let result = rsFnHeaderStr(ctx, ast.e[item], ast.fl[item], ast.x[item]) + "fn ";
+  const g = rsNA(ast, item);
+  const w = rsNA(ast, g);
+  const decl = rsNB(ast, item);
+  let result = rsFnHeaderStr(ctx, rsNE(ast, item), rsNFl(ast, item), rsNX(ast, item)) + "fn ";
   const overhead = fbs === FBS_SAME_LINE ? 4 : 2;
-  const usedWidth = rsLastLineUsedWidth(result, bi + al, cfg.tabSpaces);
-  const olb0 = ctx.budget(usedWidth + overhead);
+  const usedWidth = rsLastLineUsedWidth(result, add32(bi, al), cfg.tabSpaces);
+  const olb0 = ctx.budget(add32(usedWidth, overhead));
   const shape = new RsShape(olb0, bi, al, usedWidth);
-  const genericsStr = rsRewriteGenerics(ctx, rsIdentStr(ctx, ast.d[item]), g, shape);
+  const genericsStr = rsRewriteGenerics(ctx, rsIdentStr(ctx, rsND(ast, item)), g, shape);
   if (genericsStr === null) {
     return null;
   }
   result = result + genericsStr;
   const gls = rsLines(genericsStr);
-  const snuggleAngle = gls.length > 0 && toI32(rsTrimStart(gls[gls.length - 1]).length) === 1;
+  const snuggleAngle = gls.length > 0 && toI32(rsTrimStart(rsLastOf(gls)).length) === 1;
   const retStr = rsRewriteFnRetTy(ctx, decl, rsShapeIndented(bi, al, cfg));
   if (retStr === null) {
     return null;
@@ -539,17 +552,17 @@ const rewriteFnBase = (ctx: RsCtx, bi: i32, al: i32, item: i32, lo: i32, hi: i32
     return null;
   }
   result = result + "(";
-  const np = ast.ln[decl];
+  const np = rsNLn(ast, decl);
   let paramsEnd = 0;
   if (np === 0) {
-    paramsEnd = ctx.spanAfter(ast.hi[g], hi, ")");
+    paramsEnd = ctx.spanAfter(rsNHi(ast, g), hi, ")");
   } else {
-    const last = ast.kid(decl, np - 1);
+    const last = ast.kid(decl, sub32(np, 1));
     paramsEnd = ctx.spanAfter(rsParamSpanHi(ast, last), hi, ")");
   }
-  const paramsLo = ctx.spanAfter(ast.hi[g], hi, "(");
-  const lastTy = np > 0 ? ast.b[ast.kid(decl, np - 1)] : -1;
-  const variadic = lastTy >= 0 && ast.kind[lastTy] === 64; // N_TY_CVARARGS
+  const paramsLo = ctx.spanAfter(rsNHi(ast, g), hi, "(");
+  const lastTy = np > 0 ? rsNB(ast, ast.kid(decl, np - 1)) : -1;
+  const variadic = lastTy >= 0 && rsNKind(ast, lastTy) === 64; // N_TY_CVARARGS
   const paramStr = rewriteParams(
     ctx,
     decl,
@@ -570,15 +583,15 @@ const rewriteFnBase = (ctx: RsCtx, bi: i32, al: i32, item: i32, lo: i32, hi: i32
   let paramsLastLineContainsComment = false;
   let noParamsAndOverMaxWidth = false;
   if (putParamsInBlock) {
-    pbi = bi + cfg.tabSpaces;
+    pbi = add32(bi, cfg.tabSpaces);
     pal = al;
     result = result + rsIndentStrNl(cfg, pbi, pal) + paramStr + rsIndentStrNl(cfg, bi, al) + ")";
   } else {
     result = result + paramStr;
-    const uw = rsLastLineUsedWidth(result, bi + al, cfg.tabSpaces) + rsFirstLineWidth(retStr);
-    const closingOverflow = np === 0 && uw + 1 > cfg.maxWidth;
+    const uw = add32(rsLastLineUsedWidth(result, add32(bi, al), cfg.tabSpaces), rsFirstLineWidth(retStr));
+    const closingOverflow = np === 0 && add32(uw, 1) > cfg.maxWidth;
     const pls = rsLines(paramStr);
-    paramsLastLineContainsComment = pls.length > 0 && pls[pls.length - 1].indexOf("//") >= 0;
+    paramsLastLineContainsComment = pls.length > 0 && rsLastOf(pls).indexOf("//") >= 0;
     if (cfg.styleEdition >= 2024) {
       if (paramsLastLineContainsComment) {
         result = result + rsIndentStrNl(cfg, bi, al) + ")";
@@ -596,7 +609,7 @@ const rewriteFnBase = (ctx: RsCtx, bi: i32, al: i32, item: i32, lo: i32, hi: i32
       result = result + ")";
     }
   }
-  if (ast.a[decl] >= 0) {
+  if (rsNA(ast, decl) >= 0) {
     let retShouldIndent = false;
     if (putParamsInBlock || np === 0) {
       retShouldIndent = false;
@@ -605,9 +618,9 @@ const rewriteFnBase = (ctx: RsCtx, bi: i32, al: i32, item: i32, lo: i32, hi: i32
     } else if (rsHasByte(result, 10) || multiLineRet) {
       retShouldIndent = true;
     } else {
-      let sigLength = toI32(result.length) + bi + al + retStrLen + 1;
-      if (ast.ln[w] === 0) {
-        sigLength += 2;
+      let sigLength = add32(add32(add32(add32(toI32(result.length), bi), al), retStrLen), 1);
+      if (rsNLn(ast, w) === 0) {
+        sigLength = add32(sigLength, 2);
       }
       retShouldIndent = sigLength > cfg.maxWidth;
     }
@@ -619,7 +632,7 @@ const rewriteFnBase = (ctx: RsCtx, bi: i32, al: i32, item: i32, lo: i32, hi: i32
         // Aligning with nonexistent params looks silly.
         forceNewlineBrace = true;
         ibi = bi;
-        ial = al + 4;
+        ial = add32(al, 4);
       }
       result = result + rsIndentStrNl(cfg, ibi, ial);
       retShape = rsShapeIndented(ibi, ial, cfg);
@@ -649,7 +662,7 @@ const rewriteFnBase = (ctx: RsCtx, bi: i32, al: i32, item: i32, lo: i32, hi: i32
     } else {
       result = result + retStr;
     }
-    if (ast.ln[w] === 0) {
+    if (rsNLn(ast, w) === 0) {
       const snippetLo = retSpanHi(ast, decl);
       const snippet = ctx.snippet(snippetLo, hi);
       let i = 0;
@@ -674,7 +687,7 @@ const rewriteFnBase = (ctx: RsCtx, bi: i32, al: i32, item: i32, lo: i32, hi: i32
       }
     }
   }
-  const posBeforeWhere = ast.a[decl] >= 0 ? ast.hi[ast.a[decl]] : paramsEnd;
+  const posBeforeWhere = rsNA(ast, decl) >= 0 ? rsNHi(ast, rsNA(ast, decl)) : paramsEnd;
   const isParamsMultiLined = rsHasByte(paramStr, 10);
   const space = putParamsInBlock && retStr.length === 0 ? WCS_SPACE : WCS_NEWLINE;
   const option = new WhereClauseOption(fbs === FBS_NONE, space);
@@ -686,7 +699,7 @@ const rewriteFnBase = (ctx: RsCtx, bi: i32, al: i32, item: i32, lo: i32, hi: i32
   if (whereStr === null) {
     return null;
   }
-  if (whereStr.length === 0 && ast.a[decl] < 0) {
+  if (whereStr.length === 0 && rsNA(ast, decl) < 0) {
     // FnRetTy::Default(span): an empty span just after the `)`.
     const mc = rsRecoverMissingCommentInSpan(
       ctx.snippet(paramsEnd, hi),
@@ -718,51 +731,51 @@ const computeBudgetsForParams = (
   const cfg = ctx.cfg;
   if (!rsHasByte(result, 10) && !forceVertical) {
     const overhead = retStrLen === 0 ? 2 : 3;
-    let used = bi + al + toI32(result.length) + retStrLen + overhead;
+    let used = add32(add32(add32(add32(bi, al), toI32(result.length)), retStrLen), overhead);
     if (fbs === FBS_NONE) {
-      used += 1;
+      used = add32(used, 1);
     } else if (fbs === FBS_SAME_LINE) {
-      used += 2;
+      used = add32(used, 2);
     }
     const olb = ctx.budget(used);
     if (olb > 0) {
-      const nbi = bi + cfg.tabSpaces;
-      return [olb, ctx.budget(nbi + al + 1), nbi, al];
+      const nbi = add32(bi, cfg.tabSpaces);
+      return [olb, ctx.budget(add32(add32(nbi, al), 1)), nbi, al];
     }
   }
-  const nbi = bi + cfg.tabSpaces;
-  return [0, ctx.budget(nbi + al + 1), nbi, al];
+  const nbi = add32(bi, cfg.tabSpaces);
+  return [0, ctx.budget(add32(add32(nbi, al), 1)), nbi, al];
 };
 
 /** is_named_param: params of fn pointer types may have no pattern. */
-const isNamedParam = (ast: RsAst, p: i32): boolean => ast.a[p] >= 0 || isSelfParam(ast, p);
+const isNamedParam = (ast: RsAst, p: i32): boolean => rsNA(ast, p) >= 0 || isSelfParam(ast, p);
 
 const isSelfParam = (ast: RsAst, p: i32): boolean =>
-  (ast.fl[p] & (PA_SELF_VALUE | PA_SELF_REF | PA_SELF_EXPLICIT)) !== 0;
+  (rsNFl(ast, p) & (PA_SELF_VALUE | PA_SELF_REF | PA_SELF_EXPLICIT)) !== 0;
 
 /** span_lo_for_param. */
 export const rsParamSpanLo = (ast: RsAst, p: i32): i32 => {
-  if (ast.atn[p] > 0) {
-    return ast.lo[ast.attr(p, 0)];
+  if (rsNAtn(ast, p) > 0) {
+    return rsNLo(ast, ast.attr(p, 0));
   }
   if (isSelfParam(ast, p)) {
-    return ast.lo[p];
+    return rsNLo(ast, p);
   }
-  if (ast.a[p] >= 0) {
-    return ast.lo[ast.a[p]];
+  if (rsNA(ast, p) >= 0) {
+    return rsNLo(ast, rsNA(ast, p));
   }
-  return ast.lo[ast.b[p]];
+  return rsNLo(ast, rsNB(ast, p));
 };
 
 /** param.ty.span.hi(): the end of the type (for a self param, of `self` or the explicit type). */
 export const rsParamSpanHi = (ast: RsAst, p: i32): i32 => {
   if (isSelfParam(ast, p)) {
-    if ((ast.fl[p] & PA_SELF_EXPLICIT) !== 0) {
-      return ast.hi[ast.b[p]];
+    if ((rsNFl(ast, p) & PA_SELF_EXPLICIT) !== 0) {
+      return rsNHi(ast, rsNB(ast, p));
     }
-    return ast.hi[p];
+    return rsNHi(ast, p);
   }
-  return ast.hi[ast.b[p]];
+  return rsNHi(ast, rsNB(ast, p));
 };
 
 /** Rewrite for ast::Param. */
@@ -773,32 +786,36 @@ export const rsRewriteParam = (ctx: RsCtx, p: i32, shape: RsShape): string | nul
   if (paramAttrs === null) {
     return null;
   }
-  const na = ast.atn[p];
+  const na = rsNAtn(ast, p);
   let spLo = 0;
   let spHi = 0;
   let multiAttrLines = false;
   let hasDocs = false;
   if (na > 0) {
-    spLo = ast.hi[ast.attr(p, na - 1)];
-    spHi = isSelfParam(ast, p) ? ast.lo[p] : ast.a[p] >= 0 ? ast.lo[ast.a[p]] : ast.lo[ast.b[p]];
+    spLo = rsNHi(ast, ast.attr(p, na - 1));
+    spHi = isSelfParam(ast, p)
+      ? rsNLo(ast, p)
+      : rsNA(ast, p) >= 0
+        ? rsNLo(ast, rsNA(ast, p))
+        : rsNLo(ast, rsNB(ast, p));
     multiAttrLines = rsHasByte(paramAttrs, 10);
     for (let i = 0; i < na; i++) {
-      if ((ast.fl[ast.attr(p, i)] & AT_DOC) !== 0) {
+      if ((rsNFl(ast, ast.attr(p, i)) & AT_DOC) !== 0) {
         hasDocs = true;
       }
     }
   } else {
-    spLo = ast.lo[p];
-    spHi = ast.lo[p];
+    spLo = rsNLo(ast, p);
+    spHi = rsNLo(ast, p);
   }
   if (isSelfParam(ast, p)) {
-    const f = ast.fl[p];
+    const f = rsNFl(ast, p);
     let selfStr = "";
     if ((f & PA_SELF_REF) !== 0) {
-      const lt = ast.d[p] >= 0 ? rsRewriteLifetimeTok(ctx, ast.d[p]) + " " : "";
+      const lt = rsND(ast, p) >= 0 ? rsRewriteLifetimeTok(ctx, rsND(ast, p)) + " " : "";
       selfStr = "&" + lt + ((f & PA_REF_MUT) !== 0 ? "mut " : "") + "self";
     } else if ((f & PA_SELF_EXPLICIT) !== 0) {
-      const ts = rsRewriteTy(ctx, ast.b[p], rsShapeLegacy(cfg.maxWidth, 0, 0));
+      const ts = rsRewriteTy(ctx, rsNB(ast, p), rsShapeLegacy(cfg.maxWidth, 0, 0));
       if (ts === null) {
         return null;
       }
@@ -808,8 +825,8 @@ export const rsRewriteParam = (ctx: RsCtx, p: i32, shape: RsShape): string | nul
     }
     return rsCombineStrsWithMissingComments(ctx, paramAttrs, selfStr, spLo, spHi, shape, !multiAttrLines);
   }
-  const pat = ast.a[p];
-  const ty = ast.b[p];
+  const pat = rsNA(ast, p);
+  const ty = rsNB(ast, p);
   if (pat >= 0) {
     const paramName = rsRewritePat(ctx, pat, rsShapeLegacy(shape.width, shape.bi, shape.al));
     if (paramName === null) {
@@ -828,11 +845,11 @@ export const rsRewriteParam = (ctx: RsCtx, p: i32, shape: RsShape): string | nul
       return null;
     }
     let result = result0;
-    const isEmptyInfer = ast.kind[ty] === N_TY_INFER && ast.hi[ty] === ast.hi[pat];
+    const isEmptyInfer = rsNKind(ast, ty) === N_TY_INFER && rsNHi(ast, ty) === rsNHi(ast, pat);
     if (!isEmptyInfer) {
       // get_missing_param_comments.
-      const mlo = ast.hi[pat];
-      const mhi = ast.lo[ty];
+      const mlo = rsNHi(ast, pat);
+      const mhi = rsNLo(ast, ty);
       const colonLo = ctx.spanBefore(mlo, mhi, ":");
       const colonHi = ctx.spanAfter(mlo, mhi, ":");
       const cb = rsRewriteMissingComment(ctx.snippet(mlo, colonLo), shape, cfg);
@@ -844,7 +861,7 @@ export const rsRewriteParam = (ctx: RsCtx, p: i32, shape: RsShape): string | nul
       if (ov > shape.width) {
         return null;
       }
-      const tyStr = rsRewriteTy(ctx, ty, rsShapeLegacy(shape.width - ov, shape.bi, shape.al));
+      const tyStr = rsRewriteTy(ctx, ty, rsShapeLegacy(sub32(shape.width, ov), shape.bi, shape.al));
       if (tyStr !== null) {
         result = result + tyStr;
       } else {
@@ -858,7 +875,7 @@ export const rsRewriteParam = (ctx: RsCtx, p: i32, shape: RsShape): string | nul
         if (ov2 > shape.width) {
           return null;
         }
-        const t2 = rsRewriteTy(ctx, ty, rsShapeLegacy(shape.width - ov2, shape.bi, shape.al));
+        const t2 = rsRewriteTy(ctx, ty, rsShapeLegacy(sub32(shape.width, ov2), shape.bi, shape.al));
         if (t2 === null) {
           return null;
         }
@@ -878,7 +895,7 @@ export const rsRewriteParam = (ctx: RsCtx, p: i32, shape: RsShape): string | nul
 
 /** The Spanned span of a param: [lo, hi). */
 export const rsParamSpannedLo = (ast: RsAst, p: i32): i32 =>
-  isNamedParam(ast, p) ? rsParamSpanLo(ast, p) : ast.lo[ast.b[p]];
+  isNamedParam(ast, p) ? rsParamSpanLo(ast, p) : rsNLo(ast, rsNB(ast, p));
 
 const rewriteParams = (
   ctx: RsCtx,
@@ -894,9 +911,9 @@ const rewriteParams = (
   variadic: boolean,
 ): string | null => {
   const ast = ctx.ast;
-  const n = ast.ln[decl];
+  const n = rsNLn(ast, decl);
   if (n === 0) {
-    return rsTrim(ctx.snippet(spanLo, spanHi - 1));
+    return rsTrim(ctx.snippet(spanLo, sub32(spanHi, 1)));
   }
   const items = rsItemizeList(
     ctx,
@@ -919,7 +936,7 @@ const rewriteParams = (
   );
   const tactic = rsDefinitiveTactic(items, LT_HORIZONTAL_VERTICAL, SEP_COMMA, oneLineBudget);
   const budget = tactic === DLT_HORIZONTAL ? oneLineBudget : multiLineBudget;
-  const fmt = new RsListFormatting(rsShapeLegacy(budget, bi + ctx.cfg.tabSpaces, al), ctx.cfg);
+  const fmt = new RsListFormatting(rsShapeLegacy(budget, add32(bi, ctx.cfg.tabSpaces), al), ctx.cfg);
   fmt.tactic = tactic;
   fmt.trailingSeparator = variadic ? ST_NEVER : ST_VERTICAL;
   fmt.endsWithNewline = tactic !== DLT_HORIZONTAL;
@@ -932,7 +949,7 @@ const rewriteParams = (
 /** rewrite_generics. */
 export const rsRewriteGenerics = (ctx: RsCtx, ident: string, g: i32, shape: RsShape): string | null => {
   const ast = ctx.ast;
-  const n = ast.ln[g];
+  const n = rsNLn(ast, g);
   if (n === 0) {
     return ident;
   }
@@ -940,7 +957,7 @@ export const rsRewriteGenerics = (ctx: RsCtx, ident: string, g: i32, shape: RsSh
   for (let i = 0; i < n; i++) {
     items.push(ast.kid(g, i));
   }
-  return rsRewriteWithAngleBrackets(ctx, ident, items, OC_GENERIC_PARAM, shape, ast.lo[g], ast.hi[g]);
+  return rsRewriteWithAngleBrackets(ctx, ident, items, OC_GENERIC_PARAM, shape, rsNLo(ast, g), rsNHi(ast, g));
 };
 
 const generics_shape_from_config = (ctx: RsCtx, shape: RsShape): RsShape | null =>
@@ -978,11 +995,11 @@ const rewriteWhereClause = (
 ): string | null => {
   const ast = ctx.ast;
   const cfg = ctx.cfg;
-  const n = ast.ln[w];
+  const n = rsNLn(ast, w);
   if (n === 0) {
     return "";
   }
-  const whereLo = ast.lo[w];
+  const whereLo = rsNLo(ast, w);
   // rewrite_where_keyword.
   const blockShape = shape.block().withMaxWidth(cfg);
   const cl0 = blockShape.blockLeft(cfg.tabSpaces);
@@ -995,7 +1012,7 @@ const rewriteWhereClause = (
   }
   const firstPredLo = rsWherePredLo(ast, ast.kid(w, 0));
   const commentBefore = rsRewriteMissingComment(ctx.snippet(spanEndBeforeWhere, whereLo), blockShape, cfg);
-  const commentAfter = rsRewriteMissingComment(ctx.snippet(whereLo + 5, firstPredLo), clauseShape, cfg);
+  const commentAfter = rsRewriteMissingComment(ctx.snippet(add32(whereLo, 5), firstPredLo), clauseShape, cfg);
   if (commentBefore === null || commentAfter === null) {
     return null;
   }
@@ -1012,15 +1029,15 @@ const rewriteWhereClause = (
   const whereKeyword = `${startingNewline}${commentBefore}${nlBefore}where${nlAfter}${commentAfter}`;
   const allowSingleLine = opt.allowSingleLine && commentBefore.length === 0 && commentAfter.length === 0;
   // rewrite_bounds_on_where_clause.
-  const lastPred = ast.kid(w, n - 1);
-  const se = spanEnd >= 0 ? spanEnd : ast.hi[lastPred];
+  const lastPred = ast.kid(w, sub32(n, 1));
+  const se = spanEnd >= 0 ? spanEnd : rsNHi(ast, lastPred);
   const items = rsItemizeList(
     ctx,
     n,
     terminator,
     ",",
     (i: i32): i32 => rsWherePredLo(ast, ast.kid(w, i)),
-    (i: i32): i32 => ast.hi[ast.kid(w, i)],
+    (i: i32): i32 => rsNHi(ast, ast.kid(w, i)),
     (i: i32): string | null => rsRewriteWherePred(ctx, ast.kid(w, i), clauseShape),
     firstPredLo,
     se,
@@ -1036,7 +1053,7 @@ const rewriteWhereClause = (
     return null;
   }
   let clauseSep = "";
-  if (allowSingleLine && !rsHasByte(predsStr, 10) && 6 + toI32(predsStr.length) <= shape.width) {
+  if (allowSingleLine && !rsHasByte(predsStr, 10) && add32(6, toI32(predsStr.length)) <= shape.width) {
     clauseSep = " ";
   } else {
     clauseSep = rsIndentStrNl(cfg, clauseShape.bi, clauseShape.al);
@@ -1065,18 +1082,18 @@ const formatGenerics = (
 ): string | null => {
   const ast = ctx.ast;
   const cfg = ctx.cfg;
-  const shape = rsShapeLegacy(ctx.budget(usedWidth + bi + al), bi, al);
+  const shape = rsShapeLegacy(ctx.budget(add32(add32(usedWidth, bi), al)), bi, al);
   const result0 = rsRewriteGenerics(ctx, "", g, shape);
   if (result0 === null) {
     return null;
   }
   let result = result0;
-  const spanEndBeforeWhere = ast.ln[g] > 0 ? ast.hi[g] : lo;
-  const w = ast.a[g];
+  const spanEndBeforeWhere = rsNLn(ast, g) > 0 ? rsNHi(ast, g) : lo;
+  const w = rsNA(ast, g);
   let sameLineBrace = false;
   let missed: string | null = null;
-  if (ast.ln[w] > 0) {
-    const budget = ctx.budget(rsLastLineUsedWidth(result, bi + al, cfg.tabSpaces));
+  if (rsNLn(ast, w) > 0) {
+    const budget = ctx.budget(rsLastLineUsedWidth(result, add32(bi, al), cfg.tabSpaces));
     const option = whereSnuggled(result, cfg.tabSpaces);
     if (bracePos === BP_NONE) {
       option.suppressComma = true;
@@ -1126,7 +1143,7 @@ const formatHeader = (
 ): string => {
   const shape = rsShapeIndented(bi, al, ctx.cfg);
   let result = rsTrim(rsFormatVisibility(ctx, vis));
-  const identHi = ctx.f.t.hi[ident];
+  const identHi = rsTokAt(ctx.f.t.hi, ident);
   const before = ctx.optSpanBefore(visLo, identHi, rsTrim(itemName));
   if (before >= 0) {
     const r = rsCombineStrsWithMissingComments(ctx, result, itemName, visHi, before, shape, true);
@@ -1138,8 +1155,8 @@ const formatHeader = (
 };
 
 /** The visibility span: the node's, or an empty span at `itemLo` when inherited. */
-const visLoOf = (ast: RsAst, vis: i32, itemLo: i32): i32 => (vis >= 0 ? ast.lo[vis] : itemLo);
-const visHiOf = (ast: RsAst, vis: i32, itemLo: i32): i32 => (vis >= 0 ? ast.hi[vis] : itemLo);
+const visLoOf = (ast: RsAst, vis: i32, itemLo: i32): i32 => (vis >= 0 ? rsNLo(ast, vis) : itemLo);
+const visHiOf = (ast: RsAst, vis: i32, itemLo: i32): i32 => (vis >= 0 ? rsNHi(ast, vis) : itemLo);
 
 // ---------------------------------------------------------------- structs and enums
 
@@ -1168,29 +1185,29 @@ class StructParts {
 
 export const rsVisitStruct = (v: RsVisitor, item: i32): void => {
   const ast = v.ast;
-  const lo = ast.lo[item];
-  const vis = ast.e[item];
+  const lo = rsNLo(ast, item);
+  const vis = rsNE(ast, item);
   const sp = new StructParts(
-    ast.kind[item] === N_UNION ? "union " : "struct ",
-    ast.d[item],
+    rsNKind(ast, item) === N_UNION ? "union " : "struct ",
+    rsND(ast, item),
     vis,
     visLoOf(ast, vis, lo),
     visHiOf(ast, vis, lo),
-    ast.b[item],
-    ast.a[item],
+    rsNB(ast, item),
+    rsNA(ast, item),
     lo,
-    ast.hi[item],
+    rsNHi(ast, item),
   );
-  const isTuple = (ast.fl[ast.b[item]] & VD_TUPLE) !== 0;
+  const isTuple = (rsNFl(ast, rsNB(ast, item)) & VD_TUPLE) !== 0;
   let rw = formatStruct(v.ctx(), sp, v.bi, v.al, -1);
   if (rw !== null && isTuple) {
     rw = rw + ";";
   }
-  v.pushRewrite(lo, ast.hi[item], rw);
+  v.pushRewrite(lo, rsNHi(ast, item), rw);
 };
 
 const formatStruct = (ctx: RsCtx, p: StructParts, bi: i32, al: i32, oneLineWidth: i32): string | null => {
-  const f = ctx.ast.fl[p.def];
+  const f = rsNFl(ctx.ast, p.def);
   if ((f & VD_UNIT) !== 0) {
     return formatUnitStruct(ctx, p, bi, al);
   }
@@ -1211,7 +1228,7 @@ const formatUnitStruct = (ctx: RsCtx, p: StructParts, bi: i32, al: i32): string 
       BP_NONE,
       bi,
       al,
-      ctx.f.t.hi[p.ident],
+      rsTokAt(ctx.f.t.hi, p.ident),
       h,
       rsLastLineWidth(header, ctx.cfg.tabSpaces),
     );
@@ -1228,14 +1245,14 @@ const formatStructStruct = (ctx: RsCtx, p: StructParts, bi: i32, al: i32, oneLin
   const ast = ctx.ast;
   const cfg = ctx.cfg;
   let result = formatHeader(ctx, p.prefix, p.ident, p.vis, p.visLo, p.visHi, bi, al);
-  const headerHi = ctx.f.t.hi[p.ident];
+  const headerHi = rsTokAt(ctx.f.t.hi, p.ident);
   let bodyLo = 0;
   if (p.generics >= 0) {
-    bodyLo = ctx.spanAfter(ast.hi[ast.a[p.generics]], p.hi, "{");
+    bodyLo = ctx.spanAfter(rsNHi(ast, rsNA(ast, p.generics)), p.hi, "{");
   } else {
     bodyLo = ctx.spanAfter(p.lo, p.hi, "{");
   }
-  const nf = ast.ln[p.def];
+  const nf = rsNLn(ast, p.def);
   let gs = "";
   if (p.generics >= 0) {
     const r = formatGenerics(
@@ -1254,25 +1271,25 @@ const formatStructStruct = (ctx: RsCtx, p: StructParts, bi: i32, al: i32, oneLin
     gs = r;
   } else {
     const overhead = nf === 0 ? 3 : 2;
-    if (cfg.maxWidth < overhead + toI32(result.length)) {
+    if (cfg.maxWidth < add32(overhead, toI32(result.length))) {
       gs = "\n" + rsIndentStr(cfg, bi, 0) + "{";
     } else {
       gs = " {";
     }
   }
   const ov = nf === 0 ? 1 : 0;
-  const total = toI32(result.length) + toI32(gs.length) + ov;
+  const total = add32(add32(toI32(result.length), toI32(gs.length)), ov);
   if (gs.length !== 0 && !rsHasByte(gs, 10) && total > cfg.maxWidth) {
     result = result + "\n" + rsIndentStr(cfg, bi, al) + rsTrimStart(gs);
   } else {
     result = result + gs;
   }
   if (nf === 0) {
-    return formatEmptyStructOrTuple(ctx, bodyLo, p.hi - 1, bi, al, result, "", "}");
+    return formatEmptyStructOrTuple(ctx, bodyLo, sub32(p.hi, 1), bi, al, result, "", "}");
   }
-  let olb = ctx.budget(toI32(result.length) + 3 + bi + al);
+  let olb = ctx.budget(add32(add32(add32(toI32(result.length), 3), bi), al));
   olb = oneLineWidth < 0 ? 0 : oneLineWidth < olb ? oneLineWidth : olb;
-  const fs = rsShapeIndented(bi + cfg.tabSpaces, al, cfg).subWidth(1);
+  const fs = rsShapeIndented(add32(bi, cfg.tabSpaces), al, cfg).subWidth(1);
   if (fs === null) {
     return null;
   }
@@ -1288,7 +1305,7 @@ const formatStructStruct = (ctx: RsCtx, p: StructParts, bi: i32, al: i32, oneLin
   ) {
     return `${result} ${itemsStr} }`;
   }
-  return `${result}\n${rsIndentStr(cfg, bi + cfg.tabSpaces, al)}${itemsStr}\n${rsIndentStr(cfg, bi, al)}}`;
+  return `${result}\n${rsIndentStr(cfg, add32(bi, cfg.tabSpaces), al)}${itemsStr}\n${rsIndentStr(cfg, bi, al)}}`;
 };
 
 /** format_empty_struct_or_tuple: appends to `result0` and answers it. */
@@ -1304,19 +1321,19 @@ const formatEmptyStructOrTuple = (
 ): string => {
   const cfg = ctx.cfg;
   let result = result0;
-  const used = rsLastLineUsedWidth(result, bi + al, cfg.tabSpaces) + 3;
+  const used = add32(rsLastLineUsedWidth(result, add32(bi, al), cfg.tabSpaces), 3);
   if (used > cfg.maxWidth) {
     result = result + rsIndentStrNl(cfg, bi, al);
   }
   result = result + opener;
-  const shape = rsShapeIndented(bi + cfg.tabSpaces, al, cfg);
+  const shape = rsShapeIndented(add32(bi, cfg.tabSpaces), al, cfg);
   const s = rsRewriteMissingComment(ctx.snippet(lo, hi), shape, cfg);
   if (s === null) {
     result = result + ctx.snippet(lo, hi);
   } else if (s.length !== 0) {
     const multi = rsHasByte(s, 10);
     if (multi || rsFirstLineContainsSingleLineComment(s)) {
-      result = result + rsIndentStrNl(cfg, bi + cfg.tabSpaces, al);
+      result = result + rsIndentStrNl(cfg, add32(bi, cfg.tabSpaces), al);
     }
     result = result + s;
     if (multi || rsLastLineContainsSingleLineComment(s)) {
@@ -1328,7 +1345,7 @@ const formatEmptyStructOrTuple = (
 
 /** Spanned for FieldDef: attrs lo .. ty hi. */
 const fieldSpanLo = (ast: RsAst, f: i32): i32 => rsLoWithAttrs(ast, f);
-const fieldSpanHi = (ast: RsAst, f: i32): i32 => ast.hi[ast.a[f]];
+const fieldSpanHi = (ast: RsAst, f: i32): i32 => rsNHi(ast, rsNA(ast, f));
 
 /** rewrite_with_alignment for struct fields (struct_field_align_threshold is 0). */
 const rewriteFieldsWithAlignment = (
@@ -1340,7 +1357,7 @@ const rewriteFieldsWithAlignment = (
   oneLineWidth: i32,
 ): string | null => {
   const ast = ctx.ast;
-  const n = ast.ln[def];
+  const n = rsNLn(ast, def);
   const itemShape0 = rsShapeIndented(shape.bi, shape.al, ctx.cfg).subWidth(1);
   if (itemShape0 === null) {
     return null;
@@ -1369,16 +1386,16 @@ const rewriteFieldsWithAlignment = (
 /** rewrite_struct_field_prefix. */
 const structFieldPrefix = (ctx: RsCtx, f: i32): string => {
   const ast = ctx.ast;
-  const vis = rsFormatVisibility(ctx, ast.e[f]);
+  const vis = rsFormatVisibility(ctx, rsNE(ast, f));
   // format_mut_restriction: `in ` unless the restriction was the shorthand.
   let mutRestriction = "";
-  if (ast.b[f] >= 0) {
-    const inStr = (ast.fl[f] & FD_MUT_IN) !== 0 ? "in " : "";
-    mutRestriction = `mut(${inStr}${rsPathSegmentsStr(ctx, ast.b[f])}) `;
+  if (rsNB(ast, f) >= 0) {
+    const inStr = (rsNFl(ast, f) & FD_MUT_IN) !== 0 ? "in " : "";
+    mutRestriction = `mut(${inStr}${rsPathSegmentsStr(ctx, rsNB(ast, f))}) `;
   }
-  const safety = (ast.fl[f] & FD_UNSAFE) !== 0 ? "unsafe " : "";
-  if (ast.d[f] >= 0) {
-    return `${vis}${mutRestriction}${safety}${rsIdentStr(ctx, ast.d[f])}:`;
+  const safety = (rsNFl(ast, f) & FD_UNSAFE) !== 0 ? "unsafe " : "";
+  if (rsND(ast, f) >= 0) {
+    return `${vis}${mutRestriction}${safety}${rsIdentStr(ctx, rsND(ast, f))}:`;
   }
   return `${vis}${mutRestriction}${safety}`;
 };
@@ -1386,7 +1403,7 @@ const structFieldPrefix = (ctx: RsCtx, f: i32): string => {
 /** rewrite_struct_field. */
 export const rsRewriteStructField = (ctx: RsCtx, f: i32, shape: RsShape, lhsMaxWidth: i32): string | null => {
   const ast = ctx.ast;
-  if (ast.c[f] >= 0) {
+  if (rsNC(ast, f) >= 0) {
     return null; // a default value
   }
   if (rsAttrsContainSkip(ctx, f)) {
@@ -1397,17 +1414,17 @@ export const rsRewriteStructField = (ctx: RsCtx, f: i32, shape: RsShape, lhsMaxW
   if (attrsStr === null) {
     return null;
   }
-  const attrsExtendable = ast.d[f] < 0 && rsIsAttributesExtendable(attrsStr);
-  const na = ast.atn[f];
-  const mlo = na === 0 ? ast.lo[f] : ast.hi[ast.attr(f, na - 1)];
-  const mhi = ast.lo[f];
-  let spacing = ast.d[f] >= 0 ? " " : "";
+  const attrsExtendable = rsND(ast, f) < 0 && rsIsAttributesExtendable(attrsStr);
+  const na = rsNAtn(ast, f);
+  const mlo = na === 0 ? rsNLo(ast, f) : rsNHi(ast, ast.attr(f, sub32(na, 1)));
+  const mhi = rsNLo(ast, f);
+  let spacing = rsND(ast, f) >= 0 ? " " : "";
   const attrPrefix = rsCombineStrsWithMissingComments(ctx, attrsStr, prefix, mlo, mhi, shape, attrsExtendable);
   if (attrPrefix === null) {
     return null;
   }
   const overhead = rsTrimmedLastLineWidth(attrPrefix);
-  let lhsOffset = lhsMaxWidth - overhead;
+  let lhsOffset = sub32(lhsMaxWidth, overhead);
   for (let i = 0; i < lhsOffset; i++) {
     spacing = spacing + " ";
   }
@@ -1415,15 +1432,15 @@ export const rsRewriteStructField = (ctx: RsCtx, f: i32, shape: RsShape, lhsMaxW
   if (prefix.length === 0 && attrsStr.length !== 0 && attrsExtendable && spacing.length === 0) {
     spacing = spacing + " ";
   }
-  const tyShape = shape.offsetLeft(overhead + toI32(spacing.length));
-  const origTy: string | null = tyShape === null ? null : rsRewriteTy(ctx, ast.a[f], tyShape);
+  const tyShape = shape.offsetLeft(add32(overhead, toI32(spacing.length)));
+  const origTy: string | null = tyShape === null ? null : rsRewriteTy(ctx, rsNA(ast, f), tyShape);
   if (origTy !== null) {
     if (!rsHasByte(origTy, 10) && !rsContainsComment(ctx.snippet(mlo, mhi))) {
       return attrPrefix + spacing + origTy;
     }
   }
   const isPrefixEmpty = prefix.length === 0;
-  const fs0 = rsRewriteAssignRhs(ctx, prefix, ast.a[f], RHS_TY, shape);
+  const fs0 = rsRewriteAssignRhs(ctx, prefix, rsNA(ast, f), RHS_TY, shape);
   if (fs0 === null) {
     return null;
   }
@@ -1437,10 +1454,10 @@ const formatTupleStruct = (ctx: RsCtx, p: StructParts, bi: i32, al: i32): string
   const cfg = ctx.cfg;
   const header = formatHeader(ctx, p.prefix, p.ident, p.vis, p.visLo, p.visHi, bi, al);
   let result = header;
-  const nf = ast.ln[p.def];
+  const nf = rsNLn(ast, p.def);
   let bodyLo = 0;
   if (nf === 0) {
-    const restricted = p.vis >= 0 && (ast.fl[p.vis] & (VIS_CRATE | VIS_RESTRICTED)) !== 0;
+    const restricted = p.vis >= 0 && (rsNFl(ast, p.vis) & (VIS_CRATE | VIS_RESTRICTED)) !== 0;
     const lo = restricted ? p.visHi : p.lo;
     bodyLo = ctx.spanAfter(lo, p.hi, "(");
   } else {
@@ -1450,7 +1467,7 @@ const formatTupleStruct = (ctx: RsCtx, p: StructParts, bi: i32, al: i32): string
   if (nf === 0) {
     bodyHi = ctx.spanAfter(bodyLo, p.hi, ")");
   } else {
-    const lastHi = ast.hi[ast.kid(p.def, nf - 1)];
+    const lastHi = rsNHi(ast, ast.kid(p.def, sub32(nf, 1)));
     const k = ctx.optSpanAfter(lastHi, p.hi, ")");
     bodyHi = k < 0 ? lastHi : k;
   }
@@ -1464,7 +1481,7 @@ const formatTupleStruct = (ctx: RsCtx, p: StructParts, bi: i32, al: i32): string
     result = result + gs;
     const wb = ctx.budget(rsLastLineWidth(result, cfg.tabSpaces));
     const option = new WhereClauseOption(true, WCS_NEWLINE);
-    const ws = rewriteWhereClause(ctx, ast.a[p.generics], rsShapeLegacy(wb, bi, 0), false, ";", -1, bodyHi, option);
+    const ws = rewriteWhereClause(ctx, rsNA(ast, p.generics), rsShapeLegacy(wb, bi, 0), false, ";", -1, bodyHi, option);
     if (ws === null) {
       return null;
     }
@@ -1474,7 +1491,7 @@ const formatTupleStruct = (ctx: RsCtx, p: StructParts, bi: i32, al: i32): string
     const bh = ctx.spanBefore(bodyLo, p.hi, ")");
     result = formatEmptyStructOrTuple(ctx, bodyLo, bh, bi, al, result, "(", ")");
   } else {
-    const lo = p.generics >= 0 ? ast.hi[p.generics] : ctx.f.t.hi[p.ident];
+    const lo = p.generics >= 0 ? rsNHi(ast, p.generics) : rsTokAt(ctx.f.t.hi, p.ident);
     const shape = rsShapeIndented(bi, al, cfg).subWidth(1);
     if (shape === null) {
       return null;
@@ -1492,14 +1509,14 @@ const formatTupleStruct = (ctx: RsCtx, p: StructParts, bi: i32, al: i32): string
   if (
     whereStr.length !== 0 &&
     !rsHasByte(whereStr, 10) &&
-    (rsHasByte(result, 10) || bi + toI32(result.length) + toI32(whereStr.length) + 1 > cfg.maxWidth)
+    (rsHasByte(result, 10) || add32(add32(add32(bi, toI32(result.length)), toI32(whereStr.length)), 1) > cfg.maxWidth)
   ) {
-    result = result + "\n" + rsIndentStr(cfg, bi, cfg.tabSpaces - 1);
+    result = result + "\n" + rsIndentStr(cfg, bi, sub32(cfg.tabSpaces, 1));
   }
   return result + whereStr;
 };
 
-const rsLoWithAttrsField = (ast: RsAst, f: i32): i32 => ast.lo[f];
+const rsLoWithAttrsField = (ast: RsAst, f: i32): i32 => rsNLo(ast, f);
 
 /** visit_enum / format_enum. */
 /**
@@ -1510,25 +1527,34 @@ const rsLoWithAttrsField = (ast: RsAst, f: i32): i32 => ast.lo[f];
  */
 export const rsVisitEnum = (v: RsVisitor, item: i32): void => {
   const ast = v.ast;
-  const lo = ast.lo[item];
-  const hi = ast.hi[item];
+  const lo = rsNLo(ast, item);
+  const hi = rsNHi(ast, item);
   const ctx = v.ctx();
-  const vis = ast.e[item];
-  const header = formatHeader(ctx, "enum ", ast.d[item], vis, visLoOf(ast, vis, lo), visHiOf(ast, vis, lo), v.bi, v.al);
+  const vis = rsNE(ast, item);
+  const header = formatHeader(
+    ctx,
+    "enum ",
+    rsND(ast, item),
+    vis,
+    visLoOf(ast, vis, lo),
+    visHiOf(ast, vis, lo),
+    v.bi,
+    v.al,
+  );
   const bracePos = rsFindUncommented(ctx.snippet(lo, hi), "{");
   if (bracePos < 0) {
     v.f.broken = true;
     return;
   }
-  const bodyStart = lo + bracePos + 1;
-  const nv = ast.ln[item];
+  const bodyStart = add32(add32(lo, bracePos), 1);
+  const nv = rsNLn(ast, item);
   const gs = formatGenerics(
     ctx,
-    ast.a[item],
+    rsNA(ast, item),
     nv === 0 ? BP_FORCE_SAME_LINE : BP_AUTO,
     v.bi,
     v.al,
-    ctx.f.t.hi[ast.d[item]],
+    rsTokAt(ctx.f.t.hi, rsND(ast, item)),
     bodyStart,
     rsLastLineWidth(header, ctx.cfg.tabSpaces),
   );
@@ -1555,9 +1581,9 @@ export const rsVisitEnum = (v: RsVisitor, item: i32): void => {
 const formatVariantList = (v: RsVisitor, item: i32, bodyLo: i32, bodyHi: i32): string | null => {
   const ast = v.ast;
   const cfg = v.f.cfg;
-  const nv = ast.ln[item];
+  const nv = rsNLn(ast, item);
   if (nv === 0) {
-    return formatEmptyStructOrTuple(v.ctx(), bodyLo, bodyHi - 1, v.bi, v.al, "", "", "}");
+    return formatEmptyStructOrTuple(v.ctx(), bodyLo, sub32(bodyHi, 1), v.bi, v.al, "", "", "}");
   }
   const obi = v.bi;
   const oal = v.al;
@@ -1594,14 +1620,14 @@ const variantItems = (v: RsVisitor, item: i32, bodyLo: i32, bodyHi: i32, oneLine
   const ctx = v.ctx();
   return rsItemizeList(
     ctx,
-    ast.ln[item],
+    rsNLn(ast, item),
     "}",
     ",",
     (i: i32): i32 => {
       const f = ast.kid(item, i);
-      return ast.atn[f] > 0 ? ast.lo[ast.attr(f, 0)] : ast.lo[f];
+      return rsNAtn(ast, f) > 0 ? rsNLo(ast, ast.attr(f, 0)) : rsNLo(ast, f);
     },
-    (i: i32): i32 => ast.hi[ast.kid(item, i)],
+    (i: i32): i32 => rsNHi(ast, ast.kid(item, i)),
     (i: i32): string | null => formatVariant(v, ast.kid(item, i), oneLineWidth),
     bodyLo,
     bodyHi,
@@ -1614,7 +1640,7 @@ const formatVariant = (v: RsVisitor, field: i32, oneLineWidth: i32): string | nu
   const ctx = v.ctx();
   const cfg = ctx.cfg;
   if (rsAttrsContainSkip(ctx, field)) {
-    return ctx.snippet(ast.lo[ast.attr(field, 0)], ast.hi[field]);
+    return ctx.snippet(rsNLo(ast, ast.attr(field, 0)), rsNHi(ast, field));
   }
   const shape0 = v.shape();
   const s1 = shape0.subWidth(1);
@@ -1628,32 +1654,32 @@ const formatVariant = (v: RsVisitor, field: i32, oneLineWidth: i32): string | nu
   }
   // sub_width(1) for the trailing comma.
   const shape = s1;
-  const na = ast.atn[field];
-  const lo = na === 0 ? ast.lo[field] : ast.hi[ast.attr(field, na - 1)];
-  const def = ast.b[field];
+  const na = rsNAtn(ast, field);
+  const lo = na === 0 ? rsNLo(ast, field) : rsNHi(ast, ast.attr(field, sub32(na, 1)));
+  const def = rsNB(ast, field);
   let body = "";
-  if ((ast.fl[def] & VD_UNIT) === 0) {
+  if ((rsNFl(ast, def) & VD_UNIT) === 0) {
     // enum_variant_span.
-    let vhi = ast.hi[field];
-    const disr = ast.c[field];
+    let vhi = rsNHi(ast, field);
+    const disr = rsNC(ast, field);
     if (disr >= 0) {
-      const before = ast.lo[disr];
-      if ((ast.fl[def] & VD_STRUCT) !== 0) {
-        vhi = ctx.spanAfterLast(ast.lo[field], before, "}");
+      const before = rsNLo(ast, disr);
+      if ((rsNFl(ast, def) & VD_STRUCT) !== 0) {
+        vhi = ctx.spanAfterLast(rsNLo(ast, field), before, "}");
       } else {
-        vhi = ctx.spanAfterLast(ast.lo[field], before, ")");
+        vhi = ctx.spanAfterLast(rsNLo(ast, field), before, ")");
       }
     }
-    const sp = new StructParts("", ast.d[field], -1, 0, 0, def, -1, ast.lo[field], vhi);
+    const sp = new StructParts("", rsND(ast, field), -1, 0, 0, def, -1, rsNLo(ast, field), vhi);
     const r = formatStruct(ctx, sp, v.bi, v.al, oneLineWidth);
     if (r === null) {
       return null;
     }
     body = r;
   } else {
-    body = rsIdentStr(ctx, ast.d[field]);
+    body = rsIdentStr(ctx, rsND(ast, field));
   }
-  const disr = ast.c[field];
+  const disr = rsNC(ast, field);
   if (disr >= 0) {
     const lhs = body + " =";
     const r = rsRewriteAssignRhsWith(ctx, lhs, disr, RHS_EXPR, shape, RT_ALLOW_OVERFLOW);
@@ -1662,7 +1688,7 @@ const formatVariant = (v: RsVisitor, field: i32, oneLineWidth: i32): string | nu
     }
     body = r;
   }
-  return rsCombineStrsWithMissingComments(ctx, attrsStr, body, lo, ast.lo[field], shape, false);
+  return rsCombineStrsWithMissingComments(ctx, attrsStr, body, lo, rsNLo(ast, field), shape, false);
 };
 
 // ---------------------------------------------------------------- statics and consts
@@ -1670,32 +1696,32 @@ const formatVariant = (v: RsVisitor, field: i32, oneLineWidth: i32): string | nu
 export const rsVisitStatic = (v: RsVisitor, item: i32): void => {
   const ast = v.ast;
   const rw = rewriteStatic(v.ctx(), item, v.bi, v.al);
-  v.pushRewrite(ast.lo[item], ast.hi[item], rw);
+  v.pushRewrite(rsNLo(ast, item), rsNHi(ast, item), rw);
 };
 
 const rewriteStatic = (ctx: RsCtx, item: i32, bi: i32, al: i32): string | null => {
   const ast = ctx.ast;
   const cfg = ctx.cfg;
-  const isConst = ast.kind[item] === N_CONST;
-  const g = isConst ? ast.a[item] : -1;
+  const isConst = rsNKind(ast, item) === N_CONST;
+  const g = isConst ? rsNA(ast, item) : -1;
   // rustfmt 1.10 does not format generic const items (generic_const_items): kept as written.
-  if (g >= 0 && (ast.ln[ast.a[g]] > 0 || ast.ln[g] > 0)) {
+  if (g >= 0 && (rsNLn(ast, rsNA(ast, g)) > 0 || rsNLn(ast, g) > 0)) {
     return null;
   }
-  const ty = ast.b[item];
+  const ty = rsNB(ast, item);
   let generics = "";
   if (g >= 0) {
-    const r = formatGenerics(ctx, g, BP_NONE, bi, al, ctx.f.t.hi[ast.d[item]], ast.lo[ty], bi);
+    const r = formatGenerics(ctx, g, BP_NONE, bi, al, rsTokAt(ctx.f.t.hi, rsND(ast, item)), rsNLo(ast, ty), bi);
     if (r !== null) {
       generics = r;
     }
   }
-  const f = ast.fl[item];
+  const f = rsNFl(ast, item);
   const defaultness = isConst && (f & IT_DEFAULT) !== 0 ? "default " : "";
   const safety = !isConst && (f & IT_UNSAFE) !== 0 ? "unsafe " : !isConst && (f & IT_SAFE) !== 0 ? "safe " : "";
   const mutStr = !isConst && (f & IT_MUT) !== 0 ? "mut " : "";
-  let prefix = `${rsFormatVisibility(ctx, ast.e[item])}${defaultness}${safety}${isConst ? "const" : "static"} ${mutStr}${rsIdentStr(ctx, ast.d[item])}${generics}: `;
-  const ts0 = rsShapeIndented(bi, 0, cfg).offsetLeft(rsLastLineWidth(prefix, cfg.tabSpaces) + 2);
+  let prefix = `${rsFormatVisibility(ctx, rsNE(ast, item))}${defaultness}${safety}${isConst ? "const" : "static"} ${mutStr}${rsIdentStr(ctx, rsND(ast, item))}${generics}: `;
+  const ts0 = rsShapeIndented(bi, 0, cfg).offsetLeft(add32(rsLastLineWidth(prefix, cfg.tabSpaces), 2));
   if (ts0 === null) {
     return null;
   }
@@ -1705,21 +1731,21 @@ const rewriteStatic = (ctx: RsCtx, item: i32, bi: i32, al: i32): string | null =
     tyStr = ty0;
   } else {
     if (prefix.endsWith(" ")) {
-      prefix = prefix.slice(0, toI32(prefix.length) - 1);
+      prefix = prefix.substring(0, toI32(prefix.length) - 1);
     }
-    const nbi = bi + cfg.tabSpaces;
+    const nbi = add32(bi, cfg.tabSpaces);
     const t2 = rsRewriteTy(ctx, ty, rsShapeIndented(nbi, al, cfg));
     if (t2 === null) {
       return null;
     }
     tyStr = rsIndentStrNl(cfg, nbi, al) + t2;
   }
-  const expr = ast.c[item];
+  const expr = rsNC(ast, item);
   if (expr >= 0) {
-    const commentsLo = ctx.spanAfter(ast.lo[item], ast.hi[item], "=");
+    const commentsLo = ctx.spanAfter(rsNLo(ast, item), rsNHi(ast, item), "=");
     const exprLo = rsLoWithAttrs(ast, expr);
     const lhs = `${prefix}${tyStr} =`;
-    const remaining = ctx.budget(bi + 1);
+    const remaining = ctx.budget(add32(bi, 1));
     const r = rsRewriteAssignRhsWithComments(
       ctx,
       lhs,
@@ -1734,7 +1760,7 @@ const rewriteStatic = (ctx: RsCtx, item: i32, bi: i32, al: i32): string | null =
     if (r === null) {
       return null;
     }
-    const s = rsRecoverCommentRemoved(ctx, r, ast.lo[item], ast.hi[item]);
+    const s = rsRecoverCommentRemoved(ctx, r, rsNLo(ast, item), rsNHi(ast, item));
     return s.endsWith(";") ? s : s + ";";
   }
   return `${prefix}${tyStr};`;
@@ -1750,7 +1776,7 @@ const IVK_FOREIGN: i32 = 3;
 export const rsVisitTypeAlias = (v: RsVisitor, item: i32, kind: i32): void => {
   const ast = v.ast;
   const rw = rsRewriteTypeAlias(v.ctx(), item, v.bi, v.al, kind);
-  v.pushRewrite(ast.lo[item], ast.hi[item], rw);
+  v.pushRewrite(rsNLo(ast, item), rsNHi(ast, item), rw);
 };
 
 /**
@@ -1761,19 +1787,19 @@ export const rsVisitTypeAlias = (v: RsVisitor, item: i32, kind: i32): void => {
 export const rsRewriteTypeAlias = (ctx: RsCtx, item: i32, bi: i32, al: i32, kind: i32): string | null => {
   const ast = ctx.ast;
   const cfg = ctx.cfg;
-  const g = ast.a[item];
-  const w = ast.a[g];
-  const bounds = ast.b[item];
-  const ty = ast.c[item];
-  const afterWhere = ast.x[item];
-  const lo = ast.lo[item];
-  const hi = ast.hi[item];
-  const rhsHi = ty >= 0 ? ast.hi[ty] : ast.hi[w];
+  const g = rsNA(ast, item);
+  const w = rsNA(ast, g);
+  const bounds = rsNB(ast, item);
+  const ty = rsNC(ast, item);
+  const afterWhere = rsNX(ast, item);
+  const lo = rsNLo(ast, item);
+  const hi = rsNHi(ast, item);
+  const rhsHi = ty >= 0 ? rsNHi(ast, ty) : rsNHi(ast, w);
   // An opaque type in an impl loses its visibility (DEFAULT_VISIBILITY).
-  const dropVis = kind === IVK_IMPL && ty >= 0 && ast.kind[ty] === N_TY_IMPL;
-  let result = `${dropVis ? "" : rsFormatVisibility(ctx, ast.e[item])}type `;
-  const identStr = rsIdentStr(ctx, ast.d[item]);
-  if (ast.ln[g] === 0) {
+  const dropVis = kind === IVK_IMPL && ty >= 0 && rsNKind(ast, ty) === N_TY_IMPL;
+  let result = `${dropVis ? "" : rsFormatVisibility(ctx, rsNE(ast, item))}type `;
+  const identStr = rsIdentStr(ctx, rsND(ast, item));
+  if (rsNLn(ast, g) === 0) {
     result = result + identStr;
   } else {
     const gs0 = rsShapeIndented(bi, al, cfg).offsetLeft(toI32(result.length));
@@ -1790,8 +1816,8 @@ export const rsRewriteTypeAlias = (ctx: RsCtx, item: i32, bi: i32, al: i32, kind
     }
     result = result + gstr;
   }
-  if (bounds >= 0 && ast.ln[bounds] > 0) {
-    const sh = rsShapeIndented(bi, al, cfg).offsetLeft(toI32(result.length) + 2);
+  if (bounds >= 0 && rsNLn(ast, bounds) > 0) {
+    const sh = rsShapeIndented(bi, al, cfg).offsetLeft(add32(toI32(result.length), 2));
     if (sh === null) {
       return null;
     }
@@ -1806,31 +1832,31 @@ export const rsRewriteTypeAlias = (ctx: RsCtx, item: i32, bi: i32, al: i32, kind
   if (ty < 0) {
     option.suppressComma = true;
   }
-  const bw = rewriteWhereClause(ctx, w, rsShapeLegacy(wb, bi, al), false, "=", -1, ast.hi[g], option);
+  const bw = rewriteWhereClause(ctx, w, rsShapeLegacy(wb, bi, al), false, "=", -1, rsNHi(ast, g), option);
   if (bw === null) {
     return null;
   }
   result = result + bw;
   if (ty >= 0) {
-    const afterPreds = afterWhere >= 0 ? ast.ln[afterWhere] : 0;
-    if (ast.ln[w] > 0) {
+    const afterPreds = afterWhere >= 0 ? rsNLn(ast, afterWhere) : 0;
+    if (rsNLn(ast, w) > 0) {
       result = result + rsIndentStrNl(cfg, bi, al);
     } else if (afterPreds > 0) {
-      result = result + rsIndentStrNl(cfg, bi + cfg.tabSpaces, al);
+      result = result + rsIndentStrNl(cfg, add32(bi, cfg.tabSpaces), al);
     } else {
       result = result + " ";
     }
     const opLo = ctx.optSpanBefore(lo, hi, "=");
     let lhs = "";
-    if (opLo >= 0 && rsContainsComment(ctx.snippet(ast.hi[w], opLo))) {
+    if (opLo >= 0 && rsContainsComment(ctx.snippet(rsNHi(ast, w), opLo))) {
       let cs: RsShape | null = rsShapeIndented(bi, al, cfg);
-      if (ast.ln[w] === 0) {
+      if (rsNLn(ast, w) === 0) {
         cs = rsShapeIndented(bi, al, cfg).blockLeft(cfg.tabSpaces);
       }
       if (cs === null) {
         return null;
       }
-      const r = rsCombineStrsWithMissingComments(ctx, rsTrimEnd(result), "=", ast.hi[w], opLo, cs, true);
+      const r = rsCombineStrsWithMissingComments(ctx, rsTrimEnd(result), "=", rsNHi(ast, w), opLo, cs, true);
       if (r === null) {
         return null;
       }
@@ -1845,14 +1871,14 @@ export const rsRewriteTypeAlias = (ctx: RsCtx, item: i32, bi: i32, al: i32, kind
     if (shape === null) {
       return null;
     }
-    const isOpaque = ast.kind[ty] === N_TY_IMPL;
-    const r = rsRewriteAssignRhs(ctx, lhs, isOpaque ? ast.b[ty] : ty, isOpaque ? RHS_OPAQUE : RHS_TY, shape);
+    const isOpaque = rsNKind(ast, ty) === N_TY_IMPL;
+    const r = rsRewriteAssignRhs(ctx, lhs, isOpaque ? rsNB(ast, ty) : ty, isOpaque ? RHS_OPAQUE : RHS_TY, shape);
     if (r === null) {
       return null;
     }
     result = r;
   }
-  if (afterWhere >= 0 && ast.ln[afterWhere] > 0) {
+  if (afterWhere >= 0 && rsNLn(ast, afterWhere) > 0) {
     const option2 = new WhereClauseOption(true, WCS_NEWLINE);
     const aw = rewriteWhereClause(ctx, afterWhere, rsShapeIndented(bi, al, cfg), false, ";", -1, rhsHi, option2);
     if (aw === null) {
@@ -1863,7 +1889,7 @@ export const rsRewriteTypeAlias = (ctx: RsCtx, item: i32, bi: i32, al: i32, kind
   if (kind < 0) {
     return null;
   }
-  if (kind === IVK_IMPL && (ast.fl[item] & IT_DEFAULT) !== 0) {
+  if (kind === IVK_IMPL && (rsNFl(ast, item) & IT_DEFAULT) !== 0) {
     return `default ${result};`;
   }
   return result + ";";
@@ -1875,12 +1901,12 @@ export const rsRewriteTypeAlias = (ctx: RsCtx, item: i32, bi: i32, al: i32, kind
 export const rsFormatImpl = (ctx: RsCtx, item: i32, bi: i32, al: i32): string | null => {
   const ast = ctx.ast;
   const cfg = ctx.cfg;
-  const g = ast.a[item];
-  const w = ast.a[g];
-  const selfTy = ast.c[item];
-  const ni = ast.ln[item];
-  const lo = ast.lo[item];
-  const hi = ast.hi[item];
+  const g = rsNA(ast, item);
+  const w = rsNA(ast, g);
+  const selfTy = rsNC(ast, item);
+  const ni = rsNLn(ast, item);
+  const lo = rsNLo(ast, item);
+  const hi = rsNHi(ast, item);
   const refAndType = formatImplRefAndType(ctx, item, bi, al);
   if (refAndType === null) {
     return null;
@@ -1894,18 +1920,18 @@ export const rsFormatImpl = (ctx: RsCtx, item: i32, bi: i32, al: i32): string | 
   if (op < 0) {
     return null;
   }
-  const openPos = op + 1;
+  const openPos = add32(op, 1);
   if (
-    !rsContainsComment(snippet.slice(openPos, toI32(snippet.length))) &&
+    !rsContainsComment(rsCut(snippet, openPos, toI32(snippet.length))) &&
     ni === 0 &&
-    ast.ln[w] === 1 &&
+    rsNLn(ast, w) === 1 &&
     !rsHasByte(result, 10)
   ) {
     option.suppressComma = true;
     option.snuggle = WCS_SPACE;
     option.allowSingleLine = true;
   }
-  const whereSpanEnd = ctx.optSpanBefore(ast.hi[selfTy], hi, "{");
+  const whereSpanEnd = ctx.optSpanBefore(rsNHi(ast, selfTy), hi, "{");
   const whereStr = rewriteWhereClause(
     ctx,
     w,
@@ -1913,15 +1939,15 @@ export const rsFormatImpl = (ctx: RsCtx, item: i32, bi: i32, al: i32): string | 
     false,
     "{",
     whereSpanEnd,
-    ast.hi[selfTy],
+    rsNHi(ast, selfTy),
     option,
   );
   if (whereStr === null) {
     return null;
   }
-  if (ast.ln[w] === 0 && whereSpanEnd >= 0) {
+  if (rsNLn(ast, w) === 0 && whereSpanEnd >= 0) {
     const mc = rsRecoverMissingCommentInSpan(
-      ctx.snippet(ast.hi[selfTy], whereSpanEnd),
+      ctx.snippet(rsNHi(ast, selfTy), whereSpanEnd),
       rsShapeIndented(bi, al, cfg),
       cfg,
       rsLastLineWidth(result, cfg.tabSpaces),
@@ -1934,11 +1960,11 @@ export const rsFormatImpl = (ctx: RsCtx, item: i32, bi: i32, al: i32): string | 
   if (
     ni === 0 &&
     !rsHasByte(result, 10) &&
-    toI32(result.length) + toI32(whereStr.length) <= cfg.maxWidth &&
-    !rsContainsComment(snippet.slice(openPos, toI32(snippet.length)))
+    add32(toI32(result.length), toI32(whereStr.length)) <= cfg.maxWidth &&
+    !rsContainsComment(rsCut(snippet, openPos, toI32(snippet.length)))
   ) {
     result = result + whereStr;
-    if (rsHasByte(whereStr, 10) && ast.ln[w] === 1) {
+    if (rsHasByte(whereStr, 10) && rsNLn(ast, w) === 1) {
       result = result + ",";
     }
     if (rsHasByte(whereStr, 10) || rsLastLineContainsSingleLineComment(result)) {
@@ -1958,28 +1984,28 @@ export const rsFormatImpl = (ctx: RsCtx, item: i32, bi: i32, al: i32): string | 
     result = result + " ";
   }
   result = result + "{";
-  const blo = ast.hi[selfTy] > ast.hi[w] ? ast.hi[selfTy] : ast.hi[w];
+  const blo = rsNHi(ast, selfTy) > rsNHi(ast, w) ? rsNHi(ast, selfTy) : rsNHi(ast, w);
   const sn2 = ctx.snippet(blo, hi);
   const op2 = rsFindUncommented(sn2, "{");
   if (op2 < 0) {
     return null;
   }
-  const openPos2 = op2 + 1;
-  if (ni > 0 || rsContainsComment(sn2.slice(openPos2, toI32(sn2.length)))) {
+  const openPos2 = add32(op2, 1);
+  if (ni > 0 || rsContainsComment(rsCut(sn2, openPos2, toI32(sn2.length)))) {
     const sub = new RsVisitor(ctx.f);
-    sub.bi = bi + cfg.tabSpaces;
+    sub.bi = add32(bi, cfg.tabSpaces);
     sub.al = 0;
-    sub.lastPos = blo + openPos2;
+    sub.lastPos = add32(blo, openPos2);
     sub.visitAttrs(item, true);
     for (let i = 0; i < ni; i++) {
       sub.assocKind = IVK_IMPL;
       sub.visitAssocItem(ast.kid(item, i));
     }
-    sub.formatMissing(hi - 1);
+    sub.formatMissing(sub32(hi, 1));
     sub.giveTo(ctx);
     const inner = rsIndentStrNl(cfg, sub.bi, sub.al);
     const outer = rsIndentStrNl(cfg, bi, 0);
-    result = result + inner + rsTrim(String.fromBytes(sub.buf.buf, 0, sub.buf.n)) + outer;
+    result = result + inner + rsTrim(sub.text()) + outer;
   } else if (needNewline) {
     result = result + sep;
   }
@@ -1989,11 +2015,11 @@ export const rsFormatImpl = (ctx: RsCtx, item: i32, bi: i32, al: i32): string | 
 const formatImplRefAndType = (ctx: RsCtx, item: i32, bi: i32, al: i32): string | null => {
   const ast = ctx.ast;
   const cfg = ctx.cfg;
-  const g = ast.a[item];
-  const ofTrait = ast.b[item];
-  const selfTy = ast.c[item];
-  const f = ast.fl[item];
-  let result = rsFormatVisibility(ctx, ast.e[item]);
+  const g = rsNA(ast, item);
+  const ofTrait = rsNB(ast, item);
+  const selfTy = rsNC(ast, item);
+  const f = rsNFl(ast, item);
+  let result = rsFormatVisibility(ctx, rsNE(ast, item));
   if (ofTrait >= 0) {
     if ((f & IT_DEFAULT) !== 0) {
       result = result + "default ";
@@ -2009,7 +2035,7 @@ const formatImplRefAndType = (ctx: RsCtx, item: i32, bi: i32, al: i32): string |
       result = result + "const ";
     }
   }
-  const s0 = rsShapeIndented(bi, al + rsLastLineWidth(result, cfg.tabSpaces), cfg);
+  const s0 = rsShapeIndented(bi, add32(al, rsLastLineWidth(result, cfg.tabSpaces)), cfg);
   const shape = cfg.styleEdition >= 2024 ? s0 : generics_shape_from_config(ctx, s0);
   if (shape === null) {
     return null;
@@ -2030,16 +2056,16 @@ const formatImplRefAndType = (ctx: RsCtx, item: i32, bi: i32, al: i32): string |
     result = result + tr;
     traitRefOverhead = 4;
   }
-  const curly = ast.ln[ast.a[g]] === 0 ? 2 : 0;
-  const used = rsLastLineWidth(result, cfg.tabSpaces) + traitRefOverhead + curly;
-  const budget = ctx.budget(used + 1);
+  const curly = rsNLn(ast, rsNA(ast, g)) === 0 ? 2 : 0;
+  const used = add32(add32(rsLastLineWidth(result, cfg.tabSpaces), traitRefOverhead), curly);
+  const budget = ctx.budget(add32(used, 1));
   const st = rsRewriteTy(ctx, selfTy, rsShapeLegacy(budget, bi, al));
   if (st !== null && !rsHasByte(st, 10)) {
     result = result + (ofTrait >= 0 ? " for " : " ") + st;
     return result;
   }
   result = result + "\n";
-  const nbi = bi + cfg.tabSpaces;
+  const nbi = add32(bi, cfg.tabSpaces);
   result = result + rsIndentStr(cfg, nbi, al);
   if (ofTrait >= 0) {
     result = result + "for ";
@@ -2054,13 +2080,13 @@ const formatImplRefAndType = (ctx: RsCtx, item: i32, bi: i32, al: i32): string |
 
 const rewriteTraitRef = (ctx: RsCtx, tr: i32, bi: i32, al: i32, polarity: string, resultLen: i32): string | null => {
   const cfg = ctx.cfg;
-  const used = 1 + toI32(polarity.length) + resultLen;
-  const shape = rsShapeIndented(bi, al + used, cfg);
+  const used = add32(add32(1, toI32(polarity.length)), resultLen);
+  const shape = rsShapeIndented(bi, add32(al, used), cfg);
   const s = rsRewriteTraitRefTy(ctx, tr, shape);
   if (s !== null && !rsHasByte(s, 10)) {
     return ` ${polarity}${s}`;
   }
-  const nbi = bi + cfg.tabSpaces;
+  const nbi = add32(bi, cfg.tabSpaces);
   const s2 = rsRewriteTraitRefTy(ctx, tr, rsShapeIndented(nbi, al, cfg));
   if (s2 === null) {
     return null;
@@ -2072,28 +2098,28 @@ const rewriteTraitRef = (ctx: RsCtx, tr: i32, bi: i32, al: i32, polarity: string
 export const rsFormatTrait = (ctx: RsCtx, item: i32, bi: i32, al: i32): string | null => {
   const ast = ctx.ast;
   const cfg = ctx.cfg;
-  const g = ast.a[item];
-  const w = ast.a[g];
-  const bounds = ast.b[item];
-  const ni = ast.ln[item];
-  const lo = ast.lo[item];
-  const hi = ast.hi[item];
-  const f = ast.fl[item];
-  let result = `${rsFormatVisibility(ctx, ast.e[item])}${(f & IT_CONST) !== 0 ? "const " : ""}${(f & IT_UNSAFE) !== 0 ? "unsafe " : ""}${(f & IT_AUTO) !== 0 ? "auto " : ""}trait `;
+  const g = rsNA(ast, item);
+  const w = rsNA(ast, g);
+  const bounds = rsNB(ast, item);
+  const ni = rsNLn(ast, item);
+  const lo = rsNLo(ast, item);
+  const hi = rsNHi(ast, item);
+  const f = rsNFl(ast, item);
+  let result = `${rsFormatVisibility(ctx, rsNE(ast, item))}${(f & IT_CONST) !== 0 ? "const " : ""}${(f & IT_UNSAFE) !== 0 ? "unsafe " : ""}${(f & IT_AUTO) !== 0 ? "auto " : ""}trait `;
   const bodyLo = ctx.spanAfter(lo, hi, "{");
   const shape = rsShapeIndented(bi, al, cfg).offsetLeft(toI32(result.length));
   if (shape === null) {
     return null;
   }
-  const gs = rsRewriteGenerics(ctx, rsIdentStr(ctx, ast.d[item]), g, shape);
+  const gs = rsRewriteGenerics(ctx, rsIdentStr(ctx, rsND(ast, item)), g, shape);
   if (gs === null) {
     return null;
   }
   result = result + gs;
-  const hasBounds = bounds >= 0 && ast.ln[bounds] > 0;
+  const hasBounds = bounds >= 0 && rsNLn(ast, bounds) > 0;
   if (hasBounds) {
-    const identHi = ctx.spanAfter(lo, hi, rsIdentStr(ctx, ast.d[item]));
-    const boundHi = ast.hi[ast.kid(bounds, ast.ln[bounds] - 1)];
+    const identHi = ctx.spanAfter(lo, hi, rsIdentStr(ctx, rsND(ast, item)));
+    const boundHi = rsNHi(ast, ast.kid(bounds, sub32(rsNLn(ast, bounds), 1)));
     if (rsContainsComment(ctx.snippet(identHi, boundHi))) {
       return null;
     }
@@ -2103,16 +2129,19 @@ export const rsFormatTrait = (ctx: RsCtx, item: i32, bi: i32, al: i32): string |
     }
     result = r;
   }
-  if (ast.ln[w] > 0) {
+  if (rsNLn(ast, w) > 0) {
     const wb = ctx.budget(rsLastLineWidth(result, cfg.tabSpaces));
-    const posBeforeWhere = hasBounds ? ast.hi[ast.kid(bounds, ast.ln[bounds] - 1)] : ast.lo[w];
+    const posBeforeWhere = hasBounds ? rsNHi(ast, ast.kid(bounds, sub32(rsNLn(ast, bounds), 1))) : rsNLo(ast, w);
     const option = whereSnuggled(gs, cfg.tabSpaces);
     const ws = rewriteWhereClause(ctx, w, rsShapeLegacy(wb, bi, 0), false, "{", -1, posBeforeWhere, option);
     if (ws === null) {
       return null;
     }
-    if (!rsHasByte(ws, 10) && rsLastLineWidth(result, cfg.tabSpaces) + toI32(ws.length) + bi + al > cfg.commentWidth) {
-      const width = bi + cfg.tabSpaces - 1;
+    if (
+      !rsHasByte(ws, 10) &&
+      add32(add32(add32(rsLastLineWidth(result, cfg.tabSpaces), toI32(ws.length)), bi), al) > cfg.commentWidth
+    ) {
+      const width = sub32(add32(bi, cfg.tabSpaces), 1);
       result = result + rsIndentStrNl(cfg, 0, width);
     }
     result = result + ws;
@@ -2120,8 +2149,8 @@ export const rsFormatTrait = (ctx: RsCtx, item: i32, bi: i32, al: i32): string |
     const itemSnippet = ctx.snippet(lo, hi);
     const sl = rsIndexOfByte(itemSnippet, 47, 0);
     if (sl >= 0) {
-      const commentHi = ast.ln[g] > 0 ? ast.lo[g] - 1 : bodyLo - 1;
-      const commentLo = lo + sl;
+      const commentHi = rsNLn(ast, g) > 0 ? sub32(rsNLo(ast, g), 1) : sub32(bodyLo, 1);
+      const commentLo = add32(lo, sl);
       if (commentLo < commentHi) {
         const mc = rsRecoverMissingCommentInSpan(
           ctx.snippet(commentLo, commentHi),
@@ -2135,19 +2164,22 @@ export const rsFormatTrait = (ctx: RsCtx, item: i32, bi: i32, al: i32): string |
       }
     }
   }
-  const blockLo = ast.hi[w];
+  const blockLo = rsNHi(ast, w);
   const sn = ctx.snippet(blockLo, hi);
   const op = rsFindUncommented(sn, "{");
   if (op < 0) {
     return null;
   }
-  const openPos = op + 1;
-  const restHasComment = rsContainsComment(sn.slice(openPos, toI32(sn.length)));
-  if (rsLastLineContainsSingleLineComment(result) || rsLastLineWidth(result, cfg.tabSpaces) + 2 > ctx.budget(bi + al)) {
+  const openPos = add32(op, 1);
+  const restHasComment = rsContainsComment(rsCut(sn, openPos, toI32(sn.length)));
+  if (
+    rsLastLineContainsSingleLineComment(result) ||
+    add32(rsLastLineWidth(result, cfg.tabSpaces), 2) > ctx.budget(add32(bi, al))
+  ) {
     result = result + rsIndentStrNl(cfg, bi, al);
   } else if (ni === 0 && !rsHasByte(result, 10) && !restHasComment) {
     return result + " {}";
-  } else if (rsHasByte(result, 10) || (ast.ln[w] > 0 && ni > 0)) {
+  } else if (rsHasByte(result, 10) || (rsNLn(ast, w) > 0 && ni > 0)) {
     result = result + rsIndentStrNl(cfg, bi, al);
   } else {
     result = result + " ";
@@ -2156,15 +2188,15 @@ export const rsFormatTrait = (ctx: RsCtx, item: i32, bi: i32, al: i32): string |
   const outer = rsIndentStrNl(cfg, bi, 0);
   if (ni > 0 || restHasComment) {
     const sub = new RsVisitor(ctx.f);
-    sub.bi = bi + cfg.tabSpaces;
+    sub.bi = add32(bi, cfg.tabSpaces);
     sub.al = 0;
-    sub.lastPos = blockLo + openPos;
+    sub.lastPos = add32(blockLo, openPos);
     for (let i = 0; i < ni; i++) {
       sub.visitAssocItem(ast.kid(item, i));
     }
-    sub.formatMissing(hi - 1);
+    sub.formatMissing(sub32(hi, 1));
     sub.giveTo(ctx);
-    result = result + rsIndentStrNl(cfg, sub.bi, sub.al) + rsTrim(String.fromBytes(sub.buf.buf, 0, sub.buf.n)) + outer;
+    result = result + rsIndentStrNl(cfg, sub.bi, sub.al) + rsTrim(sub.text()) + outer;
   } else if (rsHasByte(result, 10)) {
     result = result + outer;
   }
@@ -2174,7 +2206,7 @@ export const rsFormatTrait = (ctx: RsCtx, item: i32, bi: i32, al: i32): string |
 /** format_trait_alias. */
 export const rsFormatTraitAlias = (ctx: RsCtx, item: i32, shape: RsShape): string | null => {
   const ast = ctx.ast;
-  const alias = rsIdentStr(ctx, ast.d[item]);
+  const alias = rsIdentStr(ctx, rsND(ast, item));
   const g0 = shape.offsetLeft(6);
   if (g0 === null) {
     return null;
@@ -2183,13 +2215,13 @@ export const rsFormatTraitAlias = (ctx: RsCtx, item: i32, shape: RsShape): strin
   if (gShape === null) {
     return null;
   }
-  const g = ast.a[item];
+  const g = rsNA(ast, item);
   const gs = rsRewriteGenerics(ctx, alias, g, gShape);
   if (gs === null) {
     return null;
   }
-  const vis = rsFormatVisibility(ctx, ast.e[item]);
-  const constness = (ast.fl[item] & IT_CONST) !== 0 ? "const " : "";
+  const vis = rsFormatVisibility(ctx, rsNE(ast, item));
+  const constness = (rsNFl(ast, item) & IT_CONST) !== 0 ? "const " : "";
   const lhs = `${vis}${constness}trait ${gs} =`;
   const sh = shape.subWidth(1);
   if (sh === null) {
@@ -2202,19 +2234,19 @@ export const rsFormatTraitAlias = (ctx: RsCtx, item: i32, shape: RsShape): strin
 /** TraitAliasBounds::rewrite: `item` is the trait alias. */
 export const rsRewriteTraitAliasBounds = (ctx: RsCtx, item: i32, shape: RsShape): string | null => {
   const ast = ctx.ast;
-  const g = ast.a[item];
-  const w = ast.a[g];
-  const bs = rsRewriteBounds(ctx, ast.b[item], shape);
+  const g = rsNA(ast, item);
+  const w = rsNA(ast, g);
+  const bs = rsRewriteBounds(ctx, rsNB(ast, item), shape);
   if (bs === null) {
     return null;
   }
   const option = new WhereClauseOption(true, WCS_NONE);
   option.allowSingleLine = true;
-  const ws = rewriteWhereClause(ctx, w, shape, false, ";", -1, ast.lo[w], option);
+  const ws = rewriteWhereClause(ctx, w, shape, false, ";", -1, rsNLo(ast, w), option);
   if (ws === null) {
     return null;
   }
-  const fits = !rsHasByte(bs, 10) && !rsHasByte(ws, 10) && toI32(bs.length) + toI32(ws.length) < shape.width;
+  const fits = !rsHasByte(bs, 10) && !rsHasByte(ws, 10) && add32(toI32(bs.length), toI32(ws.length)) < shape.width;
   let space = "";
   if (bs.length === 0 || ws.length === 0) {
     space = "";
@@ -2231,7 +2263,7 @@ export const rsRewriteTraitAliasBounds = (ctx: RsCtx, item: i32, shape: RsShape)
 /** rewrite_extern_crate. */
 export const rsRewriteExternCrate = (ctx: RsCtx, item: i32, shape: RsShape): string | null => {
   const ast = ctx.ast;
-  const s = ctx.snippet(ast.lo[item], ast.hi[item]);
+  const s = ctx.snippet(rsNLo(ast, item), rsNHi(ast, item));
   let itemStr = "";
   if (rsContainsComment(s)) {
     itemStr = s;
@@ -2242,26 +2274,26 @@ export const rsRewriteExternCrate = (ctx: RsCtx, item: i32, shape: RsShape): str
     const n = toI32(s.length);
     let first = true;
     while (i < n) {
-      while (i < n && (s.charCodeAt(i) === 32 || (s.charCodeAt(i) >= 9 && s.charCodeAt(i) <= 13))) {
+      while (i >= 0 && i < n && (s.charCodeAt(i) === 32 || (s.charCodeAt(i) >= 9 && s.charCodeAt(i) <= 13))) {
         i++;
       }
       if (i >= n) {
         break;
       }
       let j = i;
-      while (j < n && !(s.charCodeAt(j) === 32 || (s.charCodeAt(j) >= 9 && s.charCodeAt(j) <= 13))) {
+      while (j >= 0 && j < n && !(s.charCodeAt(j) === 32 || (s.charCodeAt(j) >= 9 && s.charCodeAt(j) <= 13))) {
         j++;
       }
       if (!first) {
         out = out + " ";
       }
-      out = out + s.slice(i, j);
+      out = out + s.substring(i, j);
       first = false;
       i = j;
     }
     const k = out.indexOf(" ;");
     if (k >= 0) {
-      out = out.slice(0, k) + ";" + out.slice(k + 2, toI32(out.length));
+      out = out.substring(0, k) + ";" + out.substring(add32(k, 2), toI32(out.length));
     }
     itemStr = out;
   }
@@ -2272,27 +2304,28 @@ export const rsRewriteExternCrate = (ctx: RsCtx, item: i32, shape: RsShape): str
 const rewriteAttrsOfItem = (ctx: RsCtx, item: i32, itemStr: string, shape: RsShape): string | null => {
   const ast = ctx.ast;
   const attrs: i32[] = [];
-  for (let i = 0; i < ast.atn[item]; i++) {
+  for (let i = 0; i < rsNAtn(ast, item); i++) {
     attrs.push(ast.attr(item, i));
   }
   const attrsStr = rsRewriteAttrs(ctx, attrs, shape);
   if (attrsStr === null) {
     return null;
   }
-  const mlo = attrs.length === 0 ? ast.lo[item] : ast.hi[attrs[attrs.length - 1]];
+  const na = toI32(attrs.length);
+  const mlo = na > 0 ? rsNHi(ast, attrs[na - 1]) : rsNLo(ast, item);
   // inline_attribute_width is 0: allow_extend is false.
-  return rsCombineStrsWithMissingComments(ctx, attrsStr, itemStr, mlo, ast.lo[item], shape, false);
+  return rsCombineStrsWithMissingComments(ctx, attrsStr, itemStr, mlo, rsNLo(ast, item), shape, false);
 };
 
 /** rewrite_mod for `mod foo;` (used when reordering). */
 export const rsRewriteModDecl = (ctx: RsCtx, item: i32, shape: RsShape): string | null => {
   const ast = ctx.ast;
-  const s = rsFormatVisibility(ctx, ast.e[item]) + "mod " + rsIdentStr(ctx, ast.d[item]) + ";";
+  const s = rsFormatVisibility(ctx, rsNE(ast, item)) + "mod " + rsIdentStr(ctx, rsND(ast, item)) + ";";
   return rewriteAttrsOfItem(ctx, item, s, shape);
 };
 
-export const rsIsLocal = (ast: RsAst, s: i32): boolean => ast.kind[s] === N_LOCAL;
-export const rsFnHasExtern = (ast: RsAst, f: i32): boolean => (ast.fl[f] & FN_EXTERN) !== 0;
-export const rsIsImplicitSelfTy = (ast: RsAst, t: i32): boolean => ast.kind[t] === N_TY_IMPLICIT_SELF;
+export const rsIsLocal = (ast: RsAst, s: i32): boolean => rsNKind(ast, s) === N_LOCAL;
+export const rsFnHasExtern = (ast: RsAst, f: i32): boolean => (rsNFl(ast, f) & FN_EXTERN) !== 0;
+export const rsIsImplicitSelfTy = (ast: RsAst, t: i32): boolean => rsNKind(ast, t) === N_TY_IMPLICIT_SELF;
 export const rsListWidthUnused = (s: string): i32 => rsWidth(s);
 export const rsIsBlankStr = (s: string): boolean => rsIsBlank(s);
