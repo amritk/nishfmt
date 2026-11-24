@@ -3,6 +3,7 @@
 // Ported from RuboCop 1.92.3 (MIT License, Copyright (c) 2012-24 Bozhidar
 // Batsov).
 
+import { add32 } from "../../core/arr";
 import { F_BEGIN, F_END, F_HEREDOC_END, NT_ARRAY, NT_DSTR, NT_RESBODY, NT_STR, NT_XSTR, V_NIL } from "../ast";
 import { RbCop } from "../cop";
 import { rnHeredoc } from "../node";
@@ -63,10 +64,10 @@ export class CopStyleRescueModifier {
       // correct_rescue_block
       const op = a.kid(r, 0);
       const col = src.column(a.exS(r));
-      let ind = rmlSpaces(col + 2);
+      let ind = rmlSpaces(add32(col, 2));
       let off = rmlSpaces(col);
       if (parenthesized) {
-        ind = rmlSpaces(col + 1);
+        ind = rmlSpaces(add32(col, 1));
         off = rmlSpaces(col > 0 ? col - 1 : 0);
       }
       if (

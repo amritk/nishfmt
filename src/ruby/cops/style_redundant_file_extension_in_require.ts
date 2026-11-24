@@ -3,6 +3,8 @@
 // Ported from RuboCop 1.92.3 (MIT License, Copyright (c) 2012-24 Bozhidar
 // Batsov).
 
+import { rbAtOff } from "../help";
+import { sub32 } from "../../core/arr";
 import { NT_SEND, NT_STR, V_NIL } from "../ast";
 import { RbCop } from "../cop";
 import { RbSource } from "../source";
@@ -32,14 +34,14 @@ export class CopStyleRedundantFileExtensionInRequire {
         continue;
       }
       const e = a.exE(s);
-      const rs = e - 4;
+      const rs = sub32(e, 4);
       // escaped_extension?: a backslash right before the extension.
-      if (rs - 1 >= a.exS(s) && src.at(rs - 1) === 92) {
+      if (toI64(rs) - toI64(1) >= toI64(a.exS(s)) && rbAtOff(src, rs, -1) === 92) {
         continue;
       }
-      const k = this.c.offense(rs, e - 1);
+      const k = this.c.offense(rs, sub32(e, 1));
       if (k !== null) {
-        k.remove(rs, e - 1);
+        k.remove(rs, sub32(e, 1));
         this.c.commit(k);
       }
     }

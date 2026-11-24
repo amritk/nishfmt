@@ -12,7 +12,7 @@ import { rbInspectStr } from "./ast";
 export const rbDoubleQuotesRequired = (s: string): boolean => {
   const k = toI32(s.length);
   let i = 0;
-  while (i < k) {
+  while (i >= 0 && i < k) {
     const c = s.charCodeAt(i);
     if (c === 39) {
       return true;
@@ -43,9 +43,14 @@ export const rbReplaceAll = (s: string, from: string, to: string): string => {
   while (i >= 0) {
     parts.push(s.substring(a, i));
     parts.push(to);
-    a = i + f;
+    // indexOf found `from` inside `s`, so both sums stay within s.length.
+    a = toI32(toU32(i) + toU32(f));
     const nx = s.substring(a, k).indexOf(from);
-    i = nx < 0 ? -1 : a + nx;
+    if (nx < 0) {
+      i = -1;
+    } else {
+      i = toI32(toU32(a) + toU32(nx));
+    }
   }
   parts.push(s.substring(a, k));
   return parts.join("");
@@ -64,7 +69,7 @@ export const rbNeedsEscaping = (s: string): boolean => rbDoubleQuotesRequired(rb
 export const rbValidUtf8 = (s: string): boolean => {
   const n = toI32(s.length);
   let i = 0;
-  while (i < n) {
+  while (i >= 0 && i < n) {
     const c = s.charCodeAt(i);
     let k = 0;
     let lo = 0x80;
@@ -91,16 +96,18 @@ export const rbValidUtf8 = (s: string): boolean => {
     } else {
       return false;
     }
-    if (i + k >= n) {
-      return false;
-    }
+    let p = i + 1;
     for (let j = 1; j <= k; j++) {
-      const d = s.charCodeAt(i + j);
+      if (p < 0 || p >= n) {
+        return false;
+      }
+      const d = s.charCodeAt(p);
       if (j === 1 ? d < lo || d > hi : (d & 0xc0) !== 0x80) {
         return false;
       }
+      p++;
     }
-    i += k + 1;
+    i = p;
   }
   return true;
 };
@@ -112,3 +119,6 @@ export const rbToStringLiteral = (s: string): string => {
   }
   return `'${rbReplaceAll(rbReplaceAll(s, "\\", "\\\\"), '\\"', '"')}'`;
 };
+
+/** The byte at `i` of `s`, or -1 outside it. */
+export const rbByteAt = (s: string, i: i32): i32 => (i >= 0 && i < s.length ? s.charCodeAt(i) : -1);

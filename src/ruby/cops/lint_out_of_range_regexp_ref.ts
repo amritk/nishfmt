@@ -5,6 +5,7 @@
 // Ported from RuboCop 1.92.3 (MIT License, Copyright (c) 2012-24 Bozhidar
 // Batsov).
 
+import { rbNKid } from "../node";
 import {
   NT_CSEND,
   NT_IN_PATTERN,
@@ -73,7 +74,7 @@ export class CopLintOutOfRangeRegexpRef {
       this.check(src, a.kid(n, 0));
     } else if (t === NT_WHEN) {
       const res: i32[] = [];
-      for (let i = 0; i < a.nKid(n) - 1; i++) {
+      for (let i = 0; i < rbNKid(src, n) - 1; i++) {
         if (ldhType(src, a.kid(n, i)) === NT_REGEXP) {
           res.push(a.kid(n, i));
         }

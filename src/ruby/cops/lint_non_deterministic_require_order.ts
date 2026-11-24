@@ -7,6 +7,7 @@
 // Ported from RuboCop 1.92.3 (MIT License, Copyright (c) 2012-24 Bozhidar
 // Batsov).
 
+import { fault } from "../../core/fault";
 import { NT_ARG, NT_ARGS, NT_BLOCK, NT_BLOCK_PASS, NT_LVAR, NT_NUMBLOCK, NT_SEND, NT_SYM, V_NIL } from "../ast";
 import { RbCop } from "../cop";
 import { RbSource } from "../source";
@@ -106,6 +107,10 @@ export class CopLintNonDeterministicRequireOrder {
           this.c.offense(a.exS(s), a.exE(s));
         } else {
           const k = parseInt(a.text(a.kid(n, 1)));
+          if (k >= 2147483647) {
+            fault();
+            return;
+          }
           for (let i = 1; i <= k; i++) {
             if (lndroRequired(src, body, `_${i}`)) {
               this.c.offense(a.exS(s), a.exE(s));

@@ -6,6 +6,8 @@
 // Ported from RuboCop 1.92.3 (MIT License, Copyright (c) 2012-24 Bozhidar
 // Batsov).
 
+import { rbAtOff } from "../help";
+import { add32, atI32 } from "../../core/arr";
 import {
   F_BEGIN,
   F_ELSE,
@@ -215,7 +217,7 @@ const sbhSlmCommandPosition = (src: RbSource, def: i32): boolean => {
   }
   if (ssxIsCall(src, p) && sbhAssignmentMethod(sbhMethodName(src, p))) {
     const args = sbhCallArgs(src, p);
-    return args.length > 0 && args[args.length - 1] === def;
+    return args.length > 0 && atI32(args, toI32(args.length) - 1) === def;
   }
   return sbhSlmStatementBody(src, def, p);
 };
@@ -263,7 +265,7 @@ const sbhSlmEndlessBody = (src: RbSource, body: i32): boolean => {
   const be = a.exE(body);
   for (const d of ssxDescendants(src, body)) {
     const dt = a.type(d);
-    if (dt === NT_PAIR && src.at(a.exE(d) - 1) === 58 && a.exE(d) === be) {
+    if (dt === NT_PAIR && rbAtOff(src, a.exE(d), -1) === 58 && a.exE(d) === be) {
       return false;
     }
     if ((dt === NT_FORWARDED_RESTARG || dt === NT_FORWARDED_KWRESTARG || dt === NT_BLOCK_PASS) && a.exE(d) === be) {
@@ -414,7 +416,7 @@ export class CopStyleSingleLineMethods {
   private toMultiline(src: RbSource, k: RbRewriter, n: i32, body: i32): void {
     const a = src.a;
     const col = src.column(ssxFS(src, n, F_KEYWORD));
-    const ind = `\n${rmlSpaces(col + 2)}`;
+    const ind = `\n${rmlSpaces(add32(col, 2))}`;
     if (a.type(body) === NT_BEGIN && ssxLocIs(src, body, F_BEGIN, "(")) {
       k.insertBefore(a.exS(body), a.exE(body), ind);
     } else if (a.type(body) === NT_BEGIN) {
@@ -431,8 +433,8 @@ export class CopStyleSingleLineMethods {
     // LineBreakCorrector.move_comment
     const ci = rbLayCommentAtLine(src, src.line(a.exS(n)));
     if (ci >= 0) {
-      const cs = src.commS[ci];
-      const ce = src.commE[ci];
+      const cs = atI32(src.commS, ci);
+      const ce = atI32(src.commE, ci);
       k.insertBefore(a.exS(n), a.exE(n), `${src.src(cs, ce)}\n${rmlSpaces(col)}`);
       k.remove(cs, ce);
     }

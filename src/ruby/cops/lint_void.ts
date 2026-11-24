@@ -64,7 +64,7 @@ import { RbSource } from "../source";
 import { labaLambdaOrProc } from "./lint_ambiguous_block_association";
 import { lpgeAssignmentMethod } from "./lint_parentheses_as_grouped_expression";
 import { vfSameNode } from "./lint_variable_force";
-import { rnHeredoc } from "../node";
+import { rbNKid, rnHeredoc } from "../node";
 import {
   ssxDefName,
   ssxDescendants,
@@ -266,7 +266,7 @@ export class CopLintVoid {
       // IfNode#body (if_branch)
       const unless =
         ssxHas(src, e, F_KEYWORD) &&
-        ssxFE(src, e, F_KEYWORD) - ssxFS(src, e, F_KEYWORD) === 6 &&
+        toI64(ssxFE(src, e, F_KEYWORD)) - toI64(ssxFS(src, e, F_KEYWORD)) === toI64(6) &&
         !ssxHas(src, e, F_QUESTION);
       const body = unless ? a.kid(e, 2) : a.kid(e, 1);
       if (body !== V_NIL) {
@@ -275,7 +275,7 @@ export class CopLintVoid {
       return;
     }
     if (t === NT_CASE || t === NT_CASE_MATCH) {
-      for (let i = 1; i < a.nKid(e) - 1; i++) {
+      for (let i = 1; i < rbNKid(src, e) - 1; i++) {
         const w = a.kid(e, i);
         if (ssxIs(src, w, NT_WHEN) || ssxIs(src, w, NT_IN_PATTERN)) {
           const body = a.kid(w, -1);

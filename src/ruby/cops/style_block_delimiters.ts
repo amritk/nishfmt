@@ -4,6 +4,7 @@
 // Ported from RuboCop 1.92.3 (MIT License, Copyright (c) 2012-24 Bozhidar
 // Batsov).
 
+import { atI32 } from "../../core/arr";
 import {
   F_BEGIN,
   F_END,
@@ -23,7 +24,7 @@ import {
   V_NIL,
 } from "../ast";
 import { RbCop } from "../cop";
-import { rbSpaceEnd } from "../help";
+import { rbAtOff, rbSpaceEnd } from "../help";
 import { RbRewriter } from "../rewriter";
 import { RbSource } from "../source";
 import {
@@ -87,7 +88,8 @@ const sbhBdModifierRescue = (src: RbSource, n: i32): boolean => {
   if (rb.length !== 1) {
     return false;
   }
-  return sbhResbodyExceptions(src, rb[0]).length === 0 && src.a.kid(rb[0], 1) === V_NIL;
+  const r0 = rb.length > 0 ? rb[0] : V_NIL;
+  return sbhResbodyExceptions(src, r0).length === 0 && src.a.kid(r0, 1) === V_NIL;
 };
 
 /** require_do_end? */
@@ -169,8 +171,8 @@ const sbhBdEndOfChain = (src: RbSource, n0: i32): i32 => {
 
 /** move_comment_before_block. */
 const sbhBdMoveComment = (src: RbSource, k: RbRewriter, ci: i32, block: i32, ce: i32): void => {
-  const cs = src.commS[ci];
-  const cEnd = src.commE[ci];
+  const cs = atI32(src.commS, ci);
+  const cEnd = atI32(src.commE, ci);
   const text = src.src(cs, cEnd);
   if (sbhDirectiveComment(text)) {
     return;
@@ -182,7 +184,7 @@ const sbhBdMoveComment = (src: RbSource, k: RbRewriter, ci: i32, block: i32, ce:
   // source_range_before_comment: range.end.join(comment.begin), less its trailing whitespace.
   const preS = rangeEnd;
   let preE = cs;
-  while (preE > preS && ssxIsSpace(src.at(preE - 1))) {
+  while (preE > preS && preE > 0 && ssxIsSpace(src.at(preE - 1))) {
     preE--;
   }
   k.remove(cs, rbSpaceEnd(src, cEnd, 2, true, false, false));
@@ -276,13 +278,13 @@ export class CopStyleBlockDelimiters {
     const be = ssxFE(src, n, F_BEGIN);
     const es = ssxFS(src, n, F_END);
     const ee = ssxFE(src, n, F_END);
-    if (!ssxIsSpace(src.at(bs - 1))) {
+    if (!ssxIsSpace(rbAtOff(src, bs, -1))) {
       k.insertBefore(bs, be, " ");
     }
-    if (!ssxIsSpace(src.at(es - 1))) {
+    if (!ssxIsSpace(rbAtOff(src, es, -1))) {
       k.insertBefore(es, ee, " ");
     }
-    if (!ssxIsSpace(src.at(bs + 1))) {
+    if (!ssxIsSpace(rbAtOff(src, bs, 1))) {
       k.insertAfter(bs, be, " ");
     }
     k.replace(bs, be, "do");
@@ -297,7 +299,7 @@ export class CopStyleBlockDelimiters {
   private doEndToBraces(src: RbSource, k: RbRewriter, n: i32): void {
     const bs = ssxFS(src, n, F_BEGIN);
     const be = ssxFE(src, n, F_BEGIN);
-    if (!ssxIsSpace(src.at(bs + 2))) {
+    if (!ssxIsSpace(rbAtOff(src, bs, 2))) {
       k.insertAfter(bs, be, " ");
     }
     k.replace(bs, be, "{");

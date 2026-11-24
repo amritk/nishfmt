@@ -6,6 +6,9 @@
 // Ported from RuboCop 1.92.3 (MIT License, Copyright (c) 2012-24 Bozhidar
 // Batsov).
 
+import { rbNKid } from "../node";
+import { fault, faulted } from "../../core/fault";
+import { add32, atI32 } from "../../core/arr";
 import {
   F_BEGIN,
   F_END,
@@ -96,7 +99,7 @@ const scaLhs = (src: RbSource, n: i32): string => {
     const m = ssxMeth(src, n);
     if (m === "[]=") {
       const idx: string[] = [];
-      for (let i = 2; i < a.nKid(n) - 1; i++) {
+      for (let i = 2; i < rbNKid(src, n) - 1; i++) {
         idx.push(src.nodeSrc(a.kid(n, i)));
       }
       return `${recv}[${idx.join(", ")}] = `;
@@ -143,7 +146,10 @@ const scaStrippedLen = (line: string, lhs: string): i32 => {
       q = lk;
     }
     segs.push(lhs.substring(p, q));
-    p = q + 1;
+    p = add32(q, 1);
+    if (faulted()) {
+      return 0;
+    }
   }
   const k = toI32(line.length);
   for (let i = 0; i < k; i++) {
@@ -154,16 +160,16 @@ const scaStrippedLen = (line: string, lhs: string): i32 => {
     let ok = true;
     for (let s = 0; s < toI32(segs.length); s++) {
       if (s > 0) {
-        while (j < k && ssxIsSpace(line.charCodeAt(j))) {
+        while (j >= 0 && j < k && ssxIsSpace(line.charCodeAt(j))) {
           j++;
         }
       }
       const sg = segs[s];
-      if (line.substring(j, j + toI32(sg.length)) !== sg) {
+      if (line.substring(j, add32(j, toI32(sg.length))) !== sg) {
         ok = false;
         break;
       }
-      j += toI32(sg.length);
+      j = add32(j, toI32(sg.length));
     }
     if (ok) {
       return scnLen(line) - scnLen(line.substring(i, j));
@@ -200,8 +206,16 @@ export class CopStyleConditionalAssignment {
         }
         let eb = eb0;
         if (anyTruthy) {
-          eb = elsifs[elsifs.length - 1];
-          elsifs.pop();
+          // anyTruthy saw an element.
+          const el = toI32(elsifs.length);
+          if (el < 1) {
+            fault();
+            return;
+          }
+          eb = elsifs[el - 1];
+          if (elsifs.length > 0) {
+            elsifs.pop();
+          }
         }
         if (eb === V_NIL) {
           continue;
@@ -218,7 +232,7 @@ export class CopStyleConditionalAssignment {
           continue;
         }
         const branches: i32[] = [];
-        for (let i = 1; i < a.nKid(n) - 1; i++) {
+        for (let i = 1; i < rbNKid(src, n) - 1; i++) {
           branches.push(a.kid(a.kid(n, i), -1));
         }
         branches.push(eb);
@@ -264,11 +278,12 @@ export class CopStyleConditionalAssignment {
         }
       }
     }
-    if (stmts.length === 0 || !scaAssignmentType(src, stmts[0])) {
+    const s0 = stmts.length > 0 ? stmts[0] : V_NIL;
+    if (stmts.length === 0 || !scaAssignmentType(src, s0)) {
       return;
     }
     for (const s of stmts) {
-      if (a.type(s) !== a.type(stmts[0])) {
+      if (a.type(s) !== a.type(s0)) {
         return;
       }
     }
@@ -279,7 +294,7 @@ export class CopStyleConditionalAssignment {
       }
     }
     // correction_exceeds_line_limit?
-    const asg = scaLhs(src, scaTail(src, branches[0]));
+    const asg = scaLhs(src, scaTail(src, atI32(branches, 0)));
     const text = src.nodeSrc(n);
     let longest = -1;
     let p = 0;
@@ -293,12 +308,15 @@ export class CopStyleConditionalAssignment {
       if (l > longest) {
         longest = l;
       }
-      p = q + 1;
+      p = add32(q, 1);
+      if (faulted()) {
+        return;
+      }
     }
     if (longest < 0) {
       longest = 0;
     }
-    if (scnLen(asg) + longest > SCN_MAX) {
+    if (toI64(scnLen(asg)) + toI64(longest) > toI64(SCN_MAX)) {
       return;
     }
     const probe = new RbRewriter(src.n);
@@ -338,7 +356,7 @@ export class CopStyleConditionalAssignment {
       const eb = scaTail(src, a.kid(n, -1));
       const lhs = scaLhs(src, eb);
       ok = k.insertBefore(a.exS(n), a.exE(n), lhs) && ok;
-      for (let i = 1; i < a.nKid(n) - 1; i++) {
+      for (let i = 1; i < rbNKid(src, n) - 1; i++) {
         ok = this.correctBranch(src, scaTail(src, a.kid(a.kid(n, i), -1)), k) && ok;
       }
       ok = this.replaceBranch(src, eb, k) && ok;
@@ -356,8 +374,8 @@ export class CopStyleConditionalAssignment {
       return k.replace(a.exS(n), a.exE(n), `${scaLhs(src, ib)}${expr}`);
     }
     const bs = scnBranches(src, n);
-    const ib = scaTail(src, bs[0]);
-    const eb = scaTail(src, bs[bs.length - 1]);
+    const ib = scaTail(src, atI32(bs, 0));
+    const eb = scaTail(src, atI32(bs, toI32(bs.length) - 1));
     const lhs = scaLhs(src, ib);
     ok = k.insertBefore(a.exS(n), a.exE(n), lhs) && ok;
     ok = this.replaceBranch(src, ib, k) && ok;

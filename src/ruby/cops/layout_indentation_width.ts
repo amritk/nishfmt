@@ -5,6 +5,7 @@
 // Ported from RuboCop 1.92.3 (MIT License, Copyright (c) 2012-24 Bozhidar
 // Batsov).
 
+import { add32, sub32 } from "../../core/arr";
 import {
   F_BEGIN,
   F_ELSE,
@@ -96,7 +97,7 @@ export class CopLayoutIndentationWidth {
       } else if (t === NT_BEGIN) {
         if (lalParentheses(src, n) && lalBeginsItsLine(src, rnS(src, n, F_END))) {
           const l = src.line(rnS(src, n, F_BEGIN));
-          this.checkIndentation(src, src.lineStart(l) + lalFirstNonWs(src, l), a.kid(n, 0));
+          this.checkIndentation(src, add32(src.lineStart(l), lalFirstNonWs(src, l)), a.kid(n, 0));
         }
       } else if (t === NT_BLOCK || t === NT_NUMBLOCK) {
         const e = rnS(src, n, F_END);
@@ -121,7 +122,8 @@ export class CopLayoutIndentationWidth {
         this.onWhile(src, n, n);
       } else if (t === NT_CASE) {
         const k = a.nKid(n);
-        for (let i = 1; i < k - 1; i++) {
+        const last = k > 0 ? k - 1 : 0;
+        for (let i = 1; i < last; i++) {
           const w = a.kid(n, i);
           this.checkIndentation(src, rnS(src, w, F_KEYWORD), a.kid(w, -1));
         }
@@ -130,7 +132,8 @@ export class CopLayoutIndentationWidth {
         }
       } else if (t === NT_CASE_MATCH) {
         const k = a.nKid(n);
-        for (let i = 1; i < k - 1; i++) {
+        const last = k > 0 ? k - 1 : 0;
+        for (let i = 1; i < last; i++) {
           const w = a.kid(n, i);
           this.checkIndentation(src, rnS(src, w, F_KEYWORD), a.kid(w, -1));
         }
@@ -153,7 +156,9 @@ export class CopLayoutIndentationWidth {
   /** IfNode#unless?. */
   private unless(src: RbSource, n: i32): boolean {
     return (
-      !rnHas(src, n, F_QUESTION) && rnHas(src, n, F_KEYWORD) && rnE(src, n, F_KEYWORD) - rnS(src, n, F_KEYWORD) === 6
+      !rnHas(src, n, F_QUESTION) &&
+      rnHas(src, n, F_KEYWORD) &&
+      toI64(rnE(src, n, F_KEYWORD)) - toI64(rnS(src, n, F_KEYWORD)) === toI64(6)
     );
   }
 
@@ -163,7 +168,8 @@ export class CopLayoutIndentationWidth {
       return false;
     }
     const s = rnS(src, n, F_KEYWORD);
-    return rnE(src, n, F_KEYWORD) - s === 5 && src.src(s, s + 5) === "elsif";
+    const e = rnE(src, n, F_KEYWORD);
+    return toI64(e) - toI64(s) === toI64(5) && src.src(s, e) === "elsif";
   }
 
   private onIf(src: RbSource, n: i32, base: i32): void {
@@ -176,8 +182,9 @@ export class CopLayoutIndentationWidth {
     }
     // modifier_form?: an `if`/`unless` without `end`
     const s = rnS(src, n, F_KEYWORD);
-    const kwl = rnE(src, n, F_KEYWORD) - s;
-    const ifOrUnless = (kwl === 2 && src.src(s, s + 2) === "if") || kwl === 6;
+    const e = rnE(src, n, F_KEYWORD);
+    const kwl = toI64(e) - toI64(s);
+    const ifOrUnless = (kwl === toI64(2) && src.src(s, e) === "if") || kwl === toI64(6);
     if (ifOrUnless && !rnHas(src, n, F_END)) {
       return;
     }
@@ -310,8 +317,8 @@ export class CopLayoutIndentationWidth {
         return;
       }
     }
-    const indentation = lalEffCol(src, bs) - lalEffCol(src, base);
-    const delta = 2 - indentation;
+    const indentation = sub32(lalEffCol(src, bs), lalEffCol(src, base));
+    const delta = sub32(2, indentation);
     if (delta === 0) {
       return;
     }
@@ -323,8 +330,10 @@ export class CopLayoutIndentationWidth {
     const ns = a.exS(bn);
     const ne = a.exE(bn);
     let other = false;
-    for (let i = 0; i < toI32(this.rangeS.length); i++) {
-      if (lalWithin(ns, ne, this.rangeS[i], this.rangeE[i])) {
+    const rangeS = this.rangeS;
+    const rangeE = this.rangeE;
+    for (let i = 0; i < rangeS.length && i < rangeE.length; i++) {
+      if (lalWithin(ns, ne, rangeS[i], rangeE[i])) {
         other = true;
         break;
       }
@@ -333,7 +342,7 @@ export class CopLayoutIndentationWidth {
       this.rangeS.push(ns);
       this.rangeE.push(ne);
     }
-    const ind = ns - indentation;
+    const ind = sub32(ns, indentation);
     const rs = ind <= ns ? ind : ns;
     const re = ind <= ns ? ns : ind;
     const k = this.c.offense(rs, re);

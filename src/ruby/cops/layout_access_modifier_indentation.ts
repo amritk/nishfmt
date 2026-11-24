@@ -3,6 +3,7 @@
 // Ported from RuboCop 1.92.3 (MIT License, Copyright (c) 2012-24 Bozhidar
 // Batsov).
 
+import { sub32 } from "../../core/arr";
 import { F_END, F_KEYWORD, NT_BEGIN, NT_BLOCK, NT_CLASS, NT_MODULE, NT_SCLASS, NT_SEND } from "../ast";
 import { RbCop } from "../cop";
 import { rnHas, rnS } from "../node";
@@ -45,8 +46,8 @@ export class CopLayoutAccessModifierIndentation {
         if (lalFirstLine(src, n) === lalFirstLine(src, m)) {
           continue;
         }
-        const offset = lalEffCol(src, a.exS(m)) - lalEffCol(src, basePos);
-        const delta = 2 - offset;
+        const offset = sub32(lalEffCol(src, a.exS(m)), lalEffCol(src, basePos));
+        const delta = sub32(2, offset);
         if (delta === 0) {
           continue;
         }

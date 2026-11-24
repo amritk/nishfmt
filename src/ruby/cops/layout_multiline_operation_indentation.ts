@@ -3,6 +3,7 @@
 // Ported from RuboCop 1.92.3 (MIT License, Copyright (c) 2012-24 Bozhidar
 // Batsov).
 
+import { add32, sub32 } from "../../core/arr";
 import { F_DOT, F_SELECTOR, NT_AND, NT_OR, NT_SEND, V_NIL } from "../ast";
 import { RbCop } from "../cop";
 import { rnHas, rnMethod, rnS } from "../node";
@@ -81,8 +82,8 @@ export class CopLayoutMultilineOperationIndentation {
     }
     const col = this.shouldAlign(src, n, rs, re)
       ? src.column(src.a.exS(n))
-      : rmxIndentation(src, lhs) + rmxCorrectIndentation(src, n);
-    const delta = col - src.column(rs);
+      : add32(rmxIndentation(src, lhs), rmxCorrectIndentation(src, n));
+    const delta = sub32(col, src.column(rs));
     if (delta === 0) {
       return;
     }

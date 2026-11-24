@@ -4,6 +4,7 @@
 // Ported from RuboCop 1.92.3 (MIT License, Copyright (c) 2012-24 Bozhidar
 // Batsov).
 
+import { rbAtOff } from "../help";
 import {
   F_BEGIN,
   F_END,
@@ -189,7 +190,7 @@ export class CopStyleLambda {
         const as = a.exS(args);
         k.remove(a.exE(send), as);
         const ws = a.exE(args);
-        if (bs - ws > 1) {
+        if (toI64(bs) - toI64(ws) > toI64(1)) {
           k.replace(ws, bs, " ");
         }
       }
@@ -206,7 +207,7 @@ export class CopStyleLambda {
       }
       k.replace(a.exS(send), a.exE(send), "lambda");
       if (ssxLambdaReplaceDelimiters(src, n)) {
-        if (!ssxIsSpace(src.at(bs + 2))) {
+        if (!ssxIsSpace(rbAtOff(src, bs, 2))) {
           k.insertAfter(bs, be, " ");
         }
         k.replace(bs, be, "{");

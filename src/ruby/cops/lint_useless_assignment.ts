@@ -3,6 +3,8 @@
 // Ported from RuboCop 1.92.3 (MIT License, Copyright (c) 2012-24 Bozhidar
 // Batsov).
 
+import { add32, sub32 } from "../../core/arr";
+import { fault } from "../../core/fault";
 import {
   F_BEGIN,
   F_END,
@@ -217,7 +219,7 @@ const luaSubCapture = (s: string, name: string): string => {
   if (i < 0) {
     return s;
   }
-  return `${s.substring(0, i)}(?:${s.substring(i + toI32(pat.length), toI32(s.length))}`;
+  return `${s.substring(0, i)}(?:${s.substring(add32(i, toI32(pat.length)), toI32(s.length))}`;
 };
 
 export class CopLintUselessAssignment {
@@ -234,13 +236,26 @@ export class CopLintUselessAssignment {
     const a = src.a;
     const ign = new LalIgnored();
     for (const si of f.popped) {
+      if (si < 0 || si >= f.scopes.length) {
+        fault();
+        return;
+      }
       for (const vi of f.scopes[si].vars) {
+        if (vi < 0 || vi >= f.vars.length) {
+          fault();
+          return;
+        }
         const v = f.vars[vi];
         if (v.name.startsWith("_")) {
           continue;
         }
-        for (let j = toI32(v.asg.length) - 1; j >= 0; j--) {
-          const k = v.asg[j];
+        const asg = v.asg;
+        for (let j = toI32(asg.length) - 1; j >= 0 && j < asg.length; j--) {
+          const k = asg[j];
+          if (k < 0 || k >= f.asgns.length) {
+            fault();
+            return;
+          }
           const node = f.asgns[k].node;
           if (f.asgUsed(k) || ign.partOf(src, node) || luaInLoopCondition(src, f, node, v.name)) {
             continue;
@@ -288,8 +303,8 @@ export class CopLintUselessAssignment {
     }
     if (meta !== V_NIL && vfOpAsgnType(mt)) {
       const oe = ssxFE(src, p, F_OPERATOR);
-      k.remove(oe - 1, oe);
-      const value = a.kid(p, a.nKid(p) - 1);
+      k.remove(sub32(oe, 1), oe);
+      const value = a.kid(p, -1);
       if (luaOperandRequiresParens(src, value)) {
         k.wrap(a.exS(value), a.exE(value), "(", ")");
       }

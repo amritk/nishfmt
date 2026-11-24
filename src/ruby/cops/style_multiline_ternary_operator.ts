@@ -3,6 +3,7 @@
 // Ported from RuboCop 1.92.3 (MIT License, Copyright (c) 2012-24 Bozhidar
 // Batsov).
 
+import { atI32 } from "../../core/arr";
 import {
   NT_BREAK,
   NT_CSEND,
@@ -57,7 +58,7 @@ export class CopStyleMultilineTernaryOperator {
         if (cs.length > 0) {
           const parts: string[] = [];
           for (const c of cs) {
-            parts.push(`${src.src(src.commS[c], src.commE[c])}\n`);
+            parts.push(`${src.src(atI32(src.commS, c), atI32(src.commE, c))}\n`);
           }
           k.insertBefore(a.exS(p), a.exE(p), parts.join(""));
         }

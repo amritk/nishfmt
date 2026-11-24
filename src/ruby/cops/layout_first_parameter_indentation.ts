@@ -3,6 +3,7 @@
 // Ported from RuboCop 1.92.3 (MIT License, Copyright (c) 2012-24 Bozhidar
 // Batsov).
 
+import { atI32 } from "../../core/arr";
 import { F_BEGIN, NT_DEF, NT_DEFS, V_NIL } from "../ast";
 import { RbCop } from "../cop";
 import { rnHas, rnS } from "../node";
@@ -33,7 +34,7 @@ export class CopLayoutFirstParameterIndentation {
         continue;
       }
       const lp = rnS(src, args, F_BEGIN);
-      const first = params[0];
+      const first = atI32(params, 0);
       if (lalFirstLine(src, first) === src.line(lp)) {
         continue;
       }

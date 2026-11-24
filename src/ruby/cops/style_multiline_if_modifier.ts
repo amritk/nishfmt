@@ -3,6 +3,8 @@
 // Ported from RuboCop 1.92.3 (MIT License, Copyright (c) 2012-24 Bozhidar
 // Batsov).
 
+import { rbLine } from "../node";
+import { add32 } from "../../core/arr";
 import { F_BEGIN, F_END, F_HEREDOC_BODY, F_HEREDOC_END, NT_IF, V_NIL } from "../ast";
 import { RbCop } from "../cop";
 import { RbRewriter } from "../rewriter";
@@ -106,25 +108,29 @@ export class CopStyleMultilineIfModifier {
     for (const s of scnEachStr(src, body)) {
       if (scnHeredoc(src, s)) {
         if (!src.nodeSrc(s).startsWith("<<~")) {
-          for (let l = src.line(ssxFS(src, s, F_HEREDOC_BODY)); l <= src.line(ssxFS(src, s, F_HEREDOC_END)); l++) {
+          for (
+            let l = src.line(ssxFS(src, s, F_HEREDOC_BODY));
+            l <= src.line(ssxFS(src, s, F_HEREDOC_END)) && l < 2147483647;
+            l++
+          ) {
             verbatim.add(l);
           }
         }
       } else if (ssxHas(src, s, F_BEGIN) && ssxHas(src, s, F_END)) {
-        for (let l = src.line(a.exS(s)) + 1; l <= src.line(a.exE(s)); l++) {
+        for (let l = rbLine(src, a.exS(s)) + 1; l <= src.line(a.exE(s)) && l < 2147483647; l++) {
           verbatim.add(l);
         }
       }
     }
     const text = `${scnSpaces(col)}${src.nodeSrc(body)}`;
-    const ind = scnSpaces(col + 2);
+    const ind = scnSpaces(add32(col, 2));
     const out: string[] = [];
     let p = 0;
     let lineNo = src.line(a.exS(body));
     const k = toI32(text.length);
     while (p < k) {
       let q = text.indexOf("\n", p);
-      q = q < 0 ? k : q + 1;
+      q = q < 0 || q >= k ? k : q + 1;
       const line = text.substring(p, q);
       if (line === "\n" || verbatim.has(lineNo)) {
         out.push(line);
@@ -141,7 +147,7 @@ export class CopStyleMultilineIfModifier {
         }
       }
       p = q;
-      lineNo++;
+      lineNo = add32(lineNo, 1);
     }
     return out.join("");
   }

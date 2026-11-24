@@ -5,6 +5,7 @@
 // Ported from RuboCop 1.92.3 (MIT License, Copyright (c) 2012-24 Bozhidar
 // Batsov).
 
+import { add32 } from "../../core/arr";
 import { RbCop } from "../cop";
 import { RbSource } from "../source";
 import { rbLitLeadingCommentLines } from "./lit_help";
@@ -42,6 +43,6 @@ export class CopLintOrderedMagicComments {
     if (enc < 0 || other < 0 || enc < other) {
       return;
     }
-    this.c.offense(src.lineStart(enc + 1), src.lineEnd(enc + 1));
+    this.c.offense(src.lineStart(add32(enc, 1)), src.lineEnd(add32(enc, 1)));
   }
 }

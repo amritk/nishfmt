@@ -6,7 +6,7 @@
 import { NT_ERANGE, NT_INT, NT_IRANGE, NT_SEND, V_NIL } from "../ast";
 import { RbCop } from "../cop";
 import { RbSource } from "../source";
-import { ssxGlobalConst, ssxIntValue, ssxIs, ssxMeth } from "./style_syntax_help";
+import { ssxAdd64, ssxGlobalConst, ssxIntValue, ssxIs, ssxMeth, ssxSub64 } from "./style_syntax_help";
 
 /** (send {nil? (const {nil? cbase} :Random) (const {nil? cbase} :Kernel)} :rand {int (range int int)}) */
 const ssxRwoRand = (src: RbSource, n: i32): boolean => {
@@ -67,28 +67,28 @@ export class CopStyleRandomWithOffset {
       let left: i64 = 0;
       let right: i64 = 0;
       if (a.type(rn) === NT_INT) {
-        right = ssxIntValue(src, rn) - 1;
+        right = ssxSub64(ssxIntValue(src, rn), toI64(1));
       } else {
         left = ssxIntValue(src, a.kid(rn, 0));
         right = ssxIntValue(src, a.kid(rn, 1));
         if (a.type(rn) === NT_ERANGE) {
-          right = right - 1;
+          right = ssxSub64(right, toI64(1));
         }
       }
       let lo: i64 = 0;
       let hi: i64 = 0;
       if (intOpRand) {
         const off = ssxIntValue(src, recv);
-        lo = m === "+" ? off + left : off - right;
-        hi = m === "+" ? off + right : off - left;
+        lo = m === "+" ? ssxAdd64(off, left) : ssxSub64(off, right);
+        hi = m === "+" ? ssxAdd64(off, right) : ssxSub64(off, left);
       } else if (randOpInt) {
         const off = ssxIntValue(src, a.kid(n, 2));
-        lo = m === "+" ? left + off : left - off;
-        hi = m === "+" ? right + off : right - off;
+        lo = m === "+" ? ssxAdd64(left, off) : ssxSub64(left, off);
+        hi = m === "+" ? ssxAdd64(right, off) : ssxSub64(right, off);
       } else {
         const d: i64 = m === "pred" ? -1 : 1;
-        lo = left + d;
-        hi = right + d;
+        lo = ssxAdd64(left, d);
+        hi = ssxAdd64(right, d);
       }
       k.replace(a.exS(n), a.exE(n), `${prefix}(${lo}..${hi})`);
       this.c.commit(k);

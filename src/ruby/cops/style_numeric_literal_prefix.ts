@@ -3,6 +3,7 @@
 // Ported from RuboCop 1.92.3 (MIT License, Copyright (c) 2012-24 Bozhidar
 // Batsov).
 
+import { add32 } from "../../core/arr";
 import { NT_INT } from "../ast";
 import { RbCop } from "../cop";
 import { RbSource } from "../source";
@@ -66,7 +67,7 @@ export class CopStyleNumericLiteralPrefix {
       let s = a.exS(n);
       const c0 = src.at(s);
       if (c0 === 43 || c0 === 45) {
-        s++;
+        s = add32(s, 1);
       }
       const text = src.src(s, a.exE(n));
       k.replace(s, a.exE(n), to + text.substring(toI32(from.length), toI32(text.length)));

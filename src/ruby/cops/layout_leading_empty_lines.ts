@@ -3,6 +3,7 @@
 // Ported from RuboCop 1.92.3 (MIT License, Copyright (c) 2012-24 Bozhidar
 // Batsov).
 
+import { atI32 } from "../../core/arr";
 import { RbCop } from "../cop";
 import { RbSource } from "../source";
 
@@ -18,11 +19,11 @@ export class CopLayoutLeadingEmptyLines {
     if (src.tokS.length === 0) {
       return;
     }
-    const s = src.tokS[0];
+    const s = atI32(src.tokS, 0);
     if (src.line(s) <= 1) {
       return;
     }
-    const k = this.c.offense(s, src.tokE[0]);
+    const k = this.c.offense(s, atI32(src.tokE, 0));
     if (k !== null) {
       k.remove(0, s);
       this.c.commit(k);

@@ -5,6 +5,8 @@
 // Ported from RuboCop 1.92.3 (MIT License, Copyright (c) 2012-24 Bozhidar
 // Batsov).
 
+import { rbAtOff } from "../help";
+import { add32, atI32, sub32 } from "../../core/arr";
 import { F_OPERATOR, NT_HASH, NT_KWSPLAT, NT_PAIR } from "../ast";
 import { RbCop } from "../cop";
 import { rnE, rnPairs, rnS } from "../node";
@@ -24,12 +26,12 @@ const rbHashAlKeyDelta = (src: RbSource, first: i32, cur: i32): i32 => {
   if (rbHashAlSameLine(src, first, cur)) {
     return 0;
   }
-  return src.column(src.a.exS(rbHashAlKey(src, first))) - src.column(src.a.exS(rbHashAlKey(src, cur)));
+  return sub32(src.column(src.a.exS(rbHashAlKey(src, first))), src.column(src.a.exS(rbHashAlKey(src, cur))));
 };
 
 const rbHashAlRocket = (src: RbSource, pair: i32): boolean => {
   const s = rnS(src, pair, F_OPERATOR);
-  return rnE(src, pair, F_OPERATOR) === s + 2 && src.at(s) === 61 && src.at(s + 1) === 62;
+  return toI64(rnE(src, pair, F_OPERATOR)) === toI64(s) + toI64(2) && src.at(s) === 61 && rbAtOff(src, s, 1) === 62;
 };
 
 /**
@@ -46,14 +48,14 @@ const rbHashAlEnd = (src: RbSource, n: i32): i32 => {
 };
 
 /** PairNode#value_omission?: the source ends with a colon. */
-const rbHashAlOmission = (src: RbSource, pair: i32): boolean => src.at(rbHashAlEnd(src, pair) - 1) === 58;
+const rbHashAlOmission = (src: RbSource, pair: i32): boolean => rbAtOff(src, rbHashAlEnd(src, pair), -1) === 58;
 
 /** KeyAlignment#separator_delta. */
 const rbHashAlSepDelta = (src: RbSource, pair: i32): i32 => {
   if (!rbHashAlRocket(src, pair)) {
     return 0;
   }
-  return src.column(src.a.exE(src.a.kid(pair, 0))) + 1 - src.column(rnS(src, pair, F_OPERATOR));
+  return sub32(add32(src.column(src.a.exE(src.a.kid(pair, 0))), 1), src.column(rnS(src, pair, F_OPERATOR)));
 };
 
 /** KeyAlignment#value_delta. */
@@ -63,7 +65,7 @@ const rbHashAlValueDelta = (src: RbSource, pair: i32): i32 => {
   if (lalFirstLine(src, key) !== lalFirstLine(src, val) || rbHashAlOmission(src, pair)) {
     return 0;
   }
-  return src.column(rnE(src, pair, F_OPERATOR)) + 1 - src.column(src.a.exS(val));
+  return sub32(add32(src.column(rnE(src, pair, F_OPERATOR)), 1), src.column(src.a.exS(val)));
 };
 
 /** HashAlignment#adjust. */
@@ -71,7 +73,7 @@ const rbHashAlAdjust = (k: RbRewriter, delta: i32, s: i32, e: i32): void => {
   if (delta > 0) {
     k.insertBefore(s, e, lalSpaces(delta));
   } else if (delta < 0) {
-    k.remove(s + delta, s);
+    k.remove(add32(s, delta), s);
   }
 };
 
@@ -93,7 +95,7 @@ export class CopLayoutHashAlignment {
       if (pairs.length === 0 || lalSingleLine(src, n)) {
         continue;
       }
-      this.checkPairs(src, n, pairs[0]);
+      this.checkPairs(src, n, atI32(pairs, 0));
     }
   }
 
@@ -129,7 +131,7 @@ export class CopLayoutHashAlignment {
         if (kd === 0) {
           continue;
         }
-        if (kd < -src.column(a.exS(cur))) {
+        if (toI64(kd) < -toI64(src.column(a.exS(cur)))) {
           continue; // key_out_of_line?: unalignable
         }
         splatN.push(cur);
@@ -148,11 +150,11 @@ export class CopLayoutHashAlignment {
       if (kd === 0 && sd === 0 && vd === 0) {
         continue;
       }
-      if (kd < -src.column(a.exS(cur))) {
+      if (toI64(kd) < -toI64(src.column(a.exS(cur)))) {
         continue; // key_out_of_line?: unalignable (the only style, registered all the same)
       }
       // column_deltas[KeyAlignment][node] = delta (the last one for a node wins)
-      for (let j = 0; j < toI32(keyN.length); j++) {
+      for (let j = 0; j < keyN.length && j < keyK.length && j < keyS.length && j < keyV.length; j++) {
         if (keyN[j] === cur) {
           keyK[j] = kd;
           keyS[j] = sd;
@@ -165,16 +167,20 @@ export class CopLayoutHashAlignment {
       keyV.push(vd);
     }
     // add_offenses: keyword splats first, then the key alignment offenses.
-    for (let j = 0; j < toI32(splatN.length); j++) {
+    for (let j = 0; j < splatN.length && j < splatK.length; j++) {
       const cur = splatN[j];
+      const sk = splatK[j];
       const k = this.c.offense(a.exS(cur), rbHashAlEnd(src, cur));
       if (k !== null) {
-        rbHashAlAdjust(k, splatK[j], a.exS(cur), rbHashAlEnd(src, cur));
+        rbHashAlAdjust(k, sk, a.exS(cur), rbHashAlEnd(src, cur));
         this.c.commit(k);
       }
     }
-    for (let j = 0; j < toI32(keyN.length); j++) {
+    for (let j = 0; j < keyN.length && j < keyK.length && j < keyS.length && j < keyV.length; j++) {
       const cur = keyN[j];
+      const kk = keyK[j];
+      const ks = keyS[j];
+      const kv = keyV[j];
       const k = this.c.offense(a.exS(cur), rbHashAlEnd(src, cur));
       if (k === null) {
         continue;
@@ -182,11 +188,11 @@ export class CopLayoutHashAlignment {
       if (!rbHashAlOmission(src, cur)) {
         const key = a.kid(cur, 0);
         const val = a.kid(cur, 1);
-        rbHashAlAdjust(k, keyK[j], a.exS(key), a.exE(key));
-        rbHashAlAdjust(k, keyS[j], rnS(src, cur, F_OPERATOR), rnE(src, cur, F_OPERATOR));
-        rbHashAlAdjust(k, keyV[j], a.exS(val), a.exE(val));
+        rbHashAlAdjust(k, kk, a.exS(key), a.exE(key));
+        rbHashAlAdjust(k, ks, rnS(src, cur, F_OPERATOR), rnE(src, cur, F_OPERATOR));
+        rbHashAlAdjust(k, kv, a.exS(val), a.exE(val));
       } else {
-        rbHashAlAdjust(k, keyK[j], a.exS(cur), rbHashAlEnd(src, cur));
+        rbHashAlAdjust(k, kk, a.exS(cur), rbHashAlEnd(src, cur));
       }
       this.c.commit(k);
     }

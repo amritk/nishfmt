@@ -3,6 +3,7 @@
 // Ported from RuboCop 1.92.3 (MIT License, Copyright (c) 2012-24 Bozhidar
 // Batsov).
 
+import { atI32 } from "../../core/arr";
 import { F_ELSE, F_END, F_KEYWORD, NT_IF, V_NIL } from "../ast";
 import { RbCop } from "../cop";
 import { RbRewriter } from "../rewriter";
@@ -110,15 +111,16 @@ export class CopStyleIfInsideElse {
     }
     const rs: i32[] = [ssxFS(src, n, F_KEYWORD), a.exE(a.kid(n, 0))];
     const er = this.findEndRange(src, n);
-    rs.push(er[0]);
-    rs.push(er[1]);
+    rs.push(atI32(er, 0));
+    rs.push(atI32(er, 1));
     const ib = scnIfBranch(src, n);
     if (ib !== V_NIL) {
       const r = scnRangeWithComments(src, this.as, ib);
-      rs.push(r[0]);
-      rs.push(r[1]);
+      rs.push(atI32(r, 0));
+      rs.push(atI32(r, 1));
     }
-    for (let i = 0; i < toI32(rs.length); i += 2) {
+    // rs holds begin/end pairs.
+    for (let i = 0; i < rs.length - 1; i += 2) {
       if (!lalBeginsItsLine(src, rs[i]) || !this.endsItsLine(src, rs[i + 1])) {
         return true;
       }
@@ -165,13 +167,15 @@ export class CopStyleIfInsideElse {
     const ib = scnIfBranch(src, n);
     if (ib !== V_NIL) {
       const r = scnRangeWithComments(src, this.as, ib);
-      k.replace(cs, ce, src.src(r[0], r[1]));
-      k.remove(scnWholeS(src, r[0]), scnWholeE(src, r[1], true));
+      const r0 = atI32(r, 0);
+      const r1 = atI32(r, 1);
+      k.replace(cs, ce, src.src(r0, r1));
+      k.remove(scnWholeS(src, r0), scnWholeE(src, r1, true));
     } else {
       k.remove(scnWholeS(src, cs), scnWholeE(src, ce, true));
     }
     k.remove(a.exS(cond), a.exE(cond));
     const er = this.findEndRange(src, n);
-    k.remove(scnWholeS(src, er[0]), scnWholeE(src, er[1], true));
+    k.remove(scnWholeS(src, atI32(er, 0)), scnWholeE(src, atI32(er, 1), true));
   }
 }

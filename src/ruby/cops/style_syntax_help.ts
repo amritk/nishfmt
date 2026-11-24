@@ -5,6 +5,10 @@
 // Ported from RuboCop 1.92.3 and rubocop-ast 1.52.0 (MIT License, Copyright
 // (c) 2012-24 Bozhidar Batsov).
 
+import { rbByteAt } from "../util";
+import { rbLineEnd, rbNKid } from "../node";
+import { fault } from "../../core/fault";
+import { add32, atI32 } from "../../core/arr";
 import {
   F_BEGIN,
   F_DOT,
@@ -104,7 +108,14 @@ export const ssxArgs = (src: RbSource, n: i32): i32[] => {
 };
 
 /** The number of arguments of a send/csend. */
-export const ssxArgc = (src: RbSource, n: i32): i32 => src.a.nKid(n) - 2;
+export const ssxArgc = (src: RbSource, n: i32): i32 => {
+  const k = src.a.nKid(n);
+  if (k >= 0 && k <= 1073741823) {
+    return k - 2;
+  }
+  fault();
+  return -2;
+};
 
 /** loc_is?(field, text). */
 export const ssxLocIs = (src: RbSource, n: i32, f: i32, text: string): boolean => {
@@ -257,7 +268,11 @@ export const ssxIsWord = (c: i32): boolean =>
 
 /** Whether every code point of a string satisfies \w (s is UTF-8 bytes; non-ASCII bytes fail). */
 export const ssxAllWord = (s: string, from: i32, to: i32): boolean => {
-  for (let i = from; i < to; i++) {
+  if (from < to && (from < 0 || to > s.length)) {
+    fault();
+    return false;
+  }
+  for (let i = from; i >= 0 && i < to && i < s.length; i++) {
     if (!ssxIsWord(s.charCodeAt(i))) {
       return false;
     }
@@ -290,7 +305,7 @@ export const ssxWholeLinesS = (src: RbSource, s: i32): i32 => src.lineStart(src.
 
 /** range_by_whole_lines: the end of the line holding e (past its newline when asked), within the buffer. */
 export const ssxWholeLinesE = (src: RbSource, e: i32, finalNewline: boolean): i32 => {
-  const le = src.lineEnd(src.line(e)) + (finalNewline ? 1 : 0);
+  const le = finalNewline ? rbLineEnd(src, src.line(e)) + 1 : src.lineEnd(src.line(e));
   return le > src.n ? src.n : le;
 };
 
@@ -300,7 +315,7 @@ export const ssxCharLen = (s: string): i32 => {
   for (let i = 0; i < toI32(s.length); i++) {
     const c = s.charCodeAt(i);
     if (c < 0x80 || c >= 0xc0) {
-      k++;
+      k = add32(k, 1);
     }
   }
   return k;
@@ -312,7 +327,7 @@ export const ssxIdentLike = (s: string, suffixes: string): boolean => {
   if (k === 0) {
     return false;
   }
-  const c0 = s.charCodeAt(0);
+  const c0 = rbByteAt(s, 0);
   if (!((c0 >= 65 && c0 <= 90) || (c0 >= 97 && c0 <= 122) || c0 === 95)) {
     return false;
   }
@@ -393,8 +408,11 @@ export const ssxRescueModifier = (src: RbSource, n: i32): boolean => {
   }
   const s = ssxFS(src, n, F_KEYWORD);
   const e = ssxFE(src, n, F_KEYWORD);
-  for (let i = 0; i < toI32(src.tokT.length); i++) {
-    if (src.tokT[i] === TK_kRESCUE_MOD && src.tokS[i] === s && src.tokE[i] === e) {
+  const tokT = src.tokT;
+  const tokS = src.tokS;
+  const tokE = src.tokE;
+  for (let i = 0; i < tokT.length && i < tokS.length && i < tokE.length; i++) {
+    if (tokT[i] === TK_kRESCUE_MOD && tokS[i] === s && tokE[i] === e) {
       return true;
     }
   }
@@ -405,16 +423,20 @@ export const ssxRescueModifier = (src: RbSource, n: i32): boolean => {
 export const ssxDescendants = (src: RbSource, n: i32): i32[] => {
   const out: i32[] = [];
   const stack: i32[] = [];
-  for (let i = src.a.nKid(n) - 1; i >= 0; i--) {
+  for (let i = rbNKid(src, n) - 1; i >= 0; i--) {
     if (src.a.isNode(src.a.kid(n, i))) {
       stack.push(src.a.kid(n, i));
     }
   }
   while (stack.length > 0) {
-    const c = stack[stack.length - 1];
+    const sl = toI32(stack.length);
+    if (sl < 1) {
+      break;
+    }
+    const c = stack[sl - 1];
     stack.pop();
     out.push(c);
-    for (let i = src.a.nKid(c) - 1; i >= 0; i--) {
+    for (let i = rbNKid(src, c) - 1; i >= 0; i--) {
       if (src.a.isNode(src.a.kid(c, i))) {
         stack.push(src.a.kid(c, i));
       }
@@ -433,10 +455,43 @@ export const ssxIntValue = (src: RbSource, n: i32): i64 => {
     if (c === 45) {
       neg = true;
     } else if (c >= 48 && c <= 57) {
-      v = v * 10 + toI64(c - 48);
+      v = ssxAdd64(ssxMul10(v), toI64(c - 48));
     }
   }
-  return neg ? -v : v;
+  return neg ? ssxSub64(toI64(0), v) : v;
+};
+
+// Checked i64 arithmetic: each faults where the plain operation overflowed
+// (and panicked), computing the two's-complement result in u64 first.
+
+/** a + b. */
+export const ssxAdd64 = (a: i64, b: i64): i64 => {
+  const r = toI64(toU64(a) + toU64(b));
+  if (a >= toI64(0) === b >= toI64(0) && r >= toI64(0) !== a >= toI64(0)) {
+    fault();
+    return toI64(0);
+  }
+  return r;
+};
+
+/** a - b. */
+export const ssxSub64 = (a: i64, b: i64): i64 => {
+  const r = toI64(toU64(a) - toU64(b));
+  if (a >= toI64(0) !== b >= toI64(0) && r >= toI64(0) !== a >= toI64(0)) {
+    fault();
+    return toI64(0);
+  }
+  return r;
+};
+
+/** v * 10 for v >= 0 (an integer literal's digits so far). */
+const ssxMul10 = (v: i64): i64 => {
+  const m = toI64(toU64(v) * toU64(10));
+  if (v < toI64(0) || m < toI64(0) || m / toI64(10) !== v) {
+    fault();
+    return toI64(0);
+  }
+  return m;
 };
 
 // ---- Macros ----------------------------------------------------------------------------
@@ -497,7 +552,7 @@ export const ssxAttributeAccessor = (src: RbSource, n: i32): boolean => {
 /** processed_source[i] (0-based, negative from the end): a source line's text. */
 export const ssxLineAt = (src: RbSource, i0: i32): string => {
   const k = src.lineCount();
-  const i = i0 < 0 ? i0 + k : i0;
+  const i = i0 < 0 ? add32(i0, k) : i0;
   if (i < 0 || i >= k) {
     return "";
   }
@@ -568,7 +623,7 @@ export const ssxTrailingCommaCheck = (cop: RbCop, src: RbSource, items: i32[], b
   }
   // inside_comment?
   const ci = ssxCommentAtLine(src, src.line(beginPos));
-  if (ci >= 0 && src.commS[ci] < p) {
+  if (ci >= 0 && atI32(src.commS, ci) < p) {
     return;
   }
   const k = cop.offense(p, p + 1);

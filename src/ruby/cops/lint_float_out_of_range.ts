@@ -4,6 +4,8 @@
 // Ported from RuboCop 1.92.3 (MIT License, Copyright (c) 2012-24 Bozhidar
 // Batsov).
 
+import { fault } from "../../core/fault";
+import { add32 } from "../../core/arr";
 import { NT_FLOAT } from "../ast";
 import { RbCop } from "../cop";
 import { RbSource } from "../source";
@@ -33,7 +35,7 @@ export const lforFloatClass = (s: string): i32 => {
     i++;
   }
   let hex = false;
-  if (i + 1 < k && s.charCodeAt(i) === 48) {
+  if (i < k - 1 && s.charCodeAt(i) === 48) {
     const c = s.charCodeAt(i + 1) | 32;
     if (c === 120 || c === 98 || c === 111 || c === 100) {
       hex = c === 120;
@@ -63,12 +65,12 @@ export const lforFloatClass = (s: string): i32 => {
     }
     if (dig.length === 0 && c === 48) {
       if (seenDot) {
-        leadZerosAfterDot++;
+        leadZerosAfterDot = add32(leadZerosAfterDot, 1);
       }
     } else {
       dig.push(String.fromCharCode(c));
       if (!seenDot) {
-        intDigits++;
+        intDigits = add32(intDigits, 1);
       }
     }
     i++;
@@ -87,20 +89,29 @@ export const lforFloatClass = (s: string): i32 => {
       i++;
     }
     let e = 0;
-    while (i < k && ((s.charCodeAt(i) >= 48 && s.charCodeAt(i) <= 57) || s.charCodeAt(i) === 95)) {
-      if (s.charCodeAt(i) !== 95 && e < 100000) {
-        e = e * 10 + (s.charCodeAt(i) - 48);
+    while (i < k) {
+      // A byte of the literal.
+      const c = s.charCodeAt(i) & 0xff;
+      if (!((c >= 48 && c <= 57) || c === 95)) {
+        break;
+      }
+      if (c !== 95 && e >= 0 && e < 100000) {
+        e = e * 10 + (c - 48);
       }
       i++;
+    }
+    if (e < 0 || e > 1000000) {
+      fault();
+      return 1;
     }
     exp = neg ? -e : e;
   }
   const d = dig.join("");
-  const big = (intDigits > 0 ? intDigits : -leadZerosAfterDot) + exp;
-  if (big > 309 || (big === 309 && lforDigitsAtLeast(d, "17976931348623158079"))) {
+  const big = toI64(intDigits > 0 ? intDigits : 0) - toI64(intDigits > 0 ? 0 : leadZerosAfterDot) + toI64(exp);
+  if (big > toI64(309) || (big === toI64(309) && lforDigitsAtLeast(d, "17976931348623158079"))) {
     return 2;
   }
-  if (big < -323 || (big === -323 && !lforDigitsAtLeast(d, "24703282292062327209"))) {
+  if (big < toI64(-323) || (big === toI64(-323) && !lforDigitsAtLeast(d, "24703282292062327209"))) {
     return 0;
   }
   return 1;

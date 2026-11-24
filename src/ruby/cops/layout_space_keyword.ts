@@ -4,6 +4,7 @@
 // Ported from RuboCop 1.92.3 (MIT License, Copyright (c) 2012-24 Bozhidar
 // Batsov).
 
+import { sub32 } from "../../core/arr";
 import {
   F_BEGIN,
   F_ELSE,
@@ -46,7 +47,7 @@ import {
   V_NIL,
 } from "../ast";
 import { RbCop } from "../cop";
-import { rbSpaceBegin } from "../help";
+import { rbAtOff, rbSpaceBegin } from "../help";
 import { rnE, rnFieldSrc, rnHas, rnMethod, rnS } from "../node";
 import { RbSource } from "../source";
 import { lspIsWs } from "./layout_space_help";
@@ -181,7 +182,7 @@ export class CopLayoutSpaceAroundKeyword {
 
   /** /[\s(|{\[;,*=]/ does not match the character before. */
   private spaceBeforeMissing(src: RbSource, s: i32): boolean {
-    const pos = s - 1;
+    const pos = sub32(s, 1);
     if (pos < 0) {
       return false;
     }
@@ -213,10 +214,10 @@ export class CopLayoutSpaceAroundKeyword {
     ) {
       return false;
     }
-    if (c === 38 && src.at(e + 1) === 46) {
+    if (c === 38 && rbAtOff(src, e, 1) === 46) {
       return false;
     }
-    if (kw === "super" && c === 58 && src.at(e + 1) === 58) {
+    if (kw === "super" && c === 58 && rbAtOff(src, e, 1) === 58) {
       return false;
     }
     if (lspIsWs(c)) {
@@ -313,7 +314,7 @@ export class CopLayoutSpaceAroundBlockParameters {
       }
     }
     const s = a.exS(arg);
-    this.checkNoSpace(src, rbSpaceBegin(src, s, 1, true, false, false), s - 1);
+    this.checkNoSpace(src, rbSpaceBegin(src, s, 1, true, false, false), sub32(s, 1));
   }
 
   private checkNoSpace(src: RbSource, s: i32, e: i32): void {

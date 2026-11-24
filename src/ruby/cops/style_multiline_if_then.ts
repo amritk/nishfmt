@@ -34,7 +34,8 @@ export class CopStyleMultilineIfThen {
       const e = a.exE(n);
       const cmp1 = bs > s ? 1 : bs === s ? 0 : -1;
       const cmp2 = e > be ? 1 : e === be ? 0 : -1;
-      if (cmp1 + cmp2 < 1 || cmp1 < 0 || cmp2 < 0) {
+      // Each is -1, 0 or 1.
+      if (cmp1 < 0 || cmp2 < 0 || (cmp1 === 0 && cmp2 === 0)) {
         continue;
       }
       const ib = scnIfBranch(src, n);

@@ -3,6 +3,8 @@
 // Ported from RuboCop 1.92.3 (MIT License, Copyright (c) 2012-24 Bozhidar
 // Batsov).
 
+import { faulted } from "../../core/fault";
+import { add32 } from "../../core/arr";
 import { F_BEGIN, F_END, NT_DSTR, NT_STR } from "../ast";
 import { RbCop } from "../cop";
 import { rnE, rnHas, rnS } from "../node";
@@ -14,17 +16,22 @@ export const rbRpqInterpolation = (s: string): boolean => {
   const n = toI32(s.length);
   let i = s.indexOf("#{");
   while (i >= 0) {
-    for (let j = i + 2; j < n; j++) {
+    const i2 = add32(i, 2);
+    for (let j = i2; j >= 0 && j < n; j++) {
       const c = s.charCodeAt(j);
       if (c === 10) {
         break;
       }
-      if (c === 125 && j > i + 2) {
+      if (c === 125 && j > i2) {
         return true;
       }
     }
-    const nx = s.substring(i + 1, n).indexOf("#{");
-    i = nx < 0 ? -1 : i + 1 + nx;
+    const i1 = add32(i, 1);
+    const nx = s.substring(i1, n).indexOf("#{");
+    i = nx < 0 ? -1 : add32(i1, nx);
+    if (faulted()) {
+      return false;
+    }
   }
   return false;
 };
@@ -58,7 +65,7 @@ const rbRpqQuoteAfterBackslashes = (s: string, odd: boolean): boolean => {
     if (c === 34 && (run % 2 === 1) === odd) {
       return true;
     }
-    run = c === 92 ? run + 1 : 0;
+    run = c === 92 ? add32(run, 1) : 0;
   }
   return false;
 };

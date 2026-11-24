@@ -10,6 +10,10 @@
 // Ported from RuboCop 1.92.3 (MIT License, Copyright (c) 2012-24 Bozhidar
 // Batsov).
 
+import { faulted } from "../../core/fault";
+import { stableSort } from "../../core/sort";
+import { rbAtOff } from "../help";
+import { add32 } from "../../core/arr";
 import {
   F_KEYWORD,
   F_OPERATOR,
@@ -67,8 +71,11 @@ const laoDiagPos = (src: RbSource, n: i32): i32 => {
     const c = src.at(i);
     if (c === 32 || c === 9) {
       i++;
-    } else if (c === 92 && src.at(i + 1) === 10) {
-      i += 2;
+    } else if (c === 92 && rbAtOff(src, i, 1) === 10) {
+      i = add32(i, 2);
+      if (faulted()) {
+        return -1;
+      }
     } else {
       return -1;
     }
@@ -78,13 +85,13 @@ const laoDiagPos = (src: RbSource, n: i32): i32 => {
   }
   const c = src.at(p);
   // Prism does not warn about `&:sym` (a symbol block argument).
-  if (c === 38 && src.at(p + 1) === 58) {
+  if (c === 38 && rbAtOff(src, p, 1) === 58) {
     return -1;
   }
   if (c === 42 || c === 38 || c === 43) {
     return p;
   }
-  if (c === 45 && src.at(p + 1) !== 62) {
+  if (c === 45 && rbAtOff(src, p, 1) !== 62) {
     return p;
   }
   return -1;
@@ -108,27 +115,28 @@ export class CopLintAmbiguousOperator {
       }
     }
     // Diagnostics come in source order.
-    pos.sort((x: i32, y: i32): i32 => x - y);
+    stableSort(pos, (x: i32, y: i32): i32 => (x < y ? -1 : x > y ? 1 : 0));
     for (let j = 0; j < toI32(pos.length); j++) {
       const p = pos[j];
       if (j > 0 && pos[j - 1] === p) {
         continue;
       }
-      const plen = src.at(p) === 42 && src.at(p + 1) === 42 ? 2 : 1;
-      const prefix = src.src(p, p + plen);
+      const pe = src.at(p) === 42 && rbAtOff(src, p, 1) === 42 ? add32(p, 2) : add32(p, 1);
+      const prefix = src.src(p, pe);
       const node = this.offenseNode(src, p, prefix);
       if (node === V_NIL) {
         continue;
       }
-      const k = this.c.offense(p, p + plen);
+      const k = this.c.offense(p, pe);
       if (k === null) {
         continue;
       }
       // add_parentheses
       const t = a.type(node);
       const se = t === NT_SUPER || t === NT_YIELD ? ssxFE(src, node, F_KEYWORD) : ssxFE(src, node, F_SELECTOR);
-      k.remove(se, se + 1);
-      k.insertBefore(se, se + 1, "(");
+      const se1 = add32(se, 1);
+      k.remove(se, se1);
+      k.insertBefore(se, se1, "(");
       k.insertAfter(a.exE(node), a.exE(node), ")");
       this.c.commit(k);
     }

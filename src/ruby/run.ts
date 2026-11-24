@@ -5,6 +5,7 @@
 // Ported from RuboCop 1.92.3 (MIT License, Copyright (c) 2012-24 Bozhidar
 // Batsov).
 
+import { fault } from "../core/fault";
 import { Out } from "../core/out";
 import { rbSplitComma } from "./ast";
 import { RbSource } from "./source";
@@ -27,7 +28,7 @@ export const isRubyName = (name: string): boolean => {
   }
   let base = name;
   let i = name.indexOf("/");
-  while (i >= 0) {
+  while (i >= 0 && i < name.length) {
     base = name.substring(i + 1, toI32(name.length));
     i = name.indexOf("/", i + 1);
   }
@@ -46,7 +47,7 @@ export const isRubyName = (name: string): boolean => {
 const rbDecode = (src: u8[], n: i32): i32[] | null => {
   const pts: i32[] = [];
   let i = 0;
-  while (i < n) {
+  while (i >= 0 && i < n && i < src.length) {
     const c = toI32(src[i]);
     if (c < 0x80) {
       pts.push(c);
@@ -67,18 +68,20 @@ const rbDecode = (src: u8[], n: i32): i32[] | null => {
     } else {
       return null;
     }
+    let p = i + 1;
     for (let j = 1; j <= k; j++) {
-      if (i + j >= n) {
+      if (p < 0 || p >= n || p >= src.length) {
         return null;
       }
-      const d = toI32(src[i + j]);
+      const d = toI32(src[p]);
       if ((d & 0xc0) !== 0x80) {
         return null;
       }
       v = (v << 6) | (d & 0x3f);
+      p++;
     }
     pts.push(v);
-    i += k + 1;
+    i = p;
   }
   return pts;
 };
@@ -86,9 +89,9 @@ const rbDecode = (src: u8[], n: i32): i32[] | null => {
 /** A string's code points (the corrected sources are valid UTF-8). */
 const rbEncode = (s: string): i32[] => {
   const n = toI32(s.length);
-  const b = new Array<u8>(n);
+  const b: u8[] = [];
   for (let i = 0; i < n; i++) {
-    b[i] = toU8(s.charCodeAt(i));
+    b.push(toU8(s.charCodeAt(i)));
   }
   const r = rbDecode(b, n);
   return r === null ? [] : r;
@@ -114,9 +117,11 @@ export class RubyEngine {
 const rbDumpOffenses = (e: RubyEngine, path: string, src: RbSource): void => {
   const out: string[] = [];
   for (const c of e.team.cops) {
-    for (let i = 0; i < toI32(c.offS.length); i++) {
-      const s = c.offS[i];
-      const t = c.offE[i];
+    const offS = c.offS;
+    const offE = c.offE;
+    for (let i = 0; i < offS.length && i < offE.length; i++) {
+      const s = offS[i];
+      const t = offE[i];
       out.push(`${path}:${src.line(s)}:${src.column(s)}:${src.line(t)}:${src.column(t)} ${c.name}`);
     }
   }
@@ -177,7 +182,11 @@ const rbInspectionLoop = (e: RubyEngine, path: string, pts0: i32[]): RbLoopResul
 
 /** Formats one Ruby file into `out`; false leaves it alone (does not parse, or not handled). */
 export const formatRuby = (e: RubyEngine, path: string, src: u8[], n: i32, out: Out): boolean => {
-  for (let i = 0; i < n; i++) {
+  if (n < 0 || n > src.length) {
+    fault();
+    return false;
+  }
+  for (let i = 0; i < n && i < src.length; i++) {
     if (toI32(src[i]) === 13) {
       return false;
     }

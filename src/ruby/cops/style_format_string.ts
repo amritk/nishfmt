@@ -125,8 +125,10 @@ export class CopStyleFormatString {
         k0 === 3 &&
         !sbhFsAutocorrectable(src, a.kid(n, 2));
       let within = false;
-      for (let i = 0; i < toI32(this.corrS.length); i++) {
-        if (this.corrS[i] <= a.exS(n) && a.exE(n) <= this.corrE[i]) {
+      const corrS = this.corrS;
+      const corrE = this.corrE;
+      for (let i = 0; i < corrS.length && i < corrE.length; i++) {
+        if (corrS[i] <= a.exS(n) && a.exE(n) <= corrE[i]) {
           within = true;
         }
       }

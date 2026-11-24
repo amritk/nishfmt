@@ -38,10 +38,11 @@ export class CopLintDuplicateHashKey {
         }
       }
       // consecutive_duplicates: every key equal to an earlier one.
-      for (let i = 1; i < toI32(keys.length); i++) {
-        for (let j = 0; j < i; j++) {
-          if (ssxAstEqual(a, keys[j], a, keys[i])) {
-            this.c.offense(a.exS(keys[i]), a.exE(keys[i]));
+      for (let i = 1; i < keys.length; i++) {
+        const ki = keys[i];
+        for (let j = 0; j < i && j < keys.length; j++) {
+          if (ssxAstEqual(a, keys[j], a, ki)) {
+            this.c.offense(a.exS(ki), a.exE(ki));
             break;
           }
         }

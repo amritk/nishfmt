@@ -4,6 +4,7 @@
 // Ported from RuboCop 1.92.3 (MIT License, Copyright (c) 2012-24 Bozhidar
 // Batsov).
 
+import { rbNKid } from "../node";
 import {
   F_BEGIN,
   F_END,
@@ -19,7 +20,7 @@ import {
   V_NIL,
 } from "../ast";
 import { RbCop } from "../cop";
-import { rbFinalPos } from "../help";
+import { rbAtOff, rbFinalPos } from "../help";
 import { RbRewriter } from "../rewriter";
 import { RbSource } from "../source";
 import { scnBasicConditional, scnEachStr, scnHeredoc, scnModifier, scnTernary } from "./style_cond_help";
@@ -100,7 +101,7 @@ export const spacCorrectParens = (src: RbSource, n: i32, k: RbRewriter): void =>
   }
   if (p === es) {
     let q = ee;
-    while (ssxIsSpace(src.at(q))) {
+    while (q < src.n && ssxIsSpace(src.at(q))) {
       q++;
     }
     if (src.at(q) === 44) {
@@ -148,7 +149,9 @@ export class CopStyleParenthesesAroundCondition {
         continue;
       }
       // parens_allowed?
-      if (spacLower(src.at(a.exS(cond) - 1 < 0 ? src.n - 1 : a.exS(cond) - 1)) || spacLower(src.at(a.exE(cond)))) {
+      // Before the condition; Ruby's index -1 is the last character.
+      const cs = a.exS(cond);
+      if (spacLower(cs <= 0 ? rbAtOff(src, src.n, -1) : src.at(cs - 1)) || spacLower(src.at(a.exE(cond)))) {
         continue;
       }
       if (stpSafeAssignment(src, cond)) {
@@ -203,7 +206,7 @@ export class CopStyleParenthesesAroundCondition {
     const t = src.a.type(n);
     let nargs = 0;
     if (ssxIsCall(src, n)) {
-      nargs = src.a.nKid(n) - 2;
+      nargs = rbNKid(src, n) - 2;
     } else if (t === NT_SUPER || t === NT_YIELD) {
       nargs = src.a.nKid(n);
     } else {

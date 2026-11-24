@@ -4,6 +4,7 @@
 // Ported from RuboCop 1.92.3 (MIT License, Copyright (c) 2012-24 Bozhidar
 // Batsov).
 
+import { add32, atI32 } from "../../core/arr";
 import { NT_ALIAS, NT_IF, NT_SEND, V_NIL } from "../ast";
 import { RbCop } from "../cop";
 import { RbSource } from "../source";
@@ -38,7 +39,7 @@ export class CopLayoutEmptyLinesAroundAttributeAccessor {
       if (this.nextLineEmpty(L, last)) {
         continue;
       }
-      if (this.enableDirective(src, last + 1) && this.nextLineEmpty(L, last + 1)) {
+      if (this.enableDirective(src, add32(last, 1)) && this.nextLineEmpty(L, add32(last, 1))) {
         continue;
       }
       // next_line_node (a root node has no parent: RuboCop raises).
@@ -80,10 +81,10 @@ export class CopLayoutEmptyLinesAroundAttributeAccessor {
       }
       let rs = L.start(src.line(a.exS(n)));
       let re = L.end(last);
-      if (this.enableDirective(src, last + 1)) {
-        const cm = rbLayCommentAtLine(src, last + 1);
-        rs = src.commS[cm];
-        re = src.commE[cm];
+      if (this.enableDirective(src, add32(last, 1))) {
+        const cm = rbLayCommentAtLine(src, add32(last, 1));
+        rs = atI32(src.commS, cm);
+        re = atI32(src.commE, cm);
       }
       k.insertAfter(rs, re, "\n");
       this.c.commit(k);
@@ -97,6 +98,6 @@ export class CopLayoutEmptyLinesAroundAttributeAccessor {
 
   private enableDirective(src: RbSource, line: i32): boolean {
     const cm = rbLayCommentAtLine(src, line);
-    return cm >= 0 && rbLayDirectiveEnabled(src.src(src.commS[cm], src.commE[cm]));
+    return cm >= 0 && rbLayDirectiveEnabled(src.src(atI32(src.commS, cm), atI32(src.commE, cm)));
   }
 }

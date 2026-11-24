@@ -4,6 +4,7 @@
 // Ported from RuboCop 1.92.3 (MIT License, Copyright (c) 2012-24 Bozhidar
 // Batsov).
 
+import { add32 } from "../../core/arr";
 import {
   F_COLON,
   F_ELSE,
@@ -150,7 +151,7 @@ export const srdFindEndLine = (src: RbSource, n: i32): i32 => {
         idx = i;
       }
     }
-    const sib = a.kid(p, idx + 1);
+    const sib = a.kid(p, add32(idx, 1));
     if (idx >= 0 && sib !== V_NIL && a.isNode(sib) && a.exS(sib) >= 0) {
       return src.line(a.exS(sib));
     }

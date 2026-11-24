@@ -6,6 +6,7 @@
 // Ported from RuboCop 1.92.3 (MIT License, Copyright (c) 2012-24 Bozhidar
 // Batsov).
 
+import { add32, atI32, sub32 } from "../../core/arr";
 import {
   F_BEGIN,
   F_DOT,
@@ -30,7 +31,7 @@ import {
   V_NIL,
 } from "../ast";
 import { RbCop } from "../cop";
-import { rbSpaceBegin } from "../help";
+import { rbAtOff, rbSpaceBegin } from "../help";
 import { rnE, rnFieldSrc, rnHas, rnMethod, rnS } from "../node";
 import { RbSource } from "../source";
 import { LspToks, lspIsBlank, lspIsWs, lspSpaceAfter } from "./layout_space_help";
@@ -101,15 +102,15 @@ export class CopLayoutSpaceAroundEqualsInParameterDefault {
       }
       const from = tk.withinFrom(a.exS(n));
       const to = tk.withinTo(a.exE(n));
-      if (to - from + 1 < 3) {
+      if (toI64(to) - toI64(from) + toI64(1) < toI64(3)) {
         continue;
       }
-      const argE = tk.e[from];
-      if (lspSpaceAfter(src, argE) && lspSpaceAfter(src, tk.e[from + 1])) {
+      const argE = atI32(tk.e, from);
+      if (lspSpaceAfter(src, argE) && lspSpaceAfter(src, atI32(tk.e, add32(from, 1)))) {
         continue;
       }
       const s = argE;
-      const e = tk.s[from + 2];
+      const e = atI32(tk.s, add32(from, 2));
       const k = this.c.offense(s, e);
       if (k === null) {
         continue;
@@ -157,7 +158,7 @@ export class CopLayoutSpaceAfterNot {
       if (recv === V_NIL || !rnHas(src, n, F_SELECTOR) || rnFieldSrc(src, n, F_SELECTOR) !== "!") {
         continue;
       }
-      if (a.exS(recv) - a.exS(n) <= 1) {
+      if (toI64(a.exS(recv)) - toI64(a.exS(n)) <= toI64(1)) {
         continue;
       }
       if (a.isNode(recv) && a.type(recv) === NT_SEND && lspUnaryOperation(src, recv) && rnMethod(src, recv) === "~") {
@@ -251,12 +252,13 @@ export class CopLayoutSpaceAfterColon {
       } else {
         continue;
       }
-      if (lspIsWs(src.at(s + 1))) {
+      if (lspIsWs(rbAtOff(src, s, 1))) {
         continue;
       }
-      const k = this.c.offense(s, s + 1);
+      const s1 = add32(s, 1);
+      const k = this.c.offense(s, s1);
       if (k !== null) {
-        k.insertAfter(s, s + 1, " ");
+        k.insertAfter(s, s1, " ");
         this.c.commit(k);
       }
     }
@@ -283,12 +285,13 @@ export class CopLayoutSpaceAfterMethodName {
         continue;
       }
       const b = a.exS(args);
-      if (src.at(b - 1) !== 32) {
+      if (rbAtOff(src, b, -1) !== 32) {
         continue;
       }
-      const k = this.c.offense(b - 1, b);
+      // b - 1 holds a space, so b is above 0.
+      const k = this.c.offense(sub32(b, 1), b);
       if (k !== null) {
-        k.remove(b - 1, b);
+        k.remove(sub32(b, 1), b);
         this.c.commit(k);
       }
     }
@@ -369,7 +372,7 @@ export class CopLayoutSpaceInsideRangeLiteral {
       }
       const k = this.c.offense(a.exS(n), a.exE(n));
       if (k !== null) {
-        for (let i = 0; i < toI32(ss.length); i++) {
+        for (let i = 0; i < ss.length && i < se.length; i++) {
           k.remove(ss[i], se[i]);
         }
         this.c.commit(k);

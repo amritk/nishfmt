@@ -3,6 +3,7 @@
 // Ported from RuboCop 1.92.3 (MIT License, Copyright (c) 2012-24 Bozhidar
 // Batsov).
 
+import { add32 } from "../../core/arr";
 import { NT_FLOAT, NT_INT } from "../ast";
 import { RbCop } from "../cop";
 import { RbSource } from "../source";
@@ -59,7 +60,7 @@ export class CopStyleNumericLiterals {
       for (let i = 0; i < k0; i++) {
         const c = int.charCodeAt(i);
         if (rbNlDigit(c)) {
-          run++;
+          run = add32(run, 1);
           if (run >= 4) {
             four = true;
           }
@@ -122,12 +123,14 @@ export class CopStyleNumericLiterals {
     if (neg) {
       out.push("-");
     }
-    const m = toI32(digits.length) - st;
-    for (let i = 0; i < m; i++) {
-      if (i > 0 && (m - i) % 3 === 0) {
+    // Digit di of the m = dl - st kept, i = di - st into them: m - i = dl - di.
+    const dl = toI32(digits.length);
+    for (let di = st; di >= 0 && di < digits.length; di++) {
+      const dg = digits[di];
+      if (di > st && (dl - di) % 3 === 0) {
         out.push("_");
       }
-      out.push(digits[st + i]);
+      out.push(dg);
     }
     if (d >= 0) {
       out.push(source.substring(d, toI32(source.length)));

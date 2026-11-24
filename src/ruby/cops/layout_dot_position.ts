@@ -5,7 +5,7 @@
 
 import { F_BEGIN, F_DOT, F_HEREDOC_END, F_SELECTOR, NT_CSEND, NT_SEND } from "../ast";
 import { RbCop } from "../cop";
-import { rnE, rnHas, rnS } from "../node";
+import { rbLineEnd, rnE, rnHas, rnS } from "../node";
 import { RbSource } from "../source";
 import { rmlIsCall, rmlIsHeredoc } from "./layout_multiline_help";
 import { lspIsWs } from "./layout_space_help";
@@ -49,7 +49,7 @@ export class CopLayoutDotPosition {
       }
       const recvLine = this.receiverEndLine(src, recv);
       const dotLine = src.line(ds);
-      if (selLine - (recvLine > dotLine ? recvLine : dotLine) > 1) {
+      if (toI64(selLine) - toI64(recvLine > dotLine ? recvLine : dotLine) > toI64(1)) {
         continue;
       }
       if (dotLine === selLine) {
@@ -68,12 +68,12 @@ export class CopLayoutDotPosition {
       while (fs < fe && (lspIsWs(src.at(fs)) || src.at(fs) === 0)) {
         fs++;
       }
-      while (fe > fs && (lspIsWs(src.at(fe - 1)) || src.at(fe - 1) === 0)) {
+      while (fe > fs && fe > 0 && (lspIsWs(src.at(fe - 1)) || src.at(fe - 1) === 0)) {
         fe--;
       }
       if (src.src(fs, fe) === ".") {
         rs = src.lineStart(l);
-        re = src.lineEnd(l) + 1;
+        re = rbLineEnd(src, l) + 1;
         if (re > src.n) {
           re = src.n;
         }

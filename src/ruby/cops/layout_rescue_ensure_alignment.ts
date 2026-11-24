@@ -4,6 +4,7 @@
 // Ported from RuboCop 1.92.3 (MIT License, Copyright (c) 2012-24 Bozhidar
 // Batsov).
 
+import { sub32 } from "../../core/arr";
 import {
   F_BEGIN,
   F_DOT,
@@ -69,9 +70,11 @@ export class CopLayoutRescueEnsureAlignment {
   run(src: RbSource): void {
     this.c.begin(src);
     const mods = new Set<i32>();
-    for (let i = 0; i < toI32(src.tokT.length); i++) {
-      if (src.tokT[i] === TK_kRESCUE_MOD) {
-        mods.add(src.tokS[i]);
+    const tokT = src.tokT;
+    const tokS = src.tokS;
+    for (let i = 0; i < tokT.length && i < tokS.length; i++) {
+      if (tokT[i] === TK_kRESCUE_MOD) {
+        mods.add(tokS[i]);
       }
     }
     for (const n of src.pre) {
@@ -101,8 +104,9 @@ export class CopLayoutRescueEnsureAlignment {
     if (k === null) {
       return;
     }
-    if (rmlBlankRange(src, ks - kcol, ks)) {
-      k.replace(ks - kcol, ks, rmlSpaces(src.column(as)));
+    const ls = sub32(ks, kcol);
+    if (rmlBlankRange(src, ls, ks)) {
+      k.replace(ls, ks, rmlSpaces(src.column(as)));
     }
     this.c.commit(k);
   }

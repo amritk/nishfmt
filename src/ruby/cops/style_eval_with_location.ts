@@ -3,6 +3,7 @@
 // Ported from RuboCop 1.92.3 (MIT License, Copyright (c) 2012-24 Bozhidar
 // Batsov).
 
+import { atI32, sub32 } from "../../core/arr";
 import { F_HEREDOC_BODY, NT_CVAR, NT_DSTR, NT_GVAR, NT_INT, NT_IVAR, NT_LVAR, NT_SEND, NT_STR, V_NIL } from "../ast";
 import { RbCop } from "../cop";
 import { RbSource } from "../source";
@@ -20,7 +21,7 @@ const ssxEwlExpected = (diff: i32): string => {
   if (diff === 0) {
     return "__LINE__";
   }
-  return `__LINE__ ${diff > 0 ? "+" : "-"} ${diff > 0 ? diff : -diff}`;
+  return `__LINE__ ${diff > 0 ? "+" : "-"} ${diff > 0 ? toI64(diff) : -toI64(diff)}`;
 };
 
 /** string_first_line. */
@@ -55,14 +56,17 @@ export class CopStyleEvalWithLocation {
       if (args.length === 0) {
         continue;
       }
-      const code = args[0];
+      const code = atI32(args, 0);
       if (!ssxIs(src, code, NT_STR) && !ssxIs(src, code, NT_DSTR)) {
         continue;
       }
-      const base = m === "eval" ? 2 : 1;
-      const file = base < args.length ? args[base] : V_NIL;
-      const line = base + 1 < args.length ? args[base + 1] : V_NIL;
-      const last = args[args.length - 1];
+      let base = 1;
+      if (m === "eval") {
+        base = 2;
+      }
+      const file = base < args.length ? atI32(args, base) : V_NIL;
+      const line = base + 1 < args.length ? atI32(args, base + 1) : V_NIL;
+      const last = atI32(args, toI32(args.length) - 1);
       if (line !== V_NIL) {
         this.checkFile(src, file);
         this.checkLine(src, last, code);
@@ -70,7 +74,7 @@ export class CopStyleEvalWithLocation {
         this.checkFile(src, file);
         const k = this.c.offense(a.exS(n), a.exE(n));
         if (k !== null) {
-          const diff = ssxEwlStringFirstLine(src, code) - src.line(a.exS(last));
+          const diff = sub32(ssxEwlStringFirstLine(src, code), src.line(a.exS(last)));
           k.insertAfter(a.exE(last), a.exE(last), `, ${ssxEwlExpected(diff)}`);
           this.c.commit(k);
         }
@@ -82,7 +86,7 @@ export class CopStyleEvalWithLocation {
         if (m === "eval" && args.length < 2) {
           continue;
         }
-        const diff = ssxEwlStringFirstLine(src, code) - src.line(a.exS(last));
+        const diff = sub32(ssxEwlStringFirstLine(src, code), src.line(a.exS(last)));
         k.insertAfter(a.exE(last), a.exE(last), `, __FILE__, ${ssxEwlExpected(diff)}`);
         this.c.commit(k);
       }
@@ -110,14 +114,14 @@ export class CopStyleEvalWithLocation {
     if (t === NT_SEND && ssxMeth(src, ln) !== "+") {
       return;
     }
-    const diff = ssxEwlStringFirstLine(src, code) - src.line(a.exS(ln));
+    const diff = sub32(ssxEwlStringFirstLine(src, code), src.line(a.exS(ln)));
     if (diff === 0) {
       if (ssxEwlLineKw(src, ln)) {
         return;
       }
     } else {
       const sign = diff > 0 ? "+" : "-";
-      const abs = diff > 0 ? diff : -diff;
+      const abs = diff > 0 ? diff : sub32(0, diff);
       // line_with_offset?
       if (t === NT_SEND && a.nKid(ln) === 3 && ssxMeth(src, ln) === sign) {
         const l = a.kid(ln, 0);

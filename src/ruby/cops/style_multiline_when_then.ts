@@ -3,6 +3,7 @@
 // Ported from RuboCop 1.92.3 (MIT License, Copyright (c) 2012-24 Bozhidar
 // Batsov).
 
+import { rbNKid } from "../node";
 import { F_BEGIN, NT_ERANGE, NT_IRANGE, NT_WHEN, V_NIL } from "../ast";
 import { RbCop } from "../cop";
 import { rbSpaceBegin } from "../help";
@@ -38,7 +39,7 @@ export class CopStyleMultilineWhenThen {
   private requireThen(src: RbSource, n: i32): boolean {
     const a = src.a;
     const first = a.kid(n, 0);
-    const last = a.kid(n, a.nKid(n) - 2);
+    const last = a.kid(n, rbNKid(src, n) - 2);
     if (src.line(a.exS(first)) !== src.line(a.exE(last))) {
       return true;
     }

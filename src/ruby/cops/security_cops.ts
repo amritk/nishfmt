@@ -5,6 +5,7 @@
 // Ported from RuboCop 1.92.3 (MIT License, Copyright (c) 2012-24 Bozhidar
 // Batsov).
 
+import { rbNKid } from "../node";
 import {
   F_SELECTOR,
   NT_AND,
@@ -166,7 +167,7 @@ export class CopSecurityJSONLoad {
       if (m !== "load" && m !== "restore") {
         continue;
       }
-      const argc = a.nKid(n) - 2;
+      const argc = rbNKid(src, n) - 2;
       // {_ hash | ... !`(pair (sym :create_additions) _)}
       const hashSecond = argc === 2 && a.isNode(a.kid(n, 3)) && a.type(a.kid(n, 3)) === NT_HASH;
       const noAdditions = argc >= 1 && !secCreateAdditions(src, a.kid(n, -1));
@@ -193,7 +194,7 @@ export class CopSecurityMarshalLoad {
         continue;
       }
       const m = a.text(a.kid(n, 1));
-      const argc = a.nKid(n) - 2;
+      const argc = rbNKid(src, n) - 2;
       if ((m !== "load" && m !== "restore") || argc < 1 || argc > 2) {
         continue;
       }

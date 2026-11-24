@@ -4,6 +4,9 @@
 // Ported from RuboCop 1.92.3 (MIT License, Copyright (c) 2012-24 Bozhidar
 // Batsov).
 
+import { faulted } from "../../core/fault";
+import { rbAtOff } from "../help";
+import { add32, sub32 } from "../../core/arr";
 import { F_HEREDOC_BODY, F_HEREDOC_END } from "../ast";
 import { RbCop } from "../cop";
 import { rnE, rnS } from "../node";
@@ -21,13 +24,19 @@ export const rmlHdIndentLevel = (src: RbSource, s: i32, e: i32): i32 => {
       j++;
     }
     const blank = j < e && src.at(j) === 10;
-    if (!blank && (best < 0 || j - i < best)) {
-      best = j - i;
+    if (!blank) {
+      const w = sub32(j, i);
+      if (best < 0 || w < best) {
+        best = w;
+      }
     }
     while (j < e && src.at(j) !== 10) {
       j++;
     }
-    i = j + 1;
+    i = add32(j, 1);
+    if (faulted()) {
+      return 0;
+    }
   }
   return best < 0 ? 0 : best;
 };
@@ -58,11 +67,11 @@ export class CopLayoutHeredocIndentation {
       }
       const bodyIndent = rmlHdIndentLevel(src, bs, be);
       const ns = a.exS(n);
-      const ty = src.at(ns + 2);
+      const ty = rbAtOff(src, ns, 2);
       const squiggly = ty === 126;
       const base = rmlLineIndentation(src, src.line(ns));
       if (squiggly) {
-        if (base + 2 === bodyIndent) {
+        if (toI64(base) + toI64(2) === toI64(bodyIndent)) {
           continue;
         }
       } else if (bodyIndent !== 0) {
@@ -70,7 +79,7 @@ export class CopLayoutHeredocIndentation {
       }
       // within_offending_heredoc?
       let within = false;
-      for (let i = 0; i < toI32(offS.length); i++) {
+      for (let i = 0; i < offS.length && i < offE.length; i++) {
         if (offS[i] <= ns && a.exE(n) <= offE[i]) {
           within = true;
         }
@@ -85,12 +94,12 @@ export class CopLayoutHeredocIndentation {
         continue;
       }
       if (squiggly) {
-        k.replace(bs, be, this.indentedBody(src, bs, be, bodyIndent, base + 2));
+        k.replace(bs, be, this.indentedBody(src, bs, be, bodyIndent, add32(base, 2)));
         const es = rnS(src, n, F_HEREDOC_END);
         const ee = rnE(src, n, F_HEREDOC_END);
         const endIndent = rmlHdIndentLevel(src, es, ee);
         if (endIndent < base) {
-          k.replace(es, ee, `${rmlSpaces(base)}${src.src(es + endIndent, ee)}`);
+          k.replace(es, ee, `${rmlSpaces(base)}${src.src(add32(es, endIndent), ee)}`);
         } else {
           k.replace(es, ee, src.src(es, ee));
         }
@@ -111,7 +120,7 @@ export class CopLayoutHeredocIndentation {
     while (i < e) {
       let ok = true;
       for (let j = 0; j < from; j++) {
-        if (i + j >= e || !rmlHdHspace(src.at(i + j))) {
+        if (toI64(i) + toI64(j) >= toI64(e) || !rmlHdHspace(rbAtOff(src, i, j))) {
           ok = false;
           break;
         }
@@ -119,7 +128,10 @@ export class CopLayoutHeredocIndentation {
       let j = i;
       if (ok) {
         parts.push(ind);
-        j = i + from;
+        j = add32(i, from);
+        if (faulted()) {
+          return "";
+        }
       }
       let k = j;
       while (k < e && src.at(k) !== 10) {

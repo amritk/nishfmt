@@ -3,6 +3,7 @@
 // Ported from RuboCop 1.92.3 (MIT License, Copyright (c) 2012-24 Bozhidar
 // Batsov).
 
+import { rbByteAt } from "../util";
 import { F_NAME, NT_ARG, NT_BLOCK, NT_DEF, NT_LVAR, NT_LVASGN, V_NIL } from "../ast";
 import { RbCop } from "../cop";
 import { RbSource } from "../source";
@@ -23,7 +24,7 @@ const nbopOpMethod = (name: string): boolean => {
   if (name.length === 0) {
     return false;
   }
-  const c = name.charCodeAt(0);
+  const c = rbByteAt(name, 0);
   // [[:word:]]: also every non-ASCII letter.
   return !(ssxIsWord(c) || c >= 128);
 };

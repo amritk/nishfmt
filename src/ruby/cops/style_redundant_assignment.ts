@@ -3,6 +3,7 @@
 // Ported from RuboCop 1.92.3 (MIT License, Copyright (c) 2012-24 Bozhidar
 // Batsov).
 
+import { rbNKid } from "../node";
 import {
   F_END,
   F_KEYWORD,
@@ -55,10 +56,10 @@ export class CopStyleRedundantAssignment {
     const t = a.type(n);
     const k = a.nKid(n);
     if (t === NT_CASE || t === NT_CASE_MATCH) {
-      for (let i = 1; i < k - 1; i++) {
+      for (let i = 1; i < rbNKid(src, n) - 1; i++) {
         this.check(src, a.kid(a.kid(n, i), -1));
       }
-      this.check(src, a.kid(n, k - 1));
+      this.check(src, a.kid(n, -1));
     } else if (t === NT_IF) {
       const modifier =
         (ssxLocIs(src, n, F_KEYWORD, "if") || ssxLocIs(src, n, F_KEYWORD, "unless")) && !ssxHas(src, n, F_END);

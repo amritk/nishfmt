@@ -4,6 +4,7 @@
 // Ported from RuboCop 1.92.3 (MIT License, Copyright (c) 2012-24 Bozhidar
 // Batsov).
 
+import { add32 } from "../../core/arr";
 import {
   NT_CASE,
   NT_CASE_MATCH,
@@ -60,7 +61,7 @@ export class CopMetricsBlockNesting {
     ) {
       // count_if_block?: not an elsif, not a modifier if/unless.
       if (t !== NT_IF || (!scnElsif(src, n) && !scnModifier(src, n))) {
-        level++;
+        level = add32(level, 1);
       }
       if (level > 3 && !this.ignored(src, n)) {
         // The offense's block (ignore_node) runs only when it is added on enabled lines.
@@ -80,8 +81,10 @@ export class CopMetricsBlockNesting {
 
   /** part_of_ignored_node? */
   private ignored(src: RbSource, n: i32): boolean {
-    for (let i = 0; i < toI32(this.ignS.length); i++) {
-      if (this.ignS[i] <= src.a.exS(n) && this.ignE[i] >= src.a.exE(n)) {
+    const ignS = this.ignS;
+    const ignE = this.ignE;
+    for (let i = 0; i < ignS.length && i < ignE.length; i++) {
+      if (ignS[i] <= src.a.exS(n) && ignE[i] >= src.a.exE(n)) {
         return true;
       }
     }

@@ -6,6 +6,7 @@
 // Ported from RuboCop 1.92.3 and rubocop-ast 1.52.0 (MIT License, Copyright
 // (c) 2012-24 Bozhidar Batsov).
 
+import { add32 } from "../../core/arr";
 import {
   NT_AND,
   NT_ARRAY,
@@ -200,24 +201,25 @@ export const ldhInterpolation = (src: RbSource, n: i32): boolean => {
  * regexp node, as [named, numbered]; [0, 0] when regexp_parser builds no tree.
  */
 export const ldhCaptures = (src: RbSource, n: i32): i32[] => {
-  const out: i32[] = [0, 0];
+  let named = 0;
+  let numbered = 0;
   const tree = rbRxParsedTree(src, n);
-  if (tree === null) {
-    return out;
-  }
-  for (let i = 0; i < toI32(tree.tt.length); i++) {
-    if (tree.tt[i] !== RX_GROUP) {
-      continue;
+  if (tree !== null) {
+    const tt = tree.tt;
+    for (let i = 0; i < tt.length; i++) {
+      if (tt[i] !== RX_GROUP) {
+        continue;
+      }
+      const t = tree.text(i);
+      if (t === "(") {
+        numbered = add32(numbered, 1);
+      } else if (t.startsWith("(?<") || t.startsWith("(?'")) {
+        // Group::Named (a lookbehind is an assertion token, not a group)
+        named = add32(named, 1);
+      }
     }
-    const t = tree.text(i);
-    if (t === "(") {
-      out[1] = out[1] + 1;
-    } else if (t.startsWith("(?<") || t.startsWith("(?'")) {
-      // Group::Named (a lookbehind is an assertion token, not a group)
-      out[0] = out[0] + 1;
-    }
   }
-  return out;
+  return [named, numbered];
 };
 
 /** Node#const_name of a const or casgn ("" when it has none). */
@@ -239,8 +241,9 @@ export const ldhConstName = (src: RbSource, n: i32): string => {
 const ldhSplitWs = (s: string): string[] => {
   const out: string[] = [];
   let b = -1;
-  for (let i = 0; i <= toI32(s.length); i++) {
-    const c = i < toI32(s.length) ? s.charCodeAt(i) : 32;
+  const k = toI32(s.length);
+  for (let i = 0; i < k; i++) {
+    const c = s.charCodeAt(i);
     const ws = c === 32 || (c >= 9 && c <= 13);
     if (ws && b >= 0) {
       out.push(s.substring(b, i));
@@ -248,6 +251,10 @@ const ldhSplitWs = (s: string): string[] => {
     } else if (!ws && b < 0) {
       b = i;
     }
+  }
+  // The end counts as whitespace.
+  if (b >= 0) {
+    out.push(s.substring(b, k));
   }
   return out;
 };

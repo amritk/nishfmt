@@ -4,6 +4,7 @@
 // Ported from RuboCop 1.92.3 (MIT License, Copyright (c) 2012-24 Bozhidar
 // Batsov).
 
+import { rbNKid } from "../node";
 import {
   F_BEGIN,
   F_SELECTOR,
@@ -63,7 +64,7 @@ const rbAmdWrapped = (src: RbSource, n: i32, names: string, argc: i32): boolean 
   if (!ssxIs(src, x, NT_SEND) || a.kid(x, 0) !== V_NIL || names.indexOf(` ${ssxMeth(src, x)} `) < 0) {
     return false;
   }
-  const k = a.nKid(x) - 2;
+  const k = rbNKid(src, x) - 2;
   return argc < 0 ? k >= 1 : k === argc;
 };
 
