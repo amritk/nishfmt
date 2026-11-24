@@ -8,6 +8,8 @@
 // (Apache License 2.0, Copyright 2026 Google Inc.). nishfmt formats whole
 // files, so every range the passes check is the whole file.
 
+import { atI32, atU8 } from "../core/arr";
+import { fault, faulted } from "../core/fault";
 import { Out } from "../core/out";
 import { gIsIdentPart } from "../gdoc/engine";
 import { GInput, TF_COMMENT } from "../gdoc/input";
@@ -44,14 +46,19 @@ export class JavaCleanups {
     this.delLo = [];
     this.delHi = [];
     this.topLevelSemicolons(inp, t, root);
+    const kind = t.kind;
     for (let n = 0; n < t.n; n++) {
-      const k = t.kind[n];
-      if (k === N_CLASS && (t.flags[n] & FL_IMPLICIT) === 0) {
+      if (n >= kind.length) {
+        fault();
+        return false;
+      }
+      const k = kind[n];
+      if (k === N_CLASS && (atI32(t.flags, n) & FL_IMPLICIT) === 0) {
         this.classSemicolons(inp, t, n);
       } else if (k === N_BLOCK) {
-        this.emptyStatements(inp, t, t.a[n]);
+        this.emptyStatements(inp, t, atI32(t.a, n));
       } else if (k === N_CASE) {
-        this.emptyStatements(inp, t, t.c[n]);
+        this.emptyStatements(inp, t, atI32(t.c, n));
       } else if (k === N_ANNOTATION) {
         this.annotationParens(inp, t, n);
       } else if (k === N_LAMBDA) {
@@ -64,12 +71,14 @@ export class JavaCleanups {
     const src = inp.src;
     out.n = 0;
     let at = 0;
-    for (let i = 0; i < toI32(this.delLo.length); i++) {
-      const lo = this.delLo[i];
-      const hi = this.delHi[i];
+    const delLo = this.delLo;
+    const delHi = this.delHi;
+    for (let i = 0; i < toI32(delLo.length); i++) {
+      const lo = delLo[i];
+      const hi = atI32(delHi, i);
       out.range(src, at, lo);
       // A space where deleting would join two identifiers (`@Anno()int x`).
-      if (lo > 0 && hi < inp.n && gIsIdentPart(toI32(src[lo - 1])) && gIsIdentPart(toI32(src[hi]))) {
+      if (lo > 0 && hi < inp.n && gIsIdentPart(atU8(src, lo - 1)) && gIsIdentPart(atU8(src, hi))) {
         out.byte(32);
       }
       at = hi;
@@ -85,9 +94,15 @@ export class JavaCleanups {
     const nLo: i32[] = [];
     const nHi: i32[] = [];
     let placed = false;
-    for (let i = 0; i < toI32(this.delLo.length); i++) {
-      const a = this.delLo[i];
-      const b = this.delHi[i];
+    const delLo = this.delLo;
+    const delHi = this.delHi;
+    for (let i = 0; i < toI32(delLo.length); i++) {
+      const a = delLo[i];
+      if (i >= delHi.length) {
+        fault();
+        return;
+      }
+      const b = delHi[i];
       if (b < lo) {
         nLo.push(a);
         nHi.push(b);
@@ -114,9 +129,17 @@ export class JavaCleanups {
 
   /** RangeSet.encloses([lo, hi)). */
   private deletionEncloses(lo: i32, hi: i32): boolean {
-    for (let i = 0; i < toI32(this.delLo.length); i++) {
-      if (this.delLo[i] <= lo && hi <= this.delHi[i]) {
-        return true;
+    const delLo = this.delLo;
+    const delHi = this.delHi;
+    for (let i = 0; i < toI32(delLo.length); i++) {
+      if (delLo[i] <= lo) {
+        if (i >= delHi.length) {
+          fault();
+          return false;
+        }
+        if (hi <= delHi[i]) {
+          return true;
+        }
       }
     }
     return false;
@@ -128,26 +151,46 @@ export class JavaCleanups {
    */
   private deleteSemicolon(inp: GInput, semiPos: i32): void {
     const src = inp.src;
+    const n = inp.n;
+    if (semiPos < 0 || semiPos >= src.length) {
+      // `src[semiPos]` is the `;` the scan found.
+      fault();
+      return;
+    }
+    // Both scans move down from `semiPos`, inside `src`.
     let start = semiPos;
-    while (start > 0 && isCleanupBlank(toI32(src[start - 1]))) {
+    while (start > 0 && start <= src.length && isCleanupBlank(toI32(src[start - 1]))) {
       start--;
     }
     let lineBegin = start;
-    while (lineBegin > 0 && toI32(src[lineBegin - 1]) !== 10 && toI32(src[lineBegin - 1]) !== 13) {
+    while (
+      lineBegin > 0 &&
+      lineBegin <= src.length &&
+      toI32(src[lineBegin - 1]) !== 10 &&
+      toI32(src[lineBegin - 1]) !== 13
+    ) {
       lineBegin--;
     }
     let end = semiPos + 1;
-    while (end < inp.n && isCleanupBlank(toI32(src[end]))) {
+    while (end < n) {
+      if (end >= src.length) {
+        fault();
+        return;
+      }
+      if (!isCleanupBlank(toI32(src[end]))) {
+        break;
+      }
       end++;
     }
     const nothingBeforeOnLine = start === lineBegin || this.deletionEncloses(lineBegin, start);
-    if (nothingBeforeOnLine && end < inp.n) {
-      if (toI32(src[end]) === 13) {
+    if (nothingBeforeOnLine && end < n) {
+      const c = atU8(src, end);
+      if (c === 13) {
         end++;
-        if (end < inp.n && toI32(src[end]) === 10) {
+        if (end < n && atU8(src, end) === 10) {
           end++;
         }
-      } else if (toI32(src[end]) === 10) {
+      } else if (c === 10) {
         end++;
       }
     }
@@ -161,21 +204,47 @@ export class JavaCleanups {
   private semicolonsInGaps(inp: GInput, start: i32, end: i32, spanLo: i32[], spanHi: i32[]): void {
     sortSpans(spanLo, spanHi);
     let s = 0;
+    const kTok = inp.kTok;
+    const tPos = inp.tPos;
     for (let k = tokenAtOrAfter(inp, start); k < inp.nTokens; k++) {
-      const tok = inp.kTok[k];
-      const p = inp.tPos[tok];
+      if (k < 0 || k >= kTok.length) {
+        fault();
+        return;
+      }
+      const tok = kTok[k];
+      if (tok < 0 || tok >= tPos.length) {
+        fault();
+        return;
+      }
+      const p = tPos[tok];
       if (p >= end) {
         break;
       }
       if (!inp.is(tok, ";")) {
         continue;
       }
-      while (s < toI32(spanLo.length) && spanHi[s] <= p) {
+      const sLo = spanLo;
+      const sHi = spanHi;
+      while (s < toI32(sLo.length)) {
+        if (s < 0 || s >= sHi.length) {
+          fault();
+          return;
+        }
+        if (sHi[s] > p) {
+          break;
+        }
         s++;
       }
       let covered = false;
-      for (let q = s; q < toI32(spanLo.length) && spanLo[q] <= p; q++) {
-        if (p < spanHi[q]) {
+      for (let q = s; q < toI32(sLo.length); q++) {
+        if (q < 0 || q >= sHi.length) {
+          fault();
+          return;
+        }
+        if (sLo[q] > p) {
+          break;
+        }
+        if (p < sHi[q]) {
           covered = true;
           break;
         }
@@ -190,38 +259,46 @@ export class JavaCleanups {
   private topLevelSemicolons(inp: GInput, t: JTree, cu: i32): void {
     const lo: i32[] = [];
     const hi: i32[] = [];
-    if (t.b[cu] >= 0) {
+    const pkg = atI32(t.b, cu);
+    if (pkg >= 0) {
       // The package declaration, up to its `;`.
-      let k = tokenAtOrAfter(inp, t.end[t.b[cu]]);
-      while (k < inp.nTokens && !inp.is(inp.kTok[k], ";")) {
+      let k = tokenAtOrAfter(inp, atI32(t.end, pkg));
+      while (k < inp.nTokens && !inp.is(atI32(inp.kTok, k), ";")) {
+        if (faulted()) {
+          return;
+        }
         k++;
       }
       if (k < inp.nTokens) {
         lo.push(0);
-        hi.push(inp.tEnd[inp.kTok[k]]);
+        hi.push(atI32(inp.tEnd, atI32(inp.kTok, k)));
       }
     }
-    if (t.e[cu] >= 0) {
-      lo.push(t.start[t.e[cu]]);
-      hi.push(t.end[t.e[cu]]);
+    const mod = atI32(t.e, cu);
+    if (mod >= 0) {
+      lo.push(atI32(t.start, mod));
+      hi.push(atI32(t.end, mod));
     }
-    for (let i = 0; i < t.len(t.c[cu]); i++) {
-      const d = t.at(t.c[cu], i);
-      lo.push(t.start[d]);
-      hi.push(t.end[d]);
+    const imports = atI32(t.c, cu);
+    for (let i = 0; i < t.len(imports); i++) {
+      const d = t.at(imports, i);
+      lo.push(atI32(t.start, d));
+      hi.push(atI32(t.end, d));
     }
-    for (let i = 0; i < t.len(t.d[cu]); i++) {
-      const d = t.at(t.d[cu], i);
-      if ((t.flags[d] & FL_IMPLICIT) !== 0) {
+    const decls = atI32(t.d, cu);
+    for (let i = 0; i < t.len(decls); i++) {
+      const d = t.at(decls, i);
+      if ((atI32(t.flags, d) & FL_IMPLICIT) !== 0) {
         // An implicitly declared class: its members.
-        for (let j = 0; j < t.len(t.f[d]); j++) {
-          const m = t.at(t.f[d], j);
-          lo.push(t.start[m]);
+        const members = atI32(t.f, d);
+        for (let j = 0; j < t.len(members); j++) {
+          const m = t.at(members, j);
+          lo.push(atI32(t.start, m));
           hi.push(memberEnd(inp, t, m));
         }
       } else {
-        lo.push(t.start[d]);
-        hi.push(t.end[d]);
+        lo.push(atI32(t.start, d));
+        hi.push(atI32(t.end, d));
       }
     }
     this.semicolonsInGaps(inp, 0, inp.n, lo, hi);
@@ -229,25 +306,25 @@ export class JavaCleanups {
 
   /** checkClassSemicolons: the semicolons between a class's members (an enum's `;` after its constants stays). */
   private classSemicolons(inp: GInput, t: JTree, c: i32): void {
-    const members = t.f[c];
+    const members = atI32(t.f, c);
     // An anonymous class body starts at its `{` here (javac starts it at the
     // call), so the call's arguments, which CleanupScanner adds as spans, are
     // never in the range.
-    const classStart = t.start[c];
-    const classEnd = t.end[c];
+    const classStart = atI32(t.start, c);
+    const classEnd = atI32(t.end, c);
     const lo: i32[] = [];
     const hi: i32[] = [];
     let lastEnumConstantEnd = classStart;
     let firstNonEnumMemberStart = classEnd;
-    const isEnum = t.op[c] === CK_ENUM;
+    const isEnum = atI32(t.op, c) === CK_ENUM;
     for (let i = 0; i < t.len(members); i++) {
       const m = t.at(members, i);
-      const ms = t.start[m];
+      const ms = atI32(t.start, m);
       const me = memberEnd(inp, t, m);
       lo.push(ms);
       hi.push(me);
       if (isEnum) {
-        if (t.kind[m] === N_VARIABLE && (t.flags[m] & FL_ENUM) !== 0) {
+        if (atI32(t.kind, m) === N_VARIABLE && (atI32(t.flags, m) & FL_ENUM) !== 0) {
           lastEnumConstantEnd = me > lastEnumConstantEnd ? me : lastEnumConstantEnd;
         } else if (ms < firstNonEnumMemberStart) {
           firstNonEnumMemberStart = ms;
@@ -256,13 +333,13 @@ export class JavaCleanups {
     }
     if (isEnum && lo.length > 0) {
       for (let k = tokenAtOrAfter(inp, lastEnumConstantEnd); k < inp.nTokens; k++) {
-        const tok = inp.kTok[k];
-        if (inp.tPos[tok] >= firstNonEnumMemberStart) {
+        const tok = atI32(inp.kTok, k);
+        if (atI32(inp.tPos, tok) >= firstNonEnumMemberStart || faulted()) {
           break;
         }
         if (inp.is(tok, ";")) {
-          lo.push(inp.tPos[tok]);
-          hi.push(inp.tEnd[tok]);
+          lo.push(atI32(inp.tPos, tok));
+          hi.push(atI32(inp.tEnd, tok));
           break;
         }
       }
@@ -274,19 +351,19 @@ export class JavaCleanups {
   private emptyStatements(inp: GInput, t: JTree, stats: i32): void {
     for (let i = 0; i < t.len(stats); i++) {
       const s = t.at(stats, i);
-      if (t.kind[s] === N_EMPTY) {
-        this.deleteSemicolon(inp, t.start[s]);
+      if (atI32(t.kind, s) === N_EMPTY) {
+        this.deleteSemicolon(inp, atI32(t.start, s));
       }
     }
   }
 
   /** visitAnnotation: `@Foo()` becomes `@Foo`, unless a comment is in the parentheses. */
   private annotationParens(inp: GInput, t: JTree, n: i32): void {
-    if (t.len(t.b[n]) !== 0) {
+    if (t.len(atI32(t.b, n)) !== 0) {
       return;
     }
-    const typeEnd = t.end[t.a[n]];
-    const annoEnd = t.end[n];
+    const typeEnd = atI32(t.end, atI32(t.a, n));
+    const annoEnd = atI32(t.end, n);
     if (typeEnd <= 0 || annoEnd <= typeEnd || hasComment(inp, typeEnd, annoEnd)) {
       return;
     }
@@ -295,20 +372,27 @@ export class JavaCleanups {
 
   /** visitLambdaExpression: `(x) ->` becomes `x ->` when the one parameter has no type. */
   private lambdaParens(inp: GInput, t: JTree, n: i32): void {
-    if (t.len(t.a[n]) !== 1) {
+    if (t.len(atI32(t.a, n)) !== 1) {
       return;
     }
-    const k = tokenAtOrAfter(inp, t.start[n]);
-    if (k + 2 >= inp.nTokens || !inp.is(inp.kTok[k], "(") || !inp.is(inp.kTok[k + 2], ")")) {
+    const k = tokenAtOrAfter(inp, atI32(t.start, n));
+    if (k < 0 || toI64(k) + toI64(2) >= toI64(inp.nTokens)) {
       return;
     }
-    const lp = inp.kTok[k];
-    const rp = inp.kTok[k + 2];
-    if (hasComment(inp, inp.tPos[lp], inp.tEnd[rp])) {
+    const lp = atI32(inp.kTok, k);
+    if (!inp.is(lp, "(")) {
       return;
     }
-    this.addDeletion(inp.tPos[lp], inp.tEnd[lp]);
-    this.addDeletion(inp.tPos[rp], inp.tEnd[rp]);
+    // `k + 2 < nTokens`, so the conversion is exact.
+    const rp = atI32(inp.kTok, toI32(toI64(k) + toI64(2)));
+    if (!inp.is(rp, ")")) {
+      return;
+    }
+    if (hasComment(inp, atI32(inp.tPos, lp), atI32(inp.tEnd, rp))) {
+      return;
+    }
+    this.addDeletion(atI32(inp.tPos, lp), atI32(inp.tEnd, lp));
+    this.addDeletion(atI32(inp.tPos, rp), atI32(inp.tEnd, rp));
   }
 }
 
@@ -319,7 +403,7 @@ export class JavaCleanups {
 export const cleanupComments = (inp: GInput): string => {
   const parts: string[] = [];
   for (let t = 0; t < inp.nToks; t++) {
-    if ((inp.tFlags[t] & TF_COMMENT) !== 0) {
+    if ((atI32(inp.tFlags, t) & TF_COMMENT) !== 0) {
       parts.push(inp.text(t));
     }
   }
@@ -328,11 +412,14 @@ export const cleanupComments = (inp: GInput): string => {
 
 /** Where member `m` ends: javac ends the last declarator of a field at its `;`. */
 const memberEnd = (inp: GInput, t: JTree, m: i32): i32 => {
-  const me = t.end[m];
-  if (t.kind[m] === N_VARIABLE && (t.flags[m] & FL_ENUM) === 0) {
+  const me = atI32(t.end, m);
+  if (atI32(t.kind, m) === N_VARIABLE && (atI32(t.flags, m) & FL_ENUM) === 0) {
     const k = tokenAtOrAfter(inp, me);
-    if (k < inp.nTokens && inp.is(inp.kTok[k], ";")) {
-      return inp.tEnd[inp.kTok[k]];
+    if (k < inp.nTokens) {
+      const tok = atI32(inp.kTok, k);
+      if (inp.is(tok, ";")) {
+        return atI32(inp.tEnd, tok);
+      }
     }
   }
   return me;
@@ -344,10 +431,37 @@ const tokenAtOrAfter = (inp: GInput, pos: i32): i32 => {
   if (k < 0) {
     k = 0;
   }
-  while (k > 0 && inp.tPos[inp.kTok[k - 1]] >= pos) {
+  const kTok = inp.kTok;
+  const tPos = inp.tPos;
+  while (k > 0) {
+    if (k > kTok.length) {
+      fault();
+      return 0;
+    }
+    const tok = kTok[k - 1];
+    if (tok < 0 || tok >= tPos.length) {
+      fault();
+      return 0;
+    }
+    if (tPos[tok] < pos) {
+      break;
+    }
     k--;
   }
-  while (k < inp.nTokens && inp.tPos[inp.kTok[k]] < pos) {
+  const nTokens = inp.nTokens;
+  while (k < nTokens) {
+    if (k < 0 || k >= kTok.length) {
+      fault();
+      return 0;
+    }
+    const tok = kTok[k];
+    if (tok < 0 || tok >= tPos.length) {
+      fault();
+      return 0;
+    }
+    if (tPos[tok] >= pos) {
+      break;
+    }
     k++;
   }
   return k;
@@ -357,8 +471,13 @@ const isCleanupBlank = (c: i32): boolean => c === 32 || c === 9;
 
 /** Whether `[a, e)`, which holds only punctuation, an identifier, whitespace and comments, holds a comment. */
 const hasComment = (inp: GInput, a: i32, e: i32): boolean => {
+  const src = inp.src;
   for (let i = a; i < e; i++) {
-    if (toI32(inp.src[i]) === 47) {
+    if (i < 0 || i >= src.length) {
+      fault();
+      return false;
+    }
+    if (toI32(src[i]) === 47) {
       return true;
     }
   }
@@ -368,15 +487,30 @@ const hasComment = (inp: GInput, a: i32, e: i32): boolean => {
 /** Sorts the spans by start (an insertion sort: they are nearly in order). */
 const sortSpans = (lo: i32[], hi: i32[]): void => {
   for (let i = 1; i < toI32(lo.length); i++) {
+    if (i >= hi.length) {
+      fault();
+      return;
+    }
     const a = lo[i];
     const b = hi[i];
+    // Shifts `[j + 1, i)` up one; every index is below `i`.
     let j = i - 1;
-    while (j >= 0 && lo[j] > a) {
-      lo[j + 1] = lo[j];
-      hi[j + 1] = hi[j];
+    while (j >= 0 && j < i && lo[j] > a) {
+      const j1 = j + 1;
+      if (j1 >= lo.length || j1 >= hi.length) {
+        fault();
+        return;
+      }
+      lo[j1] = lo[j];
+      hi[j1] = hi[j];
       j--;
     }
-    lo[j + 1] = a;
-    hi[j + 1] = b;
+    const j1 = j + 1;
+    if (j1 < 0 || j1 >= lo.length || j1 >= hi.length) {
+      fault();
+      return;
+    }
+    lo[j1] = a;
+    hi[j1] = b;
   }
 };
