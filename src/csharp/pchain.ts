@@ -49,8 +49,10 @@ import {
 } from "./kinds";
 import { DOC_HARDLINE, DOC_NULL, D_GROUP, D_INDENT, csdContainsBreak } from "./doc";
 import { CsPrint, cswAnyComment, cswTok } from "./print";
-import { cswNode } from "./pnodes";
+import { cswDocA, cswDocKind, cswNode, cswTokEnd, cswTokL0, cswTokL1, cswTokStart } from "./pnodes";
 import { cswArgumentList, cswIdentLen } from "./pexprs";
+import { add32, sub32 } from "../core/arr";
+import { fault } from "../core/fault";
 
 class CsChain {
   nodes: i32[];
@@ -70,15 +72,39 @@ class CsChain {
   ng(): i32 {
     return toI32(this.gs.length);
   }
+  // A group's bounds are indices into nodes, so the arithmetic below fits
+  // and the fault branches are never taken.
   gcount(g: i32): i32 {
-    return this.ge[g] - this.gs[g];
+    const ge = this.ge;
+    const gs = this.gs;
+    if (g >= 0 && g < ge.length && g < gs.length) {
+      return sub32(ge[g], gs[g]);
+    }
+    fault();
+    return 0;
   }
   /** The node of item i of group g. */
   gn(g: i32, i: i32): i32 {
-    return this.nodes[this.gs[g] + i];
+    const gs = this.gs;
+    if (g < 0 || g >= gs.length) {
+      fault();
+      return -1;
+    }
+    const j = add32(gs[g], i);
+    const nodes = this.nodes;
+    if (j >= 0 && j < nodes.length) {
+      return nodes[j];
+    }
+    fault();
+    return -1;
   }
   glast(g: i32): i32 {
-    return this.ge[g] - 1;
+    const ge = this.ge;
+    if (g >= 0 && g < ge.length) {
+      return sub32(ge[g], 1);
+    }
+    fault();
+    return 0;
   }
   addGroup(s: i32, e: i32): void {
     this.gs.push(s);
@@ -121,17 +147,23 @@ const cswFlatten = (P: CsPrint, e: i32, c: CsChain): void => {
 };
 
 const cswGroupOnLines = (P: CsPrint, c: CsChain): void => {
-  const n = toI32(c.nodes.length);
+  const nodes = c.nodes;
+  const n = toI32(nodes.length);
   let s = 0;
   for (let i = 1; i < n; i++) {
-    const node = c.nodes[i];
+    if (i >= nodes.length) {
+      fault();
+      return;
+    }
+    const node = nodes[i];
+    const prevNode = nodes[i - 1];
     const k = P.k(node);
     if (k === K_ConditionalAccessExpression) {
       c.addGroup(s, i);
       s = i;
     } else if (
       (P.is(node, Y_MemberAccessExpression) || k === K_MemberBindingExpression || k === K_IdentifierName) &&
-      P.k(c.nodes[i - 1]) !== K_ConditionalAccessExpression
+      P.k(prevNode) !== K_ConditionalAccessExpression
     ) {
       c.addGroup(s, i);
       s = i;
@@ -146,8 +178,15 @@ const cswGroupPrettierStyle = (P: CsPrint, c: CsChain): void => {
   while (index < n && P.k(c.nodes[index]) === K_InvocationExpression) {
     index++;
   }
-  const k0 = P.k(c.nodes[0]);
-  if (k0 !== K_InvocationExpression && !P.is(c.nodes[0], Y_PostfixUnaryExpression) && index < n) {
+  const nodes = c.nodes;
+  // a chain has at least its innermost expression
+  if (nodes.length < 1) {
+    fault();
+    return;
+  }
+  const node0 = nodes[0];
+  const k0 = P.k(node0);
+  if (k0 !== K_InvocationExpression && !P.is(node0, Y_PostfixUnaryExpression) && index < n) {
     const ki = c.nodes[index];
     if (P.k(ki) === K_ElementAccessExpression || P.is(ki, Y_PostfixUnaryExpression)) {
       index++;
@@ -157,7 +196,11 @@ const cswGroupPrettierStyle = (P: CsPrint, c: CsChain): void => {
   let s = index;
   let seen = false;
   for (; index < n; index++) {
-    const node = c.nodes[index];
+    if (index < 0 || index >= nodes.length) {
+      fault();
+      return;
+    }
+    const node = nodes[index];
     if (seen && (P.is(node, Y_MemberAccessExpression) || P.k(node) === K_ConditionalAccessExpression)) {
       c.addGroup(s, index);
       s = index;
@@ -174,8 +217,21 @@ const cswGroupPrettierStyle = (P: CsPrint, c: CsChain): void => {
 
 const cswGroupDocs = (c: CsChain, g: i32): i32[] => {
   const out: i32[] = [];
-  for (let i = c.gs[g]; i < c.ge[g]; i++) {
-    out.push(c.docs[i]);
+  const gs = c.gs;
+  const ge = c.ge;
+  const docs = c.docs;
+  if (g < 0 || g >= gs.length || g >= ge.length) {
+    fault();
+    return out;
+  }
+  const a = gs[g];
+  const b = ge[g];
+  for (let i = a; i < b; i++) {
+    if (i < 0 || i >= docs.length) {
+      fault();
+      return out;
+    }
+    out.push(docs[i]);
   }
   return out;
 };
@@ -235,7 +291,12 @@ const cswPossibleContents = (P: CsPrint, c: CsChain, idx: CsIndex): i32 => {
   if (!cswIsMemberName(P, c.gn(g, 0), "ThenInclude")) {
     return DOC_NULL;
   }
-  idx.i = idx.i + 1;
+  // a group index, below the number of groups
+  if (g >= 2147483647) {
+    fault();
+    return DOC_NULL;
+  }
+  idx.i = g + 1;
   const grp = D.group(cswGroupDocs(c, g));
   return D.indent([DOC_HARDLINE, grp, cswPossibleContents(P, c, idx)]);
 };
@@ -251,13 +312,25 @@ const cswIndentedGroup = (P: CsPrint, c: CsChain, from: i32): i32 => {
   while (idx.i < c.ng()) {
     const pc = cswPossibleContents(P, c, idx);
     if (pc !== DOC_NULL) {
-      idx.i = idx.i - 1;
+      // cswPossibleContents moved past at least one group from `from` >= 1
+      const j = idx.i;
+      if (j <= 0) {
+        fault();
+        break;
+      }
+      idx.i = j - 1;
       result.push(pc);
     } else {
       result.push(DOC_HARDLINE);
       result.push(D.group(cswGroupDocs(c, idx.i)));
     }
-    idx.i = idx.i + 1;
+    // a group index, below the number of groups
+    const j2 = idx.i;
+    if (j2 >= 2147483647) {
+      fault();
+      break;
+    }
+    idx.i = j2 + 1;
   }
   return D.indent1(D.group(result));
 };
@@ -268,10 +341,15 @@ const cswIsMultiLineLiteral = (P: CsPrint, n: i32): boolean => {
     if (P.tk(t) === K_MultiLineRawStringLiteralToken) {
       return true;
     }
-    const a = P.lx.start[t];
-    const b = P.lx.end[t];
-    for (let i = a; i < b; i++) {
-      if (toI32(P.src[i]) === 10) {
+    const a = cswTokStart(P.lx, t);
+    const b = cswTokEnd(P.lx, t);
+    const src = P.src;
+    if (a < b && (a < 0 || b > src.length)) {
+      fault();
+      return false;
+    }
+    for (let i = a; i >= 0 && i < b && i < src.length; i++) {
+      if (toI32(src[i]) === 10) {
         return true;
       }
     }
@@ -315,9 +393,20 @@ export const cswMemberChain = (P: CsPrint, n: i32): i32 => {
   const cutoff = merge ? 3 : 2;
   const ng = c.ng();
   let forceOneLine = false;
+  // the grouping made at least one group
+  if (ng < 1) {
+    fault();
+    return DOC_NULL;
+  }
   if (ng <= cutoff) {
     for (let g = merge ? 1 : 0; g < ng; g++) {
-      const last = c.nodes[c.glast(g)];
+      const gl = c.glast(g);
+      const nodes = c.nodes;
+      if (gl < 0 || gl >= nodes.length) {
+        fault();
+        return DOC_NULL;
+      }
+      const last = nodes[gl];
       const lk = P.k(last);
       const ok =
         lk === K_InvocationExpression ||
@@ -347,8 +436,14 @@ export const cswMemberChain = (P: CsPrint, n: i32): i32 => {
   }
   let mergedDoc = DOC_NULL;
   if (merge) {
-    const lastDoc = c.docs[c.glast(1)];
-    const isGroupOfIndent = D.kind[lastDoc] === D_GROUP && D.kind[D.a[lastDoc]] === D_INDENT;
+    const gl = c.glast(1);
+    const docs = c.docs;
+    if (gl < 0 || gl >= docs.length) {
+      fault();
+      return DOC_NULL;
+    }
+    const lastDoc = docs[gl];
+    const isGroupOfIndent = cswDocKind(D, lastDoc) === D_GROUP && cswDocKind(D, cswDocA(D, lastDoc)) === D_INDENT;
     mergedDoc = D.indentIf(ng > 2 && !isGroupOfIndent, D.concat(cswGroupDocs(c, 1)));
   }
   const expanded = D.concat([D.concat(cswGroupDocs(c, 0)), mergedDoc, cswIndentedGroup(P, c, merge ? 2 : 1)]);
@@ -380,7 +475,7 @@ export const cswMemberChain = (P: CsPrint, n: i32): i32 => {
   }
   if (!useExpanded && P.k(parent) === K_ExpressionStatement) {
     const semi = P.s(parent, F_ExpressionStatement_SemicolonToken);
-    if (cswAnyComment(P.lx, P.lx.l0[semi], P.lx.l1[semi])) {
+    if (cswAnyComment(P.lx, cswTokL0(P.lx, semi), cswTokL1(P.lx, semi))) {
       useExpanded = true;
     }
   }

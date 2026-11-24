@@ -365,6 +365,7 @@ import {
 } from "./pdecl";
 import { cspBlock, cspIsPossibleTypedIdentifierStartAt } from "./pstmt";
 import { TF_HOLE_END } from "./lexer";
+import { fault } from "../core/fault";
 
 export const PREC_EXPRESSION: i32 = 0;
 export const PREC_ASSIGNMENT: i32 = 0;
@@ -782,13 +783,25 @@ export const cspIsAwaitExpression = (p: CsParser): boolean => {
 export const cspExpressionCore = (p: CsParser): i32 => cspSubExpression(p, PREC_EXPRESSION);
 
 export const cspSubExpression = (p: CsParser, precedence: i32): i32 => {
-  p.depth = p.depth + 1;
-  if (p.depth > 600) {
+  const d = p.depth;
+  if (d >= 600) {
+    if (d < 2147483647) {
+      p.depth = d + 1;
+    } else {
+      fault();
+    }
     p.fail("too deep");
     return -1;
   }
+  p.depth = d + 1;
   const r = cspSubExpressionCore(p, precedence);
-  p.depth = p.depth - 1;
+  // the depth counts this call, so it is at least 1
+  const e = p.depth;
+  if (e > 0) {
+    p.depth = e - 1;
+  } else {
+    fault();
+  }
   return r;
 };
 
@@ -929,7 +942,7 @@ export const cspExpressionContinued = (p: CsParser, first: i32, precedence: i32)
       break;
     }
     const opTok = cspEatOperator(p, op);
-    if (cur >= 0 && np > cspPrecedence(p.t.kind[cur]) && p.t.kind[cur] === K_IsPatternExpression) {
+    if (cur >= 0 && np > cspPrecedence(p.nodeKind(cur)) && p.nodeKind(cur) === K_IsPatternExpression) {
       p.fail("unexpected token after is pattern");
       return -1;
     }
@@ -1121,7 +1134,7 @@ export const cspIsPossibleDeclarationExpression = (p: CsParser, mode: i32, permi
   let r = false;
   if (cspScanType(p, mode) !== ST_NOT_TYPE) {
     const last = p.lastScan;
-    const lastIsPredefined = last >= 0 && csIsPredefinedType(p.lx.kind[last]);
+    const lastIsPredefined = last >= 0 && csIsPredefinedType(p.tokKind(last));
     if (cspScanDesignation(p, permitTupleDesignation && (typeIsVar || lastIsPredefined))) {
       if (mode === PT_FIRST_ELEMENT_OF_POSSIBLE_TUPLE_LITERAL) {
         r = p.k() === K_CommaToken;
@@ -1210,9 +1223,20 @@ const cspScanDesignator = (p: CsParser): boolean => {
 const cspIsPossibleAnonymousMethodExpression = (p: CsParser): boolean => {
   let i = 0;
   while (p.kindAt(i) === K_StaticKeyword || (p.kindAt(i) === K_IdentifierToken && p.ckAt(i) === K_AsyncKeyword)) {
+    if (i >= 2147483646) {
+      fault();
+      return false;
+    }
     i++;
   }
-  return p.kindAt(i) === K_DelegateKeyword && p.kindAt(i + 1) !== K_AsteriskToken;
+  if (p.kindAt(i) !== K_DelegateKeyword) {
+    return false;
+  }
+  if (i >= 2147483647) {
+    fault();
+    return false;
+  }
+  return p.kindAt(i + 1) !== K_AsteriskToken;
 };
 
 const cspLiteralKind = (t: i32): i32 => {
@@ -1428,7 +1452,7 @@ const cspPostfixExpression = (p: CsParser, first: i32): i32 => {
         p.push(e);
         const t = p.eat();
         p.push(t);
-        e = p.node(p.lx.kind[t] === K_PlusPlusToken ? K_PostIncrementExpression : K_PostDecrementExpression, m);
+        e = p.node(p.tokKind(t) === K_PlusPlusToken ? K_PostIncrementExpression : K_PostDecrementExpression, m);
         continue;
       }
       case K_ColonColonToken:
@@ -1621,7 +1645,7 @@ const cspArgumentExpression = (p: CsParser, isIndexer: boolean): i32 => {
     p.fail("missing argument");
     return -1;
   }
-  if (refKind >= 0 && p.lx.kind[refKind] === K_OutKeyword) {
+  if (refKind >= 0 && p.tokKind(refKind) === K_OutKeyword) {
     p.push(cspExpressionOrDeclarationExpr(p, PT_NORMAL, false));
   } else {
     p.push(cspSubExpression(p, PREC_EXPRESSION));
@@ -1649,6 +1673,10 @@ const cspAnonymousFunctionModifiers = (p: CsParser): void => {
         break;
       }
       if (!(p.kindAt(i) === K_IdentifierToken && (p.ckAt(i) === K_PartialKeyword || p.ckAt(i) === K_AsyncKeyword))) {
+        break;
+      }
+      if (i >= 2147483647) {
+        fault();
         break;
       }
     }
@@ -1689,8 +1717,14 @@ export const cspIsUnambiguousModifierListFollowedByOpenParen = (p: CsParser): bo
   const sp = p.sp();
   cspAnonymousFunctionModifiers(p);
   let sawStatic = false;
-  for (let i = sp; i < p.t.sp; i++) {
-    if (p.lx.kind[p.t.stk[i]] === K_StaticKeyword) {
+  const stk = p.t.stk;
+  const tsp = p.t.sp;
+  for (let i = sp; i < tsp; i++) {
+    if (i < 0 || i >= stk.length) {
+      fault();
+      break;
+    }
+    if (p.tokKind(stk[i]) === K_StaticKeyword) {
       sawStatic = true;
     }
   }
@@ -1772,6 +1806,10 @@ const cspScanImplicitlyTypedLambda = (p: CsParser, precedence: i32): boolean => 
   let i = 1;
   while (true) {
     const k = p.kindAt(i);
+    if (i >= 2147483646) {
+      fault();
+      return false;
+    }
     i++;
     if (cspIsTrueIdentifierAt(p, i - 1) || k === K_CommaToken || cspIsParameterModifierIncludingScoped(p, i - 1)) {
       continue;
@@ -1851,9 +1889,9 @@ const cspTryLambdaExpression = (p: CsParser): i32 => {
   if (p.err) {
     return -1;
   }
-  if (p.k() === K_ColonToken && r >= 0 && p.t.kind[r] === K_ParenthesizedLambdaExpression) {
+  if (p.k() === K_ColonToken && r >= 0 && p.nodeKind(r) === K_ParenthesizedLambdaExpression) {
     const rt = p.t.s(r, 2);
-    if (rt >= 0 && p.t.kind[rt] === K_NullableType) {
+    if (rt >= 0 && p.nodeKind(rt) === K_NullableType) {
       p.reset(m);
       return -1;
     }
@@ -1866,8 +1904,14 @@ const cspLambdaExpression = (p: CsParser): i32 => {
   const mm = p.sp();
   cspAnonymousFunctionModifiers(p);
   let isAsync = false;
-  for (let i = mm; i < p.t.sp; i++) {
-    if (p.lx.kind[p.t.stk[i]] === K_AsyncKeyword) {
+  const stk = p.t.stk;
+  const tsp = p.t.sp;
+  for (let i = mm; i < tsp; i++) {
+    if (i < 0 || i >= stk.length) {
+      fault();
+      break;
+    }
+    if (p.tokKind(stk[i]) === K_AsyncKeyword) {
       isAsync = true;
     }
   }
@@ -1997,8 +2041,14 @@ const cspAnonymousMethodExpression = (p: CsParser): i32 => {
   const mm = p.sp();
   cspAnonymousFunctionModifiers(p);
   let isAsync = false;
-  for (let i = mm; i < p.t.sp; i++) {
-    if (p.lx.kind[p.t.stk[i]] === K_AsyncKeyword) {
+  const stk = p.t.stk;
+  const tsp = p.t.sp;
+  for (let i = mm; i < tsp; i++) {
+    if (i < 0 || i >= stk.length) {
+      fault();
+      break;
+    }
+    if (p.tokKind(stk[i]) === K_AsyncKeyword) {
       isAsync = true;
     }
   }
@@ -2180,7 +2230,7 @@ const cspCastOrParenExpressionOrTuple = (p: CsParser): i32 => {
     p.push(e);
     return cspTupleExpressionTail(p, open, p.node(K_Argument, am));
   }
-  if (p.t.kind[e] === K_IdentifierName && p.k() === K_ColonToken) {
+  if (p.nodeKind(e) === K_IdentifierName && p.k() === K_ColonToken) {
     const am = p.sp();
     const cm = p.sp();
     p.push(e);
@@ -2222,7 +2272,7 @@ const cspTupleExpressionTail = (p: CsParser, open: i32, firstArg: i32): i32 => {
     p.push(p.eat());
     const e = cspExpressionOrDeclarationExpr(p, PT_AFTER_TUPLE_COMMA, true);
     const am = p.sp();
-    if (e >= 0 && p.t.kind[e] === K_IdentifierName && p.k() === K_ColonToken) {
+    if (e >= 0 && p.nodeKind(e) === K_IdentifierName && p.k() === K_ColonToken) {
       const cm = p.sp();
       p.push(e);
       p.push(p.eat());
@@ -2235,6 +2285,10 @@ const cspTupleExpressionTail = (p: CsParser, open: i32, firstArg: i32): i32 => {
       p.push(e);
     }
     p.push(p.node(K_Argument, am));
+    if (n >= 2147483647) {
+      fault();
+      break;
+    }
     n++;
   }
   if (n < 2) {
@@ -2312,7 +2366,7 @@ const cspArrayOrObjectCreation = (p: CsParser): i32 => {
     if (p.err) {
       return -1;
     }
-    if (p.t.kind[type] === K_ArrayType) {
+    if (p.nodeKind(type) === K_ArrayType) {
       const m = p.sp();
       p.push(nw);
       p.push(type);
@@ -2386,6 +2440,10 @@ const cspObjectOrCollectionInitializer = (p: CsParser): i32 => {
         }
         const e2 = cspInitializerMember(p);
         p.push(e2);
+        if (n >= 2147483647) {
+          fault();
+          break;
+        }
         n++;
         anyObj = anyObj || cspIsObjectInitializerElement(p, e2);
       }
@@ -2404,11 +2462,11 @@ const cspObjectOrCollectionInitializer = (p: CsParser): i32 => {
 };
 
 const cspIsObjectInitializerElement = (p: CsParser, e: i32): boolean => {
-  if (e < 0 || p.t.kind[e] !== K_SimpleAssignmentExpression) {
+  if (e < 0 || p.nodeKind(e) !== K_SimpleAssignmentExpression) {
     return false;
   }
   const l = p.t.s(e, 0);
-  const lk = p.t.kind[l];
+  const lk = p.nodeKind(l);
   return lk === K_IdentifierName || lk === K_ImplicitElementAccess;
 };
 
@@ -2586,8 +2644,17 @@ const cspInterpolatedString = (p: CsParser): i32 => {
 const cspInterpolation = (p: CsParser): i32 => {
   const ob = p.eat();
   // the lexer left the index of the token that ends this hole on the `{`
-  const end = p.lx.ck[ob];
-  if (end <= ob || (p.lx.flags[end] & TF_HOLE_END) === 0) {
+  const end = p.tokCk(ob);
+  if (end <= ob) {
+    p.fail("bad interpolation");
+    return -1;
+  }
+  const flags = p.lx.flags;
+  if (end < 0 || end >= flags.length) {
+    fault();
+    return -1;
+  }
+  if ((flags[end] & TF_HOLE_END) === 0) {
     p.fail("bad interpolation");
     return -1;
   }
@@ -2612,7 +2679,7 @@ const cspInterpolation = (p: CsParser): i32 => {
   if (p.err) {
     return -1;
   }
-  if (p.lx.kind[end] === K_ColonToken) {
+  if (p.tokKind(end) === K_ColonToken) {
     const fm = p.sp();
     p.push(p.eat());
     p.push(p.expect(K_InterpolatedStringTextToken));
@@ -2816,7 +2883,7 @@ const cspIsExpression = (p: CsParser, left: i32, opTok: i32): i32 => {
   p.push(left);
   p.push(opTok);
   p.push(node);
-  return p.node(cspIsPatternKind(p.t.kind[node]) ? K_IsPatternExpression : K_IsExpression, m);
+  return p.node(cspIsPatternKind(p.nodeKind(node)) ? K_IsPatternExpression : K_IsExpression, m);
 };
 
 const cspTypeOrPatternForIsOperator = (p: CsParser): i32 => {
@@ -2824,7 +2891,7 @@ const cspTypeOrPatternForIsOperator = (p: CsParser): i32 => {
   if (p.err) {
     return -1;
   }
-  const k = p.t.kind[pat];
+  const k = p.nodeKind(pat);
   if (k === K_ConstantPattern) {
     const t = cspConvertExpressionToType(p, p.t.s(pat, 0));
     if (t >= 0) {
@@ -2844,11 +2911,11 @@ const cspTypeOrPatternForIsOperator = (p: CsParser): i32 => {
 };
 
 const cspConvertExpressionToType = (p: CsParser, e: i32): i32 => {
-  const k = p.t.kind[e];
+  const k = p.nodeKind(e);
   if (k === K_IdentifierName || k === K_GenericName) {
     return e;
   }
-  if (k === K_SimpleMemberAccessExpression && p.lx.kind[p.t.s(e, 1)] === K_DotToken) {
+  if (k === K_SimpleMemberAccessExpression && p.tokKind(p.t.s(e, 1)) === K_DotToken) {
     const left = cspConvertExpressionToType(p, p.t.s(e, 0));
     if (left < 0) {
       return -1;
@@ -3010,7 +3077,7 @@ const cspCanTokenFollowTypeInPattern = (p: CsParser, precedence: i32): boolean =
 };
 
 const cspPatternContinued = (p: CsParser, type: i32, precedence: i32, inSwitchArmPattern: boolean): i32 => {
-  if (type >= 0 && p.t.kind[type] === K_IdentifierName) {
+  if (type >= 0 && p.nodeKind(type) === K_IdentifierName) {
     const id = p.t.s(type, 0);
     if (p.t.tokIs(id, "var") && (p.k() === K_OpenParenToken || cspIsValidPatternDesignation(p, inSwitchArmPattern))) {
       p.convert(id, K_VarKeyword);
@@ -3036,6 +3103,10 @@ const cspPatternContinued = (p: CsParser, type: i32, precedence: i32, inSwitchAr
       while (p.k() === K_CommaToken && !p.err) {
         p.push(p.eat());
         p.push(cspSubpatternElement(p));
+        if (n >= 2147483647) {
+          fault();
+          break;
+        }
         n++;
       }
     }
@@ -3049,7 +3120,7 @@ const cspPatternContinued = (p: CsParser, type: i32, precedence: i32, inSwitchAr
     if (type < 0 && prop < 0 && des < 0 && n === 1) {
       if (p.t.s(firstSub, 0) < 0) {
         const sub = p.t.s(firstSub, 1);
-        if (p.t.kind[sub] === K_ConstantPattern) {
+        if (p.nodeKind(sub) === K_ConstantPattern) {
           const em = p.sp();
           p.push(open);
           p.push(p.t.s(sub, 0));
@@ -3209,7 +3280,7 @@ export const cspExpressionOrPatternForSwitchStatement = (p: CsParser): i32 => {
 };
 
 const cspConvertPatternToExpressionIfPossible = (p: CsParser, pat: i32, permitTypeArguments: boolean): i32 => {
-  const k = p.t.kind[pat];
+  const k = p.nodeKind(pat);
   if (k === K_ConstantPattern) {
     return p.t.s(pat, 0);
   }
@@ -3229,7 +3300,7 @@ const cspConvertPatternToExpressionIfPossible = (p: CsParser, pat: i32, permitTy
 };
 
 const cspConvertTypeToExpression = (p: CsParser, type: i32, permitTypeArguments: boolean): i32 => {
-  const k = p.t.kind[type];
+  const k = p.nodeKind(type);
   if (k === K_GenericName) {
     return permitTypeArguments ? type : -1;
   }
@@ -3238,7 +3309,7 @@ const cspConvertTypeToExpression = (p: CsParser, type: i32, permitTypeArguments:
   }
   if (k === K_QualifiedName) {
     const right = p.t.s(type, 2);
-    if (!permitTypeArguments && p.t.kind[right] === K_GenericName) {
+    if (!permitTypeArguments && p.nodeKind(right) === K_GenericName) {
       return -1;
     }
     const left = p.t.s(type, 0);
@@ -3257,12 +3328,12 @@ const cspSubpatternElement = (p: CsParser): i32 => {
   let exprColon = -1;
   if (!p.err && p.k() === K_ColonToken) {
     const e = cspConvertPatternToExpressionIfPossible(p, pat, true);
-    if (!cspIsPatternKind(p.t.kind[e])) {
+    if (!cspIsPatternKind(p.nodeKind(e))) {
       const colon = p.eat();
       const cm = p.sp();
       p.push(e);
       p.push(colon);
-      exprColon = p.node(p.t.kind[e] === K_IdentifierName ? K_NameColon : K_ExpressionColon, cm);
+      exprColon = p.node(p.nodeKind(e) === K_IdentifierName ? K_NameColon : K_ExpressionColon, cm);
       pat = cspPattern(p, PREC_CONDITIONAL, false, false);
     }
   }

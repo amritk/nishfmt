@@ -558,6 +558,101 @@ import {
   cswBracketedArgumentList,
   cswIsCoalesceWithNonBinaryLeft,
 } from "./pexprs";
+import { CsDocs } from "./doc";
+import { CsLexer } from "./lexer";
+import { fault } from "../core/fault";
+
+// Guarded reads of the lexer's and the docs' columns: an index the tree or
+// the docs handed out is inside them, so the fault branches are never taken.
+
+/** The start of token t's leading trivia. */
+export const cswTokL0 = (lx: CsLexer, t: i32): i32 => {
+  const l0 = lx.l0;
+  if (t >= 0 && t < l0.length) {
+    return l0[t];
+  }
+  fault();
+  return 0;
+};
+
+/** The end of token t's leading trivia. */
+export const cswTokL1 = (lx: CsLexer, t: i32): i32 => {
+  const l1 = lx.l1;
+  if (t >= 0 && t < l1.length) {
+    return l1[t];
+  }
+  fault();
+  return 0;
+};
+
+/** The source offset token t starts at. */
+export const cswTokStart = (lx: CsLexer, t: i32): i32 => {
+  const start = lx.start;
+  if (t >= 0 && t < start.length) {
+    return start[t];
+  }
+  fault();
+  return 0;
+};
+
+/** The source offset token t ends at. */
+export const cswTokEnd = (lx: CsLexer, t: i32): i32 => {
+  const end = lx.end;
+  if (t >= 0 && t < end.length) {
+    return end[t];
+  }
+  fault();
+  return 0;
+};
+
+/** The kind of doc d. */
+export const cswDocKind = (D: CsDocs, d: i32): i32 => {
+  const kind = D.kind;
+  if (d >= 0 && d < kind.length) {
+    return kind[d];
+  }
+  fault();
+  return 0;
+};
+
+/** Field a of doc d. */
+export const cswDocA = (D: CsDocs, d: i32): i32 => {
+  const a = D.a;
+  if (d >= 0 && d < a.length) {
+    return a[d];
+  }
+  fault();
+  return 0;
+};
+
+/** Field b of doc d. */
+export const cswDocB = (D: CsDocs, d: i32): i32 => {
+  const b = D.b;
+  if (d >= 0 && d < b.length) {
+    return b[d];
+  }
+  fault();
+  return 0;
+};
+
+/** Leaves one level of print recursion; the level entered is at least 1. */
+export const cswDepthDown = (P: CsPrint): void => {
+  const e = P.depth;
+  if (e > 0) {
+    P.depth = e - 1;
+  } else {
+    fault();
+  }
+};
+
+/** The first of a list of docs the caller filled. */
+export const cswFirstDoc = (docs: i32[]): i32 => {
+  if (docs.length > 0) {
+    return docs[0];
+  }
+  fault();
+  return DOC_NULL;
+};
 
 /** Node.Print. */
 export const cswNode = (P: CsPrint, n: i32): i32 => {
@@ -574,9 +669,14 @@ export const cswNode = (P: CsPrint, n: i32): i32 => {
     const code = cswTrimmedDoc(P, buf);
     return P.is(n, Y_Statement) ? P.cc([cswExtraNewLines(P, n), code]) : code;
   }
-  P.depth = P.depth + 1;
+  const d = P.depth;
+  if (d >= 2147483647) {
+    fault();
+    return DOC_NULL;
+  }
+  P.depth = d + 1;
   const r = cswDispatch(P, n);
-  P.depth = P.depth - 1;
+  cswDepthDown(P);
   return r;
 };
 
@@ -834,27 +934,43 @@ const cswCompilationUnit = (P: CsPrint, n: i32): i32 => {
     docs,
   );
   const eof = P.s(n, F_CompilationUnit_EndOfFileToken);
-  const finalTrivia = cswLeadingTrivia(P, P.lx.l0[eof], P.lx.l1[eof], true, false);
+  const finalTrivia = cswLeadingTrivia(P, cswTokL0(P.lx, eof), cswTokL1(P.lx, eof), true, false);
   if (finalTrivia !== DOC_NULL) {
     const nd = toI32(docs.length);
     const prev = nd > 0 ? docs[nd - 1] : -1;
+    let squash = false;
     if (
-      D.kind[finalTrivia] === D_CONCAT &&
+      cswDocKind(D, finalTrivia) === D_CONCAT &&
       D.count(finalTrivia) > 1 &&
       prev >= 0 &&
-      D.kind[prev] === D_CONCAT &&
-      D.count(prev) > 1 &&
-      D.kind[D.at(prev, D.count(prev) - 1)] === D_HARDLINE &&
-      D.kind[D.at(prev, D.count(prev) - 2)] === D_HARDLINE
+      cswDocKind(D, prev) === D_CONCAT
     ) {
+      const cp = D.count(prev);
+      squash =
+        cp > 1 && cswDocKind(D, D.at(prev, cp - 1)) === D_HARDLINE && cswDocKind(D, D.at(prev, cp - 2)) === D_HARDLINE;
+    }
+    if (squash) {
       while (
         D.count(finalTrivia) > 0 &&
-        D.kind[D.at(finalTrivia, 0)] === D_HARDLINE &&
-        (D.b[D.at(finalTrivia, 0)] & HL_FOR_TRIVIA) !== 0
+        cswDocKind(D, D.at(finalTrivia, 0)) === D_HARDLINE &&
+        (cswDocB(D, D.at(finalTrivia, 0)) & HL_FOR_TRIVIA) !== 0
       ) {
         // List.RemoveAt(0)
-        D.a[finalTrivia] = D.a[finalTrivia] + 1;
-        D.b[finalTrivia] = D.b[finalTrivia] - 1;
+        const da = D.a;
+        const db = D.b;
+        if (finalTrivia < 0 || finalTrivia >= da.length || finalTrivia >= db.length) {
+          fault();
+          break;
+        }
+        const va = da[finalTrivia];
+        const vb = db[finalTrivia];
+        // vb is the count, above 0; va an offset in the pool
+        if (vb <= 0 || va >= 2147483647) {
+          fault();
+          break;
+        }
+        da[finalTrivia] = va + 1;
+        db[finalTrivia] = vb - 1;
       }
       docs.push(finalTrivia);
     } else {
@@ -1144,7 +1260,7 @@ const cswBaseTypeDeclaration = (P: CsPrint, n: i32): i32 => {
     docs.push(cswTok(P, close));
   } else if (open >= 0) {
     const lx = P.lx;
-    const sep = cswAnyNonWhitespace(lx, lx.l0[close], lx.l1[close]) ? DOC_LINE : DOC_SPACE;
+    const sep = cswAnyNonWhitespace(lx, cswTokL0(lx, close), cswTokL1(lx, close)) ? DOC_LINE : DOC_SPACE;
     docs.push(sep);
     docs.push(cswTok(P, open));
     docs.push(sep);
@@ -1239,8 +1355,8 @@ const cswBaseMethodDeclaration = (P: CsPrint, n: i32): i32 => {
     docs.push(cswAttributeLists(P, n, attrs));
     if (P.count(mods) > 0) {
       const m0 = P.at(mods, 0);
-      if (cswHasIgnoreComment(P, lx.l0[m0], lx.l1[m0], IGN_ONE)) {
-        cswMethodUnformattedWithoutAttributes(P, n, attrs, lx.l0[m0], docs);
+      if (cswHasIgnoreComment(P, cswTokL0(lx, m0), cswTokL1(lx, m0), IGN_ONE)) {
+        cswMethodUnformattedWithoutAttributes(P, n, attrs, cswTokL0(lx, m0), docs);
         return D.group(docs);
       }
     } else if (returnType >= 0 && cswHasIgnoreComment(P, cswLeadA(P, returnType), cswLeadB(P, returnType), IGN_ONE)) {
@@ -1332,11 +1448,22 @@ const cswMethodUnformattedWithoutAttributes = (P: CsPrint, n: i32, attrs: i32, f
     P.fail("an attribute without leading trivia before csharpier-ignore");
     return;
   }
-  const s = cswTrimmedSrc(P, P.lx.trStart[from], P.t.fullEnd(n));
+  const trStart = P.lx.trStart;
+  if (from < 0 || from >= trStart.length) {
+    fault();
+    return;
+  }
+  const s = cswTrimmedSrc(P, trStart[from], P.t.fullEnd(n));
   const buf = new CsBuf(256);
-  cswAppendUnformatted(P, buf, P.D.a[s], P.D.b[s]);
+  cswAppendUnformatted(P, buf, cswDocA(P.D, s), cswDocB(P.D, s));
   const o = P.D.appendBytes(buf.buf, 0, buf.n);
-  docs.push(P.D.strAt(o, o + buf.n, false));
+  // an offset in the docs' text, so the sum fits
+  const e = toI64(o) + toI64(buf.n);
+  if (e > toI64(2147483647)) {
+    fault();
+    return;
+  }
+  docs.push(P.D.strAt(o, toI32(e), false));
 };
 
 const cswBaseFieldDeclaration = (P: CsPrint, n: i32): i32 => {
@@ -1557,9 +1684,13 @@ export const cswParameter = (P: CsPrint, n: i32): i32 => {
 };
 
 const cswAnyCommentRange = (P: CsPrint, a: i32, b: i32): boolean => {
-  const lx = P.lx;
+  const trKind = P.lx.trKind;
   for (let i = a; i < b; i++) {
-    const k = lx.trKind[i];
+    if (i < 0 || i >= trKind.length) {
+      fault();
+      return false;
+    }
+    const k = trKind[i];
     if (
       k === K_SingleLineCommentTrivia ||
       k === K_MultiLineCommentTrivia ||
@@ -1747,14 +1878,25 @@ const cswExpressionStatement = (P: CsPrint, n: i32): i32 => {
   const semi = P.s(n, F_ExpressionStatement_SemicolonToken);
   let lead = cswLeadingTriviaTok(P, semi);
   const expr = P.s(n, F_ExpressionStatement_Expression);
-  if (
-    P.is(expr, Y_InvocationExpression) &&
-    D.kind[lead] === D_CONCAT &&
-    D.count(lead) > 1 &&
-    D.kind[D.at(lead, D.count(lead) - 1)] === D_HARDLINE &&
-    D.kind[D.at(lead, 0)] === D_LEADING_COMMENT
-  ) {
-    D.b[lead] = D.b[lead] - 1;
+  let trim = false;
+  if (P.is(expr, Y_InvocationExpression) && cswDocKind(D, lead) === D_CONCAT) {
+    const cl = D.count(lead);
+    trim =
+      cl > 1 && cswDocKind(D, D.at(lead, cl - 1)) === D_HARDLINE && cswDocKind(D, D.at(lead, 0)) === D_LEADING_COMMENT;
+  }
+  if (trim) {
+    const db = D.b;
+    // the count, above 1
+    if (lead < 0 || lead >= db.length) {
+      fault();
+      return DOC_NULL;
+    }
+    const vb = db[lead];
+    if (vb <= 0) {
+      fault();
+      return DOC_NULL;
+    }
+    db[lead] = vb - 1;
     lead = D.concat([D.indent1(lead), DOC_HARDLINE]);
   }
   return D.group([cswExtraNewLines(P, n), cswNode(P, expr), lead, cswTokNoLead(P, semi)]);
@@ -1946,7 +2088,7 @@ const cswSwitchStatement = (P: CsPrint, n: i32): i32 => {
       }
       parts.push(cswSwitchSection(P, P.at(secs, i)));
     }
-    const joined = nsec === 1 ? parts[0] : D.concat(parts);
+    const joined = nsec === 1 ? cswFirstDoc(parts) : D.concat(parts);
     sections = D.concat([D.indent1(D.concat([DOC_HARDLINE, joined])), DOC_HARDLINE]);
   }
   csdRemoveInitialDoubleHardLine(D, sections);
