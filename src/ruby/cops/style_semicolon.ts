@@ -19,6 +19,8 @@ import {
   NT_YIELD,
   V_NIL,
 } from "../ast";
+import { add32, atI32, sub32 } from "../../core/arr";
+import { fault } from "../../core/fault";
 import { RbCop } from "../cop";
 import { RbRewriter } from "../rewriter";
 import { rnHeredoc } from "../node";
@@ -43,7 +45,7 @@ const sbhSemiTokType = (src: RbSource, toks: i32[], i0: i32): i32 => {
   if (i < 0 || i >= k) {
     return -999;
   }
-  return src.tokT[toks[i]];
+  return atI32(src.tokT, toks[i]);
 };
 
 /** The token index tokens[i] with Ruby's negative indexing (-1 for nil). */
@@ -105,8 +107,15 @@ export class CopStyleSemicolon {
       return;
     }
     let hasSemi = false;
-    for (let i = 0; i < src.n; i++) {
-      if (src.pts[i] === 59) {
+    const pts = src.pts;
+    const n0 = src.n;
+    for (let i = 0; i < n0; i++) {
+      // n counts the code points.
+      if (i >= pts.length) {
+        fault();
+        return;
+      }
+      if (pts[i] === 59) {
         hasSemi = true;
         break;
       }
@@ -122,7 +131,12 @@ export class CopStyleSemicolon {
       }
       let inSrc = false;
       for (let p = a.exS(n); p < a.exE(n); p++) {
-        if (src.pts[p] === 59) {
+        // A node lies in the source.
+        if (p < 0 || p >= pts.length) {
+          fault();
+          return;
+        }
+        if (pts[p] === 59) {
           inSrc = true;
           break;
         }
@@ -138,7 +152,12 @@ export class CopStyleSemicolon {
         let found = false;
         for (let j = 0; j < toI32(lines.length); j++) {
           if (lines[j] === l) {
-            counts[j] = counts[j] + 1;
+            // lines and counts grow together.
+            if (j >= counts.length) {
+              fault();
+              return;
+            }
+            counts[j] = add32(counts[j], 1);
             found = true;
             break;
           }
@@ -149,12 +168,13 @@ export class CopStyleSemicolon {
         }
       }
       for (let j = 0; j < toI32(lines.length); j++) {
-        if (counts[j] < 2) {
+        const lj = lines[j];
+        if (atI32(counts, j) < 2) {
           continue;
         }
         for (let t = 0; t < toI32(src.tokT.length); t++) {
-          if (src.tokT[t] === TK_tSEMI && src.line(src.tokS[t]) === lines[j]) {
-            this.register(src, src.tokS[t], true, -1);
+          if (src.tokT[t] === TK_tSEMI && src.line(atI32(src.tokS, t)) === lj) {
+            this.register(src, atI32(src.tokS, t), true, -1);
           }
         }
       }
@@ -167,7 +187,7 @@ export class CopStyleSemicolon {
     const groups: i32[][] = [];
     const idx = new Map<i32, i32>();
     for (let t = 0; t < toI32(src.tokT.length); t++) {
-      const l = src.line(src.tokS[t]);
+      const l = src.line(atI32(src.tokS, t));
       const g = idx.get(l);
       if (g === undefined) {
         idx.set(l, toI32(lines.length));
@@ -175,35 +195,47 @@ export class CopStyleSemicolon {
         const fresh: i32[] = [t];
         groups.push(fresh);
       } else {
-        groups[g].push(t);
+        // idx maps a line to its group.
+        const gi: i32 = g;
+        if (gi < 0 || gi >= groups.length) {
+          fault();
+          return;
+        }
+        groups[gi].push(t);
       }
     }
     for (let j = 0; j < toI32(lines.length); j++) {
+      // lines and groups grow together.
+      if (j >= groups.length) {
+        fault();
+        return;
+      }
       const toks = groups[j];
       const pos = sbhSemiPosition(src, toks);
       if (pos === 999) {
         continue;
       }
       const after = pos === -1 ? -2 : pos;
-      this.register(src, src.tokS[sbhSemiTok(toks, pos)], false, sbhSemiTok(toks, after));
+      this.register(src, atI32(src.tokS, sbhSemiTok(toks, pos)), false, sbhSemiTok(toks, after));
     }
   }
 
   /** register_semicolon at the one-character range starting at `s`. */
   private register(src: RbSource, s: i32, afterExpression: boolean, before: i32): void {
-    const k = this.c.offense(s, s + 1);
+    const s1 = add32(s, 1);
+    const k = this.c.offense(s, s1);
     if (k === null) {
       return;
     }
     if (afterExpression) {
       if (!this.heredocBefore(src, s)) {
-        k.replace(s, s + 1, "\n");
+        k.replace(s, s1, "\n");
       }
       this.c.commit(k);
       return;
     }
     if (before >= 0) {
-      const bt = src.tokT[before];
+      const bt = atI32(src.tokT, before);
       if (bt === TK_tDOT2 || bt === TK_tDOT3) {
         const r = this.findNode(src, before, true);
         if (r !== V_NIL) {
@@ -216,7 +248,7 @@ export class CopStyleSemicolon {
         }
       }
     }
-    k.remove(s, s + 1);
+    k.remove(s, s1);
     this.c.commit(k);
   }
 
@@ -241,8 +273,8 @@ export class CopStyleSemicolon {
   /** find_node over range_nodes (ranges) or value_omission_pair_nodes: the first overlapping the token. */
   private findNode(src: RbSource, tok: i32, ranges: boolean): i32 {
     const a = src.a;
-    const ts = src.tokS[tok];
-    const te = src.tokE[tok];
+    const ts = atI32(src.tokS, tok);
+    const te = atI32(src.tokE, tok);
     for (const n of src.pre) {
       const t = a.type(n);
       if (ranges) {
@@ -250,7 +282,7 @@ export class CopStyleSemicolon {
           continue;
         }
       } else {
-        if (n === src.root || t !== NT_PAIR || src.at(a.exE(n) - 1) !== 58) {
+        if (n === src.root || t !== NT_PAIR || src.at(sub32(a.exE(n), 1)) !== 58) {
           continue;
         }
       }

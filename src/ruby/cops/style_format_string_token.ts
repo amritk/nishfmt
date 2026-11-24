@@ -7,6 +7,8 @@
 // Batsov).
 
 import { F_BEGIN, F_HEREDOC_BODY, M_HEREDOC, NT_DSTR, NT_REGEXP, NT_SEND, NT_STR, NT_XSTR, V_NIL } from "../ast";
+import { add32, sub32 } from "../../core/arr";
+import { fault } from "../../core/fault";
 import { RbCop } from "../cop";
 import { rbText } from "../lexer";
 import { RbSource } from "../source";
@@ -53,12 +55,13 @@ export class SbhFstMatcher {
 
   /** DIGIT_DOLLAR at p: \d+\$ (end, or -1). */
   digitDollar(p: i32): i32 {
+    const t = this.t;
     let q = p;
-    while (this.isDigit(q)) {
+    while (q >= 0 && q < t.length && t[q] >= 48 && t[q] <= 57) {
       q++;
     }
     if (q > p && this.at(q) === 36) {
-      return q + 1;
+      return add32(q, 1);
     }
     return -1;
   }
@@ -76,7 +79,7 @@ export class SbhFstMatcher {
     seen.add(p);
     const c = this.at(p);
     if (c === 32 || c === 35 || c === 48 || c === 43 || c === 45) {
-      this.flagEndsFrom(p + 1, out, seen);
+      this.flagEndsFrom(add32(p, 1), out, seen);
     }
     const dd = this.digitDollar(p);
     if (dd >= 0) {
@@ -87,23 +90,26 @@ export class SbhFstMatcher {
 
   /** NUMBER at p: \d+ | \*(\d+\$)? | \#\{.*?\}, the ends in priority order. */
   numberEnds(p: i32, out: i32[]): void {
+    const t = this.t;
     let q = p;
-    while (this.isDigit(q)) {
+    while (q >= 0 && q < t.length && t[q] >= 48 && t[q] <= 57) {
       q++;
     }
-    for (let e = q; e > p; e--) {
+    // A digit run starts at p >= 0, so e > 0.
+    for (let e = q; e > p && e > 0; e--) {
       out.push(e);
     }
+    const p1 = add32(p, 1);
     if (this.at(p) === 42) {
-      const dd = this.digitDollar(p + 1);
+      const dd = this.digitDollar(p1);
       if (dd >= 0) {
         out.push(dd);
       }
-      out.push(p + 1);
+      out.push(p1);
     }
-    if (this.at(p) === 35 && this.at(p + 1) === 123) {
-      for (let r = p + 2; r < toI32(this.t.length) && this.t[r] !== 10; r++) {
-        if (this.t[r] === 125) {
+    if (this.at(p) === 35 && this.at(p1) === 123) {
+      for (let r = add32(p, 2); r >= 0 && r < t.length && t[r] !== 10; r++) {
+        if (t[r] === 125) {
           out.push(r + 1);
         }
       }
@@ -122,8 +128,9 @@ export class SbhFstMatcher {
   precOpt(p: i32): i32[] {
     const out: i32[] = [];
     if (this.at(p) === 46) {
-      this.numberEnds(p + 1, out);
-      out.push(p + 1);
+      const p1 = add32(p, 1);
+      this.numberEnds(p1, out);
+      out.push(p1);
     }
     out.push(p);
     return out;
@@ -131,27 +138,33 @@ export class SbhFstMatcher {
 
   /** \w+ then `close` from p (the end past `close`, or -1). */
   word(p: i32, close: i32): i32 {
+    // p follows an opening character of t.
+    if (p < 0) {
+      fault();
+      return -1;
+    }
+    const t = this.t;
     let q = p;
-    while (q < toI32(this.t.length) && ssxIsWord(this.t[q])) {
+    while (q >= 0 && q < t.length && ssxIsWord(t[q])) {
       q++;
     }
     if (q > p && this.at(q) === close) {
-      return q + 1;
+      return add32(q, 1);
     }
     return -1;
   }
 
   /** NAME at p: <\w+> (end, or -1). */
   name(p: i32): i32 {
-    return this.at(p) === 60 ? this.word(p + 1, 62) : -1;
+    return this.at(p) === 60 ? this.word(add32(p, 1), 62) : -1;
   }
 
   /** TEMPLATE_NAME at p: (?<!\#)\{\w+\} (end, or -1). */
   template(p: i32): i32 {
-    if (this.at(p) !== 123 || this.at(p - 1) === 35) {
+    if (this.at(p) !== 123 || this.at(sub32(p, 1)) === 35) {
       return -1;
     }
-    return this.word(p + 1, 125);
+    return this.word(add32(p, 1), 125);
   }
 
   isType(p: i32): boolean {
@@ -163,15 +176,16 @@ export class SbhFstMatcher {
   match(i: i32): SbhFstSeq | null {
     const r = new SbhFstSeq();
     r.s = i;
-    if (this.at(i + 1) === 37) {
-      r.e = i + 2;
+    const i1 = add32(i, 1);
+    if (this.at(i1) === 37) {
+      r.e = add32(i, 2);
       r.percent = true;
       return r;
     }
     const flags: i32[] = [];
-    this.flagEnds(i + 1, flags);
+    this.flagEnds(i1, flags);
     for (const f of flags) {
-      r.flagsS = i + 1;
+      r.flagsS = i1;
       r.flagsE = f;
       // A1: WIDTH? PRECISION? NAME? TYPE
       for (const w of this.widthOpt(f)) {
@@ -182,10 +196,10 @@ export class SbhFstMatcher {
             if (this.isType(n)) {
               this.setWidth(r, f, w);
               this.setPrec(r, w, p);
-              r.nameS = n === p ? -1 : p + 1;
-              r.nameE = n === p ? -1 : n - 1;
+              r.nameS = n === p ? -1 : add32(p, 1);
+              r.nameE = n === p ? -1 : sub32(n, 1);
               r.typeS = n;
-              r.e = n + 1;
+              r.e = add32(n, 1);
               return r;
             }
           }
@@ -201,10 +215,10 @@ export class SbhFstMatcher {
           if (this.isType(p)) {
             this.setWidth(r, f, w);
             this.setPrec(r, nm, p);
-            r.nameS = w + 1;
-            r.nameE = nm - 1;
+            r.nameS = add32(w, 1);
+            r.nameE = sub32(nm, 1);
             r.typeS = p;
-            r.e = p + 1;
+            r.e = add32(p, 1);
             return r;
           }
         }
@@ -218,14 +232,14 @@ export class SbhFstMatcher {
           for (const w of this.widthOpt(mf)) {
             for (const p of this.precOpt(w)) {
               if (this.isType(p)) {
-                r.nameS = f + 1;
-                r.nameE = nm3 - 1;
+                r.nameS = add32(f, 1);
+                r.nameE = sub32(nm3, 1);
                 r.moreS = nm3;
                 r.moreE = mf;
                 this.setWidth(r, mf, w);
                 this.setPrec(r, w, p);
                 r.typeS = p;
-                r.e = p + 1;
+                r.e = add32(p, 1);
                 return r;
               }
             }
@@ -239,8 +253,8 @@ export class SbhFstMatcher {
           if (te >= 0) {
             this.setWidth(r, f, w);
             this.setPrec(r, w, p);
-            r.nameS = p + 1;
-            r.nameE = te - 1;
+            r.nameS = add32(p, 1);
+            r.nameE = sub32(te, 1);
             r.typeS = -1;
             r.e = te;
             return r;
@@ -258,17 +272,23 @@ export class SbhFstMatcher {
 
   /** The precision capture: after the `.` of [from, to) (none when skipped). */
   private setPrec(r: SbhFstSeq, from: i32, to: i32): void {
-    r.precS = to > from ? from + 1 : -1;
+    r.precS = to > from ? add32(from, 1) : -1;
     r.precE = to > from ? to : -1;
   }
 
   /** String#scan(SEQUENCE). */
   scan(): SbhFstSeq[] {
     const out: SbhFstSeq[] = [];
+    const t = this.t;
     let j = 0;
-    const n = toI32(this.t.length);
+    const n = toI32(t.length);
     while (j < n) {
-      if (this.t[j] === 37) {
+      // A match ends past its start, inside t.
+      if (j < 0 || j >= t.length) {
+        fault();
+        return out;
+      }
+      if (t[j] === 37) {
         const m = this.match(j);
         if (m !== null) {
           out.push(m);
@@ -290,13 +310,19 @@ export class SbhFstMatcher {
     if (r.nameS < 0) {
       return "unannotated";
     }
+    const t = this.t;
     let lt = false;
     let br = false;
     for (let i = r.s; i < r.e; i++) {
-      if (this.t[i] === 60) {
+      // A match lies in t.
+      if (i < 0 || i >= t.length) {
+        fault();
+        return "unannotated";
+      }
+      if (t[i] === 60) {
         lt = true;
       }
-      if (this.t[i] === 123) {
+      if (t[i] === 123) {
         br = true;
       }
     }
@@ -362,12 +388,18 @@ export class CopStyleFormatStringToken {
       cs = ssxFS(src, n, F_HEREDOC_BODY);
       ce = ssxFE(src, n, F_HEREDOC_BODY);
     } else if (ssxHas(src, n, F_BEGIN)) {
-      cs = cs + 1;
-      ce = ce - 1;
+      cs = add32(cs, 1);
+      ce = sub32(ce, 1);
     }
     const pts: i32[] = [];
+    const spts = src.pts;
     for (let i = cs; i < ce; i++) {
-      pts.push(src.pts[i]);
+      // The string's contents lie in the source.
+      if (i < 0 || i >= spts.length) {
+        fault();
+        return;
+      }
+      pts.push(spts[i]);
     }
     const mt = new SbhFstMatcher(pts);
     const typical = this.typical(src, n);
@@ -411,17 +443,23 @@ export class CopStyleFormatStringToken {
     }
     for (let i = 0; i < toI32(det.length); i++) {
       const sq = det[i];
-      if (styles[i] === "annotated") {
+      // det and styles grow together.
+      if (i >= styles.length) {
+        fault();
+        return;
+      }
+      const style = styles[i];
+      if (style === "annotated") {
         continue;
       }
-      const ts = cs + sq.s;
-      const te = cs + sq.e;
+      const ts = add32(cs, sq.s);
+      const te = add32(cs, sq.e);
       const k = this.c.offense(ts, te);
       if (k === null) {
         continue;
       }
       if (ctx && sq.nameS >= 0) {
-        const type = styles[i] === "template" ? "s" : mt.text(sq.typeS, sq.typeS + 1);
+        const type = style === "template" ? "s" : mt.text(sq.typeS, add32(sq.typeS, 1));
         const flags = `${mt.text(sq.flagsS, sq.flagsE)}${mt.text(sq.moreS, sq.moreE)}`;
         k.replace(
           ts,

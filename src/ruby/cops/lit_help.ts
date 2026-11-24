@@ -19,6 +19,8 @@ import {
   rbInspectStr,
   rbInspectSym,
 } from "../ast";
+import { add32, atI32, sub32 } from "../../core/arr";
+import { fault } from "../../core/fault";
 import { rnHas, rnS, rnE } from "../node";
 import { RbSource, TK_COMMENT } from "../source";
 import { rbDoubleQuotesRequired, rbEscapeString, rbNeedsEscaping, rbReplaceAll } from "../util";
@@ -38,18 +40,19 @@ export const rbLitIsPercent = (src: RbSource, n: i32): boolean => {
 };
 
 /** PercentLiteral#type: loc.begin's source without its last character. */
-export const rbLitPctType = (src: RbSource, n: i32): string => src.src(rnS(src, n, F_BEGIN), rnE(src, n, F_BEGIN) - 1);
+export const rbLitPctType = (src: RbSource, n: i32): string =>
+  src.src(rnS(src, n, F_BEGIN), sub32(rnE(src, n, F_BEGIN), 1));
 
 /** The last character of loc.begin's source (one code point). */
 export const rbLitBeginLast = (src: RbSource, n: i32): string => {
   const e = rnE(src, n, F_BEGIN);
-  return src.src(e - 1, e);
+  return src.src(sub32(e, 1), e);
 };
 
 /** The first character of loc.end's source (one code point). */
 export const rbLitEndFirst = (src: RbSource, n: i32): string => {
   const s = rnS(src, n, F_END);
-  return src.src(s, s + 1);
+  return src.src(s, add32(s, 1));
 };
 
 /**
@@ -108,7 +111,7 @@ export const rbLitChars = (s: string): i32[] => {
   const out: i32[] = [];
   const n = toI32(s.length);
   let i = 0;
-  while (i < n) {
+  while (i >= 0 && i < n && i < s.length) {
     const c = s.charCodeAt(i);
     let k = 0;
     let v = 0;
@@ -130,14 +133,21 @@ export const rbLitChars = (s: string): i32[] => {
       i++;
       continue;
     }
-    let ok = i + k < n;
+    let ok = i < n - k;
+    // q runs over i + 1 .. i + k, inside the string when ok.
+    let q = i + 1;
     for (let j = 1; j <= k && ok; j++) {
-      const d = s.charCodeAt(i + j);
+      if (q < 0 || q >= s.length) {
+        fault();
+        return out;
+      }
+      const d = s.charCodeAt(q);
       if ((d & 0xc0) !== 0x80) {
         ok = false;
       } else {
         v = (v << 6) | (d & 0x3f);
       }
+      q++;
     }
     if (!ok) {
       out.push(0xfffd);
@@ -145,7 +155,7 @@ export const rbLitChars = (s: string): i32[] => {
       continue;
     }
     out.push(v);
-    i += k + 1;
+    i = q;
   }
   return out;
 };
@@ -184,7 +194,7 @@ export const rbLitCommentsInArray = (src: RbSource, n: i32): boolean => {
   const first = src.line(src.a.exS(n));
   const last = src.line(src.a.exE(n));
   for (let i = 0; i < src.commentCount(); i++) {
-    const l = src.line(src.commS[i]);
+    const l = src.line(atI32(src.commS, i));
     if (l >= first && l < last) {
       return true;
     }
@@ -203,7 +213,7 @@ export const rbLitBracketed = (src: RbSource, n: i32, elements: string[]): strin
     between = src.src(a.exE(a.kid(n, 0)), rbLitElementBegin(src, a.kid(n, 1)));
   }
   parts.push(elements.join(`,${between}`));
-  parts.push(src.src(a.exE(a.kid(n, k - 1)), rnS(src, n, F_END)));
+  parts.push(src.src(a.exE(a.kid(n, sub32(k, 1))), rnS(src, n, F_END)));
   parts.push("]");
   return parts.join("");
 };
@@ -223,7 +233,7 @@ const rbLitElementBegin = (src: RbSource, e: i32): i32 => {
   if (a.isNode(f) && (a.type(f) === NT_STR || a.type(f) === NT_BEGIN)) {
     return s;
   }
-  return s - 1;
+  return sub32(s, 1);
 };
 
 /**
@@ -256,13 +266,19 @@ export const rbLitLeadingCommentLines = (src: RbSource): string[] => {
   let firstLine = -1;
   for (let i = 0; i < toI32(src.tokT.length); i++) {
     if (src.tokT[i] !== TK_COMMENT) {
-      firstLine = src.line(src.tokS[i]);
+      firstLine = src.line(atI32(src.tokS, i));
       break;
     }
   }
   const out: string[] = [];
   const last = firstLine < 0 ? src.lineCount() : firstLine - 1;
-  for (let l = 1; l <= last && l <= src.lineCount(); l++) {
+  const lc = src.lineCount();
+  // A count of lines, below the largest i32.
+  if (lc >= 2147483647) {
+    fault();
+    return out;
+  }
+  for (let l = 1; l <= last && l <= lc; l++) {
     out.push(src.lineText(l));
   }
   return out;
@@ -295,9 +311,9 @@ const rbLitSubstDelims = (s: string): string => {
   for (let i = 0; i < toI32(s.length); i++) {
     const ch = s.charCodeAt(i);
     if (ch === 91) {
-      o++;
+      o = add32(o, 1);
     } else if (ch === 93) {
-      c++;
+      c = add32(c, 1);
     }
   }
   if (o === c) {
@@ -311,14 +327,23 @@ export const rbLitSplitLines = (s: string): string[] => {
   const out: string[] = [];
   let a = 0;
   const n = toI32(s.length);
+  // The loop runs to the length inclusive.
+  if (n >= 2147483647) {
+    fault();
+    return out;
+  }
   for (let i = 0; i <= n; i++) {
-    if (i === n || s.charCodeAt(i) === 10) {
+    if (i >= n || s.charCodeAt(i) === 10) {
       out.push(s.substring(a, i));
       a = i + 1;
     }
   }
-  while (out.length > 0 && out[out.length - 1].length === 0) {
-    out.pop();
+  let m = toI32(out.length);
+  while (m > 0 && m <= out.length && out[m - 1].length === 0) {
+    if (out.length > 0) {
+      out.pop();
+    }
+    m = toI32(out.length);
   }
   return out;
 };
@@ -381,10 +406,15 @@ export const rbLitPercentCorrect = (src: RbSource, n: i32, char0: string, isSym:
       if (wf === prev) {
         lb = i === 0 && wf === base ? "" : " ";
       } else {
-        const from = prev - base + 1;
-        const to = wf - base + 1;
+        const from = add32(sub32(prev, base), 1);
+        const to = add32(sub32(wf, base), 1);
         const sel: string[] = [];
         for (let j = from; j < to && j < toI32(lines.length); j++) {
+          // Lines at or below the literal's first line.
+          if (j < 0 || j >= lines.length) {
+            fault();
+            return "";
+          }
           sel.push(lines[j]);
         }
         lb = `\n${rbLitSplitFirst(sel.join("\n"), src.nodeSrc(w))}`;
@@ -394,8 +424,9 @@ export const rbLitPercentCorrect = (src: RbSource, n: i32, char0: string, isSym:
       parts.push(rbLitFixEscaped(src, w, escape));
     }
     // end_content
-    if (lines.length > 0) {
-      const last = lines[lines.length - 1];
+    const nl = toI32(lines.length);
+    if (nl > 0) {
+      const last = lines[nl - 1];
       let j = 0;
       while (j < toI32(last.length) && rbLitSpaceC(last.charCodeAt(j))) {
         j++;

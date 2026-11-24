@@ -46,6 +46,8 @@ import {
   NT_XSTR,
   V_NIL,
 } from "../ast";
+import { add32, atI32, sub32 } from "../../core/arr";
+import { fault } from "../../core/fault";
 import { RbCop } from "../cop";
 import { rnHas, rnHeredoc, rnS, rnE } from "../node";
 import { RbRewriter } from "../rewriter";
@@ -64,10 +66,22 @@ export const lalIsStripWs = (c: i32): boolean => c === 0 || c === 32 || (c >= 9 
 
 const lalHex = (s: string, from: i32, to: i32): i32 => {
   let v = 0;
-  for (let i = from; i < to; i++) {
-    const c = s.charCodeAt(i);
+  let i = from;
+  while (i >= 0 && i < to && i < s.length) {
+    const c = s.charCodeAt(i) & 0xff;
     const d = c <= 57 ? c - 48 : c - 87;
-    v = v * 16 + d;
+    const r = toI64(v) * toI64(16) + toI64(d);
+    if (r < toI64(-2147483648) || r > toI64(2147483647)) {
+      fault();
+      return 0;
+    }
+    v = toI32(r);
+    i++;
+  }
+  // [from, to) lies in the table text.
+  if (i < to) {
+    fault();
+    return 0;
   }
   return v;
 };
@@ -98,8 +112,11 @@ export class LalWidth {
         comma = n;
       }
       this.lo.push(lalHex(s, p, dash));
-      this.hi.push(lalHex(s, dash + 1, colon));
-      this.w.push(lalHex(s, colon + 1, comma));
+      this.hi.push(lalHex(s, add32(dash, 1), colon));
+      this.w.push(lalHex(s, add32(colon, 1), comma));
+      if (comma >= n) {
+        break;
+      }
       p = comma + 1;
     }
   }
@@ -111,18 +128,31 @@ export class LalWidth {
     if (!this.ready) {
       this.load();
     }
+    const los = this.lo;
+    const his = this.hi;
+    const ws = this.w;
     let lo = 0;
-    let hi = toI32(this.lo.length);
-    while (lo < hi) {
-      const mid = (lo + hi) >> 1;
-      if (this.hi[mid] < cp) {
+    let hi = toI32(los.length);
+    while (lo >= 0 && lo < hi) {
+      // 0 <= lo < hi <= length, so the u32 sum is exact.
+      const mid = toI32((toU32(lo) + toU32(hi)) >> toU32(1));
+      // load pushes lo, hi and w together.
+      if (mid < 0 || mid >= his.length) {
+        fault();
+        return 1;
+      }
+      if (his[mid] < cp) {
         lo = mid + 1;
       } else {
         hi = mid;
       }
     }
-    if (lo < toI32(this.lo.length) && this.lo[lo] <= cp) {
-      return this.w[lo];
+    if (lo >= 0 && lo < los.length && los[lo] <= cp) {
+      if (lo >= ws.length) {
+        fault();
+        return 1;
+      }
+      return ws[lo];
     }
     return 1;
   }
@@ -137,10 +167,17 @@ export const lalLineStartOf = (src: RbSource, pos: i32): i32 => src.lineStart(sr
 export const lalFirstNonWs = (src: RbSource, l: i32): i32 => {
   const s = src.lineStart(l);
   const e = src.lineEnd(l);
-  for (let p = s; p < e; p++) {
-    if (!lalIsWs(src.pts[p])) {
-      return p - s;
+  const pts = src.pts;
+  let p = s;
+  while (p >= 0 && p < e && p < pts.length) {
+    if (!lalIsWs(pts[p])) {
+      return sub32(p, s);
     }
+    p++;
+  }
+  // A line lies in the source.
+  if (p < e) {
+    fault();
   }
   return -1;
 };
@@ -149,20 +186,33 @@ export const lalFirstNonWs = (src: RbSource, l: i32): i32 => {
 export const lalLineIndentation = (src: RbSource, l: i32): i32 => {
   const s = src.lineStart(l);
   const e = src.lineEnd(l);
+  const pts = src.pts;
   let p = s;
-  while (p < e && lalIsWs(src.pts[p])) {
+  while (p >= 0 && p < e && p < pts.length && lalIsWs(pts[p])) {
     p++;
   }
-  return p - s;
+  // A line lies in the source.
+  if (p < e && (p < 0 || p >= pts.length)) {
+    fault();
+    return 0;
+  }
+  return sub32(p, s);
 };
 
 /** String#blank? of 1-based line `l`. */
 export const lalLineBlank = (src: RbSource, l: i32): boolean => {
   const e = src.lineEnd(l);
-  for (let p = src.lineStart(l); p < e; p++) {
-    if (!lalIsStripWs(src.pts[p])) {
+  const pts = src.pts;
+  let p = src.lineStart(l);
+  while (p >= 0 && p < e && p < pts.length) {
+    if (!lalIsStripWs(pts[p])) {
       return false;
     }
+    p++;
+  }
+  // A line lies in the source.
+  if (p < e) {
+    fault();
   }
   return true;
 };
@@ -177,8 +227,8 @@ export const lalNodeBeginsLine = (src: RbSource, n: i32): boolean => lalBeginsIt
 /** RangeHelp#effective_column: the column, less a byte order mark on line 1. */
 export const lalEffCol = (src: RbSource, pos: i32): i32 => {
   const c = src.column(pos);
-  if (src.line(pos) === 1 && src.n > 0 && src.pts[0] === 0xfeff) {
-    return c - 1;
+  if (src.line(pos) === 1 && src.n > 0 && atI32(src.pts, 0) === 0xfeff) {
+    return sub32(c, 1);
   }
   return c;
 };
@@ -347,7 +397,7 @@ export const lalParentheses = (src: RbSource, n: i32): boolean => {
     return false;
   }
   const e = rnS(src, n, F_END);
-  return rnE(src, n, F_END) === e + 1 && src.at(e) === 41;
+  return rnE(src, n, F_END) === add32(e, 1) && src.at(e) === 41;
 };
 
 /** CheckAssignment#extract_rhs (V_NIL for none). */
@@ -470,7 +520,7 @@ export class LalAligner {
       const s = src.commS[i];
       if (src.at(s) === 61) {
         d1.push(s);
-        d2.push(src.commE[i]);
+        d2.push(atI32(src.commE, i));
       }
     }
     this.docS = d1;
@@ -480,9 +530,17 @@ export class LalAligner {
   /** Alignment#display_column of a range starting at `pos`. */
   dispCol(src: RbSource, pos: i32): i32 {
     const ls = lalLineStartOf(src, pos);
+    const pts = src.pts;
     let w = 0;
-    for (let p = ls; p < pos; p++) {
-      w += this.wid.of(src.pts[p]);
+    let p = ls;
+    while (p >= 0 && p < pos && p < pts.length) {
+      w = add32(w, this.wid.of(pts[p]));
+      p++;
+    }
+    // pos lies in the source.
+    if (p < pos) {
+      fault();
+      return 0;
     }
     return w;
   }
@@ -499,7 +557,7 @@ export class LalAligner {
       const s = src.a.exS(cur);
       const l = src.line(s);
       if (l > prev && lalBeginsItsLine(src, s)) {
-        const d = base - this.dispCol(src, s);
+        const d = sub32(base, this.dispCol(src, s));
         if (d !== 0) {
           bi.push(cur);
           bd.push(d);
@@ -516,14 +574,20 @@ export class LalAligner {
    * `base` < 0 (with `hasBase` false) takes the first item's display column.
    */
   check(cop: RbCop, src: RbSource, items: i32[], base0: i32, hasBase: boolean): void {
-    if (items.length === 0) {
+    const n = toI32(items.length);
+    if (n <= 0) {
       return;
     }
-    const base = hasBase ? base0 : this.dispCol(src, src.a.exS(items[0]));
+    const base = hasBase ? base0 : this.dispCol(src, src.a.exS(atI32(items, 0)));
     this.eachBad(src, items, base);
     const bi = this.badItems;
     const bd = this.badDeltas;
     for (let i = 0; i < toI32(bi.length); i++) {
+      // eachBad pushes an item and its delta together.
+      if (i >= bd.length) {
+        fault();
+        return;
+      }
       this.register(cop, src, bi[i], bd[i]);
     }
   }
@@ -545,8 +609,14 @@ export class LalAligner {
 
   /** `@current_offenses&.any? { |o| within?(expr, o.location) }`. */
   withinOffense(cop: RbCop, s: i32, e: i32): boolean {
+    const offE = cop.offE;
     for (let i = 0; i < toI32(cop.offS.length); i++) {
-      if (lalWithin(s, e, cop.offS[i], cop.offE[i])) {
+      // Every offense has a start and an end.
+      if (i >= offE.length) {
+        fault();
+        return false;
+      }
+      if (lalWithin(s, e, cop.offS[i], offE[i])) {
         return true;
       }
     }
@@ -573,10 +643,16 @@ export class LalAligner {
     const a = src.a;
     const stack: i32[] = [root];
     while (stack.length > 0) {
-      const n = stack[stack.length - 1];
-      stack.pop();
+      const sn = toI32(stack.length);
+      if (sn <= 0) {
+        break;
+      }
+      const n = stack[sn - 1];
+      if (stack.length > 0) {
+        stack.pop();
+      }
       this.strRange(src, n, os, oe);
-      for (let i = a.nKid(n) - 1; i >= 0; i--) {
+      for (let i = sub32(a.nKid(n), 1); i >= 0; i--) {
         const c = a.kid(n, i);
         if (a.isNode(c)) {
           stack.push(c);
@@ -591,8 +667,15 @@ export class LalAligner {
    * is the node the range comes from, or V_NIL for a bare range.
    */
   correct(src: RbSource, k: RbRewriter, s: i32, e: i32, delta: i32, node: i32): void {
-    for (let i = 0; i < toI32(this.docS.length); i++) {
-      if (lalWithin(this.docS[i], this.docE[i], s, e)) {
+    const docS = this.docS;
+    const docE = this.docE;
+    for (let i = 0; i < toI32(docS.length); i++) {
+      // begin pushes a start and an end together.
+      if (i >= docE.length) {
+        fault();
+        return;
+      }
+      if (lalWithin(docS[i], docE[i], s, e)) {
         return;
       }
     }
@@ -614,12 +697,18 @@ export class LalAligner {
     let lbp = s;
     while (lbp < e) {
       this.correctLine(src, k, lbp, delta, ts, te);
+      const pts = src.pts;
       let p = lbp;
-      while (p < e && src.pts[p] !== 10) {
+      while (p >= 0 && p < e && p < pts.length && pts[p] !== 10) {
         p++;
       }
       if (p >= e) {
         break;
+      }
+      // The range lies in the source.
+      if (p < 0 || p >= pts.length) {
+        fault();
+        return;
       }
       lbp = p + 1;
     }
@@ -630,14 +719,19 @@ export class LalAligner {
     let rs = lbp;
     let re = lbp;
     if (delta < 0) {
-      const ad = -delta;
+      const ad = sub32(0, delta);
       if (src.at(lbp) === 32) {
-        re = lbp + ad;
+        re = add32(lbp, ad);
       } else {
-        rs = lbp - ad;
+        rs = sub32(lbp, ad);
       }
     }
     for (let i = 0; i < toI32(ts.length); i++) {
+      // stringRanges pushes a start and an end together.
+      if (i >= te.length) {
+        fault();
+        return;
+      }
       if (lalWithin(rs, re, ts[i], te[i])) {
         return;
       }
@@ -651,8 +745,14 @@ export class LalAligner {
       return;
     }
     if (re > rs && rs >= 0 && re <= src.n) {
-      for (let p = rs; p < re; p++) {
-        const c = src.pts[p];
+      const pts = src.pts;
+      for (let p = rs; p >= 0 && p < re; p++) {
+        // re <= src.n, the length of pts.
+        if (p >= pts.length) {
+          fault();
+          return;
+        }
+        const c = pts[p];
         if (c !== 32 && c !== 9) {
           return;
         }
@@ -697,7 +797,7 @@ export const lalIndentBase = (src: RbSource, lb: i32, first: i32, lp: i32, speci
     const h = src.parent(pair);
     let sib = V_NIL;
     if (h !== V_NIL) {
-      for (let i = 0; i + 1 < a.nKid(h); i++) {
+      for (let i = 0; i < a.nKid(h) && i + 1 < a.nKid(h); i++) {
         if (a.kid(h, i) === pair) {
           sib = a.kid(h, i + 1);
         }
@@ -708,7 +808,7 @@ export const lalIndentBase = (src: RbSource, lb: i32, first: i32, lp: i32, speci
     }
   }
   if (lp >= 0 && special) {
-    return src.column(lp) + 1;
+    return add32(src.column(lp), 1);
   }
   return lalFirstNonWs(src, src.line(lb));
 };
@@ -721,8 +821,14 @@ export const lalOnNode = (src: RbSource, t: i32, arg: i32, out: i32[]): void => 
   }
   const stack: i32[] = [arg];
   while (stack.length > 0) {
-    const n = stack[stack.length - 1];
-    stack.pop();
+    const sn = toI32(stack.length);
+    if (sn <= 0) {
+      break;
+    }
+    const n = stack[sn - 1];
+    if (stack.length > 0) {
+      stack.pop();
+    }
     const nt = a.type(n);
     if (nt === t) {
       out.push(n);
@@ -730,7 +836,7 @@ export const lalOnNode = (src: RbSource, t: i32, arg: i32, out: i32[]): void => 
     if (nt === NT_SEND) {
       continue;
     }
-    for (let i = a.nKid(n) - 1; i >= 0; i--) {
+    for (let i = sub32(a.nKid(n), 1); i >= 0; i--) {
       const c = a.kid(n, i);
       if (a.isNode(c)) {
         stack.push(c);
@@ -774,8 +880,8 @@ export const lalCheckFirst = (
 ): void => {
   const s = src.a.exS(first);
   const e = src.a.exE(first);
-  const expected = lalIndentBase(src, lb, first, lp, special) + 2 + offset;
-  const delta = expected - src.column(s);
+  const expected = add32(add32(lalIndentBase(src, lb, first, lp, special), 2), offset);
+  const delta = sub32(expected, src.column(s));
   if (delta === 0) {
     return;
   }
@@ -798,19 +904,28 @@ export const lalCheckRight = (
   special: boolean,
 ): void => {
   const ls = lalLineStartOf(src, rb);
-  for (let p = ls; p < rb; p++) {
-    if (!lalIsWs(src.pts[p])) {
+  const pts = src.pts;
+  let p = ls;
+  while (p >= 0 && p < rb && p < pts.length) {
+    if (!lalIsWs(pts[p])) {
       return;
     }
+    p++;
+  }
+  // rb lies in the source.
+  if (p < rb) {
+    fault();
+    return;
   }
   const expected = lalIndentBase(src, lb, first, lp, special);
-  const delta = expected - src.column(rb);
+  const delta = sub32(expected, src.column(rb));
   if (delta === 0) {
     return;
   }
-  const k = cop.offense(rb, rb + 1);
+  const rb1 = add32(rb, 1);
+  const k = cop.offense(rb, rb1);
   if (k !== null) {
-    al.correct(src, k, rb, rb + 1, delta, V_NIL);
+    al.correct(src, k, rb, rb1, delta, V_NIL);
     cop.commit(k);
   }
 };

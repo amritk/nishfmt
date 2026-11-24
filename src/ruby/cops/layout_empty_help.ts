@@ -5,6 +5,8 @@
 // Ported from RuboCop 1.92.3 and rubocop-ast 1.52.0 (MIT License, Copyright
 // (c) 2012-24 Bozhidar Batsov).
 
+import { add32, atI32, sub32 } from "../../core/arr";
+import { fault } from "../../core/fault";
 import { RbCop } from "../cop";
 import { RbSource } from "../source";
 
@@ -55,7 +57,16 @@ export class RbLayLines {
 
   /** The Ruby index `i` (negative counts from the end) as 0-based, or -1 when out of range. */
   idx(i: i32): i32 {
-    const j = i < 0 ? i + this.n : i;
+    let j = i;
+    if (i < 0) {
+      const n = this.n;
+      // A line count is never negative, so the sum fits.
+      if (n < 0) {
+        fault();
+        return -1;
+      }
+      j = i + n;
+    }
     return j >= 0 && j < this.n ? j : -1;
   }
 
@@ -67,7 +78,7 @@ export class RbLayLines {
   /** lines[i].empty? (false for nil). */
   empty(i: i32): boolean {
     const j = this.idx(i);
-    return j >= 0 && this.s[j] === this.e[j];
+    return j >= 0 && atI32(this.s, j) === atI32(this.e, j);
   }
 
   /** lines[i].blank? / lines[i].strip.empty? (false for nil). */
@@ -76,8 +87,15 @@ export class RbLayLines {
     if (j < 0) {
       return false;
     }
-    for (let p = this.s[j]; p < this.e[j]; p++) {
-      if (!rbLayStripWs(this.src.pts[p])) {
+    const pts = this.src.pts;
+    const pe = atI32(this.e, j);
+    for (let p = atI32(this.s, j); p < pe; p++) {
+      // A line lies in the source.
+      if (p < 0 || p >= pts.length) {
+        fault();
+        return false;
+      }
+      if (!rbLayStripWs(pts[p])) {
         return false;
       }
     }
@@ -90,17 +108,27 @@ export class RbLayLines {
     if (j < 0) {
       return false;
     }
-    let p = this.s[j];
-    while (p < this.e[j] && rbLayRxSpace(this.src.pts[p])) {
+    const pts = this.src.pts;
+    const pe = atI32(this.e, j);
+    let p = atI32(this.s, j);
+    while (p < pe) {
+      // A line lies in the source.
+      if (p < 0 || p >= pts.length) {
+        fault();
+        return false;
+      }
+      if (!rbLayRxSpace(pts[p])) {
+        break;
+      }
       p++;
     }
-    return p < this.e[j] && this.src.pts[p] === 35;
+    return p < pe && atI32(pts, p) === 35;
   }
 
   /** The text of lines[i] ("" for nil). */
   text(i: i32): string {
     const j = this.idx(i);
-    return j < 0 ? "" : this.src.src(this.s[j], this.e[j]);
+    return j < 0 ? "" : this.src.src(atI32(this.s, j), atI32(this.e, j));
   }
 
   /** The start of 1-based buffer line `l` (source_range's line_range(l).begin_pos; 0 for line 0). */
@@ -111,7 +139,7 @@ export class RbLayLines {
     if (l > this.phys) {
       return this.src.n;
     }
-    return this.s[l - 1];
+    return atI32(this.s, l - 1);
   }
 
   /** The end of 1-based buffer line `l`, before its newline. */
@@ -119,7 +147,7 @@ export class RbLayLines {
     if (l <= 0 || l > this.phys) {
       return this.src.n;
     }
-    return this.e[l - 1];
+    return atI32(this.e, l - 1);
   }
 }
 
@@ -140,10 +168,10 @@ export const rbLayCommentAtLine = (src: RbSource, l: i32): i32 => {
 /** Whether `text` holds `sub` at byte `at`. */
 export const rbLayHasAt = (text: string, at: i32, sub: string): boolean => {
   const m = toI32(sub.length);
-  if (at < 0 || at + m > toI32(text.length)) {
+  if (at < 0 || at > toI32(text.length) - m) {
     return false;
   }
-  return text.substring(at, at + m) === sub;
+  return text.substring(at, add32(at, m)) === sub;
 };
 
 /**
@@ -162,7 +190,8 @@ export const rbLayDirectiveMode = (text: string): string => {
     while (q < k && rbLayRxSpace(text.charCodeAt(q))) {
       q++;
     }
-    if (!rbLayHasAt(text, q, "rubocop")) {
+    // rbLayHasAt holding, q + 7 <= k.
+    if (!rbLayHasAt(text, q, "rubocop") || q > k - 7) {
       continue;
     }
     q += 7;
@@ -179,7 +208,16 @@ export const rbLayDirectiveMode = (text: string): string => {
     let mode = "";
     for (const m of modes) {
       const ml = toI32(m.length);
-      if (rbLayHasAt(text, q, m) && (q + ml >= k || !rbLayWordByte(text.charCodeAt(q + ml)))) {
+      if (!rbLayHasAt(text, q, m)) {
+        continue;
+      }
+      // rbLayHasAt holding, 0 <= q <= k - ml.
+      if (q < 0 || ml < 0 || q > k - ml) {
+        fault();
+        return "";
+      }
+      const qe = add32(q, ml);
+      if (qe >= k || (qe >= 0 && qe < text.length && !rbLayWordByte(text.charCodeAt(qe)))) {
         mode = m;
         break;
       }
@@ -188,7 +226,7 @@ export const rbLayDirectiveMode = (text: string): string => {
       continue;
     }
     // pre_match =~ /\A#\s*\z/ drops the match.
-    let pre = p > 0 && text.charCodeAt(0) === 35;
+    let pre = p > 0 && text.length > 0 && text.charCodeAt(0) === 35;
     for (let i = 1; i < p; i++) {
       if (!rbLayRxSpace(text.charCodeAt(i))) {
         pre = false;
@@ -213,10 +251,11 @@ export const rbLayCheckNoEmpty = (c: RbCop, L: RbLayLines, line: i32): void => {
   if (!L.empty(line)) {
     return;
   }
-  const s = L.start(line + 1);
-  const k = c.offense(s, s + 1);
+  const s = L.start(add32(line, 1));
+  const s1 = add32(s, 1);
+  const k = c.offense(s, s1);
   if (k !== null) {
-    k.remove(s, s + 1);
+    k.remove(s, s1);
     c.commit(k);
   }
 };
@@ -237,5 +276,5 @@ export const rbLayBodyCheck = (c: RbCop, src: RbSource, L: RbLayLines, node: i32
     return;
   }
   rbLayCheckNoEmpty(c, L, first);
-  rbLayCheckNoEmpty(c, L, last - 2);
+  rbLayCheckNoEmpty(c, L, sub32(last, 2));
 };

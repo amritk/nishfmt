@@ -7,6 +7,8 @@
 // Batsov).
 
 import { F_ASSIGNMENT, F_OPERATOR, NT_DEF, NT_OPTARG } from "../ast";
+import { add32, atI32, sub32 } from "../../core/arr";
+import { fault } from "../../core/fault";
 import { rnHas, rnS } from "../node";
 import { RbSource, TK_COMMENT } from "../source";
 import { TK_tEQ, TK_tEQL, TK_tEQQ, TK_tGEQ, TK_tLEQ, TK_tLSHFT, TK_tNEQ, TK_tOP_ASGN } from "../tables";
@@ -35,13 +37,16 @@ export const LSP_AL_NO: i32 = 2;
 const lspLineIs = (src: RbSource, l: i32, text: string): boolean => {
   const s = src.lineStart(l);
   const e = src.lineEnd(l);
-  if (e - s !== toI32(text.length)) {
+  if (sub32(e, s) !== toI32(text.length)) {
     return false;
   }
-  for (let i = 0; i < e - s; i++) {
-    if (src.at(s + i) !== text.charCodeAt(i)) {
+  // e - s is text's length.
+  let i = 0;
+  for (let p = s; p < e && i >= 0 && i < text.length; p++) {
+    if (src.at(p) !== text.charCodeAt(i)) {
       return false;
     }
+    i++;
   }
   return true;
 };
@@ -61,7 +66,7 @@ export class LspAlign {
     this.tk = tk;
     let n = src.lineCount();
     const nt = toI32(src.tokT.length);
-    const lastTokLine = nt > 0 ? src.line(src.tokS[nt - 1]) : n;
+    const lastTokLine = nt > 0 ? src.line(atI32(src.tokS, nt - 1)) : n;
     for (let ix = 0; ix < n; ix++) {
       if (ix >= lastTokLine && lspLineIs(src, ix + 1, "__END__")) {
         n = ix;
@@ -76,7 +81,7 @@ export class LspAlign {
     for (let i = 0; i < toI32(src.commS.length); i++) {
       const s = src.commS[i];
       const l = src.line(s);
-      if (this.firstNonWs(l - 1) === src.column(s)) {
+      if (this.firstNonWs(sub32(l, 1)) === src.column(s)) {
         this.commentLines.add(l);
       }
     }
@@ -84,16 +89,17 @@ export class LspAlign {
 
   /** The length of 0-based line `l0`. */
   lineLen(l0: i32): i32 {
-    return this.src.lineEnd(l0 + 1) - this.src.lineStart(l0 + 1);
+    const l = add32(l0, 1);
+    return sub32(this.src.lineEnd(l), this.src.lineStart(l));
   }
 
   /** line =~ /\S/ on 0-based line `l0` (-1 for nil). */
   firstNonWs(l0: i32): i32 {
-    const s = this.src.lineStart(l0 + 1);
-    const n = this.lineLen(l0);
-    for (let i = 0; i < n; i++) {
-      if (!lspIsWs(this.src.at(s + i))) {
-        return i;
+    const s = this.src.lineStart(add32(l0, 1));
+    const e = add32(s, this.lineLen(l0));
+    for (let p = s; p < e; p++) {
+      if (!lspIsWs(this.src.at(p))) {
+        return sub32(p, s);
       }
     }
     return -1;
@@ -102,30 +108,37 @@ export class LspAlign {
   /** ProcessedSource#line_indentation of 1-based line `l`. */
   indentation(l: i32): i32 {
     const s = this.src.lineStart(l);
-    const n = this.lineLen(l - 1);
-    let i = 0;
-    while (i < n && lspIsWs(this.src.at(s + i))) {
-      i++;
+    const e = add32(s, this.lineLen(sub32(l, 1)));
+    let p = s;
+    while (p < e && lspIsWs(this.src.at(p))) {
+      p++;
     }
-    return i;
+    return p > s ? sub32(p, s) : 0;
   }
 
   /** String#blank? of 1-based line `l`. */
   blank(l: i32): boolean {
-    return this.firstNonWs(l - 1) < 0;
+    return this.firstNonWs(sub32(l, 1)) < 0;
   }
 
   /** range.source == line[col, size] on 0-based line `l0`. */
   private sameText(s: i32, e: i32, l0: i32, col: i32): boolean {
     const n = this.lineLen(l0);
-    if (col < 0 || col + (e - s) > n) {
+    if (col < 0 || add32(col, sub32(e, s)) > n) {
       return false;
     }
-    const ls = this.src.lineStart(l0 + 1);
-    for (let i = 0; i < e - s; i++) {
-      if (this.src.at(s + i) !== this.src.at(ls + col + i)) {
+    const ls = this.src.lineStart(add32(l0, 1));
+    let q = add32(ls, col);
+    for (let p = s; p < e; p++) {
+      if (this.src.at(p) !== this.src.at(q)) {
         return false;
       }
+      // q stays below ls + n, inside the line.
+      if (q >= 2147483647) {
+        fault();
+        return false;
+      }
+      q++;
     }
     return true;
   }
@@ -143,17 +156,24 @@ export class LspAlign {
   /** aligned_with_adjacent_line? and aligned_with_any_line_range? */
   private adjacent(s: i32, e: i32, op: boolean): boolean {
     const line = this.src.line(s);
-    if (this.withLine(line - 2, -1, s, e, -1, op) || this.withLine(line, 1, s, e, -1, op)) {
+    const line2 = sub32(line, 2);
+    if (this.withLine(line2, -1, s, e, -1, op) || this.withLine(line, 1, s, e, -1, op)) {
       return true;
     }
-    const base = this.firstNonWs(line - 1);
-    return this.withLine(line - 2, -1, s, e, base, op) || this.withLine(line, 1, s, e, base, op);
+    const base = this.firstNonWs(sub32(line, 1));
+    return this.withLine(line2, -1, s, e, base, op) || this.withLine(line, 1, s, e, base, op);
   }
 
   /** aligned_with_line? over 0-based lines from `from` in direction `dir` (`indent` -1 for nil). */
   private withLine(from: i32, dir: i32, s: i32, e: i32, indent: i32, op: boolean): boolean {
+    // Every caller steps by one line.
+    if (dir < -1 || dir > 1) {
+      fault();
+      return false;
+    }
+    const nl = this.nLines;
     let l0 = from;
-    while (l0 >= 0 && l0 < this.nLines) {
+    while (l0 >= 0 && l0 < nl) {
       const cur = l0;
       l0 += dir;
       if (this.commentLines.has(cur + 1)) {
@@ -183,9 +203,10 @@ export class LspAlign {
   private words(s: i32, e: i32, l0: i32): boolean {
     const left = this.src.column(s);
     const n = this.lineLen(l0);
-    const ls = this.src.lineStart(l0 + 1);
-    if (left - 1 >= 0 && left < n) {
-      if (lspIsWs(this.src.at(ls + left - 1)) && !lspIsWs(this.src.at(ls + left))) {
+    const ls = this.src.lineStart(add32(l0, 1));
+    if (left >= 1 && left < n) {
+      const pl = add32(ls, left);
+      if (lspIsWs(this.src.at(sub32(pl, 1))) && !lspIsWs(this.src.at(pl))) {
         return true;
       }
     }
@@ -197,9 +218,15 @@ export class LspAlign {
     const tk = this.tk;
     const from = tk.withinFrom(this.src.lineStart(lineno));
     const to = tk.withinTo(this.src.lineEnd(lineno));
+    const tt = tk.t;
     let ti = -1;
     for (let i = from; i <= to; i++) {
-      if (lspAsgnOrCmp(tk.t[i])) {
+      // withinFrom and withinTo answer token indexes.
+      if (i < 0 || i >= tt.length) {
+        fault();
+        return false;
+      }
+      if (lspAsgnOrCmp(tt[i])) {
         ti = i;
         break;
       }
@@ -207,16 +234,17 @@ export class LspAlign {
     if (ti < 0) {
       return false;
     }
+    const tType = atI32(tt, ti);
     const lastCol = this.src.column(e);
-    const tokLastCol = this.src.column(tk.e[ti]);
-    const endsEq = e > s && this.src.at(e - 1) === 61;
+    const tokLastCol = this.src.column(atI32(tk.e, ti));
+    const endsEq = e > s && this.src.at(sub32(e, 1)) === 61;
     // aligned_with_preceding_equals?
     if (endsEq && lastCol === tokLastCol) {
       return true;
     }
     // aligned_with_append_operator?
-    const isAppend = e - s === 2 && this.src.at(s) === 60 && this.src.at(s + 1) === 60;
-    return ((isAppend && lspEqualSign(tk.t[ti])) || (endsEq && tk.t[ti] === TK_tLSHFT)) && lastCol === tokLastCol;
+    const isAppend = sub32(e, s) === 2 && this.src.at(s) === 60 && this.src.at(add32(s, 1)) === 60;
+    return ((isAppend && lspEqualSign(tType)) || (endsEq && tType === TK_tLSHFT)) && lastCol === tokLastCol;
   }
 
   /** assignment_lines and interrupting_operator_lines. */
@@ -243,10 +271,13 @@ export class LspAlign {
     }
     // first_operator_on_line (raw token order)
     const firstOp = new Map<i32, i32>();
-    const nt = toI32(src.tokT.length);
-    for (let i = 0; i < nt; i++) {
-      if (src.tokT[i] !== TK_COMMENT && lspAsgnOrCmp(src.tokT[i])) {
-        const l = src.line(src.tokS[i]);
+    const tokT = src.tokT;
+    const tokS = src.tokS;
+    const nt = toI32(tokT.length);
+    for (let i = 0; i < nt && i < tokT.length; i++) {
+      const t = tokT[i];
+      if (t !== TK_COMMENT && lspAsgnOrCmp(t)) {
+        const l = src.line(atI32(tokS, i));
         if (!firstOp.has(l)) {
           firstOp.set(l, i);
         }
@@ -254,11 +285,11 @@ export class LspAlign {
     }
     // assignment_tokens: uniq by line, then the first operator of its line.
     const seen = new Set<i32>();
-    for (let i = 0; i < nt; i++) {
-      if (!lspEqualSign(src.tokT[i]) || ignore.has(src.tokS[i])) {
+    for (let i = 0; i < nt && i < tokT.length; i++) {
+      if (!lspEqualSign(tokT[i]) || ignore.has(atI32(tokS, i))) {
         continue;
       }
-      const l = src.line(src.tokS[i]);
+      const l = src.line(atI32(tokS, i));
       if (seen.has(l)) {
         continue;
       }
@@ -267,9 +298,9 @@ export class LspAlign {
         this.asgnLines.add(l);
       }
     }
-    for (let i = 0; i < nt; i++) {
-      if (lspAsgnOrCmp(src.tokT[i])) {
-        const l = src.line(src.tokS[i]);
+    for (let i = 0; i < nt && i < tokT.length; i++) {
+      if (lspAsgnOrCmp(tokT[i])) {
+        const l = src.line(atI32(tokS, i));
         if (!this.asgnLines.has(l)) {
           this.interrupting.add(l);
         }
@@ -283,8 +314,19 @@ export class LspAlign {
     const origIndent = this.indentation(first);
     let atLevel = true;
     let count = 0;
+    // Every caller steps by one line.
+    if (dir < -1 || dir > 1) {
+      fault();
+      return -1;
+    }
+    const nl = this.nLines;
+    // A line count, below the largest i32.
+    if (nl >= 2147483647) {
+      fault();
+      return -1;
+    }
     let l = first;
-    while (l >= 1 && l <= this.nLines) {
+    while (l >= 1 && l <= nl) {
       const cur = l;
       l += dir;
       const ind = this.indentation(cur);
@@ -293,10 +335,11 @@ export class LspAlign {
         break;
       }
       if (this.asgnLines.has(cur) && ind === origIndent) {
-        count++;
-        if (count === 2) {
+        // The second hit answers.
+        if (count >= 1) {
           return cur;
         }
+        count = 1;
       }
       if (!blank) {
         atLevel = ind === origIndent;

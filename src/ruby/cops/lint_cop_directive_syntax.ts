@@ -4,6 +4,8 @@
 // Ported from RuboCop 1.92.3 (MIT License, Copyright (c) 2012-24 Bozhidar
 // Batsov).
 
+import { add32, atI32 } from "../../core/arr";
+import { fault } from "../../core/fault";
 import { RbCop } from "../cop";
 import { RbSource } from "../source";
 import { LdhDirective, LdhRegistry, ldhStrip, ldhWords } from "./lint_directive_help";
@@ -25,12 +27,18 @@ const lcdsModeAt = (src: RbSource, p: i32, e: i32): string => {
   while (k < ml) {
     const sp = LCDS_MODES.indexOf(" ", k);
     const m = LCDS_MODES.substring(k, sp);
+    // LCDS_MODES ends in a space, so sp lies in it.
+    if (sp < 0 || sp >= ml) {
+      fault();
+      return "";
+    }
     k = sp + 1;
     const n = toI32(m.length);
-    if (p + n > e || src.src(p, p + n) !== m) {
+    const pn = add32(p, n);
+    if (pn > e || src.src(p, pn) !== m) {
       continue;
     }
-    if (p + n < e && lcdsWord(src.at(p + n))) {
+    if (pn < e && lcdsWord(src.at(pn))) {
       continue;
     }
     return m;
@@ -68,26 +76,48 @@ const lcdsCamel = (part: string): string => {
 const lcdsLevenshtein = (x: string, y: string): i32 => {
   const n = toI32(x.length);
   const m = toI32(y.length);
+  // Both loops run to their length inclusive.
+  if (n >= 2147483647 || m >= 2147483647) {
+    fault();
+    return 0;
+  }
   let prev: i32[] = [];
   for (let j = 0; j <= m; j++) {
     prev.push(j);
   }
   for (let i = 1; i <= n; i++) {
     const cur: i32[] = [i];
+    const xi = i - 1;
+    if (xi < 0 || xi >= x.length) {
+      fault();
+      return 0;
+    }
+    const xc = x.charCodeAt(xi);
     for (let j = 1; j <= m; j++) {
-      const cost = x.charCodeAt(i - 1) === y.charCodeAt(j - 1) ? 0 : 1;
-      let v = prev[j] + 1;
-      if (cur[j - 1] + 1 < v) {
-        v = cur[j - 1] + 1;
+      // prev holds m + 1 entries and cur j.
+      const jm = j - 1;
+      if (jm < 0 || jm >= y.length || j >= prev.length || jm >= prev.length || jm >= cur.length) {
+        fault();
+        return 0;
       }
-      if (prev[j - 1] + cost < v) {
-        v = prev[j - 1] + cost;
+      const cost = xc === y.charCodeAt(jm) ? 0 : 1;
+      const pj = prev[j];
+      const pjm = prev[jm];
+      const cjm = cur[jm];
+      let v = add32(pj, 1);
+      const c1 = add32(cjm, 1);
+      if (c1 < v) {
+        v = c1;
+      }
+      const c2 = add32(pjm, cost);
+      if (c2 < v) {
+        v = c2;
       }
       cur.push(v);
     }
     prev = cur;
   }
-  return prev[m];
+  return atI32(prev, m);
 };
 
 /** ASCII downcase. */
@@ -129,7 +159,7 @@ export class CopLintCopDirectiveSyntax {
     this.c.begin(src);
     for (let ci = 0; ci < toI32(src.commS.length); ci++) {
       const cs = src.commS[ci];
-      const ce = src.commE[ci];
+      const ce = atI32(src.commE, ci);
       if (this.startWithMarker(src, cs, ce)) {
         if (!this.checkDirective(src, ci)) {
           // An ambiguous cop name raised: the investigation stops.
@@ -146,14 +176,15 @@ export class CopLintCopDirectiveSyntax {
     if (src.at(p0) !== 35) {
       return -1;
     }
-    let p = p0 + 1;
+    let p = add32(p0, 1);
     while (p < ce && lcdsSpace(src.at(p))) {
       p++;
     }
-    if (p + 7 > ce || src.src(p, p + 7) !== "rubocop") {
+    const p7 = add32(p, 7);
+    if (p7 > ce || src.src(p, p7) !== "rubocop") {
       return -1;
     }
-    p += 7;
+    p = p7;
     while (p < ce && lcdsSpace(src.at(p))) {
       p++;
     }
@@ -215,8 +246,8 @@ export class CopLintCopDirectiveSyntax {
   /** Every DIRECTIVE_COMMENT_REGEXP match in the comment (String#scan). */
   private scan(src: RbSource, ci: i32): LcdsMatch[] {
     const out: LcdsMatch[] = [];
-    const ce = src.commE[ci];
-    let i = src.commS[ci];
+    const ce = atI32(src.commE, ci);
+    let i = atI32(src.commS, ci);
     while (i < ce) {
       if (src.at(i) === 35) {
         const d = new LdhDirective(src, ci);
@@ -244,8 +275,8 @@ export class CopLintCopDirectiveSyntax {
 
   /** check_directive; false when an ambiguous cop name stops the cop. */
   private checkDirective(src: RbSource, ci: i32): boolean {
-    const cs = src.commS[ci];
-    const ce = src.commE[ci];
+    const cs = atI32(src.commS, ci);
+    const ce = atI32(src.commE, ci);
     const d = new LdhDirective(src, ci);
     const reason = d.ok && this.reasonOf(src, d, ce);
     // multiple_directives
@@ -293,10 +324,11 @@ export class CopLintCopDirectiveSyntax {
     while (p < ce && (lcdsSpace(src.at(p)) || src.at(p) === 0)) {
       p++;
     }
-    if (p + 1 >= ce || src.at(p) !== 45 || src.at(p + 1) !== 45) {
+    const p1 = add32(p, 1);
+    if (p1 >= ce || src.at(p) !== 45 || src.at(p1) !== 45) {
       return false;
     }
-    return ldhStrip(src.src(p + 2, ce)).length > 0;
+    return ldhStrip(src.src(add32(p, 2), ce)).length > 0;
   }
 
   /** malformed? (the comment starts with the marker). */
@@ -308,7 +340,7 @@ export class CopLintCopDirectiveSyntax {
     if (d.mode !== "push" && d.mode !== "pop") {
       const p = this.marker(src, cs, ce);
       const m = lcdsModeAt(src, p, ce);
-      if (m.length > 0 && !this.hasNonSpace(src, p + toI32(m.length), ce)) {
+      if (m.length > 0 && !this.hasNonSpace(src, add32(p, toI32(m.length)), ce)) {
         return true;
       }
     }
@@ -345,7 +377,7 @@ export class CopLintCopDirectiveSyntax {
         // signed_args.values.flatten: grouped by operator, in first-seen order.
         let first = 0;
         for (const w of ldhWords(d.cops)) {
-          if (first === 0 && (w.startsWith("+") || w.startsWith("-"))) {
+          if (first === 0 && w.length > 0 && (w.startsWith("+") || w.startsWith("-"))) {
             first = w.charCodeAt(0);
           }
         }
@@ -383,16 +415,27 @@ export class CopLintCopDirectiveSyntax {
     const parts: string[] = [];
     let st = 0;
     const k = toI32(name.length);
+    // The loop runs to the length inclusive.
+    if (k >= 2147483647) {
+      fault();
+      return null;
+    }
     for (let i = 0; i <= k; i++) {
-      if (i === k || name.charCodeAt(i) === 47) {
+      if (i >= k || name.charCodeAt(i) === 47) {
         parts.push(lcdsCamel(name.substring(st, i)));
         st = i + 1;
       }
     }
-    const cop = parts[parts.length - 1];
+    // i === k pushed the last part.
+    const pn = toI32(parts.length);
+    if (pn <= 0) {
+      fault();
+      return null;
+    }
+    const cop = parts[pn - 1];
     if (parts.length > 1) {
       const dept: string[] = [];
-      for (let i = 0; i + 1 < toI32(parts.length); i++) {
+      for (let i = 0; i < pn && i + 1 < pn && i < parts.length; i++) {
         dept.push(parts[i]);
       }
       if (this.reg.has(`${dept.join("/")}/${cop}`)) {
@@ -405,7 +448,10 @@ export class CopLintCopDirectiveSyntax {
       const cand = `${dp}/${cop}`;
       if (this.reg.has(cand)) {
         found = cand;
-        count++;
+        // Only none, one or more than one matters.
+        if (count < 2) {
+          count++;
+        }
       }
     }
     if (count > 1) {
@@ -451,8 +497,13 @@ export class CopLintCopDirectiveSyntax {
       let st = 0;
       const s = m.cops;
       const k = toI32(s.length);
+      // The loop runs to the length inclusive.
+      if (k >= 2147483647) {
+        fault();
+        return "";
+      }
       for (let i = 0; i <= k; i++) {
-        if (i === k || s.charCodeAt(i) === 44) {
+        if (i >= k || s.charCodeAt(i) === 44) {
           const nm = ldhStrip(s.substring(st, i));
           st = i + 1;
           if (nm.length === 0) {
@@ -478,6 +529,11 @@ export class CopLintCopDirectiveSyntax {
         return "";
       }
     }
-    return `# rubocop:${modes[0]} ${cops.join(", ")}`;
+    // Every match has a mode, and cops come from a match.
+    if (modes.length > 0) {
+      return `# rubocop:${modes[0]} ${cops.join(", ")}`;
+    }
+    fault();
+    return "";
   }
 }

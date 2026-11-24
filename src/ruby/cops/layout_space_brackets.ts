@@ -20,6 +20,8 @@ import {
   NT_XSTR,
   V_NIL,
 } from "../ast";
+import { add32, atI32, sub32 } from "../../core/arr";
+import { fault } from "../../core/fault";
 import { RbCop } from "../cop";
 import { rnFieldSrc, rnHas, rnMethod, rnS } from "../node";
 import { RbSource, TK_COMMENT } from "../source";
@@ -61,16 +63,26 @@ export class CopLayoutSpaceInsideArrayLiteralBrackets {
       }
       const from = tk.withinFrom(a.exS(n));
       const to = tk.withinTo(a.exE(n));
+      const tt = tk.t;
       let li = -1;
       let ri = -1;
       for (let i = from; i <= to; i++) {
-        if (tk.t[i] === TK_tLBRACK || tk.t[i] === TK_tLBRACK2) {
+        // withinFrom and withinTo answer token indexes.
+        if (i < 0 || i >= tt.length) {
+          fault();
+          return;
+        }
+        if (tt[i] === TK_tLBRACK || tt[i] === TK_tLBRACK2) {
           li = i;
           break;
         }
       }
       for (let i = to; i >= from; i--) {
-        if (tk.t[i] === TK_tRBRACK) {
+        if (i < 0 || i >= tt.length) {
+          fault();
+          return;
+        }
+        if (tt[i] === TK_tRBRACK) {
           ri = i;
           break;
         }
@@ -79,13 +91,13 @@ export class CopLayoutSpaceInsideArrayLiteralBrackets {
         continue;
       }
       if (li === ri - 1) {
-        lspEmptyOffenses(this.c, tk.s[li], tk.e[li], tk.s[ri], tk.e[ri]);
+        lspEmptyOffenses(this.c, atI32(tk.s, li), atI32(tk.e, li), atI32(tk.s, ri), atI32(tk.e, ri));
         continue;
       }
       let endOk = false;
       if (!lspSingleLine(src, n)) {
         // end_has_own_line?
-        const rs = tk.s[ri];
+        const rs = atI32(tk.s, ri);
         const ls = src.lineStart(src.line(rs));
         endOk = true;
         for (let i = ls; i < rs; i++) {
@@ -95,8 +107,19 @@ export class CopLayoutSpaceInsideArrayLiteralBrackets {
           }
         }
       }
-      const startOk = li + 1 <= to && tk.t[li + 1] === TK_COMMENT;
-      lspNoSpaceOffenses(this.c, ign, src, n, tk.s[li], tk.e[li], tk.s[ri], tk.e[ri], startOk, endOk);
+      const startOk = li < to && atI32(tk.t, li + 1) === TK_COMMENT;
+      lspNoSpaceOffenses(
+        this.c,
+        ign,
+        src,
+        n,
+        atI32(tk.s, li),
+        atI32(tk.e, li),
+        atI32(tk.s, ri),
+        atI32(tk.e, ri),
+        startOk,
+        endOk,
+      );
     }
   }
 }
@@ -127,9 +150,16 @@ export class CopLayoutSpaceInsideReferenceBrackets {
       const from = tk.withinFrom(a.exS(n));
       const to = tk.withinTo(a.exE(n));
       const bpos = rnS(src, n, F_SELECTOR);
+      const tt = tk.t;
+      const ts = tk.s;
       let li = -1;
       for (let i = from; i <= to; i++) {
-        if (tk.t[i] === TK_tLBRACK2 && tk.s[i] === bpos) {
+        // withinFrom and withinTo answer token indexes.
+        if (i < 0 || i >= tt.length || i >= ts.length) {
+          fault();
+          return;
+        }
+        if (tt[i] === TK_tLBRACK2 && ts[i] === bpos) {
           li = i;
           break;
         }
@@ -141,11 +171,15 @@ export class CopLayoutSpaceInsideReferenceBrackets {
       let ri = -1;
       let depth = 0;
       for (let i = li; i <= to; i++) {
-        if (tk.t[i] === TK_tLBRACK || tk.t[i] === TK_tLBRACK2) {
-          depth++;
+        if (i < 0 || i >= tt.length) {
+          fault();
+          return;
         }
-        if (tk.t[i] === TK_tRBRACK) {
-          depth--;
+        if (tt[i] === TK_tLBRACK || tt[i] === TK_tLBRACK2) {
+          depth = add32(depth, 1);
+        }
+        if (tt[i] === TK_tRBRACK) {
+          depth = sub32(depth, 1);
           if (depth === 0) {
             ri = i;
             break;
@@ -156,13 +190,24 @@ export class CopLayoutSpaceInsideReferenceBrackets {
         continue;
       }
       if (li === ri - 1) {
-        lspEmptyOffenses(this.c, tk.s[li], tk.e[li], tk.s[ri], tk.e[ri]);
+        lspEmptyOffenses(this.c, atI32(tk.s, li), atI32(tk.e, li), atI32(tk.s, ri), atI32(tk.e, ri));
         continue;
       }
       if (!lspSingleLine(src, n)) {
         continue;
       }
-      lspNoSpaceOffenses(this.c, ign, src, n, tk.s[li], tk.e[li], tk.s[ri], tk.e[ri], false, false);
+      lspNoSpaceOffenses(
+        this.c,
+        ign,
+        src,
+        n,
+        atI32(tk.s, li),
+        atI32(tk.e, li),
+        atI32(tk.s, ri),
+        atI32(tk.e, ri),
+        false,
+        false,
+      );
     }
   }
 }
@@ -200,7 +245,18 @@ export class CopLayoutSpaceInsideStringInterpolation {
         if (li === ri - 1) {
           continue;
         }
-        lspNoSpaceOffenses(this.c, ign, src, b, tk.s[li], tk.e[li], tk.s[ri], tk.e[ri], false, false);
+        lspNoSpaceOffenses(
+          this.c,
+          ign,
+          src,
+          b,
+          atI32(tk.s, li),
+          atI32(tk.e, li),
+          atI32(tk.s, ri),
+          atI32(tk.e, ri),
+          false,
+          false,
+        );
       }
     }
   }
