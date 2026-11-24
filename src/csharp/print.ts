@@ -9,6 +9,8 @@
 // VanderVoort), CSharp/SyntaxPrinter/*.cs, over a tree shaped after Roslyn's
 // syntax model (MIT License, Copyright the .NET Foundation and Contributors).
 
+import { add32, atU8, copyU8s, sub32 } from "../core/arr";
+import { fault } from "../core/fault";
 import {
   cswAttributeList,
   cswBlock,
@@ -166,7 +168,7 @@ import {
   Y_TypeParameter,
   Y_VariableDeclarator,
 } from "./kinds";
-import { CsLexer, csCodePoint, csCpLen, csIsWhitespaceCp } from "./lexer";
+import { CsLexer, csCodePoint, csCpLen, csIsWhitespaceCp, csZeroU8s } from "./lexer";
 import { CsTree } from "./tree";
 import {
   CT_MULTI,
@@ -183,7 +185,6 @@ import {
   DOC_SOFTLINE,
   DOC_SPACE,
   DOC_TRIM,
-  D_CONCAT,
   D_HARDLINE,
   D_LEADING_COMMENT,
   D_TRAILING_COMMENT,
@@ -199,32 +200,62 @@ export class CsBuf {
   buf: u8[];
   n: i32 = 0;
   constructor(cap: i32) {
-    this.buf = new Array<u8>(cap < 16 ? 16 : cap);
+    // a capacity only: a larger buffer grows from 16 as text is added
+    let c = 16;
+    if (cap > 16 && cap <= 65535) {
+      c = cap;
+    }
+    this.buf = new Array<u8>(toU16(c));
   }
+  /** Makes room for k more bytes; a buffer of one file's text stays far below 10^9 bytes. */
   reserve(k: i32): void {
-    if (this.n + k > toI32(this.buf.length)) {
-      let cap = toI32(this.buf.length) * 2;
-      if (cap < this.n + k) {
-        cap = this.n + k + 16;
+    const n = this.n;
+    const buf = this.buf;
+    if (n < 0 || n > 1000000000) {
+      fault();
+      return;
+    }
+    if (k > 1000000000) {
+      fault();
+      return;
+    }
+    const need = n + k;
+    const len = toI32(buf.length);
+    if (need > len) {
+      let cap = need + 16;
+      if (len <= 1000000000 && len * 2 >= need) {
+        cap = len * 2;
       }
-      const nb = new Array<u8>(cap);
-      for (let i = 0; i < this.n; i++) {
-        nb[i] = this.buf[i];
-      }
+      const nb = csZeroU8s(cap);
+      copyU8s(nb, 0, buf, 0, n);
       this.buf = nb;
     }
   }
   byte(c: i32): void {
     this.reserve(1);
-    this.buf[this.n] = toU8(c);
-    this.n = this.n + 1;
+    const buf = this.buf;
+    const n = this.n;
+    if (n >= 0 && n < buf.length) {
+      buf[n] = toU8(c);
+      this.n = n + 1;
+    } else {
+      fault();
+    }
   }
   range(s: u8[], a: i32, b: i32): void {
-    this.reserve(b - a);
-    for (let i = a; i < b; i++) {
-      this.buf[this.n] = s[i];
-      this.n = this.n + 1;
+    if (b <= a) {
+      return;
     }
+    if (a < 0 || b > s.length) {
+      fault();
+      return;
+    }
+    // b > a >= 0, so the u32 difference is exact
+    const k = toI32(toU32(b) - toU32(a));
+    this.reserve(k);
+    const n = this.n;
+    copyU8s(this.buf, n, s, a, k);
+    this.n = add32(n, k);
   }
 }
 
@@ -265,7 +296,7 @@ export class CsPrint {
   // ---- tree access ----
 
   k(n: i32): i32 {
-    return n < 0 ? 0 : this.t.kind[n];
+    return n < 0 ? 0 : this.t.nodeKind(n);
   }
 
   s(n: i32, i: i32): i32 {
@@ -277,7 +308,7 @@ export class CsPrint {
   }
 
   par(n: i32): i32 {
-    return n < 0 ? -1 : this.t.parent[n];
+    return n < 0 ? -1 : this.t.parentOf(n);
   }
 
   /** Whether n's parent is of type y. */
@@ -286,16 +317,16 @@ export class CsPrint {
   }
 
   tk(tok: i32): i32 {
-    return tok < 0 ? 0 : this.lx.kind[tok];
+    return tok < 0 ? 0 : this.lx.tokKind(tok);
   }
 
   /** The first token of node n. */
   first(n: i32): i32 {
-    return this.t.first[n];
+    return this.t.firstTok(n);
   }
 
   last(n: i32): i32 {
-    return this.t.last[n];
+    return this.t.lastTok(n);
   }
 
   count(l: i32): i32 {
@@ -359,7 +390,7 @@ export const cswIsCommentKind = (k: i32): boolean =>
 
 export const cswAnyDirective = (lx: CsLexer, a: i32, b: i32): boolean => {
   for (let i = a; i < b; i++) {
-    if (cswIsDirectiveKind(lx.trKind[i])) {
+    if (cswIsDirectiveKind(lx.trKindAt(i))) {
       return true;
     }
   }
@@ -368,7 +399,7 @@ export const cswAnyDirective = (lx: CsLexer, a: i32, b: i32): boolean => {
 
 export const cswAnyComment = (lx: CsLexer, a: i32, b: i32): boolean => {
   for (let i = a; i < b; i++) {
-    if (cswIsCommentKind(lx.trKind[i])) {
+    if (cswIsCommentKind(lx.trKindAt(i))) {
       return true;
     }
   }
@@ -377,7 +408,7 @@ export const cswAnyComment = (lx: CsLexer, a: i32, b: i32): boolean => {
 
 export const cswAnyCommentOrDirective = (lx: CsLexer, a: i32, b: i32): boolean => {
   for (let i = a; i < b; i++) {
-    const k = lx.trKind[i];
+    const k = lx.trKindAt(i);
     if (cswIsCommentKind(k) || cswIsDirectiveKind(k)) {
       return true;
     }
@@ -388,7 +419,7 @@ export const cswAnyCommentOrDirective = (lx: CsLexer, a: i32, b: i32): boolean =
 /** Whether any trivia in [a, b) is not whitespace or a line end. */
 export const cswAnyNonWhitespace = (lx: CsLexer, a: i32, b: i32): boolean => {
   for (let i = a; i < b; i++) {
-    const k = lx.trKind[i];
+    const k = lx.trKindAt(i);
     if (k !== K_WhitespaceTrivia && k !== K_EndOfLineTrivia) {
       return true;
     }
@@ -398,7 +429,7 @@ export const cswAnyNonWhitespace = (lx: CsLexer, a: i32, b: i32): boolean => {
 
 export const cswAnyKind = (lx: CsLexer, a: i32, b: i32, kind: i32): boolean => {
   for (let i = a; i < b; i++) {
-    if (lx.trKind[i] === kind) {
+    if (lx.trKindAt(i) === kind) {
       return true;
     }
   }
@@ -408,7 +439,7 @@ export const cswAnyKind = (lx: CsLexer, a: i32, b: i32, kind: i32): boolean => {
 /** IndexOfNextEndOfLine over the trivia [a, b): the next line end after x past whitespace, or -1. */
 export const cswIndexOfNextEol = (lx: CsLexer, b: i32, x: i32): i32 => {
   for (let i = x + 1; i < b; i++) {
-    const k = lx.trKind[i];
+    const k = lx.trKindAt(i);
     if (k === K_WhitespaceTrivia) {
       continue;
     }
@@ -423,40 +454,54 @@ export const cswIndexOfNextEol = (lx: CsLexer, b: i32, x: i32): i32 => {
 /** The leading trivia of node n: its first token's. */
 export const cswLeadA = (P: CsPrint, n: i32): i32 => {
   const t = P.first(n);
-  return t < 0 ? 0 : P.lx.l0[t];
+  return t < 0 ? 0 : P.lx.l0At(t);
 };
 
 export const cswLeadB = (P: CsPrint, n: i32): i32 => {
   const t = P.first(n);
-  return t < 0 ? 0 : P.lx.l1[t];
+  return t < 0 ? 0 : P.lx.l1At(t);
 };
 
 /** Whether the text of trivia i (a single-line comment) matches `^// csharpier-ignore<suffix>($| -)`. */
 const cswCommentMatches = (P: CsPrint, i: i32, suffix: string): boolean => {
   const lx = P.lx;
-  const a = lx.trStart[i];
-  const b = lx.trTextEnd[i];
+  const a = lx.trStartAt(i);
+  const b = lx.trTextEndAt(i);
   const base = "// csharpier-ignore";
   const n1 = toI32(base.length);
   const n2 = toI32(suffix.length);
-  if (b - a < n1 + n2) {
+  if (toI64(b) - toI64(a) < toI64(n1) + toI64(n2)) {
     return false;
   }
-  for (let j = 0; j < n1; j++) {
-    if (toI32(P.src[a + j]) !== base.charCodeAt(j)) {
-      return false;
-    }
+  if (!cswBytesAre(P.src, a, base)) {
+    return false;
   }
-  for (let j = 0; j < n2; j++) {
-    if (toI32(P.src[a + n1 + j]) !== suffix.charCodeAt(j)) {
-      return false;
-    }
+  const pa = add32(a, n1);
+  if (!cswBytesAre(P.src, pa, suffix)) {
+    return false;
   }
-  const p = a + n1 + n2;
+  const p = add32(pa, n2);
   if (p === b) {
     return true;
   }
-  return p + 1 < b && toI32(P.src[p]) === 32 && toI32(P.src[p + 1]) === 45;
+  const p1 = add32(p, 1);
+  return p1 < b && atU8(P.src, p) === 32 && atU8(P.src, p1) === 45;
+};
+
+/** Whether src holds the text w at p; p lies inside src for every caller. */
+const cswBytesAre = (src: u8[], p: i32, w: string): boolean => {
+  let q = p;
+  for (let j = 0; j < w.length; j++) {
+    if (q < 0 || q >= src.length) {
+      fault();
+      return false;
+    }
+    if (toI32(src[q]) !== w.charCodeAt(j)) {
+      return false;
+    }
+    q = q + 1;
+  }
+  return true;
 };
 
 export const IGN_ONE: i32 = 0;
@@ -467,7 +512,7 @@ export const IGN_END: i32 = 2;
 export const cswHasIgnoreComment = (P: CsPrint, a: i32, b: i32, which: i32): boolean => {
   const lx = P.lx;
   for (let i = a; i < b; i++) {
-    if (lx.trKind[i] !== K_SingleLineCommentTrivia) {
+    if (lx.trKindAt(i) !== K_SingleLineCommentTrivia) {
       continue;
     }
     const suffix = which === IGN_ONE ? "" : which === IGN_START ? "-start" : "-end";
@@ -485,7 +530,7 @@ export const cswNodeHasIgnore = (P: CsPrint, n: i32, which: i32): boolean =>
 export const cswExtraNewLinesRange = (P: CsPrint, a: i32, b: i32): i32 => {
   const lx = P.lx;
   for (let i = a; i < b; i++) {
-    const k = lx.trKind[i];
+    const k = lx.trKindAt(i);
     if (k === K_EndOfLineTrivia) {
       return DOC_HARDLINE;
     }
@@ -506,10 +551,16 @@ export const cswExtraNewLines = (P: CsPrint, n: i32): i32 => {
 
 const cswInsert = (docs: i32[], at: i32, v: i32): void => {
   docs.push(0);
-  for (let i = toI32(docs.length) - 1; i > at; i--) {
+  let i = toI32(docs.length) - 1;
+  while (i > at && i > 0 && i < docs.length) {
     docs[i] = docs[i - 1];
+    i--;
   }
-  docs[at] = v;
+  if (at >= 0 && at < docs.length) {
+    docs[at] = v;
+  } else {
+    fault();
+  }
 };
 
 /** PrivatePrintLeadingTrivia over the trivia [a, b). */
@@ -532,7 +583,7 @@ export const cswLeadingTrivia = (
   let printNewLines = includeInitialNewLines;
   let x = a;
   while (x < b) {
-    const kind = lx.trKind[x];
+    const kind = lx.trKindAt(x);
     if (printNewLines && kind === K_EndOfLineTrivia) {
       const n = toI32(docs.length);
       if (n > 0 && docs[n - 1] === DOC_HARDLINE_FOR_TRIVIA) {
@@ -542,8 +593,8 @@ export const cswLeadingTrivia = (
         !(
           n > 1 &&
           docs[n - 1] === DOC_HARDLINE_FOR_TRIVIA &&
-          D.kind[docs[n - 2]] === D_LEADING_COMMENT &&
-          D.c[docs[n - 2]] === CT_SINGLE
+          D.kindOf(docs[n - 2]) === D_LEADING_COMMENT &&
+          D.cOf(docs[n - 2]) === CT_SINGLE
         )
       ) {
         docs.push(DOC_HARDLINE_FOR_TRIVIA);
@@ -559,20 +610,20 @@ export const cswLeadingTrivia = (
       docs.push(cswLeadingComment(P, a, x, CT_MULTI));
     } else if (kind === K_DisabledTextTrivia) {
       docs.push(DOC_TRIM);
-      docs.push(D.strSrc(lx.trStart[x], lx.trTextEnd[x]));
+      docs.push(D.strSrc(lx.trStartAt(x), lx.trTextEndAt(x)));
     } else if (kind === K_RegionDirectiveTrivia || kind === K_EndRegionDirectiveTrivia) {
       docs.push(DOC_HARDLINE_IF_NO_PREVIOUS_LINE);
       docs.push(DOC_TRIM);
-      const r = D.region(lx.trStart[x], lx.trTextEnd[x], kind === K_EndRegionDirectiveTrivia);
-      D.d[r] = SF_SRC;
+      const r = D.region(lx.trStartAt(x), lx.trTextEndAt(x), kind === K_EndRegionDirectiveTrivia);
+      D.setD(r, SF_SRC);
       docs.push(r);
       docs.push(DOC_HARDLINE);
     } else if (cswIsDirectiveKind(kind)) {
       docs.push(DOC_HARDLINE_IF_NO_PREVIOUS_LINE_FOR_TRIVIA);
       docs.push(DOC_HARDLINE_IF_NO_PREVIOUS_LINE_FOR_TRIVIA);
       docs.push(DOC_TRIM);
-      const s = D.strSrc(lx.trStart[x], lx.trTextEnd[x]);
-      D.d[s] = SF_SRC | SF_DIRECTIVE;
+      const s = D.strSrc(lx.trStartAt(x), lx.trTextEndAt(x));
+      D.setD(s, SF_SRC | SF_DIRECTIVE);
       docs.push(s);
       docs.push(DOC_HARDLINE_FOR_TRIVIA);
       if (kind === K_EndIfDirectiveTrivia) {
@@ -584,12 +635,16 @@ export const cswLeadingTrivia = (
         printNewLines = false;
       }
     }
-    x++;
+    x = add32(x, 1);
   }
   if (skipLastHardline) {
-    while (toI32(docs.length) !== 0) {
-      const l = docs[toI32(docs.length) - 1];
-      if (D.kind[l] === D_HARDLINE || l === DOC_NULL) {
+    while (docs.length > 0) {
+      const dl = toI32(docs.length);
+      if (dl <= 0) {
+        break;
+      }
+      const l = docs[dl - 1];
+      if ((D.kindOf(l) === D_HARDLINE || l === DOC_NULL) && docs.length > 0) {
         docs.pop();
       } else {
         break;
@@ -601,18 +656,27 @@ export const cswLeadingTrivia = (
       cswInsert(docs, 0, DOC_HARDLINE_FOR_TRIVIA);
     } else {
       let index = toI32(docs.length) - 1;
-      while (index >= 0) {
+      while (index >= 0 && index < docs.length) {
         const d = docs[index];
-        const dk = D.kind[d];
+        const dk = D.kindOf(d);
         if (dk === D_HARDLINE || dk === D_LEADING_COMMENT || d === DOC_NULL) {
           index--;
         } else {
           break;
         }
       }
+      // -1 <= index < docs.length here
       const n = toI32(docs.length);
-      if (index + 2 >= n || !(D.kind[docs[index + 1]] === D_HARDLINE && D.kind[docs[index + 2]] === D_HARDLINE)) {
-        cswInsert(docs, index + 1, DOC_HARDLINE_FOR_TRIVIA);
+      const i1 = add32(index, 1);
+      const i2 = add32(index, 2);
+      let twoHardLines = false;
+      if (i2 < n && i1 >= 0 && i1 < docs.length && i2 >= 0 && i2 < docs.length) {
+        const d1 = docs[i1];
+        const d2 = docs[i2];
+        twoHardLines = D.kindOf(d1) === D_HARDLINE && D.kindOf(d2) === D_HARDLINE;
+      }
+      if (i2 >= n || !twoHardLines) {
+        cswInsert(docs, i1, DOC_HARDLINE_FOR_TRIVIA);
       }
     }
     P.nextTriviaNeedsLine = false;
@@ -620,19 +684,46 @@ export const cswLeadingTrivia = (
   return toI32(docs.length) > 0 ? D.concat(docs) : DOC_NULL;
 };
 
+/**
+ * i moved past the UTF-8 char whose lead byte is c. Past 2000000000, which no
+ * file reaches, it gives up on the file and answers the largest position, which
+ * ends every scan.
+ */
+const cswStep = (i: i32, c: i32): i32 => {
+  if (i <= 2000000000) {
+    return i + (csCpLen(c) & 7);
+  }
+  fault();
+  return 2147483647;
+};
+
+/** e moved back over the \n and \r bytes ending src[s, e). */
+const cswTrimEolEnd = (src: u8[], s: i32, e0: i32): i32 => {
+  let e = e0;
+  while (e > s && e > 0 && e <= src.length) {
+    const c = toI32(src[e - 1]);
+    if (c !== 10 && c !== 13) {
+      return e;
+    }
+    e--;
+  }
+  if (e > s) {
+    // src[e - 1] lies outside src
+    fault();
+  }
+  return e;
+};
+
 /** A LeadingComment for trivia x of the list starting at a. */
 const cswLeadingComment = (P: CsPrint, a: i32, x: i32, type: i32): i32 => {
   const lx = P.lx;
-  let s = lx.trStart[x];
-  let e = lx.trEnd[x];
-  while (e > s && (toI32(P.src[e - 1]) === 10 || toI32(P.src[e - 1]) === 13)) {
-    e--;
-  }
-  if (type === CT_MULTI && x > a && lx.trKind[x - 1] === K_WhitespaceTrivia) {
-    s = lx.trStart[x - 1];
+  let s = lx.trStartAt(x);
+  const e = cswTrimEolEnd(P.src, s, lx.trEndAt(x));
+  if (type === CT_MULTI && x > a && lx.trKindAt(sub32(x, 1)) === K_WhitespaceTrivia) {
+    s = lx.trStartAt(sub32(x, 1));
   }
   const d = P.D.comment(D_LEADING_COMMENT, s, e, type);
-  P.D.d[d] = SF_SRC;
+  P.D.setD(d, SF_SRC);
   return d;
 };
 
@@ -641,7 +732,7 @@ export const cswTrailingTrivia = (P: CsPrint, a: i32, b: i32): i32 => {
   const lx = P.lx;
   let has = false;
   for (let i = a; i < b; i++) {
-    const k = lx.trKind[i];
+    const k = lx.trKindAt(i);
     if (k === K_SingleLineCommentTrivia || k === K_MultiLineCommentTrivia) {
       has = true;
       break;
@@ -652,15 +743,15 @@ export const cswTrailingTrivia = (P: CsPrint, a: i32, b: i32): i32 => {
   }
   const docs: i32[] = [];
   for (let i = a; i < b; i++) {
-    const k = lx.trKind[i];
+    const k = lx.trKindAt(i);
     if (k === K_SingleLineCommentTrivia) {
-      const d = P.D.comment(D_TRAILING_COMMENT, lx.trStart[i], lx.trTextEnd[i], CT_SINGLE);
-      P.D.d[d] = SF_SRC;
+      const d = P.D.comment(D_TRAILING_COMMENT, lx.trStartAt(i), lx.trTextEndAt(i), CT_SINGLE);
+      P.D.setD(d, SF_SRC);
       docs.push(d);
     } else if (k === K_MultiLineCommentTrivia) {
       docs.push(DOC_SPACE);
-      const d = P.D.comment(D_TRAILING_COMMENT, lx.trStart[i], lx.trTextEnd[i], CT_MULTI);
-      P.D.d[d] = SF_SRC;
+      const d = P.D.comment(D_TRAILING_COMMENT, lx.trStartAt(i), lx.trTextEndAt(i), CT_MULTI);
+      P.D.setD(d, SF_SRC);
       docs.push(d);
     }
   }
@@ -668,14 +759,14 @@ export const cswTrailingTrivia = (P: CsPrint, a: i32, b: i32): i32 => {
 };
 
 export const cswTrailingTriviaTok = (P: CsPrint, t: i32): i32 =>
-  t < 0 ? DOC_NULL : cswTrailingTrivia(P, P.lx.t0[t], P.lx.t1[t]);
+  t < 0 ? DOC_NULL : cswTrailingTrivia(P, P.lx.t0At(t), P.lx.t1At(t));
 
 /** Token.PrintLeadingTrivia(token) with the leading trivia [a, b). */
 export const cswLeadingTriviaTokRange = (P: CsPrint, t: i32, a: i32, b: i32): i32 => {
   const lx = P.lx;
-  const kind = lx.kind[t];
+  const kind = lx.tokKind(t);
   const isClosingBrace =
-    kind === K_CloseBraceToken || (kind === K_CloseBracketToken && P.t.is(lx.parent[t], Y_CollectionExpression));
+    kind === K_CloseBraceToken || (kind === K_CloseBracketToken && P.t.is(lx.parentAt(t), Y_CollectionExpression));
   let printed = cswLeadingTrivia(P, a, b, false, isClosingBrace);
   const hasDirective = cswAnyDirective(lx, a, b);
   if (hasDirective) {
@@ -698,16 +789,16 @@ export const cswLeadingTriviaTok = (P: CsPrint, t: i32): i32 => {
   if (t < 0) {
     return DOC_NULL;
   }
-  return cswLeadingTriviaTokRange(P, t, P.lx.l0[t], P.lx.l1[t]);
+  return cswLeadingTriviaTokRange(P, t, P.lx.l0At(t), P.lx.l1At(t));
 };
 
 /** Whether the token is printed as several lines (HasMultiLineText). */
 const cswVerbatimText = (P: CsPrint, t: i32, kind: i32): boolean => {
   if (kind === K_StringLiteralToken) {
-    return toI32(P.src[P.lx.start[t]]) === 64;
+    return atU8(P.src, P.lx.startAt(t)) === 64;
   }
   if (kind === K_InterpolatedStringTextToken) {
-    const e = P.par(P.lx.parent[t]);
+    const e = P.par(P.lx.parentAt(t));
     return (
       P.t.is(e, Y_InterpolatedStringExpression) &&
       P.tk(P.s(e, F_InterpolatedStringExpression_StringStartToken)) === K_InterpolatedVerbatimStringStartToken
@@ -740,7 +831,7 @@ export const cswShouldIndentRawString = (P: CsPrint, arg: i32): boolean => {
 /** The ValueText of a multi-line raw string's content text src[a, b) (Roslyn's makeContent), into buf. */
 export const cswRawValue = (P: CsPrint, buf: CsBuf, a: i32, b: i32, ia: i32, ib: i32, isFirst: boolean): void => {
   const src = P.src;
-  const il = ib - ia;
+  const il = sub32(ib, ia);
   if (il === 0) {
     buf.range(src, a, b);
     return;
@@ -756,10 +847,11 @@ export const cswRawValue = (P: CsPrint, buf: CsBuf, a: i32, b: i32, ia: i32, ib:
       if (!csIsWhitespaceCp(c)) {
         break;
       }
-      i += csCpLen(toI32(src[i]));
+      i = cswStep(i, atU8(src, i));
     }
-    if (i > ls + il) {
-      i = ls + il;
+    const lsil = add32(ls, il);
+    if (i > lsil) {
+      i = lsil;
     }
     i = cswConsumeThroughNewLine(src, buf, i, b);
   }
@@ -768,30 +860,36 @@ export const cswRawValue = (P: CsPrint, buf: CsBuf, a: i32, b: i32, ia: i32, ib:
 const cswConsumeThroughNewLine = (src: u8[], buf: CsBuf, a: i32, b: i32): i32 => {
   let i = a;
   while (i < b) {
+    if (i < 0 || i >= src.length || i > 2000000000) {
+      fault();
+      return b;
+    }
     const c = toI32(src[i]);
+    const i1 = i + 1;
     if (c === 13) {
-      if (i + 1 < b && toI32(src[i + 1]) === 10) {
+      if (i1 < b && atU8(src, i1) === 10) {
         buf.range(src, a, i + 2);
         return i + 2;
       }
-      buf.range(src, a, i + 1);
-      return i + 1;
+      buf.range(src, a, i1);
+      return i1;
     }
     if (c === 10) {
-      buf.range(src, a, i + 1);
-      return i + 1;
+      buf.range(src, a, i1);
+      return i1;
     }
     if (c >= 0x80) {
       const cp = csCodePoint(src, i, b);
       const l = csCpLen(c);
+      const il = add32(i, l);
       if (cp === 0x85 || cp === 0x2028 || cp === 0x2029) {
-        buf.range(src, a, i + l);
-        return i + l;
+        buf.range(src, a, il);
+        return il;
       }
-      i += l;
+      i = il;
       continue;
     }
-    i++;
+    i = i1;
   }
   buf.range(src, a, b);
   return b;
@@ -800,12 +898,16 @@ const cswConsumeThroughNewLine = (src: u8[], buf: CsBuf, a: i32, b: i32): i32 =>
 /** The indentation whitespace of a multi-line raw string's closing token [a, b): after its line break, before the quotes. */
 export const cswRawIndentStart = (src: u8[], a: i32, b: i32): i32 => {
   const i = a;
+  if (i < 0 || i >= src.length || i > 2000000000) {
+    fault();
+    return b;
+  }
   const c = toI32(src[i]);
-  if (c === 13 && i + 1 < b && toI32(src[i + 1]) === 10) {
+  if (c === 13 && i + 1 < b && atU8(src, i + 1) === 10) {
     return i + 2;
   }
   if (c >= 0x80) {
-    return i + csCpLen(c);
+    return add32(i, csCpLen(c));
   }
   return i + 1;
 };
@@ -817,7 +919,7 @@ export const cswRawIndentEnd = (src: u8[], a: i32, b: i32): i32 => {
     if (!csIsWhitespaceCp(c)) {
       break;
     }
-    i += csCpLen(toI32(src[i]));
+    i = cswStep(i, atU8(src, i));
   }
   return i;
 };
@@ -834,24 +936,34 @@ const cswRawLines = (
   let s = 0;
   let i = 0;
   const n = buf.n;
+  const bb = buf.buf;
   while (true) {
     let e = i;
-    while (e < n && toI32(buf.buf[e]) !== 10 && toI32(buf.buf[e]) !== 13) {
+    while (e < n) {
+      if (e < 0 || e >= bb.length) {
+        fault();
+        return;
+      }
+      const c = toI32(bb[e]);
+      if (c === 10 || c === 13) {
+        break;
+      }
       e++;
     }
-    const a = D.appendBytes(buf.buf, s, e);
-    contents.push(D.strAt(a, a + (e - s), false));
+    const a = D.appendBytes(bb, s, e);
+    contents.push(D.strAt(a, add32(a, sub32(e, s)), false));
     const isLast = e >= n;
     if (!isLast || lineAfterLast) {
       contents.push(lastLineIsIndented ? (e === s ? DOC_HARDLINE : DOC_HARDLINE_NO_TRIM) : DOC_LITERAL_LINE);
     }
-    if (isLast) {
+    if (e >= n) {
       return;
     }
-    if (toI32(buf.buf[e]) === 13 && e + 1 < n && toI32(buf.buf[e + 1]) === 10) {
-      i = e + 2;
+    const e1 = e + 1;
+    if (atU8(bb, e) === 13 && e1 < n && atU8(bb, e1) === 10) {
+      i = add32(e1, 1);
     } else {
-      i = e + 1;
+      i = e1;
     }
     s = i;
   }
@@ -880,7 +992,7 @@ export const cswTokFull = (
   }
   const lx = P.lx;
   const D = P.D;
-  const kind = lx.kind[t];
+  const kind = lx.tokKind(t);
   const lead = skipLead ? DOC_NULL : cswLeadingTriviaTokRange(P, t, la, lb);
   const trail = skipTrail ? DOC_NULL : cswTrailingTriviaTok(P, t);
   const verbatim = cswVerbatimText(P, t, kind);
@@ -890,15 +1002,15 @@ export const cswTokFull = (
     kind === K_InterpolatedMultiLineRawStringStartToken ||
     kind === K_InterpolatedRawStringEndToken;
   if (suffix < 0 && lead === DOC_NULL && trail === DOC_NULL && !multi) {
-    return D.strSrc(lx.start[t], lx.end[t]);
+    return D.strSrc(lx.startAt(t), lx.endAt(t));
   }
   const docs: i32[] = [];
   if (lead !== DOC_NULL) {
     docs.push(lead);
   }
   const src = P.src;
-  const a = lx.start[t];
-  const b = lx.end[t];
+  const a = lx.startAt(t);
+  const b = lx.endAt(t);
   if (verbatim) {
     // Text.Replace("\r", "").Split('\n') joined with literal lines
     const parts: i32[] = [];
@@ -906,8 +1018,16 @@ export const cswTokFull = (
     while (true) {
       let e = s;
       let hasCr = false;
-      while (e < b && toI32(src[e]) !== 10) {
-        if (toI32(src[e]) === 13) {
+      while (e < b) {
+        if (e < 0 || e >= src.length) {
+          fault();
+          return DOC_NULL;
+        }
+        const c = toI32(src[e]);
+        if (c === 10) {
+          break;
+        }
+        if (c === 13) {
           hasCr = true;
         }
         e++;
@@ -917,7 +1037,7 @@ export const cswTokFull = (
       }
       if (hasCr) {
         const o = D.ns;
-        for (let i = s; i < e; i++) {
+        for (let i = s; i >= 0 && i < e && i < src.length; i++) {
           if (toI32(src[i]) !== 13) {
             D.appendByte(toI32(src[i]));
           }
@@ -929,50 +1049,56 @@ export const cswTokFull = (
       if (e >= b) {
         break;
       }
+      // e < b here
       s = e + 1;
     }
     docs.push(D.concat(parts));
   } else if (kind === K_MultiLineRawStringLiteralToken) {
     // the first line (the quotes), the value's lines, the last line trimmed
+    if (a < 0 || b > src.length) {
+      fault();
+      return DOC_NULL;
+    }
     let fe = a;
-    while (fe < b && toI32(src[fe]) !== 10 && toI32(src[fe]) !== 13) {
+    while (fe < b && fe >= 0 && fe < src.length && toI32(src[fe]) !== 10 && toI32(src[fe]) !== 13) {
       fe++;
     }
     let ls = b;
-    while (ls > a && toI32(src[ls - 1]) !== 10 && toI32(src[ls - 1]) !== 13) {
+    while (ls > a && ls > 0 && ls <= src.length && toI32(src[ls - 1]) !== 10 && toI32(src[ls - 1]) !== 13) {
       ls--;
     }
-    const lastLineIsIndented = toI32(src[ls]) === 9 || toI32(src[ls]) === 32;
+    const lastLineIsIndented = atU8(src, ls) === 9 || atU8(src, ls) === 32;
     const contents: i32[] = [D.strSrc(a, fe), lastLineIsIndented ? DOC_HARDLINE_NO_TRIM : DOC_LITERAL_LINE];
     // the content: after the first line break, up to the line break before the last line
     let cs = fe;
-    if (toI32(src[cs]) === 13 && cs + 1 < b && toI32(src[cs + 1]) === 10) {
-      cs += 2;
+    const cs1 = add32(cs, 1);
+    if (atU8(src, cs) === 13 && cs1 < b && atU8(src, cs1) === 10) {
+      cs = add32(cs1, 1);
     } else {
-      cs += 1;
+      cs = cs1;
     }
-    let ce = ls - 1;
-    if (ce > cs && toI32(src[ce]) === 10 && toI32(src[ce - 1]) === 13) {
-      ce--;
+    let ce = sub32(ls, 1);
+    if (ce > cs && atU8(src, ce) === 10 && atU8(src, sub32(ce, 1)) === 13) {
+      ce = sub32(ce, 1);
     }
-    const buf = new CsBuf(ce - cs + 16);
+    const buf = new CsBuf(add32(sub32(ce, cs), 16));
     cswRawValue(P, buf, cs, ce, ls, cswRawIndentEnd(src, ls, b), true);
     cswRawLines(P, contents, buf, lastLineIsIndented, true);
     let ts = ls;
     while (ts < b && csIsTrimByteAt(src, ts, b)) {
-      ts += csCpLen(toI32(src[ts]));
+      ts = cswStep(ts, atU8(src, ts));
     }
     contents.push(D.strSrc(ts, b));
-    docs.push(D.indentIf(cswShouldIndentRawString(P, cswFindParent(P, lx.parent[t], Y_Argument)), D.concat(contents)));
+    docs.push(
+      D.indentIf(cswShouldIndentRawString(P, cswFindParent(P, lx.parentAt(t), Y_Argument)), D.concat(contents)),
+    );
   } else if (kind === K_InterpolatedMultiLineRawStringStartToken || kind === K_InterpolatedRawStringEndToken) {
     let ts = a;
     let te = b;
     while (ts < te && csIsTrimByteAt(src, ts, te)) {
-      ts += csCpLen(toI32(src[ts]));
+      ts = cswStep(ts, atU8(src, ts));
     }
-    while (te > ts && (toI32(src[te - 1]) === 32 || (toI32(src[te - 1]) >= 9 && toI32(src[te - 1]) <= 13))) {
-      te--;
-    }
+    te = cswTrimWsEnd(src, ts, te);
     docs.push(D.strSrc(ts, te));
   } else {
     docs.push(D.strSrc(a, b));
@@ -980,8 +1106,9 @@ export const cswTokFull = (
   if (trail !== DOC_NULL) {
     if (P.tcTrivia >= 0) {
       let fc = -1;
-      for (let i = lx.t0[t]; i < lx.t1[t]; i++) {
-        if (cswIsCommentKind(lx.trKind[i])) {
+      const t1 = lx.t1At(t);
+      for (let i = lx.t0At(t); i < t1; i++) {
+        if (cswIsCommentKind(lx.trKindAt(i))) {
           fc = i;
           break;
         }
@@ -1000,8 +1127,29 @@ export const cswTokFull = (
   return D.concat(docs);
 };
 
+/** te moved back over the space and [\t-\r] bytes ending src[ts, te). */
+const cswTrimWsEnd = (src: u8[], ts: i32, te0: i32): i32 => {
+  let te = te0;
+  while (te > ts && te > 0 && te <= src.length) {
+    const c = toI32(src[te - 1]);
+    if (c !== 32 && !(c >= 9 && c <= 13)) {
+      return te;
+    }
+    te--;
+  }
+  if (te > ts) {
+    // src[te - 1] lies outside src
+    fault();
+  }
+  return te;
+};
+
 /** Whether the char at s[i] is one .NET's Trim removes. */
 export const csIsTrimByteAt = (s: u8[], i: i32, b: i32): boolean => {
+  if (i < 0 || i >= s.length) {
+    fault();
+    return false;
+  }
   const c = toI32(s[i]);
   if (c === 32 || (c >= 9 && c <= 13)) {
     return true;
@@ -1013,31 +1161,33 @@ export const csIsTrimByteAt = (s: u8[], i: i32, b: i32): boolean => {
 };
 
 export const cswTok = (P: CsPrint, t: i32): i32 =>
-  t < 0 ? DOC_NULL : cswTokFull(P, t, -1, false, false, P.lx.l0[t], P.lx.l1[t]);
+  t < 0 ? DOC_NULL : cswTokFull(P, t, -1, false, false, P.lx.l0At(t), P.lx.l1At(t));
 
 export const cswTokSfx = (P: CsPrint, t: i32, sfx: i32): i32 =>
-  t < 0 ? DOC_NULL : cswTokFull(P, t, sfx, false, false, P.lx.l0[t], P.lx.l1[t]);
+  t < 0 ? DOC_NULL : cswTokFull(P, t, sfx, false, false, P.lx.l0At(t), P.lx.l1At(t));
 
 export const cswTokSfxNoLead = (P: CsPrint, t: i32, sfx: i32): i32 =>
-  t < 0 ? DOC_NULL : cswTokFull(P, t, sfx, true, false, P.lx.l0[t], P.lx.l1[t]);
+  t < 0 ? DOC_NULL : cswTokFull(P, t, sfx, true, false, P.lx.l0At(t), P.lx.l1At(t));
 
 export const cswTokNoLead = (P: CsPrint, t: i32): i32 =>
-  t < 0 ? DOC_NULL : cswTokFull(P, t, -1, true, false, P.lx.l0[t], P.lx.l1[t]);
+  t < 0 ? DOC_NULL : cswTokFull(P, t, -1, true, false, P.lx.l0At(t), P.lx.l1At(t));
 
 export const cswTokNoTrail = (P: CsPrint, t: i32): i32 =>
-  t < 0 ? DOC_NULL : cswTokFull(P, t, -1, false, true, P.lx.l0[t], P.lx.l1[t]);
+  t < 0 ? DOC_NULL : cswTokFull(P, t, -1, false, true, P.lx.l0At(t), P.lx.l1At(t));
 
 /** Token.HasComments. */
 export const cswTokHasComments = (P: CsPrint, t: i32): boolean => {
   const lx = P.lx;
-  return cswAnyNonWhitespace(lx, lx.l0[t], lx.l1[t]) || cswAnyNonWhitespace(lx, lx.t0[t], lx.t1[t]);
+  return cswAnyNonWhitespace(lx, lx.l0At(t), lx.l1At(t)) || cswAnyNonWhitespace(lx, lx.t0At(t), lx.t1At(t));
 };
 
 // ---- text of nodes ----
 
-export const cswTokFullStart = (lx: CsLexer, t: i32): i32 => (lx.l0[t] < lx.l1[t] ? lx.trStart[lx.l0[t]] : lx.start[t]);
+export const cswTokFullStart = (lx: CsLexer, t: i32): i32 =>
+  lx.l0At(t) < lx.l1At(t) ? lx.trStartAt(lx.l0At(t)) : lx.startAt(t);
 
-export const cswTokFullEnd = (lx: CsLexer, t: i32): i32 => (lx.t0[t] < lx.t1[t] ? lx.trEnd[lx.t1[t] - 1] : lx.end[t]);
+export const cswTokFullEnd = (lx: CsLexer, t: i32): i32 =>
+  lx.t0At(t) < lx.t1At(t) ? lx.trEndAt(sub32(lx.t1At(t), 1)) : lx.endAt(t);
 
 /** Appends src[a, b) with CSharpierIgnore.PrintWithoutFormatting's line handling: trailing [\t\v\f ] dropped and line breaks made the line ending. */
 export const cswAppendUnformatted = (P: CsPrint, buf: CsBuf, a: i32, b: i32): void => {
@@ -1045,6 +1195,10 @@ export const cswAppendUnformatted = (P: CsPrint, buf: CsBuf, a: i32, b: i32): vo
   let i = a;
   let ws = -1; // start of a pending run of [\t\v\f ]
   while (i < b) {
+    if (i < 0 || i >= src.length) {
+      fault();
+      return;
+    }
     const c = toI32(src[i]);
     if (c === 32 || c === 9 || c === 11 || c === 12) {
       if (ws < 0) {
@@ -1059,10 +1213,11 @@ export const cswAppendUnformatted = (P: CsPrint, buf: CsBuf, a: i32, b: i32): vo
         buf.byte(13);
       }
       buf.byte(10);
-      if (c === 13 && i + 1 < b && toI32(src[i + 1]) === 10) {
-        i += 2;
+      const i1 = i + 1;
+      if (c === 13 && i1 < b && atU8(src, i1) === 10) {
+        i = add32(i1, 1);
       } else {
-        i += 1;
+        i = i1;
       }
       continue;
     }
@@ -1083,25 +1238,37 @@ export const cswAppendNodeUnformatted = (P: CsPrint, buf: CsBuf, n: i32): void =
   cswAppendUnformatted(P, buf, P.t.fullStart(n), P.t.fullEnd(n));
 };
 
-/** A StringDoc of buf's text, trimmed. */
-export const cswTrimmedDoc = (P: CsPrint, buf: CsBuf): i32 => {
-  let a = 0;
-  let b = buf.n;
-  while (a < b && csIsTrimByteAt(buf.buf, a, b)) {
-    a += csCpLen(toI32(buf.buf[a]));
-  }
+/** b moved back over the chars .NET's Trim removes ending s[a, b). */
+const cswTrimTrimEnd = (s: u8[], a: i32, b0: i32): i32 => {
+  let b = b0;
   while (b > a) {
-    let s = b - 1;
-    while (s > a && (toI32(buf.buf[s]) & 0xc0) === 0x80) {
-      s--;
+    if (b <= 0 || b > s.length) {
+      fault();
+      return b;
     }
-    if (!csIsTrimByteAt(buf.buf, s, b)) {
+    let p = b - 1;
+    while (p > a && p > 0 && (toI32(s[p]) & 0xc0) === 0x80) {
+      p--;
+    }
+    if (!csIsTrimByteAt(s, p, b)) {
       break;
     }
-    b = s;
+    b = p;
   }
-  const o = P.D.appendBytes(buf.buf, a, b);
-  return P.D.strAt(o, o + (b - a), false);
+  return b;
+};
+
+/** A StringDoc of buf's text, trimmed. */
+export const cswTrimmedDoc = (P: CsPrint, buf: CsBuf): i32 => {
+  const bb = buf.buf;
+  let a = 0;
+  let b = buf.n;
+  while (a < b && csIsTrimByteAt(bb, a, b)) {
+    a = cswStep(a, atU8(bb, a));
+  }
+  b = cswTrimTrimEnd(bb, a, b);
+  const o = P.D.appendBytes(bb, a, b);
+  return P.D.strAt(o, add32(o, sub32(b, a)), false);
 };
 
 /** node.ToFullString().Trim() as a StringDoc (UnhandledNode). */
@@ -1110,18 +1277,9 @@ export const cswTrimmedSrc = (P: CsPrint, a: i32, b: i32): i32 => {
   let e = b;
   const src = P.src;
   while (s < e && csIsTrimByteAt(src, s, e)) {
-    s += csCpLen(toI32(src[s]));
+    s = cswStep(s, atU8(src, s));
   }
-  while (e > s) {
-    let k = e - 1;
-    while (k > s && (toI32(src[k]) & 0xc0) === 0x80) {
-      k--;
-    }
-    if (!csIsTrimByteAt(src, k, e)) {
-      break;
-    }
-    e = k;
-  }
+  e = cswTrimTrimEnd(src, s, e);
   return P.D.strSrc(s, e);
 };
 
@@ -1136,7 +1294,7 @@ export const cswTrailingComma = (P: CsPrint, closing: i32, skipIfBreak: boolean)
     printed = P.D.concat([DOC_HARDLINE_FOR_TRIVIA, P.comma]);
     P.nextTriviaNeedsLine = false;
   }
-  if (cswAnyDirective(lx, lx.l0[closing], lx.l1[closing])) {
+  if (cswAnyDirective(lx, lx.l0At(closing), lx.l1At(closing))) {
     return DOC_NULL;
   }
   return skipIfBreak ? printed : P.D.ifBreak(printed, DOC_NULL, -1);
@@ -1151,8 +1309,8 @@ export const cswFirstTrailingComment = (P: CsPrint, n: i32): i32 => {
     return -1;
   }
   const lx = P.lx;
-  for (let i = lx.t0[t]; i < lx.t1[t]; i++) {
-    if (cswIsCommentKind(lx.trKind[i])) {
+  for (let i = lx.t0At(t); i < lx.t1At(t); i++) {
+    if (cswIsCommentKind(lx.trKindAt(i))) {
       return i;
     }
   }
@@ -1184,7 +1342,7 @@ export const cswSepList = (P: CsPrint, l: i32, item: i32, afterSep: i32, start: 
       if (x < nsep) {
         const st = P.sep(l, x);
         const d = cswTrimmedSrc(P, cswTokFullStart(lx, st), cswTokFullEnd(lx, st));
-        unf.range(P.src, P.D.a[d], P.D.b[d]);
+        unf.range(P.src, P.D.aOf(d), P.D.bOf(d));
         if (P.eolCr) {
           unf.byte(13);
         }
@@ -1208,12 +1366,12 @@ export const cswSepList = (P: CsPrint, l: i32, item: i32, afterSep: i32, start: 
       }
       continue;
     }
-    const isTrailingSeparator = x === n - 1;
+    const isTrailingSeparator = x + 1 === n;
     if (isTrailingSeparator) {
       const st = P.sep(l, x);
       if (
-        cswAnyComment(lx, lx.t0[st], lx.t1[st]) ||
-        (closing >= 0 && cswAnyDirective(lx, lx.l0[closing], lx.l1[closing]))
+        cswAnyComment(lx, lx.t0At(st), lx.t1At(st)) ||
+        (closing >= 0 && cswAnyDirective(lx, lx.l0At(closing), lx.l1At(closing)))
       ) {
         docs.push(cswTok(P, st));
       } else if (closing >= 0) {
@@ -1303,12 +1461,12 @@ export const cswModifiersSorted = (P: CsPrint, l: i32): i32 => {
   let canSort = n > 1;
   if (canSort) {
     const t0 = P.at(l, 0);
-    if (cswAnyDirective(lx, lx.l0[t0], lx.l1[t0])) {
+    if (cswAnyDirective(lx, lx.l0At(t0), lx.l1At(t0))) {
       canSort = false;
     }
     for (let i = 1; i < n && canSort; i++) {
       const t = P.at(l, i);
-      if (cswAnyCommentOrDirective(lx, lx.l0[t], lx.l1[t])) {
+      if (cswAnyCommentOrDirective(lx, lx.l0At(t), lx.l1At(t))) {
         canSort = false;
       }
     }
@@ -1316,7 +1474,7 @@ export const cswModifiersSorted = (P: CsPrint, l: i32): i32 => {
   let sorted = false;
   if (canSort) {
     for (let i = 1; i < n; i++) {
-      if (cswModifierIndex(lx.kind[P.at(l, i)]) < cswModifierIndex(lx.kind[P.at(l, i - 1)])) {
+      if (cswModifierIndex(lx.tokKind(P.at(l, i))) < cswModifierIndex(lx.tokKind(P.at(l, i - 1)))) {
         sorted = true;
       }
     }
@@ -1329,19 +1487,33 @@ export const cswModifiersSorted = (P: CsPrint, l: i32): i32 => {
   for (let i = 0; i < n; i++) {
     order.push(P.at(l, i));
   }
-  for (let i = 1; i < n; i++) {
+  for (let i = 1; i < order.length; i++) {
     const v = order[i];
-    const vi = cswModifierIndex(lx.kind[v]);
-    let j = i - 1;
-    while (j >= 0 && cswModifierIndex(lx.kind[order[j]]) > vi) {
-      order[j + 1] = order[j];
+    const vi = cswModifierIndex(lx.tokKind(v));
+    // j is the slot v goes to
+    let j = i;
+    while (j > 0 && j < order.length) {
+      const prev = order[j - 1];
+      if (cswModifierIndex(lx.tokKind(prev)) <= vi) {
+        break;
+      }
+      if (j >= order.length) {
+        fault();
+        break;
+      }
+      order[j] = prev;
       j--;
     }
-    order[j + 1] = v;
+    if (j >= 0 && j < order.length) {
+      order[j] = v;
+    } else {
+      fault();
+    }
   }
   let same = true;
-  for (let i = 0; i < n; i++) {
-    if (order[i] !== P.at(l, i)) {
+  for (let i = 0; i < n && i < order.length; i++) {
+    const o = order[i];
+    if (o !== P.at(l, i)) {
       same = false;
     }
   }
@@ -1351,13 +1523,13 @@ export const cswModifiersSorted = (P: CsPrint, l: i32): i32 => {
   P.reorderedModifiers = true;
   const lead = P.at(l, 0);
   const docs: i32[] = [];
-  for (let i = 0; i < n; i++) {
+  for (let i = 0; i < n && i < order.length; i++) {
+    const t = order[i];
     if (i > 0) {
       docs.push(DOC_SPACE);
     }
-    const t = order[i];
     if (i === 0) {
-      docs.push(cswTokFull(P, t, -1, false, false, lx.l0[lead], lx.l1[lead]));
+      docs.push(cswTokFull(P, t, -1, false, false, lx.l0At(lead), lx.l1At(lead)));
     } else if (t === lead) {
       docs.push(cswTokFull(P, t, -1, false, false, 0, 0));
     } else {
@@ -1387,7 +1559,7 @@ export const cswAttributeLists = (P: CsPrint, node: i32, l: i32): i32 => {
     }
     docs.push(cswAttributeList(P, P.at(l, i)));
   }
-  const printed = n === 1 ? docs[0] : P.D.concat(docs);
+  const printed = n === 1 && docs.length > 0 ? docs[0] : P.D.concat(docs);
   if (P.is(node, Y_Parameter) || P.is(node, Y_TypeParameter)) {
     return printed;
   }
@@ -1491,15 +1663,16 @@ export const cswNodesRespectingRangeIgnore = (P: CsPrint, l: i32): i32[] => {
 /** Doc.Join(separator, docs). */
 export const cswJoin = (P: CsPrint, sep: i32, docs: i32[]): i32 => {
   const n = toI32(docs.length);
-  if (n === 1) {
+  if (n === 1 && docs.length > 0) {
     return docs[0];
   }
   const out: i32[] = [];
-  for (let i = 0; i < n; i++) {
+  for (let i = 0; i < docs.length; i++) {
+    const d = docs[i];
     if (i > 0) {
       out.push(sep);
     }
-    out.push(docs[i]);
+    out.push(d);
   }
   return P.D.concat(out);
 };
@@ -1586,12 +1759,12 @@ const cswArrowToken = (P: CsPrint, lambda: i32): i32 =>
     : P.s(lambda, F_ParenthesizedLambdaExpression_ArrowToken);
 
 const cswTrailingLambdaCandidate = (P: CsPrint, open: i32, args: i32): boolean => {
-  const n = P.scount(args);
-  const last = P.s(P.sel(args, n - 1), F_Argument_Expression);
+  const n1 = sub32(P.scount(args), 1);
+  const last = P.s(P.sel(args, n1), F_Argument_Expression);
   if (!P.is(last, Y_LambdaExpression)) {
     return false;
   }
-  for (let i = 0; i < n - 1; i++) {
+  for (let i = 0; i < n1; i++) {
     if (P.is(P.s(P.sel(args, i), F_Argument_Expression), Y_AnonymousFunctionExpression)) {
       return false;
     }
@@ -1599,8 +1772,8 @@ const cswTrailingLambdaCandidate = (P: CsPrint, open: i32, args: i32): boolean =
   const lx = P.lx;
   const arrow = cswArrowToken(P, last);
   // DescendantTrivia over [openParen.SpanStart, arrow.SpanStart)
-  for (let i = lx.t0[open]; i < lx.l1[arrow]; i++) {
-    const k = lx.trKind[i];
+  for (let i = lx.t0At(open); i < lx.l1At(arrow); i++) {
+    const k = lx.trKindAt(i);
     if (cswIsCommentKind(k) || cswIsDirectiveKind(k)) {
       return false;
     }
@@ -1625,17 +1798,18 @@ const cswArgumentListWithTrailingLambda = (P: CsPrint, args: i32, lastLambda: i3
   } else {
     return chop;
   }
-  const n = P.scount(args);
+  const n1 = sub32(P.scount(args), 1);
   const flat: i32[] = [];
-  for (let x = 0; x < n - 1; x++) {
+  for (let x = 0; x < n1; x++) {
     flat.push(cswArgument(P, P.sel(args, x)));
     flat.push(cswTok(P, P.sep(args, x)));
     flat.push(DOC_SPACE);
   }
-  flat.push(cswArgumentModifiers(P, P.sel(args, n - 1)));
+  flat.push(cswArgumentModifiers(P, P.sel(args, n1)));
   flat.push(head);
-  for (let i = 0; i < toI32(flat.length); i++) {
-    if (csdContainsBreak(D, flat[i])) {
+  for (let i = 0; i < flat.length; i++) {
+    const f = flat[i];
+    if (csdContainsBreak(D, f)) {
       return chop;
     }
   }
@@ -1667,14 +1841,20 @@ export const cswRightHandSide = (P: CsPrint, left: i32, leftDoc: i32, opDoc: i32
       const gid = D.newGroupId();
       const docs = cswBinaryParts(P, right);
       const rest: i32[] = [];
-      for (let i = 1; i < toI32(docs.length); i++) {
+      for (let i = 1; i < docs.length; i++) {
         rest.push(docs[i]);
+      }
+      let first = DOC_NULL;
+      if (docs.length > 0) {
+        first = docs[0];
+      } else {
+        fault();
       }
       return D.group([
         D.group1(leftDoc),
         opDoc,
         D.groupWithId(gid, [D.indent1(DOC_LINE)]),
-        D.indentIfBreak(D.group([docs[0], D.ifBreak(D.concat(rest), D.indent(rest), gid)]), gid),
+        D.indentIfBreak(D.group([first, D.ifBreak(D.concat(rest), D.indent(rest), gid)]), gid),
       ]);
     }
     case L_CHAIN:
@@ -1864,7 +2044,7 @@ export const cswMembersWithForcedLines = (
     let containsEol = false;
     let lineFollowsEndIf = false;
     for (let ti = la; ti < lb; ti++) {
-      const k = lx.trKind[ti];
+      const k = lx.trKindAt(ti);
       if (k === K_EndOfLineTrivia || cswIsCommentKind(k)) {
         containsCommentOrNewLine = true;
       } else if (
@@ -1927,7 +2107,7 @@ export const cswMembersWithForcedLines = (
 export const cswHasModifier = (P: CsPrint, l: i32, kind: i32): boolean => {
   const n = P.count(l);
   for (let i = 0; i < n; i++) {
-    if (P.lx.kind[P.at(l, i)] === kind) {
+    if (P.lx.tokKind(P.at(l, i)) === kind) {
       return true;
     }
   }
@@ -1978,7 +2158,7 @@ export const cswNamespaceLike = (P: CsPrint, node: i32, externs: i32, usings: i3
       }
       parts.push(cswExternAlias(P, P.at(externs, i), i !== 0));
     }
-    docs.push(ne === 1 ? parts[0] : D.concat(parts));
+    docs.push(ne === 1 && parts.length > 0 ? parts[0] : D.concat(parts));
   }
   if (nu > 0) {
     if (ne > 0) {
@@ -2009,9 +2189,9 @@ export const cswNamespaceLike = (P: CsPrint, node: i32, externs: i32, usings: i3
     let nDir = 0;
     let allEndIf = true;
     for (let i = la; i < lb; i++) {
-      const k = lx.trKind[i];
+      const k = lx.trKindAt(i);
       if (cswIsDirectiveKind(k)) {
-        nDir++;
+        nDir = add32(nDir, 1);
         if (k !== K_EndIfDirectiveTrivia) {
           allEndIf = false;
         }
@@ -2026,7 +2206,7 @@ export const cswNamespaceLike = (P: CsPrint, node: i32, externs: i32, usings: i3
     }
   }
   const ms = cswMembersWithForcedLines(P, node, members, false, nu === 0 && ne === 0 && !cuWithAttributes);
-  for (let i = 0; i < toI32(ms.length); i++) {
+  for (let i = 0; i < ms.length; i++) {
     docs.push(ms[i]);
   }
 };
@@ -2045,15 +2225,15 @@ const cswCollationWeight = (c: i32): i32 => {
     return 900 + (c - 48);
   }
   if (c >= 0x80) {
-    return 2000 + c;
+    return add32(2000, c);
   }
   const punct = "\t\n\u000b\u000c\r _-,;:!?.'\"()[]{}@*/\\&#%`^+<=>|~$";
-  for (let i = 0; i < toI32(punct.length); i++) {
+  for (let i = 0; i < punct.length; i++) {
     if (punct.charCodeAt(i) === c) {
-      return 10 + i;
+      return add32(10, i);
     }
   }
-  return 5 + c;
+  return add32(5, c);
 };
 
 /** string.Compare with a culture: primary weights, then (unless ignoring case) lowercase before uppercase. */
@@ -2073,8 +2253,8 @@ export const cswCultureCompare = (s: u8[], a1: i32, b1: i32, s2: u8[], a2: i32, 
       // same letter, different case: lowercase first
       tert = c1 > c2 ? -1 : 1;
     }
-    i += csCpLen(toI32(s[i]));
-    j += csCpLen(toI32(s2[j]));
+    i = cswStep(i, atU8(s, i));
+    j = cswStep(j, atU8(s2, j));
   }
   if (i < b1) {
     return 1;
@@ -2110,7 +2290,7 @@ const cswCompareTrimmed = (P: CsPrint, x: i32, y: i32): i32 => {
   const dx = cswTrimmedSrc(P, P.t.fullStart(x), P.t.fullEnd(x));
   const dy = cswTrimmedSrc(P, P.t.fullStart(y), P.t.fullEnd(y));
   const D = P.D;
-  return cswCultureCompare(P.src, D.a[dx], D.b[dx], P.src, D.a[dy], D.b[dy], true);
+  return cswCultureCompare(P.src, D.aOf(dx), D.bOf(dx), P.src, D.aOf(dy), D.bOf(dy), true);
 };
 
 /** UsingDirective.Name: its NamespaceOrType when that is a name, else -1. */
@@ -2157,15 +2337,37 @@ const cswUsingLead = (P: CsPrint, g: CsUsingGroups, u: i32): i32 => {
 };
 
 const cswSortUsings = (P: CsPrint, xs: CsUsingData[]): void => {
-  const n = toI32(xs.length);
-  for (let i = 1; i < n; i++) {
+  for (let i = 1; i < xs.length; i++) {
     const v = xs[i];
-    let j = i - 1;
-    while (j >= 0 && cswUsingCompare(P, xs[j].using, v.using) > 0) {
-      xs[j + 1] = xs[j];
+    // j is the slot v goes to
+    let j = i;
+    while (j > 0 && j < xs.length) {
+      const prev = xs[j - 1];
+      if (cswUsingCompare(P, prev.using, v.using) <= 0) {
+        break;
+      }
+      if (j >= xs.length) {
+        fault();
+        return;
+      }
+      xs[j] = prev;
       j--;
     }
-    xs[j + 1] = v;
+    if (j >= 0 && j < xs.length) {
+      xs[j] = v;
+    } else {
+      fault();
+      return;
+    }
+  }
+};
+
+/** Adds data to group gi of the using groups. */
+const cswGroupPush = (groups: CsUsingData[][], gi: i32, data: CsUsingData): void => {
+  if (gi >= 0 && gi < groups.length) {
+    groups[gi].push(data);
+  } else {
+    fault();
   }
 };
 
@@ -2189,7 +2391,7 @@ export const cswUsingsWithSorting = (P: CsPrint, usings: i32, printExtraLines: b
   let keepUntilEndIf = false;
   let broke = false;
   for (let i = la; i < lb; i++) {
-    const k = lx.trKind[i];
+    const k = lx.trKindAt(i);
     if (k === K_DisabledTextTrivia && cswDisabledStartsWithExternAlias(P, i)) {
       icEnd = lb;
       ifStart = lb;
@@ -2256,59 +2458,59 @@ export const cswUsingsWithSorting = (P: CsPrint, usings: i32, printExtraLines: b
       shouldFormat = false;
     }
     for (let ti = ua; ti < ub; ti++) {
-      const k = lx.trKind[ti];
+      const k = lx.trKindAt(ti);
       if (k === K_IfDirectiveTrivia) {
-        ifCount++;
+        ifCount = add32(ifCount, 1);
       } else if (k === K_EndIfDirectiveTrivia) {
-        ifCount--;
+        ifCount = sub32(ifCount, 1);
       }
     }
     if (ifCount > 0) {
-      groups[DIRECTIVE_GROUP].push(new CsUsingData(cswUsingLead(P, g, u), u, shouldFormat));
+      cswGroupPush(groups, DIRECTIVE_GROUP, new CsUsingData(cswUsingLead(P, g, u), u, shouldFormat));
       continue;
     }
     if (openIfOrIgnore) {
-      groups[DIRECTIVE_GROUP].push(new CsUsingData(cswUsingLead(P, g, u), -1, shouldFormat));
+      cswGroupPush(groups, DIRECTIVE_GROUP, new CsUsingData(cswUsingLead(P, g, u), -1, shouldFormat));
     }
     const data = new CsUsingData(!openIfOrIgnore ? cswUsingLead(P, g, u) : DOC_NULL, u, shouldFormat);
     const name = cswUsingName(P, u);
     const hasAlias = P.s(u, F_UsingDirective_Alias) >= 0;
+    let gi = 5;
     if (!shouldFormat) {
-      groups[DIRECTIVE_GROUP].push(data);
+      gi = DIRECTIVE_GROUP;
     } else if (P.s(u, F_UsingDirective_GlobalKeyword) >= 0) {
       if (hasAlias) {
-        groups[2].push(data);
+        gi = 2;
       } else if (name >= 0 && cswIsSystemName(P, name)) {
-        groups[0].push(data);
+        gi = 0;
       } else {
-        groups[1].push(data);
+        gi = 1;
       }
     } else if (P.s(u, F_UsingDirective_StaticKeyword) >= 0) {
       if (name >= 0 && cswIsSystemName(P, name)) {
-        groups[6].push(data);
+        gi = 6;
       } else {
-        groups[7].push(data);
+        gi = 7;
       }
     } else if (hasAlias) {
-      groups[8].push(data);
+      gi = 8;
     } else if (P.k(name) === K_AliasQualifiedName && name >= 0) {
-      groups[4].push(data);
+      gi = 4;
     } else if (name >= 0 && cswIsSystemName(P, name)) {
-      groups[3].push(data);
-    } else {
-      groups[5].push(data);
+      gi = 3;
     }
+    cswGroupPush(groups, gi, data);
   }
-  for (let gi = 0; gi < 9; gi++) {
+  for (let gi = 0; gi < 9 && gi < groups.length; gi++) {
     cswSortUsings(P, groups[gi]);
   }
   let isFirst = true;
   let prevShouldFormat = true;
   let index = 0;
   let reordered = false;
-  for (let gi = 0; gi < 10; gi++) {
+  for (let gi = 0; gi < 10 && gi < groups.length; gi++) {
     const grp = groups[gi];
-    for (let j = 0; j < toI32(grp.length); j++) {
+    for (let j = 0; j < grp.length; j++) {
       const ud = grp[j];
       if (!isFirst) {
         if (ud.shouldFormat || prevShouldFormat) {
@@ -2323,14 +2525,14 @@ export const cswUsingsWithSorting = (P: CsPrint, usings: i32, printExtraLines: b
         if (index >= n || ud.using !== P.at(usings, index)) {
           reordered = true;
         }
-        index++;
+        index = add32(index, 1);
         if (ud.shouldFormat) {
           docs.push(cswUsingDirective(P, ud.using, printExtraLines));
         } else {
           const buf = new CsBuf(128);
           cswAppendNodeUnformatted(P, buf, ud.using);
           const o = D.appendBytes(buf.buf, 0, buf.n);
-          docs.push(D.strAt(o, o + buf.n, false));
+          docs.push(D.strAt(o, add32(o, buf.n), false));
         }
       }
       isFirst = false;
@@ -2356,43 +2558,33 @@ const cswLeadContains = (P: CsPrint, n: i32, w: string): boolean => {
   if (lb <= la) {
     return false;
   }
-  return cswSrcContains(P, P.lx.trStart[la], P.lx.trEnd[lb - 1], w);
+  return cswSrcContains(P, P.lx.trStartAt(la), P.lx.trEndAt(sub32(lb, 1)), w);
 };
 
 export const cswSrcContains = (P: CsPrint, a: i32, b: i32, w: string): boolean => {
-  const m = toI32(w.length);
-  for (let i = a; i + m <= b; i++) {
-    let ok = true;
-    for (let j = 0; j < m; j++) {
-      if (toI32(P.src[i + j]) !== w.charCodeAt(j)) {
-        ok = false;
-        break;
-      }
-    }
-    if (ok) {
+  const last = toI64(b) - toI64(w.length); // the last start w fits at
+  let i = a;
+  while (toI64(i) <= last) {
+    if (cswBytesAre(P.src, i, w)) {
       return true;
     }
+    i = add32(i, 1);
   }
   return false;
 };
 
 const cswDisabledStartsWithExternAlias = (P: CsPrint, i: i32): boolean => {
   const lx = P.lx;
-  let a = lx.trStart[i];
-  const b = lx.trEnd[i];
+  let a = lx.trStartAt(i);
+  const b = lx.trEndAt(i);
   while (a < b && csIsTrimByteAt(P.src, a, b)) {
-    a += csCpLen(toI32(P.src[a]));
+    a = cswStep(a, atU8(P.src, a));
   }
   const w = "extern alias";
-  if (b - a < toI32(w.length)) {
+  if (toI64(b) - toI64(a) < toI64(w.length)) {
     return false;
   }
-  for (let j = 0; j < toI32(w.length); j++) {
-    if (toI32(P.src[a + j]) !== w.charCodeAt(j)) {
-      return false;
-    }
-  }
-  return true;
+  return cswBytesAre(P.src, a, w);
 };
 
 // ---- separated list items ----
