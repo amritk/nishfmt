@@ -8,7 +8,8 @@
 // Rust Project Developers), for rustfmt 1.10.0 (MIT OR Apache-2.0, Copyright
 // The Rust Project Developers).
 
-import { growI32 } from "../core/arr";
+import { growI32, newI32s, newU8s } from "../core/arr";
+import { fault } from "../core/fault";
 import { RS_UIDENT_NRUNS, RS_UIDENT_RUNS } from "./uident_table";
 
 export const T_EOF: i32 = 0;
@@ -157,38 +158,74 @@ const rsIdBits = new Int32Array(RS_UIDENT_NRUNS);
 const rsIdDecoded = new Int32Array(1);
 
 /** The classes of code point `cp`: 1 XID_Start, 2 XID_Continue, 4 emoji (`is_emoji_char`), 8 a confusable of UNICODE_ARRAY. */
-const rsXidBits = (cp: i32): i32 => {
-  if (rsIdDecoded[0] === 0) {
-    for (let k = 0; k < RS_UIDENT_NRUNS; k++) {
+const rsXidBitsIn = (starts: Int32Array, bits: Int32Array, decoded: Int32Array, cp: i32): i32 => {
+  if (decoded.length > 0 && decoded[0] === 0) {
+    // Seven hex digits a run: six of its start, one of its classes.
+    const runs = RS_UIDENT_RUNS;
+    let m = 0;
+    for (let k = 0; k < starts.length && k < bits.length; k++) {
       let v = 0;
-      for (let m = k * 7; m < k * 7 + 6; m++) {
-        const c = RS_UIDENT_RUNS.charCodeAt(m);
-        v = v * 16 + (c <= 57 ? c - 48 : c - 87);
+      for (let j = 0; j < 6 && m < runs.length; j++) {
+        const c = runs.charCodeAt(m) & 0xff;
+        v = (v << 4) | (c <= 57 ? c - 48 : c - 87);
+        m++;
       }
-      rsIdStarts[k] = v;
-      const c = RS_UIDENT_RUNS.charCodeAt(k * 7 + 6);
-      rsIdBits[k] = c <= 57 ? c - 48 : c - 87;
+      // The table holds seven digits for each run.
+      if (m >= runs.length) {
+        fault();
+        return 0;
+      }
+      starts[k] = v;
+      const c = runs.charCodeAt(m) & 0xff;
+      bits[k] = c <= 57 ? c - 48 : c - 87;
+      m++;
     }
-    rsIdDecoded[0] = 1;
+    decoded[0] = 1;
   }
   let lo = 0;
-  let hi = RS_UIDENT_NRUNS - 1;
-  while (lo < hi) {
-    const mid = (lo + hi + 1) >> 1;
-    if (rsIdStarts[mid] <= cp) {
+  let hi = starts.length - 1;
+  while (lo >= 0 && lo < hi && hi < starts.length) {
+    // Both ends are below the table's length, so the sum is exact in u32.
+    const mid = toI32((toU32(lo) + toU32(hi) + 1) >> 1);
+    if (mid < 0 || mid >= starts.length) {
+      fault();
+      return 0;
+    }
+    if (starts[mid] <= cp) {
       lo = mid;
     } else {
       hi = mid - 1;
     }
   }
-  return rsIdBits[lo];
+  if (lo >= 0 && lo < bits.length) {
+    return bits[lo];
+  }
+  fault();
+  return 0;
 };
+
+const rsXidBits = (cp: i32): i32 => rsXidBitsIn(rsIdStarts, rsIdBits, rsIdDecoded, cp);
 
 /** The byte length of the UTF-8 char at `src[i]` (1 for a stray byte). */
 const rsCharLenAt = (src: u8[], n: i32, i: i32): i32 => {
+  // Every caller has `i < n`, and the source is `src[0, n)`.
+  if (i < 0 || i >= n || i >= src.length) {
+    fault();
+    return 1;
+  }
   const b = toI32(src[i]);
-  const k = b >= 0xf0 ? 4 : b >= 0xe0 ? 3 : b >= 0xc0 ? 2 : 1;
-  return i + k <= n ? k : 1;
+  // The bytes left from `i`: at least 1, since `i < n`.
+  const rest = n - i;
+  if (b >= 0xf0) {
+    return rest >= 4 ? 4 : 1;
+  }
+  if (b >= 0xe0) {
+    return rest >= 3 ? 3 : 1;
+  }
+  if (b >= 0xc0) {
+    return rest >= 2 ? 2 : 1;
+  }
+  return 1;
 };
 
 /** The classes (rsXidBits) of the non-ASCII char at `src[i]`, 0 for a stray byte. */
@@ -197,10 +234,16 @@ const rsCharBitsAt = (src: u8[], n: i32, i: i32): i32 => {
   if (k === 1) {
     return 0;
   }
+  // k > 1 means `i + k <= n`, a char's length is below 5, and the source is `src[0, n)`.
+  if (i < 0 || i >= n || k > 4 || n > src.length) {
+    fault();
+    return 0;
+  }
   const c = toI32(src[i]);
   let cp = c & (k === 4 ? 7 : k === 3 ? 15 : 31);
-  for (let m = 1; m < k; m++) {
-    cp = (cp << 6) | (toI32(src[i + m]) & 63);
+  const e = i + k;
+  for (let p = i + 1; p < e && p < n; p++) {
+    cp = (cp << 6) | (toI32(src[p]) & 63);
   }
   return rsXidBits(cp);
 };
@@ -214,6 +257,10 @@ const rsIdCharLen = (src: u8[], n: i32, i: i32, start: boolean): i32 => {
   if (i >= n) {
     return 0;
   }
+  if (i < 0 || i >= src.length) {
+    fault();
+    return 0;
+  }
   const c = toI32(src[i]);
   if (c < 128) {
     const ok = (c >= 97 && c <= 122) || (c >= 65 && c <= 90) || c === 95 || (!start && c >= 48 && c <= 57);
@@ -223,8 +270,16 @@ const rsIdCharLen = (src: u8[], n: i32, i: i32, start: boolean): i32 => {
 };
 
 /** Whether `src[i]` starts a non-ASCII emoji char (`!c.is_ascii() && c.is_emoji_char()`). */
-const rsIsEmojiAt = (src: u8[], n: i32, i: i32): boolean =>
-  i < n && toI32(src[i]) >= 128 && (rsCharBitsAt(src, n, i) & 4) !== 0;
+const rsIsEmojiAt = (src: u8[], n: i32, i: i32): boolean => {
+  if (i >= n) {
+    return false;
+  }
+  if (i < 0 || i >= src.length) {
+    fault();
+    return false;
+  }
+  return toI32(src[i]) >= 128 && (rsCharBitsAt(src, n, i) & 4) !== 0;
+};
 
 /**
  * rustc_lexer's invalid_ident from `i`: eats identifier chars, emoji and
@@ -233,15 +288,27 @@ const rsIsEmojiAt = (src: u8[], n: i32, i: i32): boolean =>
  */
 const eatInvalidIdent = (src: u8[], n: i32, i0: i32): i32 => {
   let i = i0;
+  // The source is `src[0, n)`, and lengths stay below 2^30.
+  if (n > src.length || n > 1073741823) {
+    fault();
+    return i0;
+  }
   for (;;) {
     let k = rsIdCharLen(src, n, i, false);
     if (k === 0 && rsIsEmojiAt(src, n, i)) {
       k = rsCharLenAt(src, n, i);
     }
-    if (k === 0 && i + 2 < n && toI32(src[i]) === 0xe2 && toI32(src[i + 1]) === 0x80 && toI32(src[i + 2]) === 0x8d) {
-      k = 3; // U+200D
+    if (k === 0 && i >= 0 && i < n && i + 2 < n && i + 2 < src.length) {
+      if (toI32(src[i]) === 0xe2 && toI32(src[i + 1]) === 0x80 && toI32(src[i + 2]) === 0x8d) {
+        k = 3; // U+200D
+      }
     }
     if (k === 0) {
+      return i;
+    }
+    // A char's length is below 5, and it ends by `n`.
+    if (k < 0 || k > 4 || i >= n) {
+      fault();
       return i;
     }
     i += k;
@@ -252,6 +319,11 @@ export const rsIsIdStartAt = (src: u8[], n: i32, i: i32): boolean => rsIdCharLen
 
 /** The byte length of a non-ASCII Pattern_White_Space char at `src[i]` (U+0085, U+200E, U+200F, U+2028, U+2029), else 0. */
 const rsUnicodeWsLen = (src: u8[], n: i32, i: i32): i32 => {
+  // The caller has `i < n`, and the source is `src[0, n)`.
+  if (i < 0 || i >= n || n > src.length) {
+    fault();
+    return 0;
+  }
   const c = toI32(src[i]);
   if (c === 0xc2 && i + 1 < n && toI32(src[i + 1]) === 0x85) {
     return 2;
@@ -269,7 +341,12 @@ export const rsIsWs = (c: i32): boolean => c === 32 || c === 9 || c === 10 || c 
 
 /** The keyword id of the identifier `src[a, b)`. */
 export const rsKeywordOf = (src: u8[], a: i32, b: i32): i32 => {
-  const n = b - a;
+  // `src[a, b)` is a token's span.
+  if (a < 0 || b < a || b > src.length) {
+    fault();
+    return 0;
+  }
+  const n = toI32(toU32(b) - toU32(a)); // exact: b >= a >= 0
   if (n < 2 || n > 12) {
     if (n === 1 && toI32(src[a]) === 95) {
       return KW_UNDERSCORE;
@@ -277,7 +354,7 @@ export const rsKeywordOf = (src: u8[], a: i32, b: i32): i32 => {
     return 0;
   }
   const c0 = toI32(src[a]);
-  const c1 = toI32(src[a + 1]);
+  const c1 = a + 1 < b ? toI32(src[a + 1]) : 0;
   if (n === 2) {
     if (c0 === 97 && c1 === 115) return KW_AS;
     if (c0 === 100 && c1 === 111) return KW_DO;
@@ -405,15 +482,38 @@ export const rsKeywordOf = (src: u8[], a: i32, b: i32): i32 => {
 /** Whether `src[a, b)` is the string `s`. */
 export const rsEq = (src: u8[], a: i32, b: i32, s: string): boolean => {
   const n = toI32(s.length);
-  if (b - a !== n) {
+  // `src[a, b)` is a token's span.
+  if (a < 0 || b < a || b > src.length) {
+    fault();
     return false;
   }
-  for (let i = 0; i < n; i++) {
-    if (toI32(src[a + i]) !== s.charCodeAt(i)) {
+  if (toI32(toU32(b) - toU32(a)) !== n) {
+    return false;
+  }
+  let i = 0;
+  for (let j = a; j < b && i < n; j++) {
+    if (toI32(src[j]) !== s.charCodeAt(i)) {
       return false;
     }
+    i++;
   }
   return true;
+};
+
+/** `n` zeroes: one allocation below 2^16 (a `u16` length is proven), else newI32s. */
+export const rsZeroI32s = (n: i32): i32[] => {
+  if (n >= 0 && n <= 65535) {
+    return new Array<i32>(toU16(n));
+  }
+  return newI32s(n);
+};
+
+/** `n` zero bytes, as rsZeroI32s. */
+export const rsZeroU8s = (n: i32): u8[] => {
+  if (n >= 0 && n <= 65535) {
+    return new Array<u8>(toU16(n));
+  }
+  return newU8s(n);
 };
 
 export class RsTokens {
@@ -439,17 +539,22 @@ export class RsTokens {
     this.n = n;
     this.edition = edition;
     const c = n / 3 + 16;
-    this.kind = new Array<i32>(c);
-    this.lo = new Array<i32>(c);
-    this.hi = new Array<i32>(c);
-    this.kw = new Array<i32>(c);
-    this.match = new Array<i32>(c);
-    this.suf = new Array<i32>(c);
+    this.kind = rsZeroI32s(c);
+    this.lo = rsZeroI32s(c);
+    this.hi = rsZeroI32s(c);
+    this.kw = rsZeroI32s(c);
+    this.match = rsZeroI32s(c);
+    this.suf = rsZeroI32s(c);
   }
 
   add(k: i32, a: i32, b: i32, kw: i32, suf: i32): void {
     const i = this.nt;
     if (i >= toI32(this.kind.length)) {
+      // A token is at least a byte: a source this long is out of reach.
+      if (i < 0 || i > 1073741800) {
+        fault();
+        return;
+      }
       const c = i * 2 + 16;
       this.kind = growI32(this.kind, c);
       this.lo = growI32(this.lo, c);
@@ -458,19 +563,53 @@ export class RsTokens {
       this.match = growI32(this.match, c);
       this.suf = growI32(this.suf, c);
     }
-    this.kind[i] = k;
-    this.lo[i] = a;
-    this.hi[i] = b;
-    this.kw[i] = kw;
-    this.match[i] = -1;
-    this.suf[i] = suf;
-    this.nt = i + 1;
+    const kind = this.kind;
+    const lo = this.lo;
+    const hi = this.hi;
+    const kws = this.kw;
+    const match = this.match;
+    const sufs = this.suf;
+    // The six arrays grow together, so all hold `i` or none does.
+    if (
+      i >= 0 &&
+      i < kind.length &&
+      i < lo.length &&
+      i < hi.length &&
+      i < kws.length &&
+      i < match.length &&
+      i < sufs.length
+    ) {
+      kind[i] = k;
+      lo[i] = a;
+      hi[i] = b;
+      kws[i] = kw;
+      match[i] = -1;
+      sufs[i] = suf;
+      this.nt = i + 1;
+    } else {
+      fault();
+    }
   }
 }
 
-const at = (src: u8[], n: i32, i: i32): i32 => (i < n ? toI32(src[i]) : 0);
+const at = (src: u8[], n: i32, i: i32): i32 => {
+  if (i >= n) {
+    return 0;
+  }
+  // The source is `src[0, n)`, and offsets are never negative.
+  if (i < 0 || i >= src.length) {
+    fault();
+    return 0;
+  }
+  return toI32(src[i]);
+};
 
 const eatDigits = (src: u8[], n: i32, i0: i32, hex: boolean): i32 => {
+  // The source is `src[0, n)`, and offsets are never negative.
+  if (i0 < 0 || n > src.length) {
+    fault();
+    return i0;
+  }
   let i = i0;
   while (i < n) {
     const c = toI32(src[i]);
@@ -485,9 +624,19 @@ const eatDigits = (src: u8[], n: i32, i0: i32, hex: boolean): i32 => {
 
 const eatIdent = (src: u8[], n: i32, i0: i32): i32 => {
   let i = i0;
+  // Lengths stay below 2^30.
+  if (n > 1073741823) {
+    fault();
+    return i0;
+  }
   for (;;) {
     const k = rsIdCharLen(src, n, i, false);
     if (k === 0) {
+      return i;
+    }
+    // A char's length is below 5, and it ends by `n`.
+    if (k < 0 || k > 4 || i >= n) {
+      fault();
       return i;
     }
     i += k;
@@ -496,6 +645,11 @@ const eatIdent = (src: u8[], n: i32, i0: i32): i32 => {
 
 // Eats a double-quoted string body after its opening quote; answers the offset after the closing quote, or -1.
 const eatDq = (src: u8[], n: i32, i0: i32): i32 => {
+  // The source is `src[0, n)`, and offsets are never negative.
+  if (i0 < 0 || n > src.length) {
+    fault();
+    return -1;
+  }
   let i = i0;
   while (i < n) {
     const c = toI32(src[i]);
@@ -515,13 +669,17 @@ const eatDq = (src: u8[], n: i32, i0: i32): i32 => {
 
 // Eats a raw string starting at the first `#` or `"` after the prefix; answers the end or -1.
 const eatRaw = (src: u8[], n: i32, i0: i32): i32 => {
+  // The source is `src[0, n)`, and offsets are never negative.
+  if (i0 < 0 || n > src.length) {
+    fault();
+    return -1;
+  }
   let i = i0;
-  let h = 0;
   while (i < n && toI32(src[i]) === 35) {
-    h++;
     i++;
   }
-  if (at(src, n, i) !== 34) {
+  const h = i - i0;
+  if (i >= n || toI32(src[i]) !== 34) {
     return -1;
   }
   i++;
@@ -545,8 +703,17 @@ const eatRaw = (src: u8[], n: i32, i0: i32): i32 => {
 
 // Eats a single-quoted literal body after its opening quote; answers the end or -1.
 const eatSq = (src: u8[], n: i32, i0: i32): i32 => {
+  // The source is `src[0, n)`, and offsets are never negative.
+  if (i0 < 0 || n > src.length) {
+    fault();
+    return -1;
+  }
+  if (i0 >= n) {
+    return -1;
+  }
   let i = i0;
-  if (at(src, n, i + 1) === 39 && at(src, n, i) !== 92) {
+  const c0 = toI32(src[i]);
+  if (i + 1 < n && toI32(src[i + 1]) === 39 && c0 !== 92) {
     return i + 2;
   }
   while (i < n) {
@@ -557,7 +724,7 @@ const eatSq = (src: u8[], n: i32, i0: i32): i32 => {
     if (c === 47) {
       return -1;
     }
-    if (c === 10 && at(src, n, i + 1) !== 39) {
+    if (c === 10 && !(i + 1 < n && toI32(src[i + 1]) === 39)) {
       return -1;
     }
     if (c === 92) {
@@ -572,6 +739,11 @@ const eatSq = (src: u8[], n: i32, i0: i32): i32 => {
 const suffixEnd = (src: u8[], n: i32, i: i32): i32 => {
   const k = rsIdCharLen(src, n, i, true);
   if (k > 0) {
+    // A char's length is below 5, it ends by `n`, and lengths stay below 2^30.
+    if (k > 4 || i >= n || n > 1073741823) {
+      fault();
+      return i;
+    }
     return eatIdent(src, n, i + k);
   }
   return i;
@@ -585,14 +757,19 @@ const isHorizontalWs = (c: i32): boolean => c === 32 || c === 9;
  * error for (bad opening, infostring or closing) fails the lex.
  */
 const skipFrontmatter = (t: RsTokens, src: u8[], n: i32, i0: i32): i32 => {
+  // The source is `src[0, n)` (below 2^30 bytes), and offsets are never negative.
+  if (i0 < 0 || n > src.length || n > 1073741823) {
+    fault();
+    return i0;
+  }
   let j = i0;
   while (j < n && rsIsWs(toI32(src[j]))) {
     j++;
   }
-  if (!(j + 2 < n && toI32(src[j]) === 45 && toI32(src[j + 1]) === 45 && toI32(src[j + 2]) === 45)) {
+  if (!(j < n && j + 2 < n && toI32(src[j]) === 45 && toI32(src[j + 1]) === 45 && toI32(src[j + 2]) === 45)) {
     return i0;
   }
-  if (j > i0 && toI32(src[j - 1]) !== 10) {
+  if (j > i0 && j > 0 && toI32(src[j - 1]) !== 10) {
     t.failed = true; // whitespace before the opening that is not a newline
     return i0;
   }
@@ -610,17 +787,31 @@ const skipFrontmatter = (t: RsTokens, src: u8[], n: i32, i0: i32): i32 => {
   }
   const sk = rsIdCharLen(src, n, k, true);
   if (sk > 0) {
+    // A char's length is below 5, and it ends by `n`.
+    if (sk > 4 || k >= n) {
+      fault();
+      return i0;
+    }
     k += sk;
     for (;;) {
       const ck = rsIdCharLen(src, n, k, false);
       if (ck > 0) {
+        if (ck > 4 || k >= n) {
+          fault();
+          return i0;
+        }
         k += ck;
-      } else if (k < n && (toI32(src[k]) === 45 || toI32(src[k]) === 46)) {
+      } else if (k < n && (at(src, n, k) === 45 || at(src, n, k) === 46)) {
         k++;
       } else {
         break;
       }
     }
+  }
+  // The source is `src[0, n)`.
+  if (k < 0 || n > src.length) {
+    fault();
+    return i0;
   }
   while (k < n && isHorizontalWs(toI32(src[k]))) {
     k++;
@@ -639,28 +830,31 @@ const skipFrontmatter = (t: RsTokens, src: u8[], n: i32, i0: i32): i32 => {
       t.failed = true; // unclosed
       return i0;
     }
-    let d = 0;
-    while (p + 1 + d < n && toI32(src[p + 1 + d]) === 45) {
-      d++;
+    let q = p + 1;
+    while (q < n && toI32(src[q]) === 45) {
+      q++;
     }
-    if (d >= len) {
+    if (q - p - 1 >= len) {
       break;
     }
     p++;
   }
-  for (let q = k; q < p; q++) {
+  for (let q = k; q >= 0 && q < p && q < n; q++) {
     if (toI32(src[q]) === 13) {
       t.failed = true; // a bare CR in the content
       return i0;
     }
   }
+  // The loop above leaves with `p < n`.
+  if (p < 0 || p >= n) {
+    fault();
+    return i0;
+  }
   let e = p + 1;
-  let d = 0;
   while (e < n && toI32(src[e]) === 45) {
     e++;
-    d++;
   }
-  if (d !== len) {
+  if (e !== p + 1 + len) {
     t.failed = true; // the closing fence's length differs
     return i0;
   }
@@ -678,9 +872,15 @@ const skipFrontmatter = (t: RsTokens, src: u8[], n: i32, i0: i32): i32 => {
 export const rsLex = (t: RsTokens): void => {
   const src = t.src;
   const n = t.n;
+  // The source is `src[0, n)`. One of 2^30 bytes or more is out of reach:
+  // its token arrays alone would take 8 GB.
+  if (n < 0 || n > src.length || n > 1073741823) {
+    fault();
+    return;
+  }
   let i = 0;
   // A byte order mark.
-  if (n >= 3 && toI32(src[0]) === 0xef && toI32(src[1]) === 0xbb && toI32(src[2]) === 0xbf) {
+  if (n >= 3 && src.length >= 3 && toI32(src[0]) === 0xef && toI32(src[1]) === 0xbb && toI32(src[2]) === 0xbf) {
     i = 3;
   }
   // Shebang: `#!` not followed (after whitespace and comments) by `[`.
@@ -688,11 +888,11 @@ export const rsLex = (t: RsTokens): void => {
     let j = i + 2;
     let isAttr = false;
     while (j < n) {
-      const c = toI32(src[j]);
+      const c = at(src, n, j);
       if (rsIsWs(c)) {
         j++;
       } else if (c === 47 && at(src, n, j + 1) === 47) {
-        while (j < n && toI32(src[j]) !== 10) {
+        while (j >= 0 && j < n && j < src.length && toI32(src[j]) !== 10) {
           j++;
         }
       } else if (c === 47 && at(src, n, j + 1) === 42) {
@@ -719,6 +919,11 @@ export const rsLex = (t: RsTokens): void => {
   let stack = new Array<i32>(64);
   let sp = 0;
   while (i < n) {
+    // Every eat* answers an offset at or after its start, and the source is `src[0, n)`.
+    if (i < 0 || i >= src.length) {
+      fault();
+      return;
+    }
     const c = toI32(src[i]);
     const a = i;
     if (rsIsWs(c)) {
@@ -736,13 +941,13 @@ export const rsLex = (t: RsTokens): void => {
         } else if (e === 47 && at(src, n, i + 3) !== 47) {
           k = T_DOC_LINE_OUTER;
         }
-        while (i < n && toI32(src[i]) !== 10) {
+        while (i < n && i < src.length && toI32(src[i]) !== 10) {
           i++;
         }
         if (k !== 0) {
           // A doc comment's span excludes a trailing \r.
           let b = i;
-          if (b > a && toI32(src[b - 1]) === 13) {
+          if (b > a && b > 0 && b <= src.length && toI32(src[b - 1]) === 13) {
             b--;
           }
           t.add(k, a, b, 0, b);
@@ -786,6 +991,11 @@ export const rsLex = (t: RsTokens): void => {
       // InvalidIdent token, an error.
       const w = rsUnicodeWsLen(src, n, i);
       if (w > 0) {
+        // A char's length is below 5.
+        if (w > 4) {
+          fault();
+          return;
+        }
         i += w;
         continue;
       }
@@ -793,6 +1003,11 @@ export const rsLex = (t: RsTokens): void => {
         // An emoji starts an invalid identifier, unless it stands alone and
         // is a confusable rustc substitutes (`➖`), which is an error.
         const k = rsCharLenAt(src, n, i);
+        // A char's length is 1 to 4.
+        if (k < 1 || k > 4) {
+          fault();
+          return;
+        }
         if (!rsIsEmojiAt(src, n, i)) {
           t.failed = true;
           return;
@@ -808,6 +1023,11 @@ export const rsLex = (t: RsTokens): void => {
       }
     }
     const idLen = rsIdCharLen(src, n, i, true);
+    // A char's length is below 5.
+    if (idLen > 4) {
+      fault();
+      return;
+    }
     if (idLen > 0) {
       const d = at(src, n, i + 1);
       // Raw identifiers and string prefixes.
@@ -900,6 +1120,11 @@ export const rsLex = (t: RsTokens): void => {
       } else {
         j = eatDigits(src, n, j, false);
       }
+      // eatDigits answers an offset at most `n`.
+      if (j < 0 || j > n) {
+        fault();
+        return;
+      }
       const e = at(src, n, j);
       if (e === 46 && at(src, n, j + 1) !== 46 && !rsIsIdStartAt(src, n, j + 1)) {
         isFloat = true;
@@ -907,6 +1132,10 @@ export const rsLex = (t: RsTokens): void => {
         const f = at(src, n, j);
         if (f >= 48 && f <= 57) {
           j = eatDigits(src, n, j, false);
+          if (j < 0 || j > n) {
+            fault();
+            return;
+          }
           const g = at(src, n, j);
           if (g === 101 || g === 69) {
             j = eatExponent(src, n, j + 1);
@@ -929,7 +1158,16 @@ export const rsLex = (t: RsTokens): void => {
       // Lifetime or character literal.
       const d = at(src, n, i + 1);
       // The char after the first one (rustc_lexer looks at chars, not bytes).
-      const second = i + 1 < n ? at(src, n, i + 1 + rsCharLenAt(src, n, i + 1)) : -1;
+      let second = -1;
+      if (i + 1 < n) {
+        const k1 = rsCharLenAt(src, n, i + 1);
+        // A char's length is 1 to 4.
+        if (k1 < 1 || k1 > 4) {
+          fault();
+          return;
+        }
+        second = at(src, n, i + 1 + k1);
+      }
       const canBeLifetime = second !== 39 && (rsIsIdStartAt(src, n, i + 1) || (d >= 48 && d <= 57));
       if (!canBeLifetime) {
         const b = eatSq(src, n, i + 1);
@@ -949,7 +1187,7 @@ export const rsLex = (t: RsTokens): void => {
         continue;
       }
       const b = eatIdent(src, n, i + 1);
-      if (at(src, n, b) === 39) {
+      if (b >= 0 && b < n && at(src, n, b) === 39) {
         const s = suffixEnd(src, n, b + 1);
         t.add(T_CHAR, a, s, 0, b + 1);
         i = s;
@@ -1150,17 +1388,38 @@ export const rsLex = (t: RsTokens): void => {
     i = a + len;
     // Delimiter matching.
     if (k === T_LPAREN || k === T_LBRACE || k === T_LBRACKET) {
+      // Each open delimiter is a byte of the source.
+      if (sp < 0 || sp >= n) {
+        fault();
+        return;
+      }
       stack = growI32(stack, sp + 1);
-      stack[sp] = ti;
-      sp++;
+      if (sp >= 0 && sp < stack.length) {
+        stack[sp] = ti;
+        sp++;
+      } else {
+        fault();
+        return;
+      }
     } else if (k === T_RPAREN || k === T_RBRACE || k === T_RBRACKET) {
-      if (sp === 0) {
+      if (sp <= 0) {
         t.failed = true;
         return;
       }
       sp--;
+      const kind = t.kind;
+      const match = t.match;
+      if (sp < 0 || sp >= stack.length) {
+        fault();
+        return;
+      }
       const o = stack[sp];
-      const ok = t.kind[o];
+      // `o` and `ti` are tokens added above.
+      if (o < 0 || o >= kind.length || o >= match.length || ti < 0 || ti >= match.length) {
+        fault();
+        return;
+      }
+      const ok = kind[o];
       if (
         (k === T_RPAREN && ok !== T_LPAREN) ||
         (k === T_RBRACE && ok !== T_LBRACE) ||
@@ -1169,8 +1428,8 @@ export const rsLex = (t: RsTokens): void => {
         t.failed = true;
         return;
       }
-      t.match[o] = ti;
-      t.match[ti] = o;
+      match[o] = ti;
+      match[ti] = o;
     }
   }
   if (sp !== 0) {
@@ -1181,29 +1440,47 @@ export const rsLex = (t: RsTokens): void => {
 };
 
 const eatExponent = (src: u8[], n: i32, i0: i32): i32 => {
+  // The source is `src[0, n)`, and offsets are never negative.
+  if (i0 < 0 || n > src.length) {
+    fault();
+    return i0;
+  }
   let i = i0;
-  const c = at(src, n, i);
-  if (c === 43 || c === 45) {
-    i++;
+  if (i < n) {
+    const c = toI32(src[i]);
+    if (c === 43 || c === 45) {
+      i++;
+    }
   }
   return eatDigits(src, n, i, false);
 };
 
 /** The end of the (nested) block comment that starts at `i`, or -1 when it is not closed. */
 export const skipBlockComment = (src: u8[], n: i32, i0: i32): i32 => {
+  // The comment's `/*` is in `src[0, n)`.
+  if (i0 < 0 || i0 >= n || n > src.length) {
+    fault();
+    return -1;
+  }
   let i = i0 + 2;
   let depth = 1;
   while (i < n) {
     const c = toI32(src[i]);
-    if (c === 47 && at(src, n, i + 1) === 42) {
+    const d = i + 1 < n ? toI32(src[i + 1]) : 0;
+    if (c === 47 && d === 42) {
+      // Each level opened takes two bytes.
+      if (depth >= n) {
+        fault();
+        return -1;
+      }
       depth++;
       i += 2;
-    } else if (c === 42 && at(src, n, i + 1) === 47) {
-      depth--;
+    } else if (c === 42 && d === 47) {
       i += 2;
-      if (depth === 0) {
+      if (depth <= 1) {
         return i;
       }
+      depth--;
     } else {
       i++;
     }

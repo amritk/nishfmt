@@ -5,6 +5,8 @@
 // Developers): config/, shape.rs.
 
 import { rsRepeat, rsSpaces } from "./str";
+import { add32, mul32, sub32 } from "../core/arr";
+import { fault } from "../core/fault";
 
 export class RsConfig {
   maxWidth: i32 = 100;
@@ -73,8 +75,13 @@ export class RsIndent {
 
 export const rsIndentFromWidth = (cfg: RsConfig, width: i32): RsIndent => {
   if (cfg.hardTabs) {
-    const n = width / cfg.tabSpaces;
-    return new RsIndent(cfg.tabSpaces * n, width % cfg.tabSpaces);
+    const ts = cfg.tabSpaces;
+    if (ts === 0 || ts === -1) {
+      fault();
+      return new RsIndent(0, 0);
+    }
+    const n = width / ts;
+    return new RsIndent(mul32(ts, n), width % ts);
   }
   return new RsIndent(width, 0);
 };
@@ -82,9 +89,14 @@ export const rsIndentFromWidth = (cfg: RsConfig, width: i32): RsIndent => {
 /** Indent::to_string for block indent `bi` and alignment `al`. */
 export const rsIndentStr = (cfg: RsConfig, bi: i32, al: i32): string => {
   if (cfg.hardTabs) {
-    return rsRepeat("\t", bi / cfg.tabSpaces) + rsSpaces(al);
+    const ts = cfg.tabSpaces;
+    if (ts === 0 || ts === -1) {
+      fault();
+      return "";
+    }
+    return rsRepeat("\t", bi / ts) + rsSpaces(al);
   }
-  return rsSpaces(bi + al);
+  return rsSpaces(add32(bi, al));
 };
 
 export const rsIndentStrNl = (cfg: RsConfig, bi: i32, al: i32): string => "\n" + rsIndentStr(cfg, bi, al);
@@ -105,7 +117,7 @@ export class RsShape {
 
   /** indent.width() */
   iw(): i32 {
-    return this.bi + this.al;
+    return add32(this.bi, this.al);
   }
 
   withWidth(w: i32): RsShape {
@@ -113,15 +125,16 @@ export class RsShape {
   }
 
   visualIndent(delta: i32): RsShape {
-    const a = this.off + delta;
+    const a = add32(this.off, delta);
     return new RsShape(this.width, this.bi, a, a);
   }
 
   blockIndent(delta: i32): RsShape {
     if (this.al === 0) {
-      return new RsShape(this.width, this.bi + delta, 0, 0);
+      return new RsShape(this.width, add32(this.bi, delta), 0, 0);
     }
-    return new RsShape(this.width, this.bi, this.al + delta, this.al + delta);
+    const a = add32(this.al, delta);
+    return new RsShape(this.width, this.bi, a, a);
   }
 
   /** block_left: block_indent(delta).sub_width(delta). */
@@ -130,7 +143,7 @@ export class RsShape {
   }
 
   addOffset(delta: i32): RsShape {
-    return new RsShape(this.width, this.bi, this.al, this.off + delta);
+    return new RsShape(this.width, this.bi, this.al, add32(this.off, delta));
   }
 
   block(): RsShape {
@@ -138,7 +151,7 @@ export class RsShape {
   }
 
   satSubWidth(delta: i32): RsShape {
-    const w = this.width - delta;
+    const w = sub32(this.width, delta);
     return new RsShape(w < 0 ? 0 : w, this.bi, this.al, this.off);
   }
 
@@ -146,34 +159,34 @@ export class RsShape {
     if (delta > this.width) {
       return null;
     }
-    return new RsShape(this.width - delta, this.bi, this.al, this.off);
+    return new RsShape(sub32(this.width, delta), this.bi, this.al, this.off);
   }
 
   shrinkLeft(delta: i32): RsShape | null {
     if (delta > this.width) {
       return null;
     }
-    return new RsShape(this.width - delta, this.bi, this.al + delta, this.off + delta);
+    return new RsShape(sub32(this.width, delta), this.bi, add32(this.al, delta), add32(this.off, delta));
   }
 
   offsetLeft(delta: i32): RsShape | null {
     if (delta > this.width) {
       return null;
     }
-    return new RsShape(this.width - delta, this.bi, this.al, this.off + delta);
+    return new RsShape(sub32(this.width, delta), this.bi, this.al, add32(this.off, delta));
   }
 
   usedWidth(): i32 {
-    return this.bi + this.off;
+    return add32(this.bi, this.off);
   }
 
   rhsOverhead(cfg: RsConfig): i32 {
-    const r = cfg.maxWidth - (this.usedWidth() + this.width);
+    const r = sub32(cfg.maxWidth, add32(this.usedWidth(), this.width));
     return r < 0 ? 0 : r;
   }
 
   comment(cfg: RsConfig): RsShape {
-    let cw = cfg.commentWidth - this.iw();
+    let cw = sub32(cfg.commentWidth, this.iw());
     if (cw < 0) {
       cw = 0;
     }
@@ -190,7 +203,7 @@ export class RsShape {
   }
 
   withMaxWidth(cfg: RsConfig): RsShape {
-    let w = cfg.maxWidth - this.iw();
+    let w = sub32(cfg.maxWidth, this.iw());
     if (w < 0) {
       w = 0;
     }
@@ -209,7 +222,7 @@ export class RsShape {
 
 /** Shape::indented. */
 export const rsShapeIndented = (bi: i32, al: i32, cfg: RsConfig): RsShape => {
-  let w = cfg.maxWidth - (bi + al);
+  let w = sub32(cfg.maxWidth, add32(bi, al));
   if (w < 0) {
     w = 0;
   }

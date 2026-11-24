@@ -6,8 +6,10 @@
 // Ported from rustfmt 1.10.0 (MIT OR Apache-2.0, Copyright The Rust Project
 // Developers): comment.rs, utils.rs.
 
-import { growI32 } from "../core/arr";
+import { add32, atI32, atU8, growI32, sub32 } from "../core/arr";
+import { fault } from "../core/fault";
 import { RsCtx } from "./context";
+import { rsZeroI32s, rsZeroU8s } from "./lexer";
 import { RsConfig, RsShape, rsIndentFromWidth, rsIndentStr, rsIndentStrNl } from "./shape";
 import {
   RsStrBuf,
@@ -34,6 +36,15 @@ export const K_IN_STRING_COMMENTED: i32 = 6;
 export const K_START_STRING: i32 = 7;
 export const K_END_STRING: i32 = 8;
 export const K_IN_STRING: i32 = 9;
+
+/** `s.slice(a, b)`: the bytes `s[a, b)`, or "" after a fault when that is not a range of `s`. */
+export const rsSliceStr = (s: string, a: i32, b: i32): string => {
+  if (a >= 0 && a <= b && b <= toI32(s.length)) {
+    return s.substring(a, b);
+  }
+  fault();
+  return "";
+};
 
 export const rsKindIsComment = (k: i32): boolean => k >= K_START_COMMENT && k <= K_IN_STRING_COMMENTED;
 export const rsKindInsideComment = (k: i32): boolean =>
@@ -82,8 +93,8 @@ export class RsClasses {
   // Whether the status after the last char is Normal.
   endNormal: boolean = true;
   constructor(n: i32) {
-    this.kinds = new Array<i32>(n + 1);
-    this.starts = new Array<i32>(n + 1);
+    this.kinds = rsZeroI32s(add32(n, 1));
+    this.starts = rsZeroI32s(add32(n, 1));
   }
 }
 
@@ -95,9 +106,20 @@ const nextChar = (s: string, i: i32, n: i32): i32 => {
   return j;
 };
 
-const at8 = (src: u8[], i: i32): i32 => toI32(src[i]);
+const at8 = (src: u8[], i: i32): i32 => {
+  if (i >= 0 && i < src.length) {
+    return toI32(src[i]);
+  }
+  fault();
+  return -1;
+};
 
 const next8 = (src: u8[], i: i32, n: i32): i32 => {
+  // Every caller has `i < n`, and the scan stays inside `src`.
+  if (i < 0 || i >= n || n > src.length) {
+    fault();
+    return n;
+  }
   let j = i + 1;
   while (j < n && (toI32(src[j]) & 0xc0) === 0x80) {
     j++;
@@ -121,16 +143,21 @@ export class RsCharScan {
 
   /** The kind of the next char (its start in `cs`), or -1 at the end. */
   next(): i32 {
-    if (this.i >= this.n) {
-      return -1;
-    }
     const src = this.src;
     const n = this.n;
     const i = this.i;
+    if (i >= n) {
+      return -1;
+    }
+    // The scan stays inside `src[0, n)`.
+    if (i < 0 || i >= src.length) {
+      fault();
+      return -1;
+    }
+    const chr = toI32(src[i]);
     if (this.st === S_NORMAL) {
       // Plain code: no state change.
-      const c0 = toI32(src[i]);
-      if (c0 < 128 && c0 !== 114 && c0 !== 34 && c0 !== 39 && c0 !== 47) {
+      if (chr < 128 && chr !== 114 && chr !== 34 && chr !== 39 && chr !== 47) {
         this.cs = i;
         this.i = i + 1;
         return K_NORMAL;
@@ -138,12 +165,23 @@ export class RsCharScan {
     }
     let st = this.st;
     let arg = this.arg;
-    const j = next8(src, i, n);
-    const chr = toI32(src[i]);
+    // A count of `#`s or a comment depth: never more than the bytes scanned.
+    if (arg < 0 || arg >= n) {
+      fault();
+      return -1;
+    }
+    // next8, inline (`n <= src.length`, so the second test never ends the loop early).
+    let j = i + 1;
+    while (j < n && j < src.length && (toI32(src[j]) & 0xc0) === 0x80) {
+      j++;
+    }
     let kind = K_NORMAL;
     // The peeks: chars after this one.
     const p1 = j;
-    const c1 = p1 < n ? at8(src, p1) : -1;
+    let c1 = -1;
+    if (p1 < n) {
+      c1 = at8(src, p1);
+    }
     let done = false;
     if (st === S_LIT_RAW_STRING) {
       kind = K_IN_STRING;
@@ -229,7 +267,10 @@ export class RsCharScan {
           st = S_LIT_CHAR;
         } else {
           const p2 = p1 < n ? next8(src, p1, n) : n;
-          const c2 = p2 < n ? at8(src, p2) : -1;
+          let c2 = -1;
+          if (p2 < n) {
+            c2 = at8(src, p2);
+          }
           if (c2 === 39) {
             st = S_LIT_CHAR;
           }
@@ -298,8 +339,8 @@ export class RsCharScan {
 
 const strToBytes = (s: string): u8[] => {
   const n = toI32(s.length);
-  const b = new Array<u8>(n + 1);
-  for (let i = 0; i < n; i++) {
+  const b = rsZeroU8s(add32(n, 1));
+  for (let i = 0; i < n && i < b.length; i++) {
     b[i] = toU8(s.charCodeAt(i));
   }
   return b;
@@ -310,17 +351,28 @@ export const rsCharClasses = (s: string): RsClasses => {
   const n = toI32(s.length);
   const r = new RsClasses(n);
   const sc = new RsCharScan(strToBytes(s), 0, n);
+  const starts = r.starts;
+  const kinds = r.kinds;
+  let nc = 0;
   for (;;) {
     const kind = sc.next();
     if (kind < 0) {
       break;
     }
-    r.starts[r.nc] = sc.cs;
-    r.nc = r.nc + 1;
-    for (let k = sc.cs; k < sc.i; k++) {
-      r.kinds[k] = kind;
+    const cs = sc.cs;
+    const e = sc.i;
+    // Each char is a byte or more of `s`, and both arrays hold a slot a byte.
+    if (nc < 0 || nc >= starts.length || cs < 0 || e > kinds.length) {
+      fault();
+      break;
+    }
+    starts[nc] = cs;
+    nc++;
+    for (let k = cs; k >= 0 && k < e && k < kinds.length; k++) {
+      kinds[k] = kind;
     }
   }
+  r.nc = nc;
   r.endNormal = sc.st === S_NORMAL;
   return r;
 };
@@ -336,9 +388,9 @@ export const rsFindUncommentedIn = (src: u8[], lo: i32, hi: i32, pat: string): i
       break;
     }
     if (ni >= m) {
-      return sc.cs - m - lo;
+      return sub32(sub32(sc.cs, m), lo);
     }
-    if ((k === K_NORMAL || k === K_IN_STRING) && toI32(src[sc.cs]) === pat.charCodeAt(ni)) {
+    if ((k === K_NORMAL || k === K_IN_STRING) && ni >= 0 && atU8(src, sc.cs) === pat.charCodeAt(ni)) {
       ni++;
     } else {
       ni = 0;
@@ -347,7 +399,7 @@ export const rsFindUncommentedIn = (src: u8[], lo: i32, hi: i32, pat: string): i
   if (ni < m) {
     return -1;
   }
-  return hi - m - lo;
+  return sub32(sub32(hi, m), lo);
 };
 
 /** Whether `text` contains any comment. */
@@ -383,11 +435,11 @@ export const rsFindLastUncommented = (s: string, pat: string): i32 => {
   }
   let result = left;
   for (;;) {
-    const next = rsFindLastUncommented(s.slice(result + 1, toI32(s.length)), pat);
+    const next = rsFindLastUncommented(rsSliceStr(s, add32(result, 1), toI32(s.length)), pat);
     if (next < 0) {
       break;
     }
-    result += next + 1;
+    result = add32(result, add32(next, 1));
   }
   return result;
 };
@@ -395,9 +447,11 @@ export const rsFindLastUncommented = (s: string, pat: string): i32 => {
 /** find_comment_end: the offset of the first code char after the comments at the start, or -1. */
 export const rsFindCommentEnd = (s: string): i32 => {
   const r = rsCharClasses(s);
-  for (let ci = 0; ci < r.nc; ci++) {
-    const i = r.starts[ci];
-    const k = r.kinds[i];
+  const starts = r.starts;
+  const kinds = r.kinds;
+  for (let ci = 0; ci < r.nc && ci < starts.length; ci++) {
+    const i = starts[ci];
+    const k = atI32(kinds, i);
     if (k === K_NORMAL || k === K_IN_STRING) {
       return i;
     }
@@ -423,18 +477,26 @@ export const rsLineClasses = (s: string): RsLineClasses => {
     return out;
   }
   const r = rsCharClasses(s);
+  const nc = r.nc;
+  const starts = r.starts;
+  const kinds = r.kinds;
   let ci = 0;
-  while (ci < r.nc) {
-    const lineStart = r.starts[ci];
-    const startKind = r.kinds[lineStart];
+  while (ci < nc) {
+    const lineStart = atI32(starts, ci);
+    const startKind = atI32(kinds, lineStart);
     let kind = K_NORMAL;
     let lineEnd = n;
     let sawNl = false;
-    while (ci < r.nc) {
-      const i = r.starts[ci];
-      const k = r.kinds[i];
+    while (ci >= 0 && ci < nc) {
+      const i = atI32(starts, ci);
+      const k = atI32(kinds, i);
       kind = k;
       ci++;
+      // A char start is in `s`.
+      if (i < 0 || i >= n) {
+        fault();
+        return out;
+      }
       if (s.charCodeAt(i) === 10) {
         if (startKind === K_NORMAL && k === K_IN_STRING) {
           kind = K_START_STRING;
@@ -454,13 +516,24 @@ export const rsLineClasses = (s: string): RsLineClasses => {
       lineEnd = n;
     }
     let e = lineEnd;
-    if (e > lineStart && s.charCodeAt(e - 1) === 13) {
+    if (e > lineStart && e > 0 && e <= toI32(s.length) && s.charCodeAt(e - 1) === 13) {
       e--;
     }
-    out.lines.push(s.slice(lineStart, e));
-    out.kinds = growI32(out.kinds, out.n + 1);
-    out.kinds[out.n] = kind;
-    out.n = out.n + 1;
+    out.lines.push(rsSliceStr(s, lineStart, e));
+    // One line a char at most.
+    const on = out.n;
+    if (on < 0 || on >= n) {
+      fault();
+      return out;
+    }
+    out.kinds = growI32(out.kinds, on + 1);
+    const oks = out.kinds;
+    if (on < oks.length) {
+      oks[on] = kind;
+    } else {
+      fault();
+    }
+    out.n = on + 1;
   }
   return out;
 };
@@ -478,13 +551,25 @@ export class RsSlices {
   }
   add(k: i32, a: i32, b: i32): void {
     const i = this.n;
+    // A slice is a byte of the text or more.
+    if (i < 0 || i > 1073741823) {
+      fault();
+      return;
+    }
     this.kind = growI32(this.kind, i + 1);
     this.start = growI32(this.start, i + 1);
     this.end = growI32(this.end, i + 1);
-    this.kind[i] = k;
-    this.start[i] = a;
-    this.end[i] = b;
-    this.n = i + 1;
+    const kinds = this.kind;
+    const starts = this.start;
+    const ends = this.end;
+    if (i < kinds.length && i < starts.length && i < ends.length) {
+      kinds[i] = k;
+      starts[i] = a;
+      ends[i] = b;
+      this.n = i + 1;
+    } else {
+      fault();
+    }
   }
 }
 
@@ -501,9 +586,15 @@ export const rsCommentCodeSlices = (s: string): RsSlices => {
   let lastKind = CK_COMMENT;
   let lastEnd = 0;
   while (lastEnd !== n) {
+    // Each slice ends inside the text, after the last one.
+    if (lastEnd < 0 || lastEnd > n) {
+      fault();
+      return out;
+    }
     let subEnd = lastEnd;
-    let firstWs = -1; // relative to lastEnd
-    const startsSlashSlash = n - lastEnd >= 2 && s.charCodeAt(lastEnd) === 47 && s.charCodeAt(lastEnd + 1) === 47;
+    let firstWs = -1; // the offset of the first connecting whitespace, or -1
+    const startsSlashSlash =
+      lastEnd < n && lastEnd + 1 < n && s.charCodeAt(lastEnd) === 47 && s.charCodeAt(lastEnd + 1) === 47;
     let broke = false;
     let brokeAtLast = false;
     const sc = new RsCharScan(bytes, lastEnd, n);
@@ -512,16 +603,20 @@ export const rsCommentCodeSlices = (s: string): RsSlices => {
       if (kind0 < 0) {
         break;
       }
-      const i = sc.cs - lastEnd;
-      const c = s.charCodeAt(sc.cs);
+      const cs = sc.cs;
+      // The scan gives chars of `s`.
+      if (cs < 0 || cs >= n) {
+        fault();
+        return out;
+      }
+      const c = s.charCodeAt(cs);
       const isConnector = lastKind === CK_NORMAL && startsSlashSlash && (c === 32 || c === 9);
       if (isConnector && firstWs < 0) {
-        firstWs = i;
+        firstWs = cs;
       }
       const ck = rsKindIsComment(kind0) ? CK_COMMENT : CK_NORMAL;
       if (ck === lastKind && !isConnector) {
-        const li = firstWs >= 0 ? firstWs : i;
-        subEnd = lastEnd + li;
+        subEnd = firstWs >= 0 ? firstWs : cs;
         broke = true;
         brokeAtLast = sc.i >= n;
         break;
@@ -532,7 +627,7 @@ export const rsCommentCodeSlices = (s: string): RsSlices => {
     }
     const iterDone = !broke || brokeAtLast;
     if (iterDone && subEnd === lastEnd) {
-      subEnd = firstWs >= 0 ? lastEnd + firstWs : n;
+      subEnd = firstWs >= 0 ? firstWs : n;
     }
     const kind = lastKind === CK_COMMENT ? CK_NORMAL : CK_COMMENT;
     out.add(kind, lastEnd, subEnd);
@@ -594,15 +689,15 @@ export const rsUngroupedSlices = (s: string): RsSlices => {
 const removeCommentHeader = (c: string): string => {
   const n = toI32(c.length);
   if (c.startsWith("///") || c.startsWith("//!")) {
-    return c.slice(3, n);
+    return rsSliceStr(c, 3, n);
   }
   if (c.startsWith("//")) {
-    return c.slice(2, n);
+    return rsSliceStr(c, 2, n);
   }
   if ((c.startsWith("/**") && !c.startsWith("/**/")) || c.startsWith("/*!")) {
-    return n >= 5 ? c.slice(3, n - 2) : "";
+    return n >= 5 ? rsSliceStr(c, 3, n - 2) : "";
   }
-  return n >= 4 ? c.slice(2, n - 2) : "";
+  return n >= 4 ? rsSliceStr(c, 2, n - 2) : "";
 };
 
 // The payload of a comment: CommentReducer's chars, appended to `out` as one string.
@@ -611,18 +706,24 @@ const commentPayload = (comment: string): string => {
   const c = removeCommentHeader(comment);
   const n = toI32(c.length);
   let atStart = false;
-  let out = "";
   let i = 0;
-  const bytes = new Array<u8>(n);
-  let nb = 0;
-  while (i < n) {
+  // The payload is runs of `c`: the run `c[runStart, runEnd)` grows until a byte is dropped.
+  const parts: string[] = [];
+  let runStart = 0;
+  let runEnd = 0;
+  while (i >= 0 && i < n) {
     let w = rsWsLenAt(c, i);
     if (isBlock && atStart) {
-      while (i < n && w > 0) {
+      while (i >= 0 && i < n && w > 0) {
+        // A whitespace char is at most three bytes, and text stays below 2^30 bytes.
+        if (w > 3 || i > 1073741823) {
+          fault();
+          return "";
+        }
         i += w;
         w = i < n ? rsWsLenAt(c, i) : 0;
       }
-      if (i >= n) {
+      if (i < 0 || i >= n) {
         break;
       }
       if (c.charCodeAt(i) === 42) {
@@ -638,25 +739,30 @@ const commentPayload = (comment: string): string => {
     if (w === 0) {
       // A non-whitespace char: copy all its bytes.
       const j = nextChar(c, i, n);
-      for (let k = i; k < j; k++) {
-        bytes[nb] = toU8(c.charCodeAt(k));
-        nb++;
+      if (i !== runEnd) {
+        parts.push(c.substring(runStart, runEnd));
+        runStart = i;
       }
+      runEnd = j;
       i = j;
     } else {
+      if (w < 0 || w > 3 || i > 1073741823) {
+        fault();
+        return "";
+      }
       i += w;
     }
   }
-  out = String.fromBytes(bytes, 0, nb);
-  return out;
+  parts.push(c.substring(runStart, runEnd));
+  return parts.join("");
 };
 
 const commentContent = (code: string): string => {
   const sl = rsUngroupedSlices(code);
   const out = new RsStrBuf();
   for (let i = 0; i < sl.n; i++) {
-    if (sl.kind[i] === CK_COMMENT) {
-      out.add(commentPayload(code.slice(sl.start[i], sl.end[i])));
+    if (atI32(sl.kind, i) === CK_COMMENT) {
+      out.add(commentPayload(rsSliceStr(code, atI32(sl.start, i), atI32(sl.end, i))));
     }
   }
   return out.str();
@@ -679,16 +785,22 @@ export const rsFilterNormalCode = (code: string): string => {
   }
   const lc = rsLineClasses(code);
   const bb = new RsStrBuf();
+  const lines = lc.lines;
   for (let i = 0; i < lc.n; i++) {
-    const k = lc.kinds[i];
+    const k = atI32(lc.kinds, i);
     if (k === K_NORMAL || k === K_START_STRING || k === K_IN_STRING || k === K_END_STRING) {
-      bb.add(lc.lines[i]);
+      // `n` counts the lines.
+      if (i < 0 || i >= lines.length) {
+        fault();
+        return "";
+      }
+      bb.add(lines[i]);
       bb.add("\n");
     }
   }
   let buf = bb.str();
   if (!code.endsWith("\n") && buf.endsWith("\n")) {
-    buf = buf.slice(0, toI32(buf.length) - 1);
+    buf = rsSliceStr(buf, 0, sub32(toI32(buf.length), 1));
   }
   return buf;
 };
@@ -752,12 +864,12 @@ const isCustomComment = (c: string): boolean => {
 
 const customOpener = (s: string): string => {
   const ls = rsLines(s);
-  if (ls.length === 0) {
-    return "";
+  if (ls.length > 0) {
+    const first = ls[0];
+    const sp = rsIndexOfByte(first, 32, 0);
+    return sp < 0 ? first : rsSliceStr(first, 0, add32(sp, 1));
   }
-  const first = ls[0];
-  const sp = rsIndexOfByte(first, 32, 0);
-  return sp < 0 ? first : first.slice(0, sp + 1);
+  return "";
 };
 
 /** comment_style(orig, false). */
@@ -786,10 +898,16 @@ export const rsCommentStyle = (orig: string): RsCommentStyle => {
 export const rsIsLastCommentBlock = (s: string): boolean => rsTrimEnd(s).endsWith("*/");
 
 const computeLen = (orig: string, from: i32, line: string): i32 => {
-  const rest = toI32(orig.length) - from;
+  const rest = sub32(toI32(orig.length), from);
   const ll = toI32(line.length);
   if (rest > ll) {
-    return orig.charCodeAt(from + ll) === 13 ? ll + 2 : ll + 1;
+    // The line is a part of `orig` from `from`.
+    const at = add32(from, ll);
+    if (at < 0 || at >= toI32(orig.length) || ll > 1073741823) {
+      fault();
+      return 0;
+    }
+    return orig.charCodeAt(at) === 13 ? ll + 2 : ll + 1;
   }
   return ll;
 };
@@ -812,10 +930,10 @@ const lightRewriteComment = (orig: string, bi: i32, al: i32, cfg: RsConfig, isDo
     let left = "";
     if (fnw < toI32(l.length)) {
       // rustfmt 1.10 keeps the whitespace char before a leading `*` (none at column 0).
-      if (l.charCodeAt(fnw) === 42 && fnw > 0) {
-        left = l.slice(fnw - 1, toI32(l.length));
+      if (fnw >= 0 && l.charCodeAt(fnw) === 42 && fnw > 0) {
+        left = rsSliceStr(l, fnw - 1, toI32(l.length));
       } else {
-        left = l.slice(fnw, toI32(l.length));
+        left = rsSliceStr(l, fnw, toI32(l.length));
       }
     }
     if (i > 0) {
@@ -829,10 +947,15 @@ const lightRewriteComment = (orig: string, bi: i32, al: i32, cfg: RsConfig, isDo
 const rsTrimStartLen = (s: string): i32 => {
   const n = toI32(s.length);
   let i = 0;
-  while (i < n) {
+  while (i >= 0 && i < n) {
     const k = rsWsLenAt(s, i);
     if (k === 0) {
       break;
+    }
+    // A whitespace char is at most three bytes.
+    if (k < 0 || k > 3 || i > 1073741823) {
+      fault();
+      return i;
     }
     i += k;
   }
@@ -846,9 +969,9 @@ export const rsPrefixSpaceWidth = (s: string, tabSpaces: i32): i32 => {
   for (let i = 0; i < n; i++) {
     const c = s.charCodeAt(i);
     if (c === 32) {
-      w++;
+      w = add32(w, 1);
     } else if (c === 9) {
-      w += tabSpaces;
+      w = add32(w, tabSpaces);
     } else {
       return w;
     }
@@ -873,15 +996,25 @@ export const rsTrimLeftPreserveLayout = (orig: string, bi: i32, al: i32, cfg: Rs
   if (lc.n === 0) {
     return null;
   }
-  const firstLine = rsTrimEnd(lc.lines[0]);
+  const lcLines = lc.lines;
+  if (!(lcLines.length > 0)) {
+    fault();
+    return null;
+  }
+  const firstLine = rsTrimEnd(lcLines[0]);
   const trimmed: boolean[] = [];
   const lines: string[] = [];
   const widths: i32[] = [];
   let veto = false;
   let minPrefix = -1;
   for (let i = 1; i < lc.n; i++) {
-    const kind = lc.kinds[i];
-    let line = lc.lines[i];
+    const kind = atI32(lc.kinds, i);
+    // `n` counts the lines.
+    if (i >= lcLines.length) {
+      fault();
+      return null;
+    }
+    let line = lcLines[i];
     let tr = true;
     let pw = -1;
     if (!rsIsBlank(line)) {
@@ -920,16 +1053,22 @@ export const rsTrimLeftPreserveLayout = (orig: string, bi: i32, al: i32, cfg: Rs
     if (i > 0) {
       out.add("\n");
     }
+    // The three arrays grow together.
+    if (i >= trimmed.length || i >= widths.length || i >= lines.length) {
+      fault();
+      return null;
+    }
+    const line = lines[i];
     if (!trimmed[i]) {
-      out.add(lines[i]);
+      out.add(line);
     } else if (widths[i] >= 0) {
-      let extra = widths[i] - minPrefix;
+      let extra = sub32(widths[i], minPrefix);
       if (extra < 0) {
         extra = 0;
       }
-      const ind = rsIndentFromWidth(cfg, bi + al + extra);
+      const ind = rsIndentFromWidth(cfg, add32(add32(bi, al), extra));
       out.add(rsIndentStr(cfg, ind.bi, ind.al));
-      out.add(lines[i]);
+      out.add(line);
     }
   }
   return out.str();
@@ -955,7 +1094,7 @@ const identifyComment = (orig: string, shape: RsShape, cfg: RsConfig, isDoc: boo
         hasBareLines = true;
         break;
       } else if (tl.startsWith(lineStart) || rsCommentStyle(tl).eq(style)) {
-        groupEnd += computeLen(orig, groupEnd, line);
+        groupEnd = add32(groupEnd, computeLen(orig, groupEnd, line));
       } else {
         break;
       }
@@ -966,18 +1105,18 @@ const identifyComment = (orig: string, shape: RsShape, cfg: RsConfig, isDoc: boo
     let first = true;
     for (let i = 0; i < toI32(ls.length); i++) {
       const line = ls[i];
-      groupEnd += computeLen(orig, groupEnd, line);
+      groupEnd = add32(groupEnd, computeLen(orig, groupEnd, line));
       let tl = rsTrimStart(line);
       if (!tl.startsWith("*") && !tl.startsWith("//") && !tl.startsWith("/*")) {
         hasBareLines = true;
       }
       if (first) {
         const op = rsTrimEnd(style.openerStr());
-        tl = tl.slice(toI32(op.length) < toI32(tl.length) ? toI32(op.length) : toI32(tl.length), toI32(tl.length));
+        tl = tl.substring(toI32(op.length) < toI32(tl.length) ? toI32(op.length) : toI32(tl.length), toI32(tl.length));
         first = false;
       }
       if (tl.endsWith(closer)) {
-        count--;
+        count = sub32(count, 1);
         if (count === 0) {
           break;
         }
@@ -985,8 +1124,8 @@ const identifyComment = (orig: string, shape: RsShape, cfg: RsConfig, isDoc: boo
     }
   }
   const ge = groupEnd > toI32(orig.length) ? toI32(orig.length) : groupEnd;
-  const firstGroup = orig.slice(0, ge);
-  const rest = orig.slice(ge, toI32(orig.length));
+  const firstGroup = rsSliceStr(orig, 0, ge);
+  const rest = rsSliceStr(orig, ge, toI32(orig.length));
   let rewritten = "";
   if (hasBareLines && style.isBlockComment()) {
     const r = rsTrimLeftPreserveLayout(firstGroup, shape.bi, shape.al, cfg);
@@ -1048,8 +1187,8 @@ export const rsRecoverMissingCommentInSpan = (
   if (pos < 0) {
     return null;
   }
-  const total = toI32(mc.length) + usedWidth + 1;
-  const force = rsIndexOfByte(snippet.slice(0, pos), 10, 0) >= 0 || total > cfg.maxWidth;
+  const total = add32(add32(toI32(mc.length), usedWidth), 1);
+  const force = rsIndexOfByte(rsSliceStr(snippet, 0, pos), 10, 0) >= 0 || total > cfg.maxWidth;
   const sep = force ? rsIndentStrNl(cfg, shape.bi, shape.al) : " ";
   return sep + mc;
 };
@@ -1058,7 +1197,7 @@ export const rsRecoverMissingCommentInSpan = (
 
 export const rsFirstLineWidth = (s: string): i32 => {
   const i = rsIndexOfByte(s, 10, 0);
-  return rsWidth(i < 0 ? s : s.slice(0, i));
+  return rsWidth(i < 0 ? s : rsSliceStr(s, 0, i));
 };
 
 export const rsLastLineWidth = (s: string, tabSpaces: i32): i32 => {
@@ -1066,17 +1205,17 @@ export const rsLastLineWidth = (s: string, tabSpaces: i32): i32 => {
   while (i >= 0 && s.charCodeAt(i) !== 10) {
     i--;
   }
-  const last = i < 0 ? s : s.slice(i + 1, toI32(s.length));
+  const last = i < 0 ? s : rsSliceStr(s, i + 1, toI32(s.length));
   const pw = rsPrefixSpaceWidth(last, tabSpaces);
   const pe = rsPrefixSpaceEnd(last);
-  return pw + rsWidth(pe === 0 ? last : last.slice(pe, toI32(last.length)));
+  return add32(pw, rsWidth(pe === 0 ? last : rsSliceStr(last, pe, toI32(last.length))));
 };
 
 export const rsLastLineUsedWidth = (s: string, offset: i32, tabSpaces: i32): i32 => {
   if (rsIndexOfByte(s, 10, 0) >= 0) {
     return rsLastLineWidth(s, tabSpaces);
   }
-  return offset + rsWidth(s);
+  return add32(offset, rsWidth(s));
 };
 
 export const rsTrimmedLastLineWidth = (s: string): i32 => {
@@ -1084,7 +1223,7 @@ export const rsTrimmedLastLineWidth = (s: string): i32 => {
   while (i >= 0 && s.charCodeAt(i) !== 10) {
     i--;
   }
-  return rsWidth(rsTrim(i < 0 ? s : s.slice(i + 1, toI32(s.length))));
+  return rsWidth(rsTrim(i < 0 ? s : rsSliceStr(s, i + 1, toI32(s.length))));
 };
 
 export const rsIsSingleLine = (s: string): boolean => rsIndexOfByte(s, 10, 0) < 0;
@@ -1107,7 +1246,7 @@ export const rsFilteredStrFits = (snippet0: string, maxWidth: i32, tabSpaces: i3
       return false;
     }
   }
-  if (rsLastLineWidth(snippet, tabSpaces) > shape.usedWidth() + shape.width) {
+  if (rsLastLineWidth(snippet, tabSpaces) > add32(shape.usedWidth(), shape.width)) {
     return false;
   }
   return true;
@@ -1133,7 +1272,7 @@ export const rsCombineStrsWithMissingComments = (
   let result = prev;
   let allowOneLine = rsIndexOfByte(prev, 10, 0) < 0 && rsIndexOfByte(next, 10, 0) < 0;
   const firstSep = prev.length === 0 || next.length === 0 || rsTrimmedLastLineWidth(prev) === 0 ? "" : " ";
-  let oneLineWidth = rsLastLineWidth(prev, cfg.tabSpaces) + rsFirstLineWidth(next) + toI32(firstSep.length);
+  let oneLineWidth = add32(add32(rsLastLineWidth(prev, cfg.tabSpaces), rsFirstLineWidth(next)), toI32(firstSep.length));
   const snippet = ctx.snippet(lo, hi);
   const missing = rsRewriteMissingComment(snippet, shape, cfg);
   if (missing === null) {
@@ -1151,16 +1290,16 @@ export const rsCombineStrsWithMissingComments = (
   const pos = rsIndexOfByte(snippet, 47, 0);
   let preferSameLine = false;
   if (pos >= 0) {
-    preferSameLine = rsIndexOfByte(snippet.slice(0, pos), 10, 0) < 0;
+    preferSameLine = rsIndexOfByte(rsSliceStr(snippet, 0, pos), 10, 0) < 0;
   } else {
     preferSameLine = rsIndexOfByte(snippet, 10, 0) < 0;
   }
-  oneLineWidth -= toI32(firstSep.length);
+  oneLineWidth = sub32(oneLineWidth, toI32(firstSep.length));
   let fs = "";
   if (prev.length === 0) {
     fs = "";
   } else {
-    const olw = rsLastLineWidth(prev, cfg.tabSpaces) + rsFirstLineWidth(missing) + 1;
+    const olw = add32(add32(rsLastLineWidth(prev, cfg.tabSpaces), rsFirstLineWidth(missing)), 1);
     fs = preferSameLine && olw <= shape.width ? " " : indentNl;
   }
   result = result + fs + missing;
@@ -1170,7 +1309,7 @@ export const rsCombineStrsWithMissingComments = (
   } else if (missing.startsWith("//")) {
     second = indentNl;
   } else {
-    oneLineWidth += toI32(missing.length) + toI32(fs.length) + 1;
+    oneLineWidth = add32(oneLineWidth, add32(add32(toI32(missing.length), toI32(fs.length)), 1));
     allowOneLine = allowOneLine && !missing.startsWith("//") && rsIndexOfByte(missing, 10, 0) < 0;
     second = preferSameLine && allowOneLine && oneLineWidth <= shape.width ? " " : indentNl;
   }

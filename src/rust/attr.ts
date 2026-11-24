@@ -5,7 +5,7 @@
 // Developers): attr.rs; and rustc_ast's attr/mod.rs (MIT OR Apache-2.0,
 // Copyright The Rust Project Developers).
 
-import { AT_DOC, AT_INNER, AT_UNSAFE, N_EX_LIT, N_META, N_META_LIT, N_PATH, N_SEG, RsAst } from "./ast";
+import { AT_DOC, AT_INNER, AT_UNSAFE, N_EX_LIT, N_META, N_META_LIT, N_PATH, N_SEG, RsAst, rsAstPut } from "./ast";
 import { rsContainsComment, rsRecoverMissingCommentInSpan, rsRewriteDocComment } from "./comment";
 import { RsCtx } from "./context";
 import { rsRewriteLiteral, rsRewriteLiteralTok, rsSpanEndsWithComma } from "./expr";
@@ -27,6 +27,8 @@ import { RsShape, rsIndentStr, rsIndentStrNl } from "./shape";
 import { rsCountNewlines, rsHasByte, rsIndexOfByte, rsWsLenAt } from "./str";
 import { PC_TYPE, rsRewritePath } from "./types";
 import { rsExprInnerBlock } from "./utils";
+import { add32, atI32, sub32 } from "../core/arr";
+import { fault } from "../core/fault";
 
 // Meta item kinds: in N_META's `x`.
 const MK_WORD: i32 = 0;
@@ -44,8 +46,19 @@ class MetaParser {
     this.end = end;
   }
 
+  /** Steps past the token at `p`, which every caller has read as below `end`. */
+  step(): void {
+    const p = this.p;
+    const end = this.end;
+    if (p < end) {
+      this.p = p + 1;
+    } else {
+      fault();
+    }
+  }
+
   kind(i: i32): i32 {
-    return i < this.end ? this.ctx.f.t.kind[i] : -1;
+    return i < this.end ? atI32(this.ctx.f.t.kind, i) : -1;
   }
 
   isLitTok(i: i32): boolean {
@@ -54,7 +67,7 @@ class MetaParser {
       return true;
     }
     if (k === T_IDENT) {
-      const kw = this.ctx.f.t.kw[i];
+      const kw = atI32(this.ctx.f.t.kw, i);
       return kw === KW_TRUE || kw === KW_FALSE;
     }
     return false;
@@ -76,10 +89,10 @@ class MetaParser {
       if (this.kind(this.p) !== T_COMMA) {
         return false;
       }
-      this.p = this.p + 1;
+      this.step();
     }
-    ast.ls[n] = ast.addKids(items, 0, toI32(items.length));
-    ast.ln[n] = toI32(items.length);
+    rsAstPut(ast.ls, n, ast.addKids(items, 0, toI32(items.length)));
+    rsAstPut(ast.ln, n, toI32(items.length));
     return true;
   }
 
@@ -87,10 +100,10 @@ class MetaParser {
     const ast = this.ctx.ast;
     const t = this.ctx.f.t;
     if (this.isLitTok(this.p)) {
-      const n = ast.add(N_META_LIT, t.lo[this.p]);
-      ast.hi[n] = t.hi[this.p];
-      ast.d[n] = this.p;
-      this.p = this.p + 1;
+      const n = ast.add(N_META_LIT, atI32(t.lo, this.p));
+      rsAstPut(ast.hi, n, atI32(t.hi, this.p));
+      rsAstPut(ast.d, n, this.p);
+      this.step();
       return n;
     }
     return this.item(-1, -1);
@@ -104,62 +117,68 @@ class MetaParser {
     if (k !== T_IDENT && k !== T_COLONCOLON) {
       return -1;
     }
-    const path = ast.add(N_PATH, t.lo[this.p]);
+    const path = ast.add(N_PATH, atI32(t.lo, this.p));
     const segs: i32[] = [];
     if (k === T_COLONCOLON) {
-      ast.fl[path] = 1;
-      this.p = this.p + 1;
+      rsAstPut(ast.fl, path, 1);
+      this.step();
     }
     for (;;) {
       if (this.kind(this.p) !== T_IDENT) {
         return -1;
       }
-      const sg = ast.add(N_SEG, t.lo[this.p]);
-      ast.hi[sg] = t.hi[this.p];
-      ast.d[sg] = this.p;
+      const sg = ast.add(N_SEG, atI32(t.lo, this.p));
+      rsAstPut(ast.hi, sg, atI32(t.hi, this.p));
+      rsAstPut(ast.d, sg, this.p);
       segs.push(sg);
-      this.p = this.p + 1;
+      this.step();
       if (this.kind(this.p) === T_COLONCOLON) {
-        this.p = this.p + 1;
+        this.step();
         continue;
       }
       break;
     }
-    ast.ls[path] = ast.addKids(segs, 0, toI32(segs.length));
-    ast.ln[path] = toI32(segs.length);
-    ast.hi[path] = ast.hi[segs[segs.length - 1]];
-    const n = ast.add(N_META, ast.lo[path]);
-    ast.a[n] = path;
-    let hi = ast.hi[path];
+    rsAstPut(ast.ls, path, ast.addKids(segs, 0, toI32(segs.length)));
+    rsAstPut(ast.ln, path, toI32(segs.length));
+    rsAstPut(ast.hi, path, atI32(ast.hi, atI32(segs, toI32(segs.length) - 1)));
+    const n = ast.add(N_META, atI32(ast.lo, path));
+    rsAstPut(ast.a, n, path);
+    let hi = atI32(ast.hi, path);
     const k2 = this.kind(this.p);
     if (this.p < this.end && (k2 === T_LPAREN || k2 === 28 || k2 === 30)) {
       if (k2 !== T_LPAREN) {
         return -1;
       }
-      const close = t.match[this.p];
-      const sub = new MetaParser(this.ctx, this.p + 1, close);
+      const close = atI32(t.match, this.p);
+      const p = this.p;
+      // `(` is a token below `end`, and so is its match.
+      if (p >= this.end || close < 0 || close > 1073741823) {
+        fault();
+        return -1;
+      }
+      const sub = new MetaParser(this.ctx, p + 1, close);
       if (!sub.list(n)) {
         return -1;
       }
-      ast.x[n] = MK_LIST;
-      hi = t.hi[close];
+      rsAstPut(ast.x, n, MK_LIST);
+      hi = atI32(t.hi, close);
       this.p = close + 1;
     } else if (k2 === T_EQ) {
-      this.p = this.p + 1;
+      this.step();
       if (!this.isLitTok(this.p)) {
         return -1;
       }
-      ast.x[n] = MK_NV;
-      ast.d[n] = this.p;
-      hi = t.hi[this.p];
-      this.p = this.p + 1;
+      rsAstPut(ast.x, n, MK_NV);
+      rsAstPut(ast.d, n, this.p);
+      hi = atI32(t.hi, this.p);
+      this.step();
     } else {
-      ast.x[n] = MK_WORD;
+      rsAstPut(ast.x, n, MK_WORD);
     }
-    ast.hi[n] = hi;
+    rsAstPut(ast.hi, n, hi);
     if (spanLo >= 0) {
-      ast.lo[n] = spanLo;
-      ast.hi[n] = spanHi;
+      rsAstPut(ast.lo, n, spanLo);
+      rsAstPut(ast.hi, n, spanHi);
     }
     return n;
   }
@@ -168,69 +187,75 @@ class MetaParser {
 /** Attribute::meta for N_ATTR `a`: an N_META node, or -1. Cached in the attribute's `d`. */
 export const rsAttrMeta = (ctx: RsCtx, a: i32): i32 => {
   const ast = ctx.ast;
-  if ((ast.fl[a] & AT_DOC) !== 0) {
+  if ((atI32(ast.fl, a) & AT_DOC) !== 0) {
     return -1;
   }
-  if (ast.d[a] >= 0) {
-    return ast.d[a];
+  const cached = atI32(ast.d, a);
+  if (cached >= 0) {
+    return cached;
   }
-  if (ast.d[a] === -2) {
+  if (cached === -2) {
     return -1;
   }
   const t = ctx.f.t;
-  const path = ast.a[a];
-  const n = ast.add(N_META, ast.lo[a]);
-  ast.hi[n] = ast.hi[a];
-  ast.a[n] = path;
-  const tts = ast.b[a];
-  const val = ast.c[a];
+  const path = atI32(ast.a, a);
+  const n = ast.add(N_META, atI32(ast.lo, a));
+  rsAstPut(ast.hi, n, atI32(ast.hi, a));
+  rsAstPut(ast.a, n, path);
+  const tts = atI32(ast.b, a);
+  const val = atI32(ast.c, a);
   let ok = true;
   if (tts >= 0) {
-    const open = ast.a[tts];
-    if (t.kind[open] !== T_LPAREN) {
+    const open = atI32(ast.a, tts);
+    if (atI32(t.kind, open) !== T_LPAREN) {
       ok = false;
     } else {
-      const mp = new MetaParser(ctx, open + 1, ast.b[tts]);
+      // `(` is a token, and tokens stay below 2^30.
+      if (open > 1073741823) {
+        fault();
+        return -1;
+      }
+      const mp = new MetaParser(ctx, open + 1, atI32(ast.b, tts));
       ok = mp.list(n);
-      ast.x[n] = MK_LIST;
+      rsAstPut(ast.x, n, MK_LIST);
     }
   } else if (val >= 0) {
-    if (ast.kind[val] === N_EX_LIT) {
-      ast.x[n] = MK_NV;
-      ast.d[n] = ast.d[val];
+    if (atI32(ast.kind, val) === N_EX_LIT) {
+      rsAstPut(ast.x, n, MK_NV);
+      rsAstPut(ast.d, n, atI32(ast.d, val));
     } else {
       ok = false;
     }
   } else {
-    ast.x[n] = MK_WORD;
+    rsAstPut(ast.x, n, MK_WORD);
   }
   if (!ok) {
-    ast.d[a] = -2;
+    rsAstPut(ast.d, a, -2);
     return -1;
   }
-  ast.d[a] = n;
+  rsAstPut(ast.d, a, n);
   return n;
 };
 
 const pathStr = (ctx: RsCtx, path: i32): string => {
   const ast = ctx.ast;
-  let s = (ast.fl[path] & 1) !== 0 ? "::" : "";
-  for (let i = 0; i < ast.ln[path]; i++) {
+  let s = (atI32(ast.fl, path) & 1) !== 0 ? "::" : "";
+  for (let i = 0; i < atI32(ast.ln, path); i++) {
     if (i > 0) {
       s = s + "::";
     }
-    s = s + ctx.tokStr(ast.d[ast.kid(path, i)]);
+    s = s + ctx.tokStr(atI32(ast.d, ast.kid(path, i)));
   }
   return s;
 };
 
 const isSkipMeta = (ctx: RsCtx, m: i32): boolean => {
   const ast = ctx.ast;
-  if (ast.kind[m] !== N_META) {
+  if (atI32(ast.kind, m) !== N_META) {
     return false;
   }
-  const k = ast.x[m];
-  const ps = pathStr(ctx, ast.a[m]);
+  const k = atI32(ast.x, m);
+  const ps = pathStr(ctx, atI32(ast.a, m));
   if (ps.startsWith("rustfmt::skip::")) {
     // #[rustfmt::skip::macros(..)] / ::attributes(..): the skip context is not ported.
     ctx.unsupported("rustfmt::skip:: attribute");
@@ -240,7 +265,7 @@ const isSkipMeta = (ctx: RsCtx, m: i32): boolean => {
     return ps === "rustfmt::skip" || ps === "rustfmt_skip";
   }
   if (k === MK_LIST) {
-    return pathStr(ctx, ast.a[m]) === "cfg_attr" && ast.ln[m] === 2 && isSkipMeta(ctx, ast.kid(m, 1));
+    return pathStr(ctx, atI32(ast.a, m)) === "cfg_attr" && atI32(ast.ln, m) === 2 && isSkipMeta(ctx, ast.kid(m, 1));
   }
   return false;
 };
@@ -248,7 +273,7 @@ const isSkipMeta = (ctx: RsCtx, m: i32): boolean => {
 /** contains_skip over all attributes of node `n`. */
 export const rsAttrsContainSkip = (ctx: RsCtx, n: i32): boolean => {
   const ast = ctx.ast;
-  for (let i = 0; i < ast.atn[n]; i++) {
+  for (let i = 0; i < atI32(ast.atn, n); i++) {
     const m = rsAttrMeta(ctx, ast.attr(n, i));
     if (m >= 0 && isSkipMeta(ctx, m)) {
       return true;
@@ -281,31 +306,40 @@ export const rsIsSkipAttrPath = (ctx: RsCtx, path: i32): boolean => {
   return s === "rustfmt::skip";
 };
 
-const isDoc = (ast: RsAst, a: i32): boolean => (ast.fl[a] & AT_DOC) !== 0;
+const isDoc = (ast: RsAst, a: i32): boolean => (atI32(ast.fl, a) & AT_DOC) !== 0;
 
 const isDerive = (ctx: RsCtx, a: i32): boolean => {
   const ast = ctx.ast;
   if (isDoc(ast, a)) {
     return false;
   }
-  const p = ast.a[a];
-  return ast.ln[p] === 1 && (ast.fl[p] & 1) === 0 && ctx.tokStr(ast.d[ast.kid(p, 0)]) === "derive";
+  const p = atI32(ast.a, a);
+  return atI32(ast.ln, p) === 1 && (atI32(ast.fl, p) & 1) === 0 && ctx.tokStr(atI32(ast.d, ast.kid(p, 0))) === "derive";
 };
 
 /** take_while_with_pred: how many attributes from `from` satisfy `pred` in one group. pred: 0 doc, 1 derive. */
 const takeWhileWithPred = (ctx: RsCtx, attrs: i32[], from: i32, pred: i32): i32 => {
   const ast = ctx.ast;
   let len = 0;
-  for (let i = from; i < toI32(attrs.length); i++) {
+  if (from < 0) {
+    fault();
+    return 0;
+  }
+  for (let i = from; i >= 0 && i < toI32(attrs.length); i++) {
     const a = attrs[i];
     const ok = pred === 0 ? isDoc(ast, a) : isDerive(ctx, a);
     if (ok) {
+      // At most `i - from + 1` attributes are counted.
+      if (len > i) {
+        fault();
+        return 0;
+      }
       len++;
     } else {
       break;
     }
     if (i + 1 < toI32(attrs.length)) {
-      const sn = ctx.snippet(ast.hi[a], ast.lo[attrs[i + 1]]);
+      const sn = ctx.snippet(atI32(ast.hi, a), atI32(ast.lo, attrs[i + 1]));
       if (rsCountNewlines(sn) >= 2 || rsHasByte(sn, 47)) {
         break;
       }
@@ -314,13 +348,13 @@ const takeWhileWithPred = (ctx: RsCtx, attrs: i32[], from: i32, pred: i32): i32 
   return len;
 };
 
-const attrPrefix = (ast: RsAst, a: i32): string => ((ast.fl[a] & AT_INNER) !== 0 ? "#!" : "#");
+const attrPrefix = (ast: RsAst, a: i32): string => ((atI32(ast.fl, a) & AT_INNER) !== 0 ? "#!" : "#");
 
 /** has_newlines_before_after_comment: [before, after] as "\n" or "". */
 const newlinesBefore = (comment: string): string => {
   const cb = rsIndexOfByte(comment, 47, 0);
   const len = cb < 0 ? toI32(comment.length) : cb;
-  return rsCountNewlines(comment.slice(0, len)) > 1 ? "\n" : "";
+  return rsCountNewlines(comment.substring(0, len)) > 1 ? "\n" : "";
 };
 
 const newlinesAfter = (comment: string): string => {
@@ -335,7 +369,8 @@ const newlinesAfter = (comment: string): string => {
     if (!(c === 32 || (c >= 9 && c <= 13))) {
       break;
     }
-    if (c === 10) {
+    // Two newlines settle the answer.
+    if (c === 10 && k < 2) {
       k++;
     }
     i--;
@@ -349,29 +384,29 @@ const formatDerive = (ctx: RsCtx, derives: i32[], shape: RsShape): string | null
   const all: RsListItem[] = [];
   for (const a of derives) {
     const m = rsAttrMeta(ctx, a);
-    if (m < 0 || ast.x[m] !== MK_LIST) {
+    if (m < 0 || atI32(ast.x, m) !== MK_LIST) {
       return null;
     }
-    const n = ast.ln[m];
+    const n = atI32(ast.ln, m);
     const items = rsItemizeList(
       ctx,
       n,
       ")",
       ",",
-      (i: i32): i32 => ast.lo[ast.kid(m, i)],
-      (i: i32): i32 => ast.hi[ast.kid(m, i)],
-      (i: i32): string | null => ctx.snippet(ast.lo[ast.kid(m, i)], ast.hi[ast.kid(m, i)]),
-      ctx.spanAfter(ast.lo[a], ast.hi[a], "("),
-      ast.hi[a],
+      (i: i32): i32 => atI32(ast.lo, ast.kid(m, i)),
+      (i: i32): i32 => atI32(ast.hi, ast.kid(m, i)),
+      (i: i32): string | null => ctx.snippet(atI32(ast.lo, ast.kid(m, i)), atI32(ast.hi, ast.kid(m, i))),
+      ctx.spanAfter(atI32(ast.lo, a), atI32(ast.hi, a), "("),
+      atI32(ast.hi, a),
       false,
     );
     for (const it of items) {
       all.push(it);
     }
   }
-  const prefix = attrPrefix(ast, derives[0]);
+  const prefix = attrPrefix(ast, atI32(derives, 0));
   const argShape = shape.blockIndent(cfg.tabSpaces).withMaxWidth(cfg);
-  const ol0 = shape.offsetLeft(10 + toI32(prefix.length));
+  const ol0 = shape.offsetLeft(add32(10, toI32(prefix.length)));
   if (ol0 === null) {
     return null;
   }
@@ -393,7 +428,7 @@ const formatDerive = (ctx: RsCtx, derives: i32[], shape: RsShape): string | null
   if (nested) {
     result = result + rsIndentStrNl(cfg, argShape.bi, argShape.al) + itemStr + rsIndentStrNl(cfg, shape.bi, shape.al);
   } else if (itemStr.endsWith(",")) {
-    result = result + itemStr.slice(0, toI32(itemStr.length) - 1);
+    result = result + itemStr.substring(0, sub32(toI32(itemStr.length), 1));
   } else {
     result = result + itemStr;
   }
@@ -403,11 +438,11 @@ const formatDerive = (ctx: RsCtx, derives: i32[], shape: RsShape): string | null
 /** Rewrite for ast::MetaItem / MetaItemInner (N_META or N_META_LIT). */
 export const rsRewriteMetaItem = (ctx: RsCtx, m: i32, shape: RsShape): string | null => {
   const ast = ctx.ast;
-  if (ast.kind[m] === N_META_LIT) {
-    return rsRewriteLiteralTok(ctx, ast.d[m], shape);
+  if (atI32(ast.kind, m) === N_META_LIT) {
+    return rsRewriteLiteralTok(ctx, atI32(ast.d, m), shape);
   }
-  const k = ast.x[m];
-  const path = rsRewritePath(ctx, PC_TYPE, -1, ast.a[m], shape);
+  const k = atI32(ast.x, m);
+  const path = rsRewritePath(ctx, PC_TYPE, -1, atI32(ast.a, m), shape);
   if (path === null) {
     return null;
   }
@@ -415,13 +450,13 @@ export const rsRewriteMetaItem = (ctx: RsCtx, m: i32, shape: RsShape): string | 
     return path;
   }
   if (k === MK_LIST) {
-    const hasTrailingComma = rsSpanEndsWithComma(ctx, ast.lo[m], ast.hi[m]);
+    const hasTrailingComma = rsSpanEndsWithComma(ctx, atI32(ast.lo, m), atI32(ast.hi, m));
     const s = shape.subWidth(1);
     if (s === null) {
       return null;
     }
     const items: i32[] = [];
-    for (let i = 0; i < ast.ln[m]; i++) {
+    for (let i = 0; i < atI32(ast.ln, m); i++) {
       items.push(ast.kid(m, i));
     }
     return rsRewriteWithParens(
@@ -430,17 +465,17 @@ export const rsRewriteMetaItem = (ctx: RsCtx, m: i32, shape: RsShape): string | 
       items,
       OC_META,
       s,
-      ast.lo[m],
-      ast.hi[m],
+      atI32(ast.lo, m),
+      atI32(ast.hi, m),
       ctx.cfg.attrFnLikeWidth,
       hasTrailingComma ? ST_ALWAYS : ST_NEVER,
     );
   }
-  const ls = shape.shrinkLeft(toI32(path.length) + 3);
+  const ls = shape.shrinkLeft(add32(toI32(path.length), 3));
   if (ls === null) {
     return null;
   }
-  const lit = ast.d[m];
+  const lit = atI32(ast.d, m);
   const v = rsRewriteLiteral(ctx, lit, ls);
   return `${path} = ${v !== null ? v : ctx.tokStr(lit)}`;
 };
@@ -448,7 +483,7 @@ export const rsRewriteMetaItem = (ctx: RsCtx, m: i32, shape: RsShape): string | 
 /** Rewrite for ast::Attribute. */
 export const rsRewriteAttr = (ctx: RsCtx, a: i32, shape: RsShape): string | null => {
   const ast = ctx.ast;
-  const snippet = ctx.snippet(ast.lo[a], ast.hi[a]);
+  const snippet = ctx.snippet(atI32(ast.lo, a), atI32(ast.hi, a));
   if (isDoc(ast, a)) {
     return rsRewriteDocComment(snippet, shape.comment(ctx.cfg), ctx.cfg);
   }
@@ -460,7 +495,7 @@ export const rsRewriteAttr = (ctx: RsCtx, a: i32, shape: RsShape): string | null
   if (m < 0) {
     return snippet;
   }
-  const s = shape.offsetLeft(toI32(prefix.length) + 1);
+  const s = shape.offsetLeft(add32(toI32(prefix.length), 1));
   if (s === null) {
     return null;
   }
@@ -468,7 +503,7 @@ export const rsRewriteAttr = (ctx: RsCtx, a: i32, shape: RsShape): string | null
   if (rw === null) {
     return snippet;
   }
-  if ((ast.fl[a] & AT_UNSAFE) !== 0) {
+  if ((atI32(ast.fl, a) & AT_UNSAFE) !== 0) {
     return `${prefix}[unsafe(${rw})]`;
   }
   return `${prefix}[${rw}]`;
@@ -487,20 +522,25 @@ export const rsRewriteAttrs = (ctx: RsCtx, attrs: i32[], shape: RsShape): string
     if (docLen > 0) {
       let snippet = "";
       for (let k = 0; k < docLen; k++) {
-        const a = attrs[i + k];
+        const a = atI32(attrs, add32(i, k));
         if (k > 0) {
           snippet = snippet + "\n";
         }
-        snippet = snippet + ctx.snippet(ast.lo[a], ast.hi[a]);
+        snippet = snippet + ctx.snippet(atI32(ast.lo, a), atI32(ast.hi, a));
       }
       const ds = rsRewriteDocComment(snippet, shape.comment(cfg), cfg);
       if (ds === null) {
         return null;
       }
       result = result + ds;
-      if (i + docLen < n) {
-        const lo = ast.hi[attrs[i + docLen - 1]];
-        const hi = ast.lo[attrs[i + docLen]];
+      const end = add32(i, docLen);
+      // docLen > 0, so `end` passes `i` unless the sum faulted.
+      if (end <= i || end <= 0) {
+        return null;
+      }
+      if (end < n) {
+        const lo = atI32(ast.hi, atI32(attrs, end - 1));
+        const hi = atI32(ast.lo, atI32(attrs, end));
         const sn = ctx.snippet(lo, hi);
         const mla = newlinesBefore(sn);
         const mlb = newlinesAfter(sn);
@@ -510,24 +550,29 @@ export const rsRewriteAttrs = (ctx: RsCtx, attrs: i32[], shape: RsShape): string
         }
         result = result + (c.length === 0 ? "\n" + mlb : mla + c + "\n" + mlb) + indent;
       }
-      i += docLen;
+      i = end;
       continue;
     }
-    if (isDerive(ctx, attrs[i])) {
+    if (isDerive(ctx, atI32(attrs, i))) {
       const dl = takeWhileWithPred(ctx, attrs, i, 1);
       const derives: i32[] = [];
       for (let k = 0; k < dl; k++) {
-        derives.push(attrs[i + k]);
+        derives.push(atI32(attrs, add32(i, k)));
       }
       const ds = formatDerive(ctx, derives, shape);
       if (ds === null) {
         return null;
       }
       result = result + ds;
-      if (i + dl < n) {
-        const lo = ast.hi[attrs[i + dl - 1]];
-        const next = attrs[i + dl];
-        const sn = ctx.snippet(lo, ast.lo[next]);
+      const end = add32(i, dl);
+      // dl > 0 (attrs[i] is a derive), so `end` passes `i` unless the sum faulted.
+      if (end <= i || end <= 0) {
+        return null;
+      }
+      if (end < n) {
+        const lo = atI32(ast.hi, atI32(attrs, end - 1));
+        const next = atI32(attrs, end);
+        const sn = ctx.snippet(lo, atI32(ast.lo, next));
         const c = rsRecoverMissingCommentInSpan(sn, shape.withMaxWidth(cfg), cfg, 0);
         if (c === null) {
           return null;
@@ -538,17 +583,17 @@ export const rsRewriteAttrs = (ctx: RsCtx, attrs: i32[], shape: RsShape): string
         }
         result = result + "\n" + indent;
       }
-      i += dl;
+      i = end;
       continue;
     }
-    const fa = rsRewriteAttr(ctx, attrs[i], shape);
+    const fa = rsRewriteAttr(ctx, atI32(attrs, i), shape);
     if (fa === null) {
       return null;
     }
     result = result + fa;
     if (i + 1 < n) {
-      const next = attrs[i + 1];
-      const sn = ctx.snippet(ast.hi[attrs[i]], ast.lo[next]);
+      const next = atI32(attrs, i + 1);
+      const sn = ctx.snippet(atI32(ast.hi, atI32(attrs, i)), atI32(ast.lo, next));
       const c = rsRecoverMissingCommentInSpan(sn, shape.withMaxWidth(cfg), cfg, 0);
       if (c === null) {
         return null;
@@ -567,11 +612,11 @@ export const rsRewriteAttrs = (ctx: RsCtx, attrs: i32[], shape: RsShape): string
 /** The attributes of node `n` (all of them), rewritten. */
 export const rsRewriteNodeAttrs = (ctx: RsCtx, n: i32, shape: RsShape): string | null => {
   const ast = ctx.ast;
-  if (ast.atn[n] === 0) {
+  if (atI32(ast.atn, n) === 0) {
     return "";
   }
   const attrs: i32[] = [];
-  for (let i = 0; i < ast.atn[n]; i++) {
+  for (let i = 0; i < atI32(ast.atn, n); i++) {
     attrs.push(ast.attr(n, i));
   }
   return rsRewriteAttrs(ctx, attrs, shape);
