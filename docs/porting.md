@@ -88,7 +88,7 @@ for a binary). The traps that cost the most in earlier ports:
 ## Building and checking
 
 ```bash
-.nish/bin/nish tools/dev/<lang>.ts --link dist/<lang>dev   # this language only: seconds
+.nish/bin/nish tools/dev/<lang>.ts --allow-panics --link dist/<lang>dev   # this language only: seconds
 dist/<lang>dev file > out                                   # prints the result; exit 1 = skipped
 diff out <(reference command < file)
 npm run build                                               # the whole binary: ~2 minutes

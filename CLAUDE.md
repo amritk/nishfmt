@@ -15,7 +15,8 @@ read `.nish/docs/AI.md` (the language as rules, traps first), then
 | `npm run build` | compile `src/main.ts` to `dist/nishfmt` (about two minutes) |
 | `npm test` | every regression case in `tests/cases/`, against `dist/nishfmt` |
 | `npm run lint` | biome, over the sources and scripts |
-| `.nish/bin/nish tools/dev/<lang>.ts --link dist/<lang>dev` | one language's formatter alone, in seconds |
+| `.nish/bin/nish tools/dev/<lang>.ts --allow-panics --link dist/<lang>dev` | one language's formatter alone, in seconds |
+| `node scripts/no-panic-list.mjs` | check that `nish.noPanic` lists every module but `src/main.ts` (`--write` updates it) |
 | `bash bench/corpus/cmp.sh dist/nishfmt <lang>` | the corpus gate for one language ([docs/benchmarks.md](docs/benchmarks.md)) |
 
 ## Layout
@@ -47,6 +48,17 @@ read `.nish/docs/AI.md` (the language as rules, traps first), then
 - **Results, not exceptions.** A file a formatter cannot handle exactly makes
   `format<Lang>` answer `false`, and nishfmt leaves the file untouched.
   Never guess: wrong output is worse than a skipped file.
+- **No panic, and no `nish:unsafe`.** Every module but `src/main.ts` is in
+  package.json's `nish.noPanic`, so the build refuses any index, signed
+  `+ - *`, division, `pop()` or `new Array(n)` the compiler cannot prove safe.
+  Prove it first (a proven site also loses its runtime check): copy fields to
+  locals, keep `i < xs.length` in the loop condition, hoist one range check
+  before a loop. Where the code's invariants guarantee a site the prover
+  cannot see, guard it and call `fault()` (`src/core/fault.ts`) on the other
+  branch, which makes nishfmt skip the file: never answer a made-up value
+  without it. `src/core/arr.ts` and `src/core/sort.ts` replace the std calls
+  no proof covers (`new Array(n)`, `set`, `slice`, `String.fromBytes`,
+  `.sort`). A new module joins the list: `node scripts/no-panic-list.mjs --write`.
 - **Run the compiler rather than guess.** When unsure whether something
   compiles or what it does, `.nish/bin/nish run <file>` answers in seconds.
 
@@ -104,9 +116,9 @@ stands in for the fix's own failing case.
 file and a clean `--check`, so the case fails on a binary that formats the
 file. Never pin a skip with a `.expected` equal to the input.
 
-**The worker-crash cases in `tests/run.sh` need an input the release binary
-panics on** (see the comment above `crash_src`). A change that fixes that
-panic swaps the trigger for another panicking input in the same PR.
+**The worker-crash cases in `tests/run.sh` take a worker down with
+`NISHFMT_TEST_CRASH`** (see the comment above `crash_src`): no formatter
+panics on any input, so the trigger is a panic `src/main.ts` raises on purpose.
 
 **Skip what the reference rejects.** When a port makes a parser accept a new
 form (a new syntax, a top-level member, a module import), port the reference

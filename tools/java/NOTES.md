@@ -142,7 +142,7 @@ that holds for Java's 2.0.0 is in
 ## Working on it
 
 ```bash
-.nish/bin/nish tools/dev/java.ts --link dist/javadev   # the Java formatter alone, in seconds
+.nish/bin/nish tools/dev/java.ts --allow-panics --link dist/javadev   # the Java formatter alone, in seconds
 dist/javadev file.java | diff - <(java -jar $GJF - < file.java)
 ```
 
