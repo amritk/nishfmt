@@ -8,6 +8,8 @@
 // delegates to in format/visitor/ (Apache License 2.0, Copyright (c) Meta
 // Platforms, Inc. and affiliates).
 
+import { atI32, bytesText, sub32 } from "../core/arr";
+import { fault } from "../core/fault";
 import { GEngine, BL_NO, BL_PRESERVE, BL_YES, FORCED, INDEPENDENT, UNIFIED } from "../gdoc/engine";
 import { KTree } from "./builder";
 import { kIsComment, kIsPsiChild } from "./input";
@@ -185,8 +187,6 @@ export class KVisitor {
   doubleExpressionBreakIndent: i32 = 0;
   expressionBreakNegativeIndent: i32 = 0;
   inImport: boolean = false;
-  // Scratch lists in use (allocated per call for now).
-  nLists: i32 = 0;
 
   constructor(g: GEngine, t: KTree) {
     this.g = g;
@@ -204,7 +204,6 @@ export class KVisitor {
     this.doubleExpressionBreakIndent = g.constIndent(2 * K_CONTINUATION_INDENT);
     this.expressionBreakNegativeIndent = g.constIndent(-K_CONTINUATION_INDENT);
     this.inImport = false;
-    this.nLists = 0;
   }
 
   // ---- Builder shorthands ----------------------------------------------------
@@ -219,7 +218,7 @@ export class KVisitor {
 
   /** builder.token(node.text): the next token, whose text is the node's. */
   tokN(n: i32): void {
-    this.g.tokBytes(this.t.start[n], this.t.end[n], this.ZERO);
+    this.g.tokBytes(this.t.st(n), this.t.en(n), this.ZERO);
   }
 
   open(ind: i32): void {
@@ -247,18 +246,18 @@ export class KVisitor {
   }
 
   sync(n: i32): void {
-    this.g.sync(this.t.start[n]);
+    this.g.sync(this.t.st(n));
   }
 
   /** A scratch list; release with `pop`. */
   push(): i32[] {
-    this.nLists = this.nLists + 1;
     const l: i32[] = [];
     return l;
   }
 
+  /** Releases a scratch list (allocated per call for now, so nothing to do). */
   pop(): void {
-    this.nLists = this.nLists - 1;
+    return;
   }
 
   // ---- Dispatch --------------------------------------------------------------
@@ -268,8 +267,8 @@ export class KVisitor {
       return;
     }
     const t = this.t;
-    const ty = t.type[n];
-    if (t.leaf[n] === 1) {
+    const ty = t.ty(n);
+    if (t.lf(n) === 1) {
       return;
     }
     switch (ty) {
@@ -411,8 +410,8 @@ export class KVisitor {
         return;
       case N_IMPORT_LIST:
         this.sync(n);
-        for (let c = this.t.first[n]; c >= 0; c = this.t.next[c]) {
-          if (this.t.type[c] === N_IMPORT_DIRECTIVE) {
+        for (let c = this.t.fst(n); c >= 0; c = this.t.nxt(c)) {
+          if (this.t.ty(c) === N_IMPORT_DIRECTIVE) {
             this.visit(c);
           }
         }
@@ -435,14 +434,14 @@ export class KVisitor {
         this.visitAnnotation(n);
         return;
       case N_ANNOTATION_TARGET:
-        this.tokN(this.t.first[n]);
+        this.tokN(this.t.fst(n));
         return;
       case N_ANNOTATION_ENTRY:
         this.visitAnnotationEntry(n);
         return;
       case N_FILE_ANNOTATION_LIST:
-        for (let c = this.t.first[n]; c >= 0; c = this.t.next[c]) {
-          if (this.t.leaf[c] === 1) {
+        for (let c = this.t.fst(n); c >= 0; c = this.t.nxt(c)) {
+          if (this.t.lf(c) === 1) {
             continue;
           }
           this.visit(c);
@@ -498,7 +497,7 @@ export class KVisitor {
         return;
       case N_WHEN_CONDITION_IN_RANGE: {
         this.sync(n);
-        const f = this.t.first[n];
+        const f = this.t.fst(n);
         const neg = f >= 0 && this.child(f, T_NOT_IN) >= 0;
         this.tok(neg ? "!in" : "in");
         this.space();
@@ -678,8 +677,8 @@ export class KVisitor {
         this.tok("try");
         this.space();
         this.visit(this.child(n, N_BLOCK));
-        for (let c = this.t.first[n]; c >= 0; c = this.t.next[c]) {
-          if (this.t.type[c] === N_CATCH) {
+        for (let c = this.t.fst(n); c >= 0; c = this.t.nxt(c)) {
+          if (this.t.ty(c) === N_CATCH) {
             this.visitCatchSection(c);
           }
         }
@@ -711,8 +710,8 @@ export class KVisitor {
         break;
     }
     // KtTreeVisitorVoid.visitElement: the children.
-    for (let c = t.first[n]; c >= 0; c = t.next[c]) {
-      if (t.leaf[c] === 0) {
+    for (let c = t.fst(n); c >= 0; c = t.nxt(c)) {
+      if (t.lf(c) === 0) {
         this.visit(c);
       }
     }
@@ -889,12 +888,13 @@ export class KVisitor {
     let first = true;
     this.g.guessToken(";");
     for (let i = 0; i < toI32(statements.length); i++) {
+      const s = statements[i];
       this.forced();
       if (!first) {
         this.g.blankLineWanted(BL_PRESERVE);
       }
       first = false;
-      this.visitStatement(statements[i]);
+      this.visitStatement(s);
     }
   }
 
@@ -917,8 +917,8 @@ export class KVisitor {
     );
     this.close();
     this.g.guessToken(";");
-    const p = this.t.parent[n];
-    if (p < 0 || this.t.type[p] !== N_WHEN) {
+    const p = this.t.par(n);
+    if (p < 0 || this.t.ty(p) !== N_WHEN) {
       this.forced();
     }
   }
@@ -1002,8 +1002,8 @@ export class KVisitor {
     if (owner >= 0) {
       // The backing field and accessors, in source order.
       let any = false;
-      for (let c = this.t.first[owner]; c >= 0; c = this.t.next[c]) {
-        const ct = this.t.type[c];
+      for (let c = this.t.fst(owner); c >= 0; c = this.t.nxt(c)) {
+        const ct = this.t.ty(c);
         if (ct !== N_PROPERTY_ACCESSOR && ct !== N_BACKING_FIELD) {
           continue;
         }
@@ -1090,8 +1090,8 @@ export class KVisitor {
       this.visitModifierList(modifierList);
     }
     let kw = -1;
-    for (let c = this.t.first[n]; c >= 0; c = this.t.next[c]) {
-      const ct = this.t.type[c];
+    for (let c = this.t.fst(n); c >= 0; c = this.t.nxt(c)) {
+      const ct = this.t.ty(c);
       if (ct === T_CLASS_KEYWORD || ct === T_INTERFACE_KEYWORD || ct === T_OBJECT_KEYWORD) {
         kw = c;
         break;
@@ -1121,13 +1121,13 @@ export class KVisitor {
     if (tcl >= 0) {
       if (superTypes >= 0) {
         let last = -1;
-        for (let c = this.t.first[superTypes]; c >= 0; c = this.t.next[c]) {
-          const ct = this.t.type[c];
+        for (let c = this.t.fst(superTypes); c >= 0; c = this.t.nxt(c)) {
+          const ct = this.t.ty(c);
           if (ct === N_SUPER_TYPE_ENTRY || ct === N_SUPER_TYPE_CALL_ENTRY || ct === N_DELEGATED_SUPER_TYPE_ENTRY) {
             last = c;
           }
         }
-        if (last >= 0 && this.t.type[last] === N_DELEGATED_SUPER_TYPE_ENTRY) {
+        if (last >= 0 && this.t.ty(last) === N_DELEGATED_SUPER_TYPE_ENTRY) {
           this.g.forcedBreakInd(this.expressionBreakIndent);
         }
       }
@@ -1172,7 +1172,7 @@ export class KVisitor {
     let explicit = -1;
     if (call >= 0) {
       const ref = this.child(call, N_CONSTRUCTOR_DELEGATION_REFERENCE);
-      if (ref >= 0 && this.t.end[ref] > this.t.start[ref]) {
+      if (ref >= 0 && this.t.en(ref) > this.t.st(ref)) {
         explicit = call;
       }
     }
@@ -1214,8 +1214,8 @@ export class KVisitor {
     this.tokN(this.child(n, T_IDENTIFIER));
     const il = this.child(n, N_INITIALIZER_LIST);
     if (il >= 0) {
-      for (let c = this.t.first[il]; c >= 0; c = this.t.next[c]) {
-        if (this.t.leaf[c] === 0) {
+      for (let c = this.t.fst(il); c >= 0; c = this.t.nxt(c)) {
+        if (this.t.lf(c) === 0) {
           this.visit(c);
         }
       }
@@ -1258,17 +1258,17 @@ export class KVisitor {
     const t = this.t;
     const members = this.push();
     for (let i = 0; i < toI32(children.length); i++) {
-      if (t.type[children[i]] !== N_ENUM_ENTRY) {
+      if (t.ty(children[i]) !== N_ENUM_ENTRY) {
         members.push(children[i]);
       }
     }
-    const clazz = t.parent[body];
-    const isEnum = clazz >= 0 && t.type[clazz] === N_CLASS && this.hasModifier(clazz, T_ENUM_KEYWORD);
+    const clazz = t.par(body);
+    const isEnum = clazz >= 0 && t.ty(clazz) === N_CLASS && this.hasModifier(clazz, T_ENUM_KEYWORD);
     if (isEnum) {
       this.open(this.ZERO);
       this.brk(UNIFIED, "", this.ZERO);
       for (let i = 0; i < toI32(children.length); i++) {
-        if (t.type[children[i]] !== N_ENUM_ENTRY) {
+        if (t.ty(children[i]) !== N_ENUM_ENTRY) {
           continue;
         }
         this.visit(children[i]);
@@ -1290,11 +1290,11 @@ export class KVisitor {
       let bl = BL_YES;
       if (prev < 0) {
         bl = BL_PRESERVE;
-      } else if (t.type[prev] !== N_PROPERTY) {
+      } else if (t.ty(prev) !== N_PROPERTY) {
         bl = BL_YES;
       } else if (this.child(prev, N_PROPERTY_ACCESSOR) >= 0) {
         bl = BL_YES;
-      } else if (t.type[curr] === N_PROPERTY) {
+      } else if (t.ty(curr) === N_PROPERTY) {
         bl = BL_PRESERVE;
       }
       this.g.blankLineWanted(bl);
@@ -1426,15 +1426,15 @@ export class KVisitor {
     this.sync(n);
     const t = this.t;
     let typeElement = -1;
-    for (let c = t.first[n]; c >= 0; c = t.next[c]) {
-      if (typeElement < 0 && kIsTypeElement(t.type[c])) {
+    for (let c = t.fst(n); c >= 0; c = t.nxt(c)) {
+      if (typeElement < 0 && kIsTypeElement(t.ty(c))) {
         typeElement = c;
       }
     }
     // A type can have a modifier list inside its parentheses, outside them,
     // or both: `@Composable (suspend (x) -> Unit)`.
-    for (let c = t.first[n]; c >= 0; c = t.next[c]) {
-      const ct = t.type[c];
+    for (let c = t.fst(n); c >= 0; c = t.nxt(c)) {
+      const ct = t.ty(c);
       if (ct === N_MODIFIER_LIST) {
         this.visit(c);
       } else if (c === typeElement) {
@@ -1585,13 +1585,20 @@ export class KVisitor {
   emitQualifiedExpression(n: i32): void {
     const parts = this.breakIntoParts(n);
     const np = toI32(parts.length);
+    if (np === 0) {
+      // The old read of parts[np - 1] panicked here.
+      fault();
+      return;
+    }
+    const lastPart = parts[np - 1];
+    // Only whether there is exactly one matters, so the count stops at 2.
     let lambdas = 0;
-    for (let i = 0; i < np; i++) {
-      if (this.isLambdaPart(parts[i])) {
+    for (let i = 0; i < np && i < parts.length; i++) {
+      if (this.isLambdaPart(parts[i]) && lambdas < 2) {
         lambdas++;
       }
     }
-    const useBlockLikeLambdaStyle = this.isLambdaPart(parts[np - 1]) && lambdas === 1;
+    const useBlockLikeLambdaStyle = this.isLambdaPart(lastPart) && lambdas === 1;
     // computeGroupingInfo: opens per part (low bits) and close flags.
     const opens = this.push();
     const closes = this.push();
@@ -1600,7 +1607,7 @@ export class KVisitor {
       closes.push(0);
     }
     let lastIndexToOpen = 0;
-    for (let i = 0; i < np; i++) {
+    for (let i = 0; i < np && i < parts.length; i++) {
       const part = parts[i];
       const pt = this.ty(part);
       if (this.isQualified(part)) {
@@ -1608,27 +1615,28 @@ export class KVisitor {
         const previous = this.isQualified(recv) ? this.selectorOf(recv) : recv;
         const current = this.selectorOf(part);
         if (lastIndexToOpen === 0 && this.shouldGroupPartWithPrevious(np, part, i, previous, current)) {
-          opens[0] = opens[0] + 1;
-          closes[i] = 1;
+          kvInc(opens, 0);
+          kvSet(closes, i, 1);
         } else {
           lastIndexToOpen = i;
         }
       } else if (pt === N_ARRAY_ACCESS_EXPRESSION || pt === N_POSTFIX_EXPRESSION) {
-        opens[lastIndexToOpen] = opens[lastIndexToOpen] + 1;
+        kvInc(opens, lastIndexToOpen);
       }
     }
     if (useBlockLikeLambdaStyle) {
-      opens[0] = opens[0] + 1;
+      kvInc(opens, 0);
     }
     this.open(this.expressionBreakIndent);
     const nameTag = this.g.genSym();
-    for (let i = 0; i < np; i++) {
+    for (let i = 0; i < np && i < parts.length; i++) {
       const e = parts[i];
       const et = this.ty(e);
       if (this.isQualified(e)) {
         this.brkTag(UNIFIED, "", this.ZERO, nameTag);
       }
-      for (let k = 0; k < opens[i]; k++) {
+      const opensI = atI32(opens, i);
+      for (let k = 0; k < opensI; k++) {
         this.open(this.ZERO);
       }
       if (this.isQualified(e)) {
@@ -1636,12 +1644,12 @@ export class KVisitor {
         const sel = this.selectorOf(e);
         if (this.ty(sel) !== N_CALL_EXPRESSION) {
           this.visit(sel);
-          if (closes[i] === 1) {
+          if (atI32(closes, i) === 1) {
             this.close();
           }
         } else {
           this.visit(this.calleeOf(sel));
-          if (closes[i] === 1) {
+          if (atI32(closes, i) === 1) {
             this.close();
           }
           const isTrailingLambda = useBlockLikeLambdaStyle && i === np - 1;
@@ -1813,8 +1821,8 @@ export class KVisitor {
     const statements = this.psiChildren(body);
     const hasStatements = statements.length > 0;
     let hasComments = false;
-    for (let c = this.t.first[body]; c >= 0; c = this.t.next[c]) {
-      if (kIsComment(this.t.type[c])) {
+    for (let c = this.t.fst(body); c >= 0; c = this.t.nxt(c)) {
+      if (kIsComment(this.t.ty(c))) {
         hasComments = true;
       }
     }
@@ -1854,8 +1862,8 @@ export class KVisitor {
       this.open(bracePlusBlockIndent);
       g.blankLineWanted(BL_NO);
       const shouldForceMultiline = this.hasSourceNewlineInLambdaBody(n);
-      const f = this.t.first[body];
-      const startsWithComment = f >= 0 && kIsComment(this.t.type[f]);
+      const f = this.t.fst(body);
+      const startsWithComment = f >= 0 && kIsComment(this.t.ty(f));
       if (
         !shouldForceMultiline &&
         statements.length === 1 &&
@@ -1870,8 +1878,8 @@ export class KVisitor {
       this.close();
     } else if (hasComments) {
       const blockComments = this.push();
-      for (let c = this.t.first[body]; c >= 0; c = this.t.next[c]) {
-        const ct = this.t.type[c];
+      for (let c = this.t.fst(body); c >= 0; c = this.t.nxt(c)) {
+        const ct = this.t.ty(c);
         if (ct === T_BLOCK_COMMENT || ct === T_DOC_COMMENT) {
           blockComments.push(c);
         }
@@ -1881,10 +1889,11 @@ export class KVisitor {
       g.fence();
       g.blankLineWanted(BL_NO);
       for (let i = 0; i < toI32(blockComments.length); i++) {
+        const bc = blockComments[i];
         if (i > 0) {
           this.forced();
         }
-        this.tokN(blockComments[i]);
+        this.tokN(bc);
       }
       this.brk(UNIFIED, " ", bracePlusZeroIndent);
       this.close();
@@ -1905,7 +1914,7 @@ export class KVisitor {
     this.sync(n);
     if (this.ty(n) === N_LABEL) {
       const id = this.child(n, T_IDENTIFIER);
-      if (toI32(this.src[this.t.start[n]]) === 64) {
+      if (this.srcAt(this.t.st(n)) === 64) {
         this.tok("@");
         this.tokN(id);
       } else {
@@ -1914,7 +1923,7 @@ export class KVisitor {
       }
       return;
     }
-    if (this.t.end[n] > this.t.start[n]) {
+    if (this.t.en(n) > this.t.st(n)) {
       this.tokN(n);
     }
   }
@@ -1947,11 +1956,12 @@ export class KVisitor {
       this.brk(breakType, "", this.ZERO);
     }
     for (let i = 0; i < toI32(list.length); i++) {
+      const x = list[i];
       if (i > 0) {
         this.tok(",");
         this.brk(breakType, " ", this.ZERO);
       }
-      this.visit(list[i]);
+      this.visit(x);
     }
     if (hasTrailingComma) {
       this.tok(",");
@@ -2040,7 +2050,14 @@ export class KVisitor {
       current = this.binaryLeft(current);
     }
     kReverse(parts);
-    const leftMost = parts[0];
+    let leftMost = -1;
+    if (parts.length > 0) {
+      leftMost = parts[0];
+    } else {
+      // The old read of parts[0] panicked here.
+      fault();
+      return;
+    }
     this.visit(this.binaryLeft(leftMost));
     for (let i = 0; i < toI32(parts.length); i++) {
       const le = parts[i];
@@ -2075,18 +2092,18 @@ export class KVisitor {
 
   hasLineBreakingCommentBefore(e: i32): boolean {
     const t = this.t;
-    let prev = t.prev[e];
-    while (prev >= 0 && t.type[prev] === T_WHITE_SPACE) {
-      prev = t.prev[prev];
+    let prev = t.prv(e);
+    while (prev >= 0 && t.ty(prev) === T_WHITE_SPACE) {
+      prev = t.prv(prev);
     }
-    if (prev < 0 || !kIsComment(t.type[prev])) {
+    if (prev < 0 || !kIsComment(t.ty(prev))) {
       return false;
     }
-    if (t.type[prev] === T_EOL_COMMENT) {
+    if (t.ty(prev) === T_EOL_COMMENT) {
       return true;
     }
-    const before = t.prev[prev];
-    return before >= 0 && t.type[before] === T_WHITE_SPACE && this.containsNewline(before);
+    const before = t.prv(prev);
+    return before >= 0 && t.ty(before) === T_WHITE_SPACE && this.containsNewline(before);
   }
 
   visitPostfixExpression(n: i32): void {
@@ -2097,7 +2114,7 @@ export class KVisitor {
     this.visit(base);
     if (this.ty(base) === N_POSTFIX_EXPRESSION) {
       const bop = this.child(base, N_OPERATION_REFERENCE);
-      if (this.src[this.t.end[bop] - 1] === this.src[this.t.start[opRef]]) {
+      if (this.srcAt(sub32(this.t.en(bop), 1)) === this.srcAt(this.t.st(opRef))) {
         this.space();
       }
     }
@@ -2113,7 +2130,7 @@ export class KVisitor {
     this.tokN(opRef);
     if (this.ty(base) === N_PREFIX_EXPRESSION) {
       const bop = this.child(base, N_OPERATION_REFERENCE);
-      if (this.src[this.t.end[opRef] - 1] === this.src[this.t.start[bop]]) {
+      if (this.srcAt(sub32(this.t.en(opRef), 1)) === this.srcAt(this.t.st(bop))) {
         this.space();
       }
     }
@@ -2126,11 +2143,11 @@ export class KVisitor {
       return false;
     }
     const t = this.t;
-    let prev = t.prev[e];
-    while (prev >= 0 && t.type[prev] === T_WHITE_SPACE) {
-      prev = t.prev[prev];
+    let prev = t.prv(e);
+    while (prev >= 0 && t.ty(prev) === T_WHITE_SPACE) {
+      prev = t.prv(prev);
     }
-    if (prev >= 0 && t.type[prev] === T_EOL_COMMENT) {
+    if (prev >= 0 && t.ty(prev) === T_EOL_COMMENT) {
       return false;
     }
     let carry = e;
@@ -2185,7 +2202,14 @@ export class KVisitor {
 
   visitChainedScopingFunction(e: i32, emitLeadingBreak: boolean): void {
     const parts = this.breakIntoParts(e);
-    const root = parts[0];
+    let root = -1;
+    if (parts.length > 0) {
+      root = parts[0];
+    } else {
+      // The old read of parts[0] panicked here.
+      fault();
+      return;
+    }
     const forceBreakBeforeChain = this.isMultilineScopingFunction(root);
     this.visitLambdaOrScopingFunction(root, emitLeadingBreak);
     // The break before each selector is outside its block, at the level of
@@ -2236,8 +2260,8 @@ export class KVisitor {
 
   hasSourceNewlineInLambdaBody(lambda: i32): boolean {
     const fl = this.child(lambda, N_FUNCTION_LITERAL);
-    for (let c = this.t.first[fl]; c >= 0; c = this.t.next[c]) {
-      if (this.t.type[c] === T_WHITE_SPACE && this.containsNewline(c)) {
+    for (let c = this.t.fst(fl); c >= 0; c = this.t.nxt(c)) {
+      if (this.t.ty(c) === T_WHITE_SPACE && this.containsNewline(c)) {
         return true;
       }
     }
@@ -2282,8 +2306,7 @@ export class KVisitor {
       if (i > 0) {
         this.tok(".");
       }
-      const id = this.t.first[names[i]];
-      this.tokN(id);
+      this.tokN(this.t.fst(atI32(names, i)));
     }
     this.pop();
     this.g.guessToken(";");
@@ -2295,8 +2318,8 @@ export class KVisitor {
       return;
     }
     if (this.ty(e) === N_DOT_QUALIFIED_EXPRESSION) {
-      for (let c = this.t.first[e]; c >= 0; c = this.t.next[c]) {
-        if (this.t.leaf[c] === 0) {
+      for (let c = this.t.fst(e); c >= 0; c = this.t.nxt(c)) {
+        if (this.t.lf(c) === 0) {
           this.collectNames(c, out);
         }
       }
@@ -2348,8 +2371,8 @@ export class KVisitor {
   visitModifierList(n: i32): void {
     this.sync(n);
     let onlyAnnotationsSoFar = true;
-    for (let c = this.t.first[n]; c >= 0; c = this.t.next[c]) {
-      const ct = this.t.type[c];
+    for (let c = this.t.fst(n); c >= 0; c = this.t.nxt(c)) {
+      const ct = this.t.ty(c);
       if (ct === T_WHITE_SPACE) {
         continue;
       }
@@ -2379,8 +2402,8 @@ export class KVisitor {
     this.open(this.ZERO);
     // topLevelAnnotations: the `@[A B]` groups and the `@C` entries, in order.
     let first = true;
-    for (let c = this.t.first[n]; c >= 0; c = this.t.next[c]) {
-      const ct = this.t.type[c];
+    for (let c = this.t.fst(n); c >= 0; c = this.t.nxt(c)) {
+      const ct = this.t.ty(c);
       if (ct === N_ANNOTATION_ENTRY || ct === N_ANNOTATION) {
         if (!first) {
           this.brk(UNIFIED, " ", this.ZERO);
@@ -2391,8 +2414,8 @@ export class KVisitor {
     }
     this.close();
     const bt = this.ty(base);
-    const p = this.t.parent[n];
-    if ((bt === N_BINARY_EXPRESSION || bt === N_BINARY_WITH_TYPE) && p >= 0 && this.t.type[p] === N_BLOCK) {
+    const p = this.t.par(n);
+    if ((bt === N_BINARY_EXPRESSION || bt === N_BINARY_WITH_TYPE) && p >= 0 && this.t.ty(p) === N_BLOCK) {
       this.forced();
     } else if (bt === N_LAMBDA_EXPRESSION) {
       this.space();
@@ -2419,8 +2442,8 @@ export class KVisitor {
     this.open(this.ZERO);
     this.brk(UNIFIED, "", this.ZERO);
     let first = true;
-    for (let c = this.t.first[n]; c >= 0; c = this.t.next[c]) {
-      if (this.t.type[c] !== N_ANNOTATION_ENTRY) {
+    for (let c = this.t.fst(n); c >= 0; c = this.t.nxt(c)) {
+      if (this.t.ty(c) !== N_ANNOTATION_ENTRY) {
         continue;
       }
       if (!first) {
@@ -2463,13 +2486,13 @@ export class KVisitor {
     this.emitKeywordWithCondition("when", this.whenSubject(n), true);
     this.space();
     this.g.token("{", true, this.blockIndent, this.blockIndent);
-    let index = 0;
-    for (let e = this.t.first[n]; e >= 0; e = this.t.next[e]) {
-      if (this.t.type[e] !== N_WHEN_ENTRY) {
+    let firstEntry = true;
+    for (let e = this.t.fst(n); e >= 0; e = this.t.nxt(e)) {
+      if (this.t.ty(e) !== N_WHEN_ENTRY) {
         continue;
       }
       this.open(this.blockIndent);
-      if (index !== 0) {
+      if (!firstEntry) {
         this.g.blankLineWanted(BL_PRESERVE);
       }
       this.forced();
@@ -2478,13 +2501,13 @@ export class KVisitor {
         this.tok("else");
       } else {
         let last = -1;
-        for (let c = this.t.first[e]; c >= 0; c = this.t.next[c]) {
-          if (kIsWhenCondition(this.t.type[c])) {
+        for (let c = this.t.fst(e); c >= 0; c = this.t.nxt(c)) {
+          if (kIsWhenCondition(this.t.ty(c))) {
             last = c;
           }
         }
-        for (let c = this.t.first[e]; c >= 0; c = this.t.next[c]) {
-          if (!kIsWhenCondition(this.t.type[c])) {
+        for (let c = this.t.fst(e); c >= 0; c = this.t.nxt(c)) {
+          if (!kIsWhenCondition(this.t.ty(c))) {
             continue;
           }
           this.visit(c);
@@ -2521,7 +2544,7 @@ export class KVisitor {
       this.g.guessToken(";");
       this.close();
       this.forced();
-      index++;
+      firstEntry = false;
     }
     this.tok("}");
     this.close();
@@ -2624,11 +2647,11 @@ export class KVisitor {
     const cc = this.child(n, T_COLONCOLON);
     let recv = -1;
     let quest = false;
-    for (let c = this.t.first[n]; c >= 0 && c !== cc; c = this.t.next[c]) {
-      if (recv < 0 && kIsExpr(this.t.type[c])) {
+    for (let c = this.t.fst(n); c >= 0 && c !== cc; c = this.t.nxt(c)) {
+      if (recv < 0 && kIsExpr(this.t.ty(c))) {
         recv = c;
       }
-      if (this.t.type[c] === T_QUEST) {
+      if (this.t.ty(c) === T_QUEST) {
         quest = true;
       }
     }
@@ -2654,8 +2677,8 @@ export class KVisitor {
     if (!openBefore) {
       this.open(this.ZERO);
     }
-    const p = this.t.parent[n];
-    const pt = p >= 0 ? this.t.type[p] : -1;
+    const p = this.t.par(n);
+    const pt = p >= 0 ? this.t.ty(p) : -1;
     if (pt === N_VALUE_ARGUMENT || pt === N_PARENTHESIZED || kIsContainerNode(pt)) {
       this.brk(UNIFIED, " ", this.expressionBreakIndent);
     } else {
@@ -2724,8 +2747,8 @@ export class KVisitor {
   formatFile(n: i32, isFile: boolean): void {
     const t = this.t;
     let prev = -1;
-    for (let c = t.first[n]; c >= 0; c = t.next[c]) {
-      if ((!isFile && !kIsPsiChild(t, c)) || this.isBlank(c) || kIsComment(t.type[c])) {
+    for (let c = t.fst(n); c >= 0; c = t.nxt(c)) {
+      if ((!isFile && !kIsPsiChild(t, c)) || this.isBlank(c) || kIsComment(t.ty(c))) {
         continue;
       }
       this.forced();
@@ -2743,15 +2766,15 @@ export class KVisitor {
     }
     // Context receivers on a top-level function parse as a script
     // initializer of their own, kept next to the function.
-    if (t.type[prev] === N_SCRIPT_INITIALIZER) {
-      const a = t.first[prev];
-      const b = a >= 0 ? t.first[a] : -1;
-      const d = b >= 0 ? t.first[b] : -1;
+    if (t.ty(prev) === N_SCRIPT_INITIALIZER) {
+      const a = t.fst(prev);
+      const b = a >= 0 ? t.fst(a) : -1;
+      const d = b >= 0 ? t.fst(b) : -1;
       if (d >= 0 && this.textIs(d, "context")) {
         return BL_NO;
       }
     }
-    if (t.type[prev] === N_PROPERTY && t.type[curr] === N_PROPERTY) {
+    if (t.ty(prev) === N_PROPERTY && t.ty(curr) === N_PROPERTY) {
       return BL_PRESERVE;
     }
     return BL_YES;
@@ -2782,7 +2805,7 @@ export class KVisitor {
   // ---- PSI accessors ---------------------------------------------------------
 
   ty(n: i32): i32 {
-    return n >= 0 ? this.t.type[n] : -1;
+    return n >= 0 ? this.t.ty(n) : -1;
   }
 
   /** The first child of type `type`, or -1. */
@@ -2790,8 +2813,8 @@ export class KVisitor {
     if (n < 0) {
       return -1;
     }
-    for (let c = this.t.first[n]; c >= 0; c = this.t.next[c]) {
-      if (this.t.type[c] === type) {
+    for (let c = this.t.fst(n); c >= 0; c = this.t.nxt(c)) {
+      if (this.t.ty(c) === type) {
         return c;
       }
     }
@@ -2803,8 +2826,8 @@ export class KVisitor {
     if (c < 0) {
       return -1;
     }
-    for (let d = this.t.next[c]; d >= 0; d = this.t.next[d]) {
-      if (this.t.type[d] === type) {
+    for (let d = this.t.nxt(c); d >= 0; d = this.t.nxt(d)) {
+      if (this.t.ty(d) === type) {
         return d;
       }
     }
@@ -2816,8 +2839,8 @@ export class KVisitor {
     if (n < 0) {
       return -1;
     }
-    for (let c = this.t.first[n]; c >= 0; c = this.t.next[c]) {
-      if (kIsExpr(this.t.type[c])) {
+    for (let c = this.t.fst(n); c >= 0; c = this.t.nxt(c)) {
+      if (kIsExpr(this.t.ty(c))) {
         return c;
       }
     }
@@ -2829,8 +2852,8 @@ export class KVisitor {
     if (c < 0) {
       return -1;
     }
-    for (let d = this.t.next[c]; d >= 0; d = this.t.next[d]) {
-      if (kIsExpr(this.t.type[d])) {
+    for (let d = this.t.nxt(c); d >= 0; d = this.t.nxt(d)) {
+      if (kIsExpr(this.t.ty(d))) {
         return d;
       }
     }
@@ -2853,8 +2876,8 @@ export class KVisitor {
     if (n < 0) {
       return l;
     }
-    for (let c = this.t.first[n]; c >= 0; c = this.t.next[c]) {
-      if (this.t.type[c] === type) {
+    for (let c = this.t.fst(n); c >= 0; c = this.t.nxt(c)) {
+      if (this.t.ty(c) === type) {
         l.push(c);
       }
     }
@@ -2864,8 +2887,8 @@ export class KVisitor {
   /** The expression children (a scratch list; pop it). */
   exprKids(n: i32): i32[] {
     const l = this.push();
-    for (let c = this.t.first[n]; c >= 0; c = this.t.next[c]) {
-      if (kIsExpr(this.t.type[c])) {
+    for (let c = this.t.fst(n); c >= 0; c = this.t.nxt(c)) {
+      if (kIsExpr(this.t.ty(c))) {
         l.push(c);
       }
     }
@@ -2878,8 +2901,8 @@ export class KVisitor {
 
   superTypeEntries(n: i32): i32[] {
     const l = this.push();
-    for (let c = this.t.first[n]; c >= 0; c = this.t.next[c]) {
-      const ct = this.t.type[c];
+    for (let c = this.t.fst(n); c >= 0; c = this.t.nxt(c)) {
+      const ct = this.t.ty(c);
       if (ct === N_SUPER_TYPE_ENTRY || ct === N_SUPER_TYPE_CALL_ENTRY || ct === N_DELEGATED_SUPER_TYPE_ENTRY) {
         l.push(c);
       }
@@ -2893,7 +2916,7 @@ export class KVisitor {
     if (n < 0) {
       return l;
     }
-    for (let c = this.t.first[n]; c >= 0; c = this.t.next[c]) {
+    for (let c = this.t.fst(n); c >= 0; c = this.t.nxt(c)) {
       if (kIsPsiChild(this.t, c)) {
         l.push(c);
       }
@@ -2928,13 +2951,13 @@ export class KVisitor {
   /** The type of the operation reference's token. */
   opToken(n: i32): i32 {
     const r = this.child(n, N_OPERATION_REFERENCE);
-    return r >= 0 && this.t.first[r] >= 0 ? this.t.type[this.t.first[r]] : -1;
+    return r >= 0 && this.t.fst(r) >= 0 ? this.t.ty(this.t.fst(r)) : -1;
   }
 
   binaryLeft(n: i32): i32 {
     const r = this.child(n, N_OPERATION_REFERENCE);
-    for (let c = this.t.prev[r]; c >= 0; c = this.t.prev[c]) {
-      if (kIsExpr(this.t.type[c])) {
+    for (let c = this.t.prv(r); c >= 0; c = this.t.prv(c)) {
+      if (kIsExpr(this.t.ty(c))) {
         return c;
       }
     }
@@ -2950,8 +2973,8 @@ export class KVisitor {
     if (lp < 0) {
       return -1;
     }
-    for (let c = this.t.next[lp]; c >= 0; c = this.t.next[c]) {
-      const ct = this.t.type[c];
+    for (let c = this.t.nxt(lp); c >= 0; c = this.t.nxt(c)) {
+      const ct = this.t.ty(c);
       if (ct === T_RPAR) {
         return -1;
       }
@@ -2963,8 +2986,8 @@ export class KVisitor {
   }
 
   valOrVar(n: i32): i32 {
-    for (let c = this.t.first[n]; c >= 0; c = this.t.next[c]) {
-      const ct = this.t.type[c];
+    for (let c = this.t.fst(n); c >= 0; c = this.t.nxt(c)) {
+      const ct = this.t.ty(c);
       if (ct === T_VAL_KEYWORD || ct === T_VAR_KEYWORD) {
         return c;
       }
@@ -2974,8 +2997,8 @@ export class KVisitor {
 
   /** The receiver type: the first type reference before `:` (and, for functions, before `(`). */
   receiverTypeRef(n: i32, fun: boolean): i32 {
-    for (let c = this.t.first[n]; c >= 0; c = this.t.next[c]) {
-      const ct = this.t.type[c];
+    for (let c = this.t.fst(n); c >= 0; c = this.t.nxt(c)) {
+      const ct = this.t.ty(c);
       if (ct === T_COLON || (fun && ct === T_LPAR)) {
         return -1;
       }
@@ -3010,18 +3033,18 @@ export class KVisitor {
     if (lp < 0 || this.child(list, T_RPAR) < 0) {
       return false;
     }
-    let c = this.t.next[lp];
-    while (c >= 0 && this.t.type[c] === T_WHITE_SPACE) {
-      c = this.t.next[c];
+    let c = this.t.nxt(lp);
+    while (c >= 0 && this.t.ty(c) === T_WHITE_SPACE) {
+      c = this.t.nxt(c);
     }
-    return c >= 0 && this.t.type[c] === T_RPAR;
+    return c >= 0 && this.t.ty(c) === T_RPAR;
   }
 
   /** getTrailingCommaByClosingElement of the list's closing `close` token. */
   trailingCommaBefore(list: i32, close: i32): boolean {
     let last = -1;
-    for (let c = this.t.first[list]; c >= 0; c = this.t.next[c]) {
-      if (this.t.type[c] === close) {
+    for (let c = this.t.fst(list); c >= 0; c = this.t.nxt(c)) {
+      if (this.t.ty(c) === close) {
         last = c;
       }
     }
@@ -3030,64 +3053,103 @@ export class KVisitor {
 
   /** Whether the sibling before `c`, past whitespace and comments, is a comma. */
   prevIsComma(c: i32): boolean {
-    let p = this.t.prev[c];
-    while (p >= 0 && (this.t.type[p] === T_WHITE_SPACE || kIsComment(this.t.type[p]))) {
-      p = this.t.prev[p];
+    let p = this.t.prv(c);
+    while (p >= 0 && (this.t.ty(p) === T_WHITE_SPACE || kIsComment(this.t.ty(p)))) {
+      p = this.t.prv(p);
     }
-    return p >= 0 && this.t.type[p] === T_COMMA;
+    return p >= 0 && this.t.ty(p) === T_COMMA;
   }
 
   /** KtParameterList.getTrailingComma. */
   trailingCommaOfParams(pl: i32): boolean {
-    const p = this.t.parent[pl];
-    if (p >= 0 && this.t.type[p] === N_FUNCTION_LITERAL) {
-      let last = this.t.last[pl];
-      if (last >= 0 && kIsComment(this.t.type[last])) {
-        last = this.t.prev[last];
-        while (last >= 0 && (this.t.type[last] === T_WHITE_SPACE || kIsComment(this.t.type[last]))) {
-          last = this.t.prev[last];
+    const p = this.t.par(pl);
+    if (p >= 0 && this.t.ty(p) === N_FUNCTION_LITERAL) {
+      let last = this.t.lst(pl);
+      if (last >= 0 && kIsComment(this.t.ty(last))) {
+        last = this.t.prv(last);
+        while (last >= 0 && (this.t.ty(last) === T_WHITE_SPACE || kIsComment(this.t.ty(last)))) {
+          last = this.t.prv(last);
         }
       }
-      return last >= 0 && this.t.type[last] === T_COMMA;
+      return last >= 0 && this.t.ty(last) === T_COMMA;
     }
     return this.trailingCommaBefore(pl, T_RPAR);
   }
 
   // ---- Text ------------------------------------------------------------------
 
+  /** src[i] of a node's offset; one outside the text faults and answers -1. */
+  srcAt(i: i32): i32 {
+    const src = this.src;
+    if (i >= 0 && i < src.length) {
+      return toI32(src[i]);
+    }
+    fault();
+    return -1;
+  }
+
   textOf(n: i32): string {
-    return String.fromBytes(this.src, this.t.start[n], this.t.end[n]);
+    return bytesText(this.src, this.t.st(n), this.t.en(n));
   }
 
   textIs(n: i32, s: string): boolean {
-    const a = this.t.start[n];
+    const a = this.t.st(n);
     const k = toI32(s.length);
-    if (this.t.end[n] - a !== k) {
+    if (toI64(this.t.en(n)) - toI64(a) !== toI64(k)) {
       return false;
     }
+    const src = this.src;
+    let j = a;
     for (let i = 0; i < k; i++) {
-      if (toI32(this.src[a + i]) !== s.charCodeAt(i)) {
+      if (j < 0 || j >= src.length) {
+        fault();
         return false;
       }
+      if (toI32(src[j]) !== s.charCodeAt(i)) {
+        return false;
+      }
+      j++;
     }
     return true;
   }
 
   /** The node's text length in UTF-16 units. */
   textLen(n: i32): i32 {
+    const src = this.src;
+    const e = this.t.en(n);
     let len = 0;
-    for (let i = this.t.start[n]; i < this.t.end[n]; i++) {
-      const c = toI32(this.src[i]);
-      if (c < 0x80 || c >= 0xc0) {
-        len += c >= 0xf0 ? 2 : 1;
+    for (let i = this.t.st(n); i < e; i++) {
+      if (i < 0 || i >= src.length) {
+        fault();
+        return 0;
+      }
+      const c = toI32(src[i]);
+      if (c >= 0xf0) {
+        if (len > 2147483645) {
+          fault();
+          return 0;
+        }
+        len = len + 2;
+      } else if (c < 0x80 || c >= 0xc0) {
+        if (len > 2147483646) {
+          fault();
+          return 0;
+        }
+        len = len + 1;
       }
     }
     return len;
   }
 
   isBlank(n: i32): boolean {
-    for (let i = this.t.start[n]; i < this.t.end[n]; i++) {
-      const c = toI32(this.src[i]);
+    const src = this.src;
+    const e = this.t.en(n);
+    for (let i = this.t.st(n); i < e; i++) {
+      if (i < 0 || i >= src.length) {
+        fault();
+        return false;
+      }
+      const c = toI32(src[i]);
       if (c !== 32 && c !== 9 && c !== 10 && c !== 13 && c !== 12 && c !== 11) {
         return false;
       }
@@ -3096,8 +3158,14 @@ export class KVisitor {
   }
 
   containsNewline(n: i32): boolean {
-    for (let i = this.t.start[n]; i < this.t.end[n]; i++) {
-      if (toI32(this.src[i]) === 10) {
+    const src = this.src;
+    const e = this.t.en(n);
+    for (let i = this.t.st(n); i < e; i++) {
+      if (i < 0 || i >= src.length) {
+        fault();
+        return false;
+      }
+      if (toI32(src[i]) === 10) {
         return true;
       }
     }
@@ -3106,22 +3174,43 @@ export class KVisitor {
 
   /** Whether the node's text starts with an uppercase letter (Char.isUpperCase). */
   firstIsUpper(n: i32): boolean {
-    if (n < 0 || this.t.end[n] <= this.t.start[n]) {
+    if (n < 0 || this.t.en(n) <= this.t.st(n)) {
       return false;
     }
-    const a = this.t.start[n];
-    const c = toI32(this.src[a]);
+    const a = this.t.st(n);
+    const c = this.srcAt(a);
     if (c < 0x80) {
       return c >= 65 && c <= 90;
     }
-    return kIsUpperCodePoint(kDecodeAt(this.src, a, this.t.end[n]));
+    return kIsUpperCodePoint(kDecodeAt(this.src, a, this.t.en(n)));
   }
 }
+
+/** xs[i] += 1 for a scratch list's slot; one out of range faults. */
+const kvInc = (xs: i32[], i: i32): void => {
+  if (i >= 0 && i < xs.length) {
+    const v = xs[i];
+    if (v < 2147483647) {
+      xs[i] = v + 1;
+      return;
+    }
+  }
+  fault();
+};
+
+/** xs[i] = v for a scratch list's slot; one out of range faults. */
+const kvSet = (xs: i32[], i: i32, v: i32): void => {
+  if (i >= 0 && i < xs.length) {
+    xs[i] = v;
+  } else {
+    fault();
+  }
+};
 
 const kReverse = (a: i32[]): void => {
   let i = 0;
   let j = toI32(a.length) - 1;
-  while (i < j) {
+  while (i < j && i >= 0 && i < a.length && j >= 0 && j < a.length) {
     const x = a[i];
     a[i] = a[j];
     a[j] = x;
@@ -3130,21 +3219,38 @@ const kReverse = (a: i32[]): void => {
   }
 };
 
-/** The code point at `a`. */
+/** The code point at `a`, a lead byte of `src[a, e)`. */
 const kDecodeAt = (src: u8[], a: i32, e: i32): i32 => {
+  if (a < 0 || a >= src.length) {
+    fault();
+    return 0;
+  }
   const c = toI32(src[a]);
-  if (c < 0xe0 && a + 1 < e) {
-    return ((c & 0x1f) << 6) | (toI32(src[a + 1]) & 0x3f);
+  // a + k < e, so the sum is exact, and src holds e bytes.
+  const a1 = toI32(toU32(a) + toU32(1));
+  const a2 = toI32(toU32(a) + toU32(2));
+  const a3 = toI32(toU32(a) + toU32(3));
+  if (c < 0xe0 && a1 < e) {
+    if (a1 < 0 || a1 >= src.length) {
+      fault();
+      return 0;
+    }
+    return ((c & 0x1f) << 6) | (toI32(src[a1]) & 0x3f);
   }
-  if (c < 0xf0 && a + 2 < e) {
-    return ((c & 0x0f) << 12) | ((toI32(src[a + 1]) & 0x3f) << 6) | (toI32(src[a + 2]) & 0x3f);
+  if (c < 0xf0 && a2 < e) {
+    if (a1 < 0 || a2 < 0 || a2 >= src.length || a1 >= src.length) {
+      fault();
+      return 0;
+    }
+    return ((c & 0x0f) << 12) | ((toI32(src[a1]) & 0x3f) << 6) | (toI32(src[a2]) & 0x3f);
   }
-  if (a + 3 < e) {
+  if (a3 < e) {
+    if (a1 < 0 || a2 < 0 || a3 < 0 || a3 >= src.length || a2 >= src.length || a1 >= src.length) {
+      fault();
+      return 0;
+    }
     return (
-      ((c & 0x07) << 18) |
-      ((toI32(src[a + 1]) & 0x3f) << 12) |
-      ((toI32(src[a + 2]) & 0x3f) << 6) |
-      (toI32(src[a + 3]) & 0x3f)
+      ((c & 0x07) << 18) | ((toI32(src[a1]) & 0x3f) << 12) | ((toI32(src[a2]) & 0x3f) << 6) | (toI32(src[a3]) & 0x3f)
     );
   }
   return c;

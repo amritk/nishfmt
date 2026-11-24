@@ -12,7 +12,10 @@
 // RedundantSemicolonDetector, TrailingCommas and EnumEntryList (Apache
 // License 2.0, Copyright (c) Meta Platforms, Inc. and affiliates).
 
+import { bytesText, newU8s } from "../core/arr";
+import { fault } from "../core/fault";
 import { Out } from "../core/out";
+import { stableSort } from "../core/sort";
 import { KTree } from "./builder";
 import { kIsComment, kIsPsiChild } from "./input";
 import { kdocReferences } from "./kdoclinks";
@@ -113,15 +116,15 @@ export class KPasses {
   // ---- Shared ----------------------------------------------------------------
 
   text(n: i32): string {
-    return String.fromBytes(this.src, this.t.start[n], this.t.end[n]);
+    return bytesText(this.src, this.t.st(n), this.t.en(n));
   }
 
   child(n: i32, type: i32): i32 {
     if (n < 0) {
       return -1;
     }
-    for (let c = this.t.first[n]; c >= 0; c = this.t.next[c]) {
-      if (this.t.type[c] === type) {
+    for (let c = this.t.fst(n); c >= 0; c = this.t.nxt(c)) {
+      if (this.t.ty(c) === type) {
         return c;
       }
     }
@@ -129,29 +132,35 @@ export class KPasses {
   }
 
   isWsOrComment(c: i32): boolean {
-    const ty = this.t.type[c];
+    const ty = this.t.ty(c);
     return ty === T_WHITE_SPACE || kIsComment(ty);
   }
 
   prevConcrete(c: i32): i32 {
-    let p = this.t.prev[c];
+    let p = this.t.prv(c);
     while (p >= 0 && this.isWsOrComment(p)) {
-      p = this.t.prev[p];
+      p = this.t.prv(p);
     }
     return p;
   }
 
   nextConcrete(c: i32): i32 {
-    let p = this.t.next[c];
+    let p = this.t.nxt(c);
     while (p >= 0 && this.isWsOrComment(p)) {
-      p = this.t.next[p];
+      p = this.t.nxt(p);
     }
     return p;
   }
 
   hasNewline(n: i32): boolean {
-    for (let i = this.t.start[n]; i < this.t.end[n]; i++) {
-      if (toI32(this.src[i]) === 10) {
+    const src = this.src;
+    const e = this.t.en(n);
+    for (let i = this.t.st(n); i < e; i++) {
+      if (i < 0 || i >= src.length) {
+        fault();
+        return false;
+      }
+      if (toI32(src[i]) === 10) {
         return true;
       }
     }
@@ -175,19 +184,44 @@ export class KPasses {
       order.push(i);
     }
     const ends = this.eEnd;
-    order.sort((x: i32, y: i32): i32 => (ends[y] !== ends[x] ? ends[y] - ends[x] : x - y));
+    stableSort(order, (x: i32, y: i32): i32 => {
+      const es = ends;
+      if (x < 0 || x >= es.length || y < 0 || y >= es.length) {
+        fault();
+        return 0;
+      }
+      const ex = es[x];
+      const ey = es[y];
+      if (ey !== ex) {
+        return ey > ex ? 1 : -1;
+      }
+      return x < y ? -1 : x > y ? 1 : 0;
+    });
     // Edits never overlap here; write the text front to back from the reversed order.
+    const starts = this.eStart;
+    const texts = this.eText;
+    const src = this.src;
     out.n = 0;
     let pos = 0;
     for (let q = k - 1; q >= 0; q--) {
-      const i = order[q];
-      const a = this.eStart[i];
-      if (a > pos) {
-        out.range(this.src, pos, a);
+      if (q >= order.length) {
+        fault();
+        return true;
       }
-      out.str(this.eText[i]);
-      if (this.eEnd[i] > pos) {
-        pos = this.eEnd[i];
+      const i = order[q];
+      if (i < 0 || i >= starts.length || i >= ends.length || i >= texts.length) {
+        fault();
+        return true;
+      }
+      const a = starts[i];
+      const e = ends[i];
+      const s = texts[i];
+      if (a > pos) {
+        out.range(src, pos, a);
+      }
+      out.str(s);
+      if (e > pos) {
+        pos = e;
       }
     }
     if (pos < this.n) {
@@ -208,8 +242,8 @@ export class KPasses {
   }
 
   importRef(imp: i32): i32 {
-    for (let c = this.t.first[imp]; c >= 0; c = this.t.next[c]) {
-      const ty = this.t.type[c];
+    for (let c = this.t.fst(imp); c >= 0; c = this.t.nxt(c)) {
+      const ty = this.t.ty(c);
       if (ty === N_DOT_QUALIFIED_EXPRESSION || ty === N_REFERENCE_EXPRESSION) {
         return c;
       }
@@ -218,10 +252,10 @@ export class KPasses {
   }
 
   collectSegments(e: i32, out: string[]): void {
-    const ty = this.t.type[e];
+    const ty = this.t.ty(e);
     if (ty === N_DOT_QUALIFIED_EXPRESSION) {
-      for (let c = this.t.first[e]; c >= 0; c = this.t.next[c]) {
-        if (this.t.leaf[c] === 0) {
+      for (let c = this.t.fst(e); c >= 0; c = this.t.nxt(c)) {
+        if (this.t.lf(c) === 0) {
           this.collectSegments(c, out);
         }
       }
@@ -240,8 +274,8 @@ export class KPasses {
     const comments: i32[] = [];
     const imports: i32[] = [];
     const keys: string[] = [];
-    for (let c = this.t.first[il]; c >= 0; c = this.t.next[c]) {
-      const ty = this.t.type[c];
+    for (let c = this.t.fst(il); c >= 0; c = this.t.nxt(c)) {
+      const ty = this.t.ty(c);
       if (kIsComment(ty)) {
         comments.push(c);
       } else if (ty === N_IMPORT_DIRECTIVE) {
@@ -262,10 +296,7 @@ export class KPasses {
     for (let i = 0; i < toI32(imports.length); i++) {
       order.push(i);
     }
-    order.sort((x: i32, y: i32): i32 => {
-      const c = kpCompareUtf16(keys[x], keys[y]);
-      return c !== 0 ? c : x - y;
-    });
+    stableSort(order, (x: i32, y: i32): i32 => kpCompareKeys(keys, x, y));
     const parts: string[] = [];
     for (let i = 0; i < toI32(comments.length); i++) {
       parts.push(this.text(comments[i]));
@@ -273,6 +304,10 @@ export class KPasses {
     let last = "";
     for (let q = 0; q < toI32(order.length); q++) {
       const i = order[q];
+      if (i < 0 || i >= keys.length || i >= imports.length) {
+        fault();
+        return false;
+      }
       if (q > 0 && keys[i] === last) {
         continue;
       }
@@ -281,10 +316,10 @@ export class KPasses {
     }
     let body = parts.join("\n");
     const nl = kpLastIndexOf(body, 10);
-    if (nl >= 0 && body.indexOf("//", nl + 1) >= 0) {
+    if (nl >= 0 && nl < toI32(body.length) && body.indexOf("//", nl + 1) >= 0) {
       body = `${body}\n`;
     }
-    this.edit(this.t.start[il], this.t.end[il], body);
+    this.edit(this.t.st(il), this.t.en(il), body);
     const changed = this.apply(out);
     return changed && !(out.n === this.n && kpSameBytes(out.buf, this.src, this.n));
   }
@@ -298,9 +333,9 @@ export class KPasses {
     this.scan(root, used, semis, false);
     for (let i = 0; i < toI32(semis.length); i++) {
       const s = semis[i];
-      const nx = this.t.next[s];
-      const keepLine = nx >= 0 && this.t.type[nx] === T_WHITE_SPACE && this.hasNewline(nx);
-      this.edit(this.t.start[s], this.t.end[s], keepLine ? "" : "\n");
+      const nx = this.t.nxt(s);
+      const keepLine = nx >= 0 && this.t.ty(nx) === T_WHITE_SPACE && this.hasNewline(nx);
+      this.edit(this.t.st(s), this.t.en(s), keepLine ? "" : "\n");
     }
     this.redundantImports(root, used);
     this.dropTrailingCommas(root, false);
@@ -319,9 +354,9 @@ export class KPasses {
     this.detectTrailingCommas(root, commas);
     for (let i = 0; i < toI32(commas.length); i++) {
       const c = commas[i];
-      this.edit(this.t.start[c], this.t.end[c], "");
+      this.edit(this.t.st(c), this.t.en(c), "");
       if (mark) {
-        this.removed[c] = 1;
+        this.markRemoved(c);
       }
     }
   }
@@ -333,17 +368,17 @@ export class KPasses {
    */
   detectTrailingCommas(n: i32, out: i32[]): void {
     const t = this.t;
-    if (t.type[n] === T_COMMA) {
-      const p = t.parent[n];
+    if (t.ty(n) === T_COMMA) {
+      const p = t.par(n);
       if (p >= 0 && this.managedTrailingComma(p) === n) {
         out.push(n);
       }
       return;
     }
-    if (t.leaf[n] === 1) {
+    if (t.lf(n) === 1) {
       return;
     }
-    for (let c = t.first[n]; c >= 0; c = t.next[c]) {
+    for (let c = t.fst(n); c >= 0; c = t.nxt(c)) {
       this.detectTrailingCommas(c, out);
     }
   }
@@ -351,16 +386,16 @@ export class KPasses {
   /** TrailingCommas.extractManagedList(list)?.trailingComma: the node, or -1. */
   managedTrailingComma(list: i32): i32 {
     const t = this.t;
-    const ty = t.type[list];
+    const ty = t.ty(list);
     if (ty === N_VALUE_PARAMETER_LIST) {
-      const p = t.parent[list];
-      if (p >= 0 && t.type[p] === N_FUNCTION_LITERAL) {
+      const p = t.par(list);
+      if (p >= 0 && t.ty(p) === N_FUNCTION_LITERAL) {
         // getTrailingCommaByElementsList: the last child, or before it when that is a comment.
-        let last = t.last[list];
-        if (last >= 0 && kIsComment(t.type[last])) {
+        let last = t.lst(list);
+        if (last >= 0 && kIsComment(t.ty(last))) {
           last = this.prevConcrete(last);
         }
-        return last >= 0 && t.type[last] === T_COMMA ? last : -1;
+        return last >= 0 && t.ty(last) === T_COMMA ? last : -1;
       }
       return this.trailingCommaNode(list, T_RPAR);
     }
@@ -377,7 +412,7 @@ export class KPasses {
       return this.trailingCommaNode(list, T_ARROW);
     }
     if (ty === N_ENUM_ENTRY) {
-      const body = t.parent[list];
+      const body = t.par(list);
       return body >= 0 && this.isEnumBody(body) ? this.enumTrailingComma(body) : -1;
     }
     if (ty === N_CLASS_BODY) {
@@ -405,8 +440,14 @@ export class KPasses {
     const t = this.t;
     const il = this.child(root, N_IMPORT_LIST);
     if (il >= 0) {
-      for (let i = t.start[il]; i < t.end[il]; i++) {
-        if (toI32(this.src[i]) === 59) {
+      const src = this.src;
+      const e = t.en(il);
+      for (let i = t.st(il); i < e; i++) {
+        if (i < 0 || i >= src.length) {
+          fault();
+          return -1;
+        }
+        if (toI32(src[i]) === 59) {
           return -1;
         }
       }
@@ -417,8 +458,8 @@ export class KPasses {
     const keys: string[] = [];
     const hasImports = il >= 0 && this.child(il, N_IMPORT_DIRECTIVE) >= 0;
     if (hasImports) {
-      for (let c = t.first[il]; c >= 0; c = t.next[c]) {
-        const ty = t.type[c];
+      for (let c = t.fst(il); c >= 0; c = t.nxt(c)) {
+        const ty = t.ty(c);
         if (kIsComment(ty)) {
           comments.push(c);
         } else if (ty === N_IMPORT_DIRECTIVE) {
@@ -440,16 +481,25 @@ export class KPasses {
     for (let i = 0; i < toI32(imports.length); i++) {
       order.push(i);
     }
-    order.sort((x: i32, y: i32): i32 => {
-      const c = kpCompareUtf16(keys[x], keys[y]);
-      return c !== 0 ? c : x - y;
-    });
+    stableSort(order, (x: i32, y: i32): i32 => kpCompareKeys(keys, x, y));
     const kept: i32[] = [];
     for (let q = 0; q < toI32(order.length); q++) {
-      if (q > 0 && keys[order[q]] === keys[order[q - 1]]) {
-        continue;
+      const i = order[q];
+      if (i < 0 || i >= keys.length || i >= imports.length) {
+        fault();
+        return 0;
       }
-      kept.push(imports[order[q]]);
+      if (q > 0) {
+        const h = order[q - 1];
+        if (h < 0 || h >= keys.length) {
+          fault();
+          return 0;
+        }
+        if (keys[i] === keys[h]) {
+          continue;
+        }
+      }
+      kept.push(imports[i]);
     }
     // Uses, redundant semicolons, and which of the kept imports go.
     const used: string[] = [];
@@ -467,27 +517,34 @@ export class KPasses {
       }
       const sortedBody = parts.join("\n");
       const nl = kpLastIndexOf(sortedBody, 10);
-      const terminator = nl >= 0 && sortedBody.indexOf("//", nl + 1) >= 0;
+      const terminator = nl >= 0 && nl < toI32(sortedBody.length) && sortedBody.indexOf("//", nl + 1) >= 0;
+      // parts holds the comments, then the kept imports.
+      const base = toI32(comments.length);
       for (let i = 0; i < toI32(kept.length); i++) {
+        const j = toI32(toU32(base) + toU32(i));
+        if (i >= drop.length || j < 0 || j >= parts.length) {
+          fault();
+          return 0;
+        }
         if (drop[i] === 1) {
-          parts[toI32(comments.length) + i] = "";
+          parts[j] = "";
         }
       }
       const body = parts.join("\n") + (terminator ? "\n" : "");
       if (!this.textIs(il, body)) {
-        this.edit(t.start[il], t.end[il], body);
+        this.edit(t.st(il), t.en(il), body);
       }
     }
-    this.removed = new Array<u8>(t.n);
+    this.removed = newU8s(t.n);
     this.nlSemis = [];
     for (let i = 0; i < toI32(semis.length); i++) {
       const sm = semis[i];
-      const nx = t.next[sm];
-      const keepLine = nx >= 0 && t.type[nx] === T_WHITE_SPACE && this.hasNewline(nx);
-      this.edit(t.start[sm], t.end[sm], keepLine ? "" : "\n");
-      this.removed[sm] = 1;
+      const nx = t.nxt(sm);
+      const keepLine = nx >= 0 && t.ty(nx) === T_WHITE_SPACE && this.hasNewline(nx);
+      this.edit(t.st(sm), t.en(sm), keepLine ? "" : "\n");
+      this.markRemoved(sm);
       if (!keepLine) {
-        this.nlSemis.push(t.start[sm]);
+        this.nlSemis.push(t.st(sm));
       }
     }
     this.dropTrailingCommas(root, true);
@@ -499,27 +556,48 @@ export class KPasses {
   }
 
   textIs(n: i32, s: string): boolean {
-    const a = this.t.start[n];
+    const a = this.t.st(n);
     const k = toI32(s.length);
-    if (this.t.end[n] - a !== k) {
+    if (toI64(this.t.en(n)) - toI64(a) !== toI64(k)) {
       return false;
     }
+    const src = this.src;
+    let j = a;
     for (let i = 0; i < k; i++) {
-      if (toI32(this.src[a + i]) !== s.charCodeAt(i)) {
+      if (j < 0 || j >= src.length) {
+        fault();
         return false;
       }
+      if (toI32(src[j]) !== s.charCodeAt(i)) {
+        return false;
+      }
+      j++;
     }
     return true;
   }
 
+  /** removed[c] = 1, for a node of the tree `removed` was made for. */
+  markRemoved(c: i32): void {
+    const rm = this.removed;
+    if (c >= 0 && c < rm.length) {
+      rm[c] = 1;
+    } else {
+      fault();
+    }
+  }
+
   /** RedundantImportDetector over the imports `imps` (in order): 1 for each that goes. */
   redundantAmong(imps: i32[], used: string[]): u8[] {
-    const res = new Array<u8>(imps.length);
+    const res: u8[] = [];
     const ids: string[] = [];
-    const cand: u8[] = new Array<u8>(imps.length);
+    const cand: u8[] = [];
+    for (let i = 0; i < toI32(imps.length); i++) {
+      res.push(0);
+      cand.push(0);
+      ids.push("");
+    }
     for (let i = 0; i < toI32(imps.length); i++) {
       const c = imps[i];
-      ids.push("");
       if (this.child(c, T_MUL) >= 0 || this.importRef(c) < 0) {
         continue;
       }
@@ -527,10 +605,18 @@ export class KPasses {
       if (kpIsOperatorName(id) || kpIsComponentN(id)) {
         continue;
       }
+      if (i >= cand.length || i >= ids.length) {
+        fault();
+        return res;
+      }
       cand[i] = 1;
       ids[i] = id;
     }
     for (let i = 0; i < toI32(imps.length); i++) {
+      if (i >= cand.length || i >= ids.length) {
+        fault();
+        return res;
+      }
       if (cand[i] === 0) {
         continue;
       }
@@ -541,18 +627,28 @@ export class KPasses {
           isUsed = true;
         }
       }
-      const fq = this.fqName(imps[i]);
+      const imp = imps[i];
+      const fq = this.fqName(imp);
       const dot = kpLastIndexOf(fq, 46);
       const parent = dot >= 0 ? fq.substring(0, dot) : "";
-      const fromThisPackage = !this.lastSegmentHasDot(imps[i]) && parent === this.thisPackage;
-      const hasAlias = this.child(imps[i], N_IMPORT_ALIAS) >= 0;
+      const fromThisPackage = !this.lastSegmentHasDot(imp) && parent === this.thisPackage;
+      const hasAlias = this.child(imp, N_IMPORT_ALIAS) >= 0;
+      // count stays below j + 1, so below the length.
       let count = 0;
-      for (let j = 0; j < toI32(imps.length); j++) {
+      for (let j = 0; j < cand.length && j < ids.length; j++) {
         if (cand[j] === 1 && ids[j] === id) {
+          if (count >= cand.length) {
+            fault();
+            return res;
+          }
           count++;
         }
       }
       if (!isUsed || (fromThisPackage && !hasAlias && count <= 1)) {
+        if (i >= res.length) {
+          fault();
+          return res;
+        }
         res[i] = 1;
       }
     }
@@ -561,9 +657,9 @@ export class KPasses {
 
   scan(n: i32, used: string[], semis: i32[], skipRefs: boolean): void {
     const t = this.t;
-    const ty = t.type[n];
+    const ty = t.ty(n);
     if (ty === T_DOC_COMMENT) {
-      kdocReferences(this.src, t.start[n], t.end[n], used);
+      kdocReferences(this.src, t.st(n), t.en(n), used);
       return;
     }
     if (ty === T_SEMICOLON) {
@@ -572,7 +668,7 @@ export class KPasses {
       }
       return;
     }
-    if (t.leaf[n] === 1) {
+    if (t.lf(n) === 1) {
       return;
     }
     let skip = skipRefs;
@@ -589,13 +685,13 @@ export class KPasses {
     } else if (!skip && kpIsReferenceExpression(ty) && !this.hasPsiChildren(n)) {
       used.push(kpTrimBackticks(this.text(n)));
     }
-    for (let c = t.first[n]; c >= 0; c = t.next[c]) {
+    for (let c = t.fst(n); c >= 0; c = t.nxt(c)) {
       this.scan(c, used, semis, skip);
     }
   }
 
   hasPsiChildren(n: i32): boolean {
-    for (let c = this.t.first[n]; c >= 0; c = this.t.next[c]) {
+    for (let c = this.t.fst(n); c >= 0; c = this.t.nxt(c)) {
       if (kIsPsiChild(this.t, c)) {
         return true;
       }
@@ -605,7 +701,7 @@ export class KPasses {
 
   lastPsiChild(n: i32): i32 {
     let last = -1;
-    for (let c = this.t.first[n]; c >= 0; c = this.t.next[c]) {
+    for (let c = this.t.fst(n); c >= 0; c = this.t.nxt(c)) {
       if (kIsPsiChild(this.t, c)) {
         last = c;
       }
@@ -615,8 +711,8 @@ export class KPasses {
 
   isExtraSemicolon(s: i32): boolean {
     const t = this.t;
-    const parent = t.parent[s];
-    const pt = t.type[parent];
+    const parent = t.par(s);
+    const pt = t.ty(parent);
     if (
       pt === N_STRING_TEMPLATE ||
       pt === N_LITERAL_STRING_TEMPLATE_ENTRY ||
@@ -627,18 +723,18 @@ export class KPasses {
       return false;
     }
     if (pt === N_ENUM_ENTRY) {
-      return this.lastPsiChild(t.parent[parent]) === parent;
+      return this.lastPsiChild(t.par(parent)) === parent;
     }
     const prev = this.prevConcrete(s);
     if (pt === N_CLASS_BODY) {
       if (
         prev >= 0 &&
-        t.type[prev] === N_OBJECT_DECLARATION &&
+        t.ty(prev) === N_OBJECT_DECLARATION &&
         this.child(this.child(prev, N_MODIFIER_LIST), T_COMPANION_KEYWORD) >= 0
       ) {
         if (this.child(prev, T_IDENTIFIER) < 0) {
           const nx = this.nextConcrete(s);
-          const isLast = nx < 0 || t.type[nx] === T_RBRACE;
+          const isLast = nx < 0 || t.ty(nx) === T_RBRACE;
           if (!isLast) {
             return false;
           }
@@ -650,21 +746,21 @@ export class KPasses {
       return s !== this.enumTerminatingSemicolon(parent) || !this.hasPsiChildren(parent);
     }
     const prevLeaf = this.prevLeaf(s);
-    if (prev >= 0 && (t.type[prev] === N_IF || t.type[prev] === N_WHILE) && prevLeaf >= 0) {
-      const lt = t.type[prevLeaf];
-      if ((lt === N_THEN || lt === N_ELSE || lt === N_BODY) && t.end[prevLeaf] === t.start[prevLeaf]) {
+    if (prev >= 0 && (t.ty(prev) === N_IF || t.ty(prev) === N_WHILE) && prevLeaf >= 0) {
+      const lt = t.ty(prevLeaf);
+      if ((lt === N_THEN || lt === N_ELSE || lt === N_BODY) && t.en(prevLeaf) === t.st(prevLeaf)) {
         return false;
       }
     }
     const nx = this.nextConcrete(s);
     if (nx >= 0) {
-      const nt = t.type[nx];
+      const nt = t.ty(nx);
       if (nt === N_LAMBDA_EXPRESSION) {
         return false;
       }
       if (nt === N_DOT_QUALIFIED_EXPRESSION) {
         const r = this.firstExpr(nx);
-        if (r >= 0 && t.type[r] === N_LAMBDA_EXPRESSION) {
+        if (r >= 0 && t.ty(r) === N_LAMBDA_EXPRESSION) {
           return false;
         }
       }
@@ -673,8 +769,8 @@ export class KPasses {
   }
 
   firstExpr(n: i32): i32 {
-    for (let c = this.t.first[n]; c >= 0; c = this.t.next[c]) {
-      if (kIsExpr(this.t.type[c])) {
+    for (let c = this.t.fst(n); c >= 0; c = this.t.nxt(c)) {
+      if (kIsExpr(this.t.ty(c))) {
         return c;
       }
     }
@@ -685,16 +781,16 @@ export class KPasses {
   prevLeaf(e: i32): i32 {
     let x = e;
     while (x >= 0) {
-      const p = this.t.prev[x];
+      const p = this.t.prv(x);
       if (p >= 0) {
         let y = p;
-        while (this.t.leaf[y] === 0 && this.t.last[y] >= 0) {
-          y = this.t.last[y];
+        while (this.t.lf(y) === 0 && this.t.lst(y) >= 0) {
+          y = this.t.lst(y);
         }
         return y;
       }
-      x = this.t.parent[x];
-      if (x >= 0 && this.t.parent[x] < 0) {
+      x = this.t.par(x);
+      if (x >= 0 && this.t.par(x) < 0) {
         return -1;
       }
     }
@@ -702,18 +798,16 @@ export class KPasses {
   }
 
   isEnumBody(body: i32): boolean {
-    const clazz = this.t.parent[body];
+    const clazz = this.t.par(body);
     return (
-      clazz >= 0 &&
-      this.t.type[clazz] === N_CLASS &&
-      this.child(this.child(clazz, N_MODIFIER_LIST), T_ENUM_KEYWORD) >= 0
+      clazz >= 0 && this.t.ty(clazz) === N_CLASS && this.child(this.child(clazz, N_MODIFIER_LIST), T_ENUM_KEYWORD) >= 0
     );
   }
 
   lastEnumEntry(body: i32): i32 {
     let last = -1;
-    for (let c = this.t.first[body]; c >= 0; c = this.t.next[c]) {
-      if (this.t.type[c] === N_ENUM_ENTRY) {
+    for (let c = this.t.fst(body); c >= 0; c = this.t.nxt(c)) {
+      if (this.t.ty(c) === N_ENUM_ENTRY) {
         last = c;
       }
     }
@@ -722,30 +816,38 @@ export class KPasses {
 
   /** EnumEntryList's last token of the last entry, past whitespace and comments. */
   enumLastToken(entry: i32): i32 {
-    let c = this.t.last[entry];
+    let c = this.t.lst(entry);
     while (c >= 0 && (this.isWsOrComment(c) || this.isRemoved(c))) {
-      c = this.t.prev[c];
+      c = this.t.prv(c);
     }
     return c;
   }
 
   /** Whether the combined passes drop node `c` (a semicolon or a trailing comma) before the comma pass reads the tree. */
   isRemoved(c: i32): boolean {
-    return this.removedOn && this.removed[c] === 1;
+    if (!this.removedOn) {
+      return false;
+    }
+    const rm = this.removed;
+    if (c >= 0 && c < rm.length) {
+      return rm[c] === 1;
+    }
+    fault();
+    return false;
   }
 
   enumTerminatingSemicolon(body: i32): i32 {
     const last = this.lastEnumEntry(body);
     if (last < 0) {
-      for (let c = this.t.first[body]; c >= 0; c = this.t.next[c]) {
-        if (this.t.type[c] === T_SEMICOLON && !this.isRemoved(c)) {
+      for (let c = this.t.fst(body); c >= 0; c = this.t.nxt(c)) {
+        if (this.t.ty(c) === T_SEMICOLON && !this.isRemoved(c)) {
           return c;
         }
       }
       return -1;
     }
     const tok = this.enumLastToken(last);
-    return tok >= 0 && this.t.type[tok] === T_SEMICOLON ? tok : -1;
+    return tok >= 0 && this.t.ty(tok) === T_SEMICOLON ? tok : -1;
   }
 
   enumTrailingComma(body: i32): i32 {
@@ -757,12 +859,12 @@ export class KPasses {
     if (tok < 0) {
       return -1;
     }
-    if (this.t.type[tok] === T_COMMA) {
+    if (this.t.ty(tok) === T_COMMA) {
       return tok;
     }
-    if (this.t.type[tok] === T_SEMICOLON) {
+    if (this.t.ty(tok) === T_SEMICOLON) {
       const p = this.prevConcrete(tok);
-      return p >= 0 && this.t.type[p] === T_COMMA && !this.isRemoved(p) ? p : -1;
+      return p >= 0 && this.t.ty(p) === T_COMMA && !this.isRemoved(p) ? p : -1;
     }
     return -1;
   }
@@ -775,8 +877,8 @@ export class KPasses {
     }
     const cands: i32[] = [];
     const ids: string[] = [];
-    for (let c = this.t.first[il]; c >= 0; c = this.t.next[c]) {
-      if (this.t.type[c] !== N_IMPORT_DIRECTIVE || this.child(c, T_MUL) >= 0 || this.importRef(c) < 0) {
+    for (let c = this.t.fst(il); c >= 0; c = this.t.nxt(c)) {
+      if (this.t.ty(c) !== N_IMPORT_DIRECTIVE || this.child(c, T_MUL) >= 0 || this.importRef(c) < 0) {
         continue;
       }
       const id = this.importIdentifier(c);
@@ -787,6 +889,11 @@ export class KPasses {
       ids.push(id);
     }
     for (let i = 0; i < toI32(cands.length); i++) {
+      if (i >= ids.length) {
+        fault();
+        return;
+      }
+      const cand = cands[i];
       const id = ids[i];
       let isUsed = kpIsOperatorName(id);
       for (let j = 0; j < toI32(used.length) && !isUsed; j++) {
@@ -794,20 +901,25 @@ export class KPasses {
           isUsed = true;
         }
       }
-      const fq = this.fqName(cands[i]);
+      const fq = this.fqName(cand);
       const dot = kpLastIndexOf(fq, 46);
       const parent = dot >= 0 ? fq.substring(0, dot) : "";
-      const segsHaveDot = this.lastSegmentHasDot(cands[i]);
+      const segsHaveDot = this.lastSegmentHasDot(cand);
       const fromThisPackage = !segsHaveDot && parent === this.thisPackage;
-      const hasAlias = this.child(cands[i], N_IMPORT_ALIAS) >= 0;
+      const hasAlias = this.child(cand, N_IMPORT_ALIAS) >= 0;
+      // count stays below j + 1, so below the length.
       let count = 0;
       for (let j = 0; j < toI32(ids.length); j++) {
         if (ids[j] === id) {
+          if (count >= ids.length) {
+            fault();
+            return;
+          }
           count++;
         }
       }
       if (!isUsed || (fromThisPackage && !hasAlias && count <= 1)) {
-        this.edit(this.t.start[cands[i]], this.t.end[cands[i]], "");
+        this.edit(this.t.st(cand), this.t.en(cand), "");
       }
     }
   }
@@ -816,7 +928,11 @@ export class KPasses {
   lastSegmentHasDot(imp: i32): boolean {
     const segs: string[] = [];
     this.collectSegments(this.importRef(imp), segs);
-    return segs.length > 0 && segs[segs.length - 1].indexOf(".") >= 0;
+    const k = segs.length;
+    if (k > 0) {
+      return segs[k - 1].indexOf(".") >= 0;
+    }
+    return false;
   }
 
   /** The imported name (the alias, else the last segment), backticks trimmed, after its last dot. */
@@ -829,11 +945,19 @@ export class KPasses {
     } else {
       const segs: string[] = [];
       this.collectSegments(this.importRef(imp), segs);
-      name = segs.length > 0 ? segs[segs.length - 1] : "";
+      const k = segs.length;
+      if (k > 0) {
+        name = segs[k - 1];
+      }
     }
     name = kpTrimBackticks(name);
     const d = kpLastIndexOf(name, 46);
-    return d >= 0 ? name.substring(d + 1, toI32(name.length)) : name;
+    const len = toI32(name.length);
+    // The last dot is at d in [0, len).
+    if (d >= 0 && d < len) {
+      return name.substring(d + 1, len);
+    }
+    return name;
   }
 
   // ---- addRedundantElements: trailing commas -----------------------------------
@@ -894,16 +1018,30 @@ export class KPasses {
   /** The output offset of input offset `p`, a code lexeme's start (`end` false) or end. */
   mapPos(p: i32, end: boolean): i32 {
     const a = end ? this.mInEnd : this.mInStart;
+    const o = end ? this.mOutEnd : this.mOutStart;
+    const mc = this.mCount;
     let lo = 0;
-    let hi = this.mCount - 1;
+    let hi = -1;
+    if (mc > 0) {
+      hi = mc - 1;
+    }
     while (lo <= hi) {
-      const mid = (lo + hi) >> 1;
+      // 0 <= lo <= hi, so the u32 sum is exact.
+      const mid = toI32((toU32(lo) + toU32(hi)) >> 1);
+      if (mid < 0 || mid >= a.length) {
+        fault();
+        return 0;
+      }
       if (a[mid] < p) {
         lo = mid + 1;
       } else if (a[mid] > p) {
         hi = mid - 1;
       } else {
-        return end ? this.mOutEnd[mid] : this.mOutStart[mid];
+        if (mid >= o.length) {
+          fault();
+          return 0;
+        }
+        return o[mid];
       }
     }
     this.mapFailed = true;
@@ -919,16 +1057,21 @@ export class KPasses {
       // A dropped semicolon that became a line break inside the list.
       for (let i = 0; i < toI32(this.nlSemis.length); i++) {
         const p = this.nlSemis[i];
-        if (p >= this.t.start[n] && p < this.t.end[n]) {
+        if (p >= this.t.st(n) && p < this.t.en(n)) {
           return true;
         }
       }
       return false;
     }
-    const a = this.mapPos(this.t.start[n], false);
-    const b = this.mapPos(this.t.end[n], true);
+    const a = this.mapPos(this.t.st(n), false);
+    const b = this.mapPos(this.t.en(n), true);
+    const mb = this.mBuf;
     for (let i = a; i < b; i++) {
-      if (toI32(this.mBuf[i]) === 10) {
+      if (i < 0 || i >= mb.length) {
+        fault();
+        return false;
+      }
+      if (toI32(mb[i]) === 10) {
         return true;
       }
     }
@@ -937,20 +1080,20 @@ export class KPasses {
 
   suggest(n: i32): void {
     const t = this.t;
-    if (t.leaf[n] === 1) {
+    if (t.lf(n) === 1) {
       return;
     }
     this.takeElement(n);
-    for (let c = t.first[n]; c >= 0; c = t.next[c]) {
+    for (let c = t.fst(n); c >= 0; c = t.nxt(c)) {
       this.suggest(c);
     }
   }
 
   takeElement(n: i32): void {
     const t = this.t;
-    const ty = t.type[n];
+    const ty = t.ty(n);
     let last = -1;
-    let count = 0;
+    let any = false; // whether the list has an element
     let hasComma = false;
     if (
       ty === N_VALUE_ARGUMENT_LIST ||
@@ -959,13 +1102,8 @@ export class KPasses {
       ty === N_TYPE_PARAMETER_LIST
     ) {
       if (ty === N_VALUE_PARAMETER_LIST) {
-        const p = t.parent[n];
-        if (
-          p >= 0 &&
-          t.type[p] === N_FUNCTION_LITERAL &&
-          t.parent[p] >= 0 &&
-          t.type[t.parent[p]] === N_LAMBDA_EXPRESSION
-        ) {
+        const p = t.par(n);
+        if (p >= 0 && t.ty(p) === N_FUNCTION_LITERAL && t.par(p) >= 0 && t.ty(t.par(p)) === N_LAMBDA_EXPRESSION) {
           return;
         }
       }
@@ -977,19 +1115,19 @@ export class KPasses {
             : ty === N_TYPE_ARGUMENT_LIST
               ? N_TYPE_PROJECTION
               : N_TYPE_PARAMETER;
-      for (let c = t.first[n]; c >= 0; c = t.next[c]) {
-        if (t.type[c] === item) {
+      for (let c = t.fst(n); c >= 0; c = t.nxt(c)) {
+        if (t.ty(c) === item) {
           last = c;
-          count++;
+          any = true;
         }
       }
       const close = ty === N_VALUE_ARGUMENT_LIST || ty === N_VALUE_PARAMETER_LIST ? T_RPAR : T_GT;
       hasComma = this.trailingCommaBefore(n, close);
     } else if (ty === N_COLLECTION_LITERAL_EXPRESSION) {
-      for (let c = t.first[n]; c >= 0; c = t.next[c]) {
-        if (kIsExpr(t.type[c])) {
+      for (let c = t.fst(n); c >= 0; c = t.nxt(c)) {
+        if (kIsExpr(t.ty(c))) {
           last = c;
-          count++;
+          any = true;
         }
       }
       hasComma = this.trailingCommaBefore(n, T_RBRACKET);
@@ -997,21 +1135,21 @@ export class KPasses {
       if (!this.isEnumBody(n) || this.enumTerminatingSemicolon(n) >= 0) {
         return;
       }
-      for (let c = t.first[n]; c >= 0; c = t.next[c]) {
-        if (t.type[c] === N_ENUM_ENTRY) {
+      for (let c = t.fst(n); c >= 0; c = t.nxt(c)) {
+        if (t.ty(c) === N_ENUM_ENTRY) {
           last = c;
-          count++;
+          any = true;
         }
       }
       hasComma = this.enumTrailingComma(n) >= 0;
     } else {
       return;
     }
-    if (count === 0 || hasComma || !this.listHasNewline(n)) {
+    if (!any || hasComma || !this.listHasNewline(n)) {
       return;
     }
     const leaf = this.leftLeaf(last);
-    const at = this.mapped ? this.mapPos(t.end[leaf], true) : t.end[leaf];
+    const at = this.mapped ? this.mapPos(t.en(leaf), true) : t.en(leaf);
     this.edit(at, at, ",");
   }
 
@@ -1028,19 +1166,19 @@ export class KPasses {
       return -1;
     }
     const p = this.prevConcrete(cl);
-    return p >= 0 && this.t.type[p] === T_COMMA ? p : -1;
+    return p >= 0 && this.t.ty(p) === T_COMMA ? p : -1;
   }
 
   /** leftLeafIgnoringCommentsAndWhitespace. */
   leftLeaf(e: i32): i32 {
     let x = e;
     while (true) {
-      if (this.t.leaf[x] === 1) {
+      if (this.t.lf(x) === 1) {
         return x;
       }
-      let c = this.t.last[x];
+      let c = this.t.lst(x);
       while (c >= 0 && (this.isWsOrComment(c) || this.isRemoved(c))) {
-        c = this.t.prev[c];
+        c = this.t.prv(c);
       }
       if (c < 0) {
         return x;
@@ -1113,7 +1251,13 @@ const kpIsComponentN = (s: string): boolean => {
 /** Removes a surrounding pair of backticks. */
 const kpUnquote = (s: string): string => {
   const k = toI32(s.length);
-  return k >= 2 && s.charCodeAt(0) === 96 && s.charCodeAt(k - 1) === 96 ? s.substring(1, k - 1) : s;
+  if (k >= 2 && toI32(s.length) > 0 && s.charCodeAt(0) === 96) {
+    const l = k - 1;
+    if (l < toI32(s.length) && s.charCodeAt(l) === 96) {
+      return s.substring(1, l);
+    }
+  }
+  return s;
 };
 
 /** String.trim('`'): every leading and trailing backtick. */
@@ -1123,7 +1267,7 @@ const kpTrimBackticks = (s: string): string => {
   while (a < b && s.charCodeAt(a) === 96) {
     a++;
   }
-  while (b > a && s.charCodeAt(b - 1) === 96) {
+  while (b > a && b > 0 && b <= toI32(s.length) && s.charCodeAt(b - 1) === 96) {
     b--;
   }
   return s.substring(a, b);
@@ -1153,10 +1297,10 @@ const kpLastIndexOf = (s: string, c: i32): i32 => {
 
 /** String.compareTo: UTF-16 code unit order. */
 const kpCompareUtf16 = (a: string, b: string): i32 => {
-  const n = toI32(a.length) < toI32(b.length) ? toI32(a.length) : toI32(b.length);
-  for (let i = 0; i < n; i++) {
-    const x = a.charCodeAt(i);
-    const y = b.charCodeAt(i);
+  for (let i = 0; i < toI32(a.length) && i < toI32(b.length); i++) {
+    // Strings are UTF-8 bytes, so each unit is below 256.
+    const x = a.charCodeAt(i) & 0xff;
+    const y = b.charCodeAt(i) & 0xff;
     if (x !== y) {
       return x - y;
     }
@@ -1164,8 +1308,25 @@ const kpCompareUtf16 = (a: string, b: string): i32 => {
   return toI32(a.length) - toI32(b.length);
 };
 
+/** Orders import indexes by key, ties by index (the stable order). */
+const kpCompareKeys = (keys: string[], x: i32, y: i32): i32 => {
+  if (x < 0 || x >= keys.length || y < 0 || y >= keys.length) {
+    fault();
+    return 0;
+  }
+  const c = kpCompareUtf16(keys[x], keys[y]);
+  if (c !== 0) {
+    return c;
+  }
+  return x < y ? -1 : x > y ? 1 : 0;
+};
+
 const kpSameBytes = (a: u8[], b: u8[], n: i32): boolean => {
   for (let i = 0; i < n; i++) {
+    if (i >= a.length || i >= b.length) {
+      fault();
+      return false;
+    }
     if (a[i] !== b[i]) {
       return false;
     }
