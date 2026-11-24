@@ -190,67 +190,14 @@ const csIsDigit = (c: i32): boolean => c >= 48 && c <= 57;
 const csIsHexDigit = (c: i32): boolean => (c >= 48 && c <= 57) || (c >= 97 && c <= 102) || (c >= 65 && c <= 70);
 
 /**
- * At least n zeroes, for the columns sized up front: one of the lengths below,
- * each at most a fifth above the last, a literal the compiler proves, where
- * newI32s pushes one zero at a time. A column that outgrows it is pushed to.
+ * At least n zeroes, for the columns sized up front: exactly n up to 65,535
+ * (a u16 length, which the compiler proves), else one of the lengths below,
+ * each at most a fifth above the last, where newI32s pushes one zero at a
+ * time. A column that outgrows it is pushed to.
  */
 export const csZeroI32s = (n: i32): i32[] => {
-  if (n <= 1024) {
-    return new Array<i32>(1024);
-  }
-  if (n <= 2048) {
-    return new Array<i32>(2048);
-  }
-  if (n <= 4096) {
-    return new Array<i32>(4096);
-  }
-  if (n <= 4864) {
-    return new Array<i32>(4864);
-  }
-  if (n <= 5824) {
-    return new Array<i32>(5824);
-  }
-  if (n <= 6912) {
-    return new Array<i32>(6912);
-  }
-  if (n <= 8192) {
-    return new Array<i32>(8192);
-  }
-  if (n <= 9728) {
-    return new Array<i32>(9728);
-  }
-  if (n <= 11584) {
-    return new Array<i32>(11584);
-  }
-  if (n <= 13760) {
-    return new Array<i32>(13760);
-  }
-  if (n <= 16384) {
-    return new Array<i32>(16384);
-  }
-  if (n <= 19456) {
-    return new Array<i32>(19456);
-  }
-  if (n <= 23168) {
-    return new Array<i32>(23168);
-  }
-  if (n <= 27584) {
-    return new Array<i32>(27584);
-  }
-  if (n <= 32768) {
-    return new Array<i32>(32768);
-  }
-  if (n <= 38976) {
-    return new Array<i32>(38976);
-  }
-  if (n <= 46336) {
-    return new Array<i32>(46336);
-  }
-  if (n <= 55104) {
-    return new Array<i32>(55104);
-  }
-  if (n <= 65536) {
-    return new Array<i32>(65536);
+  if (n >= 0 && n <= 65535) {
+    return new Array<i32>(toU16(n));
   }
   if (n <= 77952) {
     return new Array<i32>(77952);
@@ -329,62 +276,8 @@ export const csZeroI32s = (n: i32): i32[] => {
 
 /** At least n zero bytes, as csZeroI32s sizes them. */
 export const csZeroU8s = (n: i32): u8[] => {
-  if (n <= 1024) {
-    return new Array<u8>(1024);
-  }
-  if (n <= 2048) {
-    return new Array<u8>(2048);
-  }
-  if (n <= 4096) {
-    return new Array<u8>(4096);
-  }
-  if (n <= 4864) {
-    return new Array<u8>(4864);
-  }
-  if (n <= 5824) {
-    return new Array<u8>(5824);
-  }
-  if (n <= 6912) {
-    return new Array<u8>(6912);
-  }
-  if (n <= 8192) {
-    return new Array<u8>(8192);
-  }
-  if (n <= 9728) {
-    return new Array<u8>(9728);
-  }
-  if (n <= 11584) {
-    return new Array<u8>(11584);
-  }
-  if (n <= 13760) {
-    return new Array<u8>(13760);
-  }
-  if (n <= 16384) {
-    return new Array<u8>(16384);
-  }
-  if (n <= 19456) {
-    return new Array<u8>(19456);
-  }
-  if (n <= 23168) {
-    return new Array<u8>(23168);
-  }
-  if (n <= 27584) {
-    return new Array<u8>(27584);
-  }
-  if (n <= 32768) {
-    return new Array<u8>(32768);
-  }
-  if (n <= 38976) {
-    return new Array<u8>(38976);
-  }
-  if (n <= 46336) {
-    return new Array<u8>(46336);
-  }
-  if (n <= 55104) {
-    return new Array<u8>(55104);
-  }
-  if (n <= 65536) {
-    return new Array<u8>(65536);
+  if (n >= 0 && n <= 65535) {
+    return new Array<u8>(toU16(n));
   }
   if (n <= 77952) {
     return new Array<u8>(77952);
@@ -630,89 +523,143 @@ export class CsLexer {
   addTrivia(k: i32, a: i32, b: i32): i32 {
     const i = this.ntr;
     const trKind = this.trKind;
+    if (i < 0 || i > 1000000000 || i >= trKind.length) {
+      return this.addTriviaPast(k, a, b);
+    }
+    // each column in turn: one shorter than trKind is a broken invariant
+    trKind[i] = k;
     const trStart = this.trStart;
+    if (i >= trStart.length) {
+      this.lexFault();
+      return -1;
+    }
+    trStart[i] = a;
     const trEnd = this.trEnd;
+    if (i >= trEnd.length) {
+      this.lexFault();
+      return -1;
+    }
+    trEnd[i] = b;
     const trTextEnd = this.trTextEnd;
+    if (i >= trTextEnd.length) {
+      this.lexFault();
+      return -1;
+    }
+    trTextEnd[i] = b;
     const trAux = this.trAux;
-    if (i < 0 || i > 1000000000) {
+    if (i >= trAux.length) {
       this.lexFault();
       return -1;
     }
-    if (i < trKind.length && i < trStart.length && i < trEnd.length && i < trTextEnd.length && i < trAux.length) {
-      trKind[i] = k;
-      trStart[i] = a;
-      trEnd[i] = b;
-      trTextEnd[i] = b;
-      trAux[i] = -1;
-    } else if (i === trKind.length) {
-      trKind.push(k);
-      trStart.push(a);
-      trEnd.push(b);
-      trTextEnd.push(b);
-      trAux.push(-1);
-    } else {
-      this.lexFault();
-      return -1;
-    }
+    trAux[i] = -1;
     this.ntr = i + 1;
     return i;
   }
 
-  /** Adds a token at nt: written in place, or pushed past a column's end (the columns are written together, so all are). */
+  /** addTrivia past the end of the columns: pushes to each. */
+  addTriviaPast(k: i32, a: i32, b: i32): i32 {
+    const i = this.ntr;
+    const trKind = this.trKind;
+    if (i < 0 || i > 1000000000 || i !== trKind.length) {
+      this.lexFault();
+      return -1;
+    }
+    trKind.push(k);
+    this.trStart.push(a);
+    this.trEnd.push(b);
+    this.trTextEnd.push(b);
+    this.trAux.push(-1);
+    this.ntr = i + 1;
+    return i;
+  }
+
+  /** Adds a token at nt: written in place, or pushed past the columns' end (they are written together, so all end there). */
   addToken(k: i32, a: i32, b: i32, l0: i32, l1: i32): i32 {
+    const i = this.nt;
+    const kind = this.kind;
+    if (i < 0 || i > 1000000000 || i >= kind.length) {
+      return this.addTokenPast(k, a, b, l0, l1);
+    }
+    // each column in turn: one shorter than kind is a broken invariant
+    const ntr = this.ntr;
+    kind[i] = k;
+    const ck = this.ck;
+    if (i >= ck.length) {
+      this.lexFault();
+      return -1;
+    }
+    ck[i] = 0;
+    const flags = this.flags;
+    if (i >= flags.length) {
+      this.lexFault();
+      return -1;
+    }
+    flags[i] = 0;
+    const start = this.start;
+    if (i >= start.length) {
+      this.lexFault();
+      return -1;
+    }
+    start[i] = a;
+    const end = this.end;
+    if (i >= end.length) {
+      this.lexFault();
+      return -1;
+    }
+    end[i] = b;
+    const tl0 = this.l0;
+    if (i >= tl0.length) {
+      this.lexFault();
+      return -1;
+    }
+    tl0[i] = l0;
+    const tl1 = this.l1;
+    if (i >= tl1.length) {
+      this.lexFault();
+      return -1;
+    }
+    tl1[i] = l1;
+    const t0 = this.t0;
+    if (i >= t0.length) {
+      this.lexFault();
+      return -1;
+    }
+    t0[i] = ntr;
+    const t1 = this.t1;
+    if (i >= t1.length) {
+      this.lexFault();
+      return -1;
+    }
+    t1[i] = ntr;
+    const parent = this.parent;
+    if (i >= parent.length) {
+      this.lexFault();
+      return -1;
+    }
+    parent[i] = -1;
+    this.nt = i + 1;
+    return i;
+  }
+
+  /** addToken past the end of the columns: pushes to each. */
+  addTokenPast(k: i32, a: i32, b: i32, l0: i32, l1: i32): i32 {
     const i = this.nt;
     const ntr = this.ntr;
     const kind = this.kind;
-    const ck = this.ck;
-    const flags = this.flags;
-    const start = this.start;
-    const end = this.end;
-    const tl0 = this.l0;
-    const tl1 = this.l1;
-    const t0 = this.t0;
-    const t1 = this.t1;
-    const parent = this.parent;
-    if (i < 0 || i > 1000000000) {
+    if (i < 0 || i > 1000000000 || i !== kind.length) {
       this.lexFault();
       return -1;
     }
-    if (
-      i < kind.length &&
-      i < ck.length &&
-      i < flags.length &&
-      i < start.length &&
-      i < end.length &&
-      i < tl0.length &&
-      i < tl1.length &&
-      i < t0.length &&
-      i < t1.length &&
-      i < parent.length
-    ) {
-      kind[i] = k;
-      ck[i] = 0;
-      flags[i] = 0;
-      start[i] = a;
-      end[i] = b;
-      tl0[i] = l0;
-      tl1[i] = l1;
-      t0[i] = ntr;
-      t1[i] = ntr;
-      parent[i] = -1;
-    } else if (i === kind.length) {
-      kind.push(k);
-      ck.push(0);
-      flags.push(0);
-      start.push(a);
-      end.push(b);
-      tl0.push(l0);
-      tl1.push(l1);
-      t0.push(ntr);
-      t1.push(ntr);
-      parent.push(-1);
-    } else {
-      this.lexFault();
-      return -1;
-    }
+    kind.push(k);
+    this.ck.push(0);
+    this.flags.push(0);
+    this.start.push(a);
+    this.end.push(b);
+    this.l0.push(l0);
+    this.l1.push(l1);
+    this.t0.push(ntr);
+    this.t1.push(ntr);
+    this.parent.push(-1);
     this.nt = i + 1;
     return i;
   }

@@ -606,34 +606,13 @@ export const cswTokEnd = (lx: CsLexer, t: i32): i32 => {
 };
 
 /** The kind of doc d. */
-export const cswDocKind = (D: CsDocs, d: i32): i32 => {
-  const kind = D.kind;
-  if (d >= 0 && d < kind.length) {
-    return kind[d];
-  }
-  fault();
-  return 0;
-};
+export const cswDocKind = (D: CsDocs, d: i32): i32 => D.kindOf(d);
 
 /** Field a of doc d. */
-export const cswDocA = (D: CsDocs, d: i32): i32 => {
-  const a = D.a;
-  if (d >= 0 && d < a.length) {
-    return a[d];
-  }
-  fault();
-  return 0;
-};
+export const cswDocA = (D: CsDocs, d: i32): i32 => D.aOf(d);
 
 /** Field b of doc d. */
-export const cswDocB = (D: CsDocs, d: i32): i32 => {
-  const b = D.b;
-  if (d >= 0 && d < b.length) {
-    return b[d];
-  }
-  fault();
-  return 0;
-};
+export const cswDocB = (D: CsDocs, d: i32): i32 => D.bOf(d);
 
 /** Leaves one level of print recursion; the level entered is at least 1. */
 export const cswDepthDown = (P: CsPrint): void => {
@@ -956,21 +935,15 @@ const cswCompilationUnit = (P: CsPrint, n: i32): i32 => {
         (cswDocB(D, D.at(finalTrivia, 0)) & HL_FOR_TRIVIA) !== 0
       ) {
         // List.RemoveAt(0)
-        const da = D.a;
-        const db = D.b;
-        if (finalTrivia < 0 || finalTrivia >= da.length || finalTrivia >= db.length) {
-          fault();
-          break;
-        }
-        const va = da[finalTrivia];
-        const vb = db[finalTrivia];
+        const va = D.aOf(finalTrivia);
+        const vb = D.bOf(finalTrivia);
         // vb is the count, above 0; va an offset in the pool
         if (vb <= 0 || va >= 2147483647) {
           fault();
           break;
         }
-        da[finalTrivia] = va + 1;
-        db[finalTrivia] = vb - 1;
+        D.setA(finalTrivia, va + 1);
+        D.setB(finalTrivia, vb - 1);
       }
       docs.push(finalTrivia);
     } else {
@@ -1885,18 +1858,13 @@ const cswExpressionStatement = (P: CsPrint, n: i32): i32 => {
       cl > 1 && cswDocKind(D, D.at(lead, cl - 1)) === D_HARDLINE && cswDocKind(D, D.at(lead, 0)) === D_LEADING_COMMENT;
   }
   if (trim) {
-    const db = D.b;
     // the count, above 1
-    if (lead < 0 || lead >= db.length) {
-      fault();
-      return DOC_NULL;
-    }
-    const vb = db[lead];
+    const vb = D.bOf(lead);
     if (vb <= 0) {
       fault();
       return DOC_NULL;
     }
-    db[lead] = vb - 1;
+    D.setB(lead, vb - 1);
     lead = D.concat([D.indent1(lead), DOC_HARDLINE]);
   }
   return D.group([cswExtraNewLines(P, n), cswNode(P, expr), lead, cswTokNoLead(P, semi)]);

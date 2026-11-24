@@ -5,11 +5,11 @@
 // (GetLineEnding for the style's end_of_line = crlf: always "\r\n").
 
 import { K_MultiLineCommentTrivia, K_SingleLineCommentTrivia } from "./kinds";
-import { sliceU8s } from "../core/arr";
+import { copyU8s, sliceU8s } from "../core/arr";
 import { fault } from "../core/fault";
 import { Out } from "../core/out";
 import { CsDocs, CsPrinter } from "./doc";
-import { CsLexer } from "./lexer";
+import { CsLexer, csZeroU8s } from "./lexer";
 import { CsParser } from "./parser";
 import { cspCompilationUnit } from "./pdecl";
 import { CsPrint } from "./print";
@@ -183,6 +183,18 @@ const csParse = (src: u8[], a: i32, b: i32, syms: string[]): CsParsed => {
   return new CsParsed(lx, p.t, root, "");
 };
 
+/**
+ * An empty Out with room for a printed file of about n bytes, so the printer
+ * writes into place rather than growing the buffer a byte at a time.
+ */
+const csOutFor = (n: i32): Out => {
+  const out = new Out(1024);
+  if (n >= 0 && n <= 1000000000) {
+    out.buf = csZeroU8s(n + n / 8 + 1024);
+  }
+  return out;
+};
+
 /** Prints a parsed file into out; answers an error message, or "" when it printed. */
 const csPrintTree = (lx: CsLexer, root: i32, tree: CsTree, out: Out): string => {
   // PrinterOptions.GetLineEnding: the style's end_of_line = crlf gives "\r\n",
@@ -258,7 +270,7 @@ export const formatCSharp = (e: CSharpEngine, path: string, src: u8[], n: i32, o
     fault();
     return false;
   }
-  const body = new Out(n + 1024);
+  const body = csOutFor(n);
   const msg = csPrintTree(lx, first.root, tree, body);
   if (msg !== "") {
     if (e.debug) {
@@ -291,7 +303,7 @@ export const formatCSharp = (e: CSharpEngine, path: string, src: u8[], n: i32, o
       fault();
       return false;
     }
-    const next = new Out(cn + 1024);
+    const next = csOutFor(cn);
     const at = again.t;
     if (at === null) {
       return false;
@@ -306,12 +318,30 @@ export const formatCSharp = (e: CSharpEngine, path: string, src: u8[], n: i32, o
     cur = next;
   }
   out.n = 0;
-  if (s === 3) {
+  const cn = cur.n;
+  if (s === 3 && cn >= 0 && cn <= 1000000000 && cn <= cur.buf.length) {
+    // the byte order mark, then the printed file, into a buffer of their size
+    const nb = csZeroU8s(cn + 3);
+    if (nb.length < 3) {
+      fault();
+      return false;
+    }
+    nb[0] = toU8(0xef);
+    nb[1] = toU8(0xbb);
+    nb[2] = toU8(0xbf);
+    copyU8s(nb, 3, cur.buf, 0, cn);
+    out.buf = nb;
+    out.n = cn + 3;
+  } else if (s === 3) {
     out.byte(0xef);
     out.byte(0xbb);
     out.byte(0xbf);
+    out.range(cur.buf, 0, cur.n);
+  } else {
+    // the printed file is the answer: hand over its buffer rather than copy it
+    out.buf = cur.buf;
+    out.n = cur.n;
   }
-  out.range(cur.buf, 0, cur.n);
   return true;
 };
 

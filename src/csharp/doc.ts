@@ -155,15 +155,15 @@ const csTrailingWs = (s: u8[], a: i32, b: i32): i32 => {
   return sub32(b, e);
 };
 
+// A doc d's fields are its record rec[6 * d, 6 * d + 6): kind, a, b, c, d,
+// e, at offsets 0 to 5. Every doc id is at most 350,000,000 (a guard faults
+// past it), so 6 * d fits i32; the offsets are literals the prover reads.
+
 export class CsDocs {
   src: u8[];
   n: i32 = 0;
-  kind: i32[];
-  a: i32[];
-  b: i32[];
-  c: i32[];
-  d: i32[];
-  e: i32[];
+  // the docs, one record of 6 fields each: kind, a, b, c, d, e
+  rec: i32[];
   pool: i32[];
   np: i32 = 0;
   sb: u8[]; // the text of strings that are not in the source
@@ -172,17 +172,12 @@ export class CsDocs {
 
   constructor(src: u8[], cap: i32) {
     this.src = src;
-    // Capacities only: a column past its capacity is pushed to.
+    // Capacities only: a record past the capacity is pushed.
     let c = 64;
     if (cap > 64 && cap <= 100000000) {
       c = cap;
     }
-    this.kind = csZeroI32s(c);
-    this.a = csZeroI32s(c);
-    this.b = csZeroI32s(c);
-    this.c = csZeroI32s(c);
-    this.d = csZeroI32s(c);
-    this.e = csZeroI32s(c);
+    this.rec = csZeroI32s(c * 6);
     this.pool = csZeroI32s(c + c / 6);
     this.sb = csZeroU8s(c / 4 + 64);
     this.add(D_NULL, 0, 0, 0, 0);
@@ -201,36 +196,34 @@ export class CsDocs {
   }
 
   add(k: i32, a: i32, b: i32, c: i32, d: i32): i32 {
+    return this.add6(k, a, b, c, d, 0);
+  }
+
+  /** Adds a doc with all six fields. */
+  add6(k: i32, a: i32, b: i32, c: i32, d: i32, e: i32): i32 {
     const i = this.n;
-    const kind = this.kind;
-    const fa = this.a;
-    const fb = this.b;
-    const fc = this.c;
-    const fd = this.d;
-    const fe = this.e;
-    if (i < 0 || i > 1000000000) {
+    const rec = this.rec;
+    if (i < 0 || i > 350000000) {
       fault();
       return DOC_NULL;
     }
-    if (i < kind.length && i < fa.length && i < fb.length && i < fc.length && i < fd.length && i < fe.length) {
-      kind[i] = k;
-      fa[i] = a;
-      fb[i] = b;
-      fc[i] = c;
-      fd[i] = d;
-      fe[i] = 0;
-    } else if (i === kind.length) {
-      // the columns are written together, so all end here
-      kind.push(k);
-      fa.push(a);
-      fb.push(b);
-      fc.push(c);
-      fd.push(d);
-      fe.push(0);
-    } else {
+    const o = i * 6;
+    if (o > rec.length - 6) {
+      // past the capacity: the records end at o, so this pushes one record
+      while (rec.length < o + 6) {
+        rec.push(0);
+      }
+    }
+    if (o > rec.length - 6) {
       fault();
       return DOC_NULL;
     }
+    rec[o] = k;
+    rec[o + 1] = a;
+    rec[o + 2] = b;
+    rec[o + 3] = c;
+    rec[o + 4] = d;
+    rec[o + 5] = e;
     this.n = i + 1;
     return i;
   }
@@ -239,110 +232,136 @@ export class CsDocs {
   // A doc that is no doc reads as 0 (a Null doc) after a fault.
 
   kindOf(d: i32): i32 {
-    const xs = this.kind;
-    if (d >= 0 && d < xs.length) {
-      return xs[d];
+    const rec = this.rec;
+    if (d >= 0 && d <= 350000000) {
+      const o = d * 6;
+      if (o <= rec.length - 6) {
+        return rec[o];
+      }
     }
     fault();
     return 0;
   }
 
   aOf(d: i32): i32 {
-    const xs = this.a;
-    if (d >= 0 && d < xs.length) {
-      return xs[d];
+    const rec = this.rec;
+    if (d >= 0 && d <= 350000000) {
+      const o = d * 6;
+      if (o <= rec.length - 6) {
+        return rec[o + 1];
+      }
     }
     fault();
     return 0;
   }
 
   bOf(d: i32): i32 {
-    const xs = this.b;
-    if (d >= 0 && d < xs.length) {
-      return xs[d];
+    const rec = this.rec;
+    if (d >= 0 && d <= 350000000) {
+      const o = d * 6;
+      if (o <= rec.length - 6) {
+        return rec[o + 2];
+      }
     }
     fault();
     return 0;
   }
 
   cOf(d: i32): i32 {
-    const xs = this.c;
-    if (d >= 0 && d < xs.length) {
-      return xs[d];
+    const rec = this.rec;
+    if (d >= 0 && d <= 350000000) {
+      const o = d * 6;
+      if (o <= rec.length - 6) {
+        return rec[o + 3];
+      }
     }
     fault();
     return 0;
   }
 
   dOf(d: i32): i32 {
-    const xs = this.d;
-    if (d >= 0 && d < xs.length) {
-      return xs[d];
+    const rec = this.rec;
+    if (d >= 0 && d <= 350000000) {
+      const o = d * 6;
+      if (o <= rec.length - 6) {
+        return rec[o + 4];
+      }
     }
     fault();
     return 0;
   }
 
   eOf(d: i32): i32 {
-    const xs = this.e;
-    if (d >= 0 && d < xs.length) {
-      return xs[d];
+    const rec = this.rec;
+    if (d >= 0 && d <= 350000000) {
+      const o = d * 6;
+      if (o <= rec.length - 6) {
+        return rec[o + 5];
+      }
     }
     fault();
     return 0;
   }
 
   setA(d: i32, v: i32): void {
-    const xs = this.a;
-    if (d >= 0 && d < xs.length) {
-      xs[d] = v;
-    } else {
-      fault();
+    const rec = this.rec;
+    if (d >= 0 && d <= 350000000) {
+      const o = d * 6;
+      if (o <= rec.length - 6) {
+        rec[o + 1] = v;
+        return;
+      }
     }
+    fault();
   }
 
   setB(d: i32, v: i32): void {
-    const xs = this.b;
-    if (d >= 0 && d < xs.length) {
-      xs[d] = v;
-    } else {
-      fault();
+    const rec = this.rec;
+    if (d >= 0 && d <= 350000000) {
+      const o = d * 6;
+      if (o <= rec.length - 6) {
+        rec[o + 2] = v;
+        return;
+      }
     }
+    fault();
   }
 
   setD(d: i32, v: i32): void {
-    const xs = this.d;
-    if (d >= 0 && d < xs.length) {
-      xs[d] = v;
-    } else {
-      fault();
+    const rec = this.rec;
+    if (d >= 0 && d <= 350000000) {
+      const o = d * 6;
+      if (o <= rec.length - 6) {
+        rec[o + 4] = v;
+        return;
+      }
     }
+    fault();
   }
 
   setE(d: i32, v: i32): void {
-    const xs = this.e;
-    if (d >= 0 && d < xs.length) {
-      xs[d] = v;
-    } else {
-      fault();
+    const rec = this.rec;
+    if (d >= 0 && d <= 350000000) {
+      const o = d * 6;
+      if (o <= rec.length - 6) {
+        rec[o + 5] = v;
+        return;
+      }
     }
+    fault();
   }
 
   // ---- text ----
 
   /** A StringDoc over src[a, b). */
   strSrc(a: i32, b: i32): i32 {
-    const d = this.add(D_STRING, a, b, csPrintedWidth(this.src, a, b), SF_SRC);
-    this.setE(d, csTrailingWs(this.src, a, b));
-    return d;
+    return this.add6(D_STRING, a, b, csPrintedWidth(this.src, a, b), SF_SRC, csTrailingWs(this.src, a, b));
   }
 
   /** A StringDoc over `s`, put in the arena. */
   strArena(s: string): i32 {
     const a = this.appendStr(s);
-    const d = this.add(D_STRING, a, this.ns, csPrintedWidth(this.sb, a, this.ns), 0);
-    this.setE(d, csTrailingWs(this.sb, a, this.ns));
-    return d;
+    return this.add6(D_STRING, a, this.ns, csPrintedWidth(this.sb, a, this.ns), 0, csTrailingWs(this.sb, a, this.ns));
   }
 
   /** A StringDoc for a constant: the singletons for " " and "". */
@@ -358,9 +377,14 @@ export class CsDocs {
 
   /** A StringDoc over arena[a, b) (text appended with appendStr / appendBytes). */
   strAt(a: i32, b: i32, directive: boolean): i32 {
-    const d = this.add(D_STRING, a, b, csPrintedWidth(this.sb, a, b), directive ? SF_DIRECTIVE : 0);
-    this.setE(d, csTrailingWs(this.sb, a, b));
-    return d;
+    return this.add6(
+      D_STRING,
+      a,
+      b,
+      csPrintedWidth(this.sb, a, b),
+      directive ? SF_DIRECTIVE : 0,
+      csTrailingWs(this.sb, a, b),
+    );
   }
 
   appendStr(s: string): i32 {
@@ -489,19 +513,18 @@ export class CsDocs {
       return -1;
     }
     const pool = this.pool;
+    const end = off + n;
+    if (end > pool.length) {
+      csdGrowTo(pool, end);
+    }
     let p = off;
-    for (let i = 0; i < docs.length; i++) {
-      const v = docs[i];
-      if (p >= 0 && p < pool.length) {
-        pool[p] = v;
-        p = p + 1;
-      } else if (p === pool.length && p < 2000000000) {
-        pool.push(v);
-        p = p + 1;
-      } else {
-        fault();
-        return -1;
-      }
+    for (let i = 0; i < docs.length && p >= 0 && p < pool.length; i++) {
+      pool[p] = docs[i];
+      p = p + 1;
+    }
+    if (p !== end) {
+      fault();
+      return -1;
     }
     this.np = p;
     return off;
@@ -573,9 +596,7 @@ export class CsDocs {
       return DOC_NULL;
     }
     const off = this.poolAppend(options);
-    const g = this.add(D_CONDGROUP, first, 0, -1, off);
-    this.setE(g, toI32(options.length));
-    return g;
+    return this.add6(D_CONDGROUP, first, 0, -1, off, toI32(options.length));
   }
 
   /** A comment over arena[a, b). */
@@ -744,30 +765,41 @@ const csdRemoveDoc = (D: CsDocs, doc: i32, st: CsRemoveState): void => {
 
 // ---- PropagateBreaks ----
 
+/** Grows xs with zeroes to at least `need` entries. */
+const csdGrowTo = (xs: i32[], need: i32): void => {
+  while (xs.length < need) {
+    xs.push(0);
+  }
+};
+
 export const csdPropagateBreaks = (D: CsDocs, root: i32): void => {
   const visited = csZeroU8s(D.n);
+  // The records are only written in place below (no doc is added).
+  const rec = D.rec;
+  const pool = D.pool;
   const groupStack: i32[] = [];
   let forceFlat = 0;
   let canSkipBreak = false;
   let stringCount = 0;
   let stringCountAtLastHardLine = 0;
   const MARKER = -1;
-  const stack: i32[] = [root];
-  while (stack.length > 0) {
-    const sl = toI32(stack.length);
-    if (sl <= 0) {
-      break;
+  const stack = new Array<i32>(256);
+  stack[0] = root;
+  let sp = 1;
+  while (sp > 0) {
+    if (sp > stack.length || sp > 1000000000) {
+      fault();
+      return;
     }
-    const doc = stack[sl - 1];
+    const top = sp - 1;
+    const doc = stack[top];
     if (doc === MARKER) {
-      stack.pop();
-      let ex = 0;
-      if (stack.length > 0) {
-        ex = stack.pop();
-      } else {
+      if (top < 1) {
         fault();
         return;
       }
+      const ex = stack[top - 1];
+      sp = top - 1;
       // OnExit
       if (D.kindOf(ex) === D_FORCEFLAT) {
         forceFlat = sub32(forceFlat, 1);
@@ -786,93 +818,192 @@ export const csdPropagateBreaks = (D: CsDocs, root: i32): void => {
       }
       continue;
     }
-    const k = D.kindOf(doc);
-    // OnEnter
-    let enter = true;
-    if (k === D_STRING && (D.dOf(doc) & SF_DIRECTIVE) === 0) {
-      canSkipBreak = false;
-      if (D.bOf(doc) > D.aOf(doc)) {
-        stringCount = add32(stringCount, 1);
-      }
-    } else if (k === D_GROUP || k === D_CONDGROUP) {
-      canSkipBreak = true;
-      groupStack.push(doc);
-      if (doc < 0 || doc >= visited.length) {
-        fault();
-        return;
-      }
-      if (visited[doc] !== 0) {
-        enter = false;
-      }
-      visited[doc] = 1;
-    } else if (
-      (k === D_HARDLINE || k === D_LITERALLINE || k === D_BREAKPARENT) &&
-      (forceFlat === 0 || k === D_LITERALLINE)
-    ) {
-      const isAtStartOfLine = stringCount === stringCountAtLastHardLine;
-      if (k === D_HARDLINE && (D.bOf(doc) & HL_FOR_TRIVIA) !== 0 && (isAtStartOfLine || canSkipBreak)) {
-        const gs = toI32(groupStack.length);
-        if (!isAtStartOfLine && gs > 1) {
-          D.setB(groupStack[gs - 2], 1);
-        }
-      } else {
-        csdBreakParentGroup(D, groupStack);
-      }
-      if (k === D_HARDLINE) {
-        stringCountAtLastHardLine = stringCount;
-      }
-    } else if (k === D_FORCEFLAT) {
-      forceFlat = add32(forceFlat, 1);
+    if (doc < 0 || doc > 350000000) {
+      fault();
+      return;
     }
-    if (!enter) {
-      // OnExit for the group
-      if (stack.length > 0) {
-        stack.pop();
-      }
-      canSkipBreak = false;
-      let g = 0;
-      if (groupStack.length > 0) {
-        g = groupStack.pop();
-      } else {
-        fault();
-        return;
-      }
-      if (D.bOf(g) !== 0) {
-        csdBreakParentGroup(D, groupStack);
-      }
-      continue;
+    const o = doc * 6;
+    if (o > rec.length - 6) {
+      fault();
+      return;
     }
-    if (k === D_FORCEFLAT || k === D_GROUP || k === D_CONDGROUP) {
-      stack.push(MARKER);
-    } else if (stack.length > 0) {
-      stack.pop();
-    }
-    if (k === D_CONCAT) {
-      const off = D.aOf(doc);
-      let x = D.bOf(doc);
-      while (x > 0) {
-        x = x - 1;
-        let ch = D.poolAt(off, x);
-        if (forceFlat > 0) {
-          const ck = D.kindOf(ch);
-          if (ck === D_LINE || ck === D_SOFTLINE || ck === D_HARDLINE) {
-            ch = ck === D_SOFTLINE ? DOC_EMPTY : DOC_SPACE;
-            D.setAt(doc, x, ch);
+    const k = rec[o];
+    // OnEnter writes only to groups' b, and a group's own fields are read before it
+    const va = rec[o + 1];
+    const vb = rec[o + 2];
+    const vd = rec[o + 4];
+    const ve = rec[o + 5];
+    // what to push after OnEnter, last first: a Concat's children pool[off, off + cnt)
+    let off = 0;
+    let cnt = 0;
+    switch (k) {
+      case D_STRING:
+        if ((vd & SF_DIRECTIVE) === 0) {
+          canSkipBreak = false;
+          if (vb > va) {
+            stringCount = add32(stringCount, 1);
           }
         }
-        stack.push(ch);
+        sp = top;
+        continue;
+      case D_CONCAT:
+        sp = top;
+        off = va;
+        cnt = vb;
+        break;
+      case D_GROUP:
+      case D_CONDGROUP: {
+        canSkipBreak = true;
+        groupStack.push(doc);
+        if (doc >= visited.length) {
+          fault();
+          return;
+        }
+        const seen = visited[doc] !== 0;
+        visited[doc] = 1;
+        if (seen) {
+          // OnExit for the group
+          sp = top;
+          canSkipBreak = false;
+          let g = 0;
+          if (groupStack.length > 0) {
+            g = groupStack.pop();
+          } else {
+            fault();
+            return;
+          }
+          if (D.bOf(g) !== 0) {
+            csdBreakParentGroup(D, groupStack);
+          }
+          continue;
+        }
+        // the marker goes above the doc, which stays for OnExit; then a
+        // Group's contents, or a ConditionalGroup's options (the last on top)
+        if (k === D_GROUP) {
+          if (top + 3 > stack.length) {
+            csdGrowTo(stack, top + 3);
+          }
+          if (top < 0 || top + 2 >= stack.length) {
+            fault();
+            return;
+          }
+          stack[top + 1] = MARKER;
+          stack[top + 2] = va;
+          sp = top + 3;
+          continue;
+        }
+        if (vd < 0 || ve < 0 || vd > pool.length - ve || ve > 1000000000) {
+          fault();
+          return;
+        }
+        if (top + 2 + ve > stack.length) {
+          csdGrowTo(stack, top + 2 + ve);
+        }
+        if (top < 0 || top + 1 >= stack.length) {
+          fault();
+          return;
+        }
+        stack[top + 1] = MARKER;
+        sp = top + 2;
+        let q = vd;
+        for (let i = 0; i < ve; i++) {
+          if (q < 0 || q >= pool.length || sp < 0 || sp >= stack.length) {
+            fault();
+            return;
+          }
+          stack[sp] = pool[q];
+          sp = sp + 1;
+          q = q + 1;
+        }
+        continue;
       }
-    } else if (k === D_IFBREAK) {
-      stack.push(D.bOf(doc));
-      stack.push(D.aOf(doc));
-    } else if (k === D_CONDGROUP) {
-      const off = D.dOf(doc);
-      const n = D.eOf(doc);
-      for (let i = 0; i < n; i++) {
-        stack.push(D.poolAt(off, i));
+      case D_HARDLINE:
+      case D_LITERALLINE:
+      case D_BREAKPARENT:
+        if (forceFlat === 0 || k === D_LITERALLINE) {
+          const isAtStartOfLine = stringCount === stringCountAtLastHardLine;
+          if (k === D_HARDLINE && (vb & HL_FOR_TRIVIA) !== 0 && (isAtStartOfLine || canSkipBreak)) {
+            const gs = toI32(groupStack.length);
+            if (!isAtStartOfLine && gs > 1) {
+              D.setB(groupStack[gs - 2], 1);
+            }
+          } else {
+            csdBreakParentGroup(D, groupStack);
+          }
+          if (k === D_HARDLINE) {
+            stringCountAtLastHardLine = stringCount;
+          }
+        }
+        sp = top;
+        continue;
+      case D_FORCEFLAT:
+        forceFlat = add32(forceFlat, 1);
+        // the marker above the doc, then its contents
+        if (top + 3 > stack.length) {
+          csdGrowTo(stack, top + 3);
+        }
+        if (top < 0 || top + 2 >= stack.length) {
+          fault();
+          return;
+        }
+        stack[top + 1] = MARKER;
+        stack[top + 2] = va;
+        sp = top + 3;
+        continue;
+      case D_IFBREAK:
+        // b below a
+        if (top + 2 > stack.length) {
+          csdGrowTo(stack, top + 2);
+        }
+        if (top < 0 || top + 1 >= stack.length) {
+          fault();
+          return;
+        }
+        stack[top] = vb;
+        stack[top + 1] = va;
+        sp = top + 2;
+        continue;
+      case D_INDENT:
+        // the contents in the Indent's place
+        if (top < 0 || top >= stack.length) {
+          fault();
+          return;
+        }
+        stack[top] = va;
+        continue;
+      default:
+        sp = top;
+        continue;
+    }
+    // a Concat's children, pushed last first so the first is on top
+    if (off < 0 || cnt < 0 || off > pool.length - cnt || cnt > 1000000000 || sp < 0 || sp > 1000000000) {
+      fault();
+      return;
+    }
+    if (cnt === 0) {
+      continue;
+    }
+    if (sp + cnt > stack.length) {
+      csdGrowTo(stack, sp + cnt);
+    }
+    // off + cnt is at most the pool's length, so the u32 sum is exact
+    let x = toI32(toU32(off) + toU32(cnt - 1));
+    while (x >= off && x >= 0 && x < pool.length && sp >= 0 && sp < stack.length) {
+      let ch = pool[x];
+      if (forceFlat > 0) {
+        const ck = D.kindOf(ch);
+        if (ck === D_LINE || ck === D_SOFTLINE || ck === D_HARDLINE) {
+          ch = ck === D_SOFTLINE ? DOC_EMPTY : DOC_SPACE;
+          pool[x] = ch;
+        }
       }
-    } else if (k === D_GROUP || k === D_INDENT || k === D_FORCEFLAT) {
-      stack.push(D.aOf(doc));
+      stack[sp] = ch;
+      sp = sp + 1;
+      x = x - 1;
+    }
+    if (x >= off) {
+      fault();
+      return;
     }
   }
 };
@@ -888,6 +1019,23 @@ const csdBreakParentGroup = (D: CsDocs, groupStack: i32[]): void => {
 };
 
 // ---- DocPrinter ----
+
+/** out.range(src, a, b), writing in place when the buffer has room (it is sized for the file up front). */
+const csAppendRange = (out: Out, src: u8[], a: i32, b: i32): void => {
+  const buf = out.buf;
+  const n0 = out.n;
+  // b > a >= 0, so the u32 difference is exact
+  if (a >= 0 && b > a && b <= src.length && n0 >= 0 && toI32(toU32(b) - toU32(a)) <= buf.length - n0) {
+    let n = n0;
+    for (let i = a; i < b && i < src.length && n >= 0 && n < buf.length; i++) {
+      buf[n] = src[i];
+      n = n + 1;
+    }
+    out.n = n;
+    return;
+  }
+  out.range(src, a, b);
+};
 
 export class CsPrinter {
   D: CsDocs;
@@ -1090,9 +1238,9 @@ export class CsPrinter {
     const D = this.D;
     // a + textLen is b
     if ((D.dOf(d) & SF_SRC) !== 0) {
-      this.out.range(D.src, D.aOf(d), D.bOf(d));
+      csAppendRange(this.out, D.src, D.aOf(d), D.bOf(d));
     } else {
-      this.out.range(D.sb, D.aOf(d), D.bOf(d));
+      csAppendRange(this.out, D.sb, D.aOf(d), D.bOf(d));
     }
   }
 
@@ -1111,31 +1259,57 @@ export class CsPrinter {
     const mode = mi & 3;
     const doc = cDoc[top];
     const D = this.D;
-    const k = D.kindOf(doc);
+    const rec = D.rec;
+    if (doc < 0 || doc > 350000000) {
+      this.stop();
+      return;
+    }
+    const o = doc * 6;
+    if (o > rec.length - 6) {
+      this.stop();
+      return;
+    }
+    const k = rec[o];
+    const fa = rec[o + 1];
+    const fb = rec[o + 2];
+    const fc = rec[o + 3];
+    const fd = rec[o + 4];
     switch (k) {
       case D_NULL:
         return;
       case D_STRING:
-        this.processString(doc, ind);
+        this.processString(doc, ind, fa, fb, fc, fd);
         return;
       case D_CONCAT: {
-        // push's fast path, inline: the children, last first
-        const off = D.aOf(doc);
+        // push's fast path, inline: the children, last first, in one copy
+        const pool = D.pool;
+        const off = fa;
+        const cnt = fb;
+        if (off < 0 || cnt < 0 || off > pool.length - cnt || top > 1000000000 || cnt > 1000000000) {
+          this.stop();
+          return;
+        }
+        if (cnt === 0) {
+          return;
+        }
+        const need = top + cnt;
+        if (need > cMI.length || need > cDoc.length) {
+          csdGrowTo(cMI, need);
+          csdGrowTo(cDoc, need);
+        }
         const mi2 = (ind << 2) | mode;
-        let x = D.bOf(doc);
-        while (x > 0) {
+        // off + cnt is at most the pool's length, so the u32 sum is exact
+        let x = toI32(toU32(off) + toU32(cnt - 1));
+        let i = top;
+        while (x >= off && x >= 0 && x < pool.length && i >= 0 && i < cMI.length && i < cDoc.length) {
+          cMI[i] = mi2;
+          cDoc[i] = pool[x];
+          i = i + 1;
           x = x - 1;
-          const ch = D.poolAt(off, x);
-          const i = this.nc;
-          const cm = this.cMI;
-          const cd = this.cDoc;
-          if (i >= 0 && i < cm.length && i < cd.length) {
-            cm[i] = mi2;
-            cd[i] = ch;
-            this.nc = i + 1;
-          } else {
-            this.pushPast(ch, mode, ind);
-          }
+        }
+        this.nc = i;
+        if (x >= off) {
+          this.stop();
         }
         return;
       }
@@ -1345,9 +1519,10 @@ export class CsPrinter {
     }
   }
 
-  processString(doc: i32, ind: i32): void {
+  /** Prints string doc `doc`, whose fields a, b, c (its width) and d (its flags) are given. */
+  processString(doc: i32, ind: i32, a: i32, b: i32, w: i32, flags: i32): void {
     const D = this.D;
-    const n = D.textLen(doc);
+    const n = sub32(b, a);
     if (n === 0) {
       return;
     }
@@ -1361,8 +1536,8 @@ export class CsPrinter {
       this.currentWidth = this.indentLength(ind);
       this.newLineNextStringValue = false;
     }
-    this.appendText(doc);
-    this.currentWidth = add32(this.currentWidth, D.cOf(doc));
+    csAppendRange(this.out, (flags & SF_SRC) !== 0 ? D.src : D.sb, a, b);
+    this.currentWidth = add32(this.currentWidth, w);
   }
 
   processLine(doc: i32, mode: i32, ind: i32): void {
@@ -1479,12 +1654,29 @@ export class CsPrinter {
     return 0;
   }
 
+  /** Grows the fitter's stack columns to at least `need` entries. */
+  growFit(need: i32): void {
+    const sMI = this.sMI;
+    const sDoc = this.sDoc;
+    while (sMI.length < need) {
+      sMI.push(0);
+    }
+    while (sDoc.length < need) {
+      sDoc.push(0);
+    }
+  }
+
   /** DocFitter.Fits for the command (doc, mode, ind) with the remaining commands after it. */
   fits(doc0: i32, mode0: i32): boolean {
     const D = this.D;
+    // The records do not change while fitting: no doc is added.
+    const rec = D.rec;
+    const pool = D.pool;
     const cMI = this.cMI;
     const cDoc = this.cDoc;
     const groupMode = this.groupMode;
+    let sMI = this.sMI;
+    let sDoc = this.sDoc;
     let remaining = sub32(this.width, this.currentWidth);
     let outputLength = 0;
     let trailingWhitespace = 0;
@@ -1499,8 +1691,6 @@ export class CsPrinter {
       let doc = 0;
       if (ns > 0) {
         ns = ns - 1;
-        const sMI = this.sMI;
-        const sDoc = this.sDoc;
         if (ns >= sMI.length || ns >= sDoc.length) {
           fault();
           return false;
@@ -1516,21 +1706,43 @@ export class CsPrinter {
         fault();
         return false;
       }
-      const k = D.kindOf(doc);
+      if (doc < 0 || doc > 350000000) {
+        fault();
+        return false;
+      }
+      const o = doc * 6;
+      if (o > rec.length - 6) {
+        fault();
+        return false;
+      }
+      const k = rec[o];
+      const fa = rec[o + 1];
+      const fb = rec[o + 2];
+      const fc = rec[o + 3];
+      const fd = rec[o + 4];
+      const fe = rec[o + 5];
       switch (k) {
         case D_NULL:
           break;
         case D_STRING: {
-          if ((D.dOf(doc) & SF_DIRECTIVE) !== 0) {
+          if ((fd & SF_DIRECTIVE) !== 0) {
             continue;
           }
           if (returnFalseIfMoreStringsFound) {
             return false;
           }
-          const n = D.textLen(doc);
+          const a = fa;
+          const b = fb;
           // TrailingWhitespaceLength
-          const len = D.eOf(doc);
-          const w = D.cOf(doc);
+          const len = fe;
+          const w = fc;
+          // a string's text and width are never negative
+          if (a < 0 || b < a || w < 0) {
+            fault();
+            return false;
+          }
+          // b >= a >= 0, so the u32 difference is exact
+          const n = toI32(toU32(b) - toU32(a));
           outputLength = add32(outputLength, n);
           if (len === n) {
             trailingWhitespace = add32(trailingWhitespace, len);
@@ -1541,11 +1753,33 @@ export class CsPrinter {
           break;
         }
         case D_CONCAT: {
-          const off = D.aOf(doc);
-          let i = D.bOf(doc);
-          while (i > 0) {
-            i = i - 1;
-            ns = this.spush(D.poolAt(off, i), mode, ns);
+          const off = fa;
+          const cnt = fb;
+          if (off < 0 || cnt < 0 || off > pool.length - cnt || ns < 0 || ns > 1000000000 || cnt > 1000000000) {
+            fault();
+            return false;
+          }
+          // the children, last first, in one copy: room for them first
+          const need = ns + cnt;
+          if (need > sMI.length || need > sDoc.length) {
+            this.growFit(need);
+            sMI = this.sMI;
+            sDoc = this.sDoc;
+          }
+          if (cnt === 0) {
+            break;
+          }
+          // off + cnt is at most the pool's length, so the u32 sum is exact
+          let p = toI32(toU32(off) + toU32(cnt - 1));
+          while (p >= off && p >= 0 && p < pool.length && ns >= 0 && ns < sMI.length && ns < sDoc.length) {
+            sMI[ns] = mode;
+            sDoc[ns] = pool[p];
+            ns = ns + 1;
+            p = p - 1;
+          }
+          if (p >= off) {
+            fault();
+            return false;
           }
           break;
         }
@@ -1554,9 +1788,13 @@ export class CsPrinter {
         case D_HARDLINE:
         case D_LITERALLINE:
           if (mode === PM_FLAT || mode === PM_FORCE_FLAT) {
-            if (k === D_HARDLINE && (D.bOf(doc) & HL_FOR_TRIVIA) !== 0) {
-              returnFalseIfMoreStringsFound = false;
-            } else if (k === D_HARDLINE || k === D_LITERALLINE) {
+            if (k === D_HARDLINE) {
+              if ((fb & HL_FOR_TRIVIA) !== 0) {
+                returnFalseIfMoreStringsFound = false;
+              } else {
+                return true;
+              }
+            } else if (k === D_LITERALLINE) {
               return true;
             }
             if (k !== D_SOFTLINE) {
@@ -1569,12 +1807,12 @@ export class CsPrinter {
           return true;
         case D_GROUP:
         case D_CONDGROUP: {
-          const gm = D.bOf(doc) !== 0 ? PM_BREAK : mode;
-          let contents = D.aOf(doc);
+          const gm = fb !== 0 ? PM_BREAK : mode;
+          let contents = fa;
+          const id = fc;
           if (gm === PM_BREAK && k === D_CONDGROUP) {
-            contents = D.poolAt(D.dOf(doc), sub32(D.eOf(doc), 1));
+            contents = D.poolAt(fd, sub32(fe, 1));
           }
-          const id = D.cOf(doc);
           ns = this.spush(contents, gm, ns);
           if (id >= 0) {
             if (id >= groupMode.length) {
@@ -1586,10 +1824,12 @@ export class CsPrinter {
           break;
         }
         case D_INDENT:
-          ns = this.spush(D.aOf(doc), mode, ns);
+          ns = this.spush(fa, mode, ns);
           break;
         case D_IFBREAK: {
-          const id = D.cOf(doc);
+          const id = fc;
+          const ia = fa;
+          const ib = fb;
           let im = mode;
           if (id >= 0) {
             if (id >= groupMode.length) {
@@ -1600,7 +1840,7 @@ export class CsPrinter {
               im = groupMode[id];
             }
           }
-          ns = this.spush(im === PM_BREAK ? D.aOf(doc) : D.bOf(doc), mode, ns);
+          ns = this.spush(im === PM_BREAK ? ia : ib, mode, ns);
           break;
         }
         case D_TRIM:
@@ -1617,7 +1857,7 @@ export class CsPrinter {
         case D_REGION:
           return false;
         case D_FORCEFLAT:
-          ns = this.spush(D.aOf(doc), PM_FORCE_FLAT, ns);
+          ns = this.spush(fa, PM_FORCE_FLAT, ns);
           break;
         case D_BREAKPARENT:
           break;
