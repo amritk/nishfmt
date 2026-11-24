@@ -5,7 +5,8 @@
 
 import { INDEPENDENT, UNIFIED, FORCED, BL_NO, BL_PRESERVE, BL_YES } from "../gdoc/engine";
 import { JlEngine } from "./layout/engine";
-import { growI32 } from "../core/arr";
+import { add32, atU8, bytesText, growI32, mul32, sliceI32s, sliceStrs, sub32 } from "../core/arr";
+import { stableSort } from "../core/sort";
 import { GInput } from "../gdoc/input";
 import {
   CK_ANNOTATION,
@@ -97,6 +98,20 @@ import {
   opPrec,
 } from "./ast";
 import { javaLines, stripIndentLines, stripTrailingJ } from "./strings";
+import { fault, faulted } from "../core/fault";
+
+/**
+ * `xs[i]`, or -1 (no node, no tok) after a fault when `i` is outside `xs`:
+ * the tree's columns, the input's tok columns and the visitor's lists are
+ * indexed only by the ids and positions they issued.
+ */
+const jvAt = (xs: i32[], i: i32): i32 => {
+  if (i >= 0 && i < xs.length) {
+    return xs[i];
+  }
+  fault();
+  return -1;
+};
 
 // Declaration kinds and directions.
 const DK_NONE: i32 = 0;
@@ -115,15 +130,26 @@ class Dims {
     this.items = [];
   }
   size(): i32 {
-    return toI32(this.items.length) - this.head;
+    const h = this.head;
+    // head only grows from 0, so the difference fits.
+    if (h < 0) {
+      fault();
+      return 0;
+    }
+    return toI32(this.items.length) - h;
   }
   isEmpty(): boolean {
     return this.size() === 0;
   }
   removeFirst(): i32 {
-    const x = this.items[this.head];
-    this.head = this.head + 1;
-    return x;
+    const items = this.items;
+    const h = this.head;
+    if (h < 0 || h >= items.length) {
+      fault();
+      return -1;
+    }
+    this.head = h + 1;
+    return items[h];
   }
 }
 
@@ -190,12 +216,23 @@ export class JVisitor {
     this.typeAnnotationSimpleNames = [];
     const nn = this.t.n;
     if (toI32(this.hugPoints.length) < nn) {
+      // nn nodes fill the tree's columns, so nn * 2 fits.
+      if (nn < 0 || nn > 1073741823) {
+        fault();
+        return;
+      }
       this.hugPoints = growI32(this.hugPoints, nn * 2);
       this.notHuggable = growI32(this.notHuggable, nn * 2);
     }
-    for (let i = 0; i < nn; i++) {
-      this.hugPoints[i] = -1;
-      this.notHuggable[i] = 0;
+    const hp = this.hugPoints;
+    const nh = this.notHuggable;
+    if (nn > hp.length || nn > nh.length) {
+      fault();
+      return;
+    }
+    for (let i = 0; i < nn && i < hp.length && i < nh.length; i++) {
+      hp[i] = -1;
+      nh[i] = 0;
     }
   }
 
@@ -225,7 +262,7 @@ export class JVisitor {
   }
 
   sync(n: i32): void {
-    this.g.sync(this.t.start[n]);
+    this.g.sync(jvAt(this.t.start, n));
   }
 
   len(l: i32): i32 {
@@ -237,46 +274,66 @@ export class JVisitor {
   }
 
   startPos(n: i32): i32 {
-    return this.t.start[n];
+    return jvAt(this.t.start, n);
   }
 
   endPos(n: i32): i32 {
-    return this.t.end[n];
+    return jvAt(this.t.end, n);
   }
 
   currentLeaf(): i32 {
-    return this.nPath > 0 ? this.path[this.nPath - 1] : -1;
+    const np = this.nPath;
+    if (np <= 0) {
+      return -1;
+    }
+    return jvAt(this.path, np - 1);
   }
 
   /** The node `up` levels above the current leaf (0 is the leaf), or -1. */
   pathAt(up: i32): i32 {
-    const i = this.nPath - 1 - up;
-    return i >= 0 ? this.path[i] : -1;
+    const np = this.nPath;
+    // nPath counts open scans and `up` is a small level.
+    if (np < 0 || up < 0) {
+      fault();
+      return -1;
+    }
+    const i = np - 1 - up;
+    return i >= 0 ? jvAt(this.path, i) : -1;
   }
 
   scan(n: i32): void {
     if (n < 0) {
       return;
     }
-    if (this.nPath >= toI32(this.path.length)) {
-      const np = new Array<i32>(this.nPath * 2);
-      np.set(this.path);
-      this.path = np;
+    const np = this.nPath;
+    let path = this.path;
+    if (np >= toI32(path.length)) {
+      // The path has a slot per open scan, far under 2^30.
+      if (np < 0 || np > 1073741823) {
+        fault();
+        return;
+      }
+      path = growI32(path, np * 2);
+      this.path = path;
     }
-    this.path[this.nPath] = n;
-    this.nPath = this.nPath + 1;
+    if (np < 0 || np >= path.length) {
+      fault();
+      return;
+    }
+    path[np] = n;
+    this.nPath = np + 1;
     const previous = this.g.depthNow();
     // javac's JCExpression subclasses: every expression and type node but a type parameter.
-    const k = this.t.kind[n];
+    const k = jvAt(this.t.kind, n);
     const expr = (k >= N_IDENTIFIER && k <= N_ANNOTATED_TYPE) || k === N_ANNOTATION;
     if (expr) {
-      this.exprDepth = this.exprDepth + 1;
+      this.exprDepth = add32(this.exprDepth, 1);
     }
     this.visit(n);
     if (expr) {
-      this.exprDepth = this.exprDepth - 1;
+      this.exprDepth = sub32(this.exprDepth, 1);
     }
-    this.nPath = this.nPath - 1;
+    this.nPath = sub32(this.nPath, 1);
     if (this.g.depthNow() !== previous) {
       this.g.fail("unclosed ops");
     }
@@ -284,7 +341,7 @@ export class JVisitor {
 
   visit(n: i32): void {
     const t = this.t;
-    switch (t.kind[n]) {
+    switch (jvAt(t.kind, n)) {
       case N_COMPILATION_UNIT:
         this.visitCompilationUnit(n);
         break;
@@ -305,7 +362,7 @@ export class JVisitor {
         break;
       case N_EXPRESSION_STATEMENT:
         this.sync(n);
-        this.scan(t.a[n]);
+        this.scan(jvAt(t.a, n));
         this.token(";");
         break;
       case N_IF:
@@ -323,10 +380,10 @@ export class JVisitor {
         this.g.space();
         this.token("(");
         this.g.headerStart();
-        this.scan(t.a[t.a[n]]);
+        this.scan(jvAt(t.a, jvAt(t.a, n)));
         this.g.headerEnd();
         this.token(")");
-        this.visitStatement(t.b[n], true, true, false);
+        this.visitStatement(jvAt(t.b, n), true, true, false);
         break;
       case N_DO_WHILE:
         this.visitDoWhileLoop(n);
@@ -337,7 +394,7 @@ export class JVisitor {
       case N_SWITCH:
       case N_SWITCH_EXPRESSION:
         this.sync(n);
-        this.visitSwitch(t.a[n], t.b[n]);
+        this.visitSwitch(jvAt(t.a, n), jvAt(t.b, n));
         break;
       case N_CASE:
         this.visitCase(n);
@@ -350,19 +407,19 @@ export class JVisitor {
         this.g.headerStart();
         this.g.open(this.plusFour);
         this.g.brk();
-        this.scan(t.a[t.a[n]]);
+        this.scan(jvAt(t.a, jvAt(t.a, n)));
         this.g.close();
         this.g.headerEnd();
         this.token(")");
         this.g.space();
-        this.scan(t.b[n]);
+        this.scan(jvAt(t.b, n));
         break;
       case N_RETURN:
         this.sync(n);
         this.token("return");
-        if (t.a[n] >= 0) {
+        if (jvAt(t.a, n) >= 0) {
           this.g.space();
-          this.scan(t.a[n]);
+          this.scan(jvAt(t.a, n));
         }
         this.token(";");
         break;
@@ -370,23 +427,23 @@ export class JVisitor {
         this.sync(n);
         this.token("throw");
         this.g.space();
-        this.scan(t.a[n]);
+        this.scan(jvAt(t.a, n));
         this.token(";");
         break;
       case N_YIELD:
         this.sync(n);
         this.token("yield");
         this.g.space();
-        this.scan(t.a[n]);
+        this.scan(jvAt(t.a, n));
         this.token(";");
         break;
       case N_BREAK:
         this.sync(n);
         this.g.open(this.plusFour);
         this.token("break");
-        if (t.name[n] >= 0) {
+        if (jvAt(t.name, n) >= 0) {
           this.g.brkSp();
-          this.visitName(t.name[n]);
+          this.visitName(jvAt(t.name, n));
         }
         this.g.close();
         this.token(";");
@@ -395,9 +452,9 @@ export class JVisitor {
         this.sync(n);
         this.g.open(this.plusFour);
         this.token("continue");
-        if (t.name[n] >= 0) {
+        if (jvAt(t.name, n) >= 0) {
           this.g.brkSp();
-          this.visitName(t.name[n]);
+          this.visitName(jvAt(t.name, n));
         }
         this.token(";");
         this.g.close();
@@ -405,11 +462,11 @@ export class JVisitor {
       case N_LABELED:
         this.sync(n);
         this.g.open(this.ZERO);
-        this.visitName(t.name[n]);
+        this.visitName(jvAt(t.name, n));
         this.token(":");
         this.g.forcedBreak();
         this.g.close();
-        this.scan(t.a[n]);
+        this.scan(jvAt(t.a, n));
         break;
       case N_EMPTY:
         this.sync(n);
@@ -420,14 +477,14 @@ export class JVisitor {
         this.g.open(this.ZERO);
         this.token("assert");
         this.g.space();
-        this.g.open(t.b[n] < 0 ? this.ZERO : this.plusFour);
+        this.g.open(jvAt(t.b, n) < 0 ? this.ZERO : this.plusFour);
         this.g.fence();
-        this.scan(t.a[n]);
-        if (t.b[n] >= 0) {
+        this.scan(jvAt(t.a, n));
+        if (jvAt(t.b, n) >= 0) {
           this.g.brkSp();
           this.token(":");
           this.g.space();
-          this.scan(t.b[n]);
+          this.scan(jvAt(t.b, n));
         }
         this.g.close();
         this.g.close();
@@ -435,7 +492,7 @@ export class JVisitor {
         break;
       case N_IDENTIFIER:
         this.sync(n);
-        this.visitName(t.name[n]);
+        this.visitName(jvAt(t.name, n));
         break;
       case N_MEMBER_SELECT:
       case N_ARRAY_ACCESS:
@@ -459,18 +516,18 @@ export class JVisitor {
         break;
       case N_PARENTHESIZED:
         this.token("(");
-        this.scan(t.a[n]);
+        this.scan(jvAt(t.a, n));
         this.token(")");
         break;
       case N_ASSIGNMENT:
       case N_COMPOUND_ASSIGNMENT:
         this.sync(n);
         this.g.open(this.plusFour);
-        this.scan(t.a[n]);
+        this.scan(jvAt(t.a, n));
         this.g.space();
-        this.splitToken(t.kind[n] === N_ASSIGNMENT ? "=" : `${opName(t.op[n])}=`);
+        this.splitToken(jvAt(t.kind, n) === N_ASSIGNMENT ? "=" : `${opName(jvAt(t.op, n))}=`);
         this.g.brkSp();
-        this.scan(t.b[n]);
+        this.scan(jvAt(t.b, n));
         this.g.close();
         break;
       case N_UNARY:
@@ -482,29 +539,29 @@ export class JVisitor {
       case N_CONDITIONAL:
         this.sync(n);
         this.g.open(this.plusFour);
-        this.scan(t.a[n]);
+        this.scan(jvAt(t.a, n));
         this.g.brkSp();
         this.token("?");
         this.g.space();
-        this.scan(t.b[n]);
+        this.scan(jvAt(t.b, n));
         this.g.brkSp();
         this.token(":");
         this.g.space();
-        this.scan(t.c[n]);
+        this.scan(jvAt(t.c, n));
         this.g.close();
         break;
       case N_INSTANCE_OF:
         this.sync(n);
         this.g.open(this.plusFour);
-        this.scan(t.a[n]);
+        this.scan(jvAt(t.a, n));
         this.g.brkSp();
         this.g.open(this.ZERO);
         this.token("instanceof");
         this.g.brkSp();
-        if (t.c[n] >= 0) {
-          this.scan(t.c[n]);
+        if (jvAt(t.c, n) >= 0) {
+          this.scan(jvAt(t.c, n));
         } else {
-          this.scan(t.b[n]);
+          this.scan(jvAt(t.b, n));
         }
         this.g.close();
         this.g.close();
@@ -513,10 +570,10 @@ export class JVisitor {
         this.sync(n);
         this.g.open(this.plusFour);
         this.token("(");
-        this.scan(t.a[n]);
+        this.scan(jvAt(t.a, n));
         this.token(")");
         this.g.brkSp();
-        this.scan(t.b[n]);
+        this.scan(jvAt(t.b, n));
         this.g.close();
         break;
       case N_LAMBDA:
@@ -524,20 +581,20 @@ export class JVisitor {
         break;
       case N_MEMBER_REFERENCE:
         this.g.open(this.plusFour);
-        this.scan(t.a[n]);
+        this.scan(jvAt(t.a, n));
         this.g.brk();
         this.g.op("::");
-        this.addTypeArguments(t.b[n], this.plusFour);
-        if ((t.flags[n] & FL_NEW_REF) !== 0) {
+        this.addTypeArguments(jvAt(t.b, n), this.plusFour);
+        if ((jvAt(t.flags, n) & FL_NEW_REF) !== 0) {
           this.token("new");
         } else {
-          this.visitName(t.name[n]);
+          this.visitName(jvAt(t.name, n));
         }
         this.g.close();
         break;
       case N_PRIMITIVE_TYPE:
         this.sync(n);
-        this.visitName(t.name[n]);
+        this.visitName(jvAt(t.name, n));
         break;
       case N_ARRAY_TYPE:
         this.sync(n);
@@ -550,12 +607,12 @@ export class JVisitor {
         this.sync(n);
         this.g.open(this.ZERO);
         this.token("?");
-        if (t.a[n] >= 0) {
+        if (jvAt(t.a, n) >= 0) {
           this.g.open(this.plusFour);
           this.g.space();
-          this.token(t.op[n] === 1 ? "extends" : "super");
+          this.token(jvAt(t.op, n) === 1 ? "extends" : "super");
           this.g.brkSp();
-          this.scan(t.a[n]);
+          this.scan(jvAt(t.a, n));
           this.g.close();
         }
         this.g.close();
@@ -563,13 +620,13 @@ export class JVisitor {
       case N_INTERSECTION_TYPE:
         this.sync(n);
         this.g.open(this.plusFour);
-        for (let i = 0; i < this.len(t.a[n]); i++) {
+        for (let i = 0; i < this.len(jvAt(t.a, n)); i++) {
           if (i > 0) {
             this.g.breakToFill(" ");
             this.token("&");
             this.g.space();
           }
-          this.scan(this.at(t.a[n], i));
+          this.scan(this.at(jvAt(t.a, n), i));
         }
         this.g.close();
         break;
@@ -584,21 +641,34 @@ export class JVisitor {
         break;
       case N_BINDING_PATTERN: {
         this.sync(n);
-        const v = t.a[n];
-        this.declareOne(DK_PARAMETER, HORIZONTAL, t.a[v], t.b[v], t.name[v], "", "", -1, "", -1, false, null);
+        const v = jvAt(t.a, n);
+        this.declareOne(
+          DK_PARAMETER,
+          HORIZONTAL,
+          jvAt(t.a, v),
+          jvAt(t.b, v),
+          jvAt(t.name, v),
+          "",
+          "",
+          -1,
+          "",
+          -1,
+          false,
+          null,
+        );
         break;
       }
       case N_DECONSTRUCTION_PATTERN:
-        this.scan(t.a[n]);
+        this.scan(jvAt(t.a, n));
         this.g.open(this.plusFour);
         this.token("(");
         this.g.brk();
-        for (let i = 0; i < this.len(t.b[n]); i++) {
+        for (let i = 0; i < this.len(jvAt(t.b, n)); i++) {
           if (i > 0) {
             this.token(",");
             this.g.brkSp();
           }
-          this.scan(this.at(t.b[n], i));
+          this.scan(this.at(jvAt(t.b, n), i));
         }
         this.g.close();
         this.token(")");
@@ -611,19 +681,19 @@ export class JVisitor {
         break;
       case N_CONSTANT_CASE_LABEL:
       case N_PATTERN_CASE_LABEL:
-        this.scan(t.a[n]);
+        this.scan(jvAt(t.a, n));
         break;
       case N_MODULE:
         this.visitModule(n);
         break;
       case N_EXPORTS:
-        this.visitDirective("exports", "to", t.a[n], t.b[n]);
+        this.visitDirective("exports", "to", jvAt(t.a, n), jvAt(t.b, n));
         break;
       case N_OPENS:
-        this.visitDirective("opens", "to", t.a[n], t.b[n]);
+        this.visitDirective("opens", "to", jvAt(t.a, n), jvAt(t.b, n));
         break;
       case N_PROVIDES:
-        this.visitDirective("provides", "with", t.a[n], t.b[n]);
+        this.visitDirective("provides", "with", jvAt(t.a, n), jvAt(t.b, n));
         break;
       case N_REQUIRES:
         this.token("requires");
@@ -639,17 +709,17 @@ export class JVisitor {
             break;
           }
         }
-        this.scan(t.a[n]);
+        this.scan(jvAt(t.a, n));
         this.token(";");
         break;
       case N_USES:
         this.token("uses");
         this.g.space();
-        this.scan(t.a[n]);
+        this.scan(jvAt(t.a, n));
         this.token(";");
         break;
       default:
-        this.g.fail(`unexpected node kind ${t.kind[n]}`);
+        this.g.fail(`unexpected node kind ${jvAt(t.kind, n)}`);
     }
   }
 
@@ -659,14 +729,14 @@ export class JVisitor {
     const t = this.t;
     const g = this.g;
     let afterFirstToken = false;
-    if (t.b[n] >= 0) {
+    if (jvAt(t.b, n) >= 0) {
       this.markForPartialFormat();
-      this.visitPackage(t.b[n], t.a[n]);
+      this.visitPackage(jvAt(t.b, n), jvAt(t.a, n));
       g.forcedBreak();
       afterFirstToken = true;
     }
     this.dropEmptyDeclarations();
-    const imports = t.c[n];
+    const imports = jvAt(t.c, n);
     if (this.len(imports) > 0) {
       if (afterFirstToken) {
         g.blankLineWanted(BL_YES);
@@ -680,7 +750,7 @@ export class JVisitor {
       afterFirstToken = true;
     }
     this.dropEmptyDeclarations();
-    const types = t.d[n];
+    const types = jvAt(t.d, n);
     for (let i = 0; i < this.len(types); i++) {
       const ty = this.at(types, i);
       if (afterFirstToken) {
@@ -692,12 +762,12 @@ export class JVisitor {
       afterFirstToken = true;
       this.dropEmptyDeclarations();
     }
-    if (t.e[n] >= 0) {
+    if (jvAt(t.e, n) >= 0) {
       if (afterFirstToken) {
         g.blankLineWanted(BL_YES);
       }
       this.markForPartialFormat();
-      this.visitModule(t.e[n]);
+      this.visitModule(jvAt(t.e, n));
       g.forcedBreak();
     }
     // A boundary at EOF, so that the whole file can be formatted.
@@ -735,18 +805,18 @@ export class JVisitor {
     this.sync(n);
     this.token("import");
     this.g.space();
-    if ((t.flags[n] & FL_STATIC) !== 0) {
+    if ((jvAt(t.flags, n) & FL_STATIC) !== 0) {
       this.token("static");
       this.g.space();
     }
-    this.visitQualifiedName(t.a[n]);
+    this.visitQualifiedName(jvAt(t.a, n));
     this.token(";");
   }
 
   private checkForTypeAnnotation(n: i32): void {
     const t = this.t;
-    const q = t.a[n];
-    const simple = this.inp.text(t.name[q]);
+    const q = jvAt(t.a, n);
+    const simple = this.inp.text(jvAt(t.name, q));
     const full = this.qualifiedText(q);
     if (
       (simple === "NonNull" &&
@@ -762,10 +832,10 @@ export class JVisitor {
 
   private qualifiedText(n: i32): string {
     const t = this.t;
-    if (t.kind[n] === N_MEMBER_SELECT) {
-      return `${this.qualifiedText(t.a[n])}.${this.inp.text(t.name[n])}`;
+    if (jvAt(t.kind, n) === N_MEMBER_SELECT) {
+      return `${this.qualifiedText(jvAt(t.a, n))}.${this.inp.text(jvAt(t.name, n))}`;
     }
-    return this.inp.text(t.name[n]);
+    return this.inp.text(jvAt(t.name, n));
   }
 
   /** visitName(Tree): a dotted name, token by token. */
@@ -773,30 +843,31 @@ export class JVisitor {
     const t = this.t;
     const stack: i32[] = [];
     let x = n;
-    while (t.kind[x] === N_MEMBER_SELECT) {
-      stack.push(t.name[x]);
-      x = t.a[x];
+    while (jvAt(t.kind, x) === N_MEMBER_SELECT) {
+      stack.push(jvAt(t.name, x));
+      x = jvAt(t.a, x);
     }
-    stack.push(t.name[x]);
-    for (let i = toI32(stack.length) - 1; i >= 0; i--) {
+    stack.push(jvAt(t.name, x));
+    for (let i = toI32(stack.length) - 1; i >= 0 && i < stack.length; i--) {
+      const name = stack[i];
       if (i < toI32(stack.length) - 1) {
         this.token(".");
       }
-      this.visitName(stack[i]);
+      this.visitName(name);
     }
   }
 
   // ---- Classes ---------------------------------------------------------------
 
   visitClass(n: i32): void {
-    if ((this.t.flags[n] & FL_IMPLICIT) !== 0) {
+    if ((jvAt(this.t.flags, n) & FL_IMPLICIT) !== 0) {
       // visitImplicitClass: the members at the top level, without braces.
       this.g.open(this.minusTwo);
-      this.addBodyDeclarations(this.listItems(this.t.f[n]), false, true);
+      this.addBodyDeclarations(this.listItems(jvAt(this.t.f, n)), false, true);
       this.g.close();
       return;
     }
-    switch (this.t.op[n]) {
+    switch (jvAt(this.t.op, n)) {
       case CK_ANNOTATION:
         this.visitAnnotationType(n);
         break;
@@ -816,15 +887,15 @@ export class JVisitor {
     const g = this.g;
     this.sync(n);
     g.open(this.ZERO);
-    this.typeDeclarationModifiers(t.a[n]);
+    this.typeDeclarationModifiers(jvAt(t.a, n));
     g.open(this.ZERO);
     this.token("@");
     this.token("interface");
     g.brkSp();
-    this.visitName(t.name[n]);
+    this.visitName(jvAt(t.name, n));
     g.close();
     g.close();
-    this.addBodyDeclarations(this.listItems(t.f[n]), true, true);
+    this.addBodyDeclarations(this.listItems(jvAt(t.f, n)), true, true);
     g.guessToken(";");
   }
 
@@ -832,20 +903,20 @@ export class JVisitor {
     const t = this.t;
     const g = this.g;
     this.sync(n);
-    this.typeDeclarationModifiers(t.a[n]);
-    const hasSuperclassType = t.c[n] >= 0;
-    const hasSuperInterfaceTypes = this.len(t.d[n]) > 0;
-    const hasPermitsTypes = this.len(t.e[n]) > 0;
-    this.token(t.op[n] === CK_INTERFACE ? "interface" : "class");
+    this.typeDeclarationModifiers(jvAt(t.a, n));
+    const hasSuperclassType = jvAt(t.c, n) >= 0;
+    const hasSuperInterfaceTypes = this.len(jvAt(t.d, n)) > 0;
+    const hasPermitsTypes = this.len(jvAt(t.e, n)) > 0;
+    this.token(jvAt(t.op, n) === CK_INTERFACE ? "interface" : "class");
     g.space();
-    this.visitName(t.name[n]);
-    if (this.len(t.b[n]) > 0) {
+    this.visitName(jvAt(t.name, n));
+    if (this.len(jvAt(t.b, n)) > 0) {
       this.token("<");
     }
     g.open(this.plusFour);
-    if (this.len(t.b[n]) > 0) {
+    if (this.len(jvAt(t.b, n)) > 0) {
       this.typeParametersRest(
-        t.b[n],
+        jvAt(t.b, n),
         hasSuperclassType || hasSuperInterfaceTypes || hasPermitsTypes ? this.plusFour : this.ZERO,
       );
     }
@@ -853,12 +924,12 @@ export class JVisitor {
       g.breakToFill(" ");
       this.token("extends");
       g.space();
-      this.scan(t.c[n]);
+      this.scan(jvAt(t.c, n));
     }
-    this.classDeclarationTypeList(t.op[n] === CK_INTERFACE ? "extends" : "implements", t.d[n]);
-    this.classDeclarationTypeList("permits", t.e[n]);
+    this.classDeclarationTypeList(jvAt(t.op, n) === CK_INTERFACE ? "extends" : "implements", jvAt(t.d, n));
+    this.classDeclarationTypeList("permits", jvAt(t.e, n));
     g.close();
-    this.addBodyDeclarations(this.listItems(t.f[n]), true, true);
+    this.addBodyDeclarations(this.listItems(jvAt(t.f, n)), true, true);
     this.dropEmptyDeclarations();
   }
 
@@ -885,19 +956,19 @@ export class JVisitor {
     const t = this.t;
     const g = this.g;
     this.sync(n);
-    this.typeDeclarationModifiers(t.a[n]);
-    const hasSuperInterfaceTypes = this.len(t.d[n]) > 0;
+    this.typeDeclarationModifiers(jvAt(t.a, n));
+    const hasSuperInterfaceTypes = this.len(jvAt(t.d, n)) > 0;
     this.token("record");
     g.space();
-    this.visitName(t.name[n]);
-    if (this.len(t.b[n]) > 0) {
+    this.visitName(jvAt(t.name, n));
+    if (this.len(jvAt(t.b, n)) > 0) {
       this.token("<");
     }
     g.open(this.plusFour);
-    if (this.len(t.b[n]) > 0) {
-      this.typeParametersRest(t.b[n], hasSuperInterfaceTypes ? this.plusFour : this.ZERO);
+    if (this.len(jvAt(t.b, n)) > 0) {
+      this.typeParametersRest(jvAt(t.b, n), hasSuperInterfaceTypes ? this.plusFour : this.ZERO);
     }
-    const params = this.listItems(t.g[n]);
+    const params = this.listItems(jvAt(t.g, n));
     this.token("(");
     if (params.length > 0) {
       g.breakToFill("");
@@ -906,20 +977,20 @@ export class JVisitor {
     this.token(")");
     if (hasSuperInterfaceTypes) {
       g.breakToFill(" ");
-      g.open(this.len(t.d[n]) > 1 ? this.plusFour : this.ZERO);
+      g.open(this.len(jvAt(t.d, n)) > 1 ? this.plusFour : this.ZERO);
       this.token("implements");
       g.space();
-      for (let i = 0; i < this.len(t.d[n]); i++) {
+      for (let i = 0; i < this.len(jvAt(t.d, n)); i++) {
         if (i > 0) {
           this.token(",");
           g.brkSp();
         }
-        this.scan(this.at(t.d[n], i));
+        this.scan(this.at(jvAt(t.d, n), i));
       }
       g.close();
     }
     g.close();
-    this.addBodyDeclarations(this.listItems(t.f[n]), true, true);
+    this.addBodyDeclarations(this.listItems(jvAt(t.f, n)), true, true);
     this.dropEmptyDeclarations();
   }
 
@@ -928,26 +999,26 @@ export class JVisitor {
     const g = this.g;
     this.sync(n);
     g.open(this.ZERO);
-    this.typeDeclarationModifiers(t.a[n]);
+    this.typeDeclarationModifiers(jvAt(t.a, n));
     g.open(this.plusFour);
     this.token("enum");
     g.brkSp();
-    this.visitName(t.name[n]);
+    this.visitName(jvAt(t.name, n));
     g.close();
     g.close();
-    if (this.len(t.d[n]) > 0) {
+    if (this.len(jvAt(t.d, n)) > 0) {
       g.open(this.plusFour);
       g.brkSp();
       g.open(this.plusFour);
       this.token("implements");
       g.brkSp();
       g.open(this.ZERO);
-      for (let i = 0; i < this.len(t.d[n]); i++) {
+      for (let i = 0; i < this.len(jvAt(t.d, n)); i++) {
         if (i > 0) {
           this.token(",");
           g.breakToFill(" ");
         }
-        this.scan(this.at(t.d[n], i));
+        this.scan(this.at(jvAt(t.d, n), i));
       }
       g.close();
       g.close();
@@ -957,9 +1028,9 @@ export class JVisitor {
     this.tokenBreakTrailingComment("{", this.plusTwo);
     const enumConstants: i32[] = [];
     const members: i32[] = [];
-    for (let i = 0; i < this.len(t.f[n]); i++) {
-      const m = this.at(t.f[n], i);
-      if (t.kind[m] === N_VARIABLE && (t.flags[m] & FL_ENUM) !== 0) {
+    for (let i = 0; i < this.len(jvAt(t.f, n)); i++) {
+      const m = this.at(jvAt(t.f, n), i);
+      if (jvAt(t.kind, m) === N_VARIABLE && (jvAt(t.flags, m) & FL_ENUM) !== 0) {
         enumConstants.push(m);
       } else {
         members.push(m);
@@ -990,13 +1061,14 @@ export class JVisitor {
       g.forcedBreak();
       g.open(this.ZERO);
       for (let i = 0; i < toI32(enumConstants.length); i++) {
+        const ec = enumConstants[i];
         if (i > 0) {
           this.token(",");
           g.forcedBreak();
           g.blankLineWanted(BL_PRESERVE);
         }
         this.markForPartialFormat();
-        this.visitEnumConstantDeclaration(enumConstants[i]);
+        this.visitEnumConstantDeclaration(ec);
       }
       if (g.peekIs(",")) {
         this.token(",");
@@ -1026,24 +1098,24 @@ export class JVisitor {
   private visitEnumConstantDeclaration(v: i32): void {
     const t = this.t;
     const g = this.g;
-    const annos = t.a[t.a[v]];
+    const annos = jvAt(t.a, jvAt(t.a, v));
     for (let i = 0; i < this.len(annos); i++) {
       this.scan(this.at(annos, i));
       g.forcedBreak();
     }
-    this.visitName(t.name[v]);
-    const init = t.c[v];
-    if (this.len(t.d[init]) === 0) {
+    this.visitName(jvAt(t.name, v));
+    const init = jvAt(t.c, v);
+    if (this.len(jvAt(t.d, init)) === 0) {
       g.guessToken("(");
       g.guessToken(")");
     } else {
-      if (t.e[init] >= 0) {
+      if (jvAt(t.e, init) >= 0) {
         this.doNotHug(init);
       }
-      this.addArguments(t.d[init], this.plusFour, this.ZERO);
+      this.addArguments(jvAt(t.d, init), this.plusFour, this.ZERO);
     }
-    if (t.e[init] >= 0) {
-      this.addBodyDeclarations(this.listItems(t.f[t.e[init]]), true, true);
+    if (jvAt(t.e, init) >= 0) {
+      this.addBodyDeclarations(this.listItems(jvAt(t.f, jvAt(t.e, init))), true, true);
     }
   }
 
@@ -1085,25 +1157,29 @@ export class JVisitor {
     let lastOneGotBlankLineBefore = false;
     let i = 0;
     const nd = toI32(decls.length);
-    while (i < nd) {
+    while (i >= 0 && i < nd && i < decls.length) {
       const decl = decls[i];
       i++;
       this.dropEmptyDeclarations();
       g.forcedBreak();
-      const thisOneGetsBlankLineBefore = t.kind[decl] !== N_VARIABLE || this.hasJavaDoc(decl);
+      const thisOneGetsBlankLineBefore = jvAt(t.kind, decl) !== N_VARIABLE || this.hasJavaDoc(decl);
       if (first) {
         g.blankLineWanted(BL_PRESERVE);
       } else if (thisOneGetsBlankLineBefore || lastOneGotBlankLineBefore) {
         g.blankLineWanted(BL_YES);
       }
       this.markForPartialFormat();
-      if (t.kind[decl] === N_VARIABLE) {
+      if (jvAt(t.kind, decl) === N_VARIABLE) {
         const frags: i32[] = [decl];
-        while (i < nd && t.kind[decls[i]] === N_VARIABLE && t.start[decls[i]] === t.start[decl]) {
-          frags.push(decls[i]);
+        while (i >= 0 && i < nd && i < decls.length) {
+          const d = decls[i];
+          if (jvAt(t.kind, d) !== N_VARIABLE || jvAt(t.start, d) !== jvAt(t.start, decl)) {
+            break;
+          }
+          frags.push(d);
           i++;
         }
-        this.visitVariables(frags, DK_FIELD, this.fieldAnnotationDirection(t.a[decl]));
+        this.visitVariables(frags, DK_FIELD, this.fieldAnnotationDirection(jvAt(t.a, decl)));
       } else {
         this.scan(decl);
       }
@@ -1124,18 +1200,23 @@ export class JVisitor {
 
   private hasJavaDoc(decl: i32): boolean {
     const inp = this.inp;
-    const k = inp.tokenAt(this.t.start[decl]);
+    const k = inp.tokenAt(jvAt(this.t.start, decl));
     if (k >= 0) {
-      for (let j = 0; j < inp.kBeforeN[k]; j++) {
-        const tk = inp.refs[inp.kBefore[k] + j];
-        const a = inp.tPos[tk];
+      const nb = jvAt(inp.kBeforeN, k);
+      const kb = jvAt(inp.kBefore, k);
+      for (let j = 0; j < nb; j++) {
+        const tk = jvAt(inp.refs, add32(kb, j));
+        const a = jvAt(inp.tPos, tk);
         if (
-          inp.tEnd[tk] - a >= 3 &&
-          toI32(inp.src[a]) === 47 &&
-          toI32(inp.src[a + 1]) === 42 &&
-          toI32(inp.src[a + 2]) === 42
+          sub32(jvAt(inp.tEnd, tk), a) >= 3 &&
+          atU8(inp.src, a) === 47 &&
+          atU8(inp.src, add32(a, 1)) === 42 &&
+          atU8(inp.src, add32(a, 2)) === 42
         ) {
           return true;
+        }
+        if (faulted()) {
+          return false;
         }
       }
     }
@@ -1163,7 +1244,7 @@ export class JVisitor {
   }
 
   visitModifiersOf(mods: i32, dir: i32, declBreak: i32): i32[] {
-    return this.visitSplitModifiers(this.splitModifiers(mods, this.listItems(this.t.a[mods])), dir, declBreak);
+    return this.visitSplitModifiers(this.splitModifiers(mods, this.listItems(jvAt(this.t.a, mods))), dir, declBreak);
   }
 
   private breakList(declBreak: i32): void {
@@ -1190,7 +1271,7 @@ export class JVisitor {
     g.open(this.ZERO);
     let afterFirstToken = false;
     let lastWasAnnotation = false;
-    while (q < nd && !split.decl[q].isModifier) {
+    while (q >= 0 && q < nd && q < split.decl.length && !split.decl[q].isModifier) {
       if (afterFirstToken) {
         if (dir === VERTICAL) {
           this.forceBreakList(declBreak);
@@ -1233,18 +1314,36 @@ export class JVisitor {
   }
 
   private formatAnnotationOrModifier(items: ModItem[], q: i32): i32 {
+    if (q < 0 || q >= items.length) {
+      // Past the end, so the caller's loop stops.
+      fault();
+      return toI32(items.length);
+    }
     const m = items[q];
+    const q1 = q + 1;
     if (m.isModifier) {
-      this.visitName(m.tok);
-      if (this.inp.is(m.tok, "non") && q + 2 < toI32(items.length)) {
-        this.visitName(items[q + 1].tok);
-        this.visitName(items[q + 2].tok);
-        return q + 3;
+      // `non-sealed` is three toks: `non`, `-` and `sealed`.
+      let m1: ModItem | null = null;
+      let m2: ModItem | null = null;
+      let q3 = q1;
+      if (q1 < items.length) {
+        m1 = items[q1];
+        const q2 = q1 + 1;
+        if (q2 < items.length) {
+          m2 = items[q2];
+          q3 = q2 + 1;
+        }
       }
-      return q + 1;
+      this.visitName(m.tok);
+      if (this.inp.is(m.tok, "non") && m1 !== null && m2 !== null) {
+        this.visitName(m1.tok);
+        this.visitName(m2.tok);
+        return q3;
+      }
+      return q1;
     }
     this.scan(m.ann);
-    return q + 1;
+    return q1;
   }
 
   /**
@@ -1271,16 +1370,20 @@ export class JVisitor {
   private modsHave(mods: i32, tk: i32, word: string): boolean {
     const inp = this.inp;
     const t = this.t;
-    if (mods < 0 || t.start[mods] < 0) {
+    if (mods < 0 || jvAt(t.start, mods) < 0) {
       return false;
     }
-    for (let k = inp.tokenAt(t.start[mods]); k >= 0 && k < inp.nTokens; k++) {
-      const x = inp.kTok[k];
-      if (inp.tPos[x] >= t.end[mods]) {
+    for (let k = inp.tokenAt(jvAt(t.start, mods)); k >= 0 && k < inp.nTokens; k++) {
+      const x = jvAt(inp.kTok, k);
+      const px = jvAt(inp.tPos, x);
+      if (faulted()) {
+        return false;
+      }
+      if (px >= jvAt(t.end, mods)) {
         break;
       }
       if (
-        inp.tPos[x] >= t.start[mods] &&
+        px >= jvAt(t.start, mods) &&
         isModifier(inp, x) &&
         (word.length === 0 ? inp.sameText(x, tk) : inp.is(x, word))
       ) {
@@ -1302,11 +1405,14 @@ export class JVisitor {
     // Toks from the modifiers' start while they are in an annotation or a modifier.
     const all: ModItem[] = [];
     for (let k = g.tokenI; k < inp.nTokens; k++) {
-      const tk = inp.kTok[k];
-      const p = inp.tPos[tk];
+      const tk = jvAt(inp.kTok, k);
+      const p = jvAt(inp.tPos, tk);
+      if (faulted()) {
+        return out;
+      }
       let inAnno = false;
       for (const a of annotations) {
-        if (p >= t.start[a] && p < t.end[a]) {
+        if (p >= jvAt(t.start, a) && p < jvAt(t.end, a)) {
           inAnno = true;
           break;
         }
@@ -1325,22 +1431,14 @@ export class JVisitor {
     for (const a of annotations) {
       const m = new ModItem();
       m.ann = a;
-      m.pos = t.start[a];
+      m.pos = jvAt(t.start, a);
       all.push(m);
     }
     // Sort by position (stable).
-    for (let i = 1; i < toI32(all.length); i++) {
-      const x = all[i];
-      let j = i - 1;
-      while (j >= 0 && all[j].pos > x.pos) {
-        all[j + 1] = all[j];
-        j--;
-      }
-      all[j + 1] = x;
-    }
+    stableSort(all, (p: ModItem, q: ModItem): i32 => (p.pos > q.pos ? 1 : 0));
     let idx = toI32(all.length) - 1;
     const typeAnnosRev: i32[] = [];
-    while (idx >= 0) {
+    while (idx >= 0 && idx < all.length) {
       const m = all[idx];
       if (m.isModifier || !this.isTypeAnnotation(m.ann)) {
         break;
@@ -1348,10 +1446,10 @@ export class JVisitor {
       typeAnnosRev.push(m.ann);
       idx--;
     }
-    for (let i = 0; i <= idx; i++) {
+    for (let i = 0; i <= idx && i < all.length; i++) {
       out.decl.push(all[i]);
     }
-    for (let i = toI32(typeAnnosRev.length) - 1; i >= 0; i--) {
+    for (let i = toI32(typeAnnosRev.length) - 1; i >= 0 && i < typeAnnosRev.length; i--) {
       out.typeAnnos.push(typeAnnosRev[i]);
     }
     return out;
@@ -1359,11 +1457,11 @@ export class JVisitor {
 
   private isTypeAnnotation(a: i32): boolean {
     const t = this.t;
-    const ty = t.a[a];
-    if (t.kind[ty] !== N_IDENTIFIER) {
+    const ty = jvAt(t.a, a);
+    if (jvAt(t.kind, ty) !== N_IDENTIFIER) {
       return false;
     }
-    const name = this.inp.text(t.name[ty]);
+    const name = this.inp.text(jvAt(t.name, ty));
     for (const s of this.typeAnnotationSimpleNames) {
       if (s === name) {
         return true;
@@ -1374,9 +1472,9 @@ export class JVisitor {
 
   private fieldAnnotationDirection(mods: i32): i32 {
     const t = this.t;
-    const annos = t.a[mods];
+    const annos = jvAt(t.a, mods);
     for (let i = 0; i < this.len(annos); i++) {
-      if (this.len(t.b[this.at(annos, i)]) > 0) {
+      if (this.len(jvAt(t.b, this.at(annos, i))) > 0) {
         return VERTICAL;
       }
     }
@@ -1385,10 +1483,15 @@ export class JVisitor {
 
   private canLocalHaveHorizontalAnnotations(mods: i32): i32 {
     const t = this.t;
-    const annos = t.a[mods];
+    const annos = jvAt(t.a, mods);
     let parameterless = 0;
     for (let i = 0; i < this.len(annos); i++) {
-      if (this.len(t.b[this.at(annos, i)]) === 0) {
+      if (this.len(jvAt(t.b, this.at(annos, i))) === 0) {
+        // At most one per annotation.
+        if (parameterless >= 2147483647) {
+          fault();
+          break;
+        }
         parameterless++;
       }
     }
@@ -1402,10 +1505,11 @@ export class JVisitor {
         g.breakToFill(" ");
       }
       for (let i = 0; i < toI32(annos.length); i++) {
+        const a = annos[i];
         if (i > 0) {
           g.breakToFill(" ");
         }
-        this.scan(annos[i]);
+        this.scan(a);
       }
       if (breakAfter) {
         g.breakToFill(" ");
@@ -1422,8 +1526,8 @@ export class JVisitor {
     }
     g.open(this.ZERO);
     this.token("@");
-    this.scan(t.a[n]);
-    const args = t.b[n];
+    this.scan(jvAt(t.a, n));
+    const args = jvAt(t.b, n);
     if (this.len(args) > 0) {
       g.open(this.plusFour);
       this.token("(");
@@ -1444,7 +1548,7 @@ export class JVisitor {
             g.brkSp();
           }
         }
-        if (t.kind[arg] === N_ASSIGNMENT) {
+        if (jvAt(t.kind, arg) === N_ASSIGNMENT) {
           this.visitAnnotationArgument(arg);
         } else {
           this.scan(arg);
@@ -1463,20 +1567,20 @@ export class JVisitor {
 
   private isArrayValue(arg: i32): boolean {
     const t = this.t;
-    if (t.kind[arg] !== N_ASSIGNMENT) {
+    if (jvAt(t.kind, arg) !== N_ASSIGNMENT) {
       return false;
     }
-    const e = t.b[arg];
-    return t.kind[e] === N_NEW_ARRAY && t.a[e] < 0;
+    const e = jvAt(t.b, arg);
+    return jvAt(t.kind, e) === N_NEW_ARRAY && jvAt(t.a, e) < 0;
   }
 
   private visitAnnotationArgument(n: i32): void {
     const t = this.t;
     const g = this.g;
-    const isArrayInitializer = t.kind[t.b[n]] === N_NEW_ARRAY;
+    const isArrayInitializer = jvAt(t.kind, jvAt(t.b, n)) === N_NEW_ARRAY;
     this.sync(n);
     g.open(isArrayInitializer ? this.ZERO : this.plusFour);
-    this.scan(t.a[n]);
+    this.scan(jvAt(t.a, n));
     g.space();
     this.token("=");
     if (isArrayInitializer) {
@@ -1484,25 +1588,25 @@ export class JVisitor {
     } else {
       g.brkSp();
     }
-    this.scan(t.b[n]);
+    this.scan(jvAt(t.b, n));
     g.close();
   }
 
   private visitSingleMemberAnnotation(n: i32): boolean {
     const t = this.t;
     const g = this.g;
-    const args = t.b[n];
+    const args = jvAt(t.b, n);
     if (this.len(args) !== 1) {
       return false;
     }
     const value = this.at(args, 0);
-    if (t.kind[value] === N_ASSIGNMENT) {
+    if (jvAt(t.kind, value) === N_ASSIGNMENT) {
       return false;
     }
-    const isArrayInitializer = t.kind[value] === N_NEW_ARRAY;
+    const isArrayInitializer = jvAt(t.kind, value) === N_NEW_ARRAY;
     g.open(isArrayInitializer ? this.ZERO : this.plusFour);
     this.token("@");
-    this.scan(t.a[n]);
+    this.scan(jvAt(t.a, n));
     this.token("(");
     if (!isArrayInitializer) {
       g.brk();
@@ -1519,30 +1623,30 @@ export class JVisitor {
     const t = this.t;
     const g = this.g;
     this.sync(n);
-    let annotations = this.listItems(t.a[t.a[n]]);
+    let annotations = this.listItems(jvAt(t.a, jvAt(t.a, n)));
     let returnTypeAnnotations: i32[] = [];
-    const isRecordConstructor = (t.flags[n] & FL_COMPACT_CTOR) !== 0;
-    const typarams = t.b[n];
+    const isRecordConstructor = (jvAt(t.flags, n) & FL_COMPACT_CTOR) !== 0;
+    const typarams = jvAt(t.b, n);
     if (this.len(typarams) > 0 && annotations.length > 0) {
-      const typeParameterStart = t.start[this.at(typarams, 0)];
+      const typeParameterStart = jvAt(t.start, this.at(typarams, 0));
       for (let i = 0; i < toI32(annotations.length); i++) {
-        if (t.start[annotations[i]] > typeParameterStart) {
-          returnTypeAnnotations = annotations.slice(i, annotations.length);
-          annotations = annotations.slice(0, i);
+        if (jvAt(t.start, annotations[i]) > typeParameterStart) {
+          returnTypeAnnotations = sliceI32s(annotations, i, toI32(annotations.length));
+          annotations = sliceI32s(annotations, 0, i);
           break;
         }
       }
     }
-    let typeAnnotations = this.visitSplitModifiers(this.splitModifiers(t.a[n], annotations), VERTICAL, -1);
-    if (this.len(typarams) === 0 && t.c[n] >= 0) {
+    let typeAnnotations = this.visitSplitModifiers(this.splitModifiers(jvAt(t.a, n), annotations), VERTICAL, -1);
+    if (this.len(typarams) === 0 && jvAt(t.c, n) >= 0) {
       returnTypeAnnotations = typeAnnotations;
       typeAnnotations = [];
     }
     let baseReturnType = -1;
     let dims: Dims | null = null;
-    if (t.c[n] >= 0) {
+    if (jvAt(t.c, n) >= 0) {
       const d0 = new Dims();
-      baseReturnType = this.extractDims(t.c[n], d0, true);
+      baseReturnType = this.extractDims(jvAt(t.c, n), d0, true);
       dims = d0;
     } else {
       this.verticalAnnotations(typeAnnotations);
@@ -1597,7 +1701,7 @@ export class JVisitor {
         g.open(this.ZERO);
         openedNameAndTypeScope = true;
       }
-      this.visitName(t.name[n]);
+      this.visitName(jvAt(t.name, n));
       if (!isRecordConstructor) {
         this.token("(");
       }
@@ -1608,47 +1712,47 @@ export class JVisitor {
     g.open(g.ifIndent(breakBeforeType, this.plusFour, this.ZERO));
     g.open(this.ZERO);
     if (!isRecordConstructor) {
-      if (this.len(t.d[n]) > 0 || t.e[n] >= 0) {
+      if (this.len(jvAt(t.d, n)) > 0 || jvAt(t.e, n) >= 0) {
         g.breakToFill("");
-        this.visitFormals(t.e[n], this.listItems(t.d[n]));
+        this.visitFormals(jvAt(t.e, n), this.listItems(jvAt(t.d, n)));
       }
       this.token(")");
     }
     if (dims !== null) {
       this.maybeAddDims(null, dims);
     }
-    if (this.len(t.f[n]) > 0) {
+    if (this.len(jvAt(t.f, n)) > 0) {
       g.breakToFill(" ");
       g.open(this.plusFour);
-      this.visitThrowsClause(t.f[n]);
+      this.visitThrowsClause(jvAt(t.f, n));
       g.close();
     }
-    if (t.h[n] >= 0) {
+    if (jvAt(t.h, n) >= 0) {
       g.space();
       this.token("default");
-      if (t.kind[t.h[n]] === N_NEW_ARRAY) {
+      if (jvAt(t.kind, jvAt(t.h, n)) === N_NEW_ARRAY) {
         g.open(this.minusFour);
         g.space();
-        this.scan(t.h[n]);
+        this.scan(jvAt(t.h, n));
         g.close();
       } else {
         g.open(this.ZERO);
         g.breakToFill(" ");
-        this.scan(t.h[n]);
+        this.scan(jvAt(t.h, n));
         g.close();
       }
     }
     g.close();
     g.close();
     g.close();
-    if (t.g[n] < 0) {
+    if (jvAt(t.g, n) < 0) {
       this.token(";");
     } else {
       g.space();
       g.token("{", true, this.plusTwo, this.plusTwo);
     }
     g.close();
-    if (t.g[n] >= 0) {
+    if (jvAt(t.g, n) >= 0) {
       this.methodBody(n);
     }
   }
@@ -1656,7 +1760,7 @@ export class JVisitor {
   private methodBody(n: i32): void {
     const t = this.t;
     const g = this.g;
-    const stats = t.a[t.g[n]];
+    const stats = jvAt(t.a, jvAt(t.g, n));
     if (this.len(stats) === 0) {
       g.blankLineWanted(BL_NO);
     } else {
@@ -1697,24 +1801,25 @@ export class JVisitor {
       this.declareOne(
         DK_PARAMETER,
         HORIZONTAL,
-        t.a[receiver],
-        t.b[receiver],
-        t.name[receiver],
+        jvAt(t.a, receiver),
+        jvAt(t.b, receiver),
+        jvAt(t.name, receiver),
         "",
         "",
         -1,
         params.length > 0 ? "," : "",
-        t.d[receiver],
+        jvAt(t.d, receiver),
         false,
         null,
       );
       afterFirstToken = true;
     }
     for (let i = 0; i < toI32(params.length); i++) {
+      const param = params[i];
       if (afterFirstToken) {
         g.brkSp();
       }
-      this.visitToDeclare(DK_PARAMETER, HORIZONTAL, params[i], -1, "=", i < toI32(params.length) - 1 ? "," : "");
+      this.visitToDeclare(DK_PARAMETER, HORIZONTAL, param, -1, "=", i < toI32(params.length) - 1 ? "," : "");
       afterFirstToken = true;
     }
     g.close();
@@ -1742,9 +1847,9 @@ export class JVisitor {
     const g = this.g;
     this.sync(n);
     g.open(this.ZERO);
-    this.visitAnnotations(this.listItems(t.a[n]), false, true);
-    this.visitName(t.name[n]);
-    const bounds = t.b[n];
+    this.visitAnnotations(this.listItems(jvAt(t.a, n)), false, true);
+    this.visitName(jvAt(t.name, n));
+    const bounds = jvAt(t.b, n);
     if (this.len(bounds) > 0) {
       g.space();
       this.token("extends");
@@ -1769,7 +1874,7 @@ export class JVisitor {
 
   visitVariable(n: i32): void {
     this.sync(n);
-    this.visitVariables([n], DK_NONE, this.fieldAnnotationDirection(this.t.a[n]));
+    this.visitVariables([n], DK_NONE, this.fieldAnnotationDirection(jvAt(this.t.a, n)));
   }
 
   visitVariables(frags: i32[], kind: i32, dir: i32): void {
@@ -1778,12 +1883,26 @@ export class JVisitor {
       const f = frags[0];
       let dims: Dims | null = null;
       let base = -1;
-      if (t.b[f] >= 0) {
+      if (jvAt(t.b, f) >= 0) {
         const d0 = new Dims();
-        base = this.extractDims(t.b[f], d0, true);
+        base = this.extractDims(jvAt(t.b, f), d0, true);
         dims = d0;
       }
-      this.declareOne(kind, dir, t.a[f], t.b[f], t.name[f], "", "=", t.c[f], ";", -1, dims !== null, dims, base);
+      this.declareOne(
+        kind,
+        dir,
+        jvAt(t.a, f),
+        jvAt(t.b, f),
+        jvAt(t.name, f),
+        "",
+        "=",
+        jvAt(t.c, f),
+        ";",
+        -1,
+        dims !== null,
+        dims,
+        base,
+      );
     } else {
       this.declareMany(frags, dir);
     }
@@ -1794,17 +1913,17 @@ export class JVisitor {
     this.sync(n);
     let dims: Dims | null = null;
     let base = -1;
-    if (t.b[n] >= 0) {
+    if (jvAt(t.b, n) >= 0) {
       const d0 = new Dims();
-      base = this.extractDims(t.b[n], d0, true);
+      base = this.extractDims(jvAt(t.b, n), d0, true);
       dims = d0;
     }
     this.declareOne(
       kind,
       dir,
-      t.a[n],
+      jvAt(t.a, n),
       base,
-      t.name[n],
+      jvAt(t.name, n),
       "",
       equals,
       initializer,
@@ -1845,7 +1964,7 @@ export class JVisitor {
     }
     const dims = dims0 !== null ? dims0 : new Dims();
     let baseDims = 0;
-    const split = mods >= 0 ? this.splitModifiers(mods, this.listItems(t.a[mods])) : new SplitMods();
+    const split = mods >= 0 ? this.splitModifiers(mods, this.listItems(jvAt(t.a, mods))) : new SplitMods();
     g.open(kind === DK_PARAMETER && split.hasDeclarationAnnotation() ? this.plusFour : this.ZERO);
     {
       const annotations = this.visitSplitModifiers(split, dir, verticalAnnotationBreak);
@@ -1864,7 +1983,7 @@ export class JVisitor {
         g.open(this.plusFour);
         this.maybeAddDims(null, dims);
         g.close();
-        baseDims = totalDims - dims.size();
+        baseDims = sub32(totalDims, dims.size());
       } else {
         this.scan(type);
       }
@@ -1885,7 +2004,7 @@ export class JVisitor {
       if (initializer >= 0) {
         g.space();
         this.token(equals);
-        if (t.kind[initializer] === N_NEW_ARRAY && t.a[initializer] < 0) {
+        if (jvAt(t.kind, initializer) === N_NEW_ARRAY && jvAt(t.a, initializer) < 0) {
           g.open(this.minusFour);
           g.space();
           this.visit(initializer); // accept(): no path entry
@@ -1921,8 +2040,9 @@ export class JVisitor {
     const t = this.t;
     const g = this.g;
     g.open(this.ZERO);
-    const mods = t.a[frags[0]];
-    const type = t.b[frags[0]];
+    const f0 = jvAt(frags, 0);
+    const mods = jvAt(t.a, f0);
+    const type = jvAt(t.b, f0);
     this.visitAndBreakModifiers(mods, dir, -1);
     g.open(this.plusFour);
     g.open(this.ZERO);
@@ -1931,24 +2051,24 @@ export class JVisitor {
     this.scan(base);
     let baseDims = dims.size();
     this.maybeAddDims(null, dims);
-    baseDims = baseDims - dims.size();
+    baseDims = sub32(baseDims, dims.size());
     for (let i = 0; i < toI32(frags.length); i++) {
       const f = frags[i];
       if (i > 0) {
         this.token(",");
       }
-      dims = this.variableFragmentDims(i > 0, baseDims, t.b[f]);
+      dims = this.variableFragmentDims(i > 0, baseDims, jvAt(t.b, f));
       g.brkSp();
       g.open(this.ZERO);
       this.maybeAddDims(null, dims);
-      this.variableName(t.name[f]);
+      this.variableName(jvAt(t.name, f));
       this.maybeAddDims(null, dims);
-      if (t.c[f] >= 0) {
+      if (jvAt(t.c, f) >= 0) {
         g.space();
         this.token("=");
         g.open(this.plusFour);
         g.brkSp();
-        this.scan(t.c[f]);
+        this.scan(jvAt(t.c, f));
         g.close();
       }
       g.close();
@@ -1973,8 +2093,14 @@ export class JVisitor {
     this.extractDims(type, d, false);
     if (leadingDims > 0) {
       const out = new Dims();
-      for (let i = 0; i < d.size() - leadingDims; i++) {
-        out.items.push(d.items[i]);
+      const n = sub32(d.size(), leadingDims);
+      const di = d.items;
+      for (let i = 0; i < n; i++) {
+        if (i >= di.length) {
+          fault();
+          break;
+        }
+        out.items.push(di[i]);
       }
       return out;
     }
@@ -1986,7 +2112,7 @@ export class JVisitor {
     const rev: i32[] = [];
     const base = this.extractDimsInto(rev, node);
     const lists: i32[] = [];
-    for (let i = toI32(rev.length) - 1; i >= 0; i--) {
+    for (let i = toI32(rev.length) - 1; i >= 0 && i < rev.length; i--) {
       lists.push(rev[i]);
     }
     // `lists` holds the dims in order (addFirst semantics applied below).
@@ -1996,12 +2122,18 @@ export class JVisitor {
       for (let i = 0; i < toI32(lists.length); i++) {
         const l = lists[i];
         if (this.len(l) > 0) {
-          const pos = this.t.start[this.at(l, 0)];
+          const pos = jvAt(this.t.start, this.at(l, 0));
           if (pos < lastPos) {
             // Collections.rotate(list, -(lastAnnotation + 1)).
-            const k = lastAnnotation + 1;
-            for (let j = 0; j < toI32(lists.length); j++) {
-              dims.items.push(lists[(j + k) % toI32(lists.length)]);
+            const k = add32(lastAnnotation, 1);
+            const nl = toI32(lists.length);
+            for (let j = 0; j < nl; j++) {
+              const r = nl > 0 ? add32(j, k) % nl : -1;
+              if (r < 0 || r >= lists.length) {
+                fault();
+                break;
+              }
+              dims.items.push(lists[r]);
             }
             return base;
           }
@@ -2018,16 +2150,16 @@ export class JVisitor {
 
   private extractDimsInto(lists: i32[], node: i32): i32 {
     const t = this.t;
-    if (t.kind[node] === N_ARRAY_TYPE) {
-      return this.extractDimsInto(lists, t.a[node]);
+    if (jvAt(t.kind, node) === N_ARRAY_TYPE) {
+      return this.extractDimsInto(lists, jvAt(t.a, node));
     }
-    if (t.kind[node] === N_ANNOTATED_TYPE) {
-      if (t.kind[t.b[node]] !== N_ARRAY_TYPE) {
+    if (jvAt(t.kind, node) === N_ANNOTATED_TYPE) {
+      if (jvAt(t.kind, jvAt(t.b, node)) !== N_ARRAY_TYPE) {
         return node;
       }
       // addFirst after the inner dims: collected in reverse, flipped by the caller.
-      const r = this.extractDimsInto(lists, t.b[node]);
-      lists.push(t.a[node]);
+      const r = this.extractDimsInto(lists, jvAt(t.b, node));
+      lists.push(jvAt(t.a, node));
       return r;
     }
     return node;
@@ -2094,17 +2226,17 @@ export class JVisitor {
     const t = this.t;
     const g = this.g;
     this.sync(n);
-    const base = t.b[n];
-    if (t.kind[base] === N_MEMBER_SELECT) {
-      this.scan(t.a[base]);
+    const base = jvAt(t.b, n);
+    if (jvAt(t.kind, base) === N_MEMBER_SELECT) {
+      this.scan(jvAt(t.a, base));
       this.token(".");
-      this.visitAnnotations(this.listItems(t.a[n]), false, false);
+      this.visitAnnotations(this.listItems(jvAt(t.a, n)), false, false);
       g.breakToFill(" ");
-      this.visitName(t.name[base]);
-    } else if (t.kind[base] === N_ARRAY_TYPE) {
+      this.visitName(jvAt(t.name, base));
+    } else if (jvAt(t.kind, base) === N_ARRAY_TYPE) {
       this.visitAnnotatedArrayType(n);
     } else {
-      this.visitAnnotations(this.listItems(t.a[n]), false, false);
+      this.visitAnnotations(this.listItems(jvAt(t.a, n)), false, false);
       g.breakToFill(" ");
       this.scan(base);
     }
@@ -2114,14 +2246,14 @@ export class JVisitor {
     const t = this.t;
     const g = this.g;
     this.sync(n);
-    const args = t.b[n];
+    const args = jvAt(t.b, n);
     if (this.len(args) === 0) {
-      this.scan(t.a[n]);
+      this.scan(jvAt(t.a, n));
       this.token("<");
       this.token(">");
     } else {
       g.open(this.plusFour);
-      this.scan(t.a[n]);
+      this.scan(jvAt(t.a, n));
       this.token("<");
       g.brk();
       g.open(this.ZERO);
@@ -2144,11 +2276,11 @@ export class JVisitor {
     const t = this.t;
     const g = this.g;
     this.sync(n);
-    if ((t.flags[n] & FL_STATIC) !== 0) {
+    if ((jvAt(t.flags, n) & FL_STATIC) !== 0) {
       this.token("static");
       g.space();
     }
-    const stats = t.a[n];
+    const stats = jvAt(t.a, n);
     if (collapseEmpty && this.len(stats) === 0) {
       if (g.peekIs(";")) {
         this.token(";");
@@ -2180,7 +2312,7 @@ export class JVisitor {
   ): void {
     const g = this.g;
     this.sync(n);
-    if (this.t.kind[n] === N_BLOCK) {
+    if (jvAt(this.t.kind, n) === N_BLOCK) {
       g.space();
       this.visitBlock(n, collapseEmpty, allowLeadingBlank, allowTrailingBlank);
     } else {
@@ -2207,13 +2339,17 @@ export class JVisitor {
       }
       this.markForPartialFormat();
       afterFirstToken = true;
-      if (t.kind[s] === N_VARIABLE) {
+      if (jvAt(t.kind, s) === N_VARIABLE) {
         const frags: i32[] = [s];
-        while (i < ns && t.kind[this.at(stats, i)] === N_VARIABLE && t.start[this.at(stats, i)] === t.start[s]) {
+        while (
+          i < ns &&
+          jvAt(t.kind, this.at(stats, i)) === N_VARIABLE &&
+          jvAt(t.start, this.at(stats, i)) === jvAt(t.start, s)
+        ) {
           frags.push(this.at(stats, i));
           i++;
         }
-        this.visitVariables(frags, DK_NONE, this.canLocalHaveHorizontalAnnotations(t.a[s]));
+        this.visitVariables(frags, DK_NONE, this.canLocalHaveHorizontalAnnotations(jvAt(t.a, s)));
       } else {
         this.scan(s);
       }
@@ -2228,10 +2364,10 @@ export class JVisitor {
     const stats: i32[] = [];
     let n = n0;
     while (true) {
-      exprs.push(t.a[n]);
-      stats.push(t.b[n]);
-      if (t.c[n] >= 0 && t.kind[t.c[n]] === N_IF) {
-        n = t.c[n];
+      exprs.push(jvAt(t.a, n));
+      stats.push(jvAt(t.b, n));
+      if (jvAt(t.c, n) >= 0 && jvAt(t.kind, jvAt(t.c, n)) === N_IF) {
+        n = jvAt(t.c, n);
       } else {
         break;
       }
@@ -2240,7 +2376,9 @@ export class JVisitor {
     let afterFirstToken = false;
     let followingBlock = false;
     const en = toI32(exprs.length);
-    for (let i = 0; i < en; i++) {
+    for (let i = 0; i < en && i < exprs.length && i < stats.length; i++) {
+      const cond = exprs[i];
+      const stat = stats[i];
       if (afterFirstToken) {
         if (followingBlock) {
           g.space();
@@ -2254,23 +2392,23 @@ export class JVisitor {
       g.space();
       this.token("(");
       g.headerStart();
-      this.scan(t.a[exprs[i]]);
+      this.scan(jvAt(t.a, cond));
       g.headerEnd();
       this.token(")");
-      const onlyClause = en === 1 && t.c[n] < 0;
-      const trailingClauses = i < en - 1 || t.c[n] >= 0;
-      this.visitStatement(stats[i], onlyClause, true, trailingClauses);
-      followingBlock = t.kind[stats[i]] === N_BLOCK;
+      const onlyClause = en === 1 && jvAt(t.c, n) < 0;
+      const trailingClauses = i < en - 1 || jvAt(t.c, n) >= 0;
+      this.visitStatement(stat, onlyClause, true, trailingClauses);
+      followingBlock = jvAt(t.kind, stat) === N_BLOCK;
       afterFirstToken = true;
     }
-    if (t.c[n] >= 0) {
+    if (jvAt(t.c, n) >= 0) {
       if (followingBlock) {
         g.space();
       } else {
         g.forcedBreak();
       }
       this.token("else");
-      this.visitStatement(t.c[n], false, true, false);
+      this.visitStatement(jvAt(t.c, n), false, true, false);
     }
     g.close();
   }
@@ -2285,15 +2423,15 @@ export class JVisitor {
     g.headerStart();
     g.open(this.plusFour);
     g.fence();
-    const init = t.a[n];
-    g.open(this.len(init) > 1 && t.kind[this.at(init, 0)] === N_EXPRESSION_STATEMENT ? this.plusFour : this.ZERO);
+    const init = jvAt(t.a, n);
+    g.open(this.len(init) > 1 && jvAt(t.kind, this.at(init, 0)) === N_EXPRESSION_STATEMENT ? this.plusFour : this.ZERO);
     if (this.len(init) > 0) {
-      if (t.kind[this.at(init, 0)] === N_VARIABLE) {
+      if (jvAt(t.kind, this.at(init, 0)) === N_VARIABLE) {
         const first = this.at(init, 0);
         const frags: i32[] = [first];
         for (let i = 1; i < this.len(init); i++) {
           const v = this.at(init, i);
-          if (t.kind[v] === N_VARIABLE && t.start[v] === t.start[first]) {
+          if (jvAt(t.kind, v) === N_VARIABLE && jvAt(t.start, v) === jvAt(t.start, first)) {
             frags.push(v);
           }
         }
@@ -2305,7 +2443,7 @@ export class JVisitor {
             this.token(",");
             g.brkSp();
           }
-          this.scan(t.a[this.at(init, i)]);
+          this.scan(jvAt(t.a, this.at(init, i)));
         }
         this.token(";");
         g.close();
@@ -2315,11 +2453,11 @@ export class JVisitor {
     }
     g.close();
     g.brkSp();
-    if (t.b[n] >= 0) {
-      this.scan(t.b[n]);
+    if (jvAt(t.b, n) >= 0) {
+      this.scan(jvAt(t.b, n));
     }
     this.token(";");
-    const update = t.c[n];
+    const update = jvAt(t.c, n);
     if (this.len(update) > 0) {
       g.brkSp();
       g.open(this.len(update) <= 1 ? this.ZERO : this.plusFour);
@@ -2328,7 +2466,7 @@ export class JVisitor {
           this.token(",");
           g.breakToFill(" ");
         }
-        this.scan(t.a[this.at(update, i)]);
+        this.scan(jvAt(t.a, this.at(update, i)));
       }
       g.guessToken(";");
       g.close();
@@ -2338,7 +2476,7 @@ export class JVisitor {
     g.close();
     g.headerEnd();
     this.token(")");
-    this.visitStatement(t.d[n], true, true, false);
+    this.visitStatement(jvAt(t.d, n), true, true, false);
   }
 
   private visitEnhancedForLoop(n: i32): void {
@@ -2351,12 +2489,12 @@ export class JVisitor {
     this.token("(");
     g.headerStart();
     g.open(this.ZERO);
-    this.visitToDeclare(DK_NONE, HORIZONTAL, t.a[n], t.b[n], ":", "");
+    this.visitToDeclare(DK_NONE, HORIZONTAL, jvAt(t.a, n), jvAt(t.b, n), ":", "");
     g.close();
     g.headerEnd();
     this.token(")");
     g.close();
-    this.visitStatement(t.c[n], true, true, false);
+    this.visitStatement(jvAt(t.c, n), true, true, false);
   }
 
   private visitDoWhileLoop(n: i32): void {
@@ -2364,8 +2502,8 @@ export class JVisitor {
     const g = this.g;
     this.sync(n);
     this.token("do");
-    this.visitStatement(t.a[n], true, true, true);
-    if (t.kind[t.a[n]] === N_BLOCK) {
+    this.visitStatement(jvAt(t.a, n), true, true, true);
+    if (jvAt(t.kind, jvAt(t.a, n)) === N_BLOCK) {
       g.space();
     } else {
       g.brkSp();
@@ -2373,7 +2511,7 @@ export class JVisitor {
     this.token("while");
     g.space();
     this.token("(");
-    this.scan(t.a[t.b[n]]);
+    this.scan(jvAt(t.a, jvAt(t.b, n)));
     this.token(")");
     this.token(";");
   }
@@ -2385,7 +2523,7 @@ export class JVisitor {
     g.open(this.ZERO);
     this.token("try");
     g.space();
-    const res = t.a[n];
+    const res = jvAt(t.a, n);
     if (this.len(res) > 0) {
       this.token("(");
       g.headerStart();
@@ -2396,16 +2534,16 @@ export class JVisitor {
         if (i > 0) {
           g.forcedBreak();
         }
-        if (t.kind[r] === N_VARIABLE) {
+        if (jvAt(t.kind, r) === N_VARIABLE) {
           this.declareOne(
             DK_PARAMETER,
-            this.fieldAnnotationDirection(t.a[r]),
-            t.a[r],
-            t.b[r],
-            t.name[r],
+            this.fieldAnnotationDirection(jvAt(t.a, r)),
+            jvAt(t.a, r),
+            jvAt(t.b, r),
+            jvAt(t.name, r),
             "",
             "=",
-            t.c[r],
+            jvAt(t.c, r),
             "",
             -1,
             false,
@@ -2428,18 +2566,18 @@ export class JVisitor {
       g.headerEnd();
       g.space();
     }
-    const catches = t.c[n];
-    let trailingClauses = this.len(catches) > 0 || t.d[n] >= 0;
-    this.visitBlock(t.b[n], !trailingClauses, true, trailingClauses);
+    const catches = jvAt(t.c, n);
+    let trailingClauses = this.len(catches) > 0 || jvAt(t.d, n) >= 0;
+    this.visitBlock(jvAt(t.b, n), !trailingClauses, true, trailingClauses);
     for (let i = 0; i < this.len(catches); i++) {
-      trailingClauses = i < this.len(catches) - 1 || t.d[n] >= 0;
+      trailingClauses = i + 1 < this.len(catches) || jvAt(t.d, n) >= 0;
       this.visitCatchClause(this.at(catches, i), trailingClauses);
     }
-    if (t.d[n] >= 0) {
+    if (jvAt(t.d, n) >= 0) {
       g.space();
       this.token("finally");
       g.space();
-      this.visitBlock(t.d[n], false, true, false);
+      this.visitBlock(jvAt(t.d, n), false, true, false);
     }
     g.close();
   }
@@ -2454,8 +2592,8 @@ export class JVisitor {
     this.token("(");
     g.open(this.plusFour);
     g.fence();
-    const ex = t.a[n];
-    if (t.kind[t.b[ex]] === N_UNION_TYPE) {
+    const ex = jvAt(t.a, n);
+    if (jvAt(t.kind, jvAt(t.b, ex)) === N_UNION_TYPE) {
       g.open(this.ZERO);
       this.visitUnionType(ex);
       g.close();
@@ -2468,18 +2606,19 @@ export class JVisitor {
     g.close();
     this.token(")");
     g.space();
-    this.visitBlock(t.b[n], false, true, allowTrailingBlank);
+    this.visitBlock(jvAt(t.b, n), false, true, allowTrailingBlank);
   }
 
   private visitUnionType(decl: i32): void {
     const t = this.t;
     const g = this.g;
-    const union = t.a[t.b[decl]];
+    const union = jvAt(t.a, jvAt(t.b, decl));
     g.open(this.ZERO);
     this.sync(decl);
-    this.visitAndBreakModifiers(t.a[decl], HORIZONTAL, -1);
+    this.visitAndBreakModifiers(jvAt(t.a, decl), HORIZONTAL, -1);
     const un = this.len(union);
-    for (let i = 0; i < un - 1; i++) {
+    const un1 = sub32(un, 1);
+    for (let i = 0; i < un1; i++) {
       if (i > 0) {
         g.brkSp();
         this.token("|");
@@ -2490,8 +2629,8 @@ export class JVisitor {
     g.brkSp();
     this.token("|");
     g.space();
-    const last = this.at(union, un - 1);
-    this.declareOne(DK_NONE, HORIZONTAL, -1, last, t.name[decl], "", "=", t.c[decl], "", -1, false, null);
+    const last = this.at(union, un1);
+    this.declareOne(DK_NONE, HORIZONTAL, -1, last, jvAt(t.name, decl), "", "=", jvAt(t.c, decl), "", -1, false, null);
     g.close();
   }
 
@@ -2501,7 +2640,7 @@ export class JVisitor {
     g.space();
     this.token("(");
     g.headerStart();
-    this.scan(this.t.a[selector]);
+    this.scan(jvAt(this.t.a, selector));
     g.headerEnd();
     this.token(")");
     g.space();
@@ -2529,9 +2668,9 @@ export class JVisitor {
     this.sync(n);
     this.markForPartialFormat();
     g.forcedBreak();
-    const labels = t.a[n];
-    const isDefault = this.len(labels) === 1 && t.kind[this.at(labels, 0)] === N_DEFAULT_CASE_LABEL;
-    const rule = (t.flags[n] & FL_RULE) !== 0;
+    const labels = jvAt(t.a, n);
+    const isDefault = this.len(labels) === 1 && jvAt(t.kind, this.at(labels, 0)) === N_DEFAULT_CASE_LABEL;
+    const rule = (jvAt(t.flags, n) & FL_RULE) !== 0;
     g.open(rule ? this.plusFour : this.ZERO);
     if (isDefault) {
       this.tokenInd("default", this.ZERO);
@@ -2548,7 +2687,7 @@ export class JVisitor {
       }
       g.close();
     }
-    const guard = t.b[n];
+    const guard = jvAt(t.b, n);
     if (guard >= 0) {
       g.breakToFill(" ");
       this.token("when");
@@ -2558,15 +2697,15 @@ export class JVisitor {
     if (!rule) {
       this.token(":");
       g.open(this.plusTwo);
-      this.visitStatements(t.c[n]);
+      this.visitStatements(jvAt(t.c, n));
       g.close();
       g.close();
     } else {
       g.space();
       this.token("-");
       this.token(">");
-      const body = t.d[n];
-      if (t.kind[body] === N_BLOCK) {
+      const body = jvAt(t.d, n);
+      if (jvAt(t.kind, body) === N_BLOCK) {
         g.close();
         g.space();
         this.visitBlock(body, true, false, false);
@@ -2585,16 +2724,27 @@ export class JVisitor {
     const inp = this.inp;
     const g = this.g;
     this.sync(n);
-    const a = this.t.start[n];
-    const e = this.t.end[n];
-    if (e - a >= 3 && toI32(inp.src[a]) === 34 && toI32(inp.src[a + 1]) === 34 && toI32(inp.src[a + 2]) === 34) {
-      this.visitTextBlock(n);
+    const a = jvAt(this.t.start, n);
+    const e = jvAt(this.t.end, n);
+    const src = inp.src;
+    // The literal's first byte, which both tests below read.
+    if (a < 0 || a >= src.length) {
+      fault();
       return;
     }
-    if (toI32(inp.src[a]) === 45) {
+    const c0 = toI32(src[a]);
+    const a1 = a + 1;
+    if (sub32(e, a) >= 3 && c0 === 34) {
+      // A text block: a + 2 < e <= src.length.
+      if (atU8(src, a1) === 34 && atU8(src, add32(a1, 1)) === 34) {
+        this.visitTextBlock(n);
+        return;
+      }
+    }
+    if (c0 === 45) {
       this.token("-");
     }
-    g.tokLike(this.t.name[n]);
+    g.tokLike(jvAt(this.t.name, n));
   }
 
   /**
@@ -2603,16 +2753,25 @@ export class JVisitor {
    */
   private visitTextBlock(n: i32): void {
     const g = this.g;
-    const initialLines = javaLines(String.fromBytes(this.inp.src, this.t.start[n], this.t.end[n]));
+    const initialLines = javaLines(bytesText(this.inp.src, jvAt(this.t.start, n), jvAt(this.t.end, n)));
     // The first line is always """ and does not affect incidental whitespace.
-    const strippedLines = stripIndentLines(initialLines.slice(1, initialLines.length));
-    const lastLine = strippedLines[strippedLines.length - 1];
+    const strippedLines = stripIndentLines(sliceStrs(initialLines, 1, toI32(initialLines.length)));
+    const ni = toI32(initialLines.length);
+    const ns = toI32(strippedLines.length);
+    // A text block has its opening line and at least one more.
+    if (initialLines.length < 1 || ni < 1 || ni > initialLines.length || ns < 1 || ns > strippedLines.length) {
+      fault();
+      return;
+    }
+    const lastLine = strippedLines[ns - 1];
+    const lastInitial = initialLines[ni - 1];
+    const firstInitial = initialLines[0];
     // The block is deindented to column 0 when stripping its indentation
     // leaves its last line as long as it was.
-    if (stripTrailingJ(initialLines[initialLines.length - 1]).length === lastLine.length) {
+    if (stripTrailingJ(lastInitial).length === lastLine.length) {
       g.brkInd(g.constIndent(-1073741824));
     }
-    const lines: string[] = [stripTrailingJ(initialLines[0])];
+    const lines: string[] = [stripTrailingJ(firstInitial)];
     for (let i = 0; i < toI32(strippedLines.length) - 1; i++) {
       lines.push(strippedLines[i]);
     }
@@ -2623,7 +2782,7 @@ export class JVisitor {
     // A trailing line of just """ indented more than the incidental
     // whitespace would only make javac warn that trailing white space is removed.
     lines.push(`"""`);
-    g.multilineTokenLike(this.t.name[n], lines);
+    g.multilineTokenLike(jvAt(this.t.name, n), lines);
   }
 
   private splitToken(s: string): void {
@@ -2635,31 +2794,31 @@ export class JVisitor {
   private visitUnary(n: i32): void {
     const t = this.t;
     this.sync(n);
-    const op = t.op[n];
+    const op = jvAt(t.op, n);
     const name = opName(op);
     if (op === OP_POSTINC || op === OP_POSTDEC) {
-      this.scan(t.a[n]);
+      this.scan(jvAt(t.a, n));
       this.splitToken(name);
     } else {
       this.splitToken(name);
       if (this.ambiguousUnaryOperator(n, name)) {
         this.g.space();
       }
-      this.scan(t.a[n]);
+      this.scan(jvAt(t.a, n));
     }
   }
 
   private ambiguousUnaryOperator(n: i32, name: string): boolean {
     const t = this.t;
-    const op = t.op[n];
+    const op = jvAt(t.op, n);
     if (op !== OP_NEG && op !== OP_POS) {
       return false;
     }
-    const e = t.a[n];
+    const e = jvAt(t.a, n);
     let tagOp = -1;
-    if (t.kind[e] === N_UNARY) {
-      tagOp = t.op[e];
-    } else if (t.kind[e] === N_LITERAL && toI32(this.inp.src[t.start[e]]) === 45) {
+    if (jvAt(t.kind, e) === N_UNARY) {
+      tagOp = jvAt(t.op, e);
+    } else if (jvAt(t.kind, e) === N_LITERAL && atU8(this.inp.src, jvAt(t.start, e)) === 45) {
       tagOp = OP_NEG;
     }
     if (tagOp < 0) {
@@ -2677,25 +2836,28 @@ export class JVisitor {
     this.sync(n);
     const operands: i32[] = [];
     const operators: i32[] = [];
-    this.walkInfix(opPrec(this.t.op[n]), n, operands, operators);
+    this.walkInfix(opPrec(jvAt(this.t.op, n)), n, operands, operators);
     const fill = this.hasOnlyShortItems(operands) ? INDEPENDENT : UNIFIED;
     g.open(this.plusFour);
-    this.scan(operands[0]);
+    this.scan(jvAt(operands, 0));
+    // One more operand than operators.
     for (let i = 0; i < toI32(operators.length); i++) {
+      const op = operators[i];
+      const rhs = jvAt(operands, i + 1);
       g.breakOp(fill, " ", this.ZERO, -1);
-      g.op(opName(operators[i]));
+      g.op(opName(op));
       g.space();
-      this.scan(operands[i + 1]);
+      this.scan(rhs);
     }
     g.close();
   }
 
   private walkInfix(prec: i32, e: i32, operands: i32[], operators: i32[]): void {
     const t = this.t;
-    if (t.kind[e] === N_BINARY && opPrec(t.op[e]) === prec) {
-      this.walkInfix(prec, t.a[e], operands, operators);
-      operators.push(t.op[e]);
-      this.walkInfix(prec, t.b[e], operands, operators);
+    if (jvAt(t.kind, e) === N_BINARY && opPrec(jvAt(t.op, e)) === prec) {
+      this.walkInfix(prec, jvAt(t.a, e), operands, operators);
+      operators.push(jvAt(t.op, e));
+      this.walkInfix(prec, jvAt(t.b, e), operands, operators);
     } else {
       operands.push(e);
     }
@@ -2703,8 +2865,8 @@ export class JVisitor {
 
   private hasOnlyShortItems(exprs: i32[]): boolean {
     for (const e of exprs) {
-      const s = this.t.start[e];
-      if (this.g.actualSize(s, this.t.end[e] - s) >= MAX_ITEM_LENGTH_FOR_FILLING) {
+      const s = jvAt(this.t.start, e);
+      if (this.g.actualSize(s, sub32(jvAt(this.t.end, e), s)) >= MAX_ITEM_LENGTH_FOR_FILLING) {
         return false;
       }
     }
@@ -2715,20 +2877,20 @@ export class JVisitor {
     const t = this.t;
     const g = this.g;
     this.sync(n);
-    const statementBody = (t.flags[n] & FL_STATEMENT_BODY) !== 0;
+    const statementBody = (jvAt(t.flags, n) & FL_STATEMENT_BODY) !== 0;
     const parens = g.peekIs("(");
     g.open(parens ? this.plusFour : this.ZERO);
     if (parens) {
       this.token("(");
     }
-    const params = t.a[n];
+    const params = jvAt(t.a, n);
     for (let i = 0; i < this.len(params); i++) {
       if (i > 0) {
         this.token(",");
         g.brkSp();
       }
       const p = this.at(params, i);
-      this.visitVariables([p], DK_NONE, this.fieldAnnotationDirection(t.a[p]));
+      this.visitVariables([p], DK_NONE, this.fieldAnnotationDirection(jvAt(t.a, p)));
     }
     if (parens) {
       this.token(")");
@@ -2743,10 +2905,10 @@ export class JVisitor {
     } else {
       g.brkSp();
     }
-    if (t.kind[t.b[n]] === N_BLOCK) {
-      this.visitBlock(t.b[n], true, false, false);
+    if (jvAt(t.kind, jvAt(t.b, n)) === N_BLOCK) {
+      this.visitBlock(jvAt(t.b, n), true, false, false);
     } else {
-      this.scan(t.b[n]);
+      this.scan(jvAt(t.b, n));
     }
     g.close();
   }
@@ -2756,47 +2918,48 @@ export class JVisitor {
     const g = this.g;
     this.sync(n);
     g.open(this.ZERO);
-    if (t.a[n] >= 0) {
-      this.scan(t.a[n]);
+    if (jvAt(t.a, n) >= 0) {
+      this.scan(jvAt(t.a, n));
       g.brk();
       this.token(".");
     }
     this.token("new");
     g.space();
-    this.addTypeArguments(t.b[n], this.plusFour);
-    if (t.e[n] >= 0) {
-      const annos = this.visitModifiersOf(t.a[t.e[n]], HORIZONTAL, -1);
+    this.addTypeArguments(jvAt(t.b, n), this.plusFour);
+    if (jvAt(t.e, n) >= 0) {
+      const annos = this.visitModifiersOf(jvAt(t.a, jvAt(t.e, n)), HORIZONTAL, -1);
       this.visitAnnotations(annos, false, true);
       this.doNotHug(n);
     }
-    this.scan(t.c[n]);
-    this.addArguments(t.d[n], this.plusFour, this.ZERO);
+    this.scan(jvAt(t.c, n));
+    this.addArguments(jvAt(t.d, n), this.plusFour, this.ZERO);
     g.close();
-    if (t.e[n] >= 0) {
-      this.addBodyDeclarations(this.listItems(t.f[t.e[n]]), true, true);
+    if (jvAt(t.e, n) >= 0) {
+      this.addBodyDeclarations(this.listItems(jvAt(t.f, jvAt(t.e, n))), true, true);
     }
   }
 
   private visitNewArray(n: i32): void {
     const t = this.t;
     const g = this.g;
-    if (t.a[n] >= 0) {
+    if (jvAt(t.a, n) >= 0) {
       g.open(this.plusFour);
       this.token("new");
       g.space();
       const dims = new Dims();
-      const base = this.extractDims(t.a[n], dims, true);
+      const base = this.extractDims(jvAt(t.a, n), dims, true);
       const dimExprs = new Dims();
-      for (let i = 0; i < this.len(t.b[n]); i++) {
-        dimExprs.items.push(this.at(t.b[n], i));
+      for (let i = 0; i < this.len(jvAt(t.b, n)); i++) {
+        dimExprs.items.push(this.at(jvAt(t.b, n), i));
       }
       const annos = new Dims();
-      annos.items.push(t.d[n]);
-      for (let i = 0; i < this.len(t.e[n]); i++) {
-        annos.items.push(this.at(t.e[n], i));
+      annos.items.push(jvAt(t.d, n));
+      for (let i = 0; i < this.len(jvAt(t.e, n)); i++) {
+        annos.items.push(this.at(jvAt(t.e, n), i));
       }
-      for (let i = dims.head; i < toI32(dims.items.length); i++) {
-        annos.items.push(dims.items[i]);
+      const di = dims.items;
+      for (let i = dims.head; i >= 0 && i < di.length; i++) {
+        annos.items.push(di[i]);
       }
       this.scan(base);
       g.open(this.ZERO);
@@ -2804,11 +2967,11 @@ export class JVisitor {
       g.close();
       g.close();
     }
-    if (t.c[n] >= 0) {
-      if (t.a[n] >= 0) {
+    if (jvAt(t.c, n) >= 0) {
+      if (jvAt(t.a, n) >= 0) {
         g.space();
       }
-      this.visitArrayInitializer(t.c[n]);
+      this.visitArrayInitializer(jvAt(t.c, n));
     }
   }
 
@@ -2828,13 +2991,20 @@ export class JVisitor {
       this.token("{");
       g.forcedBreak();
       let afterFirstToken = false;
-      for (let r = 0; r < ne; r += cols) {
+      let r = 0;
+      while (r < ne) {
         if (afterFirstToken) {
           g.forcedBreak();
         }
         const first = this.at(exprs, r);
-        g.open(t.kind[first] === N_NEW_ARRAY || cols === 1 ? this.ZERO : this.plusFour);
-        for (let i = r; i < r + cols && i < ne; i++) {
+        g.open(jvAt(t.kind, first) === N_NEW_ARRAY || cols === 1 ? this.ZERO : this.plusFour);
+        // cols, a row's length, is at least 1, so each row moves r on.
+        const rowEnd = add32(r, cols);
+        if (rowEnd <= r) {
+          fault();
+          break;
+        }
+        for (let i = r; i < rowEnd && i < ne; i++) {
           if (i > r) {
             this.token(",");
             g.breakToFill(" ");
@@ -2844,6 +3014,7 @@ export class JVisitor {
         g.guessToken(",");
         g.close();
         afterFirstToken = true;
+        r = rowEnd;
       }
       g.brkInd(this.minusTwo);
       g.close();
@@ -2855,7 +3026,7 @@ export class JVisitor {
         if (p < 0) {
           break;
         }
-        if (t.kind[p] === N_ANNOTATION) {
+        if (jvAt(t.kind, p) === N_ANNOTATION) {
           inMemberValuePair = true;
           break;
         }
@@ -2872,11 +3043,12 @@ export class JVisitor {
       }
       const fill = shortItems ? INDEPENDENT : UNIFIED;
       for (let i = 0; i < ne; i++) {
+        const item = jvAt(items, i);
         if (i > 0) {
           this.token(",");
           g.breakOp(fill, " ", this.ZERO, -1);
         }
-        this.scan(items[i]);
+        this.scan(item);
       }
       g.guessToken(",");
       if (allowFilledElementsOnOwnLine) {
@@ -2892,9 +3064,14 @@ export class JVisitor {
     if (nodes.length === 0) {
       return false;
     }
-    const last = nodes[nodes.length - 1];
-    const k = this.inp.tokenAt(this.t.end[last]);
-    return k >= 0 && this.inp.is(this.inp.kTok[k], s);
+    const nn = toI32(nodes.length);
+    if (nn < 1 || nn > nodes.length) {
+      fault();
+      return false;
+    }
+    const last = nodes[nn - 1];
+    const k = this.inp.tokenAt(jvAt(this.t.end, last));
+    return k >= 0 && this.inp.is(jvAt(this.inp.kTok, k), s);
   }
 
   addTypeArguments(targs: i32, plusIndent: i32): void {
@@ -2926,7 +3103,7 @@ export class JVisitor {
       g.openHuggable(
         plusIndent,
         this.hasHuggedBlockLambda(args) ? this.ZERO : huggedPlusIndent,
-        this.hugPointOf(items[0]),
+        this.hugPointOf(jvAt(items, 0)),
         true,
       );
     } else {
@@ -2937,27 +3114,33 @@ export class JVisitor {
       if (tabular) {
         g.forcedBreak();
         g.open(this.ZERO);
-        for (let i = 0; i < na - 1; i += 2) {
-          if (i > 0) {
+        // items holds the na arguments, two to a row.
+        let i = 0;
+        while (i >= 0 && i < na - 1 && i < items.length - 1) {
+          const key = items[i];
+          const value = items[i + 1];
+          const firstRow = i === 0;
+          i += 2;
+          if (!firstRow) {
             this.token(",");
             g.forcedBreak();
           }
           g.open(this.plusFour);
-          this.scan(items[i]);
+          this.scan(key);
           this.token(",");
           g.brkSp();
-          this.scan(items[i + 1]);
+          this.scan(value);
           g.close();
         }
         g.close();
       } else if (this.isFormatMethod(items)) {
         g.brk();
         g.open(this.ZERO);
-        this.scan(items[0]);
+        this.scan(jvAt(items, 0));
         this.token(",");
         g.brkSp();
         g.open(this.ZERO);
-        this.argList(items.slice(1, items.length), false);
+        this.argList(sliceI32s(items, 1, toI32(items.length)), false);
         g.close();
         g.close();
       } else {
@@ -2971,36 +3154,59 @@ export class JVisitor {
 
   /** The hug point of `n`, created on first use; it is marked when `n` is visited. */
   private hugPointOf(n: i32): i32 {
-    if (this.hugPoints[n] < 0) {
-      this.hugPoints[n] = this.g.newHugPoint();
+    const hp = this.hugPoints;
+    if (n < 0 || n >= hp.length) {
+      fault();
+      return -1;
     }
-    return this.hugPoints[n];
+    const h0 = hp[n];
+    if (h0 >= 0) {
+      return h0;
+    }
+    const h = this.g.newHugPoint();
+    if (n >= hp.length) {
+      fault();
+      return -1;
+    }
+    hp[n] = h;
+    return h;
   }
 
   private markHugPoint(n: i32): void {
-    const h = this.hugPoints[n];
+    const hp = this.hugPoints;
+    if (n < 0 || n >= hp.length) {
+      fault();
+      return;
+    }
+    const h = hp[n];
     if (h >= 0) {
-      this.hugPoints[n] = -1;
+      hp[n] = -1;
       this.g.hugPoint(h);
     }
   }
 
   private isHuggable(n: i32): boolean {
-    return this.t.kind[n] === N_LAMBDA;
+    return jvAt(this.t.kind, n) === N_LAMBDA;
   }
 
   private canHugOnlyArgument(args: i32[]): boolean {
-    return args.length === 1 && this.isHuggable(args[0]) && this.notHuggable[args[0]] === 0;
+    return args.length === 1 && this.isHuggable(args[0]) && jvAt(this.notHuggable, jvAt(args, 0)) === 0;
   }
 
   /** Keeps the call `call0` from hugging its block lambda argument. */
   private doNotHug(call0: i32): void {
     const t = this.t;
     const call = this.getArrayBase(call0);
-    const k = t.kind[call];
-    const args = k === N_METHOD_INVOCATION ? t.c[call] : k === N_NEW_CLASS ? t.d[call] : -1;
+    const k = jvAt(t.kind, call);
+    const args = k === N_METHOD_INVOCATION ? jvAt(t.c, call) : k === N_NEW_CLASS ? jvAt(t.d, call) : -1;
     if (args >= 0 && this.hasHuggedBlockLambda(args)) {
-      this.notHuggable[this.at(args, 0)] = 1;
+      const a = this.at(args, 0);
+      const nh = this.notHuggable;
+      if (a < 0 || a >= nh.length) {
+        fault();
+        return;
+      }
+      nh[a] = 1;
     }
   }
 
@@ -3009,7 +3215,7 @@ export class JVisitor {
       return false;
     }
     const a = this.at(args, 0);
-    return this.t.kind[a] === N_LAMBDA && (this.t.flags[a] & FL_STATEMENT_BODY) !== 0;
+    return jvAt(this.t.kind, a) === N_LAMBDA && (jvAt(this.t.flags, a) & FL_STATEMENT_BODY) !== 0;
   }
 
   private argList(args: i32[], hug: boolean): void {
@@ -3021,11 +3227,12 @@ export class JVisitor {
     }
     const fill = this.hasOnlyShortItems(args) ? INDEPENDENT : UNIFIED;
     for (let i = 0; i < toI32(args.length); i++) {
+      const a = args[i];
       if (i > 0) {
         this.token(",");
         g.breakOp(fill, " ", this.ZERO, -1);
       }
-      this.scan(args[i]);
+      this.scan(a);
     }
     g.close();
   }
@@ -3045,28 +3252,36 @@ export class JVisitor {
 
   private scanConcat(n: i32): void {
     const t = this.t;
-    if (t.kind[n] === N_LITERAL && t.op[n] === LIT_STRING) {
+    if (jvAt(t.kind, n) === N_LITERAL && jvAt(t.op, n) === LIT_STRING) {
       // FORMAT_SPECIFIER: `%` or `{digit}` in the value.
       const src = this.inp.src;
-      for (let i = t.start[n]; i < t.end[n]; i++) {
+      const e = jvAt(t.end, n);
+      for (let i = jvAt(t.start, n); i < e; i++) {
+        if (i < 0 || i >= src.length) {
+          fault();
+          return;
+        }
         const c = toI32(src[i]);
         if (c === 37) {
           this.scFormatString = true;
-        } else if (
-          c === 123 &&
-          i + 2 < t.end[n] &&
-          toI32(src[i + 1]) >= 48 &&
-          toI32(src[i + 1]) <= 57 &&
-          toI32(src[i + 2]) === 125
-        ) {
-          this.scFormatString = true;
+        } else if (c === 123 && i < 2147483632 && i + 2 < e) {
+          const i1 = i + 1;
+          const i2 = i + 2;
+          if (i1 >= src.length || i2 >= src.length) {
+            fault();
+            return;
+          }
+          const d = toI32(src[i1]);
+          if (d >= 48 && d <= 57 && toI32(src[i2]) === 125) {
+            this.scFormatString = true;
+          }
         }
       }
       return;
     }
-    if (t.kind[n] === N_BINARY && t.op[n] === OP_PLUS) {
-      this.scanConcat(t.a[n]);
-      this.scanConcat(t.b[n]);
+    if (jvAt(t.kind, n) === N_BINARY && jvAt(t.op, n) === OP_PLUS) {
+      this.scanConcat(jvAt(t.a, n));
+      this.scanConcat(jvAt(t.b, n));
       return;
     }
     this.scStringLiteral = false;
@@ -3080,12 +3295,16 @@ export class JVisitor {
     const rows: i32[][] = [];
     let i = 0;
     const na = toI32(args.length);
-    const start0 = this.actualColumn(args[0]);
+    const start0 = this.actualColumn(jvAt(args, 0));
     {
-      const row: i32[] = [args[i]];
+      const row: i32[] = [jvAt(args, i)];
       i++;
-      while (i < na && this.actualColumn(args[i]) > start0) {
-        row.push(args[i]);
+      while (i >= 0 && i < na && i < args.length) {
+        const x = args[i];
+        if (this.actualColumn(x) <= start0) {
+          break;
+        }
+        row.push(x);
         i++;
       }
       if (i >= na) {
@@ -3096,18 +3315,28 @@ export class JVisitor {
       }
       rows.push(row);
     }
-    while (i < na) {
-      const start = this.actualColumn(args[i]);
+    while (i >= 0 && i < na && i < args.length) {
+      const x0 = args[i];
+      const start = this.actualColumn(x0);
       if (start !== start0) {
         return -1;
       }
-      const row: i32[] = [args[i]];
+      const row: i32[] = [x0];
       i++;
-      while (i < na && this.actualColumn(args[i]) > start0) {
-        row.push(args[i]);
+      while (i >= 0 && i < na && i < args.length) {
+        const x = args[i];
+        if (this.actualColumn(x) <= start0) {
+          break;
+        }
+        row.push(x);
         i++;
       }
       rows.push(row);
+    }
+    // The first row is in.
+    if (rows.length < 1) {
+      fault();
+      return -1;
     }
     const size0 = toI32(rows[0].length);
     if (!this.expressionsAreParallel(rows, 0, toI32(rows.length))) {
@@ -3129,7 +3358,12 @@ export class JVisitor {
         return -1;
       }
     }
-    if (size0 < toI32(rows[rows.length - 1].length)) {
+    const nr = toI32(rows.length);
+    if (nr < 1 || nr > rows.length) {
+      fault();
+      return -1;
+    }
+    if (size0 < toI32(rows[nr - 1].length)) {
       return -1;
     }
     return size0;
@@ -3139,27 +3373,27 @@ export class JVisitor {
     const t = this.t;
     let size = 0;
     for (const e of row) {
-      if (t.kind[e] !== N_NEW_ARRAY || t.c[e] < 0) {
-        size++;
+      if (jvAt(t.kind, e) !== N_NEW_ARRAY || jvAt(t.c, e) < 0) {
+        size = add32(size, 1);
         continue;
       }
-      size += this.rowLength(this.listItems(t.c[e]));
+      size = add32(size, this.rowLength(this.listItems(jvAt(t.c, e))));
     }
     return size;
   }
 
   private actualColumn(e: i32): i32 {
-    return this.inp.columnAt(this.g.actualStartColumn(this.t.start[e]));
+    return this.inp.columnAt(this.g.actualStartColumn(jvAt(this.t.start, e)));
   }
 
   /** A fine-grained kind: javac's Tree.Kind distinguishes operators and literal types. */
   private fineKind(e: i32): i32 {
     const t = this.t;
-    const k = t.kind[e];
+    const k = jvAt(t.kind, e);
     if (k === N_BINARY || k === N_UNARY || k === N_LITERAL || k === N_COMPOUND_ASSIGNMENT || k === N_WILDCARD) {
-      return k * 64 + t.op[e];
+      return add32(mul32(k, 64), jvAt(t.op, e));
     }
-    return k * 64;
+    return mul32(k, 64);
   }
 
   private expressionsAreParallel(rows: i32[][], column: i32, atLeastM: i32): boolean {
@@ -3171,11 +3405,21 @@ export class JVisitor {
         continue;
       }
       const e = row[column];
-      const k = t.kind[e] === N_UNARY ? this.fineKind(t.a[e]) : this.fineKind(e);
+      const k = jvAt(t.kind, e) === N_UNARY ? this.fineKind(jvAt(t.a, e)) : this.fineKind(e);
       let found = false;
       for (let i = 0; i < toI32(kinds.length); i++) {
         if (kinds[i] === k) {
-          counts[i] = counts[i] + 1;
+          // counts runs beside kinds, one count per row.
+          if (i >= counts.length) {
+            fault();
+            return false;
+          }
+          const c = counts[i];
+          if (c >= 2147483647) {
+            fault();
+            return false;
+          }
+          counts[i] = c + 1;
           found = true;
           break;
         }
@@ -3197,19 +3441,19 @@ export class JVisitor {
 
   private getArrayBase(e0: i32): i32 {
     let e = e0;
-    while (this.t.kind[e] === N_ARRAY_ACCESS) {
-      e = this.t.a[e];
+    while (jvAt(this.t.kind, e) === N_ARRAY_ACCESS) {
+      e = jvAt(this.t.a, e);
     }
     return e;
   }
 
   private getMethodReceiver(mi: i32): i32 {
-    const sel = this.t.b[mi];
-    return this.t.kind[sel] === N_MEMBER_SELECT ? this.t.a[sel] : -1;
+    const sel = jvAt(this.t.b, mi);
+    return jvAt(this.t.kind, sel) === N_MEMBER_SELECT ? jvAt(this.t.a, sel) : -1;
   }
 
   private methodName(mi: i32): i32 {
-    return this.t.name[this.t.b[mi]];
+    return jvAt(this.t.name, jvAt(this.t.b, mi));
   }
 
   private visitDot(node0: i32): void {
@@ -3219,19 +3463,25 @@ export class JVisitor {
     const stack: i32[] = []; // reversed at the end (addFirst)
     while (true) {
       stack.push(node);
-      if (t.kind[node] === N_ARRAY_ACCESS) {
+      if (jvAt(t.kind, node) === N_ARRAY_ACCESS) {
         node = this.getArrayBase(node);
       }
-      const k = t.kind[node];
+      const k = jvAt(t.kind, node);
       if (k === N_MEMBER_SELECT) {
-        node = t.a[node];
+        node = jvAt(t.a, node);
       } else if (k === N_METHOD_INVOCATION) {
         node = this.getMethodReceiver(node);
       } else if (k === N_IDENTIFIER) {
         node = -1;
         break;
       } else {
-        node = stack.pop();
+        // The node pushed above.
+        if (stack.length > 0) {
+          node = stack.pop();
+        } else {
+          fault();
+          node = -1;
+        }
         break;
       }
       if (node < 0) {
@@ -3239,12 +3489,12 @@ export class JVisitor {
       }
     }
     const items: i32[] = [];
-    for (let i = toI32(stack.length) - 1; i >= 0; i--) {
+    for (let i = toI32(stack.length) - 1; i >= 0 && i < stack.length; i--) {
       items.push(stack[i]);
     }
     let needDot = false;
     if (node >= 0) {
-      if (t.kind[node] === N_NEW_CLASS && t.e[node] >= 0) {
+      if (jvAt(t.kind, node) === N_NEW_CLASS && jvAt(t.e, node) >= 0) {
         g.open(this.ZERO);
         this.scan(this.getArrayBase(node));
         this.token(".");
@@ -3271,8 +3521,13 @@ export class JVisitor {
     let invocationCount = 0;
     let firstInvocationIndex = -1;
     for (let i = 0; i < toI32(items.length); i++) {
-      if (t.kind[items[i]] === N_METHOD_INVOCATION) {
+      if (jvAt(t.kind, items[i]) === N_METHOD_INVOCATION) {
         if (i > 0 || node >= 0) {
+          // At most one per item.
+          if (invocationCount >= 2147483647) {
+            fault();
+            break;
+          }
           invocationCount++;
         }
         if (firstInvocationIndex < 0) {
@@ -3283,8 +3538,8 @@ export class JVisitor {
     if (invocationCount === 1 && firstInvocationIndex > 0) {
       addUnique(prefixes, firstInvocationIndex);
     }
-    if (prefixes.length === 0 && t.kind[items[0]] === N_IDENTIFIER) {
-      const nm = t.name[items[0]];
+    if (prefixes.length === 0 && jvAt(t.kind, jvAt(items, 0)) === N_IDENTIFIER) {
+      const nm = jvAt(t.name, jvAt(items, 0));
       if (this.inp.is(nm, "this") || this.inp.is(nm, "super")) {
         prefixes.push(1);
       }
@@ -3307,7 +3562,7 @@ export class JVisitor {
     const out: i32[] = [];
     for (let i = 0; i < toI32(items.length); i++) {
       const p = items[i];
-      if (this.t.kind[p] !== N_METHOD_INVOCATION) {
+      if (jvAt(this.t.kind, p) !== N_METHOD_INVOCATION) {
         continue;
       }
       const nm = this.methodName(p);
@@ -3326,19 +3581,19 @@ export class JVisitor {
     }
     const rev: i32[] = [];
     let curr = n;
-    while (curr >= 0 && t.kind[curr] === N_METHOD_INVOCATION) {
+    while (curr >= 0 && jvAt(t.kind, curr) === N_METHOD_INVOCATION) {
       rev.push(curr);
       if (!isLogMethod(this.inp, this.methodName(curr))) {
         return false;
       }
       curr = this.getMethodReceiver(curr);
     }
-    if (curr < 0 || t.kind[curr] !== N_IDENTIFIER) {
+    if (curr < 0 || jvAt(t.kind, curr) !== N_IDENTIFIER) {
       return false;
     }
     rev.push(curr);
     const parts: i32[] = [];
-    for (let i = toI32(rev.length) - 1; i >= 0; i--) {
+    for (let i = toI32(rev.length) - 1; i >= 0 && i < rev.length; i--) {
       parts.push(rev[i]);
     }
     this.visitDotWithPrefix(parts, false, [toI32(parts.length) - 1], INDEPENDENT);
@@ -3363,7 +3618,7 @@ export class JVisitor {
           hasBroken = true;
         }
         this.token(".");
-        length++;
+        length = add32(length, 1);
       }
       const onFirstLine = !hasBroken && i < toI32(items.length) - 1;
       if (onFirstLine) {
@@ -3382,7 +3637,7 @@ export class JVisitor {
           onFirstLine ? this.plusFour : this.ZERO,
         );
       }
-      length += this.inp.width(this.t.start[e], this.t.end[e]);
+      length = add32(length, this.inp.width(jvAt(this.t.start, e), jvAt(this.t.end, e)));
       needDot = true;
     }
     if (!needDot0) {
@@ -3396,17 +3651,17 @@ export class JVisitor {
     if (items.length < 2) {
       return false;
     }
-    if (t.kind[e] !== N_METHOD_INVOCATION) {
+    if (jvAt(t.kind, e) !== N_METHOD_INVOCATION) {
       return false;
     }
     const name = this.methodName(e);
     if (
-      t.kind[t.b[e]] !== N_IDENTIFIER ||
-      this.inp.width(this.inp.tPos[name], this.inp.tEnd[name]) > 4 ||
-      this.len(t.a[e]) > 0 ||
-      this.len(t.c[e]) !== 1 ||
+      jvAt(t.kind, jvAt(t.b, e)) !== N_IDENTIFIER ||
+      this.inp.width(jvAt(this.inp.tPos, name), jvAt(this.inp.tEnd, name)) > 4 ||
+      this.len(jvAt(t.a, e)) > 0 ||
+      this.len(jvAt(t.c, e)) !== 1 ||
       // Huggable arguments are handled by addArguments, see canHugOnlyArgument.
-      this.isHuggable(this.at(t.c[e], 0))
+      this.isHuggable(this.at(jvAt(t.c, e), 0))
     ) {
       return false;
     }
@@ -3414,7 +3669,7 @@ export class JVisitor {
     g.open(indent);
     this.visitName(name);
     this.token("(");
-    this.scan(this.at(t.c[e], 0));
+    this.scan(this.at(jvAt(t.c, e), 0));
     g.close();
     this.token(")");
     g.close();
@@ -3424,7 +3679,11 @@ export class JVisitor {
   private visitDotWithPrefix(items: i32[], needDot0: boolean, prefixes0: i32[], prefixFill: i32): void {
     const g = this.g;
     let needDot = needDot0;
-    const lastPrefix = prefixes0.length > 0 ? prefixes0[prefixes0.length - 1] : -1;
+    const np = toI32(prefixes0.length);
+    let lastPrefix = -1;
+    if (np > 0 && np <= prefixes0.length) {
+      lastPrefix = prefixes0[np - 1];
+    }
     const trailingDereferences = prefixes0.length > 0 && lastPrefix < toI32(items.length) - 1;
     g.open(this.plusFour);
     for (let i = 0; i < toI32(prefixes0.length); i++) {
@@ -3435,15 +3694,7 @@ export class JVisitor {
     for (const p of prefixes0) {
       addUnique(sorted, p);
     }
-    for (let i = 1; i < toI32(sorted.length); i++) {
-      const x = sorted[i];
-      let j = i - 1;
-      while (j >= 0 && sorted[j] > x) {
-        sorted[j + 1] = sorted[j];
-        j--;
-      }
-      sorted[j + 1] = x;
-    }
+    stableSort(sorted, (a: i32, b: i32): i32 => (a > b ? 1 : 0));
     let up = 0;
     const nameTag = g.genSym();
     for (let i = 0; i < toI32(items.length); i++) {
@@ -3480,11 +3731,11 @@ export class JVisitor {
     const t = this.t;
     const out: string[] = [];
     for (const e0 of items) {
-      const isArray = t.kind[e0] === N_ARRAY_ACCESS;
+      const isArray = jvAt(t.kind, e0) === N_ARRAY_ACCESS;
       const e = this.getArrayBase(e0);
-      const k = t.kind[e];
+      const k = jvAt(t.kind, e);
       if (k === N_MEMBER_SELECT || k === N_IDENTIFIER) {
-        out.push(this.inp.text(t.name[e]));
+        out.push(this.inp.text(jvAt(t.name, e)));
       } else if (k === N_METHOD_INVOCATION) {
         out.push(this.inp.text(this.methodName(e)));
         break;
@@ -3529,19 +3780,19 @@ export class JVisitor {
     const t = this.t;
     const g = this.g;
     const e = this.getArrayBase(e0);
-    const k = t.kind[e];
+    const k = jvAt(t.kind, e);
     if (k === N_MEMBER_SELECT) {
-      this.visitName(t.name[e]);
+      this.visitName(jvAt(t.name, e));
     } else if (k === N_METHOD_INVOCATION) {
-      if (this.len(t.a[e]) > 0) {
+      if (this.len(jvAt(t.a, e)) > 0) {
         g.open(this.plusFour);
-        this.addTypeArguments(t.a[e], this.ZERO);
+        this.addTypeArguments(jvAt(t.a, e), this.ZERO);
         g.breakOp(UNIFIED, "", this.ZERO, tyargTag);
         g.close();
       }
       this.visitName(this.methodName(e));
     } else if (k === N_IDENTIFIER) {
-      this.visitName(t.name[e]);
+      this.visitName(jvAt(t.name, e));
     } else {
       this.scan(e);
     }
@@ -3552,9 +3803,9 @@ export class JVisitor {
     const g = this.g;
     const indices = this.getArrayIndices(e0);
     const e = this.getArrayBase(e0);
-    if (t.kind[e] === N_METHOD_INVOCATION) {
+    if (jvAt(t.kind, e) === N_METHOD_INVOCATION) {
       g.open(tyargIndent);
-      this.addArguments(t.c[e], indent, huggedIndent);
+      this.addArguments(jvAt(t.c, e), indent, huggedIndent);
       g.close();
     }
     this.formatArrayIndices(indices);
@@ -3565,9 +3816,9 @@ export class JVisitor {
     const t = this.t;
     const out: i32[] = [];
     let e = e0;
-    while (t.kind[e] === N_ARRAY_ACCESS) {
-      out.push(t.b[e]);
-      e = t.a[e];
+    while (jvAt(t.kind, e) === N_ARRAY_ACCESS) {
+      out.push(jvAt(t.b, e));
+      e = jvAt(t.a, e);
     }
     return out;
   }
@@ -3578,10 +3829,11 @@ export class JVisitor {
       return;
     }
     g.open(this.ZERO);
-    for (let i = toI32(indices.length) - 1; i >= 0; i--) {
+    for (let i = toI32(indices.length) - 1; i >= 0 && i < indices.length; i--) {
+      const index = indices[i];
       this.token("[");
       g.breakToFill("");
-      this.scan(indices[i]);
+      this.scan(index);
       this.token("]");
     }
     g.close();
@@ -3592,19 +3844,19 @@ export class JVisitor {
   private visitModule(n: i32): void {
     const t = this.t;
     const g = this.g;
-    for (let i = 0; i < this.len(t.a[n]); i++) {
-      this.scan(this.at(t.a[n], i));
+    for (let i = 0; i < this.len(jvAt(t.a, n)); i++) {
+      this.scan(this.at(jvAt(t.a, n), i));
       g.forcedBreak();
     }
-    if ((t.flags[n] & FL_OPEN_MODULE) !== 0) {
+    if ((jvAt(t.flags, n) & FL_OPEN_MODULE) !== 0) {
       this.token("open");
       g.space();
     }
     this.token("module");
     g.space();
-    this.scan(t.b[n]);
+    this.scan(jvAt(t.b, n));
     g.space();
-    const dirs = t.c[n];
+    const dirs = jvAt(t.c, n);
     if (this.len(dirs) === 0) {
       this.tokenBreakTrailingComment("{", this.plusTwo);
       g.blankLineWanted(BL_NO);
@@ -3617,10 +3869,10 @@ export class JVisitor {
       for (let i = 0; i < this.len(dirs); i++) {
         const d = this.at(dirs, i);
         this.markForPartialFormat();
-        g.blankLineWanted(prev >= 0 && prev !== t.kind[d] ? BL_YES : BL_NO);
+        g.blankLineWanted(prev >= 0 && prev !== jvAt(t.kind, d) ? BL_YES : BL_NO);
         g.forcedBreak();
         this.scan(d);
-        prev = t.kind[d];
+        prev = jvAt(t.kind, d);
       }
       g.close();
       g.forcedBreak();
