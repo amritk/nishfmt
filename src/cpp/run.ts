@@ -5,6 +5,7 @@ import { Doc, Options } from "./doc";
 import { Formatter } from "./format";
 import { Out } from "../core/out";
 import { toCRLF } from "../core/files";
+import { sliceU8s } from "../core/arr";
 
 /** One worker's reusable C++ state: the token tables and the formatter. */
 export class CppEngine {
@@ -32,7 +33,7 @@ export const formatCpp = (e: CppEngine, path: string, src: u8[], n: i32, out: Ou
   let okRun = f.run(out, prof);
   // clang-format's derived line ending: CRLF when more than half the line
   // breaks are.
-  const crlf = d.nCR * 2 > d.nLF;
+  const crlf = toI64(d.nCR) * toI64(2) > toI64(d.nLF);
   let runs = e.once ? 8 : 0;
   while (okRun && f.rerun && runs < 8 && (runs === 0 || f.rerunMacro)) {
     // clang-format's fixed point: format the result once more.
@@ -40,7 +41,7 @@ export const formatCpp = (e: CppEngine, path: string, src: u8[], n: i32, out: Ou
     if (e.showReruns) {
       console.error(`rerun ${runs} ${path}`);
     }
-    const once = out.buf.slice(0, out.n);
+    const once = sliceU8s(out.buf, 0, out.n);
     d.reset(once, toI32(once.length));
     f.reset();
     f.setPath(path);
