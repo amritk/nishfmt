@@ -4,6 +4,8 @@
 // Ported from rustfmt 1.10.0 (MIT OR Apache-2.0, Copyright The Rust Project
 // Developers): overflow.rs.
 
+import { add32, atI32, sub32 } from "../core/arr";
+import { fault } from "../core/fault";
 import {
   N_EX_CLOSURE,
   N_EX_FOR,
@@ -55,7 +57,7 @@ import { rsCanBeOverflowedPat, rsTuplePatFieldLo, rsTuplePatFieldHi } from "./pa
 import { RsShape, rsIndentStrNl } from "./shape";
 import { rsCountNewlines, rsHasByte, rsLines, rsWsLenAt } from "./str";
 import { rsCanBeOverflowedType, rsGenericParamHi, rsGenericParamLo } from "./types";
-import { rsExprHasAttrs, rsExtraOffset, rsLoWithAttrs } from "./utils";
+import { rsExprHasAttrs, rsExtraOffset, rsLoWithAttrs, rsStrCut } from "./utils";
 
 // OverflowableItem categories.
 export const OC_EXPR: i32 = 0;
@@ -102,7 +104,7 @@ const specialCaseArgs = (name: string, styleEdition: i32): i32 => {
 /** The Spanned span of an overflowable item. */
 export const rsOverflowLo = (ctx: RsCtx, oc: i32, n: i32): i32 => {
   const ast = ctx.ast;
-  const k = ast.kind[n];
+  const k = atI32(ast.kind, n);
   if (k === N_GPARAM) {
     return rsGenericParamLo(ast, n);
   }
@@ -114,17 +116,17 @@ export const rsOverflowLo = (ctx: RsCtx, oc: i32, n: i32): i32 => {
 
 export const rsOverflowHi = (ctx: RsCtx, oc: i32, n: i32): i32 => {
   const ast = ctx.ast;
-  const k = ast.kind[n];
+  const k = atI32(ast.kind, n);
   if (k === N_GPARAM) {
     return rsGenericParamHi(ctx, n);
   }
   if (k === N_FIELD) {
-    return ast.hi[ast.a[n]];
+    return atI32(ast.hi, atI32(ast.a, n));
   }
   if (oc === OC_TUPLE_PAT) {
     return rsTuplePatFieldHi(ast, n);
   }
-  return ast.hi[n];
+  return atI32(ast.hi, n);
 };
 
 const itemRewrite = (ctx: RsCtx, oc: i32, n: i32, shape: RsShape): string | null => {
@@ -135,24 +137,24 @@ const itemRewrite = (ctx: RsCtx, oc: i32, n: i32, shape: RsShape): string | null
 };
 
 const hasAttrs = (ast: RsAst, oc: i32, n: i32): boolean => {
-  const k = ast.kind[n];
+  const k = atI32(ast.kind, n);
   if (oc === OC_EXPR) {
     return rsExprHasAttrs(ast, n);
   }
   if (oc === OC_GENERIC_PARAM || oc === OC_FIELD_DEF) {
-    return ast.atn[n] > 0;
+    return atI32(ast.atn, n) > 0;
   }
   if (oc === OC_MACRO_ARG && rsIsExprKind(k)) {
     return rsExprHasAttrs(ast, n);
   }
   if (oc === OC_MACRO_ARG && rsIsItemKind(k)) {
-    return ast.atn[n] > 0;
+    return atI32(ast.atn, n) > 0;
   }
   return false;
 };
 
 const isExprItem = (ast: RsAst, oc: i32, n: i32): boolean =>
-  oc === OC_EXPR || (oc === OC_MACRO_ARG && rsIsExprKind(ast.kind[n]));
+  oc === OC_EXPR || (oc === OC_MACRO_ARG && rsIsExprKind(atI32(ast.kind, n)));
 
 const isSimpleItem = (ctx: RsCtx, oc: i32, n: i32): boolean => {
   const ast = ctx.ast;
@@ -163,13 +165,13 @@ const isSimpleItem = (ctx: RsCtx, oc: i32, n: i32): boolean => {
     if (rsIsMacroKeywordArg(ast, n)) {
       return true;
     }
-    return rsIsExprKind(ast.kind[n]) && rsIsSimpleExpr(ast, n);
+    return rsIsExprKind(atI32(ast.kind, n)) && rsIsSimpleExpr(ast, n);
   }
   if (oc === OC_META) {
-    if (ast.kind[n] === N_META_LIT) {
+    if (atI32(ast.kind, n) === N_META_LIT) {
       return true;
     }
-    return ast.kind[n] === N_META && ast.b[n] < 0 && ast.c[n] < 0 && ast.x[n] < 0;
+    return atI32(ast.kind, n) === N_META && atI32(ast.b, n) < 0 && atI32(ast.c, n) < 0 && atI32(ast.x, n) < 0;
   }
   return false;
 };
@@ -178,7 +180,7 @@ const isNestedCallItem = (ast: RsAst, oc: i32, n: i32): boolean => isExprItem(as
 
 const canBeOverflowedItem = (ctx: RsCtx, oc: i32, n: i32, len: i32): boolean => {
   const ast = ctx.ast;
-  const k = ast.kind[n];
+  const k = atI32(ast.kind, n);
   if (oc === OC_EXPR) {
     return rsCanBeOverflowedExpr(ctx, n, len);
   }
@@ -219,12 +221,26 @@ const canBeOverflowedItem = (ctx: RsCtx, oc: i32, n: i32, len: i32): boolean => 
 };
 
 const isEveryExprSimple = (ctx: RsCtx, oc: i32, items: i32[], from: i32, to: i32): boolean => {
-  for (let i = from; i < to; i++) {
+  // Callers pass a range of items; outside it the index would have panicked.
+  if (from < to && (from < 0 || to > items.length)) {
+    fault();
+    return false;
+  }
+  for (let i = from; i >= 0 && i < to && i < items.length; i++) {
     if (!isSimpleItem(ctx, oc, items[i])) {
       return false;
     }
   }
   return true;
+};
+
+/** `xs[i]`, or a fresh item after a fault where the index would have panicked. */
+const rsOvItemAt = (xs: RsListItem[], i: i32): RsListItem => {
+  if (i >= 0 && i < xs.length) {
+    return xs[i];
+  }
+  fault();
+  return new RsListItem();
 };
 
 class OvContext {
@@ -272,12 +288,12 @@ class OvContext {
     this.customLhs = customLhs;
     this.customRhs = customRhs;
     const usedWidth = rsExtraOffset(ident, shape.usedWidth());
-    let olw = shape.width - (usedWidth + 2);
+    let olw = sub32(shape.width, add32(usedWidth, 2));
     if (olw < 0) {
       olw = 0;
     }
     this.oneLineWidth = olw;
-    const s1 = shape.offsetLeft(rsLastLineWidth(ident, cfg.tabSpaces) + 1);
+    const s1 = shape.offsetLeft(add32(rsLastLineWidth(ident, cfg.tabSpaces), 1));
     const s2: RsShape | null = s1 === null ? null : s1.subWidth(1);
     this.oneLineShape = s2 === null ? shape.withWidth(0) : s2;
     // shape_from_indent_style (block indent).
@@ -299,7 +315,7 @@ class OvContext {
     const lastItem = this.items[n - 1];
     let rw: string | null = null;
     if (this.oc === OC_EXPR) {
-      const k = ast.kind[lastItem];
+      const k = atI32(ast.kind, lastItem);
       if (k === N_EX_CLOSURE) {
         if (rsArgsHaveManyClosure(ctx, this.oc, this.items)) {
           rw = null;
@@ -319,7 +335,7 @@ class OvContext {
     if (rw !== null) {
       const nl = rsLines(rw);
       const k = rw.indexOf("\n");
-      last.item = k < 0 ? rw : rw.slice(0, k);
+      last.item = k < 0 ? rw : rsStrCut(rw, 0, k);
       if (nl.length < 0) {
         return null;
       }
@@ -329,7 +345,7 @@ class OvContext {
   }
 
   defaultTactic(items: RsListItem[]): i32 {
-    return rsDefinitiveTactic(items, LT_LIMITED + this.itemMaxWidth, SEP_COMMA, this.oneLineWidth);
+    return rsDefinitiveTactic(items, add32(LT_LIMITED, this.itemMaxWidth), SEP_COMMA, this.oneLineWidth);
   }
 
   tryOverflowLastItem(listItems: RsListItem[]): i32 {
@@ -338,8 +354,8 @@ class OvContext {
     const n = this.items.length;
     const combineArgWithCallee =
       n === 1 &&
-      isExprItem(ast, this.oc, this.items[0]) &&
-      !hasAttrs(ast, this.oc, this.items[0]) &&
+      isExprItem(ast, this.oc, atI32(this.items, 0)) &&
+      !hasAttrs(ast, this.oc, atI32(this.items, 0)) &&
       toI32(this.ident.length) < ctx.cfg.tabSpaces;
     const overflowLast = combineArgWithCallee || (n > 0 && canBeOverflowedItem(ctx, this.oc, this.items[n - 1], n));
     let placeholder: string | null = null;
@@ -350,36 +366,36 @@ class OvContext {
         last >= 0 &&
         !combineArgWithCallee &&
         (this.oc === OC_EXPR ||
-          (this.oc === OC_MACRO_ARG && ctx.cfg.styleEdition >= 2024 && rsIsExprKind(ast.kind[last]))) &&
+          (this.oc === OC_MACRO_ARG && ctx.cfg.styleEdition >= 2024 && rsIsExprKind(atI32(ast.kind, last)))) &&
         rsIsMethodCall(ast, last)
       ) {
         ctx.forceOneLineChain = true;
       }
       const argShape = lastItemShape(ctx, this.oc, this.items, listItems, this.oneLineShape, this.itemMaxWidth);
       if (argShape !== null) {
-        placeholder = this.rewriteLastItemWithOverflow(listItems[n - 1], argShape);
+        placeholder = this.rewriteLastItemWithOverflow(rsOvItemAt(listItems, n - 1), argShape);
       }
       ctx.forceOneLineChain = old;
     }
-    let tactic = rsDefinitiveTactic(listItems, LT_LIMITED + this.itemMaxWidth, SEP_COMMA, this.oneLineWidth);
+    let tactic = rsDefinitiveTactic(listItems, add32(LT_LIMITED, this.itemMaxWidth), SEP_COMMA, this.oneLineWidth);
     if (overflowLast && tactic === DLT_HORIZONTAL && placeholder !== null && n === 1) {
       const overflowed = placeholder;
       if (rsCountNewlines(overflowed) === 1) {
-        const rw = itemRewrite(ctx, this.oc, this.items[n - 1], this.nestedShape);
+        const rw = itemRewrite(ctx, this.oc, atI32(this.items, n - 1), this.nestedShape);
         const noNewline = rw !== null && !rsHasByte(rw, 10);
         if (noNewline) {
-          listItems[n - 1].item = rw;
+          rsOvItemAt(listItems, n - 1).item = rw;
         } else {
-          listItems[n - 1].item = overflowed;
+          rsOvItemAt(listItems, n - 1).item = overflowed;
         }
       } else {
-        listItems[n - 1].item = overflowed;
+        rsOvItemAt(listItems, n - 1).item = overflowed;
       }
     } else if (overflowLast && tactic === DLT_HORIZONTAL && placeholder !== null) {
-      listItems[n - 1].item = placeholder;
+      rsOvItemAt(listItems, n - 1).item = placeholder;
     } else if (n > 0) {
-      listItems[n - 1].item = itemRewrite(ctx, this.oc, this.items[n - 1], this.nestedShape);
-      const it0 = listItems[0];
+      rsOvItemAt(listItems, n - 1).item = itemRewrite(ctx, this.oc, atI32(this.items, n - 1), this.nestedShape);
+      const it0 = rsOvItemAt(listItems, 0);
       if (
         n === 1 &&
         this.oneLineWidth !== 0 &&
@@ -401,7 +417,7 @@ class OvContext {
             const allSimple =
               n > numBefore &&
               isEveryExprSimple(ctx, this.oc, this.items, 0, numBefore) &&
-              isEveryExprSimple(ctx, this.oc, this.items, numBefore + 1, n);
+              isEveryExprSimple(ctx, this.oc, this.items, add32(numBefore, 1), n);
             const before: RsListItem[] = [];
             const after: RsListItem[] = [];
             for (let i = 0; i < listItems.length; i++) {
@@ -417,7 +433,7 @@ class OvContext {
                 DLT_HORIZONTAL &&
               rsDefinitiveTactic(after, LT_HORIZONTAL_VERTICAL, SEP_COMMA, this.nestedShape.width) === DLT_HORIZONTAL;
             if (oneLine) {
-              tactic = DLT_SPECIAL_MACRO + numBefore;
+              tactic = add32(DLT_SPECIAL_MACRO, numBefore);
             }
           } else if (
             isEveryExprSimple(ctx, this.oc, this.items, 0, n) &&
@@ -442,9 +458,9 @@ class OvContext {
       items.length,
       this.suffix,
       ",",
-      (i: i32): i32 => rsOverflowLo(ctx, oc, items[i]),
-      (i: i32): i32 => rsOverflowHi(ctx, oc, items[i]),
-      (i: i32): string | null => itemRewrite(ctx, oc, items[i], ns),
+      (i: i32): i32 => rsOverflowLo(ctx, oc, atI32(items, i)),
+      (i: i32): i32 => rsOverflowHi(ctx, oc, atI32(items, i)),
+      (i: i32): string | null => itemRewrite(ctx, oc, atI32(items, i), ns),
       ilo,
       this.hi,
       true,
@@ -466,14 +482,14 @@ class OvContext {
   wrapItems(itemsStr: string, shape0: RsShape, isExtendable: boolean): string {
     const ctx = this.ctx;
     const cfg = ctx.cfg;
-    let w = shape0.width - rsLastLineWidth(this.ident, cfg.tabSpaces);
+    let w = sub32(shape0.width, rsLastLineWidth(this.ident, cfg.tabSpaces));
     if (w < 0) {
       w = 0;
     }
     const shape = shape0.withWidth(w);
     const prefix = this.customLhs.length !== 0 ? this.customLhs : this.prefix;
     const suffix = this.customRhs.length !== 0 ? this.customRhs : this.suffix;
-    const extendWidth = itemsStr.length === 0 ? 2 : rsFirstLineWidth(itemsStr) + 1;
+    const extendWidth = itemsStr.length === 0 ? 2 : add32(rsFirstLineWidth(itemsStr), 1);
     const nestedIndentStr = rsIndentStrNl(cfg, this.nestedShape.bi, this.nestedShape.al);
     const indentStr = rsIndentStrNl(cfg, shape.bi, 0);
     let result = this.ident + prefix;
@@ -481,7 +497,7 @@ class OvContext {
     let forceSingleLine = isExtendable && extendWidth <= shape.width;
     if (cfg.styleEdition < 2024) {
       // 2 = `()`
-      const fitsOneLine = toI32(itemsStr.length) + 2 <= shape.width;
+      const fitsOneLine = add32(toI32(itemsStr.length), 2) <= shape.width;
       forceSingleLine = forceSingleLine || (ctx.insideMacro && !rsHasByte(itemsStr, 10) && fitsOneLine);
     }
     if (forceSingleLine) {
@@ -529,7 +545,7 @@ const lastItemShape = (
   }
   let offset = 0;
   for (let i = 0; i < items.length - 1; i++) {
-    offset += 2 + toI32(items[i].inner().length);
+    offset = add32(offset, add32(2, toI32(items[i].inner().length)));
   }
   const w = argsMaxWidth < shape.width ? argsMaxWidth : shape.width;
   return shape.withWidth(w).offsetLeft(offset);
@@ -615,4 +631,4 @@ export const rsRewriteWithSquareBrackets = (
   return c.rewrite(shape);
 };
 
-export const rsOverflowIsLifetime = (ast: RsAst, n: i32): boolean => ast.kind[n] === N_LIFETIME;
+export const rsOverflowIsLifetime = (ast: RsAst, n: i32): boolean => atI32(ast.kind, n) === N_LIFETIME;

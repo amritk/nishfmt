@@ -6,7 +6,8 @@
 // Developers), for rustfmt 1.10.0 (MIT OR Apache-2.0, Copyright The Rust
 // Project Developers).
 
-import { growI32 } from "../core/arr";
+import { atI32, growI32, sub32 } from "../core/arr";
+import { fault } from "../core/fault";
 import {
   KW_AS,
   KW_ASYNC,
@@ -333,6 +334,25 @@ import {
   WH_HAS_WHERE,
 } from "./ast";
 
+// A node field store. A node index is one `nd` answered, so it is in range;
+// the guard faults where the old store would have panicked.
+const rsPrPut = (xs: i32[], i: i32, v: i32): void => {
+  if (i >= 0 && i < xs.length) {
+    xs[i] = v;
+  } else {
+    fault();
+  }
+};
+
+/** `xs[i] |= f`, guarded as `rsPrPut`. */
+const rsPrOr = (xs: i32[], i: i32, f: i32): void => {
+  if (i >= 0 && i < xs.length) {
+    xs[i] = xs[i] | f;
+  } else {
+    fault();
+  }
+};
+
 // Restrictions.
 const R_STMT_EXPR: i32 = 1;
 const R_NO_STRUCT: i32 = 2;
@@ -387,7 +407,8 @@ export class RsParser {
     this.t = t;
     this.src = t.src;
     this.ast = ast;
-    this.end = t.nt - 1;
+    const nt = t.nt;
+    this.end = nt > 0 ? nt - 1 : -1;
     this.stk = new Array<i32>(256);
     this.innerS = new Array<i32>(16);
     this.innerN = new Array<i32>(16);
@@ -395,54 +416,109 @@ export class RsParser {
   }
 
   // ---------------------------------------------------------------- tokens
+  //
+  // `p` stays in [0, end] and end < nt <= the token arrays' length, so the
+  // guards below hold; their other branches fault where an index would have
+  // panicked.
 
   tk(): i32 {
     if (this.off >= 0) {
       return this.sk;
     }
-    if (this.p >= this.end) {
+    const p = this.p;
+    if (p >= this.end) {
       return T_EOF;
     }
-    return this.t.kind[this.p];
+    const kind = this.t.kind;
+    if (p >= 0 && p < kind.length) {
+      return kind[p];
+    }
+    fault();
+    return T_EOF;
   }
 
   la(k: i32): i32 {
-    const i = this.p + k;
-    if (i >= this.end) {
-      return T_EOF;
+    const p = this.p;
+    const kind = this.t.kind;
+    // p is a token index and k a small lookahead distance: both far below 2^30.
+    if (p >= 0 && p < 1073741824 && p < kind.length && k >= 0 && k < 1073741824) {
+      const i = p + k;
+      if (i >= this.end) {
+        return T_EOF;
+      }
+      if (i < kind.length) {
+        return kind[i];
+      }
     }
-    return this.t.kind[i];
+    fault();
+    return T_EOF;
   }
 
   kw(): i32 {
-    if (this.off >= 0 || this.p >= this.end) {
+    const p = this.p;
+    if (this.off >= 0 || p >= this.end) {
       return 0;
     }
-    return this.t.kind[this.p] === T_IDENT ? this.t.kw[this.p] : 0;
+    const kind = this.t.kind;
+    const kws = this.t.kw;
+    if (p >= 0 && p < kind.length && p < kws.length) {
+      return kind[p] === T_IDENT ? kws[p] : 0;
+    }
+    fault();
+    return 0;
   }
 
   laKw(k: i32): i32 {
-    const i = this.p + k;
-    if (i >= this.end) {
-      return 0;
+    const p = this.p;
+    const kind = this.t.kind;
+    const kws = this.t.kw;
+    if (p >= 0 && p < 1073741824 && p < kind.length && k >= 0 && k < 1073741824) {
+      const i = p + k;
+      if (i >= this.end) {
+        return 0;
+      }
+      if (i < kind.length && i < kws.length) {
+        return kind[i] === T_IDENT ? kws[i] : 0;
+      }
     }
-    return this.t.kind[i] === T_IDENT ? this.t.kw[i] : 0;
+    fault();
+    return 0;
   }
 
   lo(): i32 {
     if (this.off >= 0) {
       return this.off;
     }
-    if (this.p >= this.end) {
-      return this.end < this.t.nt ? this.t.lo[this.end] : this.t.n;
+    const p = this.p;
+    const end = this.end;
+    const los = this.t.lo;
+    if (p >= end) {
+      if (end >= this.t.nt) {
+        return this.t.n;
+      }
+      if (end >= 0 && end < los.length) {
+        return los[end];
+      }
+      fault();
+      return 0;
     }
-    return this.t.lo[this.p];
+    if (p >= 0 && p < los.length) {
+      return los[p];
+    }
+    fault();
+    return 0;
   }
 
   bump(): void {
-    if (this.p < this.end) {
-      this.ph = this.t.hi[this.p];
-      this.p = this.p + 1;
+    const p = this.p;
+    if (p < this.end) {
+      const his = this.t.hi;
+      if (p >= 0 && p < his.length) {
+        this.ph = his[p];
+        this.p = p + 1;
+      } else {
+        fault();
+      }
     }
     this.off = -1;
   }
@@ -506,8 +582,13 @@ export class RsParser {
   // Consumes the first byte of a glued token.
   splitFirst(rest: i32): void {
     const lo = this.lo();
-    this.ph = lo + 1;
-    this.off = lo + 1;
+    // A byte offset, so below the i32 maximum.
+    if (lo < 2147483647) {
+      this.ph = lo + 1;
+      this.off = lo + 1;
+    } else {
+      fault();
+    }
     this.sk = rest;
   }
 
@@ -614,10 +695,12 @@ export class RsParser {
 
   /** `prev_token == Plus`: the token just consumed was `+` (or the `+` of a split `+=`). */
   prevIsPlus(): boolean {
+    const p = this.p;
+    const kind = this.t.kind;
     if (this.off >= 0) {
-      return this.p < this.end && this.t.kind[this.p] === T_PLUSEQ;
+      return p >= 0 && p < this.end && p < kind.length && kind[p] === T_PLUSEQ;
     }
-    return this.p > 0 && this.t.kind[this.p - 1] === T_PLUS;
+    return p > 0 && p <= kind.length && kind[p - 1] === T_PLUS;
   }
 
   // ---------------------------------------------------------------- state
@@ -638,6 +721,11 @@ export class RsParser {
   }
 
   restore(s: i32[]): void {
+    // `s` is one `save` made: ten slots.
+    if (s.length < 10) {
+      fault();
+      return;
+    }
     this.p = s[0];
     this.off = s[1];
     this.sk = s[2];
@@ -657,28 +745,53 @@ export class RsParser {
   }
 
   fin(n: i32): i32 {
-    this.ast.hi[n] = this.ph;
+    rsPrPut(this.ast.hi, n, this.ph);
     return n;
   }
 
   push(x: i32): void {
-    this.stk = growI32(this.stk, this.sp + 1);
-    this.stk[this.sp] = x;
-    this.sp = this.sp + 1;
+    const sp = this.sp;
+    // sp counts pushes, so it is below the i32 maximum.
+    if (sp >= 0 && sp < 2147483647) {
+      const stk = growI32(this.stk, sp + 1);
+      this.stk = stk;
+      if (sp < stk.length) {
+        stk[sp] = x;
+        this.sp = sp + 1;
+        return;
+      }
+    }
+    fault();
   }
 
   endList(n: i32, mark: i32): void {
-    this.ast.ls[n] = this.ast.addKids(this.stk, mark, this.sp);
-    this.ast.ln[n] = this.sp - mark;
+    rsPrPut(this.ast.ls, n, this.ast.addKids(this.stk, mark, this.sp));
+    const sp = this.sp;
+    // Both are stack depths, so the difference fits.
+    if (sp >= 0 && mark >= 0) {
+      rsPrPut(this.ast.ln, n, sp - mark);
+    } else {
+      fault();
+    }
     this.sp = mark;
   }
 
   setAttrs(n: i32, mark: i32, count: i32): void {
     if (n >= 0 && count > 0) {
-      this.ast.ats[n] = this.ast.addKids(this.stk, mark, mark + count);
-      this.ast.atn[n] = count;
+      rsPrPut(this.ast.ats, n, this.stackKids(mark, count));
+      rsPrPut(this.ast.atn, n, count);
     }
     this.sp = mark;
+  }
+
+  /** `addKids` of the `count` entries pushed at `mark`. */
+  stackKids(mark: i32, count: i32): i32 {
+    // A stack depth and a count of what was pushed on it: far below 2^30.
+    if (mark >= 0 && mark < 1073741824 && count >= 0 && count < 1073741824) {
+      return this.ast.addKids(this.stk, mark, mark + count);
+    }
+    fault();
+    return 0;
   }
 
   /** Drops outer attributes pushed at `mark` without attaching them. */
@@ -706,7 +819,7 @@ export class RsParser {
     }
     this.endList(c, items);
     this.setAttrs(c, am, na);
-    this.ast.hi[c] = this.t.n;
+    rsPrPut(this.ast.hi, c, this.t.n);
     return c;
   }
 
@@ -728,9 +841,17 @@ export class RsParser {
     while (!this.failed) {
       if (this.isDocInner()) {
         this.push(this.docAttr(true));
+        if (n >= 2147483647) {
+          fault();
+          break;
+        }
         n++;
       } else if (this.is(T_POUND) && this.la(1) === T_NOT && this.la(2) === T_LBRACKET) {
         this.push(this.parseAttr(true));
+        if (n >= 2147483647) {
+          fault();
+          break;
+        }
         n++;
       } else {
         break;
@@ -745,9 +866,17 @@ export class RsParser {
     while (!this.failed) {
       if (this.isDocOuter()) {
         this.push(this.docAttr(false));
+        if (n >= 2147483647) {
+          fault();
+          break;
+        }
         n++;
       } else if (this.is(T_POUND) && this.la(1) === T_LBRACKET) {
         this.push(this.parseAttr(false));
+        if (n >= 2147483647) {
+          fault();
+          break;
+        }
         n++;
       } else {
         break;
@@ -766,8 +895,8 @@ export class RsParser {
     if (k === T_DOC_BLOCK_OUTER || k === T_DOC_BLOCK_INNER) {
       f = f | AT_DOC_BLOCK;
     }
-    this.ast.fl[a] = f;
-    this.ast.x[a] = this.p;
+    rsPrPut(this.ast.fl, a, f);
+    rsPrPut(this.ast.x, a, this.p);
     this.bump();
     return this.fin(a);
   }
@@ -777,7 +906,7 @@ export class RsParser {
     this.bump(); // #
     if (inner) {
       this.bump(); // !
-      this.ast.fl[a] = AT_INNER;
+      rsPrPut(this.ast.fl, a, AT_INNER);
     }
     this.expect(T_LBRACKET);
     let unsafeWrap = false;
@@ -785,10 +914,10 @@ export class RsParser {
       this.bump();
       this.bump();
       unsafeWrap = true;
-      this.ast.fl[a] = this.ast.fl[a] | AT_UNSAFE;
+      rsPrOr(this.ast.fl, a, AT_UNSAFE);
     }
     const gv1 = this.parsePath(PS_MOD);
-    this.ast.a[a] = gv1;
+    rsPrPut(this.ast.a, a, gv1);
     if (this.failed) {
       return -1;
     }
@@ -804,11 +933,11 @@ export class RsParser {
     const k = this.tk();
     if (k === T_LPAREN || k === T_LBRACKET || k === T_LBRACE) {
       const gv2 = this.parseTts();
-      this.ast.b[a] = gv2;
+      rsPrPut(this.ast.b, a, gv2);
     } else if (k === T_EQ) {
       this.bump();
       const gv3 = this.parseExpr();
-      this.ast.c[a] = gv3;
+      rsPrPut(this.ast.c, a, gv3);
     }
   }
 
@@ -819,13 +948,13 @@ export class RsParser {
       return this.fail();
     }
     const n = this.nd(N_TTS, this.lo());
-    const close = this.t.match[this.p];
+    const close = atI32(this.t.match, this.p);
     if (close < 0 || close >= this.end) {
       return this.fail();
     }
-    this.ast.a[n] = this.p;
-    this.ast.b[n] = close;
-    this.ast.x[n] = k;
+    rsPrPut(this.ast.a, n, this.p);
+    rsPrPut(this.ast.b, n, close);
+    rsPrPut(this.ast.x, n, k);
     this.p = close;
     this.bump();
     return this.fin(n);
@@ -839,22 +968,22 @@ export class RsParser {
     }
     const v = this.nd(N_VIS, this.lo());
     this.bump();
-    this.ast.fl[v] = VIS_PUB;
+    rsPrPut(this.ast.fl, v, VIS_PUB);
     if (this.is(T_LPAREN)) {
       const k1 = this.laKw(1);
       if ((k1 === KW_CRATE || k1 === KW_SELF || k1 === KW_SUPER) && this.la(2) === T_RPAREN) {
         this.bump();
         const pa = this.parsePath(PS_MOD);
         this.expect(T_RPAREN);
-        this.ast.a[v] = pa;
-        this.ast.fl[v] = k1 === KW_CRATE ? VIS_CRATE : VIS_RESTRICTED;
+        rsPrPut(this.ast.a, v, pa);
+        rsPrPut(this.ast.fl, v, k1 === KW_CRATE ? VIS_CRATE : VIS_RESTRICTED);
       } else if (k1 === KW_IN) {
         this.bump();
         this.bump();
         const pa = this.parsePath(PS_MOD);
         this.expect(T_RPAREN);
-        this.ast.a[v] = pa;
-        this.ast.fl[v] = VIS_RESTRICTED | VIS_IN;
+        rsPrPut(this.ast.a, v, pa);
+        rsPrPut(this.ast.fl, v, VIS_RESTRICTED | VIS_IN);
       }
     }
     return this.fin(v);
@@ -866,6 +995,11 @@ export class RsParser {
   isFnFront(): boolean {
     let i = 0;
     for (;;) {
+      // la faults at a distance of 2^30, so i stays below 2^30 + 2.
+      if (i >= 1073741824) {
+        fault();
+        return false;
+      }
       const k = this.laKwAt(i);
       if (k === KW_FN) {
         return true;
@@ -875,10 +1009,12 @@ export class RsParser {
         continue;
       }
       if (k === KW_EXTERN) {
-        i++;
-        const lk = this.laAt(i);
+        const j = i + 1;
+        const lk = this.laAt(j);
         if (lk === T_STR || lk === T_RSTR) {
-          i++;
+          i = j + 1;
+        } else {
+          i = j;
         }
         continue;
       }
@@ -886,14 +1022,14 @@ export class RsParser {
     }
   }
 
-  laAt(i: number): i32 {
+  laAt(i: i32): i32 {
     if (i === 0) {
       return this.tk();
     }
     return this.la(i);
   }
 
-  laKwAt(i: number): i32 {
+  laKwAt(i: i32): i32 {
     if (i === 0) {
       return this.kw();
     }
@@ -938,8 +1074,8 @@ export class RsParser {
       }
       return -1;
     }
-    this.ast.e[it] = vis;
-    this.ast.lo[it] = lo;
+    rsPrPut(this.ast.e, it, vis);
+    rsPrPut(this.ast.lo, it, lo);
     return it;
   }
 
@@ -970,7 +1106,7 @@ export class RsParser {
     if (this.isFnFront()) {
       const f = this.parseFn(lo, assoc);
       if (def && f >= 0) {
-        this.ast.fl[f] = this.ast.fl[f] | FN_DEFAULT;
+        rsPrOr(this.ast.fl, f, FN_DEFAULT);
       }
       return f;
     }
@@ -994,7 +1130,7 @@ export class RsParser {
         this.bump();
         const tr = this.parseTrait(lo);
         if (tr >= 0) {
-          this.ast.fl[tr] = this.ast.fl[tr] | IT_UNSAFE;
+          rsPrOr(this.ast.fl, tr, IT_UNSAFE);
         }
         return tr;
       }
@@ -1002,7 +1138,7 @@ export class RsParser {
         this.bump();
         const m = this.parseMod(lo);
         if (m >= 0) {
-          this.ast.fl[m] = this.ast.fl[m] | IT_UNSAFE;
+          rsPrOr(this.ast.fl, m, IT_UNSAFE);
         }
         return m;
       }
@@ -1034,13 +1170,13 @@ export class RsParser {
         this.bump();
         const tr = this.parseTrait(lo);
         if (tr >= 0) {
-          this.ast.fl[tr] = this.ast.fl[tr] | IT_CONST;
+          rsPrOr(this.ast.fl, tr, IT_CONST);
         }
         return tr;
       }
       const c = this.parseConst(lo);
       if (c >= 0 && def) {
-        this.ast.fl[c] = this.ast.fl[c] | IT_DEFAULT;
+        rsPrOr(this.ast.fl, c, IT_DEFAULT);
       }
       return c;
     }
@@ -1065,7 +1201,7 @@ export class RsParser {
     if (kk === KW_TYPE) {
       const ta = this.parseTypeAlias(lo);
       if (ta >= 0 && def) {
-        this.ast.fl[ta] = this.ast.fl[ta] | IT_DEFAULT;
+        rsPrOr(this.ast.fl, ta, IT_DEFAULT);
       }
       return ta;
     }
@@ -1094,20 +1230,20 @@ export class RsParser {
       }
       this.bump();
       const mac = this.nd(N_MAC, lo);
-      this.ast.a[mac] = pa;
+      rsPrPut(this.ast.a, mac, pa);
       const tts = this.parseTts();
       if (this.failed) {
         return -1;
       }
-      this.ast.b[mac] = tts;
+      rsPrPut(this.ast.b, mac, tts);
       this.fin(mac);
       const it = this.nd(N_MAC_ITEM, lo);
-      this.ast.a[it] = mac;
-      if (this.ast.x[tts] !== T_LBRACE) {
+      rsPrPut(this.ast.a, it, mac);
+      if (atI32(this.ast.x, tts) !== T_LBRACE) {
         if (!this.expect(T_SEMI)) {
           return -1;
         }
-        this.ast.fl[it] = IT_SEMI;
+        rsPrPut(this.ast.fl, it, IT_SEMI);
       }
       return this.fin(it);
     }
@@ -1143,7 +1279,7 @@ export class RsParser {
     const n = this.nd(N_USE, lo);
     this.bump(); // use
     const gv4 = this.parseUseTree();
-    this.ast.a[n] = gv4;
+    rsPrPut(this.ast.a, n, gv4);
     this.expect(T_SEMI);
     return this.fin(n);
   }
@@ -1156,7 +1292,7 @@ export class RsParser {
     const mark = this.sp;
     if (this.is(T_COLONCOLON)) {
       this.bump();
-      this.ast.fl[pa] = PATH_GLOBAL;
+      rsPrPut(this.ast.fl, pa, PATH_GLOBAL);
     }
     let glob = false;
     let nested = false;
@@ -1175,7 +1311,7 @@ export class RsParser {
         return -1;
       }
       const sg = this.nd(N_SEG, this.lo());
-      this.ast.d[sg] = this.identTok();
+      rsPrPut(this.ast.d, sg, this.identTok());
       this.fin(sg);
       this.push(sg);
       if (this.is(T_COLONCOLON)) {
@@ -1186,11 +1322,11 @@ export class RsParser {
     }
     this.endList(pa, mark);
     this.fin(pa);
-    this.ast.a[n] = pa;
+    rsPrPut(this.ast.a, n, pa);
     if (glob) {
-      this.ast.fl[n] = UT_GLOB;
+      rsPrPut(this.ast.fl, n, UT_GLOB);
     } else if (nested) {
-      this.ast.fl[n] = UT_NESTED;
+      rsPrPut(this.ast.fl, n, UT_NESTED);
       this.bump(); // {
       const m2 = this.sp;
       while (!this.failed && !this.is(T_RBRACE)) {
@@ -1202,13 +1338,13 @@ export class RsParser {
       this.expect(T_RBRACE);
       this.endList(n, m2);
     } else {
-      this.ast.fl[n] = UT_SIMPLE;
+      rsPrPut(this.ast.fl, n, UT_SIMPLE);
       if (this.eatKw(KW_AS)) {
         if (this.tk() !== T_IDENT) {
           return this.fail();
         }
-        this.ast.d[n] = this.identTok();
-        this.ast.fl[n] = UT_SIMPLE | UT_RENAME;
+        rsPrPut(this.ast.d, n, this.identTok());
+        rsPrPut(this.ast.fl, n, UT_SIMPLE | UT_RENAME);
       }
     }
     return this.fin(n);
@@ -1223,10 +1359,10 @@ export class RsParser {
     }
     const orig = this.identTok();
     if (this.eatKw(KW_AS)) {
-      this.ast.d[n] = this.identTok();
-      this.ast.c[n] = orig;
+      rsPrPut(this.ast.d, n, this.identTok());
+      rsPrPut(this.ast.c, n, orig);
     } else {
-      this.ast.d[n] = orig;
+      rsPrPut(this.ast.d, n, orig);
     }
     this.expect(T_SEMI);
     return this.fin(n);
@@ -1246,14 +1382,14 @@ export class RsParser {
     const n = this.nd(N_FOREIGN_MOD, lo);
     this.bump(); // extern
     const gv5 = this.parseAbi();
-    this.ast.x[n] = gv5;
+    rsPrPut(this.ast.x, n, gv5);
     if (isUnsafe) {
-      this.ast.fl[n] = IT_UNSAFE;
+      rsPrPut(this.ast.fl, n, IT_UNSAFE);
     }
     if (!this.is(T_LBRACE)) {
       return this.fail();
     }
-    this.ast.b[n] = this.p;
+    rsPrPut(this.ast.b, n, this.p);
     this.bump();
     this.parseItemListBody(n, 2);
     return this.fin(n);
@@ -1265,7 +1401,7 @@ export class RsParser {
     const na = this.innerAttrs();
 
     // Inner attributes of the item go into the item's attribute list after its outer ones: keep them aside.
-    const innerKids = this.ast.addKids(this.stk, am, am + na);
+    const innerKids = this.stackKids(am, na);
     this.sp = am;
     const mark = this.sp;
     while (!this.failed && !this.is(T_RBRACE)) {
@@ -1305,13 +1441,25 @@ export class RsParser {
       return;
     }
     const i = this.nInner;
-    this.innerNode = growI32(this.innerNode, i + 1);
-    this.innerS = growI32(this.innerS, i + 1);
-    this.innerN = growI32(this.innerN, i + 1);
-    this.innerNode[i] = n;
-    this.innerS[i] = s;
-    this.innerN[i] = k;
-    this.nInner = i + 1;
+    // nInner counts nodes, so it is below the i32 maximum.
+    if (i < 0 || i >= 2147483647) {
+      fault();
+      return;
+    }
+    const nodes = growI32(this.innerNode, i + 1);
+    this.innerNode = nodes;
+    const ss = growI32(this.innerS, i + 1);
+    this.innerS = ss;
+    const ns = growI32(this.innerN, i + 1);
+    this.innerN = ns;
+    if (i < nodes.length && i < ss.length && i < ns.length) {
+      nodes[i] = n;
+      ss[i] = s;
+      ns[i] = k;
+      this.nInner = i + 1;
+    } else {
+      fault();
+    }
   }
 
   parseAssocItem(): i32 {
@@ -1351,17 +1499,17 @@ export class RsParser {
     if (this.eatKw(KW_EXTERN)) {
       f = f | FN_EXTERN;
       const gv6 = this.parseAbi();
-      this.ast.x[n] = gv6;
+      rsPrPut(this.ast.x, n, gv6);
     }
     if (!this.eatKw(KW_FN)) {
       return this.fail();
     }
-    this.ast.fl[n] = f;
-    this.ast.d[n] = this.itemIdent();
+    rsPrPut(this.ast.fl, n, f);
+    rsPrPut(this.ast.d, n, this.itemIdent());
     const g = this.parseGenerics();
-    this.ast.a[n] = g;
+    rsPrPut(this.ast.a, n, g);
     const gv7 = this.parseFnDecl(true);
-    this.ast.b[n] = gv7;
+    rsPrPut(this.ast.b, n, gv7);
     this.parseWhereInto(g);
     if (this.failed) {
       return -1;
@@ -1373,7 +1521,7 @@ export class RsParser {
       return this.fail();
     }
     const gv8 = this.parseBlock(this.lo(), 0);
-    this.ast.c[n] = gv8;
+    rsPrPut(this.ast.c, n, gv8);
     return this.fin(n);
   }
 
@@ -1395,7 +1543,7 @@ export class RsParser {
     this.endList(d, mark);
     if (this.eat(T_RARROW)) {
       const gv9 = this.parseTyNoPlusOpt(true);
-      this.ast.a[d] = gv9;
+      rsPrPut(this.ast.a, d, gv9);
     }
     return this.fin(d);
   }
@@ -1415,14 +1563,14 @@ export class RsParser {
       const ty = this.nd(N_TY_CVARARGS, this.lo());
       this.bump();
       this.fin(ty);
-      this.ast.b[n] = ty;
+      rsPrPut(this.ast.b, n, ty);
       this.fin(n);
       this.setAttrs(n, am, na);
       return n;
     }
     if (items || this.isNamedParam()) {
       const gv10 = this.parsePatNoTopAlt();
-      this.ast.a[n] = gv10;
+      rsPrPut(this.ast.a, n, gv10);
       if (!this.expect(T_COLON)) {
         return -1;
       }
@@ -1430,14 +1578,14 @@ export class RsParser {
         const ty = this.nd(N_TY_CVARARGS, this.lo());
         this.bump();
         const gv11 = this.fin(ty);
-        this.ast.b[n] = gv11;
+        rsPrPut(this.ast.b, n, gv11);
       } else {
         const gv12 = this.parseTy();
-        this.ast.b[n] = gv12;
+        rsPrPut(this.ast.b, n, gv12);
       }
     } else {
       const gv13 = this.parseTy();
-      this.ast.b[n] = gv13;
+      rsPrPut(this.ast.b, n, gv13);
     }
     this.fin(n);
     this.setAttrs(n, am, na);
@@ -1454,6 +1602,11 @@ export class RsParser {
   }
 
   isSelfAt(i: i32): boolean {
+    // A distance la faults on anyway.
+    if (i >= 1073741824) {
+      fault();
+      return false;
+    }
     return this.laKwAt(i) === KW_SELF && this.laAt(i + 1) !== T_COLONCOLON;
   }
 
@@ -1462,7 +1615,10 @@ export class RsParser {
     const k = this.tk();
     if (k === T_AND) {
       const hasLt = this.la(1) === T_LIFETIME;
-      const s = hasLt ? 1 : 0;
+      let s = 0;
+      if (hasLt) {
+        s = 1;
+      }
       let f = 0;
       if (this.isSelfAt(s + 1)) {
         f = PA_SELF_REF;
@@ -1474,14 +1630,14 @@ export class RsParser {
       const n = this.nd(N_PARAM, lo);
       this.bump();
       if (hasLt) {
-        this.ast.d[n] = this.p;
+        rsPrPut(this.ast.d, n, this.p);
         this.bump();
       }
       if ((f & PA_REF_MUT) !== 0) {
         this.bump();
       }
       this.bump(); // self
-      this.ast.fl[n] = f;
+      rsPrPut(this.ast.fl, n, f);
       return this.fin(n);
     }
     let mutSelf = false;
@@ -1502,9 +1658,9 @@ export class RsParser {
     if (this.eat(T_COLON)) {
       f = PA_SELF_EXPLICIT | (mutSelf ? PA_MUT : 0);
       const gv14 = this.parseTy();
-      this.ast.b[n] = gv14;
+      rsPrPut(this.ast.b, n, gv14);
     }
-    this.ast.fl[n] = f;
+    rsPrPut(this.ast.fl, n, f);
     return n;
   }
 
@@ -1529,12 +1685,12 @@ export class RsParser {
       this.fin(g);
     } else {
       // Empty generics: an empty span at the previous token's end, as rustc's `Generics::default()` (DUMMY) span.
-      this.ast.lo[g] = this.ph;
-      this.ast.hi[g] = this.ph;
+      rsPrPut(this.ast.lo, g, this.ph);
+      rsPrPut(this.ast.hi, g, this.ph);
     }
     const w = this.nd(N_WHERE, this.ph);
-    this.ast.hi[w] = this.ph;
-    this.ast.a[g] = w;
+    rsPrPut(this.ast.hi, w, this.ph);
+    rsPrPut(this.ast.a, g, w);
     return g;
   }
 
@@ -1544,38 +1700,38 @@ export class RsParser {
     const lo = this.lo();
     const n = this.nd(N_GPARAM, lo);
     if (this.is(T_LIFETIME)) {
-      this.ast.fl[n] = GP_LIFETIME;
-      this.ast.d[n] = this.p;
+      rsPrPut(this.ast.fl, n, GP_LIFETIME);
+      rsPrPut(this.ast.d, n, this.p);
       this.bump();
       if (this.is(T_COLON)) {
-        this.ast.x[n] = this.p;
+        rsPrPut(this.ast.x, n, this.p);
         this.bump();
         const gv15 = this.parseLtBounds();
-        this.ast.b[n] = gv15;
+        rsPrPut(this.ast.b, n, gv15);
       }
     } else if (this.isKw(KW_CONST)) {
-      this.ast.fl[n] = GP_CONST;
+      rsPrPut(this.ast.fl, n, GP_CONST);
       this.bump();
-      this.ast.d[n] = this.identTok();
+      rsPrPut(this.ast.d, n, this.identTok());
       this.expect(T_COLON);
       const gv16 = this.parseTy();
-      this.ast.a[n] = gv16;
+      rsPrPut(this.ast.a, n, gv16);
       if (this.eat(T_EQ)) {
         const gv17 = this.parseConstArg();
-        this.ast.c[n] = gv17;
+        rsPrPut(this.ast.c, n, gv17);
       }
     } else {
-      this.ast.fl[n] = GP_TYPE;
-      this.ast.d[n] = this.identTok();
+      rsPrPut(this.ast.fl, n, GP_TYPE);
+      rsPrPut(this.ast.d, n, this.identTok());
       if (this.is(T_COLON)) {
-        this.ast.x[n] = this.p;
+        rsPrPut(this.ast.x, n, this.p);
         this.bump();
         const gv18 = this.parseBounds(true);
-        this.ast.b[n] = gv18;
+        rsPrPut(this.ast.b, n, gv18);
       }
       if (this.eat(T_EQ)) {
         const gv19 = this.parseTy();
-        this.ast.c[n] = gv19;
+        rsPrPut(this.ast.c, n, gv19);
       }
     }
     this.fin(n);
@@ -1588,7 +1744,7 @@ export class RsParser {
     const mark = this.sp;
     while (this.is(T_LIFETIME)) {
       const l = this.nd(N_LIFETIME, this.lo());
-      this.ast.d[l] = this.p;
+      rsPrPut(this.ast.d, l, this.p);
       this.bump();
       this.push(this.fin(l));
       if (!this.eatPlus()) {
@@ -1627,19 +1783,19 @@ export class RsParser {
       return;
     }
     if (!this.isKw(KW_WHERE)) {
-      const w0 = this.ast.a[g];
-      this.ast.lo[w0] = this.ph;
-      this.ast.hi[w0] = this.ph;
+      const w0 = atI32(this.ast.a, g);
+      rsPrPut(this.ast.lo, w0, this.ph);
+      rsPrPut(this.ast.hi, w0, this.ph);
       return;
     }
     const gv20 = this.parseWhere();
-    this.ast.a[g] = gv20;
+    rsPrPut(this.ast.a, g, gv20);
   }
 
   parseWhere(): i32 {
     const w = this.nd(N_WHERE, this.lo());
     this.bump(); // where
-    this.ast.fl[w] = WH_HAS_WHERE;
+    rsPrPut(this.ast.fl, w, WH_HAS_WHERE);
     const mark = this.sp;
     while (!this.failed) {
       const k = this.tk();
@@ -1649,11 +1805,11 @@ export class RsParser {
       const lo = this.lo();
       if (this.is(T_LIFETIME)) {
         const pr = this.nd(N_WPRED_REGION, lo);
-        this.ast.d[pr] = this.p;
+        rsPrPut(this.ast.d, pr, this.p);
         this.bump();
         this.expect(T_COLON);
         const gv21 = this.parseLtBounds();
-        this.ast.b[pr] = gv21;
+        rsPrPut(this.ast.b, pr, gv21);
         this.push(this.fin(pr));
       } else {
         let binder = -1;
@@ -1667,17 +1823,17 @@ export class RsParser {
         if (this.is(T_COLON)) {
           this.bump();
           const pr = this.nd(N_WPRED_BOUND, lo);
-          this.ast.a[pr] = ty;
-          this.ast.c[pr] = binder;
+          rsPrPut(this.ast.a, pr, ty);
+          rsPrPut(this.ast.c, pr, binder);
           const gv22 = this.parseBounds(true);
-          this.ast.b[pr] = gv22;
+          rsPrPut(this.ast.b, pr, gv22);
           this.push(this.fin(pr));
         } else if (this.is(T_EQ) || this.is(T_EQEQ)) {
           this.bump();
           const pr = this.nd(N_WPRED_EQ, lo);
-          this.ast.a[pr] = ty;
+          rsPrPut(this.ast.a, pr, ty);
           const gv23 = this.parseTy();
-          this.ast.b[pr] = gv23;
+          rsPrPut(this.ast.b, pr, gv23);
           this.push(this.fin(pr));
         } else {
           return this.fail();
@@ -1733,7 +1889,7 @@ export class RsParser {
         return this.fail();
       }
       const l = this.nd(N_LIFETIME, lo);
-      this.ast.d[l] = this.p;
+      rsPrPut(this.ast.d, l, this.p);
       this.bump();
       return this.fin(l);
     }
@@ -1749,13 +1905,13 @@ export class RsParser {
       while (!this.failed && !this.isGt()) {
         if (this.is(T_LIFETIME)) {
           const l = this.nd(N_LIFETIME, this.lo());
-          this.ast.d[l] = this.p;
+          rsPrPut(this.ast.d, l, this.p);
           this.bump();
           this.push(this.fin(l));
         } else {
           const ty = this.nd(N_TY_PATH, this.lo());
           const gv24 = this.parsePath(PS_TYPE);
-          this.ast.b[ty] = gv24;
+          rsPrPut(this.ast.b, ty, gv24);
           this.push(this.fin(ty));
         }
         if (!this.eat(T_COMMA)) {
@@ -1773,7 +1929,7 @@ export class RsParser {
     let f = parens ? TB_PAREN : 0;
     if (this.isKw(KW_FOR) && this.isLtAt(1)) {
       const gv25 = this.parseForBinder();
-      this.ast.c[n] = gv25;
+      rsPrPut(this.ast.c, n, gv25);
     }
     // parse_bound_constness: `~const`, `[const]` (both Maybe) or `const`.
     if (this.is(T_TILDE)) {
@@ -1806,7 +1962,7 @@ export class RsParser {
     // it recovers from.
     const polarity = (f & (TB_MAYBE | TB_NEGATIVE)) !== 0;
     const modifiers = (f & (TB_MAYBE_CONST | TB_CONST | TB_ASYNC)) !== 0;
-    if (polarity && (modifiers || this.ast.c[n] >= 0)) {
+    if (polarity && (modifiers || atI32(this.ast.c, n) >= 0)) {
       return this.fail();
     }
     if (this.is(T_LIFETIME)) {
@@ -1820,9 +1976,9 @@ export class RsParser {
     if (!this.isPathStart()) {
       return this.fail();
     }
-    this.ast.fl[n] = f;
+    rsPrPut(this.ast.fl, n, f);
     const gv27 = this.parsePath(PS_TYPE);
-    this.ast.a[n] = gv27;
+    rsPrPut(this.ast.a, n, gv27);
     if (parens && !this.expect(T_RPAREN)) {
       return this.fail();
     }
@@ -1839,26 +1995,26 @@ export class RsParser {
   parseStruct(lo: i32, kind: i32): i32 {
     const n = this.nd(kind, lo);
     this.bump(); // struct / union
-    this.ast.d[n] = this.itemIdent();
+    rsPrPut(this.ast.d, n, this.itemIdent());
     const g = this.parseGenerics();
-    this.ast.a[n] = g;
+    rsPrPut(this.ast.a, n, g);
     const vd = this.nd(N_VDATA, this.lo());
-    this.ast.b[n] = vd;
+    rsPrPut(this.ast.b, n, vd);
     if (this.isKw(KW_WHERE)) {
       this.parseWhereInto(g);
       if (this.eat(T_SEMI)) {
-        this.ast.fl[vd] = VD_UNIT;
-        this.ast.lo[vd] = this.ph;
-        this.ast.hi[vd] = this.ph;
+        rsPrPut(this.ast.fl, vd, VD_UNIT);
+        rsPrPut(this.ast.lo, vd, this.ph);
+        rsPrPut(this.ast.hi, vd, this.ph);
         return this.fin(n);
       }
       this.parseRecordBody(vd);
     } else if (this.is(T_SEMI)) {
       this.parseWhereInto(g);
       this.bump();
-      this.ast.fl[vd] = VD_UNIT;
-      this.ast.lo[vd] = this.ph;
-      this.ast.hi[vd] = this.ph;
+      rsPrPut(this.ast.fl, vd, VD_UNIT);
+      rsPrPut(this.ast.lo, vd, this.ph);
+      rsPrPut(this.ast.hi, vd, this.ph);
     } else if (this.is(T_LPAREN)) {
       this.parseTupleBody(vd);
       this.parseWhereInto(g);
@@ -1873,8 +2029,8 @@ export class RsParser {
   }
 
   parseRecordBody(vd: i32): void {
-    this.ast.fl[vd] = VD_STRUCT;
-    this.ast.lo[vd] = this.lo();
+    rsPrPut(this.ast.fl, vd, VD_STRUCT);
+    rsPrPut(this.ast.lo, vd, this.lo());
     if (!this.expect(T_LBRACE)) {
       return;
     }
@@ -1885,23 +2041,23 @@ export class RsParser {
       const lo = this.lo();
       const f = this.nd(N_FIELD, lo);
       const gv28 = this.parseVis();
-      this.ast.e[f] = gv28;
+      rsPrPut(this.ast.e, f, gv28);
       this.parseMutRestriction(f);
       // parse_unsafe_field: `unsafe` only (not `safe`).
       if (this.eatKw(KW_UNSAFE)) {
-        this.ast.fl[f] = this.ast.fl[f] | FD_UNSAFE;
+        rsPrOr(this.ast.fl, f, FD_UNSAFE);
       }
       if (this.tk() !== T_IDENT) {
         this.failed = true;
         return;
       }
-      this.ast.d[f] = this.identTok();
+      rsPrPut(this.ast.d, f, this.identTok());
       this.expect(T_COLON);
       const gv29 = this.parseTy();
-      this.ast.a[f] = gv29;
+      rsPrPut(this.ast.a, f, gv29);
       if (this.eat(T_EQ)) {
         const gv30 = this.parseExpr();
-        this.ast.c[f] = gv30;
+        rsPrPut(this.ast.c, f, gv30);
       }
       this.fin(f);
       this.setAttrs(f, am, na);
@@ -1928,7 +2084,7 @@ export class RsParser {
       return;
     }
     if (this.eatKw(KW_IN)) {
-      this.ast.fl[f] = this.ast.fl[f] | FD_MUT_IN;
+      rsPrOr(this.ast.fl, f, FD_MUT_IN);
     } else {
       const k = this.kw();
       if (!((k === KW_CRATE || k === KW_SELF || k === KW_SUPER) && this.la(1) === T_RPAREN)) {
@@ -1937,13 +2093,13 @@ export class RsParser {
       }
     }
     const gv = this.parsePath(PS_MOD);
-    this.ast.b[f] = gv;
+    rsPrPut(this.ast.b, f, gv);
     this.expect(T_RPAREN);
   }
 
   parseTupleBody(vd: i32): void {
-    this.ast.fl[vd] = VD_TUPLE;
-    this.ast.lo[vd] = this.lo();
+    rsPrPut(this.ast.fl, vd, VD_TUPLE);
+    rsPrPut(this.ast.lo, vd, this.lo());
     this.bump(); // (
     const mark = this.sp;
     while (!this.failed && !this.is(T_RPAREN)) {
@@ -1952,14 +2108,14 @@ export class RsParser {
       const lo = this.lo();
       const f = this.nd(N_FIELD, lo);
       const gv31 = this.parseVis();
-      this.ast.e[f] = gv31;
+      rsPrPut(this.ast.e, f, gv31);
       // No `unsafe` here: `struct X(unsafe fn())` is a fn pointer type.
       this.parseMutRestriction(f);
       const gv32 = this.parseTy();
-      this.ast.a[f] = gv32;
+      rsPrPut(this.ast.a, f, gv32);
       if (this.eat(T_EQ)) {
         const gv33 = this.parseExpr();
-        this.ast.c[f] = gv33;
+        rsPrPut(this.ast.c, f, gv33);
       }
       this.fin(f);
       this.setAttrs(f, am, na);
@@ -1976,14 +2132,20 @@ export class RsParser {
   parseEnum(lo: i32): i32 {
     const n = this.nd(N_ENUM, lo);
     this.bump();
-    this.ast.d[n] = this.itemIdent();
+    rsPrPut(this.ast.d, n, this.itemIdent());
     const g = this.parseGenerics();
-    this.ast.a[n] = g;
+    rsPrPut(this.ast.a, n, g);
     this.parseWhereInto(g);
     if (!this.expect(T_LBRACE)) {
       return -1;
     }
-    this.ast.x[n] = this.p - 1;
+    const pOpen = this.p;
+    // Just past the `{` expect consumed, so at least 1.
+    if (pOpen > 0) {
+      rsPrPut(this.ast.x, n, pOpen - 1);
+    } else {
+      fault();
+    }
     const mark = this.sp;
     while (!this.failed && !this.is(T_RBRACE)) {
       const am = this.sp;
@@ -1991,22 +2153,22 @@ export class RsParser {
       const vlo = this.lo();
       const v = this.nd(N_VARIANT, vlo);
       const gv34 = this.parseVis();
-      this.ast.e[v] = gv34;
-      this.ast.d[v] = this.identTok();
+      rsPrPut(this.ast.e, v, gv34);
+      rsPrPut(this.ast.d, v, this.identTok());
       const vd = this.nd(N_VDATA, this.lo());
-      this.ast.b[v] = vd;
+      rsPrPut(this.ast.b, v, vd);
       if (this.is(T_LBRACE)) {
         this.parseRecordBody(vd);
       } else if (this.is(T_LPAREN)) {
         this.parseTupleBody(vd);
       } else {
-        this.ast.fl[vd] = VD_UNIT;
-        this.ast.lo[vd] = this.ph;
-        this.ast.hi[vd] = this.ph;
+        rsPrPut(this.ast.fl, vd, VD_UNIT);
+        rsPrPut(this.ast.lo, vd, this.ph);
+        rsPrPut(this.ast.hi, vd, this.ph);
       }
       if (this.eat(T_EQ)) {
         const gv35 = this.parseExpr();
-        this.ast.c[v] = gv35;
+        rsPrPut(this.ast.c, v, gv35);
       }
       this.fin(v);
       this.setAttrs(v, am, na);
@@ -2023,21 +2185,21 @@ export class RsParser {
   parseTrait(lo: i32): i32 {
     const n = this.nd(N_TRAIT, lo);
     if (this.eatKw(KW_AUTO)) {
-      this.ast.fl[n] = IT_AUTO;
+      rsPrPut(this.ast.fl, n, IT_AUTO);
     }
     this.bump(); // trait
-    this.ast.d[n] = this.itemIdent();
+    rsPrPut(this.ast.d, n, this.itemIdent());
     const g = this.parseGenerics();
-    this.ast.a[n] = g;
+    rsPrPut(this.ast.a, n, g);
     if (this.eat(T_COLON)) {
       const gv36 = this.parseBounds(true);
-      this.ast.b[n] = gv36;
+      rsPrPut(this.ast.b, n, gv36);
     }
     if (this.eat(T_EQ)) {
       // A trait alias.
-      this.ast.kind[n] = N_TRAIT_ALIAS;
+      rsPrPut(this.ast.kind, n, N_TRAIT_ALIAS);
       const gv37 = this.parseBounds(true);
-      this.ast.b[n] = gv37;
+      rsPrPut(this.ast.b, n, gv37);
       this.parseWhereInto(g);
       this.expect(T_SEMI);
       return this.fin(n);
@@ -2046,7 +2208,7 @@ export class RsParser {
     if (!this.is(T_LBRACE)) {
       return this.fail();
     }
-    this.ast.x[n] = this.p;
+    rsPrPut(this.ast.x, n, this.p);
     this.bump();
     this.parseItemListBody(n, 1);
     return this.fin(n);
@@ -2077,7 +2239,7 @@ export class RsParser {
   /** parse_item_impl at `impl`; `quals` holds the IT_DEFAULT, IT_CONST and IT_UNSAFE written before it. */
   parseImpl(lo: i32, quals: i32): i32 {
     const n = this.nd(N_IMPL, lo);
-    this.ast.fl[n] = quals;
+    rsPrPut(this.ast.fl, n, quals);
     this.bump(); // impl
     let g = -1;
     if (this.chooseGenerics()) {
@@ -2085,7 +2247,7 @@ export class RsParser {
     } else {
       g = this.parseGenerics();
     }
-    this.ast.a[n] = g;
+    rsPrPut(this.ast.a, n, g);
     // rustc 1.99 reads no `const` here: `impl const S` is an impl of the
     // bare trait object type `const S`, and `impl const Tr for T` an error
     // (the trait is not a path). A stray `impl async` is an error (AsyncImpl).
@@ -2094,7 +2256,7 @@ export class RsParser {
     }
     if (this.is(T_NOT) && this.la(1) !== T_LBRACE) {
       this.bump();
-      this.ast.fl[n] = this.ast.fl[n] | IT_NEGATIVE;
+      rsPrOr(this.ast.fl, n, IT_NEGATIVE);
     }
     const ty1 = this.parseTy();
     if (this.failed) {
@@ -2102,25 +2264,25 @@ export class RsParser {
     }
     if (this.eatKw(KW_FOR)) {
       // The trait must be a path (ExpectedTraitInTraitImplFoundType).
-      if (this.ast.kind[ty1] !== N_TY_PATH || this.ast.a[ty1] >= 0) {
+      if (atI32(this.ast.kind, ty1) !== N_TY_PATH || atI32(this.ast.a, ty1) >= 0) {
         return this.fail();
       }
-      this.ast.b[n] = ty1;
+      rsPrPut(this.ast.b, n, ty1);
       const gv38 = this.parseTy();
-      this.ast.c[n] = gv38;
+      rsPrPut(this.ast.c, n, gv38);
     } else {
       // An inherent impl takes no `unsafe`, `!` or `default`
       // (TraitImplModifierInInherentImpl, E0197).
-      if ((this.ast.fl[n] & (IT_UNSAFE | IT_NEGATIVE | IT_DEFAULT)) !== 0) {
+      if ((atI32(this.ast.fl, n) & (IT_UNSAFE | IT_NEGATIVE | IT_DEFAULT)) !== 0) {
         return this.fail();
       }
-      this.ast.c[n] = ty1;
+      rsPrPut(this.ast.c, n, ty1);
     }
     this.parseWhereInto(g);
     if (!this.is(T_LBRACE)) {
       return this.fail();
     }
-    this.ast.x[n] = this.p;
+    rsPrPut(this.ast.x, n, this.p);
     this.bump();
     this.parseItemListBody(n, 1);
     return this.fin(n);
@@ -2129,16 +2291,16 @@ export class RsParser {
   parseMod(lo: i32): i32 {
     const n = this.nd(N_MOD, lo);
     this.bump(); // mod
-    this.ast.d[n] = this.itemIdent();
+    rsPrPut(this.ast.d, n, this.itemIdent());
     if (this.eat(T_SEMI)) {
       return this.fin(n);
     }
     if (!this.is(T_LBRACE)) {
       return this.fail();
     }
-    this.ast.x[n] = this.p;
+    rsPrPut(this.ast.x, n, this.p);
     this.bump();
-    this.ast.fl[n] = this.ast.fl[n] | IT_LOADED;
+    rsPrOr(this.ast.fl, n, IT_LOADED);
     this.parseItemListBody(n, 0);
     return this.fin(n);
   }
@@ -2146,20 +2308,20 @@ export class RsParser {
   parseTypeAlias(lo: i32): i32 {
     const n = this.nd(N_TYPE_ALIAS, lo);
     this.bump(); // type
-    this.ast.d[n] = this.itemIdent();
+    rsPrPut(this.ast.d, n, this.itemIdent());
     const g = this.parseGenerics();
-    this.ast.a[n] = g;
+    rsPrPut(this.ast.a, n, g);
     if (this.eat(T_COLON)) {
       const gv39 = this.parseBounds(true);
-      this.ast.b[n] = gv39;
+      rsPrPut(this.ast.b, n, gv39);
     }
     this.parseWhereInto(g);
     if (this.eat(T_EQ)) {
       const gv40 = this.parseTy();
-      this.ast.c[n] = gv40;
+      rsPrPut(this.ast.c, n, gv40);
       if (this.isKw(KW_WHERE)) {
         const gv41 = this.parseWhere();
-        this.ast.x[n] = gv41;
+        rsPrPut(this.ast.x, n, gv41);
       }
     }
     this.expect(T_SEMI);
@@ -2172,18 +2334,18 @@ export class RsParser {
     if (this.tk() !== T_IDENT || (rsIsReserved(this.kw()) && this.kw() !== KW_UNDERSCORE)) {
       return this.fail();
     }
-    this.ast.d[n] = this.identTok();
+    rsPrPut(this.ast.d, n, this.identTok());
     const g = this.parseGenerics();
-    this.ast.a[n] = g;
+    rsPrPut(this.ast.a, n, g);
     if (this.eat(T_COLON)) {
       const gv42 = this.parseTy();
-      this.ast.b[n] = gv42;
+      rsPrPut(this.ast.b, n, gv42);
     } else {
       return this.fail();
     }
     if (this.eat(T_EQ)) {
       const gv43 = this.parseExpr();
-      this.ast.c[n] = gv43;
+      rsPrPut(this.ast.c, n, gv43);
     }
     this.parseWhereInto(g);
     this.expect(T_SEMI);
@@ -2197,14 +2359,14 @@ export class RsParser {
     if (this.eatKw(KW_MUT)) {
       f = f | IT_MUT;
     }
-    this.ast.fl[n] = f;
-    this.ast.d[n] = this.itemIdent();
+    rsPrPut(this.ast.fl, n, f);
+    rsPrPut(this.ast.d, n, this.itemIdent());
     this.expect(T_COLON);
     const gv44 = this.parseTy();
-    this.ast.b[n] = gv44;
+    rsPrPut(this.ast.b, n, gv44);
     if (this.eat(T_EQ)) {
       const gv45 = this.parseExpr();
-      this.ast.c[n] = gv45;
+      rsPrPut(this.ast.c, n, gv45);
     }
     this.expect(T_SEMI);
     return this.fin(n);
@@ -2215,14 +2377,14 @@ export class RsParser {
     this.bump(); // macro_rules
     this.bump(); // !
     // parse_item_macro_rules: parse_ident, so a reserved word is no macro name.
-    this.ast.d[n] = this.itemIdent();
-    this.ast.fl[n] = IT_MACRO_RULES;
+    rsPrPut(this.ast.d, n, this.itemIdent());
+    rsPrPut(this.ast.fl, n, IT_MACRO_RULES);
     const tts = this.parseTts();
     if (this.failed) {
       return -1;
     }
-    this.ast.a[n] = tts;
-    if (this.ast.x[tts] !== T_LBRACE) {
+    rsPrPut(this.ast.a, n, tts);
+    if (atI32(this.ast.x, tts) !== T_LBRACE) {
       this.expect(T_SEMI);
     }
     return this.fin(n);
@@ -2231,16 +2393,16 @@ export class RsParser {
   parseMacro2(lo: i32): i32 {
     const n = this.nd(N_MACRO_DEF, lo);
     this.bump(); // macro
-    this.ast.d[n] = this.itemIdent(); // parse_item_decl_macro: parse_ident
+    rsPrPut(this.ast.d, n, this.itemIdent()); // parse_item_decl_macro: parse_ident
     if (this.is(T_LPAREN)) {
       const gv46 = this.parseTts();
-      this.ast.b[n] = gv46;
+      rsPrPut(this.ast.b, n, gv46);
     }
     if (!this.is(T_LBRACE)) {
       return this.fail();
     }
     const gv47 = this.parseTts();
-    this.ast.a[n] = gv47;
+    rsPrPut(this.ast.a, n, gv47);
     return this.fin(n);
   }
 
@@ -2252,7 +2414,7 @@ export class RsParser {
     const mark = this.sp;
     if (this.is(T_COLONCOLON)) {
       this.bump();
-      this.ast.fl[n] = PATH_GLOBAL;
+      rsPrPut(this.ast.fl, n, PATH_GLOBAL);
     }
     this.parsePathSegments(style, n, mark);
     return n;
@@ -2265,7 +2427,7 @@ export class RsParser {
         return;
       }
       const sg = this.nd(N_SEG, this.lo());
-      this.ast.d[sg] = this.identTok();
+      rsPrPut(this.ast.d, sg, this.identTok());
       // parse_path_segment: args at `<` or `(` in a type path, and at `::<` or `::(` in
       // any but a module path (`Fn::(i32)`, `foo::(x)`).
       let args = false;
@@ -2278,10 +2440,10 @@ export class RsParser {
       if (args) {
         if (this.isLt()) {
           const gv48 = this.parseAngleArgs();
-          this.ast.a[sg] = gv48;
+          rsPrPut(this.ast.a, sg, gv48);
         } else {
           const gv49 = this.parseParenArgs();
-          this.ast.a[sg] = gv49;
+          rsPrPut(this.ast.a, sg, gv49);
         }
       }
       this.fin(sg);
@@ -2332,7 +2494,7 @@ export class RsParser {
     const k = this.tk();
     if (k === T_LIFETIME && !this.isLikePlusAt(1)) {
       const l = this.nd(N_LIFETIME, lo);
-      this.ast.d[l] = this.p;
+      rsPrPut(this.ast.d, l, this.p);
       this.bump();
       return this.fin(l);
     }
@@ -2345,15 +2507,15 @@ export class RsParser {
     }
     // A bare trait object (`for<'a> Item: Bound`) is "`for<...>` is not allowed on
     // associated type bounds"; any other type leaves the `:` or `=` to fail.
-    if (this.ast.kind[ty] !== N_TY_PATH || this.ast.a[ty] >= 0) {
+    if (atI32(this.ast.kind, ty) !== N_TY_PATH || atI32(this.ast.a, ty) >= 0) {
       return this.fail();
     }
-    const pa = this.ast.b[ty];
-    if (this.ast.ln[pa] !== 1 || (this.ast.fl[pa] & PATH_GLOBAL) !== 0) {
+    const pa = atI32(this.ast.b, ty);
+    if (atI32(this.ast.ln, pa) !== 1 || (atI32(this.ast.fl, pa) & PATH_GLOBAL) !== 0) {
       return this.fail();
     }
     const seg = this.ast.kid(pa, 0);
-    return this.parseConstraintRest(lo, this.ast.d[seg], this.ast.a[seg]);
+    return this.parseConstraintRest(lo, atI32(this.ast.d, seg), atI32(this.ast.a, seg));
   }
 
   isConstArgStart(): boolean {
@@ -2376,7 +2538,7 @@ export class RsParser {
       const lo = this.lo();
       const e = this.nd(N_EX_BLOCK, lo);
       const gv51 = this.parseBlock(lo, 0);
-      this.ast.a[e] = gv51;
+      rsPrPut(this.ast.a, e, gv51);
       return this.fin(e);
     }
     if (this.isConstArgStart()) {
@@ -2386,7 +2548,7 @@ export class RsParser {
     const lo = this.lo();
     const e = this.nd(N_EX_PATH, lo);
     const gv52 = this.parsePath(PS_EXPR);
-    this.ast.b[e] = gv52;
+    rsPrPut(this.ast.b, e, gv52);
     return this.fin(e);
   }
 
@@ -2395,9 +2557,9 @@ export class RsParser {
     if (this.is(T_MINUS)) {
       const u = this.nd(N_EX_UNARY, lo);
       this.bump();
-      this.ast.x[u] = UN_NEG;
+      rsPrPut(this.ast.x, u, UN_NEG);
       const gv53 = this.parseLit();
-      this.ast.a[u] = gv53;
+      rsPrPut(this.ast.a, u, gv53);
       return this.fin(u);
     }
     return this.parseLit();
@@ -2408,7 +2570,7 @@ export class RsParser {
     const kk = this.kw();
     if ((k >= T_INT && k <= T_RCSTR) || kk === KW_TRUE || kk === KW_FALSE) {
       const e = this.nd(N_EX_LIT, this.lo());
-      this.ast.d[e] = this.p;
+      rsPrPut(this.ast.d, e, this.p);
       this.bump();
       return this.fin(e);
     }
@@ -2417,20 +2579,20 @@ export class RsParser {
 
   parseConstraintRest(lo: i32, id: i32, ga: i32): i32 {
     const c = this.nd(N_CONSTRAINT, lo);
-    this.ast.d[c] = id;
-    this.ast.a[c] = ga;
+    rsPrPut(this.ast.d, c, id);
+    rsPrPut(this.ast.a, c, ga);
     if (this.eat(T_EQ)) {
       if (this.isConstArgStart()) {
         const gv54 = this.parseConstArg();
-        this.ast.e[c] = gv54;
+        rsPrPut(this.ast.e, c, gv54);
       } else {
         const gv55 = this.parseTy();
-        this.ast.b[c] = gv55;
+        rsPrPut(this.ast.b, c, gv55);
       }
     } else {
       this.expect(T_COLON);
       const gv56 = this.parseBounds(true);
-      this.ast.c[c] = gv56;
+      rsPrPut(this.ast.c, c, gv56);
     }
     return this.fin(c);
   }
@@ -2442,7 +2604,7 @@ export class RsParser {
     if (this.is(T_DOTDOT) && this.la(1) === T_RPAREN) {
       this.bump();
       this.bump();
-      this.ast.kind[g] = N_GARGS_ELIDED;
+      rsPrPut(this.ast.kind, g, N_GARGS_ELIDED);
       if (this.is(T_RARROW)) {
         // BadReturnTypeNotationOutput.
         return this.fail();
@@ -2467,7 +2629,7 @@ export class RsParser {
     this.endList(g, mark);
     if (this.eat(T_RARROW)) {
       const gv57 = this.parseTyNoPlusOpt(false);
-      this.ast.a[g] = gv57;
+      rsPrPut(this.ast.a, g, gv57);
     }
     return this.fin(g);
   }
@@ -2480,7 +2642,7 @@ export class RsParser {
     const q = this.nd(N_QSELF, lo);
     this.eatLt();
     const gv58 = this.parseTy();
-    this.ast.a[q] = gv58;
+    rsPrPut(this.ast.a, q, gv58);
     const pa = this.nd(N_PATH, lo);
     const mark = this.sp;
     let pos = 0;
@@ -2489,21 +2651,21 @@ export class RsParser {
       if (this.failed) {
         return -1;
       }
-      this.ast.b[q] = tp;
+      rsPrPut(this.ast.b, q, tp);
       // The trait's segments are the first of the full path.
-      const n = this.ast.ln[tp];
+      const n = atI32(this.ast.ln, tp);
       for (let i = 0; i < n; i++) {
         this.push(this.ast.kid(tp, i));
       }
       pos = n;
-      if ((this.ast.fl[tp] & PATH_GLOBAL) !== 0) {
-        this.ast.fl[pa] = PATH_GLOBAL;
+      if ((atI32(this.ast.fl, tp) & PATH_GLOBAL) !== 0) {
+        rsPrPut(this.ast.fl, pa, PATH_GLOBAL);
       }
     }
     if (!this.eatGt()) {
       return this.fail();
     }
-    this.ast.x[q] = pos;
+    rsPrPut(this.ast.x, q, pos);
     this.fin(q);
     if (!this.expect(T_COLONCOLON)) {
       return -1;
@@ -2542,7 +2704,10 @@ export class RsParser {
       while (!this.failed && !this.is(T_RPAREN)) {
         this.push(this.parseTy());
         innerTrailingPlus = this.prevIsPlus();
-        count++;
+        // Only `count === 1` is read: stop at 2.
+        if (count < 2) {
+          count++;
+        }
         trailing = false;
         if (!this.eat(T_COMMA)) {
           break;
@@ -2551,7 +2716,7 @@ export class RsParser {
       }
       this.expect(T_RPAREN);
       if (count === 1 && !trailing) {
-        const inner = this.stk[mark];
+        const inner = atI32(this.stk, mark);
         this.sp = mark;
         // parse_ty_tuple_or_parens: `(?Sized) + Send`, a bare trait object of one bound
         // not ending in `+`, goes on with its bounds (parse_remaining_bounds); the parens
@@ -2559,18 +2724,22 @@ export class RsParser {
         if (
           allowPlus &&
           this.isLikePlusAt(0) &&
-          this.ast.kind[inner] === N_TY_DYN &&
-          (this.ast.fl[inner] & TY_DYN) === 0 &&
-          this.ast.ln[this.ast.b[inner]] === 1 &&
+          atI32(this.ast.kind, inner) === N_TY_DYN &&
+          (atI32(this.ast.fl, inner) & TY_DYN) === 0 &&
+          atI32(this.ast.ln, atI32(this.ast.b, inner)) === 1 &&
           !innerTrailingPlus
         ) {
-          return this.parseRemainingBounds(lo, this.ast.kid(this.ast.b[inner], 0), true);
+          return this.parseRemainingBounds(lo, this.ast.kid(atI32(this.ast.b, inner), 0), true);
         }
         ty = this.nd(N_TY_PAREN, lo);
-        this.ast.a[ty] = inner;
+        rsPrPut(this.ast.a, ty, inner);
         this.fin(ty);
         // `(Trait) + Send`: a trait object.
-        if (allowPlus && this.is(T_PLUS) && (this.ast.kind[inner] === N_TY_PATH || this.ast.kind[inner] === N_TY_DYN)) {
+        if (
+          allowPlus &&
+          this.is(T_PLUS) &&
+          (atI32(this.ast.kind, inner) === N_TY_PATH || atI32(this.ast.kind, inner) === N_TY_DYN)
+        ) {
           return this.parseBareTraitObjectFrom(lo, ty);
         }
         return ty;
@@ -2588,14 +2757,14 @@ export class RsParser {
       ty = this.nd(N_TY_PTR, lo);
       this.bump();
       if (this.eatKw(KW_MUT)) {
-        this.ast.fl[ty] = MUT;
+        rsPrPut(this.ast.fl, ty, MUT);
       } else if (this.eatKw(KW_CONST)) {
-        this.ast.fl[ty] = PTR_CONST;
+        rsPrPut(this.ast.fl, ty, PTR_CONST);
       } else {
         return this.fail();
       }
       const gv59 = this.parseTyNoPlus();
-      this.ast.a[ty] = gv59;
+      rsPrPut(this.ast.a, ty, gv59);
       return this.fin(ty);
     }
     if (k === T_LBRACKET) {
@@ -2603,12 +2772,12 @@ export class RsParser {
       const elem = this.parseTy();
       if (this.eat(T_SEMI)) {
         ty = this.nd(N_TY_ARRAY, lo);
-        this.ast.a[ty] = elem;
+        rsPrPut(this.ast.a, ty, elem);
         const gv60 = this.parseExpr();
-        this.ast.b[ty] = gv60;
+        rsPrPut(this.ast.b, ty, gv60);
       } else {
         ty = this.nd(N_TY_SLICE, lo);
-        this.ast.a[ty] = elem;
+        rsPrPut(this.ast.a, ty, elem);
       }
       this.expect(T_RBRACKET);
       return this.fin(ty);
@@ -2617,14 +2786,14 @@ export class RsParser {
       ty = this.nd(N_TY_REF, lo);
       this.eatAnd();
       if (this.is(T_LIFETIME)) {
-        this.ast.d[ty] = this.p;
+        rsPrPut(this.ast.d, ty, this.p);
         this.bump();
       }
       if (this.eatKw(KW_MUT)) {
-        this.ast.fl[ty] = MUT;
+        rsPrPut(this.ast.fl, ty, MUT);
       }
       const gv61 = this.parseTyNoPlus();
-      this.ast.a[ty] = gv61;
+      rsPrPut(this.ast.a, ty, gv61);
       return this.fin(ty);
     }
     if (kk === KW_UNDERSCORE) {
@@ -2642,9 +2811,9 @@ export class RsParser {
       }
       // `for<'a> Trait`: a bare trait object with a binder.
       const tb = this.nd(N_TRAIT_BOUND, lo);
-      this.ast.c[tb] = binder;
+      rsPrPut(this.ast.c, tb, binder);
       const gv62 = this.parsePath(PS_TYPE);
-      this.ast.a[tb] = gv62;
+      rsPrPut(this.ast.a, tb, gv62);
       this.fin(tb);
       return this.parseRemainingBounds(lo, tb, allowPlus);
     }
@@ -2652,7 +2821,7 @@ export class RsParser {
       ty = this.nd(N_TY_IMPL, lo);
       this.bump();
       const gv63 = this.parseBounds(allowPlus);
-      this.ast.b[ty] = gv63;
+      rsPrPut(this.ast.b, ty, gv63);
       return this.fin(ty);
     }
     // is_explicit_dyn_type: from edition 2018 (every edition the parser takes) `dyn`
@@ -2660,9 +2829,9 @@ export class RsParser {
     if (kk === KW_DYN) {
       ty = this.nd(N_TY_DYN, lo);
       this.bump();
-      this.ast.fl[ty] = TY_DYN;
+      rsPrPut(this.ast.fl, ty, TY_DYN);
       const gv64 = this.parseBounds(allowPlus);
-      this.ast.b[ty] = gv64;
+      rsPrPut(this.ast.b, ty, gv64);
       return this.fin(ty);
     }
     if (k === T_LT || k === T_SHL) {
@@ -2671,8 +2840,8 @@ export class RsParser {
         return -1;
       }
       ty = this.nd(N_TY_PATH, lo);
-      this.ast.a[ty] = q;
-      this.ast.b[ty] = this.qpPath;
+      rsPrPut(this.ast.a, ty, q);
+      rsPrPut(this.ast.b, ty, this.qpPath);
       return this.fin(ty);
     }
     if (k === T_QUESTION || (k === T_TILDE && this.laKw(1) === KW_CONST)) {
@@ -2704,16 +2873,16 @@ export class RsParser {
         // A type macro.
         this.bump();
         const mac = this.nd(N_MAC, lo);
-        this.ast.a[mac] = pa;
+        rsPrPut(this.ast.a, mac, pa);
         const gv65 = this.parseTts();
-        this.ast.b[mac] = gv65;
+        rsPrPut(this.ast.b, mac, gv65);
         this.fin(mac);
         ty = this.nd(N_TY_MAC, lo);
-        this.ast.a[ty] = mac;
+        rsPrPut(this.ast.a, ty, mac);
         return this.fin(ty);
       }
       ty = this.nd(N_TY_PATH, lo);
-      this.ast.b[ty] = pa;
+      rsPrPut(this.ast.b, ty, pa);
       this.fin(ty);
       if (allowPlus && this.is(T_PLUS)) {
         return this.parseBareTraitObjectFrom(lo, ty);
@@ -2731,23 +2900,23 @@ export class RsParser {
   /** A bare trait object whose first bound is the path type (or parenthesized type) `first`. */
   parseBareTraitObjectFrom(lo: i32, first: i32): i32 {
     let fb = -1;
-    if (this.ast.kind[first] === N_TY_PAREN) {
-      const inner = this.ast.a[first];
-      if (this.ast.kind[inner] === N_TY_PATH && this.ast.a[inner] < 0) {
-        fb = this.nd(N_TRAIT_BOUND, this.ast.lo[first]);
-        this.ast.a[fb] = this.ast.b[inner];
-        this.ast.hi[fb] = this.ast.hi[first];
-        this.ast.fl[fb] = TB_PAREN;
+    if (atI32(this.ast.kind, first) === N_TY_PAREN) {
+      const inner = atI32(this.ast.a, first);
+      if (atI32(this.ast.kind, inner) === N_TY_PATH && atI32(this.ast.a, inner) < 0) {
+        fb = this.nd(N_TRAIT_BOUND, atI32(this.ast.lo, first));
+        rsPrPut(this.ast.a, fb, atI32(this.ast.b, inner));
+        rsPrPut(this.ast.hi, fb, atI32(this.ast.hi, first));
+        rsPrPut(this.ast.fl, fb, TB_PAREN);
       } else {
         return this.fail();
       }
     } else {
-      if (this.ast.a[first] >= 0) {
+      if (atI32(this.ast.a, first) >= 0) {
         return this.fail();
       }
-      fb = this.nd(N_TRAIT_BOUND, this.ast.lo[first]);
-      this.ast.a[fb] = this.ast.b[first];
-      this.ast.hi[fb] = this.ast.hi[first];
+      fb = this.nd(N_TRAIT_BOUND, atI32(this.ast.lo, first));
+      rsPrPut(this.ast.a, fb, atI32(this.ast.b, first));
+      rsPrPut(this.ast.hi, fb, atI32(this.ast.hi, first));
     }
     return this.parseRemainingBounds(lo, fb, true);
   }
@@ -2766,20 +2935,25 @@ export class RsParser {
     this.endList(b, mark);
     this.fin(b);
     const ty = this.nd(N_TY_DYN, lo);
-    this.ast.b[ty] = b;
+    rsPrPut(this.ast.b, ty, b);
     return this.fin(ty);
   }
 
   parseBareTraitObject(lo: i32, allowPlus: boolean): i32 {
     const ty = this.nd(N_TY_DYN, lo);
     const gv66 = this.parseBounds(allowPlus);
-    this.ast.b[ty] = gv66;
+    rsPrPut(this.ast.b, ty, gv66);
     return this.fin(ty);
   }
 
   isFnPtrFront(): boolean {
     let i = 0;
     for (;;) {
+      // la faults at a distance of 2^30, so i stays below 2^30 + 2.
+      if (i >= 1073741824) {
+        fault();
+        return false;
+      }
       const k = this.laKwAt(i);
       if (k === KW_FN) {
         return true;
@@ -2789,10 +2963,12 @@ export class RsParser {
         continue;
       }
       if (k === KW_EXTERN) {
-        i++;
-        const lk = this.laAt(i);
+        const j = i + 1;
+        const lk = this.laAt(j);
         if (lk === T_STR || lk === T_RSTR) {
-          i++;
+          i = j + 1;
+        } else {
+          i = j;
         }
         continue;
       }
@@ -2802,7 +2978,7 @@ export class RsParser {
 
   parseFnPtr(lo: i32, binder: i32): i32 {
     const ty = this.nd(N_TY_FN, lo);
-    this.ast.c[ty] = binder;
+    rsPrPut(this.ast.c, ty, binder);
     // parse_fn_front_matter (FunctionPtrType): `unsafe`? (`extern` ABI?)? `fn`, in that order.
     let f = 0;
     if (this.eatKw(KW_UNSAFE)) {
@@ -2811,14 +2987,14 @@ export class RsParser {
     if (this.eatKw(KW_EXTERN)) {
       f = f | FN_EXTERN;
       const gv67 = this.parseAbi();
-      this.ast.x[ty] = gv67;
+      rsPrPut(this.ast.x, ty, gv67);
     }
-    this.ast.fl[ty] = f;
+    rsPrPut(this.ast.fl, ty, f);
     if (!this.eatKw(KW_FN)) {
       return this.fail();
     }
     const gv68 = this.parseFnDecl(false);
-    this.ast.b[ty] = gv68;
+    rsPrPut(this.ast.b, ty, gv68);
     return this.fin(ty);
   }
 
@@ -2902,11 +3078,11 @@ export class RsParser {
       const e = this.nd(N_EX_PATH, lo);
       if (this.isLt()) {
         const gv70 = this.parseQPath(PS_EXPR);
-        this.ast.a[e] = gv70;
-        this.ast.b[e] = this.qpPath;
+        rsPrPut(this.ast.a, e, gv70);
+        rsPrPut(this.ast.b, e, this.qpPath);
       } else {
         const gv71 = this.parsePath(PS_EXPR);
-        this.ast.b[e] = gv71;
+        rsPrPut(this.ast.b, e, gv71);
       }
       return this.fin(e);
     }
@@ -2917,18 +3093,18 @@ export class RsParser {
   parsePatRangeRest(lo: i32, start: i32): i32 {
     const k = this.tk();
     const n = this.nd(N_PAT_RANGE, lo);
-    this.ast.a[n] = start;
+    rsPrPut(this.ast.a, n, start);
     if (k === T_DOTDOTEQ) {
-      this.ast.fl[n] = RANGE_CLOSED;
+      rsPrPut(this.ast.fl, n, RANGE_CLOSED);
     } else if (k === T_DOTDOTDOT) {
-      this.ast.fl[n] = RANGE_DOTDOTDOT;
+      rsPrPut(this.ast.fl, n, RANGE_DOTDOTDOT);
     } else {
-      this.ast.fl[n] = RANGE_HALF_OPEN;
+      rsPrPut(this.ast.fl, n, RANGE_HALF_OPEN);
     }
     this.bump();
     if (this.isPatRangeEnd() && !(k === T_DOTDOT && this.isPatTerminator())) {
       const gv72 = this.parseRangeEnd();
-      this.ast.b[n] = gv72;
+      rsPrPut(this.ast.b, n, gv72);
     }
     return this.fin(n);
   }
@@ -2962,10 +3138,10 @@ export class RsParser {
       pat = this.nd(N_PAT_REF, lo);
       this.eatAnd();
       if (this.eatKw(KW_MUT)) {
-        this.ast.fl[pat] = MUT;
+        rsPrPut(this.ast.fl, pat, MUT);
       }
       const gv73 = this.parsePatRange(false);
-      this.ast.a[pat] = gv73;
+      rsPrPut(this.ast.a, pat, gv73);
       return this.fin(pat);
     }
     if (k === T_LPAREN) {
@@ -2975,7 +3151,10 @@ export class RsParser {
       let trailing = false;
       while (!this.failed && !this.is(T_RPAREN)) {
         this.push(this.parsePatTopAlt());
-        count++;
+        // Only `count === 1` is read: stop at 2.
+        if (count < 2) {
+          count++;
+        }
         trailing = false;
         if (!this.eat(T_COMMA)) {
           break;
@@ -2986,11 +3165,11 @@ export class RsParser {
       if (this.failed) {
         return -1;
       }
-      if (count === 1 && !trailing && this.ast.kind[this.stk[mark]] !== N_PAT_REST) {
-        const inner = this.stk[mark];
+      if (count === 1 && !trailing && atI32(this.ast.kind, atI32(this.stk, mark)) !== N_PAT_REST) {
+        const inner = atI32(this.stk, mark);
         this.sp = mark;
         pat = this.nd(N_PAT_PAREN, lo);
-        this.ast.a[pat] = inner;
+        rsPrPut(this.ast.a, pat, inner);
       } else {
         pat = this.nd(N_PAT_TUPLE, lo);
         this.endList(pat, mark);
@@ -3049,7 +3228,7 @@ export class RsParser {
       pat = this.nd(N_PAT_BOX, lo);
       this.bump();
       const gv74 = this.parsePatRange(false);
-      this.ast.a[pat] = gv74;
+      rsPrPut(this.ast.a, pat, gv74);
       return this.fin(pat);
     }
     if (kk === KW_CONST && this.la(1) === T_LBRACE) {
@@ -3058,7 +3237,7 @@ export class RsParser {
         return this.parsePatRangeRest(lo, e);
       }
       pat = this.nd(N_PAT_LIT, lo);
-      this.ast.a[pat] = e;
+      rsPrPut(this.ast.a, pat, e);
       return this.fin(pat);
     }
     if ((k >= T_INT && k <= T_RCSTR) || k === T_MINUS || kk === KW_TRUE || kk === KW_FALSE) {
@@ -3067,7 +3246,7 @@ export class RsParser {
         return this.parsePatRangeRest(lo, e);
       }
       pat = this.nd(N_PAT_LIT, lo);
-      this.ast.a[pat] = e;
+      rsPrPut(this.ast.a, pat, e);
       return this.fin(pat);
     }
     // An identifier binding.
@@ -3089,18 +3268,18 @@ export class RsParser {
       if (this.is(T_NOT) && q < 0) {
         this.bump();
         const mac = this.nd(N_MAC, lo);
-        this.ast.a[mac] = pa;
+        rsPrPut(this.ast.a, mac, pa);
         const gv75 = this.parseTts();
-        this.ast.b[mac] = gv75;
+        rsPrPut(this.ast.b, mac, gv75);
         this.fin(mac);
         pat = this.nd(N_PAT_MAC, lo);
-        this.ast.a[pat] = mac;
+        rsPrPut(this.ast.a, pat, mac);
         return this.fin(pat);
       }
       if (this.is(T_LPAREN)) {
         pat = this.nd(N_PAT_TUPLE_STRUCT, lo);
-        this.ast.a[pat] = q;
-        this.ast.b[pat] = pa;
+        rsPrPut(this.ast.a, pat, q);
+        rsPrPut(this.ast.b, pat, pa);
         this.bump();
         const mark = this.sp;
         while (!this.failed && !this.is(T_RPAREN)) {
@@ -3118,14 +3297,14 @@ export class RsParser {
       }
       if (allowRange && this.isRangeOp()) {
         const e = this.nd(N_EX_PATH, lo);
-        this.ast.a[e] = q;
-        this.ast.b[e] = pa;
+        rsPrPut(this.ast.a, e, q);
+        rsPrPut(this.ast.b, e, pa);
         this.fin(e);
         return this.parsePatRangeRest(lo, e);
       }
       pat = this.nd(N_PAT_PATH, lo);
-      this.ast.a[pat] = q;
-      this.ast.b[pat] = pa;
+      rsPrPut(this.ast.a, pat, q);
+      rsPrPut(this.ast.b, pat, pa);
       return this.fin(pat);
     }
     return this.fail();
@@ -3161,22 +3340,22 @@ export class RsParser {
     } else if (this.eatKw(KW_MUT)) {
       f = BM_MUT;
     }
-    this.ast.fl[pat] = f;
+    rsPrPut(this.ast.fl, pat, f);
     if (this.tk() !== T_IDENT) {
       return this.fail();
     }
-    this.ast.d[pat] = this.identTok();
+    rsPrPut(this.ast.d, pat, this.identTok());
     if (this.eat(T_AT)) {
       const gv76 = this.parsePatRange(true);
-      this.ast.a[pat] = gv76;
+      rsPrPut(this.ast.a, pat, gv76);
     }
     return this.fin(pat);
   }
 
   parsePatStruct(lo: i32, q: i32, pa: i32): i32 {
     const pat = this.nd(N_PAT_STRUCT, lo);
-    this.ast.a[pat] = q;
-    this.ast.b[pat] = pa;
+    rsPrPut(this.ast.a, pat, q);
+    rsPrPut(this.ast.b, pat, pa);
     this.bump(); // {
     const mark = this.sp;
     while (!this.failed && !this.is(T_RBRACE)) {
@@ -3184,7 +3363,7 @@ export class RsParser {
       // taken for a field and `..` is no identifier.
       if (this.is(T_DOTDOT)) {
         this.bump();
-        this.ast.fl[pat] = PS_REST;
+        rsPrPut(this.ast.fl, pat, PS_REST);
         break;
       }
       const am = this.sp;
@@ -3194,11 +3373,11 @@ export class RsParser {
       // parse_pat_field: the field name (parse_field_name) and a shorthand binding
       // (parse_ident_common) are identifiers that are not reserved words.
       if ((this.isIdent() || this.tk() === T_INT) && this.la(1) === T_COLON) {
-        this.ast.d[f] = this.p;
+        rsPrPut(this.ast.d, f, this.p);
         this.bump();
         this.bump();
         const gv77 = this.parsePatTopAlt();
-        this.ast.a[f] = gv77;
+        rsPrPut(this.ast.a, f, gv77);
       } else {
         // Shorthand: `ref mut x`, `box x`, `x`.
         let isBox = false;
@@ -3217,20 +3396,20 @@ export class RsParser {
         } else if (this.eatKw(KW_MUT)) {
           bf = BM_MUT;
         }
-        this.ast.fl[ip] = bf;
+        rsPrPut(this.ast.fl, ip, bf);
         const id = this.itemIdent();
-        this.ast.d[ip] = id;
+        rsPrPut(this.ast.d, ip, id);
         this.fin(ip);
-        this.ast.d[f] = id;
+        rsPrPut(this.ast.d, f, id);
         if (isBox) {
           const bx = this.nd(N_PAT_BOX, flo);
-          this.ast.a[bx] = ip;
+          rsPrPut(this.ast.a, bx, ip);
           this.fin(bx);
-          this.ast.a[f] = bx;
+          rsPrPut(this.ast.a, f, bx);
         } else {
-          this.ast.a[f] = ip;
+          rsPrPut(this.ast.a, f, ip);
         }
-        this.ast.fl[f] = SHORTHAND;
+        rsPrPut(this.ast.fl, f, SHORTHAND);
       }
       this.fin(f);
       this.setAttrs(f, am, na);
@@ -3263,6 +3442,29 @@ export class RsParser {
     return this.parseExprAssoc(0);
   }
 
+  /** Whether `<` at p is glued to a `-` after it. */
+  isLeftArrow(): boolean {
+    const p = this.p;
+    const kind = this.t.kind;
+    const his = this.t.hi;
+    const los = this.t.lo;
+    // p is a token index, so p + 1 fits.
+    if (p < 0 || p >= 2147483647) {
+      fault();
+      return false;
+    }
+    const q = p + 1;
+    if (q >= this.end) {
+      return false;
+    }
+    // q < end < nt, inside the token arrays.
+    if (q >= kind.length || q >= los.length || p >= his.length) {
+      fault();
+      return false;
+    }
+    return kind[q] === T_MINUS && his[p] === los[q];
+  }
+
   binPrec(): i32 {
     const k = this.tk();
     if (k === T_STAR || k === T_SLASH || k === T_PERCENT) return P_PRODUCT;
@@ -3271,13 +3473,7 @@ export class RsParser {
     if (k === T_AND) return P_BITAND;
     if (k === T_CARET) return P_BITXOR;
     if (k === T_OR) return P_BITOR;
-    if (
-      k === T_LT &&
-      this.off < 0 &&
-      this.p + 1 < this.end &&
-      this.t.kind[this.p + 1] === T_MINUS &&
-      this.t.hi[this.p] === this.t.lo[this.p + 1]
-    ) {
+    if (k === T_LT && this.off < 0 && this.isLeftArrow()) {
       // `<-` lexes as one token (the obsolete in-place arrow), not an operator.
       return -1;
     }
@@ -3312,7 +3508,7 @@ export class RsParser {
   }
 
   isBlockLike(e: i32): boolean {
-    const k = this.ast.kind[e];
+    const k = atI32(this.ast.kind, e);
     return (
       k === N_EX_IF ||
       k === N_EX_MATCH ||
@@ -3354,13 +3550,13 @@ export class RsParser {
       if (prec === P_CAST) {
         this.bump();
         const c = this.nd(N_EX_CAST, lo);
-        this.ast.a[c] = lhs;
+        rsPrPut(this.ast.a, c, lhs);
         const gv78 = this.parseTyNoPlus();
-        this.ast.b[c] = gv78;
+        rsPrPut(this.ast.b, c, gv78);
         lhs = this.fin(c);
         continue;
       }
-      if (prec === P_COMPARE && this.ast.kind[lhs] === N_EX_BINARY && isCompareTok(this.ast.x[lhs])) {
+      if (prec === P_COMPARE && atI32(this.ast.kind, lhs) === N_EX_BINARY && isCompareTok(atI32(this.ast.x, lhs))) {
         // rustc: comparison operators cannot be chained (an error it recovers from).
         return this.fail();
       }
@@ -3370,13 +3566,13 @@ export class RsParser {
         }
         this.bump();
         const r = this.nd(N_EX_RANGE, lo);
-        this.ast.a[r] = lhs;
+        rsPrPut(this.ast.a, r, lhs);
         if (k !== T_DOTDOT) {
-          this.ast.fl[r] = RANGE_CLOSED;
+          rsPrPut(this.ast.fl, r, RANGE_CLOSED);
         }
         if (this.isRangeRhsStart()) {
           const gv79 = this.parseExprAssoc(P_RANGE + 1);
-          this.ast.b[r] = gv79;
+          rsPrPut(this.ast.b, r, gv79);
         }
         lhs = this.fin(r);
         break;
@@ -3387,7 +3583,16 @@ export class RsParser {
       // and an assignment's right side keeps only NO_STRUCT_LITERAL.
       const oldRes = this.res;
       this.res = prec === P_ASSIGN ? oldRes & R_NO_STRUCT : oldRes & ~R_STMT_EXPR;
-      const rhs = this.parseExprAssoc(prec === P_ASSIGN ? prec : prec + 1);
+      let rhsPrec = prec;
+      if (prec !== P_ASSIGN) {
+        // binPrec answers at most P_CAST (14).
+        if (prec > 14) {
+          fault();
+          return -1;
+        }
+        rhsPrec = prec + 1;
+      }
+      const rhs = this.parseExprAssoc(rhsPrec);
       this.res = oldRes;
       if (this.failed) {
         return -1;
@@ -3397,14 +3602,14 @@ export class RsParser {
         e = this.nd(N_EX_ASSIGN, lo);
       } else if (prec === P_ASSIGN) {
         e = this.nd(N_EX_ASSIGN_OP, lo);
-        this.ast.x[e] = k;
+        rsPrPut(this.ast.x, e, k);
       } else {
         e = this.nd(N_EX_BINARY, lo);
-        this.ast.x[e] = k;
-        this.ast.c[e] = opTok;
+        rsPrPut(this.ast.x, e, k);
+        rsPrPut(this.ast.c, e, opTok);
       }
-      this.ast.a[e] = lhs;
-      this.ast.b[e] = rhs;
+      rsPrPut(this.ast.a, e, lhs);
+      rsPrPut(this.ast.b, e, rhs);
       lhs = this.fin(e);
     }
     return lhs;
@@ -3415,11 +3620,11 @@ export class RsParser {
     this.bump();
     const r = this.nd(N_EX_RANGE, lo);
     if (k === T_DOTDOTEQ) {
-      this.ast.fl[r] = RANGE_CLOSED;
+      rsPrPut(this.ast.fl, r, RANGE_CLOSED);
     }
     if (this.isRangeRhsStart()) {
       const gv80 = this.parseExprAssoc(P_RANGE + 1);
-      this.ast.b[r] = gv80;
+      rsPrPut(this.ast.b, r, gv80);
     }
     return this.fin(r);
   }
@@ -3504,9 +3709,9 @@ export class RsParser {
     if (k === T_NOT || k === T_MINUS || k === T_STAR) {
       this.bump();
       const u = this.nd(N_EX_UNARY, lo);
-      this.ast.x[u] = k === T_NOT ? UN_NOT : k === T_MINUS ? UN_NEG : UN_DEREF;
+      rsPrPut(this.ast.x, u, k === T_NOT ? UN_NOT : k === T_MINUS ? UN_NEG : UN_DEREF);
       const gv81 = this.parseExprPrefix();
-      this.ast.a[u] = gv81;
+      rsPrPut(this.ast.a, u, gv81);
       return this.fin(u);
     }
     if (k === T_AND || k === T_ANDAND) {
@@ -3524,9 +3729,9 @@ export class RsParser {
       } else if (this.eatKw(KW_MUT)) {
         f = MUT;
       }
-      this.ast.fl[u] = f;
+      rsPrPut(this.ast.fl, u, f);
       const gv82 = this.parseExprPrefix();
-      this.ast.a[u] = gv82;
+      rsPrPut(this.ast.a, u, gv82);
       return this.fin(u);
     }
     if (this.isKw(KW_BOX) && this.canBeginExprAt1()) {
@@ -3607,7 +3812,7 @@ export class RsParser {
     while (!this.failed) {
       if (this.eat(T_QUESTION)) {
         const t = this.nd(N_EX_TRY, lo);
-        this.ast.a[t] = e;
+        rsPrPut(this.ast.a, t, e);
         e = this.fin(t);
         continue;
       }
@@ -3621,7 +3826,7 @@ export class RsParser {
       const k = this.tk();
       if (k === T_LPAREN) {
         const c = this.nd(N_EX_CALL, lo);
-        this.ast.a[c] = e;
+        rsPrPut(this.ast.a, c, e);
         this.parseCallArgs(c);
         e = this.fin(c);
         continue;
@@ -3629,9 +3834,9 @@ export class RsParser {
       if (k === T_LBRACKET) {
         this.bump();
         const ix = this.nd(N_EX_INDEX, lo);
-        this.ast.a[ix] = e;
+        rsPrPut(this.ast.a, ix, e);
         const gv83 = this.parseExprRes(0);
-        this.ast.b[ix] = gv83;
+        rsPrPut(this.ast.b, ix, gv83);
         this.expect(T_RBRACKET);
         e = this.fin(ix);
         continue;
@@ -3659,30 +3864,51 @@ export class RsParser {
     if (k === T_IDENT && this.kw() === KW_AWAIT) {
       this.bump();
       const a = this.nd(N_EX_AWAIT, lo);
-      this.ast.a[a] = e;
+      rsPrPut(this.ast.a, a, e);
       return this.fin(a);
     }
     if (k === T_INT) {
       // mk_expr_tuple_field_access: a suffix on a tuple index is an error.
-      if (this.t.suf[this.p] < this.t.hi[this.p]) {
+      const p = this.p;
+      const sufs = this.t.suf;
+      const his = this.t.hi;
+      // The current token, so in range.
+      if (p < 0 || p >= sufs.length || p >= his.length) {
+        fault();
+        return -1;
+      }
+      if (sufs[p] < his[p]) {
         return this.fail();
       }
       const f = this.nd(N_EX_FIELD, lo);
-      this.ast.a[f] = e;
-      this.ast.d[f] = this.p;
+      rsPrPut(this.ast.a, f, e);
+      rsPrPut(this.ast.d, f, this.p);
       this.bump();
       return this.fin(f);
     }
     if (k === T_FLOAT) {
       // break_up_float, over the token's symbol (its text without the suffix).
       const ti = this.p;
-      const tlo = this.t.lo[ti];
-      const sym = this.t.suf[ti];
-      const hasSuffix = sym < this.t.hi[ti];
+      const los = this.t.lo;
+      const sufs = this.t.suf;
+      const his = this.t.hi;
+      const src = this.src;
+      // The current token, its span inside the source.
+      if (ti < 0 || ti >= los.length || ti >= sufs.length || ti >= his.length) {
+        fault();
+        return -1;
+      }
+      const tlo = los[ti];
+      const sym = sufs[ti];
+      if (tlo < 0 || sym < tlo || sym > src.length) {
+        fault();
+        return -1;
+      }
+      const hasSuffix = sym < his[ti];
       let dot = -1;
       let sign = false;
-      for (let i = tlo; i < sym; i++) {
-        const c = toI32(this.src[i]);
+      for (let i = tlo; i < sym && i < src.length; i++) {
+        const c = toI32(src[i]);
         if (c === 46 && dot < 0) {
           dot = i;
         } else if (c === 43 || c === 45) {
@@ -3699,19 +3925,24 @@ export class RsParser {
           return this.fail();
         }
         const f = this.nd(N_EX_FIELD, lo);
-        this.ast.a[f] = e;
-        this.ast.d[f] = ti;
+        rsPrPut(this.ast.a, f, e);
+        rsPrPut(this.ast.d, f, ti);
         this.bump();
         return this.fin(f);
       }
-      if (dot === sym - 1) {
+      // dot is a byte of the token, inside src.
+      if (dot >= src.length) {
+        fault();
+        return -1;
+      }
+      if (dot + 1 === sym) {
         // DestructuredFloat::TrailingDot, `x.0. y`: one field access, and the token's own
         // dot starts the next suffix.
         const f0 = this.nd(N_EX_FIELD, lo);
-        this.ast.a[f0] = e;
-        this.ast.d[f0] = ti;
-        this.ast.x[f0] = dot;
-        this.ast.hi[f0] = dot;
+        rsPrPut(this.ast.a, f0, e);
+        rsPrPut(this.ast.d, f0, ti);
+        rsPrPut(this.ast.x, f0, dot);
+        rsPrPut(this.ast.hi, f0, dot);
         this.bump();
         return this.parseDotSuffix(f0, lo);
       }
@@ -3720,15 +3951,15 @@ export class RsParser {
         return this.fail();
       }
       const f1 = this.nd(N_EX_FIELD, lo);
-      this.ast.a[f1] = e;
-      this.ast.d[f1] = ti;
-      this.ast.x[f1] = dot; // the field name is src[tlo, dot)
-      this.ast.hi[f1] = dot;
+      rsPrPut(this.ast.a, f1, e);
+      rsPrPut(this.ast.d, f1, ti);
+      rsPrPut(this.ast.x, f1, dot); // the field name is src[tlo, dot)
+      rsPrPut(this.ast.hi, f1, dot);
       this.bump();
       const f2 = this.nd(N_EX_FIELD, lo);
-      this.ast.a[f2] = f1;
-      this.ast.d[f2] = ti;
-      this.ast.x[f2] = -2 - (dot + 1); // the field name is src[dot + 1, thi)
+      rsPrPut(this.ast.a, f2, f1);
+      rsPrPut(this.ast.d, f2, ti);
+      rsPrPut(this.ast.x, f2, sub32(-2, dot + 1)); // the field name is src[dot + 1, thi)
       return this.fin(f2);
     }
     if (k === T_IDENT) {
@@ -3745,13 +3976,13 @@ export class RsParser {
       }
       if (this.is(T_LPAREN)) {
         const sg = this.nd(N_SEG, segLo);
-        this.ast.d[sg] = id;
-        this.ast.a[sg] = ga;
+        rsPrPut(this.ast.d, sg, id);
+        rsPrPut(this.ast.a, sg, ga);
         this.fin(sg);
         const m = this.nd(N_EX_METHOD, lo);
-        this.ast.a[m] = e;
-        this.ast.b[m] = sg;
-        this.ast.x[m] = this.p;
+        rsPrPut(this.ast.a, m, e);
+        rsPrPut(this.ast.b, m, sg);
+        rsPrPut(this.ast.x, m, this.p);
         this.parseCallArgs(m);
         return this.fin(m);
       }
@@ -3759,8 +3990,8 @@ export class RsParser {
         return this.fail();
       }
       const f = this.nd(N_EX_FIELD, lo);
-      this.ast.a[f] = e;
-      this.ast.d[f] = id;
+      rsPrPut(this.ast.a, f, e);
+      rsPrPut(this.ast.d, f, id);
       return this.fin(f);
     }
     return this.fail();
@@ -3796,7 +4027,10 @@ export class RsParser {
       this.res = outerRes & R_ALLOW_LET; // parse_expr_tuple_parens
       while (!this.failed && !this.is(T_RPAREN)) {
         this.push(this.parseExprAssoc(0));
-        count++;
+        // Only `count === 1` is read: stop at 2.
+        if (count < 2) {
+          count++;
+        }
         trailing = false;
         if (!this.eat(T_COMMA)) {
           break;
@@ -3806,10 +4040,10 @@ export class RsParser {
       this.res = old;
       this.expect(T_RPAREN);
       if (count === 1 && !trailing) {
-        const inner = this.stk[mark];
+        const inner = atI32(this.stk, mark);
         this.sp = mark;
         const pe = this.nd(N_EX_PAREN, lo);
-        this.ast.a[pe] = inner;
+        rsPrPut(this.ast.a, pe, inner);
         return this.fin(pe);
       }
       const t = this.nd(N_EX_TUP, lo);
@@ -3834,9 +4068,9 @@ export class RsParser {
       const first = this.parseExprAssoc(0);
       if (this.eat(T_SEMI)) {
         const rp = this.nd(N_EX_REPEAT, lo);
-        this.ast.a[rp] = first;
+        rsPrPut(this.ast.a, rp, first);
         const gv84 = this.parseExprAssoc(0);
-        this.ast.b[rp] = gv84;
+        rsPrPut(this.ast.b, rp, gv84);
         this.expect(T_RBRACKET);
         this.res = old;
         return this.fin(rp);
@@ -3908,7 +4142,7 @@ export class RsParser {
         this.bump();
         const cb = this.nd(N_EX_CONST_BLOCK, lo);
         const gv85 = this.parseBlock(this.lo(), 0);
-        this.ast.a[cb] = gv85;
+        rsPrPut(this.ast.a, cb, gv85);
         return this.fin(cb);
       }
       return this.parseClosure(lo);
@@ -3917,7 +4151,7 @@ export class RsParser {
       this.bump();
       const tb = this.nd(N_EX_TRY_BLOCK, lo);
       const gv86 = this.parseBlock(this.lo(), 0);
-      this.ast.a[tb] = gv86;
+      rsPrPut(this.ast.a, tb, gv86);
       return this.fin(tb);
     }
     if (kk === KW_RETURN) {
@@ -3925,7 +4159,7 @@ export class RsParser {
       const r = this.nd(N_EX_RET, lo);
       if (this.canBeginExpr()) {
         const gv87 = this.parseExprAssoc(0);
-        this.ast.a[r] = gv87;
+        rsPrPut(this.ast.a, r, gv87);
       }
       return this.fin(r);
     }
@@ -3933,7 +4167,7 @@ export class RsParser {
       this.bump();
       const c = this.nd(N_EX_CONTINUE, lo);
       if (this.is(T_LIFETIME)) {
-        this.ast.d[c] = this.p;
+        rsPrPut(this.ast.d, c, this.p);
         this.bump();
       }
       return this.fin(c);
@@ -3942,12 +4176,12 @@ export class RsParser {
       this.bump();
       const b = this.nd(N_EX_BREAK, lo);
       if (this.is(T_LIFETIME) && this.la(1) !== T_COLON) {
-        this.ast.d[b] = this.p;
+        rsPrPut(this.ast.d, b, this.p);
         this.bump();
       }
       if (this.canBeginExpr() && !(this.is(T_LBRACE) && (this.res & R_NO_STRUCT) !== 0)) {
         const gv88 = this.parseExprAssoc(0);
-        this.ast.a[b] = gv88;
+        rsPrPut(this.ast.a, b, gv88);
       }
       return this.fin(b);
     }
@@ -3956,7 +4190,7 @@ export class RsParser {
       const y = this.nd(N_EX_YIELD, lo);
       if (this.canBeginExpr()) {
         const gv89 = this.parseExprAssoc(0);
-        this.ast.a[y] = gv89;
+        rsPrPut(this.ast.a, y, gv89);
       }
       return this.fin(y);
     }
@@ -3964,7 +4198,7 @@ export class RsParser {
       this.bump();
       const y = this.nd(N_EX_BECOME, lo);
       const gv90 = this.parseExprAssoc(0);
-      this.ast.a[y] = gv90;
+      rsPrPut(this.ast.a, y, gv90);
       return this.fin(y);
     }
     if (kk === KW_DO && this.la(1) === T_IDENT) {
@@ -3977,7 +4211,7 @@ export class RsParser {
       this.bump();
       const le = this.nd(N_EX_LET, lo);
       const gv91 = this.parsePatTopAlt();
-      this.ast.a[le] = gv91;
+      rsPrPut(this.ast.a, le, gv91);
       if (!this.expect(T_EQ)) {
         return -1;
       }
@@ -3985,7 +4219,7 @@ export class RsParser {
       this.res = old & ~R_STMT_EXPR;
       // The scrutinee stops before `&&` and `||`.
       const gv92 = this.parseExprAssoc(P_COMPARE);
-      this.ast.b[le] = gv92;
+      rsPrPut(this.ast.b, le, gv92);
       this.res = old;
       return this.fin(le);
     }
@@ -4014,6 +4248,11 @@ export class RsParser {
 
   /** is_gen_block: `kw` at `i`, then `{`, `move {` or `use {`. */
   isGenBlock(kw: i32, i: i32): boolean {
+    // A distance la faults on anyway.
+    if (i >= 1073741824) {
+      fault();
+      return false;
+    }
     if (this.laKwAt(i) !== kw) {
       return false;
     }
@@ -4041,9 +4280,9 @@ export class RsParser {
     } else if (this.eatKw(KW_USE)) {
       f = f | CL_USE;
     }
-    this.ast.fl[ab] = f;
+    rsPrPut(this.ast.fl, ab, f);
     const gv93 = this.parseBlock(this.lo(), 0);
-    this.ast.a[ab] = gv93;
+    rsPrPut(this.ast.a, ab, gv93);
     return this.fin(ab);
   }
 
@@ -4064,12 +4303,12 @@ export class RsParser {
       if (nk === T_LPAREN || nk === T_LBRACKET || nk === T_LBRACE) {
         this.bump();
         const mac = this.nd(N_MAC, lo);
-        this.ast.a[mac] = pa;
+        rsPrPut(this.ast.a, mac, pa);
         const gv94 = this.parseTts();
-        this.ast.b[mac] = gv94;
+        rsPrPut(this.ast.b, mac, gv94);
         this.fin(mac);
         const e = this.nd(N_EX_MAC, lo);
-        this.ast.a[e] = mac;
+        rsPrPut(this.ast.a, e, mac);
         return this.fin(e);
       }
     }
@@ -4077,29 +4316,29 @@ export class RsParser {
       return this.parseStructExpr(lo, q, pa);
     }
     const e = this.nd(N_EX_PATH, lo);
-    this.ast.a[e] = q;
-    this.ast.b[e] = pa;
+    rsPrPut(this.ast.a, e, q);
+    rsPrPut(this.ast.b, e, pa);
     return this.fin(e);
   }
 
   parseStructExpr(lo: i32, q: i32, pa: i32): i32 {
     const s = this.nd(N_EX_STRUCT, lo);
-    this.ast.a[s] = q;
-    this.ast.b[s] = pa;
+    rsPrPut(this.ast.a, s, q);
+    rsPrPut(this.ast.b, s, pa);
     this.bump(); // {
     const old = this.res;
     this.res = 0;
     const mark = this.sp;
     while (!this.failed && !this.is(T_RBRACE)) {
       if (this.is(T_DOTDOT)) {
-        this.ast.e[s] = this.lo(); // the `..`
+        rsPrPut(this.ast.e, s, this.lo()); // the `..`
         this.bump();
         if (this.is(T_RBRACE)) {
-          this.ast.fl[s] = ST_REST;
+          rsPrPut(this.ast.fl, s, ST_REST);
         } else {
-          this.ast.fl[s] = ST_BASE;
+          rsPrPut(this.ast.fl, s, ST_BASE);
           const gv95 = this.parseExprAssoc(0);
-          this.ast.c[s] = gv95;
+          rsPrPut(this.ast.c, s, gv95);
         }
         break;
       }
@@ -4114,27 +4353,27 @@ export class RsParser {
         break;
       }
       if ((tk === T_IDENT || tk === T_INT) && this.la(1) === T_COLON) {
-        this.ast.d[f] = this.p;
+        rsPrPut(this.ast.d, f, this.p);
         this.bump();
         this.bump();
         const gv96 = this.parseExprAssoc(0);
-        this.ast.a[f] = gv96;
+        rsPrPut(this.ast.a, f, gv96);
       } else if (tk === T_IDENT) {
         // Shorthand.
         const pe = this.nd(N_EX_PATH, flo);
         const pp = this.nd(N_PATH, flo);
         const sg = this.nd(N_SEG, flo);
-        this.ast.d[f] = this.p;
-        this.ast.d[sg] = this.identTok();
+        rsPrPut(this.ast.d, f, this.p);
+        rsPrPut(this.ast.d, sg, this.identTok());
         this.fin(sg);
         const m2 = this.sp;
         this.push(sg);
         this.endList(pp, m2);
         this.fin(pp);
-        this.ast.b[pe] = pp;
+        rsPrPut(this.ast.b, pe, pp);
         this.fin(pe);
-        this.ast.a[f] = pe;
-        this.ast.fl[f] = SHORTHAND;
+        rsPrPut(this.ast.a, f, pe);
+        rsPrPut(this.ast.fl, f, SHORTHAND);
       } else {
         this.failed = true;
         break;
@@ -4157,7 +4396,7 @@ export class RsParser {
     let f = 0;
     if (this.isKw(KW_FOR) && this.isLtAt(1)) {
       const gv97 = this.parseForBinder();
-      this.ast.c[c] = gv97;
+      rsPrPut(this.ast.c, c, gv97);
     }
     if (this.eatKw(KW_CONST)) {
       f = f | CL_CONST;
@@ -4171,9 +4410,9 @@ export class RsParser {
     if (this.eatKw(KW_MOVE)) {
       f = f | CL_MOVE;
     }
-    this.ast.fl[c] = f;
+    rsPrPut(this.ast.fl, c, f);
     const decl = this.nd(N_FNDECL, this.lo());
-    this.ast.x[c] = this.p;
+    rsPrPut(this.ast.x, c, this.p);
     const mark = this.sp;
     if (this.eat(T_OROR)) {
       // No parameters.
@@ -4187,14 +4426,14 @@ export class RsParser {
         const na = this.outerAttrs();
         const pn = this.nd(N_PARAM, plo);
         const pat = this.parsePatNoTopAlt();
-        this.ast.a[pn] = pat;
+        rsPrPut(this.ast.a, pn, pat);
         if (this.eat(T_COLON)) {
           const gv98 = this.parseTy();
-          this.ast.b[pn] = gv98;
+          rsPrPut(this.ast.b, pn, gv98);
         } else if (pat >= 0) {
-          const it = this.nd(N_TY_INFER, this.ast.lo[pat]);
-          this.ast.hi[it] = this.ast.hi[pat];
-          this.ast.b[pn] = it;
+          const it = this.nd(N_TY_INFER, atI32(this.ast.lo, pat));
+          rsPrPut(this.ast.hi, it, atI32(this.ast.hi, pat));
+          rsPrPut(this.ast.b, pn, it);
         }
         this.fin(pn);
         this.setAttrs(pn, am, na);
@@ -4211,14 +4450,14 @@ export class RsParser {
     const old = this.res;
     if (this.eat(T_RARROW)) {
       const gv99 = this.parseTyNoPlus();
-      this.ast.a[decl] = gv99;
+      rsPrPut(this.ast.a, decl, gv99);
       this.fin(decl);
       if (!this.is(T_LBRACE)) {
         return this.fail();
       }
       this.res = old & ~(R_STMT_EXPR | R_ALLOW_LET);
       const gv100 = this.parseBlockExpr(this.lo(), -1, 0);
-      this.ast.a[c] = gv100;
+      rsPrPut(this.ast.a, c, gv100);
       this.res = old;
       if (!this.failed && this.lastBlockInner > 0) {
         return this.fail(); // parse_simple_block: no inner attributes
@@ -4227,10 +4466,10 @@ export class RsParser {
       this.fin(decl);
       this.res = old & ~(R_STMT_EXPR | R_ALLOW_LET);
       const gv101 = this.parseExprAssoc(0);
-      this.ast.a[c] = gv101;
+      rsPrPut(this.ast.a, c, gv101);
       this.res = old;
     }
-    this.ast.b[c] = decl;
+    rsPrPut(this.ast.b, c, decl);
     return this.fin(c);
   }
 
@@ -4239,7 +4478,7 @@ export class RsParser {
     if (!this.failed && this.condHasForbiddenLet(e, false)) {
       return this.fail();
     }
-    if (!this.failed && this.t.edition < 2024 && this.ast.kind[e] === N_EX_BINARY && this.hasLetInAndChain(e)) {
+    if (!this.failed && this.t.edition < 2024 && atI32(this.ast.kind, e) === N_EX_BINARY && this.hasLetInAndChain(e)) {
       // CondChecker: let chains are only allowed in Rust 2024 or later.
       return this.fail();
     }
@@ -4255,15 +4494,15 @@ export class RsParser {
       return false;
     }
     const ast = this.ast;
-    const k = ast.kind[e];
+    const k = atI32(ast.kind, e);
     if (k === N_EX_LET) {
       return forbid;
     }
-    if (k === N_EX_BINARY && ast.x[e] === T_ANDAND) {
-      return this.condHasForbiddenLet(ast.a[e], forbid) || this.condHasForbiddenLet(ast.b[e], forbid);
+    if (k === N_EX_BINARY && atI32(ast.x, e) === T_ANDAND) {
+      return this.condHasForbiddenLet(atI32(ast.a, e), forbid) || this.condHasForbiddenLet(atI32(ast.b, e), forbid);
     }
     if (k === N_EX_BINARY || k === N_EX_ASSIGN || k === N_EX_ASSIGN_OP || k === N_EX_RANGE || k === N_EX_INDEX) {
-      return this.condHasForbiddenLet(ast.a[e], true) || this.condHasForbiddenLet(ast.b[e], true);
+      return this.condHasForbiddenLet(atI32(ast.a, e), true) || this.condHasForbiddenLet(atI32(ast.b, e), true);
     }
     if (
       k === N_EX_PAREN ||
@@ -4274,13 +4513,13 @@ export class RsParser {
       k === N_EX_FIELD ||
       k === N_EX_CAST
     ) {
-      return this.condHasForbiddenLet(ast.a[e], true);
+      return this.condHasForbiddenLet(atI32(ast.a, e), true);
     }
     if (k === N_EX_CALL || k === N_EX_METHOD || k === N_EX_TUP) {
-      if (k !== N_EX_TUP && this.condHasForbiddenLet(ast.a[e], true)) {
+      if (k !== N_EX_TUP && this.condHasForbiddenLet(atI32(ast.a, e), true)) {
         return true;
       }
-      for (let i = 0; i < ast.ln[e]; i++) {
+      for (let i = 0; i < atI32(ast.ln, e); i++) {
         if (this.condHasForbiddenLet(ast.kid(e, i), true)) {
           return true;
         }
@@ -4290,12 +4529,12 @@ export class RsParser {
   }
 
   hasLetInAndChain(e: i32): boolean {
-    const k = this.ast.kind[e];
+    const k = atI32(this.ast.kind, e);
     if (k === N_EX_LET) {
       return true;
     }
-    if (k === N_EX_BINARY && this.ast.x[e] === T_ANDAND) {
-      return this.hasLetInAndChain(this.ast.a[e]) || this.hasLetInAndChain(this.ast.b[e]);
+    if (k === N_EX_BINARY && atI32(this.ast.x, e) === T_ANDAND) {
+      return this.hasLetInAndChain(atI32(this.ast.a, e)) || this.hasLetInAndChain(atI32(this.ast.b, e));
     }
     return false;
   }
@@ -4304,12 +4543,12 @@ export class RsParser {
     const n = this.nd(N_EX_IF, lo);
     this.bump(); // if
     const gv102 = this.parseCond();
-    this.ast.a[n] = gv102;
+    rsPrPut(this.ast.a, n, gv102);
     if (!this.is(T_LBRACE)) {
       return this.fail();
     }
     const gv103 = this.parseBlock(this.lo(), 0);
-    this.ast.b[n] = gv103;
+    rsPrPut(this.ast.b, n, gv103);
     // parse_block: an inner attribute is not permitted in an `if` or `else` block.
     if (!this.failed && this.lastBlockInner > 0) {
       return this.fail();
@@ -4319,10 +4558,10 @@ export class RsParser {
       const elo = this.lo();
       if (this.isKw(KW_IF)) {
         const gv104 = this.parseIf(elo);
-        this.ast.c[n] = gv104;
+        rsPrPut(this.ast.c, n, gv104);
       } else if (this.is(T_LBRACE)) {
         const gv105 = this.parseBlockExpr(elo, -1, 0);
-        this.ast.c[n] = gv105;
+        rsPrPut(this.ast.c, n, gv105);
         if (!this.failed && this.lastBlockInner > 0) {
           return this.fail();
         }
@@ -4335,15 +4574,15 @@ export class RsParser {
 
   parseWhile(lo: i32, label: i32): i32 {
     const n = this.nd(N_EX_WHILE, lo);
-    this.ast.d[n] = label;
+    rsPrPut(this.ast.d, n, label);
     this.bump(); // while
     const gv106 = this.parseCond();
-    this.ast.a[n] = gv106;
+    rsPrPut(this.ast.a, n, gv106);
     if (!this.is(T_LBRACE)) {
       return this.fail();
     }
     const gv107 = this.parseBlock(this.lo(), 0);
-    this.ast.b[n] = gv107;
+    rsPrPut(this.ast.b, n, gv107);
     if (this.isKw(KW_ELSE)) {
       return this.fail(); // recover_loop_else: loops have no `else`
     }
@@ -4352,13 +4591,13 @@ export class RsParser {
 
   parseLoop(lo: i32, label: i32): i32 {
     const n = this.nd(N_EX_LOOP, lo);
-    this.ast.d[n] = label;
+    rsPrPut(this.ast.d, n, label);
     this.bump(); // loop
     if (!this.is(T_LBRACE)) {
       return this.fail();
     }
     const gv108 = this.parseBlock(this.lo(), 0);
-    this.ast.b[n] = gv108;
+    rsPrPut(this.ast.b, n, gv108);
     if (this.isKw(KW_ELSE)) {
       return this.fail(); // recover_loop_else: loops have no `else`
     }
@@ -4367,24 +4606,24 @@ export class RsParser {
 
   parseFor(lo: i32, label: i32): i32 {
     const n = this.nd(N_EX_FOR, lo);
-    this.ast.d[n] = label;
+    rsPrPut(this.ast.d, n, label);
     this.bump(); // for
     if (this.isKw(KW_AWAIT)) {
       this.bump();
-      this.ast.fl[n] = FOR_AWAIT;
+      rsPrPut(this.ast.fl, n, FOR_AWAIT);
     }
     const gv109 = this.parsePatTopAlt();
-    this.ast.a[n] = gv109;
+    rsPrPut(this.ast.a, n, gv109);
     if (!this.eatKw(KW_IN)) {
       return this.fail();
     }
     const gv110 = this.parseExprRes(R_NO_STRUCT);
-    this.ast.b[n] = gv110;
+    rsPrPut(this.ast.b, n, gv110);
     if (!this.is(T_LBRACE)) {
       return this.fail();
     }
     const gv111 = this.parseBlock(this.lo(), 0);
-    this.ast.c[n] = gv111;
+    rsPrPut(this.ast.c, n, gv111);
     if (this.isKw(KW_ELSE)) {
       return this.fail(); // recover_loop_else: loops have no `else`
     }
@@ -4395,15 +4634,15 @@ export class RsParser {
     const n = this.nd(N_EX_MATCH, lo);
     this.bump(); // match
     const gv112 = this.parseExprRes(R_NO_STRUCT);
-    this.ast.a[n] = gv112;
+    rsPrPut(this.ast.a, n, gv112);
     if (!this.is(T_LBRACE)) {
       return this.fail();
     }
-    this.ast.x[n] = this.p;
+    rsPrPut(this.ast.x, n, this.p);
     this.bump();
     const am = this.sp;
     const na = this.innerAttrs();
-    const innerKids = this.ast.addKids(this.stk, am, am + na);
+    const innerKids = this.stackKids(am, na);
     this.sp = am;
     const mark = this.sp;
     const old = this.res;
@@ -4414,12 +4653,12 @@ export class RsParser {
       const arm = this.nd(N_ARM, alo);
       this.res = 0;
       const gv113 = this.parsePatTopAlt();
-      this.ast.a[arm] = gv113;
+      rsPrPut(this.ast.a, arm, gv113);
       if (this.eatKw(KW_IF)) {
         // expect_match_arm_guard_cond: let chains are allowed in a guard at
         // every edition (LetChainsPolicy::AlwaysAllowed).
         const gv114 = this.parseExprRes(R_ALLOW_LET);
-        this.ast.b[arm] = gv114;
+        rsPrPut(this.ast.b, arm, gv114);
         if (!this.failed && this.condHasForbiddenLet(gv114, false)) {
           this.failed = true; // CondChecker
         }
@@ -4434,7 +4673,7 @@ export class RsParser {
       if (this.failed) {
         break;
       }
-      this.ast.c[arm] = body;
+      rsPrPut(this.ast.c, arm, body);
       this.fin(arm);
       this.setAttrs(arm, aam, ana);
       this.push(arm);
@@ -4458,16 +4697,16 @@ export class RsParser {
 
   parseBlockExpr(lo: i32, label: i32, rules: i32): i32 {
     const e = this.nd(N_EX_BLOCK, lo);
-    this.ast.d[e] = label;
+    rsPrPut(this.ast.d, e, label);
     const gv115 = this.parseBlock(lo, rules);
-    this.ast.a[e] = gv115;
+    rsPrPut(this.ast.a, e, gv115);
     return this.fin(e);
   }
 
   /** A block at `{`; its span starts at `lo` (the `unsafe` or label before it, if any). */
   parseBlock(lo: i32, rules: i32): i32 {
     const b = this.nd(N_BLOCK, lo);
-    this.ast.fl[b] = rules;
+    rsPrPut(this.ast.fl, b, rules);
     if (!this.expect(T_LBRACE)) {
       return -1;
     }
@@ -4475,7 +4714,7 @@ export class RsParser {
     this.res = 0;
     const am = this.sp;
     const na = this.innerAttrs();
-    const innerKids = this.ast.addKids(this.stk, am, am + na);
+    const innerKids = this.stackKids(am, na);
     this.sp = am;
     const mark = this.sp;
     while (!this.failed && !this.is(T_RBRACE)) {
@@ -4591,35 +4830,35 @@ export class RsParser {
       s = this.nd(N_LOCAL, lo);
       if (isSuper) {
         this.bump();
-        this.ast.fl[s] = LOCAL_SUPER;
+        rsPrPut(this.ast.fl, s, LOCAL_SUPER);
       }
       this.bump();
       const gv116 = this.parsePatTopAlt();
-      this.ast.a[s] = gv116;
-      if (!this.failed && this.ast.kind[gv116] === N_PAT_OR) {
+      rsPrPut(this.ast.a, s, gv116);
+      if (!this.failed && atI32(this.ast.kind, gv116) === N_PAT_OR) {
         return this.fail(); // `let` bindings require top-level or-patterns in parentheses
       }
       if (this.eat(T_COLON)) {
         const gv117 = this.parseTy();
-        this.ast.b[s] = gv117;
+        rsPrPut(this.ast.b, s, gv117);
       }
       if (this.eat(T_EQ)) {
         const gv118 = this.parseExprRes(0);
-        this.ast.c[s] = gv118;
+        rsPrPut(this.ast.c, s, gv118);
         if (this.isKw(KW_ELSE)) {
           this.bump();
           if (!this.is(T_LBRACE)) {
             return this.fail();
           }
           const gv119 = this.parseBlock(this.lo(), 0);
-          this.ast.x[s] = gv119;
+          rsPrPut(this.ast.x, s, gv119);
           if (!this.failed && this.lastBlockInner > 0) {
             return this.fail(); // parse_block: no inner attributes in a let-else block
           }
           // check_let_else_init_bool_expr and check_let_else_init_trailing_brace.
           if (!this.failed) {
-            const ik = this.ast.kind[gv118];
-            const op = this.ast.x[gv118];
+            const ik = atI32(this.ast.kind, gv118);
+            const op = atI32(this.ast.x, gv118);
             if (ik === N_EX_BINARY && (op === T_ANDAND || op === T_OROR)) {
               return this.fail();
             }
@@ -4647,9 +4886,9 @@ export class RsParser {
         return this.fail();
       }
       this.setAttrs(it, am, na);
-      s = this.nd(N_STMT_ITEM, this.ast.lo[it]);
-      this.ast.a[s] = it;
-      this.ast.hi[s] = this.ast.hi[it];
+      s = this.nd(N_STMT_ITEM, atI32(this.ast.lo, it));
+      rsPrPut(this.ast.a, s, it);
+      rsPrPut(this.ast.hi, s, atI32(this.ast.hi, it));
       return s;
     } else if (this.is(T_SEMI)) {
       s = this.nd(N_STMT_EMPTY, lo);
@@ -4669,18 +4908,18 @@ export class RsParser {
         return -1;
       }
       s = this.nd(N_STMT_EXPR, lo);
-      this.ast.a[s] = e;
-      this.ast.hi[s] = this.ast.hi[e];
+      rsPrPut(this.ast.a, s, e);
+      rsPrPut(this.ast.hi, s, atI32(this.ast.hi, e));
     }
     if (this.failed) {
       return -1;
     }
     // The trailing semicolon.
-    const sk = this.ast.kind[s];
+    const sk = atI32(this.ast.kind, s);
     if (sk === N_STMT_EXPR) {
-      const e = this.ast.a[s];
+      const e = atI32(this.ast.a, s);
       if (this.eat(T_SEMI)) {
-        this.ast.kind[s] = N_STMT_SEMI;
+        rsPrPut(this.ast.kind, s, N_STMT_SEMI);
       } else if (!this.isBlockLike(e) && !this.is(T_RBRACE) && !this.is(T_EOF)) {
         return this.fail();
       }
@@ -4688,8 +4927,8 @@ export class RsParser {
       this.setAttrs(e, am, na);
     } else if (sk === N_STMT_MAC) {
       if (this.eat(T_SEMI)) {
-        this.ast.fl[s] = MS_SEMI;
-      } else if ((this.ast.fl[s] & MS_BRACES) !== 0) {
+        rsPrPut(this.ast.fl, s, MS_SEMI);
+      } else if ((atI32(this.ast.fl, s) & MS_BRACES) !== 0) {
         // `m! {}` needs no semicolon.
       } else if (!this.is(T_RBRACE) && !this.is(T_EOF)) {
         return this.fail();
@@ -4698,7 +4937,7 @@ export class RsParser {
     } else {
       this.setAttrs(s, am, na);
     }
-    this.ast.hi[s] = this.ph;
+    rsPrPut(this.ast.hi, s, this.ph);
     return s;
   }
 
@@ -4710,7 +4949,7 @@ export class RsParser {
       if (e < 0) {
         return false;
       }
-      const k = ast.kind[e];
+      const k = atI32(ast.kind, e);
       if (
         k === N_EX_ADDR_OF ||
         k === N_EX_UNARY ||
@@ -4721,9 +4960,9 @@ export class RsParser {
         k === N_EX_BECOME ||
         k === N_EX_CLOSURE
       ) {
-        e = ast.a[e]; // the operand, value or body; none ends it
+        e = atI32(ast.a, e); // the operand, value or body; none ends it
       } else if (k === N_EX_ASSIGN || k === N_EX_ASSIGN_OP || k === N_EX_BINARY || k === N_EX_LET || k === N_EX_RANGE) {
-        e = ast.b[e]; // the right side; a range without an end ends it
+        e = atI32(ast.b, e); // the right side; a range without an end ends it
       } else if (
         k === N_EX_ASYNC ||
         k === N_EX_GEN ||
@@ -4739,9 +4978,9 @@ export class RsParser {
       ) {
         return true;
       } else if (k === N_EX_CAST) {
-        return this.tyTrailingBracedMac(ast.b[e]);
+        return this.tyTrailingBracedMac(atI32(ast.b, e));
       } else if (k === N_EX_MAC) {
-        return ast.x[ast.b[ast.a[e]]] === T_LBRACE;
+        return atI32(ast.x, atI32(ast.b, atI32(ast.a, e))) === T_LBRACE;
       } else {
         return false;
       }
@@ -4756,27 +4995,32 @@ export class RsParser {
       if (t < 0) {
         return false;
       }
-      const k = ast.kind[t];
+      const k = atI32(ast.kind, t);
       if (k === N_TY_MAC) {
-        return ast.x[ast.b[ast.a[t]]] === T_LBRACE;
+        return atI32(ast.x, atI32(ast.b, atI32(ast.a, t))) === T_LBRACE;
       }
       if (k === N_TY_PTR || k === N_TY_REF) {
-        t = ast.a[t];
+        t = atI32(ast.a, t);
       } else if (k === N_TY_FN) {
-        t = ast.a[ast.b[t]];
+        t = atI32(ast.a, atI32(ast.b, t));
       } else if (k === N_TY_PATH) {
-        t = this.pathReturnTy(ast.b[t]);
+        t = this.pathReturnTy(atI32(ast.b, t));
       } else if (k === N_TY_IMPL || k === N_TY_DYN) {
-        const bs = ast.b[t];
-        const nb = ast.ln[bs];
+        const bs = atI32(ast.b, t);
+        const nb = atI32(ast.ln, bs);
         if (nb === 0) {
           return false;
         }
-        const last = ast.kid(bs, nb - 1);
-        if (ast.kind[last] !== N_TRAIT_BOUND) {
+        // A list length.
+        if (nb < 0) {
+          fault();
           return false;
         }
-        t = this.pathReturnTy(ast.a[last]);
+        const last = ast.kid(bs, nb - 1);
+        if (atI32(ast.kind, last) !== N_TRAIT_BOUND) {
+          return false;
+        }
+        t = this.pathReturnTy(atI32(ast.a, last));
       } else {
         return false;
       }
@@ -4786,15 +5030,23 @@ export class RsParser {
   /** classify::path_return_type: the `-> Ty` of the path's last segment's `(...)` arguments, or -1. */
   pathReturnTy(pa: i32): i32 {
     const ast = this.ast;
-    if (pa < 0 || ast.ln[pa] === 0) {
+    if (pa < 0) {
       return -1;
     }
-    const ns = ast.ln[pa];
-    const ga = ast.a[ast.kid(pa, ns - 1)];
-    if (ga < 0 || ast.kind[ga] !== N_PGARGS) {
+    const ns = atI32(ast.ln, pa);
+    if (ns === 0) {
       return -1;
     }
-    return ast.a[ga];
+    // A list length.
+    if (ns < 0) {
+      fault();
+      return -1;
+    }
+    const ga = atI32(ast.a, ast.kid(pa, ns - 1));
+    if (ga < 0 || atI32(ast.kind, ga) !== N_PGARGS) {
+      return -1;
+    }
+    return atI32(ast.a, ga);
   }
 
   parseStmtPathStart(lo: i32): i32 {
@@ -4807,20 +5059,20 @@ export class RsParser {
       if (nk === T_LPAREN || nk === T_LBRACKET || nk === T_LBRACE) {
         this.bump();
         const mac = this.nd(N_MAC, lo);
-        this.ast.a[mac] = pa;
+        rsPrPut(this.ast.a, mac, pa);
         const tts = this.parseTts();
-        this.ast.b[mac] = tts;
+        rsPrPut(this.ast.b, mac, tts);
         this.fin(mac);
-        const braces = this.ast.x[tts] === T_LBRACE;
+        const braces = atI32(this.ast.x, tts) === T_LBRACE;
         const t = this.tk();
         if ((braces && t !== T_DOT && t !== T_QUESTION) || t === T_SEMI || t === T_EOF) {
           const s = this.nd(N_STMT_MAC, lo);
-          this.ast.a[s] = mac;
-          this.ast.fl[s] = braces ? MS_BRACES : MS_NOBRACES;
+          rsPrPut(this.ast.a, s, mac);
+          rsPrPut(this.ast.fl, s, braces ? MS_BRACES : MS_NOBRACES);
           return this.fin(s);
         }
         const me = this.nd(N_EX_MAC, lo);
-        this.ast.a[me] = mac;
+        rsPrPut(this.ast.a, me, mac);
         this.fin(me);
         const old = this.res;
         this.res = R_STMT_EXPR;
@@ -4828,7 +5080,7 @@ export class RsParser {
         const e2 = this.parseExprAssocRest(0, e1, lo);
         this.res = old;
         const s = this.nd(N_STMT_EXPR, lo);
-        this.ast.a[s] = e2;
+        rsPrPut(this.ast.a, s, e2);
         return this.fin(s);
       }
     }
@@ -4837,7 +5089,7 @@ export class RsParser {
       e = this.parseStructExpr(lo, -1, pa);
     } else {
       e = this.nd(N_EX_PATH, lo);
-      this.ast.b[e] = pa;
+      rsPrPut(this.ast.b, e, pa);
       this.fin(e);
     }
     const old = this.res;
@@ -4846,30 +5098,64 @@ export class RsParser {
     const e2 = this.parseExprAssocRest(0, e1, lo);
     this.res = old;
     const s = this.nd(N_STMT_EXPR, lo);
-    this.ast.a[s] = e2;
+    rsPrPut(this.ast.a, s, e2);
     return this.fin(s);
   }
 
   /** Moves the inner attributes recorded by `innerOf` onto their nodes, after the outer ones. */
   finishInnerAttrs(): void {
     const k = this.nInner;
-    for (let i = 0; i < k; i++) {
-      const n = this.innerNode[i];
-      const s = this.innerS[i];
-      const c = this.innerN[i];
-      const on = this.ast.atn[n];
-      const os = this.ast.ats[n];
-      const start = this.ast.nk;
-      this.ast.kids = growI32(this.ast.kids, start + on + c);
-      for (let j = 0; j < on; j++) {
-        this.ast.kids[start + j] = this.ast.kids[os + j];
+    const nodes = this.innerNode;
+    const ss = this.innerS;
+    const ns = this.innerN;
+    // innerOf grew the three tables past nInner.
+    if (k > nodes.length || k > ss.length || k > ns.length) {
+      fault();
+      return;
+    }
+    const ast = this.ast;
+    for (let i = 0; i < k && i < nodes.length && i < ss.length && i < ns.length; i++) {
+      const n = nodes[i];
+      const s = ss[i];
+      const c = ns[i];
+      const on = atI32(ast.atn, n);
+      const os = atI32(ast.ats, n);
+      const start = ast.nk;
+      const total = toI64(start) + toI64(on) + toI64(c);
+      if (start < 0 || on < 0 || c < 0 || total > toI64(2147483647)) {
+        fault();
+        return;
       }
-      for (let j = 0; j < c; j++) {
-        this.ast.kids[start + on + j] = this.ast.kids[s + j];
+      // All three are non-negative and their sum fits (checked in i64): the u32 sums are exact.
+      const mid = toI32(toU32(start) + toU32(on));
+      const fin = toI32(toU32(mid) + toU32(c));
+      const kids = growI32(ast.kids, fin);
+      ast.kids = kids;
+      if (fin > kids.length) {
+        fault();
+        return;
       }
-      this.ast.nk = start + on + c;
-      this.ast.ats[n] = start;
-      this.ast.atn[n] = on + c;
+      let q = os;
+      for (let d = start; d >= 0 && d < mid && d < kids.length; d++) {
+        if (q < 0 || q >= kids.length) {
+          fault();
+          return;
+        }
+        kids[d] = kids[q];
+        q++;
+      }
+      q = s;
+      for (let d = mid; d >= 0 && d < fin && d < kids.length; d++) {
+        if (q < 0 || q >= kids.length) {
+          fault();
+          return;
+        }
+        kids[d] = kids[q];
+        q++;
+      }
+      ast.nk = fin;
+      rsPrPut(ast.ats, n, start);
+      rsPrPut(ast.atn, n, toI32(toU32(on) + toU32(c)));
     }
   }
 }

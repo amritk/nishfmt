@@ -4,6 +4,7 @@
 // Ported from rustfmt 1.10.0 (MIT OR Apache-2.0, Copyright The Rust Project
 // Developers): types.rs.
 
+import { add32, atI32, sub32 } from "../core/arr";
 import { rsParamSpannedLo, rsRewriteParam } from "./items";
 import {
   AT_DOC,
@@ -78,16 +79,16 @@ export const PC_IMPORT: i32 = 2;
 /** rewrite_path: `qself` is an N_QSELF node or -1. */
 export const rsRewritePath = (ctx: RsCtx, pc: i32, qself: i32, path: i32, shape: RsShape): string | null => {
   const ast = ctx.ast;
-  const skip = qself >= 0 ? ast.x[qself] : 0;
+  const skip = qself >= 0 ? atI32(ast.x, qself) : 0;
   let result = "";
-  const global = (ast.fl[path] & PATH_GLOBAL) !== 0;
+  const global = (atI32(ast.fl, path) & PATH_GLOBAL) !== 0;
   if (global && qself < 0 && pc !== PC_IMPORT) {
     result = "::";
   }
-  let spanLo = ast.lo[path];
+  let spanLo = atI32(ast.lo, path);
   if (qself >= 0) {
     result = result + "<";
-    const ft = rsRewriteTy(ctx, ast.a[qself], shape);
+    const ft = rsRewriteTy(ctx, atI32(ast.a, qself), shape);
     if (ft === null) {
       return null;
     }
@@ -102,17 +103,17 @@ export const rsRewritePath = (ctx: RsCtx, pc: i32, qself: i32, path: i32, shape:
         return null;
       }
       const st = new SegState(spanLo);
-      const r = rewritePathSegments(ctx, PC_TYPE, result, path, 0, skip, st, ast.hi[path], sh);
+      const r = rewritePathSegments(ctx, PC_TYPE, result, path, 0, skip, st, atI32(ast.hi, path), sh);
       if (r === null) {
         return null;
       }
       result = r;
     }
     result = result + ">::";
-    spanLo = ast.hi[ast.a[qself]] + 1;
+    spanLo = add32(atI32(ast.hi, atI32(ast.a, qself)), 1);
   }
   const st = new SegState(spanLo);
-  return rewritePathSegments(ctx, pc, result, path, skip, ast.ln[path], st, ast.hi[path], shape);
+  return rewritePathSegments(ctx, pc, result, path, skip, atI32(ast.ln, path), st, atI32(ast.hi, path), shape);
 };
 
 class SegState {
@@ -160,20 +161,20 @@ const rewritePathSegments = (
 
 const rewriteSegment = (ctx: RsCtx, pc: i32, seg: i32, st: SegState, spanHi: i32, shape0: RsShape): string | null => {
   const ast = ctx.ast;
-  let result = rsIdentStr(ctx, ast.d[seg]);
+  let result = rsIdentStr(ctx, atI32(ast.d, seg));
   const shape = shape0.offsetLeft(toI32(result.length));
   if (shape === null) {
     return null;
   }
-  const args = ast.a[seg];
+  const args = atI32(ast.a, seg);
   if (args >= 0) {
     const gs = rsRewriteGenericArgs(ctx, args, shape, st.lo, spanHi);
     if (gs === null) {
       return null;
     }
     // rustfmt 1.10 drops empty generic args, inside macros too.
-    if (ast.kind[args] === N_GARGS && ast.ln[args] > 0) {
-      const sepSnippet = rsTrim(ctx.snippet(ctx.f.t.hi[ast.d[seg]], ast.lo[args]));
+    if (atI32(ast.kind, args) === N_GARGS && atI32(ast.ln, args) > 0) {
+      const sepSnippet = rsTrim(ctx.snippet(atI32(ctx.f.t.hi, atI32(ast.d, seg)), atI32(ast.lo, args)));
       const force = ctx.insideMacro && sepSnippet.startsWith("::");
       if (pc === PC_EXPR || force) {
         result = result + "::";
@@ -188,19 +189,19 @@ const rewriteSegment = (ctx: RsCtx, pc: i32, seg: i32, st: SegState, spanHi: i32
 /** rewrite_generic_args; [lo, hi) is the span for the angle brackets. */
 export const rsRewriteGenericArgs = (ctx: RsCtx, args: i32, shape: RsShape, lo: i32, hi: i32): string | null => {
   const ast = ctx.ast;
-  const k = ast.kind[args];
+  const k = atI32(ast.kind, args);
   if (k === N_GARGS) {
-    if (ast.ln[args] === 0) {
+    if (atI32(ast.ln, args) === 0) {
       return "";
     }
     const items: i32[] = [];
-    for (let i = 0; i < ast.ln[args]; i++) {
+    for (let i = 0; i < atI32(ast.ln, args); i++) {
       items.push(ast.kid(args, i));
     }
     return rsRewriteWithAngleBrackets(ctx, "", items, OC_SEGMENT_PARAM, shape, lo, hi);
   }
   if (k === N_PGARGS) {
-    return formatFunctionType(ctx, args, ast.a[args], false, ast.lo[args], ast.hi[args], shape);
+    return formatFunctionType(ctx, args, atI32(ast.a, args), false, atI32(ast.lo, args), atI32(ast.hi, args), shape);
   }
   if (k === N_GARGS_ELIDED) {
     return "(..)";
@@ -211,9 +212,9 @@ export const rsRewriteGenericArgs = (ctx: RsCtx, args: i32, shape: RsShape, lo: 
 /** Rewrite for SegmentParam (an angle-bracketed generic arg). */
 export const rsRewriteSegmentParam = (ctx: RsCtx, n: i32, shape: RsShape): string | null => {
   const ast = ctx.ast;
-  const k = ast.kind[n];
+  const k = atI32(ast.kind, n);
   if (k === N_LIFETIME) {
-    return rsRewriteLifetimeTok(ctx, ast.d[n]);
+    return rsRewriteLifetimeTok(ctx, atI32(ast.d, n));
   }
   if (k === N_CONSTRAINT) {
     return rewriteConstraint(ctx, n, shape);
@@ -226,34 +227,34 @@ export const rsRewriteSegmentParam = (ctx: RsCtx, n: i32, shape: RsShape): strin
 
 const rewriteConstraint = (ctx: RsCtx, n: i32, shape: RsShape): string | null => {
   const ast = ctx.ast;
-  let result = rsIdentStr(ctx, ast.d[n]);
-  const ga = ast.a[n];
+  let result = rsIdentStr(ctx, atI32(ast.d, n));
+  const ga = atI32(ast.a, n);
   if (ga >= 0) {
-    const budget = shape.width - toI32(result.length);
+    const budget = sub32(shape.width, toI32(result.length));
     if (budget < 0) {
       return null;
     }
-    const sh = rsShapeLegacy(budget, shape.bi, shape.al + toI32(result.length));
-    const gs = rsRewriteGenericArgs(ctx, ga, sh, ast.lo[ga], ast.hi[ga]);
+    const sh = rsShapeLegacy(budget, shape.bi, add32(shape.al, toI32(result.length)));
+    const gs = rsRewriteGenericArgs(ctx, ga, sh, atI32(ast.lo, ga), atI32(ast.hi, ga));
     if (gs === null) {
       return null;
     }
     result = result + gs;
   }
-  const isBound = ast.c[n] >= 0;
+  const isBound = atI32(ast.c, n) >= 0;
   result = result + (isBound ? ": " : " = ");
-  const budget = shape.width - toI32(result.length);
+  const budget = sub32(shape.width, toI32(result.length));
   if (budget < 0) {
     return null;
   }
-  const sh = rsShapeLegacy(budget, shape.bi, shape.al + toI32(result.length));
+  const sh = rsShapeLegacy(budget, shape.bi, add32(shape.al, toI32(result.length)));
   let rw: string | null = null;
   if (isBound) {
-    rw = rsRewriteBounds(ctx, ast.c[n], sh);
-  } else if (ast.b[n] >= 0) {
-    rw = rsRewriteTy(ctx, ast.b[n], sh);
+    rw = rsRewriteBounds(ctx, atI32(ast.c, n), sh);
+  } else if (atI32(ast.b, n) >= 0) {
+    rw = rsRewriteTy(ctx, atI32(ast.b, n), sh);
   } else {
-    rw = rsFormatExpr(ctx, ast.e[n], EXPR_SUB, sh);
+    rw = rsFormatExpr(ctx, atI32(ast.e, n), EXPR_SUB, sh);
   }
   if (rw === null) {
     return null;
@@ -285,8 +286,8 @@ const formatFunctionType = (
     }
     out = " -> " + ts;
   }
-  const listShape = rsShapeIndented(shape.bi + cfg.tabSpaces, 0, cfg);
-  const n = ast.ln[decl];
+  const listShape = rsShapeIndented(add32(shape.bi, cfg.tabSpaces), 0, cfg);
+  const n = atI32(ast.ln, decl);
   const listLo = ctx.spanAfter(spanLo, spanHi, "(");
   let listStr = "";
   let tactic = DLT_HORIZONTAL;
@@ -306,7 +307,7 @@ const formatFunctionType = (
       ")",
       ",",
       (i: i32): i32 => rsParamSpannedLo(ast, ast.kid(decl, i)),
-      (i: i32): i32 => ast.hi[ast.b[ast.kid(decl, i)]],
+      (i: i32): i32 => atI32(ast.hi, atI32(ast.b, ast.kid(decl, i))),
       (i: i32): string | null => rsRewriteParam(ctx, ast.kid(decl, i), listShape),
       listLo,
       spanHi,
@@ -330,7 +331,7 @@ const formatFunctionType = (
   } else {
     args = "(" + rsIndentStrNl(cfg, listShape.bi, listShape.al) + listStr + rsIndentStrNl(cfg, shape.bi, 0) + ")";
   }
-  if (out.length === 0 || rsLastLineWidth(args, cfg.tabSpaces) + rsFirstLineWidth(out) <= shape.width) {
+  if (out.length === 0 || add32(rsLastLineWidth(args, cfg.tabSpaces), rsFirstLineWidth(out)) <= shape.width) {
     return args + out;
   }
   return args + "\n" + rsIndentStr(cfg, listShape.bi, listShape.al) + rsTrimStart(out);
@@ -340,7 +341,7 @@ const getTactics = (items: RsListItem[], output: string, shape: RsShape): i32 =>
   if (rsHasByte(output, 10)) {
     return DLT_VERTICAL;
   }
-  let w = shape.width - (2 + toI32(output.length));
+  let w = sub32(shape.width, add32(2, toI32(output.length)));
   if (w < 0) {
     w = 0;
   }
@@ -348,7 +349,8 @@ const getTactics = (items: RsListItem[], output: string, shape: RsShape): i32 =>
 };
 
 /** The lo of a where predicate (Spanned: with attributes). */
-export const rsWherePredLo = (ast: RsAst, p: i32): i32 => (ast.atn[p] > 0 ? ast.lo[ast.attr(p, 0)] : ast.lo[p]);
+export const rsWherePredLo = (ast: RsAst, p: i32): i32 =>
+  atI32(ast.atn, p) > 0 ? atI32(ast.lo, ast.attr(p, 0)) : atI32(ast.lo, p);
 
 /** Rewrite for ast::WherePredicate. */
 export const rsRewriteWherePred = (ctx: RsCtx, p: i32, shape: RsShape): string | null => {
@@ -357,18 +359,18 @@ export const rsRewriteWherePred = (ctx: RsCtx, p: i32, shape: RsShape): string |
   if (attrsStr === null) {
     return null;
   }
-  const k = ast.kind[p];
+  const k = atI32(ast.kind, p);
   let pred: string | null = null;
   if (k === N_WPRED_BOUND) {
-    const ts = rsRewriteTy(ctx, ast.a[p], shape);
+    const ts = rsRewriteTy(ctx, atI32(ast.a, p), shape);
     if (ts === null) {
       return null;
     }
-    const binder = rsRewriteBoundParams(ctx, shape, ast.c[p]);
+    const binder = rsRewriteBoundParams(ctx, shape, atI32(ast.c, p));
     const lhs = binder !== null ? `for<${binder}> ${ts}:` : `${ts}:`;
-    pred = rsRewriteAssignRhs(ctx, lhs, ast.b[p], RHS_BOUNDS, shape);
+    pred = rsRewriteAssignRhs(ctx, lhs, atI32(ast.b, p), RHS_BOUNDS, shape);
   } else if (k === N_WPRED_REGION) {
-    pred = rewriteBoundedLifetime(ctx, ast.d[p], ast.b[p], shape);
+    pred = rewriteBoundedLifetime(ctx, atI32(ast.d, p), atI32(ast.b, p), shape);
   } else if (k === N_WPRED_EQ) {
     ctx.unsupported("where equality predicate");
     return null;
@@ -377,12 +379,20 @@ export const rsRewriteWherePred = (ctx: RsCtx, p: i32, shape: RsShape): string |
     return null;
   }
   let result = attrsStr;
-  const na = ast.atn[p];
+  const na = atI32(ast.atn, p);
   if (na > 0) {
     const last = ast.attr(p, na - 1);
-    if (rsContainsComment(ctx.snippet(ast.hi[last], ast.lo[p]))) {
-      const isDoc = (ast.fl[last] & AT_DOC) !== 0;
-      return rsCombineStrsWithMissingComments(ctx, result, pred, ast.hi[last], ast.lo[p], shape.withWidth(0), !isDoc);
+    if (rsContainsComment(ctx.snippet(atI32(ast.hi, last), atI32(ast.lo, p)))) {
+      const isDoc = (atI32(ast.fl, last) & AT_DOC) !== 0;
+      return rsCombineStrsWithMissingComments(
+        ctx,
+        result,
+        pred,
+        atI32(ast.hi, last),
+        atI32(ast.lo, p),
+        shape.withWidth(0),
+        !isDoc,
+      );
     }
     // inline_attribute_width is 0: always a new line.
     result = result + rsIndentStrNl(ctx.cfg, shape.bi, shape.al);
@@ -392,10 +402,10 @@ export const rsRewriteWherePred = (ctx: RsCtx, p: i32, shape: RsShape): string |
 
 const rewriteBoundedLifetime = (ctx: RsCtx, lt: i32, bounds: i32, shape: RsShape): string | null => {
   const result = rsRewriteLifetimeTok(ctx, lt);
-  if (bounds < 0 || ctx.ast.ln[bounds] === 0) {
+  if (bounds < 0 || atI32(ctx.ast.ln, bounds) === 0) {
     return result;
   }
-  const overhead = rsLastLineWidth(result, ctx.cfg.tabSpaces) + 2;
+  const overhead = add32(rsLastLineWidth(result, ctx.cfg.tabSpaces), 2);
   const sh = shape.subWidth(overhead);
   if (sh === null) {
     return null;
@@ -412,18 +422,18 @@ export const rsRewriteLifetimeTok = (ctx: RsCtx, tok: i32): string => ctx.tokStr
 /** Rewrite for GenericBound. */
 const rewriteBound = (ctx: RsCtx, b: i32, shape: RsShape): string | null => {
   const ast = ctx.ast;
-  const k = ast.kind[b];
+  const k = atI32(ast.kind, b);
   if (k === N_LIFETIME) {
-    return rsRewriteLifetimeTok(ctx, ast.d[b]);
+    return rsRewriteLifetimeTok(ctx, atI32(ast.d, b));
   }
   if (k === N_USE_BOUND) {
     const items: i32[] = [];
-    for (let i = 0; i < ast.ln[b]; i++) {
+    for (let i = 0; i < atI32(ast.ln, b); i++) {
       items.push(ast.kid(b, i));
     }
-    return rsRewriteWithAngleBrackets(ctx, "use", items, OC_PRECISE, shape, ast.lo[b], ast.hi[b]);
+    return rsRewriteWithAngleBrackets(ctx, "use", items, OC_PRECISE, shape, atI32(ast.lo, b), atI32(ast.hi, b));
   }
-  const snippet = ctx.snippet(ast.lo[b], ast.hi[b]);
+  const snippet = ctx.snippet(atI32(ast.lo, b), atI32(ast.hi, b));
   const hasParen = snippet.startsWith("(") && snippet.endsWith(")");
   const s = rewritePolyTraitRef(ctx, b, shape);
   if (s === null) {
@@ -436,16 +446,16 @@ const rewritePolyTraitRef = (ctx: RsCtx, b: i32, shape0: RsShape): string | null
   const ast = ctx.ast;
   let binder = "";
   let shape = shape0;
-  const bs = rsRewriteBoundParams(ctx, shape0, ast.c[b]);
+  const bs = rsRewriteBoundParams(ctx, shape0, atI32(ast.c, b));
   if (bs !== null) {
-    const s1 = shape0.offsetLeft(toI32(bs.length) + 6);
+    const s1 = shape0.offsetLeft(add32(toI32(bs.length), 6));
     if (s1 === null) {
       return null;
     }
     shape = s1;
     binder = `for<${bs}> `;
   }
-  const f = ast.fl[b];
+  const f = atI32(ast.fl, b);
   let constness = "";
   if ((f & TB_MAYBE_CONST) !== 0) {
     constness = "[const] ";
@@ -454,11 +464,11 @@ const rewritePolyTraitRef = (ctx: RsCtx, b: i32, shape0: RsShape): string | null
   }
   const asyncness = (f & TB_ASYNC) !== 0 ? "async " : "";
   const polarity = (f & TB_MAYBE) !== 0 ? "?" : (f & TB_NEGATIVE) !== 0 ? "!" : "";
-  const sh = shape.offsetLeft(toI32(constness.length) + toI32(polarity.length));
+  const sh = shape.offsetLeft(add32(toI32(constness.length), toI32(polarity.length)));
   if (sh === null) {
     return null;
   }
-  const ps = rsRewritePath(ctx, PC_TYPE, -1, ast.a[b], sh);
+  const ps = rsRewritePath(ctx, PC_TYPE, -1, atI32(ast.a, b), sh);
   if (ps === null) {
     return null;
   }
@@ -467,33 +477,33 @@ const rewritePolyTraitRef = (ctx: RsCtx, b: i32, shape0: RsShape): string | null
 
 /** Rewrite for GenericBounds (an N_BOUNDS node). */
 export const rsRewriteBounds = (ctx: RsCtx, bounds: i32, shape: RsShape): string | null => {
-  if (bounds < 0 || ctx.ast.ln[bounds] === 0) {
+  if (bounds < 0 || atI32(ctx.ast.ln, bounds) === 0) {
     return "";
   }
   return joinBounds(ctx, shape, bounds, true, false);
 };
 
 /** The Spanned span of a bound. */
-const boundLo = (ast: RsAst, b: i32): i32 => ast.lo[b];
-const boundHi = (ast: RsAst, b: i32): i32 => ast.hi[b];
+const boundLo = (ast: RsAst, b: i32): i32 => atI32(ast.lo, b);
+const boundHi = (ast: RsAst, b: i32): i32 => atI32(ast.hi, b);
 
-const isTraitBound = (ast: RsAst, b: i32): boolean => ast.kind[b] !== N_LIFETIME;
+const isTraitBound = (ast: RsAst, b: i32): boolean => atI32(ast.kind, b) !== N_LIFETIME;
 
 /** join_bounds_inner's is_item_with_multi_items_array. */
 const isItemWithMultiItemsArray = (ast: RsAst, b: i32): boolean => {
-  const k = ast.kind[b];
+  const k = atI32(ast.kind, b);
   if (k === N_USE_BOUND) {
-    return ast.ln[b] > 1;
+    return atI32(ast.ln, b) > 1;
   }
   if (k !== N_TRAIT_BOUND) {
     return false;
   }
-  const path = ast.a[b];
-  if (ast.ln[path] > 1) {
+  const path = atI32(ast.a, b);
+  if (atI32(ast.ln, path) > 1) {
     return true;
   }
-  const args = ast.a[ast.kid(path, 0)];
-  return args >= 0 && ast.kind[args] === N_GARGS && ast.ln[args] > 1;
+  const args = atI32(ast.a, ast.kid(path, 0));
+  return args >= 0 && atI32(ast.kind, args) === N_GARGS && atI32(ast.ln, args) > 1;
 };
 
 const joinBounds = (
@@ -505,7 +515,7 @@ const joinBounds = (
 ): string | null => {
   const ast = ctx.ast;
   const cfg = ctx.cfg;
-  const n = ast.ln[bounds];
+  const n = atI32(ast.ln, bounds);
   // is_generic_bounds_in_order.
   let lastTrait = -1;
   let firstLifetime = -1;
@@ -526,7 +536,7 @@ const joinBounds = (
     const item = ast.kid(bounds, i);
     let trailingLo = -1;
     let trailingHi = -1;
-    if (i < n - 1) {
+    if (i + 1 < n) {
       const next = ast.kid(bounds, i + 1);
       const h = ctx.spanBefore(boundHi(ast, item), boundLo(ast, next), "+");
       trailingLo = boundHi(ast, item);
@@ -603,7 +613,7 @@ export const rsRewriteBoundParams = (ctx: RsCtx, shape: RsShape, binder: i32): s
   }
   const ast = ctx.ast;
   let result = "";
-  for (let i = 0; i < ast.ln[binder]; i++) {
+  for (let i = 0; i < atI32(ast.ln, binder); i++) {
     const s = rsRewriteGenericParam(ctx, ast.kid(binder, i), shape);
     if (s === null) {
       return null;
@@ -623,19 +633,19 @@ export const rsRewriteGenericParam = (ctx: RsCtx, p: i32, shape: RsShape): strin
   let result = a0 === null ? "" : a0;
   const hasAttrs = result.length !== 0;
   let param = "";
-  const f = ast.fl[p];
-  const paramStart = ast.lo[p];
+  const f = atI32(ast.fl, p);
+  const paramStart = atI32(ast.lo, p);
   if ((f & GP_CONST) !== 0) {
-    param = "const " + rsIdentStr(ctx, ast.d[p]) + ": ";
-    const ts = rsRewriteTy(ctx, ast.a[p], shape);
+    param = "const " + rsIdentStr(ctx, atI32(ast.d, p)) + ": ";
+    const ts = rsRewriteTy(ctx, atI32(ast.a, p), shape);
     if (ts === null) {
       return null;
     }
     param = param + ts;
-    const def = ast.c[p];
+    const def = atI32(ast.c, p);
     if (def >= 0) {
       param = param + " = ";
-      const budget = shape.width - toI32(param.length);
+      const budget = sub32(shape.width, toI32(param.length));
       if (budget < 0) {
         return null;
       }
@@ -646,10 +656,10 @@ export const rsRewriteGenericParam = (ctx: RsCtx, p: i32, shape: RsShape): strin
       param = param + rw;
     }
   } else {
-    param = rsIdentStr(ctx, ast.d[p]);
+    param = rsIdentStr(ctx, atI32(ast.d, p));
   }
-  const bounds = ast.b[p];
-  if (bounds >= 0 && ast.ln[bounds] > 0) {
+  const bounds = atI32(ast.b, p);
+  if (bounds >= 0 && atI32(ast.ln, bounds) > 0) {
     param = param + ": ";
     const bs = rsRewriteBounds(ctx, bounds, shape);
     if (bs === null) {
@@ -657,33 +667,33 @@ export const rsRewriteGenericParam = (ctx: RsCtx, p: i32, shape: RsShape): strin
     }
     param = param + bs;
   }
-  if ((f & GP_TYPE) !== 0 && ast.c[p] >= 0) {
+  if ((f & GP_TYPE) !== 0 && atI32(ast.c, p) >= 0) {
     param = param + " = ";
-    const budget = shape.width - toI32(param.length);
+    const budget = sub32(shape.width, toI32(param.length));
     if (budget < 0) {
       return null;
     }
-    const rw = rsRewriteTy(ctx, ast.c[p], rsShapeLegacy(budget, shape.bi, shape.al + toI32(param.length)));
+    const rw = rsRewriteTy(ctx, atI32(ast.c, p), rsShapeLegacy(budget, shape.bi, add32(shape.al, toI32(param.length))));
     if (rw === null) {
       return null;
     }
     param = param + rw;
   }
-  const na = ast.atn[p];
+  const na = atI32(ast.atn, p);
   if (na > 0) {
     const last = ast.attr(p, na - 1);
-    if (rsContainsComment(ctx.snippet(ast.hi[last], paramStart))) {
+    if (rsContainsComment(ctx.snippet(atI32(ast.hi, last), paramStart))) {
       return rsCombineStrsWithMissingComments(
         ctx,
         result,
         param,
-        ast.hi[last],
+        atI32(ast.hi, last),
         paramStart,
         shape,
-        (ast.fl[last] & AT_DOC) === 0,
+        (atI32(ast.fl, last) & AT_DOC) === 0,
       );
     }
-    if ((ast.fl[last] & AT_DOC) !== 0) {
+    if ((atI32(ast.fl, last) & AT_DOC) !== 0) {
       result = result + rsIndentStrNl(ctx.cfg, shape.bi, shape.al);
     } else if (hasAttrs) {
       result = result + " ";
@@ -693,17 +703,24 @@ export const rsRewriteGenericParam = (ctx: RsCtx, p: i32, shape: RsShape): strin
 };
 
 /** The Spanned span of a GenericParam. */
-export const rsGenericParamLo = (ast: RsAst, p: i32): i32 => (ast.atn[p] > 0 ? ast.lo[ast.attr(p, 0)] : ast.lo[p]);
+export const rsGenericParamLo = (ast: RsAst, p: i32): i32 =>
+  atI32(ast.atn, p) > 0 ? atI32(ast.lo, ast.attr(p, 0)) : atI32(ast.lo, p);
 export const rsGenericParamHi = (ctx: RsCtx, p: i32): i32 => {
   const ast = ctx.ast;
-  const b = ast.b[p];
-  const hi = b >= 0 && ast.ln[b] > 0 ? ast.hi[ast.kid(b, ast.ln[b] - 1)] : ctx.f.t.hi[ast.d[p]];
+  const b = atI32(ast.b, p);
+  const nb = b >= 0 ? atI32(ast.ln, b) : 0;
+  let hi = 0;
+  if (nb > 0) {
+    hi = atI32(ast.hi, ast.kid(b, nb - 1));
+  } else {
+    hi = atI32(ctx.f.t.hi, atI32(ast.d, p));
+  }
   let tyHi = hi;
-  const f = ast.fl[p];
-  if ((f & GP_TYPE) !== 0 && ast.c[p] >= 0) {
-    tyHi = ast.hi[ast.c[p]];
+  const f = atI32(ast.fl, p);
+  if ((f & GP_TYPE) !== 0 && atI32(ast.c, p) >= 0) {
+    tyHi = atI32(ast.hi, atI32(ast.c, p));
   } else if ((f & GP_CONST) !== 0) {
-    tyHi = ast.hi[ast.a[p]];
+    tyHi = atI32(ast.hi, atI32(ast.a, p));
   }
   return hi > tyHi ? hi : tyHi;
 };
@@ -711,37 +728,37 @@ export const rsGenericParamHi = (ctx: RsCtx, p: i32): i32 => {
 /** Rewrite of a trait ref (a path type, as in `impl Trait for`). */
 export const rsRewriteTraitRefTy = (ctx: RsCtx, ty: i32, shape: RsShape): string | null => {
   const ast = ctx.ast;
-  return rsRewritePath(ctx, PC_TYPE, -1, ast.b[ty], shape);
+  return rsRewritePath(ctx, PC_TYPE, -1, atI32(ast.b, ty), shape);
 };
 
 /** Rewrite for ast::Ty. */
 export const rsRewriteTy = (ctx: RsCtx, ty: i32, shape: RsShape): string | null => {
   const ast = ctx.ast;
-  const k = ast.kind[ty];
+  const k = atI32(ast.kind, ty);
   if (k === N_TY_DYN) {
     let sh: RsShape | null = shape;
     let prefix = "";
-    if ((ast.fl[ty] & TY_DYN) !== 0) {
+    if ((atI32(ast.fl, ty) & TY_DYN) !== 0) {
       sh = shape.offsetLeft(4);
       prefix = "dyn ";
     }
     if (sh === null) {
       return null;
     }
-    const bounds = ast.b[ty];
+    const bounds = atI32(ast.b, ty);
     const res0 = rsRewriteBounds(ctx, bounds, sh);
     if (res0 === null) {
       return null;
     }
     let res = res0;
-    if (ctx.insideMacro && ast.ln[bounds] === 1 && ctx.snip(ty).endsWith("+") && !res.endsWith("+")) {
+    if (ctx.insideMacro && atI32(ast.ln, bounds) === 1 && ctx.snip(ty).endsWith("+") && !res.endsWith("+")) {
       res = res + "+";
     }
     return prefix + res;
   }
   if (k === N_TY_PTR) {
-    const prefix = (ast.fl[ty] & MUT) !== 0 ? "*mut " : "*const ";
-    return rsRewriteUnaryPrefix(ctx, prefix, ast.a[ty], shape);
+    const prefix = (atI32(ast.fl, ty) & MUT) !== 0 ? "*mut " : "*const ";
+    return rsRewriteUnaryPrefix(ctx, prefix, atI32(ast.a, ty), shape);
   }
   if (k === N_TY_REF) {
     return rewriteRefTy(ctx, ty, shape);
@@ -751,20 +768,20 @@ export const rsRewriteTy = (ctx: RsCtx, ty: i32, shape: RsShape): string | null 
       if (shape.width < 2) {
         return null;
       }
-      const s = rsRewriteTy(ctx, ast.a[ty], rsShapeLegacy(shape.width - 2, shape.bi, shape.al + 1));
+      const s = rsRewriteTy(ctx, atI32(ast.a, ty), rsShapeLegacy(sub32(shape.width, 2), shape.bi, add32(shape.al, 1)));
       return s === null ? null : `(${s})`;
     }
     // 2 = ()
     const sh = shape.subWidth(2);
     if (sh !== null) {
-      const s = rsRewriteTy(ctx, ast.a[ty], sh);
+      const s = rsRewriteTy(ctx, atI32(ast.a, ty), sh);
       if (s !== null && !rsHasByte(s, 10)) {
         return `(${s})`;
       }
     }
     const indentStr = rsIndentStrNl(ctx.cfg, shape.bi, shape.al);
     const bs = shape.blockIndent(ctx.cfg.tabSpaces).withMaxWidth(ctx.cfg);
-    const rw = rsRewriteTy(ctx, ast.a[ty], bs);
+    const rw = rsRewriteTy(ctx, atI32(ast.a, ty), bs);
     if (rw === null) {
       return null;
     }
@@ -774,21 +791,21 @@ export const rsRewriteTy = (ctx: RsCtx, ty: i32, shape: RsShape): string | null 
     if (shape.width < 4) {
       return null;
     }
-    const s = rsRewriteTy(ctx, ast.a[ty], rsShapeLegacy(shape.width - 4, shape.bi, shape.al + 1));
+    const s = rsRewriteTy(ctx, atI32(ast.a, ty), rsShapeLegacy(sub32(shape.width, 4), shape.bi, add32(shape.al, 1)));
     return s === null ? null : `[${s}]`;
   }
   if (k === N_TY_TUP) {
     const items: i32[] = [];
-    for (let i = 0; i < ast.ln[ty]; i++) {
+    for (let i = 0; i < atI32(ast.ln, ty); i++) {
       items.push(ast.kid(ty, i));
     }
-    return rsRewriteTuple(ctx, items, OC_TY, ast.lo[ty], ast.hi[ty], shape, items.length === 1);
+    return rsRewriteTuple(ctx, items, OC_TY, atI32(ast.lo, ty), atI32(ast.hi, ty), shape, items.length === 1);
   }
   if (k === N_TY_PATH) {
-    return rsRewritePath(ctx, PC_TYPE, ast.a[ty], ast.b[ty], shape);
+    return rsRewritePath(ctx, PC_TYPE, atI32(ast.a, ty), atI32(ast.b, ty), shape);
   }
   if (k === N_TY_ARRAY) {
-    return rsRewritePair(ctx, ast.a[ty], ast.b[ty], new RsPairParts("[", "; ", "]"), shape, SPB_BACK);
+    return rsRewritePair(ctx, atI32(ast.a, ty), atI32(ast.b, ty), new RsPairParts("[", "; ", "]"), shape, SPB_BACK);
   }
   if (k === N_TY_INFER) {
     return shape.width >= 1 ? "_" : null;
@@ -800,14 +817,14 @@ export const rsRewriteTy = (ctx: RsCtx, ty: i32, shape: RsShape): string | null 
     return "!";
   }
   if (k === N_TY_MAC) {
-    return rsRewriteMacro(ctx, ast.a[ty], shape, rsMacroPosExpr());
+    return rsRewriteMacro(ctx, atI32(ast.a, ty), shape, rsMacroPosExpr());
   }
   if (k === N_TY_IMPLICIT_SELF) {
     return "";
   }
   if (k === N_TY_IMPL) {
-    const b = ast.b[ty];
-    if (ast.ln[b] === 0) {
+    const b = atI32(ast.b, ty);
+    if (atI32(ast.ln, b) === 0) {
       return "impl";
     }
     // At style edition 2024 the bounds are joined without need_indent.
@@ -827,19 +844,22 @@ export const rsRewriteTy = (ctx: RsCtx, ty: i32, shape: RsShape): string | null 
 const rewriteRefTy = (ctx: RsCtx, ty: i32, shape: RsShape): string | null => {
   const ast = ctx.ast;
   const cfg = ctx.cfg;
-  const isMut = (ast.fl[ty] & MUT) !== 0;
+  const isMut = (atI32(ast.fl, ty) & MUT) !== 0;
   const mutStr = isMut ? "mut " : "";
-  const mutLen = toI32(mutStr.length);
+  let mutLen = 0;
+  if (isMut) {
+    mutLen = 4;
+  }
   let result = "&";
-  const refHi = ctx.spanAfter(ast.lo[ty], ast.hi[ty], "&");
+  const refHi = ctx.spanAfter(atI32(ast.lo, ty), atI32(ast.hi, ty), "&");
   let cmntLo = refHi;
-  const lt = ast.d[ty];
+  const lt = atI32(ast.d, ty);
   if (lt >= 0) {
     if (shape.width < 2 + mutLen) {
       return null;
     }
     const ltStr = rsRewriteLifetimeTok(ctx, lt);
-    const ltLo = ctx.f.t.lo[lt];
+    const ltLo = atI32(ctx.f.t.lo, lt);
     if (rsContainsComment(ctx.snippet(cmntLo, ltLo))) {
       const r = rsCombineStrsWithMissingComments(ctx, result, ltStr, cmntLo, ltLo, shape, true);
       if (r === null) {
@@ -850,11 +870,11 @@ const rewriteRefTy = (ctx: RsCtx, ty: i32, shape: RsShape): string | null => {
       result = result + ltStr;
     }
     result = result + " ";
-    cmntLo = ctx.f.t.hi[lt];
+    cmntLo = atI32(ctx.f.t.hi, lt);
   }
   if (isMut) {
-    const mutHi = ctx.spanAfter(ast.lo[ty], ast.hi[ty], "mut");
-    const bm = mutHi - 3;
+    const mutHi = ctx.spanAfter(atI32(ast.lo, ty), atI32(ast.hi, ty), "mut");
+    const bm = sub32(mutHi, 3);
     if (rsContainsComment(ctx.snippet(cmntLo, bm))) {
       const r = rsCombineStrsWithMissingComments(ctx, rsTrimEnd(result), mutStr, cmntLo, bm, shape, true);
       if (r === null) {
@@ -866,8 +886,8 @@ const rewriteRefTy = (ctx: RsCtx, ty: i32, shape: RsShape): string | null => {
     }
     cmntLo = mutHi;
   }
-  const inner = ast.a[ty];
-  const tyLo = ast.lo[inner];
+  const inner = atI32(ast.a, ty);
+  const tyLo = atI32(ast.lo, inner);
   if (rsContainsComment(ctx.snippet(cmntLo, tyLo))) {
     const ts = rsRewriteTy(ctx, inner, shape);
     if (ts === null) {
@@ -879,7 +899,7 @@ const rewriteRefTy = (ctx: RsCtx, ty: i32, shape: RsShape): string | null => {
   if (shape.width < used) {
     return null;
   }
-  const ts = rsRewriteTy(ctx, inner, rsShapeLegacy(shape.width - used, shape.bi, shape.al + used));
+  const ts = rsRewriteTy(ctx, inner, rsShapeLegacy(sub32(shape.width, used), shape.bi, add32(shape.al, used)));
   if (ts === null) {
     return null;
   }
@@ -889,25 +909,25 @@ const rewriteRefTy = (ctx: RsCtx, ty: i32, shape: RsShape): string | null => {
 const rewriteFnPtr = (ctx: RsCtx, ty: i32, shape: RsShape): string | null => {
   const ast = ctx.ast;
   let result = "";
-  const bs = rsRewriteBoundParams(ctx, shape, ast.c[ty]);
+  const bs = rsRewriteBoundParams(ctx, shape, atI32(ast.c, ty));
   if (bs !== null) {
     result = "for<" + bs + "> ";
   }
-  const f = ast.fl[ty];
+  const f = atI32(ast.fl, ty);
   if ((f & FN_UNSAFE) !== 0) {
     result = result + "unsafe ";
   }
-  result = result + rsFormatExtern(ctx, (f & FN_EXTERN) !== 0, ast.x[ty]);
+  result = result + rsFormatExtern(ctx, (f & FN_EXTERN) !== 0, atI32(ast.x, ty));
   result = result + "fn";
   const fs = shape.offsetLeft(toI32(result.length));
   if (fs === null) {
     return null;
   }
-  const decl = ast.b[ty];
-  const n = ast.ln[decl];
-  const variadic = n > 0 && ast.kind[ast.b[ast.kid(decl, n - 1)]] === N_TY_CVARARGS;
+  const decl = atI32(ast.b, ty);
+  const n = atI32(ast.ln, decl);
+  const variadic = n > 0 && atI32(ast.kind, atI32(ast.b, ast.kid(decl, n - 1))) === N_TY_CVARARGS;
   // rustfmt 1.10 looks for the parameter list from the start of the whole type.
-  const rw = formatFunctionType(ctx, decl, ast.a[decl], variadic, ast.lo[ty], ast.hi[ty], fs);
+  const rw = formatFunctionType(ctx, decl, atI32(ast.a, decl), variadic, atI32(ast.lo, ty), atI32(ast.hi, ty), fs);
   if (rw === null) {
     return null;
   }
@@ -917,12 +937,12 @@ const rewriteFnPtr = (ctx: RsCtx, ty: i32, shape: RsShape): string | null => {
 /** can_be_overflowed_type. */
 export const rsCanBeOverflowedType = (ctx: RsCtx, ty: i32, len: i32): boolean => {
   const ast = ctx.ast;
-  const k = ast.kind[ty];
+  const k = atI32(ast.kind, ty);
   if (k === N_TY_TUP) {
     return len === 1;
   }
   if (k === N_TY_REF || k === N_TY_PTR) {
-    return rsCanBeOverflowedType(ctx, ast.a[ty], len);
+    return rsCanBeOverflowedType(ctx, atI32(ast.a, ty), len);
   }
   return false;
 };
@@ -930,10 +950,10 @@ export const rsCanBeOverflowedType = (ctx: RsCtx, ty: i32, len: i32): boolean =>
 /** Rewrite for a PreciseCapturingArg (a lifetime or a path type). */
 export const rsRewritePreciseArg = (ctx: RsCtx, n: i32, shape: RsShape): string | null => {
   const ast = ctx.ast;
-  if (ast.kind[n] === N_LIFETIME) {
-    return rsRewriteLifetimeTok(ctx, ast.d[n]);
+  if (atI32(ast.kind, n) === N_LIFETIME) {
+    return rsRewriteLifetimeTok(ctx, atI32(ast.d, n));
   }
-  return rsRewritePath(ctx, PC_TYPE, -1, ast.b[n], shape);
+  return rsRewritePath(ctx, PC_TYPE, -1, atI32(ast.b, n), shape);
 };
 
-export const rsIsTraitBoundNode = (ast: RsAst, b: i32): boolean => ast.kind[b] === N_TRAIT_BOUND;
+export const rsIsTraitBoundNode = (ast: RsAst, b: i32): boolean => atI32(ast.kind, b) === N_TRAIT_BOUND;
