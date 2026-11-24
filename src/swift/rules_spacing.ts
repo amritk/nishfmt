@@ -5,6 +5,8 @@
 
 import { swUniCheckPrefix } from "./unicode";
 import { SwFormatter } from "./formatter";
+import { add32 } from "../core/arr";
+import { fault } from "../core/fault";
 import { swIsInClosureArguments, swIsUnwrap } from "./parsing";
 import { SW_SPACE_NO, SW_SPACE_YES, swShouldInsertSpaceAfterToken } from "./parsing2";
 import {
@@ -35,6 +37,11 @@ const swIsSpaceOrLinebreakAt = (f: SwFormatter, i: i32): boolean =>
 /** spaceAroundBraces. */
 export const swRuleSpaceAroundBraces = (f: SwFormatter): void => {
   for (let i = f.enumStart(); i >= 0; i = f.enumNext()) {
+    // forEachToken's index is inside the list.
+    if (i >= f.count()) {
+      fault();
+      break;
+    }
     if (!f.tok(i, SW_START, "{") || !f.has(i - 1)) {
       continue;
     }
@@ -52,6 +59,11 @@ export const swRuleSpaceAroundBraces = (f: SwFormatter): void => {
     f.insert(SW_SPACE, " ", 0, i);
   }
   for (let i = f.enumStart(); i >= 0; i = f.enumNext()) {
+    // forEachToken's index is inside the list.
+    if (i >= f.count()) {
+      fault();
+      break;
+    }
     if (!f.tok(i, SW_END, "}") || !f.has(i + 1)) {
       continue;
     }
@@ -65,17 +77,27 @@ export const swRuleSpaceAroundBraces = (f: SwFormatter): void => {
 /** spaceAroundBrackets. */
 export const swRuleSpaceAroundBrackets = (f: SwFormatter): void => {
   for (let i0 = f.enumStart(); i0 >= 0; i0 = f.enumNext()) {
+    // forEachToken's index is inside the list.
+    if (i0 >= f.count()) {
+      fault();
+      break;
+    }
     if (!f.tok(i0, SW_START, "[")) {
       continue;
     }
     const i = i0 - 1;
     if (swShouldInsertSpaceAfterToken(f, i) === SW_SPACE_YES) {
-      f.insert(SW_SPACE, " ", 0, i + 1);
-    } else if (f.has(i) && f.k(i) === SW_SPACE && swShouldInsertSpaceAfterToken(f, i - 1) === SW_SPACE_NO) {
+      f.insert(SW_SPACE, " ", 0, i0);
+    } else if (f.has(i) && f.k(i) === SW_SPACE && swShouldInsertSpaceAfterToken(f, i0 - 2) === SW_SPACE_NO) {
       f.removeToken(i);
     }
   }
   for (let i0 = f.enumStart(); i0 >= 0; i0 = f.enumNext()) {
+    // forEachToken's index is inside the list.
+    if (i0 >= f.count()) {
+      fault();
+      break;
+    }
     if (!f.tok(i0, SW_END, "]")) {
       continue;
     }
@@ -92,7 +114,8 @@ export const swRuleSpaceAroundBrackets = (f: SwFormatter): void => {
     ) {
       f.insert(SW_SPACE, " ", 0, i);
     } else if (k === SW_SPACE) {
-      if ((f.tok(i + 1, SW_START, "(") && !swIsInClosureArguments(f, i + 1)) || f.tok(i + 1, SW_START, "[")) {
+      const i1 = add32(i, 1);
+      if ((f.tok(i1, SW_START, "(") && !swIsInClosureArguments(f, i1)) || f.tok(i1, SW_START, "[")) {
         f.removeToken(i);
       }
     }
@@ -102,17 +125,27 @@ export const swRuleSpaceAroundBrackets = (f: SwFormatter): void => {
 /** spaceAroundParens. */
 export const swRuleSpaceAroundParens = (f: SwFormatter): void => {
   for (let i0 = f.enumStart(); i0 >= 0; i0 = f.enumNext()) {
+    // forEachToken's index is inside the list.
+    if (i0 >= f.count()) {
+      fault();
+      break;
+    }
     if (!f.tok(i0, SW_START, "(")) {
       continue;
     }
     const i = i0 - 1;
     if (swShouldInsertSpaceAfterToken(f, i) === SW_SPACE_YES) {
-      f.insertSpace(" ", i + 1);
-    } else if (f.has(i) && f.k(i) === SW_SPACE && swShouldInsertSpaceAfterToken(f, i - 1) === SW_SPACE_NO) {
+      f.insertSpace(" ", i0);
+    } else if (f.has(i) && f.k(i) === SW_SPACE && swShouldInsertSpaceAfterToken(f, i0 - 2) === SW_SPACE_NO) {
       f.removeToken(i);
     }
   }
   for (let i0 = f.enumStart(); i0 >= 0; i0 = f.enumNext()) {
+    // forEachToken's index is inside the list.
+    if (i0 >= f.count()) {
+      fault();
+      break;
+    }
     if (!f.tok(i0, SW_END, ")")) {
       continue;
     }
@@ -123,7 +156,7 @@ export const swRuleSpaceAroundParens = (f: SwFormatter): void => {
     const k = f.k(i);
     if (k === SW_IDENT || k === SW_KEYWORD || f.tok(i, SW_START, "{")) {
       f.insertSpace(" ", i);
-    } else if (k === SW_SPACE && f.tok(i + 1, SW_START, "[")) {
+    } else if (k === SW_SPACE && f.tok(add32(i, 1), SW_START, "[")) {
       f.removeToken(i);
     }
   }
@@ -132,11 +165,21 @@ export const swRuleSpaceAroundParens = (f: SwFormatter): void => {
 /** spaceAroundComments. */
 export const swRuleSpaceAroundComments = (f: SwFormatter): void => {
   for (let i = f.enumStart(); i >= 0; i = f.enumNext()) {
+    // forEachToken's index is inside the list.
+    if (i >= f.count()) {
+      fault();
+      break;
+    }
     if (f.tok(i, SW_START, "//") && f.has(i - 1) && !swIsSpaceOrLinebreakAt(f, i - 1)) {
       f.insert(SW_SPACE, " ", 0, i);
     }
   }
   for (let i = f.enumStart(); i >= 0; i = f.enumNext()) {
+    // forEachToken's index is inside the list.
+    if (i >= f.count()) {
+      fault();
+      break;
+    }
     if (!f.tok(i, SW_END, "*/")) {
       continue;
     }
@@ -184,11 +227,11 @@ const swEndsWithSpace = (s: string): boolean => {
     return false;
   }
   let q = n - 1;
-  while (q > 0 && (s.charCodeAt(q) & 0xc0) === 0x80) {
+  while (q > 0 && q < s.length && (s.charCodeAt(q) & 0xc0) === 0x80) {
     q--;
   }
   const b: u8[] = [];
-  for (let j = q; j < n; j++) {
+  for (let j = q; j >= 0 && j < n && j < s.length; j++) {
     b.push(toU8(s.charCodeAt(j)));
   }
   return swCpIsSpace(swCpAt(b, toI32(b.length), 0));
@@ -197,6 +240,11 @@ const swEndsWithSpace = (s: string): boolean => {
 /** spaceAroundGenerics. */
 export const swRuleSpaceAroundGenerics = (f: SwFormatter): void => {
   for (let i = f.enumStart(); i >= 0; i = f.enumNext()) {
+    // forEachToken's index is inside the list.
+    if (i >= f.count()) {
+      fault();
+      break;
+    }
     if (
       f.tok(i, SW_START, "<") &&
       f.has(i - 1) &&
@@ -212,6 +260,11 @@ export const swRuleSpaceAroundGenerics = (f: SwFormatter): void => {
 /** spaceInsideBraces. */
 export const swRuleSpaceInsideBraces = (f: SwFormatter): void => {
   for (let i = f.enumStart(); i >= 0; i = f.enumNext()) {
+    // forEachToken's index is inside the list.
+    if (i >= f.count()) {
+      fault();
+      break;
+    }
     if (!f.tok(i, SW_START, "{") || !f.has(i + 1)) {
       continue;
     }
@@ -220,6 +273,11 @@ export const swRuleSpaceInsideBraces = (f: SwFormatter): void => {
     }
   }
   for (let i = f.enumStart(); i >= 0; i = f.enumNext()) {
+    // forEachToken's index is inside the list.
+    if (i >= f.count()) {
+      fault();
+      break;
+    }
     if (!f.tok(i, SW_END, "}") || !f.has(i - 1)) {
       continue;
     }
@@ -231,17 +289,27 @@ export const swRuleSpaceInsideBraces = (f: SwFormatter): void => {
 
 const swRemoveInsideSpace = (f: SwFormatter, open: string, close: string): void => {
   for (let i = f.enumStart(); i >= 0; i = f.enumNext()) {
+    // forEachToken's index is inside the list.
+    if (i >= f.count()) {
+      fault();
+      break;
+    }
     if (
       f.tok(i, SW_START, open) &&
       f.has(i + 1) &&
       f.k(i + 1) === SW_SPACE &&
-      f.has(i + 2) &&
-      !swKindIsComment(f.k(i + 2), f.s(i + 2))
+      f.has(add32(i, 2)) &&
+      !swKindIsComment(f.k(add32(i, 2)), f.s(add32(i, 2)))
     ) {
       f.removeToken(i + 1);
     }
   }
   for (let i = f.enumStart(); i >= 0; i = f.enumNext()) {
+    // forEachToken's index is inside the list.
+    if (i >= f.count()) {
+      fault();
+      break;
+    }
     if (
       f.tok(i, SW_END, close) &&
       f.has(i - 1) &&
@@ -267,11 +335,21 @@ export const swRuleSpaceInsideParens = (f: SwFormatter): void => {
 /** spaceInsideGenerics. */
 export const swRuleSpaceInsideGenerics = (f: SwFormatter): void => {
   for (let i = f.enumStart(); i >= 0; i = f.enumNext()) {
+    // forEachToken's index is inside the list.
+    if (i >= f.count()) {
+      fault();
+      break;
+    }
     if (f.tok(i, SW_START, "<") && f.has(i + 1) && f.k(i + 1) === SW_SPACE) {
       f.removeToken(i + 1);
     }
   }
   for (let i = f.enumStart(); i >= 0; i = f.enumNext()) {
+    // forEachToken's index is inside the list.
+    if (i >= f.count()) {
+      fault();
+      break;
+    }
     if (
       f.tok(i, SW_END, ">") &&
       f.has(i - 1) &&
@@ -287,6 +365,11 @@ export const swRuleSpaceInsideGenerics = (f: SwFormatter): void => {
 /** spaceInsideComments. */
 export const swRuleSpaceInsideComments = (f: SwFormatter): void => {
   for (let i = f.enumStart(); i >= 0; i = f.enumNext()) {
+    // forEachToken's index is inside the list.
+    if (i >= f.count()) {
+      fault();
+      break;
+    }
     if (!f.tok(i, SW_START, "//") || !f.has(i + 1) || f.k(i + 1) !== SW_COMMENT) {
       continue;
     }
@@ -297,7 +380,7 @@ export const swRuleSpaceInsideComments = (f: SwFormatter): void => {
     // SwiftFormat reads the first two Characters and hasPrefix("==="): only the Character
     // boundaries before bytes 1-3 decide, so a mark at byte 4 (`1` FE0F 20E3 in "/ `1...") is safe.
     swUniCheckPrefix(s, 4);
-    const c = s.charCodeAt(0);
+    const c = s.length > 0 ? s.charCodeAt(0) : 0;
     if (c === 47 || c === 33 || c === 58) {
       if (s.length > 1) {
         const d = s.charCodeAt(1);
@@ -310,6 +393,11 @@ export const swRuleSpaceInsideComments = (f: SwFormatter): void => {
     }
   }
   for (let i0 = f.enumStart(); i0 >= 0; i0 = f.enumNext()) {
+    // forEachToken's index is inside the list.
+    if (i0 >= f.count()) {
+      fault();
+      break;
+    }
     if (!f.tok(i0, SW_START, "/*") || !f.has(i0 + 1) || f.k(i0 + 1) !== SW_COMMENT) {
       continue;
     }
@@ -348,7 +436,7 @@ export const swRuleSpaceInsideComments = (f: SwFormatter): void => {
 const swIsBlank = (s: string): boolean => {
   const n = toI32(s.length);
   let i = 0;
-  while (i < n) {
+  while (i >= 0 && i < n && i < s.length) {
     const c = s.charCodeAt(i);
     if (c === 32 || c === 9) {
       i++;
@@ -359,8 +447,17 @@ const swIsBlank = (s: string): boolean => {
     }
     const b: u8[] = [];
     const l = c < 0xe0 ? 2 : c < 0xf0 ? 3 : 4;
-    for (let j = 0; j < l && i + j < n; j++) {
-      b.push(toU8(s.charCodeAt(i + j)));
+    // i < n and j < l <= 4.
+    for (let j = 0; j < l; j++) {
+      const q = add32(i, j);
+      if (q >= n) {
+        break;
+      }
+      if (q < 0 || q >= s.length) {
+        fault();
+        return false;
+      }
+      b.push(toU8(s.charCodeAt(q)));
     }
     const cp = swCpAt(b, toI32(b.length), 0);
     if (
@@ -375,7 +472,7 @@ const swIsBlank = (s: string): boolean => {
     ) {
       return false;
     }
-    i += l;
+    i = add32(i, l);
   }
   return true;
 };
@@ -383,6 +480,11 @@ const swIsBlank = (s: string): boolean => {
 /** spaceAroundOperators (default options). */
 export const swRuleSpaceAroundOperators = (f: SwFormatter): void => {
   for (let i = f.enumStart(); i >= 0; i = f.enumNext()) {
+    // forEachToken's index is inside the list.
+    if (i >= f.count()) {
+      fault();
+      break;
+    }
     const k = f.k(i);
     const s = f.s(i);
     const a = f.a(i);
@@ -467,7 +569,7 @@ export const swRuleSpaceAroundOperators = (f: SwFormatter): void => {
         prevIndex >= 0 &&
         (f.tok(prevIndex, SW_START, "[") || f.tok(prevIndex, SW_START, "(") || f.tok(prevIndex, SW_START, "<"))
       ) {
-        f.removeTokens(prevIndex + 1, i);
+        f.removeTokens(add32(prevIndex, 1), i);
       } else if (f.has(i - 1) && !swIsSpaceOrLinebreakAt(f, i - 1) && f.k(i - 1) !== SW_OP) {
         f.insert(SW_SPACE, " ", 0, i);
       }
@@ -476,7 +578,7 @@ export const swRuleSpaceAroundOperators = (f: SwFormatter): void => {
       (k === SW_OP && a === SW_OP_POSTFIX) ||
       (k === SW_START && s === ":")
     ) {
-      if (k === SW_DELIM && s === ":" && f.has(i + 1) && f.k(i + 1) === SW_IDENT && f.tok(i + 2, SW_DELIM, ":")) {
+      if (k === SW_DELIM && s === ":" && f.has(i + 1) && f.k(i + 1) === SW_IDENT && f.tok(add32(i, 2), SW_DELIM, ":")) {
         // It's a selector
         continue;
       }

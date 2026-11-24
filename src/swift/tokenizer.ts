@@ -43,28 +43,47 @@ import {
   swStringDelimiterType,
   swTokIs,
 } from "./token";
+import { add32, atU8, bytesText, sub32 } from "../core/arr";
+import { fault } from "../core/fault";
 
 /** The code point at byte `p` (the source is valid UTF-8), or -1 at the end. */
 export const swCpAt = (src: u8[], n: i32, p: i32): i32 => {
   if (p >= n) {
     return -1;
   }
+  // A sequence cut off by the end of the buffer panicked: it faults.
+  if (p < 0 || p >= src.length) {
+    fault();
+    return -1;
+  }
   const c = toI32(src[p]);
   if (c < 0x80) {
     return c;
   }
+  const p1 = p + 1;
+  if (p1 >= src.length) {
+    fault();
+    return -1;
+  }
+  const c1 = toI32(src[p1]) & 0x3f;
   if (c < 0xe0) {
-    return ((c & 0x1f) << 6) | (toI32(src[p + 1]) & 0x3f);
+    return ((c & 0x1f) << 6) | c1;
   }
+  const p2 = p1 + 1;
+  if (p2 >= src.length) {
+    fault();
+    return -1;
+  }
+  const c2 = toI32(src[p2]) & 0x3f;
   if (c < 0xf0) {
-    return ((c & 0x0f) << 12) | ((toI32(src[p + 1]) & 0x3f) << 6) | (toI32(src[p + 2]) & 0x3f);
+    return ((c & 0x0f) << 12) | (c1 << 6) | c2;
   }
-  return (
-    ((c & 0x07) << 18) |
-    ((toI32(src[p + 1]) & 0x3f) << 12) |
-    ((toI32(src[p + 2]) & 0x3f) << 6) |
-    (toI32(src[p + 3]) & 0x3f)
-  );
+  const p3 = p2 + 1;
+  if (p3 >= src.length) {
+    fault();
+    return -1;
+  }
+  return ((c & 0x07) << 18) | (c1 << 12) | (c2 << 6) | (toI32(src[p3]) & 0x3f);
 };
 
 /** The byte length of the UTF-8 sequence starting with byte `c`. */
@@ -72,8 +91,15 @@ export const swCpLen = (c: i32): i32 => (c < 0x80 ? 1 : c < 0xe0 ? 2 : c < 0xf0 
 
 /** Whether `src[0, n)` is valid UTF-8. */
 export const swValidUtf8 = (src: u8[], n: i32): boolean => {
+  if (n <= 0) {
+    return true;
+  }
+  if (n > src.length) {
+    fault();
+    return false;
+  }
   let i = 0;
-  while (i < n) {
+  while (i >= 0 && i < n && i < src.length) {
     const c = toI32(src[i]);
     if (c < 0x80) {
       i++;
@@ -89,11 +115,14 @@ export const swValidUtf8 = (src: u8[], n: i32): boolean => {
     } else {
       return false;
     }
+    // q runs over the k continuation bytes, i + 1 to i + k.
+    let q = i;
     for (let j = 1; j <= k; j++) {
-      if (i + j >= n) {
+      if (q >= n - 1) {
         return false;
       }
-      if ((toI32(src[i + j]) & 0xc0) !== 0x80) {
+      q = q + 1;
+      if (q >= src.length || (toI32(src[q]) & 0xc0) !== 0x80) {
         return false;
       }
     }
@@ -108,7 +137,10 @@ export const swValidUtf8 = (src: u8[], n: i32): boolean => {
         return false;
       }
     }
-    i += k + 1;
+    if (q >= n) {
+      return false;
+    }
+    i = q + 1;
   }
   return true;
 };
@@ -272,9 +304,13 @@ class SwLexer {
   spS: i32 = -1;
   spE: i32 = -1;
 
-  constructor(src: u8[], n: i32) {
+  // The source as one string, so a token's text is a substring of it.
+  text: string;
+
+  constructor(src: u8[], n: i32, text: string) {
     this.src = src;
     this.n = n;
+    this.text = text;
     this.t = new SwTokList();
     this.stack = [];
     this.closed = [];
@@ -285,7 +321,25 @@ class SwLexer {
   }
 
   adv(): void {
-    this.p += swCpLen(toI32(this.src[this.p]));
+    const src = this.src;
+    const p = this.p;
+    if (p < 0 || p >= src.length || p >= 0x7ffffff0) {
+      fault();
+      // Past the end, so every read loop stops.
+      this.p = this.n;
+      return;
+    }
+    const c = src[p];
+    // p < 0x7ffffff0, so p + 4 fits.
+    if (c < 0x80) {
+      this.p = p + 1;
+    } else if (c < 0xe0) {
+      this.p = toI32(toU32(p) + toU32(2));
+    } else if (c < 0xf0) {
+      this.p = toI32(toU32(p) + toU32(3));
+    } else {
+      this.p = toI32(toU32(p) + toU32(4));
+    }
   }
 
   read(c: i32): boolean {
@@ -298,34 +352,58 @@ class SwLexer {
 
   readStr(s: string): boolean {
     const k = toI32(s.length);
-    if (this.p + k > this.n) {
+    const p = this.p;
+    if (toI64(p) + toI64(k) > toI64(this.n)) {
       return false;
     }
-    for (let i = 0; i < k; i++) {
-      if (toI32(this.src[this.p + i]) !== s.charCodeAt(i)) {
+    const src = this.src;
+    let q = p;
+    for (let i = 0; i < k && i < s.length; i++) {
+      if (q < 0 || q >= src.length) {
+        fault();
         return false;
       }
+      if (toI32(src[q]) !== s.charCodeAt(i)) {
+        return false;
+      }
+      q++;
     }
-    this.p += k;
+    // q is p + k.
+    this.p = q;
     return true;
   }
 
   /** readString with a run of `h` hashes. */
   readHashes(h: i32): boolean {
-    if (this.p + h > this.n) {
+    const p = this.p;
+    if (toI64(p) + toI64(h) > toI64(this.n)) {
       return false;
     }
+    const src = this.src;
+    let q = p;
     for (let i = 0; i < h; i++) {
-      if (toI32(this.src[this.p + i]) !== 35) {
+      if (q < 0 || q >= src.length) {
+        fault();
         return false;
       }
+      if (toI32(src[q]) !== 35) {
+        return false;
+      }
+      q++;
     }
-    this.p += h;
+    // q is p + h, or p when h <= 0.
+    this.p = q;
     return true;
   }
 
+  /** The source bytes [a, b) as a string (String.fromBytes). */
   str(a: i32, b: i32): string {
-    return String.fromBytes(this.src, a, b);
+    const text = this.text;
+    if (a < 0 || b < a || b > text.length) {
+      fault();
+      return "";
+    }
+    return text.substring(a, b);
   }
 
   set(k: i32, a: i32, b: i32, x: i32): boolean {
@@ -336,7 +414,7 @@ class SwLexer {
   }
 
   last(): i32 {
-    return this.t.count() - 1;
+    return toI32(this.t.k.length) - 1;
   }
 }
 
@@ -406,7 +484,7 @@ const swParseNumber = (lx: SwLexer): boolean => {
   if (!swReadNumber(lx, 0)) {
     return false;
   }
-  if (lx.p - start === 1 && toI32(lx.src[start]) === 48) {
+  if (toI64(lx.p) - toI64(start) === toI64(1) && atU8(lx.src, start) === 48) {
     if (lx.read(120)) {
       // 0x
       const hs = lx.p;
@@ -435,7 +513,7 @@ const swParseNumber = (lx: SwLexer): boolean => {
               swReadToEndOfToken(lx);
               return lx.set(SW_ERROR, start, lx.p, 0);
             }
-            if (swCpIsDigit(toI32(lx.src[fs]))) {
+            if (swCpIsDigit(atU8(lx.src, fs))) {
               swReadToEndOfToken(lx);
               return lx.set(SW_ERROR, start, lx.p, 0);
             }
@@ -534,7 +612,10 @@ const swParseIdentifier = (lx: SwLexer): boolean => {
       let found = false;
       while (i < lx.n) {
         const c = swCpAt(lx.src, lx.n, i);
-        i += swCpLen(toI32(lx.src[i]));
+        i = swCpEnd(lx.src, i);
+        if (i < 0) {
+          break;
+        }
         if (c === 62) {
           if (prevWasHash) {
             found = true;
@@ -696,10 +777,23 @@ const swParseToken = (lx: SwLexer): boolean => {
 
 // --- tokenize()'s nested functions ---
 
-const swIs = (lx: SwLexer, i: i32, type: i32): boolean => swTokIs(lx.t.k[i], lx.t.s[i], lx.t.a[i], type);
+const swIs = (lx: SwLexer, i: i32, type: i32): boolean => {
+  const t = lx.t;
+  const tk = t.k;
+  const ts = t.s;
+  const ta = t.a;
+  if (i < 0 || i >= tk.length || i >= ts.length || i >= ta.length) {
+    fault();
+    return false;
+  }
+  return swTokIs(tk[i], ts[i], ta[i], type);
+};
 
 /** index(of:before:) — the tokenizer's plain linear search. */
 const swLxIndexBefore = (lx: SwLexer, type: i32, index: i32): i32 => {
+  if (index <= 0) {
+    return -1;
+  }
   let i = index - 1;
   while (i >= 0) {
     if (swIs(lx, i, type)) {
@@ -711,8 +805,11 @@ const swLxIndexBefore = (lx: SwLexer, type: i32, index: i32): i32 => {
 };
 
 const swLxIndexAfter = (lx: SwLexer, type: i32, index: i32): i32 => {
+  const n = toI32(lx.t.k.length);
+  if (index >= n) {
+    return -1;
+  }
   let i = index + 1;
-  const n = lx.t.count();
   while (i < n) {
     if (swIs(lx, i, type)) {
       return i;
@@ -722,21 +819,78 @@ const swLxIndexAfter = (lx: SwLexer, type: i32, index: i32): i32 => {
   return -1;
 };
 
-const swLxIsTok = (lx: SwLexer, i: i32, k: i32, s: string): boolean => lx.t.k[i] === k && lx.t.s[i] === s;
+const swLxIsTok = (lx: SwLexer, i: i32, k: i32, s: string): boolean => {
+  const tk = lx.t.k;
+  const ts = lx.t.s;
+  if (i < 0 || i >= tk.length || i >= ts.length) {
+    fault();
+    return false;
+  }
+  return tk[i] === k && ts[i] === s;
+};
 
 const swStackLast = (lx: SwLexer): i32 => {
-  const m = toI32(lx.stack.length);
-  return m === 0 ? -1 : lx.stack[m - 1];
+  const st = lx.stack;
+  const m = toI32(st.length);
+  return m > 0 ? st[m - 1] : -1;
+};
+
+/** lx.stack[j]; outside the stack faults and answers -1. */
+const swStackAt = (lx: SwLexer, j: i32): i32 => {
+  const st = lx.stack;
+  if (j >= 0 && j < st.length) {
+    return st[j];
+  }
+  fault();
+  return -1;
+};
+
+const swStackPop = (lx: SwLexer): void => {
+  const st = lx.stack;
+  if (st.length > 0) {
+    st.pop();
+  } else {
+    fault();
+  }
+};
+
+/** The byte after the UTF-8 sequence that starts at p (swCpLen), or -1 after a fault. */
+const swCpEnd = (src: u8[], p: i32): i32 => {
+  if (p < 0 || p >= src.length || p >= 0x7ffffff0) {
+    fault();
+    return -1;
+  }
+  const c = src[p];
+  // p < 0x7ffffff0, so p + 4 fits.
+  if (c < 0x80) {
+    return p + 1;
+  }
+  if (c < 0xe0) {
+    return toI32(toU32(p) + toU32(2));
+  }
+  if (c < 0xf0) {
+    return toI32(toU32(p) + toU32(3));
+  }
+  return toI32(toU32(p) + toU32(4));
 };
 
 const swProcessLinebreak = (lx: SwLexer, s0: i32): void => {
   // `char` was read at s0; a \r\n pair is one linebreak.
-  if (toI32(lx.src[s0]) === 13 && lx.read(10)) {
+  if (atU8(lx.src, s0) === 13 && lx.read(10)) {
     lx.t.push(SW_LINEBREAK, "\r\n", lx.line);
   } else {
     lx.t.push(SW_LINEBREAK, "\n", lx.line);
   }
-  lx.line = lx.line + 1;
+  swNextLine(lx);
+};
+
+const swNextLine = (lx: SwLexer): void => {
+  const ln = lx.line;
+  if (ln < 2147483647) {
+    lx.line = ln + 1;
+  } else {
+    fault();
+  }
 };
 
 const swProcessStringBodyRegex = (lx: SwLexer, regex: boolean, hashCount: i32): void => {
@@ -765,8 +919,10 @@ const swProcessStringBodyRegex = (lx: SwLexer, regex: boolean, hashCount: i32): 
           let lastSpace = false;
           if (cS > sS) {
             // the last scalar of the string
-            let q = cS - 1;
-            while (q > sS && (toI32(lx.src[q]) & 0xc0) === 0x80) {
+            const src = lx.src;
+            let q = sub32(cS, 1);
+            // sS >= 0, and q < lx.p is inside the source.
+            while (q > sS && q > 0 && q < src.length && (toI32(src[q]) & 0xc0) === 0x80) {
               q--;
             }
             lastSpace = swCpIsSpace(swCpAt(lx.src, lx.n, q));
@@ -780,7 +936,7 @@ const swProcessStringBodyRegex = (lx: SwLexer, regex: boolean, hashCount: i32): 
           lx.t.push(SW_STRBODY, lx.str(sS, cS), 0);
         }
         lx.t.push(SW_END, lx.str(cS, lx.p), 0);
-        lx.stack.pop();
+        swStackPop(lx);
         return;
       }
       lx.p = save;
@@ -789,7 +945,7 @@ const swProcessStringBodyRegex = (lx: SwLexer, regex: boolean, hashCount: i32): 
       if (cS > sS) {
         lx.t.push(SW_STRBODY, lx.str(sS, cS), 0);
       }
-      lx.stack.push(lx.t.count());
+      lx.stack.push(toI32(lx.t.k.length));
       lx.t.push(SW_START, "(", 0);
       return;
     }
@@ -800,19 +956,26 @@ const swProcessStringBodyRegex = (lx: SwLexer, regex: boolean, hashCount: i32): 
       lx.t.push(SW_ERROR, "", 0);
       swProcessLinebreak(lx, cS);
       if (!regex) {
-        lx.stack.pop();
+        swStackPop(lx);
       }
       return;
     }
     if (regex && hashCount === 0 && !escaped) {
       if (c === 91) {
-        classDepth++;
+        if (classDepth < 2147483647) {
+          classDepth++;
+        }
       } else if (c === 93 && classDepth > 0) {
         classDepth--;
       } else if (c === 40 && classDepth === 0) {
-        parenDepth++;
+        if (parenDepth < 2147483647) {
+          parenDepth++;
+        }
       } else if (c === 41 && classDepth === 0) {
-        parenDepth--;
+        // parenDepth is never negative here: it returns below 0.
+        if (parenDepth >= 0) {
+          parenDepth--;
+        }
         if (parenDepth < 0) {
           return;
         }
@@ -853,7 +1016,7 @@ const swProcessMultilineStringBody = (lx: SwLexer, regex: boolean, hashCount: i3
         }
         swFixMultilineStringIndent(lx);
         lx.t.push(SW_END, lx.str(cS, lx.p), 0);
-        lx.stack.pop();
+        swStackPop(lx);
         return;
       }
       lx.p = save;
@@ -862,16 +1025,16 @@ const swProcessMultilineStringBody = (lx: SwLexer, regex: boolean, hashCount: i3
       if (cS > sS) {
         lx.t.push(SW_STRBODY, lx.str(sS, cS), 0);
       }
-      lx.stack.push(lx.t.count());
+      lx.stack.push(toI32(lx.t.k.length));
       lx.t.push(SW_START, "(", 0);
       return;
     }
     if (c === 13 || c === 10) {
       // string != "" || tokens.last(where: { !$0.isSpace })?.isLinebreak
       let lastNonSpaceIsLinebreak = false;
-      for (let i = lx.t.count() - 1; i >= 0; i--) {
-        if (lx.t.k[i] !== SW_SPACE) {
-          lastNonSpaceIsLinebreak = lx.t.k[i] === SW_LINEBREAK;
+      for (let i = toI32(lx.t.k.length) - 1; i >= 0; i--) {
+        if (lx.t.kAt(i) !== SW_SPACE) {
+          lastNonSpaceIsLinebreak = lx.t.kAt(i) === SW_LINEBREAK;
           break;
         }
       }
@@ -899,33 +1062,43 @@ const swProcessMultilineStringBody = (lx: SwLexer, regex: boolean, hashCount: i3
 const swFixMultilineStringIndent = (lx: SwLexer): void => {
   const t = lx.t;
   const offsetStack: string[] = [""];
-  const lastI = t.count() - 1;
-  if (t.k[lastI] === SW_SPACE) {
-    offsetStack[0] = t.s[lastI];
+  const lastI = toI32(t.k.length) - 1;
+  if (t.kAt(lastI) === SW_SPACE) {
+    offsetStack[0] = t.sAt(lastI);
   }
   const from = swStackLast(lx);
-  for (let index = t.count() - 2; index >= from; index--) {
-    const nk = t.k[index + 1];
-    const ns = t.s[index + 1];
+  for (let index = toI32(t.k.length) - 2; index >= from; index--) {
+    // Token -1 was read at index 0 or index -1.
+    if (index < 0 || index >= t.k.length) {
+      fault();
+      break;
+    }
+    const nk = t.kAt(index + 1);
+    const ns = t.sAt(index + 1);
     const nextIsMulti = swIsMultilineStringDelimiter(nk, ns);
     if (
       !(
-        t.k[index] === SW_SPACE &&
-        t.k[index - 1] === SW_LINEBREAK &&
+        t.kAt(index) === SW_SPACE &&
+        t.kAt(index - 1) === SW_LINEBREAK &&
         ((nextIsMulti && nk === SW_END) || nk === SW_STRBODY)
       )
     ) {
       if (nextIsMulti && nk === SW_START) {
-        offsetStack.pop();
+        if (offsetStack.length > 0) {
+          offsetStack.pop();
+        } else {
+          fault();
+          break;
+        }
       }
       continue;
     }
-    const indent = t.s[index];
+    const indent = t.sAt(index);
     if (nextIsMulti && nk === SW_END) {
       offsetStack.push(indent);
     }
     const m = toI32(offsetStack.length);
-    const offset = m === 0 ? "" : offsetStack[m - 1];
+    const offset = m > 0 ? offsetStack[m - 1] : "";
     if (!(offset.length === 0 || indent.startsWith(offset))) {
       t.set(index, SW_ERROR, indent, 0);
       break;
@@ -1006,8 +1179,9 @@ const swProcessCommentBody = (lx: SwLexer): void => {
 const swCountScalars = (s: string): i32 => {
   let n = 0;
   const k = toI32(s.length);
+  // n counts at most i bytes, below k.
   for (let i = 0; i < k; i++) {
-    if ((s.charCodeAt(i) & 0xc0) !== 0x80) {
+    if ((s.charCodeAt(i) & 0xc0) !== 0x80 && n < k) {
       n++;
     }
   }
@@ -1037,7 +1211,7 @@ const swProcessMultilineCommentBody = (lx: SwLexer): void => {
     lx.adv();
     if (c === 47 && lx.read(42)) {
       swFlushComment(lx);
-      lx.stack.push(t.count());
+      lx.stack.push(toI32(t.k.length));
       t.push(SW_START, "/*", 0);
       continue;
     }
@@ -1047,34 +1221,35 @@ const swProcessMultilineCommentBody = (lx: SwLexer): void => {
       // Fix up indents
       let baseIndent = "";
       let baseLen = 0;
-      const lo = swStackLast(lx) + 1;
-      const hi = t.count() - 1;
-      for (let index = lo; index < hi; index++) {
-        if (t.k[index - 1] !== SW_LINEBREAK) {
+      const lo = add32(swStackLast(lx), 1);
+      const hi = toI32(t.k.length) - 1;
+      // lo is 0 or after the opening token, so index - 1 is a token; at 0 it read token -1.
+      for (let index = lo; index >= 0 && index < hi; index++) {
+        if (t.kAt(index - 1) !== SW_LINEBREAK) {
           continue;
         }
-        if (t.k[index] === SW_SPACE) {
-          const nk = t.k[index + 1];
-          if (nk === SW_COMMENT || (nk === SW_END && t.s[index + 1] === "*/")) {
-            const len = swCountScalars(t.s[index]);
+        if (t.kAt(index) === SW_SPACE) {
+          const nk = t.kAt(index + 1);
+          if (nk === SW_COMMENT || (nk === SW_END && t.sAt(index + 1) === "*/")) {
+            const len = swCountScalars(t.sAt(index));
             if (baseIndent.length === 0 || len < baseLen) {
-              baseIndent = t.s[index];
+              baseIndent = t.sAt(index);
               baseLen = len;
             }
           }
-        } else if (t.k[index] === SW_COMMENT) {
+        } else if (t.kAt(index) === SW_COMMENT) {
           baseIndent = "";
           baseLen = 0;
           break;
         }
       }
-      for (let index = hi - 1; index >= lo; index--) {
-        if (!(t.k[index] === SW_SPACE && t.k[index - 1] === SW_LINEBREAK && t.s[index].startsWith(baseIndent))) {
+      for (let index = hi > 0 ? hi - 1 : -1; index >= lo && index >= 0 && index < toI32(t.k.length); index--) {
+        if (!(t.kAt(index) === SW_SPACE && t.kAt(index - 1) === SW_LINEBREAK && t.sAt(index).startsWith(baseIndent))) {
           continue;
         }
-        const indent = t.s[index];
-        const nk = t.k[index + 1];
-        const ns = t.s[index + 1];
+        const indent = t.sAt(index);
+        const nk = t.kAt(index + 1);
+        const ns = t.sAt(index + 1);
         if (nk === SW_COMMENT) {
           t.set(index + 1, SW_COMMENT, swDropScalars(indent, baseLen) + ns, 0);
         } else if ((nk === SW_START && ns === "/*") || (nk === SW_END && ns === "*/")) {
@@ -1090,7 +1265,7 @@ const swProcessMultilineCommentBody = (lx: SwLexer): void => {
           t.set(index, SW_SPACE, baseIndent, 0);
         }
       }
-      lx.stack.pop();
+      swStackPop(lx);
       const top = swStackLast(lx);
       if (top < 0 || !swLxIsTok(lx, top, SW_START, "/*")) {
         return;
@@ -1111,13 +1286,25 @@ const swProcessMultilineCommentBody = (lx: SwLexer): void => {
   swFlushComment(lx);
 };
 
+/** Moves xs[j + 1, n) down to [j, n - 1). */
+const swShiftDown = (xs: i32[], j: i32): void => {
+  let q = j;
+  while (q >= 0 && q < xs.length) {
+    const r = q + 1;
+    if (r >= xs.length) {
+      break;
+    }
+    xs[q] = xs[r];
+    q = r;
+  }
+};
+
 const swConvertOpeningChevronToOperator = (lx: SwLexer, index: i32): void => {
-  for (let j = toI32(lx.stack.length) - 1; j >= 0; j--) {
-    if (lx.stack[j] === index) {
-      for (let q = j; q < toI32(lx.stack.length) - 1; q++) {
-        lx.stack[q] = lx.stack[q + 1];
-      }
-      lx.stack.pop();
+  const st = lx.stack;
+  for (let j = toI32(st.length) - 1; j >= 0 && j < st.length; j--) {
+    if (st[j] === index) {
+      swShiftDown(st, j);
+      swStackPop(lx);
       break;
     }
   }
@@ -1129,12 +1316,13 @@ const swConvertClosingChevronToOperator = (lx: SwLexer, i: i32, andOpeningChevro
   lx.t.set(i, SW_OP, ">", SW_OP_NONE);
   swStitchOperators(lx, i);
   let scopeIndex = -1;
-  if (andOpeningChevron && lx.closed.length !== 0) {
-    scopeIndex = lx.closed[0];
-    for (let q = 0; q < toI32(lx.closed.length) - 1; q++) {
-      lx.closed[q] = lx.closed[q + 1];
+  const closed = lx.closed;
+  if (andOpeningChevron && closed.length > 0) {
+    scopeIndex = closed[0];
+    swShiftDown(closed, 0);
+    if (closed.length > 0) {
+      closed.pop();
     }
-    lx.closed.pop();
   }
   const prevIndex = swLxIndexBefore(lx, SW_T_NON_SPACE_OR_COMMENT, i);
   if (prevIndex >= 0 && swLxIsTok(lx, prevIndex, SW_END, ">")) {
@@ -1147,29 +1335,36 @@ const swConvertClosingChevronToOperator = (lx: SwLexer, i: i32, andOpeningChevro
 
 const swLxIsUnwrapOperator = (lx: SwLexer, index: i32): boolean => {
   const t = lx.t;
-  if (t.k[index] === SW_OP && (t.s[index] === "?" || t.s[index] === "!") && index > 0) {
-    const pk = t.k[index - 1];
+  if (t.kAt(index) === SW_OP && (t.sAt(index) === "?" || t.sAt(index) === "!") && index > 0) {
+    const pk = t.kAt(index - 1);
     return !(pk === SW_SPACE || pk === SW_LINEBREAK) && pk !== SW_START;
   }
   return false;
 };
 
 const swStackShiftAbove = (lx: SwLexer, index: i32): void => {
-  for (let q = 0; q < toI32(lx.stack.length); q++) {
-    if (lx.stack[q] > index) {
-      lx.stack[q] = lx.stack[q] - 1;
+  const st = lx.stack;
+  for (let q = 0; q < st.length; q++) {
+    const v = st[q];
+    // index >= 0, so v > 0.
+    if (v > index && v > 0) {
+      st[q] = v - 1;
     }
   }
 };
 
 const swStitchOperators = (lx: SwLexer, index0: i32): void => {
   const t = lx.t;
-  let str = t.s[index0];
-  if (index0 > 0 && t.k[index0 - 1] === SW_OP && t.s[index0 - 1] === "\\") {
+  if (index0 < 0 || index0 >= toI32(t.k.length)) {
+    fault();
+    return;
+  }
+  let str = t.sAt(index0);
+  if (index0 > 0 && t.kAt(index0 - 1) === SW_OP && t.sAt(index0 - 1) === "\\") {
     if (str === ".?.") {
       t.set(index0, SW_OP, ".", SW_OP_PREFIX);
       t.insertAt(index0 + 1, SW_OP, "?", SW_OP_POSTFIX);
-      t.insertAt(index0 + 2, SW_OP, ".", SW_OP_INFIX);
+      t.insertAt(add32(index0, 2), SW_OP, ".", SW_OP_INFIX);
       return;
     }
     if (str === ".?") {
@@ -1179,18 +1374,18 @@ const swStitchOperators = (lx: SwLexer, index0: i32): void => {
     }
   }
   while (true) {
-    if (!(index0 + 1 < t.count())) {
+    if (!(index0 + 1 < toI32(t.k.length))) {
       break;
     }
-    if (t.k[index0 + 1] !== SW_OP) {
+    if (t.kAt(index0 + 1) !== SW_OP) {
       break;
     }
-    const next = t.s[index0 + 1];
+    const next = t.sAt(index0 + 1);
     if (next.startsWith("\\") || !(str.startsWith(".") || next.indexOf(".") < 0)) {
       break;
     }
     if (swStackLast(lx) === index0) {
-      lx.stack.pop();
+      swStackPop(lx);
     }
     str = str + next;
     t.set(index0, SW_OP, str, SW_OP_NONE);
@@ -1202,10 +1397,10 @@ const swStitchOperators = (lx: SwLexer, index0: i32): void => {
     if (!(index > 0)) {
       break;
     }
-    if (t.k[index - 1] !== SW_OP) {
+    if (t.kAt(index - 1) !== SW_OP) {
       break;
     }
-    const prev = t.s[index - 1];
+    const prev = t.sAt(index - 1);
     if (
       swLxIsUnwrapOperator(lx, index - 1) ||
       str.startsWith("\\") ||
@@ -1214,7 +1409,7 @@ const swStitchOperators = (lx: SwLexer, index0: i32): void => {
       break;
     }
     if (swStackLast(lx) === index - 1) {
-      lx.stack.pop();
+      swStackPop(lx);
     }
     str = prev + str;
     t.set(index - 1, SW_OP, str, SW_OP_NONE);
@@ -1225,11 +1420,16 @@ const swStitchOperators = (lx: SwLexer, index0: i32): void => {
   swSetOperatorType(lx, index);
   // Fix ternary that may not have been correctly closed in the first pass
   const scopeIndex = swStackLast(lx);
-  if (scopeIndex >= 0 && t.k[scopeIndex] === SW_OP && t.s[scopeIndex] === "?" && t.a[scopeIndex] === SW_OP_INFIX) {
-    for (let i = index; i < t.count(); i++) {
-      if (t.k[i] === SW_DELIM && t.s[i] === ":") {
+  if (
+    scopeIndex >= 0 &&
+    t.kAt(scopeIndex) === SW_OP &&
+    t.sAt(scopeIndex) === "?" &&
+    t.aAt(scopeIndex) === SW_OP_INFIX
+  ) {
+    for (let i = index; i < toI32(t.k.length); i++) {
+      if (t.kAt(i) === SW_DELIM && t.sAt(i) === ":") {
         t.set(i, SW_OP, ":", SW_OP_INFIX);
-        lx.stack.pop();
+        swStackPop(lx);
         break;
       }
     }
@@ -1238,27 +1438,31 @@ const swStitchOperators = (lx: SwLexer, index0: i32): void => {
 
 const swSetOperatorType = (lx: SwLexer, i0: i32): void => {
   const t = lx.t;
-  const str = t.s[i0];
-  const currentType = t.a[i0];
+  if (i0 < 0 || i0 >= toI32(t.k.length)) {
+    fault();
+    return;
+  }
+  const str = t.sAt(i0);
+  const currentType = t.aAt(i0);
   const prevNonSpaceIndex = swLxIndexBefore(lx, SW_T_NON_SPACE_OR_COMMENT_OR_LINEBREAK, i0);
   if (prevNonSpaceIndex < 0) {
     if (str === "/") {
       t.set(i0, SW_START, "/", 0);
-    } else if (t.count() > i0 + 1) {
+    } else if (toI32(t.k.length) > i0 + 1) {
       t.set(i0, SW_OP, str, SW_OP_PREFIX);
     }
     return;
   }
-  const pk = t.k[prevNonSpaceIndex];
-  const ps = t.s[prevNonSpaceIndex];
-  const pa = t.a[prevNonSpaceIndex];
+  const pk = t.kAt(prevNonSpaceIndex);
+  const ps = t.sAt(prevNonSpaceIndex);
+  const pa = t.aAt(prevNonSpaceIndex);
   if (pk === SW_KEYWORD && (ps === "func" || ps === "operator")) {
     t.set(i0, SW_OP, str, SW_OP_NONE);
     return;
   }
-  const prk = t.k[i0 - 1];
-  const prs = t.s[i0 - 1];
-  const pra = t.a[i0 - 1];
+  const prk = t.kAt(i0 - 1);
+  const prs = t.sAt(i0 - 1);
+  const pra = t.aAt(i0 - 1);
   const prevIsSpaceOrCommentOrLinebreak = prk === SW_SPACE || prk === SW_LINEBREAK || swKindIsComment(prk, prs);
   let type = SW_OP_NONE;
   if (str === ":" || str === "::" || str === "=" || str === "->") {
@@ -1267,9 +1471,9 @@ const swSetOperatorType = (lx: SwLexer, i0: i32): void => {
     let tp = SW_OP_PREFIX;
     let pni = prevNonSpaceIndex;
     while (true) {
-      const qk = t.k[pni];
-      const qs = t.s[pni];
-      const qa = t.a[pni];
+      const qk = t.kAt(pni);
+      const qs = t.sAt(pni);
+      const qa = t.aAt(pni);
       if (swIsLvalue(qk, qs, qa)) {
         let lineStart = swLxIndexBefore(lx, SW_T_LINEBREAK, pni);
         if (lineStart < 0) {
@@ -1279,8 +1483,8 @@ const swSetOperatorType = (lx: SwLexer, i0: i32): void => {
         if (ls2 >= 0) {
           lineStart = ls2;
         }
-        const lk = t.k[lineStart];
-        const lsS = t.s[lineStart];
+        const lk = t.kAt(lineStart);
+        const lsS = t.sAt(lineStart);
         let isElse = lk === SW_KEYWORD && (lsS === "#elseif" || lsS === "#else");
         const isIf = lk === SW_START && lsS === "#if";
         if (isElse || isIf) {
@@ -1352,9 +1556,9 @@ const swSetOperatorType = (lx: SwLexer, i0: i32): void => {
         return;
       }
     } else {
-      const nk = t.k[i0 + 1];
-      const ns = t.s[i0 + 1];
-      const na = t.a[i0 + 1];
+      const nk = t.kAt(i0 + 1);
+      const ns = t.sAt(i0 + 1);
+      const na = t.aAt(i0 + 1);
       if (swIsRvalue(nk, ns, na)) {
         type = swIsLvalue(prk, prs, pra) ? SW_OP_INFIX : SW_OP_PREFIX;
       } else if (swIsLvalue(prk, prs, pra)) {
@@ -1363,7 +1567,7 @@ const swSetOperatorType = (lx: SwLexer, i0: i32): void => {
         prevIsSpaceOrCommentOrLinebreak &&
         swIsLvalue(pk, ps, pa) &&
         (nk === SW_SPACE || nk === SW_LINEBREAK || swKindIsComment(nk, ns)) &&
-        swIsRvalue(t.k[nextNonSpace], t.s[nextNonSpace], t.a[nextNonSpace])
+        swIsRvalue(t.kAt(nextNonSpace), t.sAt(nextNonSpace), t.aAt(nextNonSpace))
       ) {
         type = SW_OP_INFIX;
       } else {
@@ -1373,34 +1577,34 @@ const swSetOperatorType = (lx: SwLexer, i0: i32): void => {
   }
   let i = i0;
   if (type === SW_OP_PREFIX && pk === SW_END && ps === ">") {
-    const count = t.count();
+    const count = toI32(t.k.length);
     swConvertClosingChevronToOperator(lx, prevNonSpaceIndex, true);
-    i -= count - t.count();
+    i = sub32(i, sub32(count, toI32(t.k.length)));
   }
   t.set(i, SW_OP, str, type);
 };
 
 const swProcessToken = (lx: SwLexer): void => {
   const t = lx.t;
-  let count = t.count();
-  const tk = t.k[count - 1];
-  const ts = t.s[count - 1];
-  const ta = t.a[count - 1];
+  let count = toI32(t.k.length);
+  const tk = t.kAt(count - 1);
+  const ts = t.sAt(count - 1);
+  const ta = t.aAt(count - 1);
   if (!(tk === SW_SPACE || swKindIsComment(tk, ts)) && tk !== SW_IDENT) {
     const prevIndex = swLxIndexBefore(lx, SW_T_NON_SPACE_OR_COMMENT, count - 1);
     if (
       prevIndex >= 0 &&
-      t.k[prevIndex] === SW_KEYWORD &&
-      (t.s[prevIndex] === "consume" || t.s[prevIndex] === "discard")
+      t.kAt(prevIndex) === SW_KEYWORD &&
+      (t.sAt(prevIndex) === "consume" || t.sAt(prevIndex) === "discard")
     ) {
-      t.set(prevIndex, SW_IDENT, t.s[prevIndex], 0);
+      t.set(prevIndex, SW_IDENT, t.sAt(prevIndex), 0);
     }
   }
   if (tk === SW_KEYWORD) {
     const prevIndex = swLxIndexBefore(lx, SW_T_NON_SPACE_OR_COMMENT_OR_LINEBREAK, count - 1);
     if (prevIndex >= 0) {
-      const pk = t.k[prevIndex];
-      const ps = t.s[prevIndex];
+      const pk = t.kAt(prevIndex);
+      const ps = t.sAt(prevIndex);
       if (
         (pk === SW_OP && ps === ".") ||
         (ts === "await" &&
@@ -1414,32 +1618,36 @@ const swProcessToken = (lx: SwLexer): void => {
             ps === "extension" ||
             ps === "typealias"))
       ) {
-        t.set(t.count() - 1, SW_IDENT, ts, 0);
+        t.set(toI32(t.k.length) - 1, SW_IDENT, ts, 0);
         swProcessToken(lx);
         return;
       }
     }
-    if (count > 1 && t.k[count - 2] === SW_NUMBER) {
+    if (count > 1 && t.kAt(count - 2) === SW_NUMBER) {
       t.set(count - 1, SW_ERROR, ts, 0);
     }
   } else if (tk === SW_IDENT) {
     const prevIndex = swLxIndexBefore(lx, SW_T_NON_SPACE_OR_COMMENT_OR_LINEBREAK, count - 1);
-    if (prevIndex >= 0 && t.k[prevIndex] === SW_IDENT && (t.s[prevIndex] === "actor" || t.s[prevIndex] === "macro")) {
+    if (
+      prevIndex >= 0 &&
+      t.kAt(prevIndex) === SW_IDENT &&
+      (t.sAt(prevIndex) === "actor" || t.sAt(prevIndex) === "macro")
+    ) {
       const ppi = swLxIndexBefore(lx, SW_T_NON_SPACE_OR_COMMENT_OR_LINEBREAK, prevIndex);
-      if (!(ppi >= 0 && t.k[ppi] === SW_OP && t.a[ppi] === SW_OP_INFIX)) {
-        t.set(prevIndex, SW_KEYWORD, t.s[prevIndex], 0);
+      if (!(ppi >= 0 && t.kAt(ppi) === SW_OP && t.aAt(ppi) === SW_OP_INFIX)) {
+        t.set(prevIndex, SW_KEYWORD, t.sAt(prevIndex), 0);
         swProcessToken(lx);
         return;
       }
     }
-    if (count > 1 && t.k[count - 2] === SW_NUMBER) {
+    if (count > 1 && t.kAt(count - 2) === SW_NUMBER) {
       t.set(count - 1, SW_ERROR, ts, 0);
     }
   } else if (tk === SW_NUMBER) {
     if (count > 1) {
-      if (t.k[count - 2] === SW_NUMBER) {
+      if (t.kAt(count - 2) === SW_NUMBER) {
         t.set(count - 1, SW_ERROR, ts, 0);
-      } else if (t.k[count - 2] === SW_OP && t.s[count - 2] === ".") {
+      } else if (t.kAt(count - 2) === SW_OP && t.sAt(count - 2) === ".") {
         t.set(count - 1, SW_IDENT, ts, 0);
       }
     }
@@ -1447,10 +1655,10 @@ const swProcessToken = (lx: SwLexer): void => {
     swStitchOperators(lx, count - 1);
   } else if (tk === SW_START) {
     if (ts === "<" && count >= 2) {
-      if (t.k[count - 2] === SW_OP) {
+      if (t.kAt(count - 2) === SW_OP) {
         const q = swLxIndexBefore(lx, SW_T_NON_SPACE_OR_COMMENT_OR_LINEBREAK, count - 2);
-        if (q < 0 || !(t.k[q] === SW_KEYWORD && (t.s[q] === "func" || t.s[q] === "init"))) {
-          t.set(t.count() - 1, SW_OP, "<", SW_OP_NONE);
+        if (q < 0 || !(t.kAt(q) === SW_KEYWORD && (t.sAt(q) === "func" || t.sAt(q) === "init"))) {
+          t.set(toI32(t.k.length) - 1, SW_OP, "<", SW_OP_NONE);
           swStitchOperators(lx, count - 1);
           swProcessToken(lx);
           return;
@@ -1461,9 +1669,9 @@ const swProcessToken = (lx: SwLexer): void => {
   } else if (tk === SW_LINEBREAK) {
     if (ta === 0) {
       t.set(count - 1, SW_LINEBREAK, ts, lx.line);
-      lx.line = lx.line + 1;
+      swNextLine(lx);
     } else {
-      lx.line = ta + 1;
+      lx.line = add32(ta, 1);
     }
   }
   if (!(tk === SW_SPACE || tk === SW_LINEBREAK || swKindIsComment(tk, ts))) {
@@ -1476,7 +1684,7 @@ const swProcessToken = (lx: SwLexer): void => {
         const startIndex = swLxIndexBefore(lx, SW_T_START_OF_SCOPE, count - 1);
         if (startIndex >= 0 && swLxIsTok(lx, startIndex, SW_START, "<")) {
           const pi = swLxIndexBefore(lx, SW_T_NON_SPACE_OR_COMMENT, startIndex);
-          if (pi >= 0 && t.k[pi] === SW_IDENT) {
+          if (pi >= 0 && t.kAt(pi) === SW_IDENT) {
             const ppi = swLxIndexBefore(lx, SW_T_NON_SPACE_OR_COMMENT_OR_LINEBREAK, pi);
             if (ppi >= 0 && swLxIsTok(lx, ppi, SW_DELIM, ":")) {
               ok = true;
@@ -1491,10 +1699,11 @@ const swProcessToken = (lx: SwLexer): void => {
       }
       if (stage === 1) {
         let ok = false;
-        if (lx.closed.length !== 0) {
-          const scopeIndex = lx.closed[0];
+        const closed = lx.closed;
+        if (closed.length > 0) {
+          const scopeIndex = closed[0];
           const pi = swLxIndexBefore(lx, SW_T_NON_SPACE_OR_COMMENT, scopeIndex);
-          if (pi >= 0 && t.k[pi] === SW_KEYWORD && t.s[pi].startsWith("@")) {
+          if (pi >= 0 && t.kAt(pi) === SW_KEYWORD && t.sAt(pi).startsWith("@")) {
             ok = true;
           }
         }
@@ -1514,24 +1723,24 @@ const swProcessToken = (lx: SwLexer): void => {
   // Handle scope
   const scopeIndex = swStackLast(lx);
   if (scopeIndex >= 0) {
-    const sk = t.k[scopeIndex];
-    const ss = t.s[scopeIndex];
-    const sa = t.a[scopeIndex];
+    const sk = t.kAt(scopeIndex);
+    const ss = t.sAt(scopeIndex);
+    const sa = t.aAt(scopeIndex);
     if (swIsEndOfScopeOf(tk, ts, sk, ss, sa)) {
-      lx.stack.pop();
+      swStackPop(lx);
       if (tk === SW_DELIM && ts === ":") {
         if (sk === SW_OP && ss === "?" && sa === SW_OP_INFIX) {
-          t.set(t.count() - 1, SW_OP, ":", SW_OP_INFIX);
+          t.set(toI32(t.k.length) - 1, SW_OP, ":", SW_OP_INFIX);
         } else {
-          t.set(t.count() - 1, SW_START, ":", 0);
-          lx.stack.push(t.count() - 1);
+          t.set(toI32(t.k.length) - 1, SW_START, ":", 0);
+          lx.stack.push(toI32(t.k.length) - 1);
         }
       } else if (tk === SW_END && (ts === "case" || ts === "default")) {
-        lx.stack.push(t.count() - 1);
+        lx.stack.push(toI32(t.k.length) - 1);
       } else if (tk === SW_END && ts === ")") {
         const top = swStackLast(lx);
         if (top >= 0) {
-          const dt = swStringDelimiterType(t.k[top], t.s[top]);
+          const dt = swStringDelimiterType(t.kAt(top), t.sAt(top));
           if (dt >= 0) {
             swProcessStringBody(lx, dt);
           }
@@ -1544,20 +1753,24 @@ const swProcessToken = (lx: SwLexer): void => {
         }
       }
       if (tk === SW_END && ts === ">") {
-        lx.closed.push(0);
-        for (let q = toI32(lx.closed.length) - 1; q > 0; q--) {
-          lx.closed[q] = lx.closed[q - 1];
+        const closed = lx.closed;
+        closed.push(0);
+        for (let q = toI32(closed.length) - 1; q > 0 && q < closed.length; q--) {
+          closed[q] = closed[q - 1];
         }
-        lx.closed[0] = scopeIndex;
+        if (closed.length > 0) {
+          closed[0] = scopeIndex;
+        }
       } else {
         lx.closed = [];
       }
       return;
     }
     let genericIndex = -1;
-    for (let q = toI32(lx.stack.length) - 1; q >= 0; q--) {
-      const si = lx.stack[q];
-      if (t.k[si] === SW_START && t.s[si] === "<") {
+    const st = lx.stack;
+    for (let q = toI32(st.length) - 1; q >= 0 && q < st.length; q--) {
+      const si = st[q];
+      if (t.kAt(si) === SW_START && t.sAt(si) === "<") {
         genericIndex = si;
         break;
       }
@@ -1574,7 +1787,7 @@ const swProcessToken = (lx: SwLexer): void => {
               q >= 0 &&
               (swLxIsTok(lx, q, SW_START, "<") ||
                 swLxIsTok(lx, q, SW_DELIM, ",") ||
-                (t.k[q] === SW_OP && t.s[q] === "==" && t.a[q] === SW_OP_INFIX))
+                (t.kAt(q) === SW_OP && t.sAt(q) === "==" && t.aAt(q) === SW_OP_INFIX))
             ) {
               isMinusDigit = true;
             }
@@ -1602,10 +1815,10 @@ const swProcessToken = (lx: SwLexer): void => {
           }
         }
       } else if (tk === SW_DELIM && ts === ":" && lx.stack.length > 1) {
-        const q = lx.stack[toI32(lx.stack.length) - 2];
+        const q = swStackAt(lx, toI32(lx.stack.length) - 2);
         if (
-          (t.k[q] === SW_END && t.s[q] === "case") ||
-          (t.k[q] === SW_OP && t.s[q] === "?" && t.a[q] === SW_OP_INFIX)
+          (t.kAt(q) === SW_END && t.sAt(q) === "case") ||
+          (t.kAt(q) === SW_OP && t.sAt(q) === "?" && t.aAt(q) === SW_OP_INFIX)
         ) {
           swConvertOpeningChevronToOperator(lx, genericIndex);
           swProcessToken(lx);
@@ -1621,13 +1834,13 @@ const swProcessToken = (lx: SwLexer): void => {
     } else if (tk === SW_DELIM && ts === ":") {
       if (sk === SW_START && (ss === "(" || ss === "[")) {
         const prevIndex = swLxIndexBefore(lx, SW_T_NON_SPACE_OR_COMMENT_OR_LINEBREAK, count - 1);
-        if (prevIndex >= 0 && (t.k[prevIndex] === SW_IDENT || t.k[prevIndex] === SW_KEYWORD)) {
-          if (t.k[prevIndex] === SW_KEYWORD && !t.s[prevIndex].startsWith("@")) {
-            t.set(prevIndex, SW_IDENT, t.s[prevIndex], 0);
+        if (prevIndex >= 0 && (t.kAt(prevIndex) === SW_IDENT || t.kAt(prevIndex) === SW_KEYWORD)) {
+          if (t.kAt(prevIndex) === SW_KEYWORD && !t.sAt(prevIndex).startsWith("@")) {
+            t.set(prevIndex, SW_IDENT, t.sAt(prevIndex), 0);
           }
           const ppi = swLxIndexBefore(lx, SW_T_NON_SPACE_OR_COMMENT_OR_LINEBREAK, prevIndex);
-          if (ppi >= 0 && t.k[ppi] === SW_KEYWORD && !t.s[ppi].startsWith("@")) {
-            t.set(ppi, SW_IDENT, t.s[ppi], 0);
+          if (ppi >= 0 && t.kAt(ppi) === SW_KEYWORD && !t.sAt(ppi).startsWith("@")) {
+            t.set(ppi, SW_IDENT, t.sAt(ppi), 0);
           }
         }
       }
@@ -1636,19 +1849,19 @@ const swProcessToken = (lx: SwLexer): void => {
       let stackIndex = toI32(lx.stack.length) - 1;
       while (stackIndex > 0 && swLxIsTok(lx, sIdx, SW_START, "#if")) {
         stackIndex--;
-        sIdx = lx.stack[stackIndex];
+        sIdx = swStackAt(lx, stackIndex);
       }
-      const zk = t.k[sIdx];
-      const zs = t.s[sIdx];
+      const zk = t.kAt(sIdx);
+      const zs = t.sAt(sIdx);
       if (zk === SW_START && zs === "(") {
-        if (sIdx > 0 && t.k[sIdx - 1] === SW_KEYWORD && t.s[sIdx - 1].startsWith("@")) {
-          t.set(t.count() - 1, SW_IDENT, ts, 0);
+        if (sIdx > 0 && t.kAt(sIdx - 1) === SW_KEYWORD && t.sAt(sIdx - 1).startsWith("@")) {
+          t.set(toI32(t.k.length) - 1, SW_IDENT, ts, 0);
           swProcessToken(lx);
           return;
         }
       } else if (zk === SW_START && (zs === "{" || zs === ":")) {
         if (ts === "default") {
-          t.set(t.count() - 1, SW_END, ts, 0);
+          t.set(toI32(t.k.length) - 1, SW_END, ts, 0);
           swProcessToken(lx);
           return;
         } else if (ts === "case") {
@@ -1669,14 +1882,14 @@ const swProcessToken = (lx: SwLexer): void => {
           if (!isEnum) {
             const prevIndex = swLxIndexBefore(lx, SW_T_NON_SPACE_OR_COMMENT_OR_LINEBREAK, count - 1);
             if (prevIndex >= 0) {
-              const pk = t.k[prevIndex];
-              const ps = t.s[prevIndex];
+              const pk = t.kAt(prevIndex);
+              const ps = t.sAt(prevIndex);
               const keep =
                 (pk === SW_KEYWORD &&
                   (ps === "if" || ps === "guard" || ps === "while" || ps === "for" || ps === "await")) ||
                 (pk === SW_DELIM && ps === ",");
               if (!keep) {
-                t.set(t.count() - 1, SW_END, ts, 0);
+                t.set(toI32(t.k.length) - 1, SW_END, ts, 0);
                 swProcessToken(lx);
                 return;
               }
@@ -1686,22 +1899,22 @@ const swProcessToken = (lx: SwLexer): void => {
       }
     } else if (sk === SW_START && ss === ":") {
       if (tk === SW_KEYWORD && (ts === "#else" || ts === "#elseif")) {
-        lx.stack.pop();
+        swStackPop(lx);
         return;
       } else if (tk === SW_END && ts === "#endif") {
-        lx.stack.pop();
+        swStackPop(lx);
         const top = swStackLast(lx);
         if (top >= 0 && swLxIsTok(lx, top, SW_START, "#if")) {
-          lx.stack.pop();
+          swStackPop(lx);
         }
         return;
       }
     }
   }
   // Either there's no scope, or token didn't close it
-  count = t.count();
-  const k2 = t.k[count - 1];
-  const s2 = t.s[count - 1];
+  count = toI32(t.k.length);
+  const k2 = t.kAt(count - 1);
+  const s2 = t.sAt(count - 1);
   if (k2 === SW_START && s2 === "/") {
     const f = lx.first();
     if (f < 0 || swCpIsSpace(f) || swCpIsLinebreak(f)) {
@@ -1716,7 +1929,7 @@ const swProcessToken = (lx: SwLexer): void => {
     if (swStackLast(lx) === count - 1) {
       lx.p = start;
       lx.line = startLine;
-      lx.stack.pop();
+      swStackPop(lx);
       t.truncate(count);
       t.set(count - 1, SW_OP, "/", SW_OP_NONE);
       return;
@@ -1753,17 +1966,22 @@ const swProcessToken = (lx: SwLexer): void => {
     t.set(count - 1, SW_ERROR, s2, 0);
   } else if (k2 === SW_DELIM && s2 === ":") {
     const prevIndex = swLxIndexBefore(lx, SW_T_NON_SPACE_OR_COMMENT_OR_LINEBREAK, count - 1);
-    if (prevIndex >= 0 && t.k[prevIndex] === SW_KEYWORD) {
-      t.set(prevIndex, SW_IDENT, t.s[prevIndex], 0);
+    if (prevIndex >= 0 && t.kAt(prevIndex) === SW_KEYWORD) {
+      t.set(prevIndex, SW_IDENT, t.sAt(prevIndex), 0);
     }
   }
 };
 
 /** tokenize(source). The source must be valid UTF-8. */
 export const swTokenize = (src: u8[], n: i32): SwTokList => {
-  const lx = new SwLexer(src, n);
+  if (n < 0 || n > src.length) {
+    fault();
+    return new SwTokList();
+  }
+  const hashbang = n >= 2 && src.length >= 2 && toI32(src[0]) === 35 && toI32(src[1]) === 33;
+  const lx = new SwLexer(src, n, bytesText(src, 0, n));
   // Ignore hashbang at start of file
-  if (n >= 2 && toI32(src[0]) === 35 && toI32(src[1]) === 33) {
+  if (hashbang) {
     lx.p = 2;
     lx.t.push(SW_START, "#!", 0);
     swProcessCommentBody(lx);
@@ -1780,10 +1998,10 @@ export const swTokenize = (src: u8[], n: i32): SwTokList => {
     if (swLxIsTok(lx, scopeIndex, SW_START, "<")) {
       swConvertOpeningChevronToOperator(lx, scopeIndex);
     } else if (swLxIsTok(lx, scopeIndex, SW_START, "//")) {
-      lx.stack.pop();
+      swStackPop(lx);
     } else {
-      const m = lx.t.count();
-      if (m > 0 && lx.t.k[m - 1] !== SW_ERROR) {
+      const m = toI32(lx.t.k.length);
+      if (m > 0 && lx.t.kAt(m - 1) !== SW_ERROR) {
         lx.t.push(SW_ERROR, "", 0);
       }
       break;
@@ -1795,11 +2013,11 @@ export const swTokenize = (src: u8[], n: i32): SwTokList => {
 /** UnicodeScalarView.parseIdentifier() on `s`: the identifier or keyword token it reads, or "". */
 export const swParseIdentifierString = (s: string): string => {
   const n = toI32(s.length);
-  const b = new Array<u8>(n);
+  const b: u8[] = [];
   for (let i = 0; i < n; i++) {
-    b[i] = toU8(s.charCodeAt(i));
+    b.push(toU8(s.charCodeAt(i)));
   }
-  const lx = new SwLexer(b, n);
+  const lx = new SwLexer(b, n, s);
   if (!swParseIdentifier(lx)) {
     return "";
   }

@@ -5,6 +5,8 @@
 // Lockwood).
 
 import { SwFormatter, swIndexBeforeWhere } from "./formatter";
+import { add32, sub32 } from "../core/arr";
+import { fault } from "../core/fault";
 import {
   swConditionalBranches,
   swCurrentScope,
@@ -31,6 +33,7 @@ import {
   swStringBodyIndent,
 } from "./parsing";
 import {
+  swPopLast,
   SW_DELIM,
   SW_END,
   SW_IDENT,
@@ -80,95 +83,135 @@ class SwIndentState {
     this.wraps = [false];
   }
 
+  // sk, ss and sa are pushed and popped together.
+
   scopeIs(k: i32, s: string): boolean {
-    const m = toI32(this.sk.length);
-    return m > 0 && this.sk[m - 1] === k && this.ss[m - 1] === s;
+    const sk = this.sk;
+    const ss = this.ss;
+    const j = toI32(sk.length) - 1;
+    return j >= 0 && j < sk.length && j < ss.length && sk[j] === k && ss[j] === s;
   }
 
   scopeAt(back: i32, k: i32, s: string): boolean {
-    const m = toI32(this.sk.length);
-    return m > back && this.sk[m - 1 - back] === k && this.ss[m - 1 - back] === s;
+    const sk = this.sk;
+    const ss = this.ss;
+    const m = toI32(sk.length);
+    if (m <= back) {
+      return false;
+    }
+    if (back < 0) {
+      // sk[m - 1 - back] read past the end.
+      fault();
+      return false;
+    }
+    // 0 <= back < m.
+    const j = m - 1 - back;
+    return j >= 0 && j < sk.length && j < ss.length && sk[j] === k && ss[j] === s;
   }
 
   scopeStr(): string | null {
-    const m = toI32(this.ss.length);
-    return m === 0 ? null : this.ss[m - 1];
+    const ss = this.ss;
+    const m = toI32(ss.length);
+    return m > 0 ? ss[m - 1] : null;
   }
 
   lastWrap(): boolean {
-    const m = toI32(this.wraps.length);
-    return m > 0 && this.wraps[m - 1];
+    const wraps = this.wraps;
+    const m = toI32(wraps.length);
+    return m > 0 && wraps[m - 1];
   }
 
   setLastWrap(v: boolean): void {
-    const m = toI32(this.wraps.length);
+    const wraps = this.wraps;
+    const m = toI32(wraps.length);
     if (m > 0) {
-      this.wraps[m - 1] = v;
+      wraps[m - 1] = v;
     } else {
       this.bad = true;
     }
   }
 
   lastIndent(): string {
-    const m = toI32(this.indents.length);
-    return m === 0 ? "" : this.indents[m - 1];
+    const indents = this.indents;
+    const m = toI32(indents.length);
+    return m > 0 ? indents[m - 1] : "";
   }
 
   indentAt(back: i32): string {
-    const m = toI32(this.indents.length);
+    const indents = this.indents;
+    const m = toI32(indents.length);
     if (back < 1 || back > m) {
       this.bad = true;
       return "";
     }
-    return this.indents[m - back];
+    // 1 <= back <= m.
+    const j = m - back;
+    if (j < 0 || j >= indents.length) {
+      fault();
+      return "";
+    }
+    return indents[j];
   }
 
   setLastIndent(s: string): void {
-    const m = toI32(this.indents.length);
+    const indents = this.indents;
+    const m = toI32(indents.length);
     if (m > 0) {
-      this.indents[m - 1] = s;
+      indents[m - 1] = s;
     } else {
       this.bad = true;
     }
   }
 
   lastStrIndent(): string {
-    const m = toI32(this.strIndents.length);
-    if (m === 0) {
+    const strIndents = this.strIndents;
+    const m = toI32(strIndents.length);
+    if (m <= 0) {
       this.bad = true;
       return "";
     }
-    return this.strIndents[m - 1];
+    return strIndents[m - 1];
   }
 
   setLastStrIndent(s: string): void {
-    const m = toI32(this.strIndents.length);
+    const strIndents = this.strIndents;
+    const m = toI32(strIndents.length);
     if (m > 0) {
-      this.strIndents[m - 1] = s;
+      strIndents[m - 1] = s;
     } else {
       this.bad = true;
     }
   }
 
   lastStart(): i32 {
-    const m = toI32(this.starts.length);
-    return m === 0 ? -1 : this.starts[m - 1];
+    const starts = this.starts;
+    const m = toI32(starts.length);
+    return m > 0 ? starts[m - 1] : -1;
+  }
+
+  /** The count of the innermost scope, 0 for none. */
+  lastCount(): i32 {
+    const counts = this.counts;
+    const m = toI32(counts.length);
+    return m > 0 ? counts[m - 1] : 0;
   }
 
   popIndent(): void {
-    if (this.indents.length === 0) {
+    const indents = this.indents;
+    if (indents.length > 0) {
+      indents.pop();
+    } else {
       this.bad = true;
-      return;
     }
-    this.indents.pop();
   }
 
   popStrIndent(): void {
-    if (this.strIndents.length === 0) {
+    const strIndents = this.strIndents;
+    if (strIndents.length > 0) {
+      strIndents.pop();
+    } else {
       this.bad = true;
-      return;
     }
-    this.strIndents.pop();
   }
 
   popScope(): void {
@@ -178,16 +221,23 @@ class SwIndentState {
     }
     this.popIndent();
     this.popStrIndent();
-    if (this.counts.length === 0 || this.wraps.length === 0 || this.starts.length === 0 || this.sk.length === 0) {
+    const counts = this.counts;
+    const wraps = this.wraps;
+    const starts = this.starts;
+    const sk = this.sk;
+    const ss = this.ss;
+    const sa = this.sa;
+    if (counts.length === 0 || wraps.length === 0 || starts.length === 0 || sk.length === 0) {
       this.bad = true;
       return;
     }
-    this.counts.pop();
-    this.wraps.pop();
-    this.starts.pop();
-    this.sk.pop();
-    this.ss.pop();
-    this.sa.pop();
+    // ss and sa move with sk.
+    swPopLast(counts);
+    swPopLast(wraps);
+    swPopLast(starts);
+    swPopLast(sk);
+    swPopLast(ss);
+    swPopLast(sa);
   }
 
   pushScope(k: i32, s: string, a: i32): void {
@@ -335,7 +385,7 @@ const swShouldIndentNextLine = (f: SwFormatter, i: i32): boolean => {
   if (nextIndex < 0 || f.k(nextIndex) === SW_LINEBREAK || f.isComment(nextIndex)) {
     return false;
   }
-  const last = f.indexBefore(SW_T_NON_SPACE_OR_COMMENT_OR_LINEBREAK, eol + 1);
+  const last = f.indexBefore(SW_T_NON_SPACE_OR_COMMENT_OR_LINEBREAK, add32(eol, 1));
   if (last >= 0 && (f.kw(last, "return") || f.op(last, "=", SW_OP_INFIX))) {
     const eonl = f.endOfLine(nextIndex);
     const l2 = f.indexBefore(SW_T_NON_SPACE_OR_COMMENT_OR_LINEBREAK, eonl);
@@ -396,8 +446,7 @@ export const swRuleIndent = (f: SwFormatter): boolean => {
       } else if (st.sk.length > 1 && st.scopeAt(1, SW_START, ":")) {
         indentCount = 1;
       } else {
-        const m = toI32(st.counts.length);
-        indentCount = (m === 0 ? 0 : st.counts[m - 1]) + 1;
+        indentCount = add32(st.lastCount(), 1);
       }
       let indent = st.indentAt(indentCount);
       if (ts === "/*") {
@@ -411,10 +460,10 @@ export const swRuleIndent = (f: SwFormatter): boolean => {
         if (li >= 0) {
           const nk = f.indexAfter(SW_T_NON_SPACE_OR_COMMENT_OR_LINEBREAK, li);
           if (nk >= 0 && (f.tok(nk, SW_END, "case") || f.tok(nk, SW_END, "default") || f.kw(nk, "@unknown"))) {
-            indent = st.indentAt(indentCount + 1);
+            indent = st.indentAt(add32(indentCount, 1));
           }
         }
-        i += swApplyIndent(f, indent, f.startOfLine(i));
+        i = add32(i, swApplyIndent(f, indent, f.startOfLine(i)));
         indent = indent + SW_INDENT;
       } else if (ts === "{" && swIsFirstStackedClosureArgument(f, i)) {
         let prevIndex = f.indexBefore(SW_T_NON_SPACE, i);
@@ -438,10 +487,10 @@ export const swRuleIndent = (f: SwFormatter): boolean => {
         }
         if (!done && prevIndex >= 0) {
           const startIndex = f.startOfLine(i);
-          indent = swSpaceEquivalentToTokens(f, startIndex, prevIndex + 1);
+          indent = swSpaceEquivalentToTokens(f, startIndex, add32(prevIndex, 1));
           st.setLastIndent(indent);
           indent = indent + SW_INDENT;
-          indentCount -= 1;
+          indentCount = sub32(indentCount, 1);
         }
       } else if (ts === "{" && swIsStartOfClosure(f, i)) {
         const prevIndex = f.indexBefore(SW_T_NON_SPACE_OR_COMMENT, i);
@@ -515,17 +564,18 @@ export const swRuleIndent = (f: SwFormatter): boolean => {
         indent = st.indentAt(4);
       }
       const start = f.startOfLine(i);
-      i += swApplyIndent(f, indent, start);
+      i = add32(i, swApplyIndent(f, indent, start));
     } else if (tk === SW_KEYWORD && ts === "@unknown" && !st.scopeIs(SW_START, "#if")) {
       const indent = st.indentAt(2);
       const start = f.startOfLine(i);
       const stringIndent = st.lastStrIndent();
-      i += swApplyIndent(f, stringIndent + indent, start);
+      i = add32(i, swApplyIndent(f, stringIndent + indent, start));
     } else if (tk === SW_KEYWORD && ts === "in" && st.scopeIs(SW_START, "{")) {
       const startIndex = f.indexOfBefore(SW_START, "{", 0, i);
-      if (startIndex >= 0 && f.indexOfIn(SW_KEYWORD, "for", 0, startIndex + 1, i) < 0) {
-        const paramsIndex = f.indexInType(SW_T_START_OF_SCOPE, startIndex + 1, i);
-        if (paramsIndex >= 0 && !swHasLb(f, startIndex + 1, paramsIndex) && swHasLb(f, paramsIndex + 1, i)) {
+      const afterStart = add32(startIndex, 1);
+      if (startIndex >= 0 && f.indexOfIn(SW_KEYWORD, "for", 0, afterStart, i) < 0) {
+        const paramsIndex = f.indexInType(SW_T_START_OF_SCOPE, afterStart, i);
+        if (paramsIndex >= 0 && !swHasLb(f, afterStart, paramsIndex) && swHasLb(f, add32(paramsIndex, 1), i)) {
           st.setLastIndent(st.lastIndent() + SW_INDENT);
         }
       }
@@ -556,8 +606,12 @@ export const swRuleIndent = (f: SwFormatter): boolean => {
             const nt = f.indexAfter(SW_T_NON_SPACE_OR_COMMENT_OR_LINEBREAK, pai);
             if (nt >= 0) {
               const br = swConditionalBranches(f, nt);
-              if (br !== null && br.ends.length !== 0 && br.ends[toI32(br.ends.length) - 1] === i) {
-                st.popScope();
+              if (br !== null) {
+                const ends = br.ends;
+                const ne = toI32(ends.length);
+                if (ne > 0 && ends[ne - 1] === i) {
+                  st.popScope();
+                }
               }
             }
           }
@@ -586,17 +640,18 @@ export const swRuleIndent = (f: SwFormatter): boolean => {
         st.wraps.push(false);
       }
       let index = f.startOfLine(i);
-      if (index === i || index === i - 1) {
+      if (index === i || (i > 0 && index === i - 1)) {
         const indent = f.k(index) === SW_SPACE ? f.s(index) : "";
-        index -= 1;
-        while (f.has(index - 1) && f.isComment(index - 1)) {
+        index = sub32(index, 1);
+        // f.has(index - 1) holds only for index >= 1.
+        while (index > 0 && f.has(index - 1) && f.isComment(index - 1)) {
           const startIndex = f.indexBefore(SW_T_NON_SPACE_OR_COMMENT, index);
           if (startIndex < 0 || f.k(startIndex) !== SW_LINEBREAK) {
             break;
           }
           const prevWasEndComment = f.tok(index - 1, SW_END, "*/");
-          if (!swIsCommentedCode(f, startIndex + 1)) {
-            swApplyIndent(f, indent, startIndex + 1);
+          if (!swIsCommentedCode(f, add32(startIndex, 1))) {
+            swApplyIndent(f, indent, add32(startIndex, 1));
           }
           if (prevWasEndComment) {
             let ci = f.indexOfAfter(SW_START, "/*", 0, startIndex);
@@ -606,7 +661,7 @@ export const swRuleIndent = (f: SwFormatter): boolean => {
                 if (lbi < 0) {
                   break;
                 }
-                swApplyIndent(f, indent + " ", lbi + 1);
+                swApplyIndent(f, indent + " ", add32(lbi, 1));
                 ci = lbi;
               }
             }
@@ -616,7 +671,7 @@ export const swRuleIndent = (f: SwFormatter): boolean => {
       }
     } else if (tk === SW_LINEBREAK) {
       const r = swIndentLinebreak(f, st, i, lastNonSpaceOrLinebreakIndex, lineIndex);
-      lineIndex += 1;
+      lineIndex = add32(lineIndex, 1);
       if (r >= -1) {
         lastNonSpaceOrLinebreakIndex = r;
       }
@@ -650,7 +705,7 @@ const swMultilineStringInCall = (f: SwFormatter, i: i32): boolean => {
   if (closing < 0) {
     return false;
   }
-  return f.indexInType(SW_T_LINEBREAK, endIndex + 1, closing) >= 0;
+  return f.indexInType(SW_T_LINEBREAK, add32(endIndex, 1), closing) >= 0;
 };
 
 /** The `=` case's guard: an if/switch on its own line after the `=`. */
@@ -666,10 +721,12 @@ const swIsAssignmentOfWrappedConditional = (f: SwFormatter, i: i32): boolean => 
 /** The default case of the first switch: end of scope handling. Answers the (adjusted) index. */
 const swIndentDefault = (f: SwFormatter, st: SwIndentState, i0: i32, tk: i32, ts: string, lineIndex: i32): i32 => {
   let i = i0;
-  const m = toI32(st.sk.length);
-  if (m > 0 && swClosesScope(tk, ts, st.sk[m - 1], st.ss[m - 1], st.sa[m - 1])) {
-    const cm = toI32(st.counts.length);
-    const indentCount = (cm === 0 ? 0 : st.counts[cm - 1]) - 1;
+  const sk = st.sk;
+  const ss = st.ss;
+  const sa = st.sa;
+  const j = toI32(sk.length) - 1;
+  if (j >= 0 && j < sk.length && j < ss.length && j < sa.length && swClosesScope(tk, ts, sk[j], ss[j], sa[j])) {
+    const indentCount = sub32(st.lastCount(), 1);
     st.popScope();
     if (tk === SW_LINEBREAK || !(lineIndex > st.lastStart())) {
       return i;
@@ -707,7 +764,7 @@ const swIndentDefault = (f: SwFormatter, st: SwIndentState, i0: i32, tk: i32, ts
       }
     }
     const start = f.startOfLine(i);
-    const firstIndex = f.indexAfter(SW_T_NON_SPACE_OR_COMMENT, start - 1);
+    const firstIndex = f.indexAfter(SW_T_NON_SPACE_OR_COMMENT, sub32(start, 1));
     if (firstIndex < 0 || firstIndex !== i) {
       return i;
     }
@@ -727,14 +784,14 @@ const swIndentDefault = (f: SwFormatter, st: SwIndentState, i0: i32, tk: i32, ts
       // indentCase is off
     }
     const stringIndent = st.lastStrIndent();
-    i += swApplyIndent(f, stringIndent + indent, start);
+    i = add32(i, swApplyIndent(f, stringIndent + indent, start));
   } else if (tk === SW_END && ts === "#endif" && st.indents.length > 1) {
     let indent = st.indentAt(2);
     if (st.scopeIs(SW_START, ":") && st.indents.length > 1) {
       indent = st.indentAt(4);
       st.popScope();
     }
-    i += swApplyIndent(f, indent, f.startOfLine(i));
+    i = add32(i, swApplyIndent(f, indent, f.startOfLine(i)));
     if (st.scopeIs(SW_START, "#if")) {
       st.popScope();
     }
@@ -782,14 +839,22 @@ const swEndsString = (s: string, open: string): boolean => {
   let quotes = 0;
   let hashes = 0;
   let slashes = 0;
-  for (let i = 0; i < toI32(open.length); i++) {
+  const n = toI32(open.length);
+  // Each count is at most i, below n.
+  for (let i = 0; i < n; i++) {
     const c = open.charCodeAt(i);
     if (c === 35) {
-      hashes++;
+      if (hashes < n) {
+        hashes++;
+      }
     } else if (c === 34) {
-      quotes++;
+      if (quotes < n) {
+        quotes++;
+      }
     } else if (c === 47) {
-      slashes++;
+      if (slashes < n) {
+        slashes++;
+      }
     } else {
       return false;
     }
@@ -800,7 +865,7 @@ const swEndsString = (s: string, open: string): boolean => {
   }
   const multi = quotes === 3 || (regex && hashes > 0);
   const q = regex ? "/" : multi ? '"""' : '"';
-  if (toI32(s.length) !== toI32(q.length) + hashes || !s.startsWith(q)) {
+  if (toI32(s.length) !== add32(toI32(q.length), hashes) || !s.startsWith(q)) {
     return false;
   }
   for (let i = toI32(q.length); i < toI32(s.length); i++) {
@@ -885,7 +950,7 @@ const swIndentLinebreak = (f: SwFormatter, st: SwIndentState, i: i32, lastNSL: i
       const prevCodeIndex = f.indexBefore(SW_T_NON_SPACE_OR_COMMENT_OR_LINEBREAK, i);
       const nn = f.indexAfter(SW_T_NON_SPACE, i);
       if (shouldIndentLeadingDot && nn >= 0 && f.op(nn, ".", SW_OP_INFIX) && prevCodeIndex >= 0) {
-        let lineStart = f.indexBefore(SW_T_LINEBREAK, prevCodeIndex + 1);
+        let lineStart = f.indexBefore(SW_T_LINEBREAK, add32(prevCodeIndex, 1));
         if (lineStart < 0) {
           lineStart = f.startOfLine(prevCodeIndex);
         }
@@ -1043,20 +1108,22 @@ const swIndentLinebreak = (f: SwFormatter, st: SwIndentState, i: i32, lastNSL: i
         }
       }
       if (!skip2) {
-        swApplyIndent(f, indent, i + 1);
+        swApplyIndent(f, indent, add32(i, 1));
       }
     }
   } else if (nxk === SW_END || (nxk === SW_KEYWORD && nxs === "@unknown")) {
-    const m = toI32(st.sk.length);
-    if (m > 0) {
-      const sk = st.sk[m - 1];
-      const ss = st.ss[m - 1];
+    const stk = st.sk;
+    const sts = st.ss;
+    const j = toI32(stk.length) - 1;
+    if (j >= 0 && j < stk.length && j < sts.length) {
+      const sk = stk[j];
+      const ss = sts[j];
       if (
         (sk === SW_START && (ss === "/*" || ss === "#if")) ||
         (sk === SW_KEYWORD && (ss === "#else" || ss === "#elseif")) ||
         (sk === SW_START && swIsStringDelimiter(sk, ss))
       ) {
-        swApplyIndent(f, indent, i + 1);
+        swApplyIndent(f, indent, add32(i, 1));
       }
     }
   } else {
@@ -1094,7 +1161,7 @@ const swIndentLinebreak = (f: SwFormatter, st: SwIndentState, i: i32, lastNSL: i
         }
       }
     }
-    swApplyIndent(f, indent, i + 1);
+    swApplyIndent(f, indent, add32(i, 1));
   }
   if (linewrapped && swShouldIndentNextLine(f, i)) {
     st.setLastIndent(st.lastIndent() + SW_INDENT);
@@ -1113,13 +1180,13 @@ const swAllEndOfScopeOrSpace = (f: SwFormatter, lo: i32, hi: i32): boolean => {
 };
 
 /** String.count of an indent. */
-const swSpaceWidthCount = (s: string): i32 => swSpaceWidth(s) - swTabExtra(s);
+const swSpaceWidthCount = (s: string): i32 => sub32(swSpaceWidth(s), swTabExtra(s));
 
 const swTabExtra = (s: string): i32 => {
   let n = 0;
   for (let j = 0; j < toI32(s.length); j++) {
     if (s.charCodeAt(j) === 9) {
-      n += 3;
+      n = add32(n, 3);
     }
   }
   return n;
