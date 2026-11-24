@@ -52,6 +52,66 @@ for a binary). The traps that cost the most in earlier ports:
   (nishfmt then leaves it untouched and counts it as skipped). That is always
   better than wrong output.
 
+## No panics
+
+Every module but `src/main.ts` is in package.json's `nish.noPanic`, so the
+build refuses any index, signed `+ - *`, `/`, `%`, `pop()` or `new Array(n)`
+the compiler cannot prove safe (NL2457), and any call into a std function
+that can panic (NL2458). `nish:unsafe` is not used. A new module joins the
+list with `node scripts/no-panic-list.mjs --write`: a module the list leaves
+out would build unchecked, so CI runs the script and fails on a stale list.
+
+To see every site while you work, build the language's driver with
+`--allow-panics --emit-panics p.json` and read the sites that are neither
+`proven` nor `allowed`.
+
+Fix a site in this order:
+
+1. **Prove it.** A proven site loses its runtime check, so this is also the
+   fast path. Hoist one range check before a loop and keep `i < xs.length`
+   in the loop condition.
+2. **Guard it and call `fault()`** (`src/core/fault.ts`) on the branch the
+   code's invariants rule out, then leave with a neutral value. A faulted
+   file is skipped, as a panicking one was. Never answer a made-up value
+   without `fault()`. Inside a loop, the branch must leave the loop.
+3. **Use a helper** from `src/core/arr.ts` or `src/core/sort.ts`:
+   - `newI32s` and its siblings replace `new Array<T>(n)`.
+   - `copyU8s` replaces `.set`.
+   - `sliceU8s` and its siblings replace array `.slice`.
+   - `bytesText` replaces `String.fromBytes`. It builds the string a byte at
+     a time, so keep it off hot paths: cut `substring`s from a text the
+     caller made once instead (Rust and Dart take the file's text from
+     `main.ts` this way).
+   - `stableSort` replaces `.sort`.
+   - `atI32` and `add32` are a guarded read and a guarded sum.
+
+What the 0.45.1 prover credits, learned the hard way:
+
+- **Guards on fields are not credited.** Copy `this.xs` and `this.n` to
+  locals, test the locals, then index.
+- **Any call forgets array lengths**, `push` included. Read what you need
+  before the call, or test again after it.
+- **Module constants and hex literals are not credited as bounds.** Write
+  decimal literals.
+- **Negative lower bounds are not credited.** `x > -5` proves nothing.
+- **Facts are dropped** at a `switch` case, at a join after branches, and in
+  a closure's captured arrays.
+- **Ternaries are not bounded.** `n += c ? 2 : 1` is unproven.
+- **Masks bound a value.** After `x & 0xff`, `x` is in range.
+- **`charCodeAt` results are unbounded**: mask them before doing arithmetic.
+- **When both operands are known non-negative**, `toI32(toU32(a) + toU32(b))`
+  is exact. Say why in a comment. An i64 sum with a range test also works.
+- **`new Array<T>(n)` is proven only for a literal, constant or `u16`
+  length.** A ranged `integer<0, N>` length is not, whatever the message
+  says. So the helpers allocate up to 65,535 elements with `toU16`, and
+  `push` past that.
+- **A field typed `integer<0, N>` does bound the indexes it guards.**
+- **Module storage is proven only through a function parameter** typed
+  `Int32Array`. Indexed directly, it never is.
+- **Proofs can depend on callers.** A small probe whose caller passes
+  constants proves more than the real program does, so judge by the real
+  build.
+
 ## Where the code goes
 
 - `src/<lang>/run.ts` holds `XEngine`, `formatX(e, path, src, n, out)` and
