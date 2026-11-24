@@ -14,6 +14,7 @@ import {
   splitLines,
   trimTrailing,
 } from "../gdoc/comments";
+import { atI32 } from "../core/arr";
 import { GEngine } from "../gdoc/engine";
 import { TF_COMMENT, TF_JAVADOC, TF_LINE_COMMENT } from "../gdoc/input";
 import { formatKDoc } from "./kdoc";
@@ -21,7 +22,7 @@ import { formatKDoc } from "./kdoc";
 /** KDocCommentsHelper.rewrite, as the engine's comment rewriter. */
 export const rewriteKotlinComment = (g: GEngine, tok: i32, maxWidth: i32, column0: i32): string => {
   const inp = g.inp;
-  const f = inp.tFlags[tok];
+  const f = atI32(inp.tFlags, tok);
   let text = inp.text(tok);
   if ((f & TF_COMMENT) === 0) {
     return text;
