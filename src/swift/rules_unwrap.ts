@@ -6,6 +6,7 @@
 
 import { swEndOfPostfixIfdef, swIsUnsafeExpression, swParseExpressionEnd } from "./expr";
 import { SwFormatter } from "./formatter";
+import { add32, atI32, sub32 } from "../core/arr";
 import { SwFuncDecl, swParseFunctionDeclaration } from "./funcdecl";
 import { swEndOfScope, swIsUnwrap, swParseType, swStartOfScope } from "./parsing";
 import {
@@ -156,7 +157,7 @@ const swForceUnwrapExpressionRange = (f: SwFormatter, index: i32): i32[] | null 
   if (r === null) {
     return null;
   }
-  let start = r[0];
+  let start = atI32(r, 0);
   let previous = start;
   while (true) {
     const next = f.indexAfter(SW_T_NON_SPACE_OR_COMMENT_OR_LINEBREAK, previous);
@@ -183,12 +184,12 @@ const swForceUnwrapExpressionRange = (f: SwFormatter, index: i32): i32[] | null 
     }
     start = p;
   }
-  return [start, r[1]];
+  return [start, atI32(r, 1)];
 };
 
 /** canInsertRequire(in:). */
 const swCanInsertRequire = (f: SwFormatter, lo: i32, hi: i32): boolean => {
-  for (let i = lo; i <= hi; i++) {
+  for (let i = lo; i <= hi && i < 2147483647; i++) {
     if (f.kw(i, "#require")) {
       return false;
     }
@@ -212,12 +213,12 @@ const swCanInsertRequire = (f: SwFormatter, lo: i32, hi: i32): boolean => {
 
 /** canUnwrapOperatorOperand(in:). */
 const swCanUnwrapOperatorOperand = (f: SwFormatter, lo: i32, hi: i32): boolean => {
-  for (let i = lo; i <= hi; i++) {
+  for (let i = lo; i <= hi && i < 2147483647; i++) {
     if (f.kw(i, "await") || f.kw(i, "try") || f.kw(i, "#require") || f.op(i, "?", SW_OP_INFIX)) {
       return false;
     }
   }
-  for (let i = lo; i <= hi; i++) {
+  for (let i = lo; i <= hi && i < 2147483647; i++) {
     if (!f.op(i, "!", SW_OP_POSTFIX)) {
       continue;
     }
@@ -281,12 +282,12 @@ const swExpressionRangeContainingForceUnwrap = (f: SwFormatter, fu: i32): i32 =>
   if (r0 === null) {
     return -1;
   }
-  let h = f.ref(r0[0], r0[1]);
+  let h = f.ref(atI32(r0, 0), atI32(r0, 1));
   while (true) {
-    const lo = f.refLo[h];
-    const hi = f.refHi[h];
+    const lo = f.refLoOf(h);
+    const hi = f.refHiOf(h);
     let found = -1;
-    for (let i = lo; i <= hi; i++) {
+    for (let i = lo; i <= hi && i < 2147483647; i++) {
       const t = swTokenAfterForceCastParenScope(f, i);
       if (t >= 0 && !(t >= lo && t <= hi)) {
         found = t;
@@ -301,13 +302,13 @@ const swExpressionRangeContainingForceUnwrap = (f: SwFormatter, fu: i32): i32 =>
     if (e === null) {
       return -1;
     }
-    h = f.ref(e[0], e[1]);
+    h = f.ref(atI32(e, 0), atI32(e, 1));
   }
-  const lo = f.refLo[h];
-  const hi = f.refHi[h];
+  const lo = f.refLoOf(h);
+  const hi = f.refHiOf(h);
   const sl = swStartOfScope(f, lo);
   let infix = -1;
-  for (let i = lo; i <= hi; i++) {
+  for (let i = lo; i <= hi && i < 2147483647; i++) {
     if (swTreatAsInfixOperator(f, i) && swStartOfScope(f, i) === sl) {
       infix = i;
       break;
@@ -322,7 +323,7 @@ const swExpressionRangeContainingForceUnwrap = (f: SwFormatter, fu: i32): i32 =>
       return -1;
     }
   }
-  for (let i = lo; i <= hi; i++) {
+  for (let i = lo; i <= hi && i < 2147483647; i++) {
     if (swStartOfScope(f, i) !== sl) {
       continue;
     }
@@ -343,18 +344,18 @@ const swExpressionRangeContainingForceUnwrap = (f: SwFormatter, fu: i32): i32 =>
       return -1;
     }
   }
-  const olo = fu < infix ? lo : infix + 1;
-  const ohi = fu < infix ? infix : hi + 1;
+  const olo = fu < infix ? lo : add32(infix, 1);
+  const ohi = fu < infix ? infix : add32(hi, 1);
   const sub = new SwTokList();
   for (let i = olo; i < ohi; i++) {
     sub.push(f.k(i), f.s(i), f.a(i));
   }
   const g = new SwFormatter(sub);
-  const sh = swExpressionRangeContainingForceUnwrap(g, fu - olo);
+  const sh = swExpressionRangeContainingForceUnwrap(g, sub32(fu, olo));
   if (sh < 0) {
     return -1;
   }
-  return f.ref(g.refLo[sh] + olo, g.refHi[sh] + olo);
+  return f.ref(add32(g.refLoOf(sh), olo), add32(g.refHiOf(sh), olo));
 };
 
 /** tryKeywordSupported(at:in:). */
@@ -391,25 +392,27 @@ const swConvertForceUnwrap = (f: SwFormatter, op: i32, tc: i32, framework: i32):
   if (h < 0) {
     return false;
   }
-  if (framework !== SW_TEST_XCTEST && !swCanInsertRequire(f, f.refLo[h], f.refHi[h])) {
+  if (framework !== SW_TEST_XCTEST && !swCanInsertRequire(f, f.refLoOf(h), f.refHiOf(h))) {
     f.unref(h);
     return false;
   }
-  if (f.op(f.refLo[h], "\\", SW_OP_PREFIX)) {
+  if (f.op(f.refLoOf(h), "\\", SW_OP_PREFIX)) {
     f.unref(h);
     return false;
   }
-  const full = swForceUnwrapExpressionRange(f, f.refLo[h]);
-  const th = f.ref(full !== null ? full[0] : f.refLo[h], full !== null ? full[0] : f.refLo[h]);
-  const isOperatorRHS = f.refLo[th] < f.refLo[h];
-  if (isOperatorRHS && !swCanUnwrapOperatorOperand(f, f.refLo[h], f.refHi[h])) {
+  const full = swForceUnwrapExpressionRange(f, f.refLoOf(h));
+  const thLo = full !== null ? atI32(full, 0) : f.refLoOf(h);
+  const th = f.ref(thLo, thLo);
+  const isOperatorRHS = f.refLoOf(th) < f.refLoOf(h);
+  if (isOperatorRHS && !swCanUnwrapOperatorOperand(f, f.refLoOf(h), f.refHiOf(h))) {
     f.unref(h);
     f.unref(th);
     return false;
   }
-  const rlo = f.refLo[h];
-  const rhi = f.refHi[h];
-  for (let i = rhi; i >= rlo; i--) {
+  const rlo = f.refLoOf(h);
+  const rhi = f.refHiOf(h);
+  // f.op is false below 0, so the walk stops there.
+  for (let i = rhi; i >= rlo && i >= 0; i--) {
     if (!f.op(i, "!", SW_OP_POSTFIX) || !swTryKeywordSupported(f, i, fd)) {
       continue;
     }
@@ -417,7 +420,7 @@ const swConvertForceUnwrap = (f: SwFormatter, op: i32, tc: i32, framework: i32):
     let inSub = false;
     while (true) {
       const scopeStart = swStartOfScope(f, cur);
-      if (scopeStart < 0 || !(scopeStart >= f.refLo[h] && scopeStart <= f.refHi[h])) {
+      if (scopeStart < 0 || !(scopeStart >= f.refLoOf(h) && scopeStart <= f.refHiOf(h))) {
         break;
       }
       const pi = f.indexBefore(SW_T_NON_SPACE_OR_COMMENT_OR_LINEBREAK, scopeStart);
@@ -443,7 +446,7 @@ const swConvertForceUnwrap = (f: SwFormatter, op: i32, tc: i32, framework: i32):
     let shouldRemove = false;
     const nt = f.indexAfter(SW_T_NON_SPACE_OR_COMMENT_OR_LINEBREAK, i);
     if (nt >= 0) {
-      if (f.s(nt) === "is" || f.s(nt) === "as" || !(nt >= f.refLo[h] && nt <= f.refHi[h])) {
+      if (f.s(nt) === "is" || f.s(nt) === "as" || !(nt >= f.refLoOf(h) && nt <= f.refHiOf(h))) {
         shouldRemove = true;
       }
     } else {
@@ -460,8 +463,8 @@ const swConvertForceUnwrap = (f: SwFormatter, op: i32, tc: i32, framework: i32):
     }
   }
   let needs = true;
-  const lo = f.refLo[h];
-  const hi = f.refHi[h];
+  const lo = f.refLoOf(h);
+  const hi = f.refHiOf(h);
   const tae = f.indexAfter(SW_T_NON_SPACE_OR_COMMENT_OR_LINEBREAK, hi);
   if (tae >= 0 && f.op(tae, "=", SW_OP_INFIX)) {
     needs = false;
@@ -511,15 +514,15 @@ const swConvertForceUnwrap = (f: SwFormatter, op: i32, tc: i32, framework: i32):
       wrapper.push(new SwTok(SW_KEYWORD, "#require", 0));
     }
     wrapper.push(new SwTok(SW_START, "(", 0));
-    const ins = spo ? lo + 1 : lo;
-    f.insert(SW_END, ")", 0, hi + 1);
+    const ins = spo ? add32(lo, 1) : lo;
+    f.insert(SW_END, ")", 0, add32(hi, 1));
     f.insertToks(wrapper, ins);
     if (spo && !isOperatorRHS) {
-      f.insert(SW_END, ")", 0, f.refHi[h] + 1);
+      f.insert(SW_END, ")", 0, add32(f.refHiOf(h), 1));
       f.insert(SW_START, "(", 0, ins);
     }
-    if (isOperatorRHS && !f.kw(f.refLo[th], "try")) {
-      f.insertToks([new SwTok(SW_KEYWORD, "try", 0), new SwTok(SW_SPACE, " ", 0)], f.refLo[th]);
+    if (isOperatorRHS && !f.kw(f.refLoOf(th), "try")) {
+      f.insertToks([new SwTok(SW_KEYWORD, "try", 0), new SwTok(SW_SPACE, " ", 0)], f.refLoOf(th));
     }
   }
   f.unref(h);
@@ -553,20 +556,20 @@ export const swRuleNoForceUnwrapInTests = (f: SwFormatter): void => {
     }
   }
   for (const tc of testCases) {
-    const fd = swParseFunctionDeclaration(f, f.refLo[tc]);
+    const fd = swParseFunctionDeclaration(f, f.refLoOf(tc));
     if (fd === null || fd.bodyStart < 0) {
       break;
     }
     const mine: i32[] = [];
     for (const o of ops) {
-      const oi = f.refLo[o];
+      const oi = f.refLoOf(o);
       if (oi >= fd.bodyStart && oi <= fd.bodyEnd) {
         mine.push(o);
       }
     }
     let converted = false;
     for (const o of mine) {
-      if (swConvertForceUnwrap(f, f.refLo[o], f.refLo[tc], framework)) {
+      if (swConvertForceUnwrap(f, f.refLoOf(o), f.refLoOf(tc), framework)) {
         converted = true;
       }
     }

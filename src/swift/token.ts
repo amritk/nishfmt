@@ -6,6 +6,8 @@
 // Ported from SwiftFormat 0.64.7 (MIT License, Copyright (c) 2016 Nick
 // Lockwood).
 
+import { fault } from "../core/fault";
+
 // Token kinds (Token's cases).
 export const SW_NUMBER: i32 = 0;
 export const SW_LINEBREAK: i32 = 1;
@@ -72,8 +74,71 @@ export class SwTok {
   }
 }
 
+/** Moves `xs[i, n - m)` up to `[i + m, n)`, `n` the length (the caller pushed `m` slots). */
+const swMoveUp = <T>(xs: T[], i: i32, m: i32): void => {
+  const n = toI32(xs.length);
+  if (i < 0 || m < 0 || m > n) {
+    fault();
+    return;
+  }
+  for (let d = n - 1; d >= 0 && d < xs.length; d--) {
+    const s = d - m;
+    if (s < i || s < 0 || s >= xs.length) {
+      break;
+    }
+    xs[d] = xs[s];
+  }
+};
+
+/** Moves `xs[i + m, n)` down to `[i, n - m)`, `n` the length (the caller then pops `m`). */
+const swMoveDown = <T>(xs: T[], i: i32, m: i32): void => {
+  const n = toI32(xs.length);
+  if (i < 0 || m < 0 || m > n) {
+    fault();
+    return;
+  }
+  if (i >= n - m) {
+    return;
+  }
+  // i < n - m, so i + m < n.
+  let s = toI32(toU32(i) + toU32(m));
+  for (let d = i; d >= 0 && d < xs.length && s >= 0 && s < xs.length; d++) {
+    xs[d] = xs[s];
+    s++;
+  }
+};
+
+/** Pops `m` elements; fewer than `m` faults (pop on an empty array panicked). */
+const swPopN = <T>(xs: T[], m: i32): void => {
+  for (let x = 0; x < m; x++) {
+    if (xs.length > 0) {
+      xs.pop();
+    } else {
+      fault();
+      return;
+    }
+  }
+};
+
+/** xs.pop() for a stack the caller knows is not empty; an empty one faults (pop panicked). */
+export const swPopLast = <T>(xs: T[]): void => {
+  if (xs.length > 0) {
+    xs.pop();
+  } else {
+    fault();
+  }
+};
+
+/** Pops down to `n` (>= 0) elements. */
+const swTruncate = <T>(xs: T[], n: i32): void => {
+  while (xs.length > n && xs.length > 0) {
+    xs.pop();
+  }
+};
+
 /** The token list: kinds, strings and aux values, with cheap edits at the end; `c` holds each
- *  token's scope code (swScopeCode), so scope-aware scans compare integers. */
+ *  token's scope code (swScopeCode), so scope-aware scans compare integers. The four arrays
+ *  always have one length. */
 export class SwTokList {
   k: i32[];
   s: string[];
@@ -91,6 +156,36 @@ export class SwTokList {
     return toI32(this.k.length);
   }
 
+  /** The kind of token i; outside the list faults and answers -1. */
+  kAt(i: i32): i32 {
+    const tk = this.k;
+    if (i >= 0 && i < tk.length) {
+      return tk[i];
+    }
+    fault();
+    return -1;
+  }
+
+  /** The string of token i; outside the list faults and answers "". */
+  sAt(i: i32): string {
+    const ts = this.s;
+    if (i >= 0 && i < ts.length) {
+      return ts[i];
+    }
+    fault();
+    return "";
+  }
+
+  /** The aux value of token i; outside the list faults and answers 0. */
+  aAt(i: i32): i32 {
+    const ta = this.a;
+    if (i >= 0 && i < ta.length) {
+      return ta[i];
+    }
+    fault();
+    return 0;
+  }
+
   push(k: i32, s: string, a: i32): void {
     this.k.push(k);
     this.s.push(s);
@@ -99,10 +194,19 @@ export class SwTokList {
   }
 
   set(i: i32, k: i32, s: string, a: i32): void {
-    this.k[i] = k;
-    this.s[i] = s;
-    this.a[i] = a;
-    this.c[i] = swScopeCode(k, s);
+    const code = swScopeCode(k, s);
+    const tk = this.k;
+    const ts = this.s;
+    const ta = this.a;
+    const tc = this.c;
+    if (i >= 0 && i < tk.length && i < ts.length && i < ta.length && i < tc.length) {
+      tk[i] = k;
+      ts[i] = s;
+      ta[i] = a;
+      tc[i] = code;
+    } else {
+      fault();
+    }
   }
 
   insertAt(i: i32, k: i32, s: string, a: i32): void {
@@ -111,16 +215,15 @@ export class SwTokList {
     this.s.push("");
     this.a.push(0);
     this.c.push(0);
-    for (let j = n; j > i; j--) {
-      this.k[j] = this.k[j - 1];
-      this.s[j] = this.s[j - 1];
-      this.a[j] = this.a[j - 1];
-      this.c[j] = this.c[j - 1];
+    if (i < 0 || i > n) {
+      fault();
+      return;
     }
-    this.k[i] = k;
-    this.s[i] = s;
-    this.a[i] = a;
-    this.c[i] = swScopeCode(k, s);
+    swMoveUp(this.k, i, 1);
+    swMoveUp(this.s, i, 1);
+    swMoveUp(this.a, i, 1);
+    swMoveUp(this.c, i, 1);
+    this.set(i, k, s, a);
   }
 
   /** Inserts `m` copies of nothing at `i` (filled by the caller with set). */
@@ -132,64 +235,64 @@ export class SwTokList {
       this.a.push(0);
       this.c.push(0);
     }
-    for (let j = n - 1; j >= i; j--) {
-      this.k[j + m] = this.k[j];
-      this.s[j + m] = this.s[j];
-      this.a[j + m] = this.a[j];
-      this.c[j + m] = this.c[j];
+    if (i >= n) {
+      return;
     }
+    swMoveUp(this.k, i, m);
+    swMoveUp(this.s, i, m);
+    swMoveUp(this.a, i, m);
+    swMoveUp(this.c, i, m);
   }
 
   removeAt(i: i32): void {
-    const n = toI32(this.k.length);
-    for (let j = i; j < n - 1; j++) {
-      this.k[j] = this.k[j + 1];
-      this.s[j] = this.s[j + 1];
-      this.a[j] = this.a[j + 1];
-      this.c[j] = this.c[j + 1];
-    }
-    this.k.pop();
-    this.s.pop();
-    this.a.pop();
-    this.c.pop();
+    swMoveDown(this.k, i, 1);
+    swMoveDown(this.s, i, 1);
+    swMoveDown(this.a, i, 1);
+    swMoveDown(this.c, i, 1);
+    swPopN(this.k, 1);
+    swPopN(this.s, 1);
+    swPopN(this.a, 1);
+    swPopN(this.c, 1);
   }
 
   /** Removes [i, j). */
   removeRange(i: i32, j: i32): void {
-    const n = toI32(this.k.length);
-    const m = j - i;
-    if (m <= 0) {
+    if (j <= i) {
       return;
     }
-    for (let x = i; x < n - m; x++) {
-      this.k[x] = this.k[x + m];
-      this.s[x] = this.s[x + m];
-      this.a[x] = this.a[x + m];
-      this.c[x] = this.c[x + m];
+    if (i < 0) {
+      fault();
+      return;
     }
-    for (let x = 0; x < m; x++) {
-      this.k.pop();
-      this.s.pop();
-      this.a.pop();
-      this.c.pop();
-    }
+    // 0 <= i < j, so the difference fits.
+    const m = toI32(toU32(j) - toU32(i));
+    swMoveDown(this.k, i, m);
+    swMoveDown(this.s, i, m);
+    swMoveDown(this.a, i, m);
+    swMoveDown(this.c, i, m);
+    swPopN(this.k, m);
+    swPopN(this.s, m);
+    swPopN(this.a, m);
+    swPopN(this.c, m);
   }
 
   truncate(n: i32): void {
-    while (toI32(this.k.length) > n) {
-      this.k.pop();
-      this.s.pop();
-      this.a.pop();
-      this.c.pop();
+    if (n < 0) {
+      fault();
+      return;
     }
+    swTruncate(this.k, n);
+    swTruncate(this.s, n);
+    swTruncate(this.a, n);
+    swTruncate(this.c, n);
   }
 
   copy(): SwTokList {
     const t = new SwTokList();
-    t.k = this.k.slice(0, toI32(this.k.length));
-    t.s = this.s.slice(0, toI32(this.s.length));
-    t.a = this.a.slice(0, toI32(this.a.length));
-    t.c = this.c.slice(0, toI32(this.c.length));
+    t.k = this.k.map((x) => x);
+    t.s = this.s.map((x) => x);
+    t.a = this.a.map((x) => x);
+    t.c = this.c.map((x) => x);
     return t;
   }
 }
@@ -338,14 +441,21 @@ export const swStringDelimiterType = (k: i32, s: string): i32 => {
   let hashes = 0;
   let slashes = 0;
   const n = toI32(s.length);
+  // Each count is at most i, below n.
   for (let i = 0; i < n; i++) {
     const c = s.charCodeAt(i);
     if (c === 35) {
-      hashes++;
+      if (hashes < n) {
+        hashes++;
+      }
     } else if (c === 34) {
-      quotes++;
+      if (quotes < n) {
+        quotes++;
+      }
     } else if (c === 47) {
-      slashes++;
+      if (slashes < n) {
+        slashes++;
+      }
     } else {
       return -1;
     }
@@ -354,8 +464,19 @@ export const swStringDelimiterType = (k: i32, s: string): i32 => {
   if (!(quotes > 0 || regex)) {
     return -1;
   }
-  const multi = quotes === 3 || (regex && hashes > 0);
-  return hashes * 4 + (multi ? 2 : 0) + (regex ? 1 : 0);
+  if (hashes < 0 || hashes >= 0x20000000) {
+    fault();
+    return -1;
+  }
+  // hashes * 4 + multi * 2 + regex, the low bits free below 2^31.
+  let r = hashes << 2;
+  if (quotes === 3 || (regex && hashes > 0)) {
+    r = r | 2;
+  }
+  if (regex) {
+    r = r | 1;
+  }
+  return r;
 };
 
 /** Token.isStringDelimiter. */
@@ -367,10 +488,14 @@ export const swIsStringDelimiter = (k: i32, s: string): boolean => {
     return true;
   }
   const n = toI32(s.length);
-  if (n === 0) {
+  if (n <= 0 || n > s.length) {
     return false;
   }
-  return s.charCodeAt(n - 1) === 35 || (s.charCodeAt(0) === 35 && s.charCodeAt(n - 1) === 47);
+  const last = s.charCodeAt(n - 1);
+  if (last === 35) {
+    return true;
+  }
+  return last === 47 && s.length > 0 && s.charCodeAt(0) === 35;
 };
 
 /** Token.isMultilineStringDelimiter. */
@@ -408,10 +533,11 @@ export const swIsEndOfScopeOf = (k: i32, s: string, sk: i32, ss: string, sa: i32
       const quotes = (t & 1) !== 0 ? "/" : (t & 2) !== 0 ? '"""' : '"';
       const h = t >> 2;
       const ql = toI32(quotes.length);
-      if (toI32(s.length) !== ql + h || !s.startsWith(quotes)) {
+      // h is at most 2^29 and ql at most 3: the sum fits.
+      if (toI32(s.length) !== toI32(toU32(ql) + toU32(h)) || !s.startsWith(quotes)) {
         return false;
       }
-      for (let i = ql; i < ql + h; i++) {
+      for (let i = ql; i >= 0 && i < s.length; i++) {
         if (s.charCodeAt(i) !== 35) {
           return false;
         }
@@ -567,8 +693,13 @@ export const swScopeCode = (k: i32, s: string): i32 => {
 /** tokens[end].isEndOfScope(tokens[start]) from scope codes; falls back to the strings for
  *  string delimiters and `?` / `case` colons. */
 export const swClosesByCode = (t: SwTokList, end: i32, start: i32): boolean => {
-  const ce = t.c[end];
-  const cs = t.c[start];
+  const tc = t.c;
+  if (end < 0 || end >= tc.length || start < 0 || start >= tc.length) {
+    fault();
+    return false;
+  }
+  const ce = tc[end];
+  const cs = tc[start];
   if (ce >= SW_SC_END_PAREN && ce <= SW_SC_ENDIF) {
     if (cs === SW_SC_START_OTHER) {
       return false;
@@ -599,17 +730,30 @@ export const swClosesByCode = (t: SwTokList, end: i32, start: i32): boolean => {
   if (ce >= SW_SC_PAREN && ce <= SW_SC_START_OTHER && ce !== SW_SC_COLON) {
     return false;
   }
-  return swIsEndOfScopeOf(t.k[end], t.s[end], t.k[start], t.s[start], t.a[start]);
+  const tk = t.k;
+  const ts = t.s;
+  const ta = t.a;
+  if (end >= tk.length || end >= ts.length || start >= tk.length || start >= ts.length || start >= ta.length) {
+    fault();
+    return false;
+  }
+  return swIsEndOfScopeOf(tk[end], ts[end], tk[start], ts[start], ta[start]);
 };
 
 /** tokens[i].is(type), reading the scope code for comment, keyword and attribute tests. */
 export const swTokIsAt = (t: SwTokList, i: i32, type: i32): boolean => {
-  const k = t.k[i];
+  const tk = t.k;
+  const tc = t.c;
+  if (i < 0 || i >= tk.length || i >= tc.length) {
+    fault();
+    return false;
+  }
+  const k = tk[i];
   if (type === SW_T_NON_SPACE_OR_COMMENT_OR_LINEBREAK) {
     if (k === SW_SPACE || k === SW_LINEBREAK || k === SW_COMMENT) {
       return false;
     }
-    const c = t.c[i];
+    const c = tc[i];
     return !(c === SW_SC_LINE_COMMENT || c === SW_SC_BLOCK_COMMENT || c === SW_SC_END_BLOCK_COMMENT);
   }
   if (type === SW_T_NON_SPACE) {
@@ -622,13 +766,13 @@ export const swTokIsAt = (t: SwTokList, i: i32, type: i32): boolean => {
     return k === SW_LINEBREAK;
   }
   if (type === SW_T_KEYWORD) {
-    return t.c[i] === SW_SC_KEYWORD;
+    return tc[i] === SW_SC_KEYWORD;
   }
   if (type === SW_T_NON_SPACE_OR_COMMENT) {
     if (k === SW_SPACE || k === SW_COMMENT) {
       return false;
     }
-    const c = t.c[i];
+    const c = tc[i];
     return !(c === SW_SC_LINE_COMMENT || c === SW_SC_BLOCK_COMMENT || c === SW_SC_END_BLOCK_COMMENT);
   }
   if (type === SW_T_NON_SPACE_OR_LINEBREAK) {
@@ -637,5 +781,11 @@ export const swTokIsAt = (t: SwTokList, i: i32, type: i32): boolean => {
   if (type === SW_T_NON_LINEBREAK) {
     return k !== SW_LINEBREAK;
   }
-  return swTokIs(k, t.s[i], t.a[i], type);
+  const ts = t.s;
+  const ta = t.a;
+  if (i >= ts.length || i >= ta.length) {
+    fault();
+    return false;
+  }
+  return swTokIs(k, ts[i], ta[i], type);
 };

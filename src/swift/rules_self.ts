@@ -6,6 +6,8 @@
 // Lockwood).
 
 import { SwFormatter, swIndexInWhere } from "./formatter";
+import { add32, sub32 } from "../core/arr";
+import { fault } from "../core/fault";
 import { swParseFunctionDeclaration, swUnescaped, swUnescapedTok } from "./funcdecl";
 import { swIsUnsafeExpression } from "./expr";
 import { swModifiersForDeclaration } from "./modifiers";
@@ -44,6 +46,7 @@ import {
   SW_T_NON_SPACE_OR_LINEBREAK,
   SW_T_START_OF_SCOPE,
   swIsStringDelimiter,
+  swPopLast,
   swIsSwitchCaseOrDefault,
   swStrIsMacro,
 } from "./token";
@@ -254,7 +257,7 @@ const swProcessDeclaredVariables = (
   let hasDecl = true;
   const scopeIndexStack: i32[] = [];
   const locals: string[] = [];
-  while (f.has(index)) {
+  while (index >= 0 && index < f.count()) {
     const k = f.k(index);
     const s = f.s(index);
     const pns = f.indexBefore(SW_T_NON_SPACE, index);
@@ -316,7 +319,8 @@ const swProcessDeclaredVariables = (
           }
           if (rsk.length !== 0 && ts !== "{") {
             let i = endIndex - 1;
-            while (i > nextIndex) {
+            // nextIndex >= 0.
+            while (i > nextIndex && i > 0) {
               if (f.tok(i, SW_END, "}")) {
                 const b = f.indexOfBefore(SW_START, "{", 0, i);
                 if (b >= 0) {
@@ -381,15 +385,17 @@ const swProcessDeclaredVariables = (
         }
         if (tk === SW_END && ts === ")") {
           let scopeIndex = -1;
-          if (scopeIndexStack.length !== 0) {
-            scopeIndex = scopeIndexStack[toI32(scopeIndexStack.length) - 1];
-            scopeIndexStack.pop();
+          const sl = toI32(scopeIndexStack.length);
+          if (sl > 0) {
+            scopeIndex = scopeIndexStack[sl - 1];
+            swPopLast(scopeIndexStack);
           }
           if (hasDecl && declarationIndex > scopeIndex) {
             hasDecl = false;
           }
         } else if (tk === SW_DELIM && ts === ",") {
-          const top = scopeIndexStack.length !== 0 ? scopeIndexStack[toI32(scopeIndexStack.length) - 1] : -1;
+          const sl = toI32(scopeIndexStack.length);
+          const top = sl > 0 ? scopeIndexStack[sl - 1] : -1;
           if (hasDecl && declarationIndex >= top) {
             hasDecl = false;
           }
@@ -441,7 +447,7 @@ const swProcessDeclaredVariables = (
     } else if (k === SW_LINEBREAK || (k === SW_END && s === "*/")) {
       f.updateEnablement(index);
     }
-    index++;
+    index = add32(index, 1);
   }
   return index;
 };
@@ -458,7 +464,32 @@ const swIsPropertyAccessorTok = (f: SwFormatter, i: i32, subscriptOnly: boolean)
   return !subscriptOnly && (s === "willSet" || s === "didSet" || s === "init");
 };
 
-const swClosureLast = (c: SwSelfCtx): i32 => toI32(c.closAllows.length) - 1;
+/** Whether the scope stack's top is the token (k, s). */
+const swScopeTopIs = (scopeK: i32[], scopeS: string[], k: i32, s: string): boolean => {
+  const j = toI32(scopeK.length) - 1;
+  return j >= 0 && j < scopeK.length && j < scopeS.length && scopeK[j] === k && scopeS[j] === s;
+};
+
+/** Whether the scope stack's top is not the sentinel (a space token). */
+const swScopeTopNotSpace = (scopeK: i32[]): boolean => {
+  const j = toI32(scopeK.length) - 1;
+  return j >= 0 && j < scopeK.length && scopeK[j] !== SW_SPACE;
+};
+
+/** Pops the scope stack's four parallel arrays. */
+const swPopScope = (scopeTok: i32[], scopeK: i32[], scopeS: string[], scopeDyn: string[][]): void => {
+  swPopLast(scopeTok);
+  swPopLast(scopeK);
+  swPopLast(scopeS);
+  swPopLast(scopeDyn);
+};
+
+/** Whether the innermost closure does not allow implicit self (false outside closures). */
+const swClosureDisallows = (c: SwSelfCtx): boolean => {
+  const ca = c.closAllows;
+  const cl = toI32(ca.length) - 1;
+  return cl >= 0 && cl < ca.length && !ca[cl];
+};
 
 /** processAccessors(_:for:at:...). */
 const swProcessAccessors = (
@@ -495,7 +526,7 @@ const swProcessAccessors = (
       continue;
     }
     found = true;
-    c.idx = startIndex + 1;
+    c.idx = add32(startIndex, 1);
     const ps = f.indexAfter(SW_T_NON_SPACE_OR_COMMENT_OR_LINEBREAK, nextIndex);
     const vt = ps >= 0 && f.tok(ps, SW_START, "(") ? f.indexAfter(SW_T_IDENTIFIER, ps) : -1;
     if (vt >= 0) {
@@ -525,7 +556,7 @@ const swProcessAccessors = (
       }
     }
     swProcessBody(f, c, localNames, dyn, cos, false, false);
-    c.idx = c.idx - 1;
+    c.idx = sub32(c.idx, 1);
   }
   if (c.dead) {
     return;
@@ -536,9 +567,9 @@ const swProcessAccessors = (
       swSelfFatal(f, c, "Expected }", c.idx);
       return;
     }
-    c.idx = e + 1;
+    c.idx = add32(e, 1);
   } else {
-    c.idx = c.idx + 1;
+    c.idx = add32(c.idx, 1);
     swNAdd(localNames, name);
     swProcessBody(f, c, localNames, dyn, cos, false, false);
   }
@@ -552,7 +583,7 @@ const swProcessFunction = (f: SwFormatter, c: SwSelfCtx, localNames0: string[], 
   const startIndex = f.indexOfAfter(SW_START, "(", 0, c.idx);
   const endIndex = startIndex >= 0 ? f.indexOfAfter(SW_END, ")", 0, startIndex) : -1;
   if (endIndex < 0) {
-    c.idx = c.idx + 1;
+    c.idx = add32(c.idx, 1);
     return;
   }
   c.idx = startIndex;
@@ -581,7 +612,7 @@ const swProcessFunction = (f: SwFormatter, c: SwSelfCtx, localNames0: string[], 
     }
     bodyStartIndex = fd.bodyStart;
   } else {
-    const v = swIndexInWhere(f, endIndex + 1, f.count(), (g, j) => {
+    const v = swIndexInWhere(f, add32(endIndex, 1), f.count(), (g, j) => {
       const k = g.k(j);
       if (k === SW_START && g.s(j) === "{") {
         return true;
@@ -604,7 +635,7 @@ const swProcessFunction = (f: SwFormatter, c: SwSelfCtx, localNames0: string[], 
     c.idx = bodyStartIndex;
     swProcessAccessors(f, c, true, "", localNames, dyn, cos);
   } else {
-    c.idx = bodyStartIndex + 1;
+    c.idx = add32(bodyStartIndex, 1);
     swProcessBody(f, c, localNames, dyn, cos, false, startTok === "init");
   }
 };
@@ -619,7 +650,7 @@ const swSupportedSelfCapture = (s: string): boolean =>
 /** Splits tokens lo..<hi by `,` delimiters, omitting empty pieces: answers [lo0, hi0, lo1, hi1, ...]. */
 const swSplitByComma = (f: SwFormatter, lo: i32, hi: i32, out: i32[]): void => {
   let st = lo;
-  for (let j = lo; j <= hi; j++) {
+  for (let j = lo; j <= hi && j < 2147483647; j++) {
     if (j === hi || f.tok(j, SW_DELIM, ",")) {
       if (j > st) {
         out.push(st);
@@ -639,13 +670,11 @@ const swTrimWs = (s: string): string => {
   ) {
     a++;
   }
-  while (
-    b > a &&
-    (s.charCodeAt(b - 1) === 32 ||
-      s.charCodeAt(b - 1) === 9 ||
-      s.charCodeAt(b - 1) === 10 ||
-      s.charCodeAt(b - 1) === 13)
-  ) {
+  while (b > a && b > 0 && b <= s.length) {
+    const c = s.charCodeAt(b - 1);
+    if (!(c === 32 || c === 9 || c === 10 || c === 13)) {
+      break;
+    }
     b--;
   }
   return s.substring(a, b);
@@ -665,8 +694,9 @@ const swProcessBody = (
     return;
   }
   const n = f.count();
-  const isWhereClause = c.idx > 0 && f.kw(c.idx - 1, "where");
-  const isCaseClause = !isWhereClause && c.idx > 0 && swIsSwitchCaseOrDefault(f.k(c.idx - 1), f.s(c.idx - 1));
+  const ci = c.idx;
+  const isWhereClause = ci > 0 && f.kw(ci - 1, "where");
+  const isCaseClause = !isWhereClause && ci > 0 && swIsSwitchCaseOrDefault(f.k(ci - 1), f.s(ci - 1));
   // Check if scope actually includes self before we waste a bunch of time
   {
     const st: string[] = [];
@@ -685,15 +715,14 @@ const swProcessBody = (
         }
       } else if (k === SW_END && (s === "}" || s === ")" || s === "]" || s === "case" || s === "default")) {
         if (st.length === 0 || (st.length === 1 && st[0] === ":" && isCaseClause)) {
-          c.idx = i + 1;
+          c.idx = add32(i, 1);
           return;
         }
-        st.pop();
+        swPopLast(st);
       }
     }
   }
-  const cl = swClosureLast(c);
-  const inClosureDisallowingImplicitSelf = !c.staticSelf && cl >= 0 && !c.closAllows[cl];
+  const inClosureDisallowingImplicitSelf = !c.staticSelf && swClosureDisallows(c);
   const localNames = swNCopy(inputLocalNames);
   if (!isTypeRoot) {
     let i = c.idx;
@@ -753,7 +782,7 @@ const swProcessBody = (
         }
         i = endIndex;
       } else if (k === SW_KEYWORD && (s === "var" || s === "let")) {
-        i++;
+        i = add32(i, 1);
         const removeSelf = !dyn && ((c.staticSelf && cos) || (!c.staticSelf && !inClosureDisallowingImplicitSelf));
         i = swProcessDeclaredVariables(f, c, i, localNames, removeSelf ? c.selfKw : "", true);
         if (c.dead) {
@@ -769,13 +798,13 @@ const swProcessBody = (
       } else if (k === SW_START) {
         cos = false;
         const e = swEndOfScope(f, i);
-        i = e >= 0 ? e : n - 1;
+        i = e >= 0 ? e : sub32(n, 1);
       } else if (k === SW_END && (s === "}" || s === "case" || s === "default")) {
         break;
       } else if (k === SW_LINEBREAK || (k === SW_END && s === "*/")) {
         f.updateEnablement(i);
       }
-      i++;
+      i = add32(i, 1);
     }
   }
   // Remove `self`
@@ -847,24 +876,33 @@ const swProcessBody = (
         const name = f.s(ni);
         const mods = swModifiersForDeclaration(f, index);
         let usingDyn = false;
-        for (let q = 0; q < toI32(mods.idx.length); q++) {
-          if (f.s(mods.idx[q]) === "@dynamicMemberLookup" || mods.names[q] === "@dynamicMemberLookup") {
+        const mIdx = mods.idx;
+        const mNames = mods.names;
+        for (let q = 0; q < mIdx.length && q < mNames.length; q++) {
+          const mn = mNames[q];
+          if (f.s(mIdx[q]) === "@dynamicMemberLookup" || mn === "@dynamicMemberLookup") {
             usingDyn = true;
           }
         }
+        // scopeDyn always holds its sentinel.
         const top = toI32(scopeDyn.length) - 1;
+        if (top < 0 || top >= scopeDyn.length) {
+          fault();
+          return;
+        }
+        const topDyn = scopeDyn[top];
         if (usingDyn) {
-          swNAdd(scopeDyn[top], name);
-        } else if ((s === "extension" || lastKeyword === "extension") && swNHas(scopeDyn[top], name)) {
+          swNAdd(topDyn, name);
+        } else if ((s === "extension" || lastKeyword === "extension") && swNHas(topDyn, name)) {
           usingDyn = true;
         }
-        c.idx = scopeStart + 1;
+        c.idx = add32(scopeStart, 1);
         c.typeNames.push(name);
         c.typeKws.push(s);
         swProcessBody(f, c, ["init"], usingDyn, classOrStatic, true, false);
-        c.idx = c.idx - 1;
-        c.typeNames.pop();
-        c.typeKws.pop();
+        c.idx = sub32(c.idx, 1);
+        swPopLast(c.typeNames);
+        swPopLast(c.typeKws);
       }
     } else if (
       isKw &&
@@ -874,7 +912,7 @@ const swProcessBody = (
       // break
     } else if (isKw && (s === "var" || s === "let")) {
       lastKeywordIndex = index;
-      c.idx = c.idx + 1;
+      c.idx = add32(c.idx, 1);
       if (lastKeyword === "lazy") {
         while (true) {
           const ni = f.indexAfter(SW_T_NON_SPACE_OR_COMMENT_OR_LINEBREAK, c.idx);
@@ -922,17 +960,10 @@ const swProcessBody = (
           if (e < 0) {
             break;
           }
-          c.idx = e + 1;
+          c.idx = add32(e, 1);
         }
-        while (
-          toI32(scopeK.length) > 0 &&
-          scopeK[toI32(scopeK.length) - 1] === SW_START &&
-          scopeS[toI32(scopeS.length) - 1] === "("
-        ) {
-          scopeTok.pop();
-          scopeK.pop();
-          scopeS.pop();
-          scopeDyn.pop();
+        while (swScopeTopIs(scopeK, scopeS, SW_START, "(")) {
+          swPopScope(scopeTok, scopeK, scopeS, scopeDyn);
         }
         let startIndex = f.tok(c.idx, SW_START, "{") ? c.idx : f.indexOfAfter(SW_START, "{", 0, c.idx);
         if (startIndex < 0) {
@@ -952,11 +983,11 @@ const swProcessBody = (
           }
           startIndex = j2;
         }
-        c.idx = startIndex + 1;
+        c.idx = add32(startIndex, 1);
         const bodyLocalNames =
           lastKeyword === "guard" ? swNMinus(localNames, swNMinus(guardDeclared, inputLocalNames)) : scopedNames;
         swProcessBody(f, c, bodyLocalNames, dyn, classOrStatic, false, isInit);
-        c.idx = c.idx - 1;
+        c.idx = sub32(c.idx, 1);
         lastKeyword = "";
       } else {
         lastKeyword = s;
@@ -980,7 +1011,7 @@ const swProcessBody = (
           swNAdd(ln, swUnescaped(f.s(j)));
         }
       }
-      c.idx = c.idx + 1;
+      c.idx = add32(c.idx, 1);
       swProcessBody(f, c, ln, dyn, classOrStatic, false, isInit);
       continue;
     } else if (isKw && s === "while" && lastKeyword === "repeat") {
@@ -1003,7 +1034,7 @@ const swProcessBody = (
       lastKeywordIndex = index;
     } else if (k === SW_START && (s === "/*" || s === "//")) {
       const e = swEndOfScope(f, index);
-      c.idx = e >= 0 ? e : n - 1;
+      c.idx = e >= 0 ? e : sub32(n, 1);
       f.updateEnablement(c.idx);
     } else if (k === SW_START && (swIsStringDelimiter(k, s) || s === "[" || s === "(")) {
       scopeTok.push(index);
@@ -1016,20 +1047,20 @@ const swProcessBody = (
       lastKeyword = "";
       const ln = swNCopy(localNames);
       swNAdd(ln, "error");
-      c.idx = c.idx + 1;
+      c.idx = add32(c.idx, 1);
       swProcessBody(f, c, ln, dyn, classOrStatic, false, isInit);
       continue;
     } else if (k === SW_START && s === "{" && isWhereClause && scopeK.length === 1) {
       return;
     } else if (k === SW_START && s === "{" && lastKeyword === "switch" && scopeK.length === 1) {
       lastKeyword = "";
-      c.idx = c.idx + 1;
+      c.idx = add32(c.idx, 1);
       while (f.has(c.idx) && !c.dead) {
         const t = c.idx;
-        c.idx = c.idx + 1;
+        c.idx = add32(c.idx, 1);
         if (f.tok(t, SW_END, "case") || f.tok(t, SW_END, "default")) {
           swProcessBody(f, c, localNames, dyn, classOrStatic, false, isInit);
-          c.idx = c.idx - 1;
+          c.idx = sub32(c.idx, 1);
         } else if (f.tok(t, SW_END, "}")) {
           break;
         }
@@ -1050,20 +1081,20 @@ const swProcessBody = (
         const scopeIndex = f.indexBefore(SW_T_START_OF_SCOPE, index);
         if (scopeIndex >= 0 && scopeIndex > lastKeywordIndex) {
           const e = swEndOfScope(f, index);
-          c.idx = e >= 0 ? e : n - 1;
+          c.idx = e >= 0 ? e : sub32(n, 1);
           skip = true;
         } else {
           lastKeyword = "";
         }
       }
       if (!skip) {
-        c.idx = c.idx + 1;
+        c.idx = add32(c.idx, 1);
         swProcessBody(f, c, localNames, dyn, classOrStatic, false, isInit);
         continue;
       }
     } else if (k === SW_START && s === "{" && lastKeyword === "var" && !swIsStartOfClosure(f, index)) {
       lastKeyword = "";
-      let prevIndex = index - 1;
+      let prevIndex = sub32(index, 1);
       let name = "";
       let hasName = false;
       while (prevIndex >= 0 && !f.kw(prevIndex, "var")) {
@@ -1084,7 +1115,7 @@ const swProcessBody = (
         swProcessAccessors(f, c, false, name, localNames, dyn, cos2);
       } else {
         const e = swEndOfScope(f, index);
-        c.idx = (e >= 0 ? e : index) + 1;
+        c.idx = add32(e >= 0 ? e : index, 1);
       }
       continue;
     } else if (k === SW_START && s === "{" && (lastKeyword === "var" || swIsStartOfClosure(f, index))) {
@@ -1097,7 +1128,7 @@ const swProcessBody = (
       }
     } else if (k === SW_START) {
       const e = swEndOfScope(f, index);
-      c.idx = e >= 0 ? e : n - 1;
+      c.idx = e >= 0 ? e : sub32(n, 1);
     } else if (k === SW_IDENT && s === c.selfKw) {
       if (f.isEnabled() && !isTypeRoot && !dyn && (!c.staticSelf || classOrStatic)) {
         const dotIndex = f.indexAfter(SW_T_NON_SPACE_OR_LINEBREAK, index);
@@ -1106,8 +1137,7 @@ const swProcessBody = (
           f.op(dotIndex, ".", SW_OP_INFIX) &&
           f.indexAfter(SW_T_NON_SPACE_OR_LINEBREAK, dotIndex) >= 0
         ) {
-          const cl2 = swClosureLast(c);
-          if (!(cl2 >= 0 && !c.closAllows[cl2])) {
+          if (!swClosureDisallows(c)) {
             swRemoveSelf(f, index, localNames, [], false);
           }
         }
@@ -1127,30 +1157,28 @@ const swProcessBody = (
       return;
     } else if (k === SW_END) {
       if (s === "#endif") {
-        while (toI32(scopeK.length) > 0 && !(scopeK[toI32(scopeK.length) - 1] === SW_SPACE)) {
-          const ws = scopeS[toI32(scopeS.length) - 1];
-          const wk = scopeK[toI32(scopeK.length) - 1];
-          scopeTok.pop();
-          scopeK.pop();
-          scopeS.pop();
-          scopeDyn.pop();
+        while (true) {
+          const j = toI32(scopeK.length) - 1;
+          if (j < 0 || j >= scopeK.length || j >= scopeS.length || scopeK[j] === SW_SPACE) {
+            break;
+          }
+          const ws = scopeS[j];
+          const wk = scopeK[j];
+          swPopScope(scopeTok, scopeK, scopeS, scopeDyn);
           if (!(wk === SW_START && ws === "#if")) {
             break;
           }
         }
-      } else if (toI32(scopeK.length) > 0 && scopeK[toI32(scopeK.length) - 1] !== SW_SPACE) {
-        scopeTok.pop();
-        scopeK.pop();
-        scopeS.pop();
-        scopeDyn.pop();
+      } else if (swScopeTopNotSpace(scopeK)) {
+        swPopScope(scopeTok, scopeK, scopeS, scopeDyn);
       } else {
-        c.idx = c.idx + 1;
+        c.idx = add32(c.idx, 1);
         return;
       }
     } else if (k === SW_LINEBREAK) {
       f.updateEnablement(index);
     }
-    c.idx = c.idx + 1;
+    c.idx = add32(c.idx, 1);
   }
 };
 
@@ -1178,16 +1206,16 @@ const swProcessClosure = (
   let parHi = -1;
   let done = false;
   if (inIndex >= 0) {
-    const cls = swIndexInWhere(f, index + 1, inIndex, (g, j) => {
+    const cls = swIndexInWhere(f, add32(index, 1), inIndex, (g, j) => {
       const k = g.k(j);
       return k !== SW_SPACE && k !== SW_LINEBREAK && !g.isComment(j) && !swIsAttribute(g, j);
     });
     if (cls >= 0 && f.tok(cls, SW_START, "[")) {
       const cle = swEndOfScope(f, cls);
       if (cle >= 0) {
-        capLo = cls + 1;
+        capLo = add32(cls, 1);
         capHi = cle;
-        parLo = cle + 1;
+        parLo = add32(cle, 1);
         parHi = inIndex;
         done = true;
       }
@@ -1211,8 +1239,15 @@ const swProcessClosure = (
   let selfCapture = "";
   let hasSelfCapture = false;
   const capText: string[] = [];
-  for (let q = 0; q < toI32(capEntries.length); q += 2) {
-    const t = swTrimWs(f.text(capEntries[q], capEntries[q + 1]));
+  // The entries come in [lo, hi) pairs.
+  for (let q = 0; q >= 0 && q < capEntries.length; ) {
+    const q1 = q + 1;
+    if (q1 >= capEntries.length) {
+      fault();
+      return;
+    }
+    const t = swTrimWs(f.text(capEntries[q], capEntries[q1]));
+    q = q1 + 1;
     capText.push(t);
     if (!hasSelfCapture && swSupportedSelfCapture(t)) {
       selfCapture = t;
@@ -1221,18 +1256,36 @@ const swProcessClosure = (
   }
   const closureLocalNames = swNCopy(localNames);
   const all: i32[] = [];
-  for (let q = 0; q < toI32(capEntries.length); q += 2) {
-    if (!(hasSelfCapture && capText[toI32(q / 2)] === selfCapture)) {
-      all.push(capEntries[q]);
-      all.push(capEntries[q + 1]);
+  // capText holds one text per pair.
+  for (let q = 0; q >= 0 && q < capEntries.length; ) {
+    const q1 = q + 1;
+    const qt = toI32(q / 2);
+    if (q1 >= capEntries.length || qt >= capText.length) {
+      fault();
+      return;
     }
+    const lo = capEntries[q];
+    const hi = capEntries[q1];
+    if (!(hasSelfCapture && capText[qt] === selfCapture)) {
+      all.push(lo);
+      all.push(hi);
+    }
+    q = q1 + 1;
   }
   for (const x of parEntries) {
     all.push(x);
   }
-  for (let q = 0; q < toI32(all.length); q += 2) {
+  for (let q = 0; q >= 0 && q < all.length; ) {
+    const q1 = q + 1;
+    if (q1 >= all.length) {
+      fault();
+      return;
+    }
+    const lo = all[q];
+    const hi = all[q1];
+    q = q1 + 1;
     let li = -1;
-    for (let j = all[q]; j < all[q + 1]; j++) {
+    for (let j = lo; j < hi; j++) {
       if (f.k(j) === SW_IDENT && !swOwnership(f.s(j))) {
         li = j;
         break;
@@ -1252,11 +1305,11 @@ const swProcessClosure = (
   }
   c.closAllows.push(false);
   c.closCapture.push(selfCapture);
-  c.idx = (inIndex >= 0 ? inIndex : index) + 1;
+  c.idx = add32(inIndex >= 0 ? inIndex : index, 1);
   swProcessBody(f, c, closureLocalNames, dyn, c.staticSelf ? false : classOrStatic, false, isInit);
-  c.idx = c.idx - 1;
-  c.closAllows.pop();
-  c.closCapture.pop();
+  c.idx = sub32(c.idx, 1);
+  swPopLast(c.closAllows);
+  swPopLast(c.closCapture);
 };
 
 /** addOrRemoveSelf(static:). */

@@ -25,6 +25,11 @@ import {
   SW_SC_ENDIF,
   SW_SC_IF,
   SW_SC_LINE_COMMENT,
+  SW_SC_BLOCK_COMMENT,
+  SW_SC_END_BLOCK_COMMENT,
+  SW_SC_KEYWORD,
+  SW_T_LINEBREAK,
+  SW_T_NON_SPACE_OR_COMMENT_OR_LINEBREAK,
   SW_SC_ATTRIBUTE,
   SW_SC_CASE,
   SW_SC_DEFAULT,
@@ -33,6 +38,17 @@ import {
   swKindIsComment,
   swTokIs,
 } from "./token";
+import { add32, sub32 } from "../core/arr";
+import { fault } from "../core/fault";
+
+/** The line after a linebreak's original line (its aux value). */
+const swLineAfter = (v: i32): i32 => {
+  if (v < 2147483647) {
+    return v + 1;
+  }
+  fault();
+  return 1;
+};
 
 /** A declaration; its range is an auto-updating reference in the formatter. */
 export class SwDecl {
@@ -122,16 +138,36 @@ export class SwFormatter {
     return toI32(this.t.k.length);
   }
 
+  // The accessors below read one token. An index outside the list is a
+  // rule's bug (the read panicked before): it faults and answers a neutral
+  // value. The token arrays always have one length (SwTokList), so a test
+  // against the kinds' length decides, and the others only prove the reads.
+
   k(i: i32): i32 {
-    return this.t.k[i];
+    const tk = this.t.k;
+    if (i >= 0 && i < tk.length) {
+      return tk[i];
+    }
+    fault();
+    return -1;
   }
 
   s(i: i32): string {
-    return this.t.s[i];
+    const ts = this.t.s;
+    if (i >= 0 && i < ts.length) {
+      return ts[i];
+    }
+    fault();
+    return "";
   }
 
   a(i: i32): i32 {
-    return this.t.a[i];
+    const ta = this.t.a;
+    if (i >= 0 && i < ta.length) {
+      return ta[i];
+    }
+    fault();
+    return 0;
   }
 
   has(i: i32): boolean {
@@ -140,33 +176,65 @@ export class SwFormatter {
 
   /** tokens[i].is(type), false when out of range. */
   is(i: i32, type: i32): boolean {
-    if (i < 0 || i >= toI32(this.t.k.length)) {
+    const t = this.t;
+    const tk = t.k;
+    const ts = t.s;
+    const ta = t.a;
+    if (i < 0 || i >= tk.length || i >= ts.length || i >= ta.length) {
       return false;
     }
-    return swTokIs(this.t.k[i], this.t.s[i], this.t.a[i], type);
+    return swTokIs(tk[i], ts[i], ta[i], type);
   }
 
   /** tokens[i] == Token(k, s) for a token with no aux value (aux 0). */
   tok(i: i32, k: i32, s: string): boolean {
-    if (i < 0 || i >= toI32(this.t.k.length)) {
+    const t = this.t;
+    const tk = t.k;
+    // The kind decides most calls, so the other arrays are read only after it.
+    if (i < 0 || i >= tk.length || tk[i] !== k) {
       return false;
     }
-    return this.t.k[i] === k && this.t.a[i] === 0 && this.t.s[i] === s;
+    const ta = t.a;
+    const ts = t.s;
+    return i < ta.length && i < ts.length && ta[i] === 0 && ts[i] === s;
   }
 
   /** The kind and string match (any aux: `case .operator(s, _)`). */
   ks(i: i32, k: i32, s: string): boolean {
-    if (i < 0 || i >= toI32(this.t.k.length)) {
+    const t = this.t;
+    const tk = t.k;
+    if (i < 0 || i >= tk.length || tk[i] !== k) {
       return false;
     }
-    return this.t.k[i] === k && this.t.s[i] === s;
+    const ts = t.s;
+    return i < ts.length && ts[i] === s;
   }
 
   op(i: i32, s: string, type: i32): boolean {
-    if (i < 0 || i >= toI32(this.t.k.length)) {
+    const t = this.t;
+    const tk = t.k;
+    if (i < 0 || i >= tk.length || tk[i] !== SW_OP) {
       return false;
     }
-    return this.t.k[i] === SW_OP && this.t.a[i] === type && this.t.s[i] === s;
+    const ta = t.a;
+    const ts = t.s;
+    return i < ta.length && i < ts.length && ta[i] === type && ts[i] === s;
+  }
+
+  /** tokens[i] == Token(k, s, a); an index outside the list faults. */
+  eq(i: i32, k: i32, s: string, a: i32): boolean {
+    const t = this.t;
+    const tk = t.k;
+    if (i < 0 || i >= tk.length) {
+      fault();
+      return false;
+    }
+    if (tk[i] !== k) {
+      return false;
+    }
+    const ta = t.a;
+    const ts = t.s;
+    return i < ta.length && i < ts.length && ta[i] === a && ts[i] === s;
   }
 
   kw(i: i32, s: string): boolean {
@@ -174,12 +242,38 @@ export class SwFormatter {
   }
 
   isComment(i: i32): boolean {
-    return i >= 0 && i < this.count() && swKindIsComment(this.t.k[i], this.t.s[i]);
+    const t = this.t;
+    const tk = t.k;
+    if (i < 0 || i >= tk.length) {
+      return false;
+    }
+    // swKindIsComment, reading the string only for a scope token.
+    const k = tk[i];
+    if (k === SW_COMMENT) {
+      return true;
+    }
+    if (k !== SW_START && k !== SW_END) {
+      return false;
+    }
+    const ts = t.s;
+    return i < ts.length && swKindIsComment(k, ts[i]);
   }
 
   /** Whether token i and j are equal (kind, string and aux). */
   same(i: i32, j: i32): boolean {
-    return this.t.k[i] === this.t.k[j] && this.t.a[i] === this.t.a[j] && this.t.s[i] === this.t.s[j];
+    const t = this.t;
+    const tk = t.k;
+    const ts = t.s;
+    const ta = t.a;
+    if (i < 0 || j < 0 || i >= tk.length || j >= tk.length || i >= ts.length || j >= ts.length) {
+      fault();
+      return false;
+    }
+    if (i >= ta.length || j >= ta.length) {
+      fault();
+      return false;
+    }
+    return tk[i] === tk[j] && ta[i] === ta[j] && ts[i] === ts[j];
   }
 
   /** tokens[i].isEndOfScope(tokens[j]). */
@@ -204,13 +298,24 @@ export class SwFormatter {
 
   /** Directive.applies(to: currentRule). */
   directiveApplies(d: i32): boolean {
-    const names = this.dirNames[d];
+    const dn = this.dirNames;
+    if (d < 0 || d >= dn.length) {
+      fault();
+      return false;
+    }
+    const names = dn[d];
     if (names.indexOf(" all ") >= 0) {
       return true;
     }
+    const n = toI32(names.length);
     let start = 1;
-    while (start < toI32(names.length)) {
+    while (start > 0 && start < n) {
       const e = names.indexOf(" ", start);
+      // The names are " a b " (swDirectiveRuleNames): a space follows every name.
+      if (e < start || e >= n) {
+        fault();
+        return false;
+      }
       if (this.ruleNames.indexOf(names.substring(start - 1, e + 1)) >= 0) {
         return true;
       }
@@ -231,9 +336,15 @@ export class SwFormatter {
 
   /** The line (from the last linebreak's original line number) of token i: Formatter's physical line. */
   private lineOf(i: i32): i32 {
-    for (let j = i; j >= 0; j--) {
-      if (this.t.k[j] === SW_LINEBREAK) {
-        return this.t.a[j] + 1;
+    const tk = this.t.k;
+    const ta = this.t.a;
+    if (i >= tk.length) {
+      fault();
+      return 1;
+    }
+    for (let j = i; j >= 0 && j < tk.length && j < ta.length; j--) {
+      if (tk[j] === SW_LINEBREAK) {
+        return swLineAfter(ta[j]);
       }
     }
     return 1;
@@ -245,75 +356,125 @@ export class SwFormatter {
     if (nd === 0) {
       return;
     }
+    const dirType = this.dirType;
+    const dirToggle = this.dirToggle;
+    const dirLine = this.dirLine;
+    const dirIndex = this.dirIndex;
+    // The directive arrays are filled together (swProcessDirectives).
+    if (dirToggle.length < nd || dirLine.length < nd || dirIndex.length < nd) {
+      fault();
+      return;
+    }
     const physicalLine = this.lineOf(index);
     let hasApplicableLineDirective = false;
-    for (let d = 0; d < nd; d++) {
-      if (!this.dirToggle[d] && this.dirLine[d] === physicalLine && this.directiveApplies(d)) {
+    for (let d = 0; d < nd && d < dirToggle.length && d < dirLine.length; d++) {
+      if (!dirToggle[d] && dirLine[d] === physicalLine && this.directiveApplies(d)) {
         hasApplicableLineDirective = true;
         break;
       }
     }
+    const tk = this.t.k;
+    const ts = this.t.s;
+    const ta = this.t.a;
     if (this.multilineStrings < 0) {
       this.multilineStrings = 0;
-      for (let j = 0; j < this.count(); j++) {
-        if (swIsMultilineStringDelimiter(this.t.k[j], this.t.s[j])) {
+      for (let j = 0; j < tk.length && j < ts.length; j++) {
+        if (swIsMultilineStringDelimiter(tk[j], ts[j])) {
           this.multilineStrings = 1;
           break;
         }
       }
     }
+    if (index < 0 || index >= tk.length) {
+      fault();
+      return;
+    }
     let enablementIndex = index;
-    if (this.t.k[index] === SW_LINEBREAK && !hasApplicableLineDirective && this.multilineStrings === 1) {
+    if (tk[index] === SW_LINEBREAK && !hasApplicableLineDirective && this.multilineStrings === 1) {
       const startIndex = swIndexBeforeWhere(this, index, (f, j) => {
-        const k = f.t.k[j];
+        const k = f.k(j);
         return !(k === SW_SPACE || k === SW_LINEBREAK || k === SW_STRBODY || k === SW_END);
       });
-      if (startIndex >= 0 && swIsMultilineStringDelimiter(this.t.k[startIndex], this.t.s[startIndex])) {
-        enablementIndex = startIndex;
+      if (startIndex >= 0 && startIndex < tk.length && startIndex < ts.length) {
+        if (swIsMultilineStringDelimiter(tk[startIndex], ts[startIndex])) {
+          enablementIndex = startIndex;
+        }
       }
     }
     let line = 1;
     let tokenIndex = enablementIndex;
-    if (this.t.k[enablementIndex] === SW_LINEBREAK) {
-      line = this.t.a[enablementIndex] + 1;
+    if (enablementIndex < 0 || enablementIndex >= tk.length || enablementIndex >= ta.length) {
+      fault();
+      return;
+    }
+    if (tk[enablementIndex] === SW_LINEBREAK) {
+      line = swLineAfter(ta[enablementIndex]);
       tokenIndex = 0;
     } else {
-      for (let j = enablementIndex - 1; j >= 0; j--) {
-        if (this.t.k[j] === SW_LINEBREAK) {
-          line = this.t.a[j] + 1;
-          tokenIndex = enablementIndex - j - 1;
+      for (let j = enablementIndex - 1; j >= 0 && j < tk.length && j < ta.length; j--) {
+        if (tk[j] === SW_LINEBREAK) {
+          line = swLineAfter(ta[j]);
+          // 0 <= j < enablementIndex.
+          tokenIndex = toI32(toU32(enablementIndex) - toU32(j) - toU32(1));
           break;
         }
       }
     }
-    let disabledCount = 0;
-    let disabledNext = 0;
-    for (let d = 0; d < nd; d++) {
-      if (this.dirLine[d] > line || (this.dirLine[d] === line && this.dirIndex[d] > tokenIndex)) {
+    // disabledCount and disabledNext, each kept as disables minus enables: every
+    // directive adds one to one side, so each side stays below nd.
+    let countUp = 0;
+    let countDown = 0;
+    let nextUp = 0;
+    let nextDown = 0;
+    for (
+      let d = 0;
+      d < nd && d < dirType.length && d < dirToggle.length && d < dirLine.length && d < dirIndex.length;
+      d++
+    ) {
+      if (dirLine[d] > line || (dirLine[d] === line && dirIndex[d] > tokenIndex)) {
         break;
       }
       if (!this.directiveApplies(d)) {
         continue;
       }
-      const delta = this.dirType[d] === 1 ? 1 : -1;
-      if (this.dirToggle[d]) {
-        disabledCount += delta;
-      } else if (this.dirLine[d] === line) {
-        disabledNext += delta;
+      if (d >= dirType.length || d >= dirToggle.length || d >= dirLine.length) {
+        fault();
+        return;
+      }
+      const up = dirType[d] === 1;
+      if (dirToggle[d]) {
+        if (up && countUp < nd) {
+          countUp++;
+        } else if (!up && countDown < nd) {
+          countDown++;
+        }
+      } else if (dirLine[d] === line) {
+        if (up && nextUp < nd) {
+          nextUp++;
+        } else if (!up && nextDown < nd) {
+          nextDown++;
+        }
       } else {
-        disabledNext = 0;
+        nextUp = 0;
+        nextDown = 0;
       }
     }
-    this.disabled = disabledCount + disabledNext > 0;
+    this.disabled = toI64(countUp) - toI64(countDown) + toI64(nextUp) - toI64(nextDown) > toI64(0);
   }
 
   /** Whether token i starts or ends a comment or is a linebreak (forEachToken updates enablement there). */
   private isEnablementPoint(i: i32): boolean {
-    const k = this.t.k[i];
+    const tk = this.t.k;
+    const ts = this.t.s;
+    if (i < 0 || i >= tk.length || i >= ts.length) {
+      fault();
+      return true;
+    }
+    const k = tk[i];
     if (k === SW_LINEBREAK) {
       return true;
     }
-    const s = this.t.s[i];
+    const s = ts[i];
     return (k === SW_START && (s === "//" || s === "/*")) || (k === SW_END && s === "*/");
   }
 
@@ -323,7 +484,15 @@ export class SwFormatter {
       return !this.ruleDisabled;
     }
     let j = i;
-    while (j > lo && !this.isEnablementPoint(j)) {
+    while (j > lo) {
+      if (this.isEnablementPoint(j)) {
+        break;
+      }
+      if (j <= 0) {
+        // The next step read token -1.
+        fault();
+        break;
+      }
       j--;
     }
     this.updateEnablement(j);
@@ -345,124 +514,198 @@ export class SwFormatter {
     return toI32(this.refLo.length) - 1;
   }
 
+  /** The low end of reference h; an unknown handle faults and answers -1. */
+  refLoOf(h: i32): i32 {
+    const refLo = this.refLo;
+    if (h >= 0 && h < refLo.length) {
+      return refLo[h];
+    }
+    fault();
+    return -1;
+  }
+
+  /** The high end of reference h; an unknown handle faults and answers -1. */
+  refHiOf(h: i32): i32 {
+    const refHi = this.refHi;
+    if (h >= 0 && h < refHi.length) {
+      return refHi[h];
+    }
+    fault();
+    return -1;
+  }
+
   unref(h: i32): void {
-    this.refLive[h] = false;
+    const live = this.refLive;
+    if (h >= 0 && h < live.length) {
+      live[h] = false;
+    } else {
+      fault();
+    }
   }
 
   private updateRefs(at: i32, delta: i32): void {
-    for (let r = 0; r < toI32(this.refLo.length); r++) {
-      if (!this.refLive[r]) {
+    const refLo = this.refLo;
+    const refHi = this.refHi;
+    const refLive = this.refLive;
+    for (let r = 0; r < refLo.length && r < refHi.length && r < refLive.length; r++) {
+      if (!refLive[r]) {
         continue;
       }
-      let lo = this.refLo[r];
-      let hi = this.refHi[r];
+      let lo = refLo[r];
+      let hi = refHi[r];
       if (at < lo) {
-        lo += delta;
-        hi += delta;
+        lo = add32(lo, delta);
+        hi = add32(hi, delta);
       } else if (at <= hi) {
-        hi += delta;
+        hi = add32(hi, delta);
       }
       if (lo > hi) {
         hi = lo;
       }
-      this.refLo[r] = lo;
-      this.refHi[r] = hi;
+      if (r >= refLo.length || r >= refHi.length) {
+        fault();
+        return;
+      }
+      refLo[r] = lo;
+      refHi[r] = hi;
+    }
+  }
+
+  /** Counts one change (Formatter.mutationCount). */
+  private bump(): void {
+    const m = this.mutations;
+    if (m < 2147483647) {
+      this.mutations = m + 1;
+    } else {
+      fault();
     }
   }
 
   // MARK: access and mutation
 
   replaceToken(i: i32, k: i32, s: string, a: i32): void {
-    // Replacing a token with an equal one changes nothing the caches depend on.
-    if (this.t.k[i] === k && this.t.a[i] === a && this.t.s[i] === s) {
+    const t = this.t;
+    const tk = t.k;
+    const ts = t.s;
+    const ta = t.a;
+    if (i < 0 || i >= tk.length || i >= ts.length || i >= ta.length) {
+      fault();
       return;
     }
-    this.t.set(i, k, s, a);
-    this.mutations = this.mutations + 1;
+    // Replacing a token with an equal one changes nothing the caches depend on.
+    if (tk[i] === k && ta[i] === a && ts[i] === s) {
+      return;
+    }
+    t.set(i, k, s, a);
+    this.bump();
   }
 
   replaceTokenWith(i: i32, toks: SwTok[]): void {
-    if (toks.length === 0) {
+    if (toks.length <= 0) {
       this.removeToken(i);
       return;
     }
-    this.replaceToken(i, toks[0].k, toks[0].s, toks[0].a);
+    if (i < 0 || i >= this.count()) {
+      fault();
+      return;
+    }
+    const t0 = toks[0];
+    this.replaceToken(i, t0.k, t0.s, t0.a);
     this.insertToksFrom(toks, 1, i + 1);
   }
 
   /** replaceTokens(in: lo ..< hi, with: toks); answers the change in token count. */
   replaceTokens(lo: i32, hi: i32, toks: SwTok[]): i32 {
     const m = toI32(toks.length);
-    const rc = hi - lo;
+    const rc = sub32(hi, lo);
     const mx = rc < m ? rc : m;
-    for (let i = 0; i < mx; i++) {
-      this.replaceToken(lo + i, toks[i].k, toks[i].s, toks[i].a);
+    for (let i = 0; i < mx && i < toks.length; i++) {
+      const ti = toks[i];
+      this.replaceToken(add32(lo, i), ti.k, ti.s, ti.a);
     }
     if (rc > mx) {
-      for (let index = hi - 1; index >= lo + mx; index--) {
+      const end = add32(lo, mx);
+      for (let index = sub32(hi, 1); index >= end; index--) {
         this.removeToken(index);
+        if (index < 0) {
+          // removeToken faulted.
+          break;
+        }
       }
     } else if (m > mx) {
-      this.insertToksFrom(toks, mx, lo + mx);
+      this.insertToksFrom(toks, mx, add32(lo, mx));
     }
-    return m - rc;
+    return sub32(m, rc);
   }
 
   /** replaceTokens(in: lo ..< hi, with: token). */
   replaceTokensWith1(lo: i32, hi: i32, k: i32, s: string, a: i32): i32 {
-    const rc = hi - lo;
+    const rc = sub32(hi, lo);
     if (rc === 1) {
       this.replaceToken(lo, k, s, a);
     } else if (rc === 0) {
       this.insert(k, s, a, lo);
     } else {
       this.replaceToken(lo, k, s, a);
-      this.removeTokens(lo + 1, hi);
+      this.removeTokens(add32(lo, 1), hi);
     }
-    return 1 - rc;
+    return sub32(1, rc);
   }
 
   removeToken(i: i32): void {
     this.updateRefs(i, -1);
+    if (i < 0) {
+      fault();
+      return;
+    }
     this.t.removeAt(i);
-    this.mutations = this.mutations + 1;
-    if (this.ei >= i) {
-      this.ei = this.ei - 1;
+    this.bump();
+    const ei = this.ei;
+    if (ei >= i && ei >= 0) {
+      this.ei = ei - 1;
     }
   }
 
   /** removeTokens(in: lo ..< hi), last first (references and the enumeration index are updated
    *  as for one removal at a time; the tokens move once). */
   removeTokens(lo: i32, hi: i32): void {
-    if (hi - lo <= 1) {
-      if (hi - lo === 1) {
+    const span = sub32(hi, lo);
+    if (span <= 1) {
+      if (span === 1) {
         this.removeToken(lo);
       }
       return;
     }
-    for (let i = hi - 1; i >= lo; i--) {
+    if (lo < 0 || hi <= 0) {
+      // removeRange(lo, hi) panicked on a negative lo.
+      fault();
+      return;
+    }
+    for (let i = hi - 1; i >= lo && i >= 0; i--) {
       this.updateRefs(i, -1);
-      if (this.ei >= i) {
-        this.ei = this.ei - 1;
+      const ei = this.ei;
+      if (ei >= i && ei >= 0) {
+        this.ei = ei - 1;
       }
     }
     this.t.removeRange(lo, hi);
-    this.mutations = this.mutations + 1;
+    this.bump();
   }
 
   removeLastToken(): void {
-    const i = this.count() - 1;
+    const i = toI32(this.t.k.length) - 1;
     this.updateRefs(i, -1);
     this.t.removeAt(i);
-    this.mutations = this.mutations + 1;
+    this.bump();
   }
 
   insert(k: i32, s: string, a: i32, at: i32): void {
     this.updateRefs(at, 1);
     this.t.insertAt(at, k, s, a);
-    this.mutations = this.mutations + 1;
-    if (this.ei >= at) {
-      this.ei = this.ei + 1;
+    this.bump();
+    const ei = this.ei;
+    if (ei >= at) {
+      this.ei = add32(ei, 1);
     }
   }
 
@@ -471,37 +714,66 @@ export class SwFormatter {
   }
 
   insertToksFrom(toks: SwTok[], from: i32, at: i32): void {
+    if (from < 0) {
+      // toks[from] panicked.
+      fault();
+      return;
+    }
     const m = toI32(toks.length) - from;
     if (m <= 0) {
       return;
     }
     this.updateRefs(at, m);
     this.t.openGap(at, m);
-    for (let j = 0; j < m; j++) {
-      this.t.set(at + j, toks[from + j].k, toks[from + j].s, toks[from + j].a);
+    let d = at;
+    for (let j = from; j < toks.length; j++) {
+      const tk = this.t.k;
+      if (d < 0 || d >= tk.length) {
+        fault();
+        return;
+      }
+      const tj = toks[j];
+      this.t.set(d, tj.k, tj.s, tj.a);
+      d = d + 1;
     }
-    this.mutations = this.mutations + 1;
-    if (this.ei >= at) {
-      this.ei += m;
+    this.bump();
+    const ei = this.ei;
+    if (ei >= at) {
+      this.ei = add32(ei, m);
     }
   }
 
   /** The tokens [lo, hi) as values. */
   slice(lo: i32, hi: i32): SwTok[] {
     const out: SwTok[] = [];
-    for (let i = lo; i < hi; i++) {
-      out.push(new SwTok(this.t.k[i], this.t.s[i], this.t.a[i]));
+    const t = this.t;
+    const tk = t.k;
+    const ts = t.s;
+    const ta = t.a;
+    if (lo < hi && (lo < 0 || hi > tk.length)) {
+      fault();
+      return out;
+    }
+    for (let i = lo; i >= 0 && i < hi && i < tk.length && i < ts.length && i < ta.length; i++) {
+      out.push(new SwTok(tk[i], ts[i], ta[i]));
     }
     return out;
   }
 
   /** moveTokens(in: lo ... hi, to: newIndex). */
   moveTokens(lo: i32, hi: i32, newIndex0: i32): void {
-    const toks = this.slice(lo, hi + 1);
+    const toks = this.slice(lo, add32(hi, 1));
+    if (lo > hi) {
+      return;
+    }
+    if (lo < 0) {
+      fault();
+      return;
+    }
     let newIndex = newIndex0;
-    for (let index = hi; index >= lo; index--) {
+    for (let index = hi; index >= lo && index >= 0; index--) {
       this.removeToken(index);
-      if (index < newIndex) {
+      if (index < newIndex && newIndex > 0) {
         newIndex--;
       }
     }
@@ -526,11 +798,12 @@ export class SwFormatter {
 
   /** Advances forEachToken; answers the next index (or -1 at the end). */
   enumNext(): i32 {
-    this.ei = this.ei + 1;
-    if (this.ei >= this.count()) {
+    const ei = this.ei;
+    if (ei >= toI32(this.t.k.length) - 1) {
       this.ei = -1;
       return -1;
     }
+    this.ei = ei + 1;
     if (this.dirType.length === 0) {
       return this.ei;
     }
@@ -552,11 +825,12 @@ export class SwFormatter {
   }
 
   enumNextAll(): i32 {
-    this.ei = this.ei + 1;
-    if (this.ei >= this.count()) {
+    const ei = this.ei;
+    if (ei >= toI32(this.t.k.length) - 1) {
       this.ei = -1;
       return -1;
     }
+    this.ei = ei + 1;
     if (this.dirType.length === 0) {
       return this.ei;
     }
@@ -565,14 +839,18 @@ export class SwFormatter {
 
   /** Updates enablement at ei and moves past tokens where the rule is disabled (when `only`). */
   private enumSkip(only: boolean): i32 {
-    while (this.ei < this.count()) {
-      if (this.isEnablementPoint(this.ei)) {
-        this.updateEnablement(this.ei);
+    while (true) {
+      const ei = this.ei;
+      if (ei >= this.count()) {
+        break;
+      }
+      if (this.isEnablementPoint(ei)) {
+        this.updateEnablement(ei);
       }
       if (!only || this.isEnabled()) {
-        return this.ei;
+        return ei;
       }
-      this.ei = this.ei + 1;
+      this.ei = ei + 1;
     }
     this.ei = -1;
     return -1;
@@ -586,28 +864,50 @@ export class SwFormatter {
     const lo = lo0 < 0 ? 0 : lo0;
     const hi = hi0 > n ? n : hi0;
     const t = this.t;
+    const tk = t.k;
+    const tc = t.c;
+    const ts = t.s;
+    // The stack holds indices below i, inside the list.
     const stack: i32[] = [];
-    for (let i = lo; i < hi; i++) {
-      const k = t.k[i];
-      const c = t.c[i];
+    for (let i = lo; i >= 0 && i < hi && i < tk.length && i < tc.length && i < ts.length; i++) {
+      const k = tk[i];
+      const c = tc[i];
+      const unknown = c === SW_SC_ATTRIBUTE && ts[i] === "@unknown";
       if (c === SW_SC_ENDIF) {
-        while (stack.length !== 0 && t.c[stack[toI32(stack.length) - 1]] !== SW_SC_IF) {
-          stack.pop();
+        while (true) {
+          const sm = toI32(stack.length);
+          if (sm <= 0) {
+            break;
+          }
+          const top = stack[sm - 1];
+          if (top >= 0 && top < tc.length && tc[top] === SW_SC_IF) {
+            break;
+          }
+          if (stack.length > 0) {
+            stack.pop();
+          } else {
+            break;
+          }
         }
       }
       const m = toI32(stack.length);
-      if (m !== 0 && swClosesByCode(t, i, stack[m - 1])) {
-        stack.pop();
+      const top = m > 0 ? stack[m - 1] : -1;
+      if (m !== 0 && swClosesByCode(t, i, top)) {
+        if (stack.length > 0) {
+          stack.pop();
+        }
         if (k === SW_LINEBREAK && stack.length === 0 && swTokIsAt(t, i, type)) {
           return i;
         }
       } else if (
-        (c === SW_SC_CASE || c === SW_SC_DEFAULT || (c === SW_SC_ATTRIBUTE && t.s[i] === "@unknown")) &&
+        (c === SW_SC_CASE || c === SW_SC_DEFAULT || unknown) &&
         m !== 0 &&
-        t.c[stack[m - 1]] === SW_SC_IF
+        top >= 0 &&
+        top < tc.length &&
+        tc[top] === SW_SC_IF
       ) {
         continue;
-      } else if (m === 0 && swTokIsAt(t, i, type)) {
+      } else if (m === 0 && swTypeAt(t, i, k, c, type)) {
         return i;
       } else if (k === SW_END) {
         return -1;
@@ -620,32 +920,55 @@ export class SwFormatter {
 
   /** index(of: type, after: i). */
   indexAfter(type: i32, i: i32): i32 {
-    if (i >= this.count()) {
+    const n = this.count();
+    if (i >= n) {
       return -1;
     }
-    return this.indexInType(type, i + 1, this.count());
+    return this.indexInType(type, i + 1, n);
   }
 
   /** lastIndex(in: lo ..< hi, where: tokens of `type`) — scope-aware. */
   lastIndexInType(type: i32, lo0: i32, hi0: i32): i32 {
     const n = this.count();
-    const lo = lo0 < 0 ? 0 : lo0;
-    const hi = hi0 > n ? n : hi0;
+    let lo = lo0;
+    if (lo < 0) {
+      lo = 0;
+    }
+    let hi = hi0;
+    if (hi > n) {
+      hi = n;
+    }
+    if (hi <= lo || hi <= 0) {
+      return -1;
+    }
     const t = this.t;
+    const tk = t.k;
+    const tc = t.c;
     let linebreakEncountered = false;
+    // The stack holds indices above i, inside the list.
     const stack: i32[] = [];
-    for (let i = hi - 1; i >= lo; i--) {
-      const k = t.k[i];
-      const c = t.c[i];
+    for (let i = hi - 1; i >= lo && i >= 0 && i < tk.length && i < tc.length; i--) {
+      const k = tk[i];
+      const c = tc[i];
       const m = toI32(stack.length);
-      const top = m === 0 ? -1 : stack[m - 1];
-      const topc = m === 0 ? -1 : t.c[top];
+      let top = -1;
+      let topc = -1;
+      if (m > 0) {
+        top = stack[m - 1];
+        if (top < 0 || top >= tc.length) {
+          fault();
+          return -1;
+        }
+        topc = tc[top];
+      }
       if (k === SW_START) {
         if (c === SW_SC_COLON && (topc === SW_SC_ENDIF || topc === SW_SC_END_BRACE)) {
           continue;
         }
         if (top >= 0 && swClosesByCode(t, top, i)) {
-          stack.pop();
+          if (stack.length > 0) {
+            stack.pop();
+          }
           continue;
         }
         if (c === SW_SC_LINE_COMMENT && linebreakEncountered) {
@@ -655,12 +978,12 @@ export class SwFormatter {
         if (swTokIsAt(t, i, type)) {
           return i;
         }
-        if (c === SW_SC_LINE_COMMENT && hi < n && t.k[hi] === SW_LINEBREAK) {
+        if (c === SW_SC_LINE_COMMENT && hi >= 0 && hi < tk.length && tk[hi] === SW_LINEBREAK) {
           continue;
         }
         return -1;
       }
-      if (m === 0 && swTokIsAt(t, i, type)) {
+      if (m === 0 && swTypeAt(t, i, k, c, type)) {
         return i;
       }
       if (k === SW_LINEBREAK) {
@@ -682,55 +1005,33 @@ export class SwFormatter {
     }
     if (type === SW_T_KEYWORD && i <= this.count()) {
       // The last keyword at the current scope is asked for constantly too.
-      while (toI32(this.kwGen.length) <= i) {
-        this.kwGen.push(0);
-        this.kwVal.push(0);
-      }
-      const kstamp = this.mutations + 1;
-      if (this.kwGen[i] === kstamp) {
-        return this.kwVal[i];
-      }
-      const kr = this.lastIndexInType(type, 0, i);
-      this.kwGen[i] = kstamp;
-      this.kwVal[i] = kr;
-      return kr;
+      return swCachedBefore(this, this.kwGen, this.kwVal, type, i);
     }
     if (type !== SW_T_START_OF_SCOPE || i > this.count()) {
       return this.lastIndexInType(type, 0, i);
     }
     // The current scope is asked for constantly: cache it per mutation count.
-    while (toI32(this.csGen.length) <= i) {
-      this.csGen.push(0);
-      this.csVal.push(0);
-    }
-    const stamp = this.mutations + 1;
-    if (this.csGen[i] === stamp) {
-      return this.csVal[i];
-    }
-    const r = this.lastIndexInType(type, 0, i);
-    this.csGen[i] = stamp;
-    this.csVal[i] = r;
-    return r;
+    return swCachedBefore(this, this.csGen, this.csVal, type, i);
   }
 
   /** index(of: Token(k, s, a), after: i). */
   indexOfAfter(k: i32, s: string, a: i32, i: i32): i32 {
-    return swIndexAfterWhere(this, i, (f, j) => f.t.k[j] === k && f.t.a[j] === a && f.t.s[j] === s);
+    return swIndexAfterWhere(this, i, (f, j) => f.eq(j, k, s, a));
   }
 
   /** index(of: Token(k, s, a), before: i). */
   indexOfBefore(k: i32, s: string, a: i32, i: i32): i32 {
-    return swIndexBeforeWhere(this, i, (f, j) => f.t.k[j] === k && f.t.a[j] === a && f.t.s[j] === s);
+    return swIndexBeforeWhere(this, i, (f, j) => f.eq(j, k, s, a));
   }
 
   /** index(of: Token(k, s, a), in: lo ..< hi). */
   indexOfIn(k: i32, s: string, a: i32, lo: i32, hi: i32): i32 {
-    return swIndexInWhere(this, lo, hi, (f, j) => f.t.k[j] === k && f.t.a[j] === a && f.t.s[j] === s);
+    return swIndexInWhere(this, lo, hi, (f, j) => f.eq(j, k, s, a));
   }
 
   /** lastIndex(of: Token(k, s, a), in: lo ..< hi). */
   lastIndexOfIn(k: i32, s: string, a: i32, lo: i32, hi: i32): i32 {
-    return swLastIndexInWhere(this, lo, hi, (f, j) => f.t.k[j] === k && f.t.a[j] === a && f.t.s[j] === s);
+    return swLastIndexInWhere(this, lo, hi, (f, j) => f.eq(j, k, s, a));
   }
 
   /** next(type, after: i) as an index (same as indexAfter). */
@@ -748,24 +1049,36 @@ export class SwFormatter {
 
   /** startOfLine(at:excludingIndent:). */
   startOfLine(i0: i32, excludingIndent: boolean = false): i32 {
-    let i = i0 > this.count() ? this.count() : i0;
-    while (i - 1 >= 0 && i - 1 < this.count()) {
-      if (this.t.k[i - 1] === SW_LINEBREAK) {
+    const t = this.t;
+    const tk = t.k;
+    let i = i0;
+    if (i > tk.length) {
+      i = toI32(tk.length);
+    }
+    while (i > 0 && i <= tk.length) {
+      if (tk[i - 1] === SW_LINEBREAK) {
         break;
       }
       i--;
     }
-    if (excludingIndent && i < this.count() && this.t.k[i] === SW_SPACE) {
-      return i + 1;
+    if (excludingIndent && i < tk.length) {
+      if (i < 0) {
+        fault();
+        return i;
+      }
+      if (tk[i] === SW_SPACE) {
+        return i + 1;
+      }
     }
     return i;
   }
 
   /** endOfLine(at:). */
   endOfLine(i0: i32): i32 {
+    const tk = this.t.k;
     let i = i0;
-    while (i >= 0 && i < this.count()) {
-      if (this.t.k[i] === SW_LINEBREAK) {
+    while (i >= 0 && i < tk.length) {
+      if (tk[i] === SW_LINEBREAK) {
         break;
       }
       i++;
@@ -779,17 +1092,34 @@ export class SwFormatter {
 
   currentIndentForLine(i: i32): string {
     const j = this.startOfLine(i);
-    if (j < this.count() && this.t.k[j] === SW_SPACE) {
-      return this.t.s[j];
+    const tk = this.t.k;
+    const ts = this.t.s;
+    if (j < tk.length) {
+      if (j < 0 || j >= ts.length) {
+        fault();
+        return "";
+      }
+      if (tk[j] === SW_SPACE) {
+        return ts[j];
+      }
     }
     return "";
   }
 
   /** The original line number at index i. */
   originalLine(i: i32): i32 {
-    for (let j = i - 1; j >= 0; j--) {
-      if (this.t.k[j] === SW_LINEBREAK) {
-        return this.t.a[j] + 1;
+    const tk = this.t.k;
+    const ta = this.t.a;
+    if (i <= 0) {
+      return 1;
+    }
+    if (i > tk.length) {
+      fault();
+      return 1;
+    }
+    for (let j = i - 1; j >= 0 && j < tk.length && j < ta.length; j--) {
+      if (tk[j] === SW_LINEBREAK) {
+        return swLineAfter(ta[j]);
       }
     }
     return 1;
@@ -797,8 +1127,10 @@ export class SwFormatter {
 
   /** linebreakToken(for: i). */
   linebreakLine(i: i32): i32 {
-    if (i >= 0 && i < this.count() && this.t.k[i] === SW_LINEBREAK) {
-      return this.t.a[i];
+    const tk = this.t.k;
+    const ta = this.t.a;
+    if (i >= 0 && i < tk.length && i < ta.length && tk[i] === SW_LINEBREAK) {
+      return ta[i];
     }
     return this.originalLine(i);
   }
@@ -809,7 +1141,8 @@ export class SwFormatter {
 
   /** insertSpace(_:at:): answers the change in token count. */
   insertSpace(space: string, i: i32): i32 {
-    if (i >= 0 && i < this.count() && this.t.k[i] === SW_SPACE) {
+    const tk = this.t.k;
+    if (i >= 0 && i < tk.length && tk[i] === SW_SPACE) {
       if (space.length === 0) {
         this.removeToken(i);
         return -1;
@@ -825,12 +1158,63 @@ export class SwFormatter {
   /** The text of tokens [lo, hi). */
   text(lo: i32, hi: i32): string {
     const parts: string[] = [];
-    for (let i = lo; i < hi; i++) {
-      parts.push(this.t.s[i]);
+    const ts = this.t.s;
+    if (lo < hi && (lo < 0 || hi > ts.length)) {
+      fault();
+      return "";
+    }
+    for (let i = lo; i >= 0 && i < hi && i < ts.length; i++) {
+      parts.push(ts[i]);
     }
     return parts.join("");
   }
 }
+
+/** swTokIsAt(t, i, type) for token i, whose kind and scope code are k and c: the common types
+ *  answered from those two. */
+const swTypeAt = (t: SwTokList, i: i32, k: i32, c: i32, type: i32): boolean => {
+  if (type === SW_T_NON_SPACE_OR_COMMENT_OR_LINEBREAK) {
+    return (
+      !(k === SW_SPACE || k === SW_LINEBREAK || k === SW_COMMENT) &&
+      !(c === SW_SC_LINE_COMMENT || c === SW_SC_BLOCK_COMMENT || c === SW_SC_END_BLOCK_COMMENT)
+    );
+  }
+  if (type === SW_T_START_OF_SCOPE) {
+    return k === SW_START;
+  }
+  if (type === SW_T_KEYWORD) {
+    return c === SW_SC_KEYWORD;
+  }
+  if (type === SW_T_LINEBREAK) {
+    return k === SW_LINEBREAK;
+  }
+  return swTokIsAt(t, i, type);
+};
+
+/** lastIndexInType(type, 0, i) through a cache stamped with the mutation count (i > 0). */
+const swCachedBefore = (f: SwFormatter, gen: i32[], val: i32[], type: i32, i: i32): i32 => {
+  while (toI32(gen.length) <= i) {
+    gen.push(0);
+  }
+  while (toI32(val.length) <= i) {
+    val.push(0);
+  }
+  const m = f.mutations;
+  if (m >= 2147483647) {
+    fault();
+    return -1;
+  }
+  const stamp = m + 1;
+  if (i >= 0 && i < gen.length && i < val.length && gen[i] === stamp) {
+    return val[i];
+  }
+  const r = f.lastIndexInType(type, 0, i);
+  if (i >= 0 && i < gen.length && i < val.length) {
+    gen[i] = stamp;
+    val[i] = r;
+  }
+  return r;
+};
 
 export type SwPred = (f: SwFormatter, j: i32) => boolean;
 
@@ -840,21 +1224,37 @@ export const swIndexInWhere = (f: SwFormatter, lo0: i32, hi0: i32, pred: (f: SwF
   const lo = lo0 < 0 ? 0 : lo0;
   const hi = hi0 > n ? n : hi0;
   const stack: i32[] = [];
-  for (let i = lo; i < hi; i++) {
-    const k = f.t.k[i];
-    const s = f.t.s[i];
+  for (let i = lo; i >= 0 && i < hi; i++) {
+    // Read afresh: a predicate may edit the tokens.
+    const tk = f.t.k;
+    const ts = f.t.s;
+    if (i >= tk.length || i >= ts.length) {
+      fault();
+      return -1;
+    }
+    const k = tk[i];
+    const s = ts[i];
     if (k === SW_END && s === "#endif") {
-      while (stack.length !== 0 && !f.tok(stack[toI32(stack.length) - 1], SW_START, "#if")) {
-        stack.pop();
+      while (true) {
+        const sm = toI32(stack.length);
+        if (sm <= 0 || f.tok(stack[sm - 1], SW_START, "#if")) {
+          break;
+        }
+        if (stack.length > 0) {
+          stack.pop();
+        }
       }
     }
     const m = toI32(stack.length);
-    if (m !== 0 && f.closes(i, stack[m - 1])) {
-      stack.pop();
+    const top = m > 0 ? stack[m - 1] : -1;
+    if (m !== 0 && f.closes(i, top)) {
+      if (stack.length > 0) {
+        stack.pop();
+      }
       if (k === SW_LINEBREAK && stack.length === 0 && pred(f, i)) {
         return i;
       }
-    } else if (swIsSwitchCaseOrDefault(k, s) && m !== 0 && f.tok(stack[m - 1], SW_START, "#if")) {
+    } else if (swIsSwitchCaseOrDefault(k, s) && m !== 0 && f.tok(top, SW_START, "#if")) {
       continue;
     } else if (m === 0 && pred(f, i)) {
       return i;
@@ -868,10 +1268,11 @@ export const swIndexInWhere = (f: SwFormatter, lo0: i32, hi0: i32, pred: (f: SwF
 };
 
 export const swIndexAfterWhere = (f: SwFormatter, i: i32, pred: (f: SwFormatter, j: i32) => boolean): i32 => {
-  if (i >= f.count()) {
+  const n = f.count();
+  if (i >= n) {
     return -1;
   }
-  return swIndexInWhere(f, i + 1, f.count(), pred);
+  return swIndexInWhere(f, i + 1, n, pred);
 };
 
 /** lastIndex(in: lo ..< hi, where: pred) — scope-aware. */
@@ -882,21 +1283,39 @@ export const swLastIndexInWhere = (
   pred: (f: SwFormatter, j: i32) => boolean,
 ): i32 => {
   const n = f.count();
-  const lo = lo0 < 0 ? 0 : lo0;
-  const hi = hi0 > n ? n : hi0;
+  let lo = lo0;
+  if (lo < 0) {
+    lo = 0;
+  }
+  let hi = hi0;
+  if (hi > n) {
+    hi = n;
+  }
+  if (hi <= lo || hi <= 0) {
+    return -1;
+  }
   let linebreakEncountered = false;
   const stack: i32[] = [];
-  for (let i = hi - 1; i >= lo; i--) {
-    const k = f.t.k[i];
-    const s = f.t.s[i];
+  for (let i = hi - 1; i >= lo && i >= 0; i--) {
+    // Read afresh: a predicate may edit the tokens.
+    const tk = f.t.k;
+    const ts = f.t.s;
+    if (i >= tk.length || i >= ts.length) {
+      fault();
+      return -1;
+    }
+    const k = tk[i];
+    const s = ts[i];
     const m = toI32(stack.length);
-    const top = m === 0 ? -1 : stack[m - 1];
+    const top = m > 0 ? stack[m - 1] : -1;
     if (k === SW_START) {
       if (s === ":" && top >= 0 && (f.tok(top, SW_END, "#endif") || f.tok(top, SW_END, "}"))) {
         continue;
       }
       if (top >= 0 && f.closes(top, i)) {
-        stack.pop();
+        if (stack.length > 0) {
+          stack.pop();
+        }
         continue;
       }
       if (s === "//" && linebreakEncountered) {
@@ -906,8 +1325,15 @@ export const swLastIndexInWhere = (
       if (pred(f, i)) {
         return i;
       }
-      if (s === "//" && hi < n && f.t.k[hi] === SW_LINEBREAK) {
-        continue;
+      if (s === "//" && hi < n) {
+        const tk2 = f.t.k;
+        if (hi < 0 || hi >= tk2.length) {
+          fault();
+          return -1;
+        }
+        if (tk2[hi] === SW_LINEBREAK) {
+          continue;
+        }
       }
       return -1;
     }
