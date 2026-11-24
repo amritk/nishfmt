@@ -6,6 +6,8 @@
 // Modelled on the parser gem 3.3.13.0's AST::Node and Source::Map (MIT
 // License, Copyright (c) 2013-2024 parser contributors).
 
+import { add32, sub32 } from "../core/arr";
+import { fault } from "../core/fault";
 import { rbText } from "./lexer";
 
 // Handle tags.
@@ -66,6 +68,9 @@ export const M_RESCUE_BODY: i32 = 12;
 export const M_SEND: i32 = 13;
 export const M_TERNARY: i32 = 14;
 export const M_VARIABLE: i32 = 15;
+
+// RB_MAP_MAX, 59652322, is the highest map index whose mRange slots (NF * 2
+// from m * NF * 2) stay in i32; the guards write it as a literal.
 
 export class RbAst {
   pts: i32[];
@@ -130,7 +135,13 @@ export class RbAst {
 
   /** The text of a symbol, string or number handle. */
   text(h: i32): string {
-    return this.strs[vIdx(h)];
+    const strs = this.strs;
+    const i = vIdx(h);
+    if (i >= 0 && i < strs.length) {
+      return strs[i];
+    }
+    fault();
+    return "";
   }
 
   isNode(h: i32): boolean {
@@ -155,21 +166,54 @@ export class RbAst {
   }
 
   tokValue(t: i32): string {
-    const v = this.tVal[vIdx(t)];
-    return v < 0 ? "" : this.strs[v];
+    const tVal = this.tVal;
+    const strs = this.strs;
+    const i = vIdx(t);
+    if (i >= 0 && i < tVal.length) {
+      const v = tVal[i];
+      if (v < 0) {
+        return "";
+      }
+      if (v < strs.length) {
+        return strs[v];
+      }
+    }
+    fault();
+    return "";
   }
 
   /** Whether loc(token) exists: the token and its value are not nil. */
   hasLoc(t: i32): boolean {
-    return t !== V_NIL && vTag(t) === VT_TOKEN && this.tVal[vIdx(t)] >= 0;
+    if (t === V_NIL || vTag(t) !== VT_TOKEN) {
+      return false;
+    }
+    const tVal = this.tVal;
+    const i = vIdx(t);
+    if (i >= 0 && i < tVal.length) {
+      return tVal[i] >= 0;
+    }
+    fault();
+    return false;
   }
 
   tokS(t: i32): i32 {
-    return this.tS[vIdx(t)];
+    const tS = this.tS;
+    const i = vIdx(t);
+    if (i >= 0 && i < tS.length) {
+      return tS[i];
+    }
+    fault();
+    return -1;
   }
 
   tokE(t: i32): i32 {
-    return this.tE[vIdx(t)];
+    const tE = this.tE;
+    const i = vIdx(t);
+    if (i >= 0 && i < tE.length) {
+      return tE[i];
+    }
+    fault();
+    return -1;
   }
 
   // ---- Lists -------------------------------------------------------------------
@@ -202,25 +246,59 @@ export class RbAst {
   }
 
   push(l: i32, v: i32): i32 {
-    this.lists[vIdx(l)].push(v);
+    const lists = this.lists;
+    const li = vIdx(l);
+    if (li >= 0 && li < lists.length) {
+      lists[li].push(v);
+    } else {
+      fault();
+    }
     return l;
   }
 
   len(l: i32): i32 {
-    return l === V_NIL ? 0 : toI32(this.lists[vIdx(l)].length);
+    if (l === V_NIL) {
+      return 0;
+    }
+    const lists = this.lists;
+    const li = vIdx(l);
+    if (li >= 0 && li < lists.length) {
+      return toI32(lists[li].length);
+    }
+    fault();
+    return 0;
   }
 
   at(l: i32, i: i32): i32 {
     if (vTag(l) !== VT_LIST) {
       return V_NIL;
     }
-    const a = this.lists[vIdx(l)];
-    const k = i < 0 ? toI32(a.length) + i : i;
-    return k >= 0 && k < toI32(a.length) ? a[k] : V_NIL;
+    const lists = this.lists;
+    const li = vIdx(l);
+    if (li < 0 || li >= lists.length) {
+      fault();
+      return V_NIL;
+    }
+    const a = lists[li];
+    // A negative `i` counts from the end.
+    let k = i;
+    if (i < 0) {
+      k = toI32(a.length) + i;
+    }
+    return k >= 0 && k < a.length ? a[k] : V_NIL;
   }
 
   setAt(l: i32, i: i32, v: i32): void {
-    this.lists[vIdx(l)][i] = v;
+    const lists = this.lists;
+    const li = vIdx(l);
+    if (li >= 0 && li < lists.length) {
+      const a = lists[li];
+      if (i >= 0 && i < a.length) {
+        a[i] = v;
+        return;
+      }
+    }
+    fault();
   }
 
   /** Array#concat: b's items appended to a, which is returned. */
@@ -261,21 +339,53 @@ export class RbAst {
     for (let i = 0; i < NF * 2; i++) {
       this.mRange.push(-1);
     }
-    this.nMaps = m + 1;
+    if (m < 2147483647) {
+      this.nMaps = m + 1;
+    } else {
+      fault();
+    }
     return m;
   }
 
   copyMap(m: i32): i32 {
-    const c = this.newMap(this.mKind[m]);
-    for (let i = 0; i < NF * 2; i++) {
-      this.mRange[c * NF * 2 + i] = this.mRange[m * NF * 2 + i];
+    const mKind = this.mKind;
+    if (m < 0 || m >= mKind.length) {
+      fault();
+      return -1;
+    }
+    const c = this.newMap(mKind[m]);
+    // Map `m` starts at m * NF * 2 (36) in mRange; RB_MAP_MAX keeps that in i32.
+    if (c < 0 || c > 59652322 || m > 59652322) {
+      fault();
+      return c;
+    }
+    const r = this.mRange;
+    const cb = c * 36;
+    const mb = m * 36;
+    for (let i = 0; i < 36; i++) {
+      const di = cb + i;
+      const si = mb + i;
+      if (di >= r.length || si >= r.length) {
+        fault();
+        break;
+      }
+      r[di] = r[si];
     }
     return c;
   }
 
   setF(m: i32, f: i32, s: i32, e: i32): void {
-    this.mRange[(m * NF + f) * 2] = s;
-    this.mRange[(m * NF + f) * 2 + 1] = e;
+    const r = this.mRange;
+    // NF is 18, and m <= RB_MAP_MAX (literals: the prover reads no module constant).
+    if (m >= 0 && m <= 59652322 && f >= 0 && f < 18) {
+      const i = (m * 18 + f) * 2;
+      if (i + 1 < r.length) {
+        r[i] = s;
+        r[i + 1] = e;
+        return;
+      }
+    }
+    fault();
   }
 
   /** Sets field f from token t (nothing when loc(t) is nil). */
@@ -286,11 +396,29 @@ export class RbAst {
   }
 
   fS(m: i32, f: i32): i32 {
-    return this.mRange[(m * NF + f) * 2];
+    const r = this.mRange;
+    // As in setF.
+    if (m >= 0 && m <= 59652322 && f >= 0 && f < 18) {
+      const i = (m * 18 + f) * 2;
+      if (i < r.length) {
+        return r[i];
+      }
+    }
+    fault();
+    return -1;
   }
 
   fE(m: i32, f: i32): i32 {
-    return this.mRange[(m * NF + f) * 2 + 1];
+    const r = this.mRange;
+    // As in setF.
+    if (m >= 0 && m <= 59652322 && f >= 0 && f < 18) {
+      const i = (m * 18 + f) * 2 + 1;
+      if (i < r.length) {
+        return r[i];
+      }
+    }
+    fault();
+    return -1;
   }
 
   has(m: i32, f: i32): boolean {
@@ -298,7 +426,15 @@ export class RbAst {
   }
 
   mapKind(m: i32): i32 {
-    return m >= 0 ? this.mKind[m] : -1;
+    if (m < 0) {
+      return -1;
+    }
+    const mKind = this.mKind;
+    if (m < mKind.length) {
+      return mKind[m];
+    }
+    fault();
+    return -1;
   }
 
   // ---- Nodes -------------------------------------------------------------------
@@ -308,16 +444,32 @@ export class RbAst {
     this.nType.push(type);
     this.nKids.push(kids === V_NIL ? vIdx(this.list()) : vIdx(kids));
     this.nMap.push(map);
-    this.nNodes = id + 1;
+    if (id < 2147483647) {
+      this.nNodes = id + 1;
+    } else {
+      fault();
+    }
     return vMake(VT_NODE, id);
   }
 
   type(n: i32): i32 {
-    return this.nType[vIdx(n)];
+    const nType = this.nType;
+    const i = vIdx(n);
+    if (i >= 0 && i < nType.length) {
+      return nType[i];
+    }
+    fault();
+    return -1;
   }
 
   kids(n: i32): i32 {
-    return vMake(VT_LIST, this.nKids[vIdx(n)]);
+    const nKids = this.nKids;
+    const i = vIdx(n);
+    if (i >= 0 && i < nKids.length) {
+      return vMake(VT_LIST, nKids[i]);
+    }
+    fault();
+    return V_NIL;
   }
 
   kid(n: i32, i: i32): i32 {
@@ -329,7 +481,13 @@ export class RbAst {
   }
 
   map(n: i32): i32 {
-    return this.nMap[vIdx(n)];
+    const nMap = this.nMap;
+    const i = vIdx(n);
+    if (i >= 0 && i < nMap.length) {
+      return nMap[i];
+    }
+    fault();
+    return -1;
   }
 
   /** node.loc.expression's begin, or -1. */
@@ -360,6 +518,11 @@ export class RbAst {
 
   /** The reference dumper's format (tools/ruby/astdump.rb). */
   dump(n: i32, depth: i32, out: string[]): void {
+    // The tree's depth is far below this.
+    if (depth >= 2147483647) {
+      fault();
+      return;
+    }
     let line = "";
     for (let i = 0; i < depth; i++) {
       line = `${line} `;
@@ -368,7 +531,8 @@ export class RbAst {
     const m = this.map(n);
     if (m >= 0) {
       const names = rbSplitComma(FIELD_NAMES);
-      for (let f = 0; f < NF; f++) {
+      // `names` holds NF names.
+      for (let f = 0; f < NF && f < names.length; f++) {
         if (this.fS(m, f) >= 0) {
           line = `${line} ${names[f]}=${this.fS(m, f)}-${this.fE(m, f)}`;
         }
@@ -429,12 +593,14 @@ export class RbAst {
 export const rbSplitComma = (s: string): string[] => {
   const out: string[] = [];
   let a = 0;
-  for (let i = 0; i <= toI32(s.length); i++) {
-    if (i === toI32(s.length) || s.charCodeAt(i) === 44) {
+  const k = toI32(s.length);
+  for (let i = 0; i < k; i++) {
+    if (s.charCodeAt(i) === 44) {
       out.push(s.substring(a, i));
       a = i + 1;
     }
   }
+  out.push(s.substring(a, k));
   return out;
 };
 
@@ -459,18 +625,23 @@ const rbPlainSymbol = (s: string): boolean => {
     }
   }
   let i = 0;
-  if (s.charCodeAt(0) === 36) {
+  const s0 = s.length > 0 ? s.charCodeAt(0) : 0;
+  if (s0 === 36) {
     // $globals
     i = 1;
     if (k === 2 && "~*$?!@/\\;,.=:<>\"&`'+0123456789".indexOf(s.substring(1, 2)) >= 0) {
       return true;
     }
-    if (k === 3 && s.charCodeAt(1) === 45) {
+    if (k === 3 && s.length > 2 && s.charCodeAt(1) === 45) {
       const d = s.charCodeAt(2);
       return d === 95 || (d >= 48 && d <= 57) || (d >= 65 && d <= 90) || (d >= 97 && d <= 122);
     }
-  } else if (s.charCodeAt(0) === 64) {
-    i = k > 1 && s.charCodeAt(1) === 64 ? 2 : 1;
+  } else if (s0 === 64) {
+    if (s.length > 1 && s.charCodeAt(1) === 64) {
+      i = 2;
+    } else {
+      i = 1;
+    }
   }
   if (i >= k) {
     return false;
@@ -494,8 +665,13 @@ const rbPlainSymbol = (s: string): boolean => {
 export const rbInspectStr = (s: string): string => {
   let out = '"';
   const k = toI32(s.length);
+  // A symbol or string literal of a source file is far shorter.
+  if (k > 1073741823) {
+    fault();
+    return out;
+  }
   let i = 0;
-  while (i < k) {
+  while (i >= 0 && i < k) {
     const c = s.charCodeAt(i);
     if (c === 34) {
       out = `${out}\\"`;
@@ -529,10 +705,18 @@ export const rbInspectStr = (s: string): string => {
       out = out + s.substring(i, i + 1);
     } else {
       // A whole UTF-8 sequence, or \x escapes for invalid bytes.
-      const n = c >= 0xf0 ? 4 : c >= 0xe0 ? 3 : c >= 0xc0 ? 2 : 1;
+      let n = 1;
+      if (c >= 0xf0) {
+        n = 4;
+      } else if (c >= 0xe0) {
+        n = 3;
+      } else if (c >= 0xc0) {
+        n = 2;
+      }
       let ok = n > 1 && i + n <= k;
-      for (let j = 1; ok && j < n; j++) {
-        const d = s.charCodeAt(i + j);
+      // `ok` holds `i + n <= k`, so `i + j < k` only proves the reads.
+      for (let p = i + 1; ok && p < i + n && p >= 0 && p < k; p++) {
+        const d = s.charCodeAt(p);
         if (d < 0x80 || d >= 0xc0) {
           ok = false;
         }
@@ -541,8 +725,8 @@ export const rbInspectStr = (s: string): string => {
         // Code points Ruby 3.3 does not print: C1 controls, the line and
         // paragraph separators, surrogates.
         let cp = n === 2 ? c & 0x1f : n === 3 ? c & 0x0f : c & 0x07;
-        for (let j = 1; j < n; j++) {
-          cp = (cp << 6) | (s.charCodeAt(i + j) & 0x3f);
+        for (let p = i + 1; p < i + n && p >= 0 && p < k; p++) {
+          cp = (cp << 6) | (s.charCodeAt(p) & 0x3f);
         }
         if ((cp >= 0x80 && cp <= 0x9f) || cp === 0x2028 || cp === 0x2029 || (cp >= 0xd800 && cp <= 0xdfff)) {
           out = `${out}\\u${rbHex2(cp >> 8)}${rbHex2(cp & 0xff)}`;
@@ -581,19 +765,34 @@ export const rbFloatInspect = (t: string): string => {
   let m = js;
   let e = 0;
   const ei = js.indexOf("e");
+  const jk = toI32(js.length);
   if (ei >= 0) {
     m = js.substring(0, ei);
-    e = toI32(parseFloat(js.substring(js.charCodeAt(ei + 1) === 43 ? ei + 2 : ei + 1, toI32(js.length))));
+    // A JavaScript exponent always has its sign after the `e`.
+    if (ei >= jk || ei + 1 >= jk) {
+      fault();
+      return "";
+    }
+    e = toI32(parseFloat(js.substring(js.charCodeAt(ei + 1) === 43 ? ei + 2 : ei + 1, jk)));
   }
+  const mk = toI32(m.length);
   const dot = m.indexOf(".");
-  let digits = dot < 0 ? m : m.substring(0, dot) + m.substring(dot + 1, toI32(m.length));
-  let decpt = (dot < 0 ? toI32(m.length) : dot) + e;
+  let digits = m;
+  let decpt = add32(mk, e);
+  if (dot >= 0 && dot < mk) {
+    digits = m.substring(0, dot) + m.substring(dot + 1, mk);
+    decpt = add32(dot, e);
+  }
   while (digits.length > 0 && digits.charCodeAt(0) === 48) {
     digits = digits.substring(1, toI32(digits.length));
-    decpt--;
+    decpt = sub32(decpt, 1);
   }
-  while (digits.length > 0 && digits.charCodeAt(toI32(digits.length) - 1) === 48) {
-    digits = digits.substring(0, toI32(digits.length) - 1);
+  while (true) {
+    const dl = toI32(digits.length) - 1;
+    if (dl < 0 || dl >= digits.length || digits.charCodeAt(dl) !== 48) {
+      break;
+    }
+    digits = digits.substring(0, dl);
   }
   const sign = neg ? "-" : "";
   const nd = toI32(digits.length);
@@ -603,7 +802,7 @@ export const rbFloatInspect = (t: string): string => {
   if (decpt > -4 && decpt <= 15) {
     if (decpt <= 0) {
       let z = "";
-      for (let i = 0; i < -decpt; i++) {
+      for (let i = decpt; i < 0; i++) {
         z = `${z}0`;
       }
       return `${sign}0.${z}${digits}`;
@@ -617,8 +816,11 @@ export const rbFloatInspect = (t: string): string => {
     }
     return `${sign}${digits.substring(0, decpt)}.${digits.substring(decpt, nd)}`;
   }
-  const x = decpt - 1;
-  const ax = x < 0 ? -x : x;
+  const x = sub32(decpt, 1);
+  let ax = x;
+  if (x < 0) {
+    ax = sub32(0, x);
+  }
   const frac = nd > 1 ? digits.substring(1, nd) : "0";
   return `${sign}${digits.substring(0, 1)}.${frac}e${x < 0 ? "-" : "+"}${ax < 10 ? "0" : ""}${ax}`;
 };
