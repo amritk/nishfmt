@@ -3,6 +3,8 @@
 // Ported from RuboCop 1.92.3 (MIT License, Copyright (c) 2012-24 Bozhidar
 // Batsov).
 
+import { rbAtOff } from "../help";
+import { add32, sub32 } from "../../core/arr";
 import { F_BEGIN, F_END, NT_REGEXP } from "../ast";
 import { RbCop } from "../cop";
 import { rnE, rnS } from "../node";
@@ -31,22 +33,26 @@ export class CopStyleRedundantRegexpEscape {
       if (tree === null) {
         continue;
       }
-      const d0 = src.at(be - 1);
+      const d0 = rbAtOff(src, be, -1);
       const d1 = src.at(es);
-      for (let i = 0; i < toI32(tree.tt.length); i++) {
-        if (tree.tt[i] !== RX_ESCAPE) {
+      const tt = tree.tt;
+      const tts = tree.ts;
+      const tset = tree.tset;
+      for (let i = 0; i < tt.length && i < tts.length && i < tset.length; i++) {
+        if (tt[i] !== RX_ESCAPE) {
           continue;
         }
-        const index = tree.ts[i];
+        const index = tts[i];
+        const inSet = tset[i];
         const cs = rbLitChars(tree.text(i));
         const ch = cs.length > 1 ? cs[1] : -1;
-        if (this.allowed(src, be, es, ch, index, tree.tset[i], d0, d1)) {
+        if (this.allowed(src, be, es, ch, index, inSet, d0, d1)) {
           continue;
         }
-        const s = be + index;
-        const k = this.c.offense(s, s + 2);
+        const s = add32(be, index);
+        const k = this.c.offense(s, add32(s, 2));
         if (k !== null) {
-          k.remove(s, s + 1);
+          k.remove(s, add32(s, 1));
           this.c.commit(k);
         }
       }
@@ -76,7 +82,7 @@ export class CopStyleRedundantRegexpEscape {
       return true;
     }
     // requires_escape_to_avoid_interpolation?
-    if (index > 0 && (ch === 64 || ch === 36) && src.at(be + index - 1) === 35) {
+    if (index > 0 && (ch === 64 || ch === 36) && rbAtOff(src, be, index - 1) === 35) {
       return true;
     }
     if (inSet) {
@@ -85,10 +91,10 @@ export class CopStyleRedundantRegexpEscape {
       }
       // char_class_begins_or_ends_with_escaped_hyphen?
       let edge = false;
-      if (rbRreContentAt(src, be, es, index + 2) === 93) {
+      if (rbRreContentAt(src, be, es, add32(index, 2)) === 93) {
         edge = true;
-      } else if (rbRreContentAt(src, be, es, index - 1) === 91) {
-        edge = index < 2 || rbRreContentAt(src, be, es, index - 2) !== 92;
+      } else if (rbRreContentAt(src, be, es, sub32(index, 1)) === 91) {
+        edge = index < 2 || rbRreContentAt(src, be, es, sub32(index, 2)) !== 92;
       }
       return !edge;
     }
@@ -110,7 +116,7 @@ export class CopStyleRedundantRegexpEscape {
 /** contents_range(node).source[j] (negative counts from the end; past the end: none). */
 const rbRreContentAt = (src: RbSource, be: i32, es: i32, j: i32): i32 => {
   if (j < 0) {
-    return es + j >= be ? src.at(es + j) : -1;
+    return toI64(es) + toI64(j) >= toI64(be) ? rbAtOff(src, es, j) : -1;
   }
-  return be + j < es ? src.at(be + j) : -1;
+  return toI64(be) + toI64(j) < toI64(es) ? rbAtOff(src, be, j) : -1;
 };

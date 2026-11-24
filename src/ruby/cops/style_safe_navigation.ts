@@ -5,6 +5,8 @@
 // Ported from RuboCop 1.92.3 (MIT License, Copyright (c) 2012-24 Bozhidar
 // Batsov).
 
+import { faulted } from "../../core/fault";
+import { add32 } from "../../core/arr";
 import {
   F_DOT,
   F_ELSE,
@@ -150,7 +152,7 @@ const rbSnChainLength = (src: RbSource, chain: i32, m: i32): i32 => {
   let p = src.parent(m);
   while (p !== V_NIL) {
     if (ssxIsCall(src, p)) {
-      total++;
+      total = add32(total, 1);
       if (vfSameNode(src, p, chain)) {
         return total;
       }
@@ -352,10 +354,19 @@ export class CopStyleSafeNavigation {
       }
     }
     // each_slice(2).each_cons(2): pairs of slices [lhs, op], [rhs, _]
-    const ns = toI32((parts.length + 1) / 2);
-    for (let si = 0; si + 1 < ns; si++) {
-      const lhs = parts[si * 2];
-      const rhs = parts[si * 2 + 2];
+    // Slices start at even indexes; the pairs are the slices at si * 2 and si * 2 + 2.
+    let next = 0;
+    for (let li = 0; li >= 0 && li < parts.length; li = next) {
+      const ri = add32(li, 2);
+      if (faulted()) {
+        return;
+      }
+      next = ri;
+      if (ri < 0 || ri >= parts.length) {
+        break;
+      }
+      const lhs = parts[li];
+      const rhs = parts[ri];
       if (lhs.op || rhs.op) {
         // A range in a node's place matches nothing.
         continue;

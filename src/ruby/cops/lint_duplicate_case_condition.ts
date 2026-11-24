@@ -3,6 +3,7 @@
 // Ported from RuboCop 1.92.3 (MIT License, Copyright (c) 2012-24 Bozhidar
 // Batsov).
 
+import { rbNKid } from "../node";
 import { NT_CASE, NT_WHEN } from "../ast";
 import { RbCop } from "../cop";
 import { RbSource } from "../source";
@@ -31,7 +32,7 @@ export class CopLintDuplicateCaseCondition {
         if (!ssxIs(src, w, NT_WHEN)) {
           continue;
         }
-        for (let j = 0; j < a.nKid(w) - 1; j++) {
+        for (let j = 0; j < rbNKid(src, w) - 1; j++) {
           const cond = a.kid(w, j);
           let dup = false;
           for (const p of prev) {

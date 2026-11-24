@@ -4,6 +4,8 @@
 // Ported from RuboCop 1.92.3 (MIT License, Copyright (c) 2012-24 Bozhidar
 // Batsov).
 
+import { rbByteAt } from "../util";
+import { add32 } from "../../core/arr";
 import {
   F_NAME,
   NT_BEGIN,
@@ -86,7 +88,7 @@ const nmivNameable = (name: string): boolean => {
   if (s.length === 0) {
     return false;
   }
-  const c0 = s.charCodeAt(0);
+  const c0 = rbByteAt(s, 0);
   if (!((c0 >= 65 && c0 <= 90) || (c0 >= 97 && c0 <= 122) || c0 === 95)) {
     return false;
   }
@@ -110,7 +112,7 @@ const nmivMatches = (method: string, ivar: string): boolean => {
   }
   const m = nmivStrip(method);
   const at = ivar.indexOf("@");
-  const v = at >= 0 ? `${ivar.substring(0, at)}${ivar.substring(at + 1, toI32(ivar.length))}` : ivar;
+  const v = at >= 0 ? `${ivar.substring(0, at)}${ivar.substring(add32(at, 1), toI32(ivar.length))}` : ivar;
   const noUnderscore = m.startsWith("_") ? m.substring(1, toI32(m.length)) : m;
   return v === m || v === noUnderscore;
 };

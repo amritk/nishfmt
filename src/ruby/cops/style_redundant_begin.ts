@@ -4,6 +4,8 @@
 // Ported from RuboCop 1.92.3 (MIT License, Copyright (c) 2012-24 Bozhidar
 // Batsov).
 
+import { rbNKid } from "../node";
+import { add32 } from "../../core/arr";
 import {
   F_BEGIN,
   F_ELSE,
@@ -146,9 +148,9 @@ const sbhRbAllowable = (src: RbSource, n: i32): boolean => {
     if (ssxSingleLine(src, first)) {
       let len = ssxCharLen(src.nodeSrc(first));
       if (sbhRbLowPrecedence(src, first)) {
-        len += 2;
+        len = add32(len, 2);
       }
-      if (src.column(a.exS(n)) + len > 120) {
+      if (toI64(src.column(a.exS(n))) + toI64(len) > toI64(120)) {
         return true;
       }
     }
@@ -325,12 +327,11 @@ export class CopStyleRedundantBegin {
         }
       } else if (t === NT_CASE || t === NT_CASE_MATCH) {
         const br: i32[] = [];
-        const k = a.nKid(n);
-        for (let i = 1; i < k - 1; i++) {
+        for (let i = 1; i < rbNKid(src, n) - 1; i++) {
           br.push(a.kid(a.kid(n, i), -1));
         }
         if (ssxHas(src, n, F_ELSE)) {
-          const e = a.kid(n, k - 1);
+          const e = a.kid(n, -1);
           br.push(t === NT_CASE_MATCH && sbhRbIs(src, e, NT_EMPTY_ELSE) ? V_NIL : e);
         }
         this.inspectBranches(src, br);

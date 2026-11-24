@@ -5,6 +5,7 @@
 // Ported from RuboCop 1.92.3 (MIT License, Copyright (c) 2012-24 Bozhidar
 // Batsov).
 
+import { fault } from "../../core/fault";
 import { F_NAME, NT_BLOCKARG, NT_CBASE, NT_CONST, NT_SEND, NT_YIELD, V_NIL } from "../ast";
 import { RbCop } from "../cop";
 import { RbSource } from "../source";
@@ -46,12 +47,25 @@ export class CopLintUnusedMethodArgument {
     f.run();
     const a = src.a;
     for (const si of f.popped) {
+      if (si < 0 || si >= f.scopes.length) {
+        fault();
+        return;
+      }
       for (const vi of f.scopes[si].vars) {
+        if (vi < 0 || vi >= f.vars.length) {
+          fault();
+          return;
+        }
         const v = f.vars[vi];
         if (!f.isMethodArgument(vi)) {
           continue;
         }
-        const body = ssxDefBody(src, f.scopes[v.scope].node);
+        const vs = v.scope;
+        if (vs < 0 || vs >= f.scopes.length) {
+          fault();
+          return;
+        }
+        const body = ssxDefBody(src, f.scopes[vs].node);
         if (body === V_NIL || lumaNotImplemented(src, body)) {
           continue;
         }

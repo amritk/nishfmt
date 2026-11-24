@@ -3,6 +3,9 @@
 // Ported from RuboCop 1.92.3 (MIT License, Copyright (c) 2012-24 Bozhidar
 // Batsov).
 
+import { faulted } from "../../core/fault";
+import { rbAtOff } from "../help";
+import { add32 } from "../../core/arr";
 import { RbCop } from "../cop";
 import { RbSource } from "../source";
 import { LdhRegistry, ldhStrip } from "./lint_directive_help";
@@ -35,7 +38,7 @@ const mdnCopsToken = (s: string): boolean => {
     return true;
   }
   const k = toI32(s.length);
-  for (let i = 1; i + 1 < k; i++) {
+  for (let i = 1; i < k - 1; i++) {
     if (s.charCodeAt(i) === 47 && mdnAlpha(s.charCodeAt(i - 1)) && mdnAlpha(s.charCodeAt(i + 1))) {
       return true;
     }
@@ -51,10 +54,13 @@ const mdnLegacy = (name: string): string => {
     const sp = MDN_LEGACY.indexOf(" ", i);
     const full = MDN_LEGACY.substring(i, sp);
     const sl = full.indexOf("/");
-    if (full.substring(sl + 1, toI32(full.length)) === name) {
+    if (full.substring(add32(sl, 1), toI32(full.length)) === name) {
       return full;
     }
-    i = sp + 1;
+    i = add32(sp, 1);
+    if (faulted()) {
+      return "";
+    }
   }
   return "";
 };
@@ -81,45 +87,49 @@ export class CopMigrationDepartmentName {
 
   run(src: RbSource): void {
     this.c.begin(src);
-    for (let ci = 0; ci < toI32(src.commS.length); ci++) {
-      const cs = src.commS[ci];
-      const ce = src.commE[ci];
+    const commS = src.commS;
+    const commE = src.commE;
+    // src.at answers -1 outside [0, sn), which no test below matches.
+    const sn = src.n;
+    for (let ci = 0; ci < commS.length && ci < commE.length; ci++) {
+      const cs = commS[ci];
+      const ce = commE[ci];
       // DISABLE_COMMENT_FORMAT: /\A(# *rubocop *: *((dis|en)able|todo) +)(.*)/
       let p = cs;
-      if (src.at(p) !== 35) {
+      if (p >= sn || src.at(p) !== 35) {
         continue;
       }
       p++;
-      while (src.at(p) === 32) {
+      while (p < sn && src.at(p) === 32) {
         p++;
       }
-      if (src.src(p, p + 7) !== "rubocop") {
+      if (src.src(p, add32(p, 7)) !== "rubocop") {
         continue;
       }
-      p += 7;
-      while (src.at(p) === 32) {
+      p = add32(p, 7);
+      while (p < sn && src.at(p) === 32) {
         p++;
       }
-      if (src.at(p) !== 58) {
+      if (p >= sn || src.at(p) !== 58) {
         continue;
       }
       p++;
-      while (src.at(p) === 32) {
+      while (p < sn && src.at(p) === 32) {
         p++;
       }
       let ml = 0;
-      if (src.src(p, p + 7) === "disable") {
+      if (src.src(p, add32(p, 7)) === "disable") {
         ml = 7;
-      } else if (src.src(p, p + 6) === "enable") {
+      } else if (src.src(p, add32(p, 6)) === "enable") {
         ml = 6;
-      } else if (src.src(p, p + 4) === "todo") {
+      } else if (src.src(p, add32(p, 4)) === "todo") {
         ml = 4;
       }
-      if (ml === 0 || src.at(p + ml) !== 32) {
+      if (ml === 0 || rbAtOff(src, p, ml) !== 32) {
         continue;
       }
-      p += ml;
-      while (src.at(p) === 32) {
+      p = add32(p, ml);
+      while (p < sn && src.at(p) === 32) {
         p++;
       }
       if (p > ce) {
@@ -169,7 +179,7 @@ export class CopMigrationDepartmentName {
   }
 
   private checkCopName(src: RbSource, reg: LdhRegistry, name: string, start: i32): void {
-    const e = start + toI32(name.length);
+    const e = add32(start, toI32(name.length));
     const k = this.c.offense(start, e);
     if (k === null) {
       return;
@@ -183,7 +193,7 @@ export class CopMigrationDepartmentName {
       for (const d of reg.depts) {
         if (reg.has(`${d}/${cop}`)) {
           q = `${d}/${cop}`;
-          count++;
+          count = add32(count, 1);
         }
       }
       if (count > 1) {

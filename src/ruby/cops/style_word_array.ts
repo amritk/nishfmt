@@ -3,6 +3,8 @@
 // Ported from RuboCop 1.92.3 (MIT License, Copyright (c) 2012-24 Bozhidar
 // Batsov).
 
+import { fault } from "../../core/fault";
+import { add32, atI32 } from "../../core/arr";
 import { F_BEGIN, NT_ARRAY, NT_DSTR, NT_STR, V_NIL } from "../ast";
 import { RbCop } from "../cop";
 import { rnE, rnHas, rnHeredoc, rnS } from "../node";
@@ -26,20 +28,36 @@ const rbWaWordMatch = (s: string): boolean => {
     return false;
   }
   const reach: boolean[] = [];
-  for (let i = 0; i <= n; i++) {
-    reach.push(i === 0);
-  }
+  // reach[0..n]: whether the match can stand at each index.
+  reach.push(true);
   for (let i = 0; i < n; i++) {
+    reach.push(false);
+  }
+  for (let i = 0; i < n && i < cs.length && i < reach.length; i++) {
     if (!reach[i]) {
       continue;
     }
     const c = cs[i];
+    const i1 = i + 1;
     if (rbLitUWord(c) || c === 10 || c === 9) {
-      reach[i + 1] = true;
+      if (i1 >= reach.length) {
+        fault();
+        return false;
+      }
+      reach[i1] = true;
     }
-    if (rbLitUWord(c) && i + 2 < n && cs[i + 1] === 45 && rbLitUWord(cs[i + 2])) {
-      reach[i + 3] = true;
+    if (rbLitUWord(c) && toI64(i) + toI64(2) < toI64(n) && atI32(cs, i1) === 45 && rbLitUWord(atI32(cs, add32(i, 2)))) {
+      const i3 = add32(i, 3);
+      if (i3 < 0 || i3 >= reach.length) {
+        fault();
+        return false;
+      }
+      reach[i3] = true;
     }
+  }
+  if (n >= reach.length) {
+    fault();
+    return false;
   }
   return reach[n];
 };

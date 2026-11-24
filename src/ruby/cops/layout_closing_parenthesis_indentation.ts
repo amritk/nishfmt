@@ -3,6 +3,7 @@
 // Ported from RuboCop 1.92.3 (MIT License, Copyright (c) 2012-24 Bozhidar
 // Batsov).
 
+import { add32, atI32, sub32 } from "../../core/arr";
 import { F_BEGIN, F_END, NT_BEGIN, NT_CSEND, NT_DEF, NT_DEFS, NT_HASH, NT_SEND, V_NIL } from "../ast";
 import { RbCop } from "../cop";
 import { rnHas, rnS } from "../node";
@@ -63,10 +64,10 @@ export class CopLayoutClosingParenthesisIndentation {
       }
       correct = c1;
     } else {
-      const first = els[0];
+      const first = atI32(els, 0);
       const firstLine = src.line(a.exS(first));
       if (firstLine > src.line(lp)) {
-        const ind = lalLineIndentation(src, firstLine) - 2;
+        const ind = sub32(lalLineIndentation(src, firstLine), 2);
         correct = ind < 0 ? 0 : ind;
       } else if (this.allAligned(src, els)) {
         correct = src.column(lp);
@@ -74,13 +75,14 @@ export class CopLayoutClosingParenthesisIndentation {
         correct = lalLineIndentation(src, firstLine);
       }
     }
-    const delta = correct - src.column(rp);
+    const delta = sub32(correct, src.column(rp));
     if (delta === 0) {
       return;
     }
-    const k = this.c.offense(rp, rp + 1);
+    const re = add32(rp, 1);
+    const k = this.c.offense(rp, re);
     if (k !== null) {
-      this.al.correct(src, k, rp, rp + 1, delta, V_NIL);
+      this.al.correct(src, k, rp, re, delta, V_NIL);
       this.c.commit(k);
     }
   }
@@ -89,9 +91,10 @@ export class CopLayoutClosingParenthesisIndentation {
   private allAligned(src: RbSource, els: i32[]): boolean {
     const a = src.a;
     const cols: i32[] = [];
-    if (lalIsType(src, els[0], NT_HASH)) {
-      for (let i = 0; i < a.nKid(els[0]); i++) {
-        const ch = a.kid(els[0], i);
+    const e0 = atI32(els, 0);
+    if (lalIsType(src, e0, NT_HASH)) {
+      for (let i = 0; i < a.nKid(e0); i++) {
+        const ch = a.kid(e0, i);
         if (a.isNode(ch)) {
           cols.push(src.column(a.exS(ch)));
         }
@@ -104,8 +107,9 @@ export class CopLayoutClosingParenthesisIndentation {
     if (cols.length === 0) {
       return false;
     }
+    const c0 = atI32(cols, 0);
     for (const c of cols) {
-      if (c !== cols[0]) {
+      if (c !== c0) {
         return false;
       }
     }

@@ -5,6 +5,7 @@
 // Ported from RuboCop 1.92.3 (MIT License, Copyright (c) 2012-24 Bozhidar
 // Batsov).
 
+import { add32, atI32, sub32 } from "../../core/arr";
 import {
   F_BEGIN,
   F_DOT,
@@ -89,7 +90,7 @@ import {
   V_NIL,
 } from "../ast";
 import { RbCop } from "../cop";
-import { rbSpaceBegin, rbSpaceEnd } from "../help";
+import { rbAtOff, rbSpaceBegin, rbSpaceEnd } from "../help";
 import { rnHeredoc } from "../node";
 import { RbRewriter } from "../rewriter";
 import { RbSource } from "../source";
@@ -278,7 +279,7 @@ const sbhRpTruthyKids = (src: RbSource, n: i32): i32 => {
   let k = 0;
   for (let i = 0; i < src.a.nKid(n); i++) {
     if (src.a.kid(n, i) !== V_NIL) {
-      k++;
+      k = add32(k, 1);
     }
   }
   return k;
@@ -306,7 +307,7 @@ const sbhRpParens = (src: RbSource, n: i32): boolean => src.a.isNode(n) && ssxLo
 const sbhRpAfterClose = (src: RbSource, n: i32): i32 => {
   const es = src.a.fS(src.a.map(n), F_END);
   const le = src.lineEnd(src.line(es));
-  let p = es + 1;
+  let p = add32(es, 1);
   while (p < le && (ssxIsSpace(src.at(p)) || src.at(p) === 0)) {
     p++;
   }
@@ -316,7 +317,7 @@ const sbhRpAfterClose = (src: RbSource, n: i32): i32 => {
 /** Whether the code points at p start with `s`. */
 const sbhRpAt = (src: RbSource, p: i32, s: string): boolean => {
   for (let i = 0; i < toI32(s.length); i++) {
-    if (src.at(p + i) !== s.charCodeAt(i)) {
+    if (rbAtOff(src, p, i) !== s.charCodeAt(i)) {
       return false;
     }
   }
@@ -330,7 +331,7 @@ const sbhRpHeredocBeforeClose = (src: RbSource, n: i32): boolean => {
   if (k === 0) {
     return false;
   }
-  const last = a.kid(n, k - 1);
+  const last = a.kid(n, -1);
   if (last === V_NIL || !a.isNode(last)) {
     return false;
   }
@@ -408,7 +409,7 @@ export const sbhRpCorrect = (src: RbSource, k: RbRewriter, n: i32): void => {
     p++;
   }
   if (src.at(p) === 41) {
-    p++;
+    p = add32(p, 1);
     while (p < le && ssxIsSpace(src.at(p))) {
       p++;
     }
@@ -432,13 +433,13 @@ export const sbhRpCorrect = (src: RbSource, k: RbRewriter, n: i32): void => {
               r++;
             }
             if (r < le && src.at(r) === 44) {
-              off = r + 1 - (q + 1);
+              off = sub32(r, q);
               break;
             }
           }
           q++;
         }
-        re = ee + off;
+        re = add32(ee, off);
       }
       k.remove(rbSpaceBegin(src, es, 1, true, true, true), re);
       if (heredoc) {
@@ -523,7 +524,7 @@ export class CopStyleRedundantParentheses {
     }
     const rp = new SbhReparse(src, true);
     for (const i of rp.verified(ss, es, ks)) {
-      const n = this.pend[i];
+      const n = atI32(this.pend, i);
       const k = this.c.offense(a.exS(n), a.exE(n));
       if (k !== null) {
         sbhRpCorrect(src, k, n);
@@ -588,7 +589,7 @@ export class CopStyleRedundantParentheses {
   private parensRequired(src: RbSource, n: i32): boolean {
     const s = src.a.exS(n);
     const e = src.a.exE(n);
-    const before = s === 0 ? src.at(src.n - 1) : src.at(s - 1);
+    const before = s === 0 ? rbAtOff(src, src.n, -1) : rbAtOff(src, s, -1);
     const after = src.at(e);
     return (before >= 97 && before <= 122) || (after >= 97 && after <= 122);
   }
@@ -606,7 +607,12 @@ export class CopStyleRedundantParentheses {
     // like_method_argument_parentheses?
     if (pt === NT_SEND || pt === NT_SUPER || pt === NT_YIELD) {
       const args = sbhCallArgs(src, p);
-      if (args.length === 1 && !sbhRpParens(src, p) && !sbhOperatorMethod(src, p) && sbhRpIs(src, args[0], NT_BEGIN)) {
+      if (
+        args.length === 1 &&
+        !sbhRpParens(src, p) &&
+        !sbhOperatorMethod(src, p) &&
+        sbhRpIs(src, atI32(args, 0), NT_BEGIN)
+      ) {
         return true;
       }
     }

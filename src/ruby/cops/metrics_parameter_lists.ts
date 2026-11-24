@@ -4,6 +4,7 @@
 // Ported from RuboCop 1.92.3 (MIT License, Copyright (c) 2012-24 Bozhidar
 // Batsov).
 
+import { add32 } from "../../core/arr";
 import {
   NT_ARGS,
   NT_BLOCK,
@@ -96,7 +97,7 @@ export class CopMetricsParameterLists {
         let opt = 0;
         for (let i = 0; i < a.nKid(args); i++) {
           if (a.type(a.kid(args, i)) === NT_OPTARG) {
-            opt++;
+            opt = add32(opt, 1);
           }
         }
         if (opt > 3) {
@@ -110,7 +111,7 @@ export class CopMetricsParameterLists {
         let count = 0;
         for (let i = 0; i < a.nKid(n); i++) {
           if (a.type(a.kid(n, i)) !== NT_BLOCKARG) {
-            count++;
+            count = add32(count, 1);
           }
         }
         if (count <= 5 || (parent !== V_NIL && mplLambdaOrProc(src, parent))) {

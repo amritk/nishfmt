@@ -3,6 +3,7 @@
 // Ported from RuboCop 1.92.3 (MIT License, Copyright (c) 2012-24 Bozhidar
 // Batsov).
 
+import { add32, sub32 } from "../../core/arr";
 import {
   F_BEGIN,
   F_END,
@@ -134,11 +135,11 @@ export class CopLayoutBlockAlignment {
       }
       // shift_end_to_start_col
       const anc = rmlBaStartForLine(src, n);
-      const delta = src.column(src.a.exS(anc)) - ecol;
+      const delta = sub32(src.column(src.a.exS(anc)), ecol);
       if (delta > 0) {
         k.insertBefore(es, rnE(src, n, F_END), rmlSpaces(delta));
       } else if (delta < 0) {
-        k.remove(es + delta, es);
+        k.remove(add32(es, delta), es);
       }
       this.c.commit(k);
     }
@@ -156,16 +157,18 @@ export class CopLayoutBlockAlignment {
     let opens = 0;
     let closes = 0;
     const s = a.exS(n);
-    for (let i = 0; i < toI32(src.tokT.length); i++) {
-      const ts = src.tokS[i];
+    const tokT = src.tokT;
+    const tokS = src.tokS;
+    for (let i = 0; i < tokT.length && i < tokS.length; i++) {
+      const ts = tokS[i];
       if (ts < s || ts >= fc) {
         continue;
       }
-      const t = src.tokT[i];
+      const t = tokT[i];
       if (t === TK_tLPAREN || t === TK_tLPAREN2 || t === TK_tLBRACK || t === TK_tLBRACK2) {
-        opens++;
+        opens = add32(opens, 1);
       } else if (t === TK_tRPAREN || t === TK_tRBRACK) {
-        closes++;
+        closes = add32(closes, 1);
       }
     }
     if (opens <= closes) {

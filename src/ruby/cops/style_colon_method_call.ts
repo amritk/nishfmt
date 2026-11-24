@@ -3,6 +3,7 @@
 // Ported from RuboCop 1.92.3 (MIT License, Copyright (c) 2012-24 Bozhidar
 // Batsov).
 
+import { rbByteAt } from "../util";
 import { F_DOT, NT_SEND, V_NIL } from "../ast";
 import { RbCop } from "../cop";
 import { RbSource } from "../source";
@@ -22,7 +23,7 @@ export class CopStyleColonMethodCall {
       if (a.type(n) !== NT_SEND || a.kid(n, 0) === V_NIL || !ssxLocIs(src, n, F_DOT, "::")) {
         continue;
       }
-      const c0 = ssxMeth(src, n).charCodeAt(0);
+      const c0 = rbByteAt(ssxMeth(src, n), 0);
       if (c0 >= 65 && c0 <= 90) {
         continue;
       }

@@ -3,6 +3,7 @@
 // Ported from RuboCop 1.92.3 (MIT License, Copyright (c) 2012-24 Bozhidar
 // Batsov).
 
+import { rbNKid } from "../node";
 import {
   F_KEYWORD,
   NT_AND,
@@ -39,7 +40,7 @@ const snmLowPrecedence = (src: RbSource, n: i32): boolean => {
     return true;
   }
   if (t === NT_CSEND || t === NT_YIELD || t === NT_SUPER) {
-    const nargs = t === NT_CSEND ? a.nKid(n) - 2 : a.nKid(n);
+    const nargs = t === NT_CSEND ? rbNKid(src, n) - 2 : a.nKid(n);
     const m = t === NT_CSEND ? ssxMeth(src, n) : "";
     return nargs > 0 && !ssxParenthesized(src, n) && !ssxOperatorName(m);
   }

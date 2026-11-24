@@ -4,6 +4,7 @@
 // Ported from RuboCop 1.92.3 (MIT License, Copyright (c) 2012-24 Bozhidar
 // Batsov).
 
+import { add32, sub32 } from "../../core/arr";
 import { F_BEGIN, F_ELSE, F_END, NT_IF, V_NIL } from "../ast";
 import { RbCop } from "../cop";
 import { RbRewriter } from "../rewriter";
@@ -68,8 +69,8 @@ export class CopLintEmptyConditionalBody {
       // deletion_range(branch_range(node)): branch_range is node.begin..condition.end here.
       const re = a.exE(cond);
       const line = src.line(re);
-      const lineLen = src.lineEnd(line) - src.lineStart(line);
-      let end = re + lineLen - src.column(re) + 1;
+      const lineLen = sub32(src.lineEnd(line), src.lineStart(line));
+      let end = add32(sub32(add32(re, lineLen), src.column(re)), 1);
       if (end > src.n) {
         end = src.n;
       }

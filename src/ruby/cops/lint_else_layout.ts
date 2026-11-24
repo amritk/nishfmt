@@ -3,6 +3,7 @@
 // Ported from RuboCop 1.92.3 (MIT License, Copyright (c) 2012-24 Bozhidar
 // Batsov).
 
+import { rbCol } from "../node";
 import { F_BEGIN, F_ELSE, F_KEYWORD, F_QUESTION, NT_BEGIN, NT_IF, V_NIL } from "../ast";
 import { RbCop } from "../cop";
 import { RbSource } from "../source";
@@ -10,7 +11,7 @@ import { ssxFE, ssxFS, ssxHas, ssxIs, ssxLocIs, ssxSingleLine } from "./style_sy
 
 /** IfNode#unless?. */
 const lelUnless = (src: RbSource, n: i32): boolean =>
-  !ssxHas(src, n, F_QUESTION) && ssxFE(src, n, F_KEYWORD) - ssxFS(src, n, F_KEYWORD) === 6;
+  !ssxHas(src, n, F_QUESTION) && toI64(ssxFE(src, n, F_KEYWORD)) - toI64(ssxFS(src, n, F_KEYWORD)) === toI64(6);
 
 /** IfNode#else_branch. */
 const lelElseBranch = (src: RbSource, n: i32): i32 => (lelUnless(src, n) ? src.a.kid(n, 1) : src.a.kid(n, 2));
@@ -65,7 +66,7 @@ export class CopLintElseLayout {
     if (k !== null) {
       k.insertAfter(es, ee, "\n");
       const ind: string[] = [];
-      for (let i = 0; i < src.column(a.exS(n)) + 2; i++) {
+      for (let i = 0; i < rbCol(src, a.exS(n)) + 2; i++) {
         ind.push(" ");
       }
       k.replace(ee, a.exS(first), ind.join(""));

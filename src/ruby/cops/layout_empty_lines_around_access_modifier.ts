@@ -3,6 +3,7 @@
 // Ported from RuboCop 1.92.3 (MIT License, Copyright (c) 2012-24 Bozhidar
 // Batsov).
 
+import { add32, sub32 } from "../../core/arr";
 import {
   NT_BEGIN,
   NT_BLOCK,
@@ -207,12 +208,12 @@ export class CopLayoutEmptyLinesAroundAccessModifier {
   /** previous_line_empty?: the nearest earlier non-comment line is blank (or a body starts above). */
   private previousLineEmpty(L: RbLayLines, sendLine: i32): boolean {
     // processed_source[0..(send_line - 2)]: a negative end counts from the end.
-    let hi = sendLine - 2;
+    let hi = sub32(sendLine, 2);
     if (hi < 0) {
-      hi += L.n;
+      hi = add32(hi, L.n);
     }
     if (hi >= L.n) {
-      hi = L.n - 1;
+      hi = sub32(L.n, 1);
     }
     let found = -1;
     for (let i = hi; i >= 0; i--) {
@@ -224,10 +225,10 @@ export class CopLayoutEmptyLinesAroundAccessModifier {
     if (found < 0) {
       return true;
     }
-    if (this.blockLine !== 0 && sendLine === this.blockLine + 1) {
+    if (this.blockLine !== 0 && toI64(sendLine) === toI64(this.blockLine) + toI64(1)) {
       return true;
     }
-    if (this.classFirst !== 0 && sendLine === this.classFirst + 1) {
+    if (this.classFirst !== 0 && toI64(sendLine) === toI64(this.classFirst) + toI64(1)) {
       return true;
     }
     return L.blank(found);
@@ -235,7 +236,7 @@ export class CopLayoutEmptyLinesAroundAccessModifier {
 
   /** next_line_empty?: the body ends after the line, or the next line is blank. */
   private nextLineEmpty(L: RbLayLines, lastSendLine: i32): boolean {
-    if (this.classLast !== 0 && lastSendLine === this.classLast - 1) {
+    if (this.classLast !== 0 && toI64(lastSendLine) === toI64(this.classLast) - toI64(1)) {
       return true;
     }
     if (!L.has(lastSendLine)) {

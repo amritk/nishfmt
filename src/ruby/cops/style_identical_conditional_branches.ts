@@ -4,6 +4,8 @@
 // Ported from RuboCop 1.92.3 (MIT License, Copyright (c) 2012-24 Bozhidar
 // Batsov).
 
+import { rbNKid } from "../node";
+import { atI32 } from "../../core/arr";
 import {
   F_ELSE,
   F_OPERATOR,
@@ -124,7 +126,7 @@ export class CopStyleIdenticalConditionalBranches {
         if (!ssxHas(src, n, F_ELSE) || els === V_NIL) {
           continue;
         }
-        for (let i = 1; i < a.nKid(n) - 1; i++) {
+        for (let i = 1; i < rbNKid(src, n) - 1; i++) {
           const w = a.kid(n, i);
           if (ssxIs(src, w, NT_WHEN)) {
             branches.push(a.kid(w, -1));
@@ -166,7 +168,7 @@ export class CopStyleIdenticalConditionalBranches {
     let lastChild = true;
     if (p !== V_NIL) {
       const kids = rbIcbChildNodes(src, p);
-      lastChild = kids.length > 0 && vfSameNode(src, kids[kids.length - 1], n);
+      lastChild = kids.length > 0 && vfSameNode(src, atI32(kids, toI32(kids.length) - 1), n);
     }
     if (lastChild) {
       for (const b of branches) {
@@ -194,7 +196,7 @@ export class CopStyleIdenticalConditionalBranches {
       condVar = src.nodeSrc(cond);
       hasCondVar = true;
     }
-    const head = heads[0];
+    const head = atI32(heads, 0);
     if (rbNodeAssignment(src, head) && hasCondVar) {
       const ht = a.type(head);
       // node_parts[0].to_s: a variable's name; a casgn's scope; a node's s-expression otherwise
@@ -224,12 +226,12 @@ export class CopStyleIdenticalConditionalBranches {
     if (xs.length === 0) {
       return 0;
     }
+    const u = atI32(xs, 0);
     for (const x of xs) {
-      if (!vfSameNode(src, x, xs[0])) {
+      if (!vfSameNode(src, x, u)) {
         return 0;
       }
     }
-    const u = xs[0];
     if (!rbNodeAssignment(src, u)) {
       return 1;
     }
@@ -247,7 +249,7 @@ export class CopStyleIdenticalConditionalBranches {
       }
       return 1;
     }
-    const lhs = src.nodeSrc(lk[0]);
+    const lhs = src.nodeSrc(atI32(lk, 0));
     for (const c of rbIcbChildNodes(src, cond)) {
       if (rbNodeVariable(src, c) && src.nodeSrc(c) === lhs) {
         return 0;

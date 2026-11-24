@@ -40,14 +40,15 @@ const rbPldContainsEscapedDelimiter = (src: RbSource, n: i32, ds: string[]): boo
   let i = rnE(src, n, F_BEGIN);
   const e = rnS(src, n, F_END);
   while (i < e) {
-    if (src.at(i) === 92 && i + 1 < e) {
-      const ch = src.src(i + 1, i + 2);
+    const i1 = i + 1;
+    if (src.at(i) === 92 && i1 < e) {
+      const ch = src.src(i1, i1 + 1);
       for (const d of ds) {
         if (d === ch) {
           return true;
         }
       }
-      i += 2;
+      i = i1 + 1;
       continue;
     }
     i++;

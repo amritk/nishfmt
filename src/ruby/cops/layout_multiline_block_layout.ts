@@ -3,6 +3,7 @@
 // Ported from RuboCop 1.92.3 (MIT License, Copyright (c) 2012-24 Bozhidar
 // Batsov).
 
+import { add32, sub32 } from "../../core/arr";
 import {
   F_BEGIN,
   NT_ARG,
@@ -20,7 +21,7 @@ import {
   V_NIL,
 } from "../ast";
 import { RbCop } from "../cop";
-import { rbSpaceEnd } from "../help";
+import { rbAtOff, rbSpaceEnd } from "../help";
 import { rnE, rnS } from "../node";
 import { RbRewriter } from "../rewriter";
 import { RbSource } from "../source";
@@ -44,7 +45,7 @@ export const rmlCharLen = (s: string): i32 => {
   const n = toI32(s.length);
   for (let i = 0; i < n; i++) {
     if ((s.charCodeAt(i) & 0xc0) !== 0x80) {
-      k++;
+      k = add32(k, 1);
     }
   }
   return k;
@@ -100,8 +101,11 @@ export class CopLayoutMultilineBlockLayout {
     const a = src.a;
     const s = a.exS(n);
     const le = src.lineEnd(src.line(s));
-    const pipes = src.at(le - 1) === 124 ? 1 : 3;
-    const need = src.column(s) + pipes + (le - s) + rmlCharLen(this.argString(src, n, a.kid(n, 1)));
+    const pipes = rbAtOff(src, le, -1) === 124 ? 1 : 3;
+    const need = add32(
+      add32(add32(src.column(s), pipes), sub32(le, s)),
+      rmlCharLen(this.argString(src, n, a.kid(n, 1))),
+    );
     return need > 120;
   }
 
@@ -125,7 +129,7 @@ export class CopLayoutMultilineBlockLayout {
     let cnt = 0;
     for (const d of ds) {
       if (rmlArgumentType(a.type(d))) {
-        cnt++;
+        cnt = add32(cnt, 1);
       }
     }
     if (cnt === 1 && src.nodeSrc(top).indexOf(",") >= 0) {

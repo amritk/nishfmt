@@ -3,6 +3,8 @@
 // Ported from RuboCop 1.92.3 (MIT License, Copyright (c) 2012-24 Bozhidar
 // Batsov).
 
+import { fault } from "../../core/fault";
+import { atI32 } from "../../core/arr";
 import { NT_BEGIN, NT_CLASS, NT_DEF, NT_MODULE, NT_SCLASS, NT_SEND, V_NIL } from "../ast";
 import { RbCop } from "../cop";
 import { RbRewriter } from "../rewriter";
@@ -34,8 +36,11 @@ class SbhBaMacro {
           found = j;
         }
       }
-      if (found >= 0) {
-        this.nodes[found] = at;
+      const nodes = this.nodes;
+      if (found >= 0 && found < nodes.length) {
+        nodes[found] = at;
+      } else if (found >= 0) {
+        fault();
       } else {
         this.names.push(s);
         this.nodes.push(at);
@@ -157,7 +162,12 @@ export class CopStyleBisectedAttrAccessor {
           groups.push(fresh);
           g = toI32(vis.length) - 1;
         }
-        groups[g].push(mac);
+        if (g >= 0 && g < groups.length) {
+          groups[g].push(mac);
+        } else {
+          fault();
+          return;
+        }
       }
       for (const macros of groups) {
         // find_bisection: reader names & writer names
@@ -197,9 +207,11 @@ export class CopStyleBisectedAttrAccessor {
           // bisect: attrs.slice(*names).values, in the order of the names.
           const sel: i32[] = [];
           for (const x of bis) {
-            for (let j = 0; j < toI32(m.names.length); j++) {
-              if (m.names[j] === x) {
-                sel.push(m.nodes[j]);
+            const names = m.names;
+            const nodes = m.nodes;
+            for (let j = 0; j < names.length && j < nodes.length; j++) {
+              if (names[j] === x) {
+                sel.push(nodes[j]);
               }
             }
           }
@@ -221,7 +233,7 @@ export class CopStyleBisectedAttrAccessor {
     }
     for (let i = 1; i < toI32(order.length); i++) {
       let j = i;
-      while (j > 0 && a.exE(classes[order[j - 1]]) > a.exE(classes[order[j]])) {
+      while (j > 0 && j < order.length && a.exE(atI32(classes, order[j - 1])) > a.exE(atI32(classes, order[j]))) {
         const tmp = order[j - 1];
         order[j - 1] = order[j];
         order[j] = tmp;
@@ -229,6 +241,10 @@ export class CopStyleBisectedAttrAccessor {
       }
     }
     for (const ci of order) {
+      if (ci < 0 || ci >= rewrite.length) {
+        fault();
+        return;
+      }
       for (const m of rewrite[ci]) {
         const node = m.node;
         const rs = ssxWholeLinesS(src, a.exS(node));

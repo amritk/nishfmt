@@ -7,6 +7,8 @@
 // Ported from RuboCop 1.92.3 (MIT License, Copyright (c) 2012-24 Bozhidar
 // Batsov).
 
+import { fault } from "../../core/fault";
+import { add32, atI32, sub32 } from "../../core/arr";
 import {
   F_ELSE,
   NT_ARG,
@@ -48,14 +50,14 @@ const bgdRegister = (c: RbCop, src: RbSource, n: i32): void => {
   const l = src.line(src.a.exS(n));
   const col = src.column(src.a.exS(n));
   const last = src.column(src.a.exE(n));
-  const s = src.lineStart(l) + col;
-  c.offense(s, s + (last > col ? last - col : 0));
+  const s = add32(src.lineStart(l), col);
+  c.offense(s, last > col ? add32(s, sub32(last, col)) : s);
 };
 
 /** group_by(&:first_argument): the group whose first node's first argument equals n's, or -1. */
 const bgdGroupOf = (src: RbSource, groups: i32[][], n: i32): i32 => {
   for (let i = 0; i < toI32(groups.length); i++) {
-    if (vfSameNode(src, src.a.kid(groups[i][0], 2), src.a.kid(n, 2))) {
+    if (vfSameNode(src, src.a.kid(atI32(groups[i], 0), 2), src.a.kid(n, 2))) {
       return i;
     }
   }
@@ -100,14 +102,16 @@ const bgdCaseBranches = (src: RbSource, n: i32): i32[] => {
   const a = src.a;
   const out: i32[] = [];
   const k = a.nKid(n);
-  for (let i = 1; i < k - 1; i++) {
+  const last = k > 0 ? k - 1 : 0;
+  for (let i = 1; i < last; i++) {
     const w = a.kid(n, i);
     if (a.isNode(w) && a.type(w) === NT_WHEN) {
       out.push(a.kid(w, -1));
     }
   }
   if (a.has(a.map(n), F_ELSE)) {
-    out.push(a.kid(n, k - 1));
+    // kid(n, -1) is the last child, as kid(n, nKid - 1).
+    out.push(a.kid(n, -1));
   }
   return out;
 };
@@ -185,8 +189,11 @@ export class CopBundlerDuplicatedGem {
       if (g < 0) {
         const ns: i32[] = [n];
         groups.push(ns);
-      } else {
+      } else if (g < groups.length) {
         groups[g].push(n);
+      } else {
+        fault();
+        return;
       }
     }
     for (const nodes of groups) {
@@ -302,8 +309,11 @@ export class CopBundlerDuplicatedGroup {
         keys.push(k);
         const ns: i32[] = [n];
         groups.push(ns);
-      } else {
+      } else if (g < groups.length) {
         groups[g].push(n);
+      } else {
+        fault();
+        return;
       }
     }
     for (const nodes of groups) {
@@ -429,7 +439,7 @@ export class CopGemspecDuplicatedAssignment {
       }
       const e = bgdEnclosing(src, n);
       let g = -1;
-      for (let i = 0; i < toI32(groups.length); i++) {
+      for (let i = 0; i < groups.length && i < encl.length && i < names.length; i++) {
         if (encl[i] === e && names[i] === m) {
           g = i;
         }
@@ -439,8 +449,11 @@ export class CopGemspecDuplicatedAssignment {
         names.push(m);
         const ns: i32[] = [n];
         groups.push(ns);
-      } else {
+      } else if (g < groups.length) {
         groups[g].push(n);
+      } else {
+        fault();
+        return;
       }
     }
     for (const nodes of groups) {
@@ -467,8 +480,8 @@ export class CopGemspecDuplicatedAssignment {
       const e = bgdEnclosing(src, n);
       const m = a.text(a.kid(r, 1));
       let g = -1;
-      for (let i = 0; i < toI32(igroups.length); i++) {
-        if (iencl[i] === e && inames[i] === m && vfSameNode(src, a.kid(igroups[i][0], 2), first)) {
+      for (let i = 0; i < igroups.length && i < iencl.length && i < inames.length; i++) {
+        if (iencl[i] === e && inames[i] === m && vfSameNode(src, a.kid(atI32(igroups[i], 0), 2), first)) {
           g = i;
         }
       }
@@ -477,8 +490,11 @@ export class CopGemspecDuplicatedAssignment {
         inames.push(m);
         const ns: i32[] = [n];
         igroups.push(ns);
-      } else {
+      } else if (g < igroups.length) {
         igroups[g].push(n);
+      } else {
+        fault();
+        return;
       }
     }
     for (const nodes of igroups) {

@@ -3,6 +3,7 @@
 // Ported from RuboCop 1.92.3 (MIT License, Copyright (c) 2012-24 Bozhidar
 // Batsov).
 
+import { rbNKid } from "../node";
 import {
   NT_BEGIN,
   NT_CASE,
@@ -64,7 +65,7 @@ export class CopLintFloatComparison {
           if (!ssxIs(src, w, NT_WHEN)) {
             continue;
           }
-          for (let j = 0; j < a.nKid(w) - 1; j++) {
+          for (let j = 0; j < rbNKid(src, w) - 1; j++) {
             const cond = a.kid(w, j);
             if (!this.isFloat(src, cond) || this.literalSafe(src, cond)) {
               continue;

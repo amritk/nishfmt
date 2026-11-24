@@ -30,7 +30,7 @@ const rbInvCamel = (src: RbSource, n: i32): boolean => {
     return false;
   }
   const s = src.nodeSrc(n);
-  for (let i = 0; i + 1 < toI32(s.length); i++) {
+  for (let i = 0; i < toI32(s.length) - 1; i++) {
     const c = s.charCodeAt(i);
     const d = s.charCodeAt(i + 1);
     if (c >= 65 && c <= 90 && d >= 97 && d <= 122) {
@@ -143,8 +143,10 @@ export class CopStyleInverseMethods {
     // part_of_ignored_node?
     const s = a.exS(n);
     const e = a.exE(n);
-    for (let i = 0; i < toI32(this.ignS.length); i++) {
-      if (this.ignS[i] <= s && this.ignE[i] >= e) {
+    const ignS = this.ignS;
+    const ignE = this.ignE;
+    for (let i = 0; i < ignS.length && i < ignE.length; i++) {
+      if (ignS[i] <= s && ignE[i] >= e) {
         return;
       }
     }

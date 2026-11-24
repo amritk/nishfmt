@@ -5,6 +5,7 @@
 // Ported from RuboCop 1.92.3 (MIT License, Copyright (c) 2012-24 Bozhidar
 // Batsov).
 
+import { add32, atI32 } from "../../core/arr";
 import { F_BEGIN, F_DOT, F_END, F_HEREDOC_END, NT_STR, V_NIL } from "../ast";
 import { RbCop } from "../cop";
 import { rbSpaceBegin, rbSpaceEnd } from "../help";
@@ -47,7 +48,7 @@ const rmlMlbLastLineHeredoc = (src: RbSource, n: i32, last: i32): boolean => {
 const rmlMlbLastElementEnd = (src: RbSource, last: i32): i32 => {
   const e = src.a.exE(last);
   const p = rbSpaceEnd(src, e, 2, true, false, false);
-  return src.at(p) === 44 ? p + 1 : e;
+  return src.at(p) === 44 ? add32(p, 1) : e;
 };
 
 /** closing_bracket_on_own_line?(descendant, line). */
@@ -57,7 +58,7 @@ const rmlMlbClosingOwnLine = (src: RbSource, d: i32, line: i32): boolean => {
   }
   const es = rnS(src, d, F_END);
   const ee = rnE(src, d, F_END);
-  if (ee - es !== 1) {
+  if (toI64(ee) - toI64(es) !== toI64(1)) {
     return false;
   }
   const c = src.at(es);
@@ -147,8 +148,8 @@ export const rmlBraceLayout = (
       return;
     }
   }
-  const first = kids[0];
-  const last = kids[toI32(kids.length) - 1];
+  const first = atI32(kids, 0);
+  const last = atI32(kids, toI32(kids.length) - 1);
   const openSame = src.line(rnS(src, node, F_BEGIN)) === rmlFirstLine(src, first);
   const closeSame = endLine === rmlLastLine(src, last);
   if (openSame === closeSame) {

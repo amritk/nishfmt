@@ -4,6 +4,8 @@
 // Ported from RuboCop 1.92.3 (MIT License, Copyright (c) 2012-24 Bozhidar
 // Batsov).
 
+import { rbByteAt } from "../util";
+import { atI32 } from "../../core/arr";
 import {
   F_BEGIN,
   F_END,
@@ -130,7 +132,7 @@ export class CopStyleMethodCallWithoutArgsParentheses {
       }
       const m = ssxMeth(src, n);
       // ineligible_node?
-      const c0 = m.charCodeAt(0);
+      const c0 = rbByteAt(m, 0);
       if (c0 >= 65 && c0 <= 90) {
         continue;
       }
@@ -177,9 +179,11 @@ export class CopStyleMethodCallWithoutArgsParentheses {
     }
     // on_investigation_end
     for (const i of ssxVerifiedRemovals(src, ps, pe)) {
-      const k = this.c.offense(ps[i], pe[i]);
+      const s = atI32(ps, i);
+      const e = atI32(pe, i);
+      const k = this.c.offense(s, e);
       if (k !== null) {
-        k.remove(ps[i], pe[i]);
+        k.remove(s, e);
         this.c.commit(k);
       }
     }

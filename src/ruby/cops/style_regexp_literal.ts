@@ -3,6 +3,9 @@
 // Ported from RuboCop 1.92.3 (MIT License, Copyright (c) 2012-24 Bozhidar
 // Batsov).
 
+import { rbByteAt } from "../util";
+import { rbAtOff } from "../help";
+import { add32, sub32 } from "../../core/arr";
 import { F_BEGIN, F_END, F_OPERATOR, NT_CSEND, NT_REGEXP, NT_REGOPT, NT_SEND, NT_STR, V_NIL } from "../ast";
 import { RbCop } from "../cop";
 import { rnE, rnS } from "../node";
@@ -102,7 +105,7 @@ export class CopStyleRegexpLiteral {
         for (let i = ss; i < se; i++) {
           if (slash) {
             if (src.at(i) === 92 && i + 1 < se && src.at(i + 1) === 47) {
-              k.replace(i, i + 2, "/");
+              k.replace(i, add32(i, 2), "/");
             }
           } else if (src.at(i) === 47) {
             k.replace(i, i + 1, "\\/");
@@ -111,7 +114,7 @@ export class CopStyleRegexpLiteral {
       }
       // correct_escaped_delimiters
       if (!slash) {
-        const d = src.at(be - 1);
+        const d = rbAtOff(src, be, -1);
         const keep = "$*+.?^|()[]{}<>";
         let keeps = d === 47;
         for (let i = 0; i < toI32(keep.length); i++) {
@@ -131,14 +134,16 @@ export class CopStyleRegexpLiteral {
                 continue;
               }
               if (i + 1 < se && src.at(i + 1) === d) {
-                let repl = src.src(i + 1, i + 2);
-                const nx = i + 2 < se ? src.at(i + 2) : -1;
+                let repl = src.src(i + 1, add32(i, 2));
+                const nx = toI64(i) + toI64(2) < toI64(se) ? rbAtOff(src, i, 2) : -1;
                 if (d === 35 && (nx === 123 || nx === 64 || nx === 36)) {
                   repl = ext ? "#\\" : "\\#";
                 }
-                k.replace(i, i + 2, repl);
+                k.replace(i, add32(i, 2), repl);
               }
-              i += 2;
+              // i + 2, or past se (which ends the loop all the same).
+              const nxt = toI64(i) + toI64(2);
+              i = nxt >= toI64(se) ? se : toI32(nxt);
             }
           }
         }
@@ -152,17 +157,18 @@ export class CopStyleRegexpLiteral {
     let depth = 0;
     const n = toI32(body.length);
     let i = 0;
-    while (i < n) {
+    while (i >= 0 && i < n) {
       const c = body.charCodeAt(i);
       if (c === 92 && i + 1 < n && body.charCodeAt(i + 1) !== 10) {
         // `\\.` (one character, not a newline): skip it whole.
-        i += 1 + rbRlCharLen(body, i + 1);
+        const nxt = toI64(i) + toI64(1) + toI64(rbRlCharLen(body, i + 1));
+        i = nxt >= toI64(n) ? n : toI32(nxt);
         continue;
       }
       if (c === 123) {
-        depth++;
+        depth = add32(depth, 1);
       } else if (c === 125) {
-        depth--;
+        depth = sub32(depth, 1);
         if (depth < 0) {
           return true;
         }
@@ -202,7 +208,7 @@ export class CopStyleRegexpLiteral {
 
 /** The byte length of the UTF-8 character at byte `i`. */
 const rbRlCharLen = (s: string, i: i32): i32 => {
-  const c = s.charCodeAt(i);
+  const c = rbByteAt(s, i);
   if (c < 0x80) {
     return 1;
   }

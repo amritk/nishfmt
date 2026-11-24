@@ -58,7 +58,7 @@ const lsaEq = (src: RbSource, x: i32, y: i32): boolean => {
 /** Whether two argument lists (kids from `from`) are equal, element by element. */
 const lsaArgsEq = (src: RbSource, x: i32, xe: i32, y: i32): boolean => {
   const a = src.a;
-  if (xe - 2 !== a.nKid(y) - 2) {
+  if (xe !== a.nKid(y)) {
     return false;
   }
   for (let i = 2; i < xe; i++) {

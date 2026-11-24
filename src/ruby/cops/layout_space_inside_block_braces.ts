@@ -4,6 +4,8 @@
 // Ported from RuboCop 1.92.3 (MIT License, Copyright (c) 2012-24 Bozhidar
 // Batsov).
 
+import { rbAtOff } from "../help";
+import { add32 } from "../../core/arr";
 import { F_BEGIN, F_END, NT_BLOCK, NT_NUMBLOCK, V_NIL } from "../ast";
 import { RbCop } from "../cop";
 import { rnE, rnFieldSrc, rnHas, rnS } from "../node";
@@ -60,11 +62,11 @@ export class CopLayoutSpaceInsideBlockBraces {
             this.offense(src, lbS, pipeE);
           }
         } else {
-          this.offense(src, lbE, lbE + 1);
+          this.offense(src, lbE, add32(lbE, 1));
         }
       }
       // check_right_brace: only the missing space corrects under the space style.
-      if (!multiline && !lspIsWs(src.at(rbS - 1))) {
+      if (!multiline && !lspIsWs(rbAtOff(src, rbS, -1))) {
         this.offense(src, rbS, rbE);
       }
     }

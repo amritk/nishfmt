@@ -4,6 +4,7 @@
 // Ported from RuboCop 1.92.3 (MIT License, Copyright (c) 2012-24 Bozhidar
 // Batsov).
 
+import { atI32 } from "../../core/arr";
 import { RbCop } from "../cop";
 import { rbSpaceBegin } from "../help";
 import { RbSource } from "../source";
@@ -57,8 +58,8 @@ export class CopStyleNestedParenthesizedCalls {
           continue;
         }
         const args = ssxArgs(src, nested);
-        const fs = a.exS(args[0]);
-        const le = a.exE(args[args.length - 1]);
+        const fs = a.exS(atI32(args, 0));
+        const le = a.exE(atI32(args, toI32(args.length) - 1));
         k.replace(rbSpaceBegin(src, fs, 1, true, true, true), fs, "(");
         k.insertAfter(le, le, ")");
         this.c.commit(k);

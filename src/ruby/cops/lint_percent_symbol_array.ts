@@ -3,6 +3,8 @@
 // Ported from RuboCop 1.92.3 (MIT License, Copyright (c) 2012-24 Bozhidar
 // Batsov).
 
+import { rbAtOff } from "../help";
+import { add32, sub32 } from "../../core/arr";
 import { NT_ARRAY, NT_SYM } from "../ast";
 import { RbCop } from "../cop";
 import { RbSource } from "../source";
@@ -60,11 +62,11 @@ export class CopLintPercentSymbolArray {
         const c = a.kid(n, i);
         const s = a.exS(c);
         const e = a.exE(c);
-        if (src.at(e - 1) === 44) {
-          k.remove(e - 1, e);
+        if (rbAtOff(src, e, -1) === 44) {
+          k.remove(sub32(e, 1), e);
         }
         if (src.at(s) === 58) {
-          k.remove(s, s + 1);
+          k.remove(s, add32(s, 1));
         }
       }
       this.c.commit(k);

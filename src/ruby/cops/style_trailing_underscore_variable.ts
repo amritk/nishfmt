@@ -3,6 +3,7 @@
 // Ported from RuboCop 1.92.3 (MIT License, Copyright (c) 2012-24 Bozhidar
 // Batsov).
 
+import { atI32, sub32 } from "../../core/arr";
 import { F_BEGIN, F_END, F_OPERATOR, NT_ARRAY, NT_LVASGN, NT_MASGN, NT_MLHS, NT_SPLAT, V_NIL } from "../ast";
 import { RbCop } from "../cop";
 import { RbSource } from "../source";
@@ -53,13 +54,14 @@ const sbhTuFirstOffense = (src: RbSource, vars: i32[]): i32 => {
   }
   // splat_variable_before?: reverse_index finds the last variable == the offense.
   let idx = off;
-  for (let i = toI32(vars.length) - 1; i >= 0; i--) {
-    if (ssxAstEqual(src.a, vars[i], src.a, vars[off])) {
+  const vo = atI32(vars, off);
+  for (let i = toI32(vars.length) - 1; i >= 0 && i < vars.length; i--) {
+    if (ssxAstEqual(src.a, vars[i], src.a, vo)) {
       idx = i;
       break;
     }
   }
-  for (let i = 0; i < idx; i++) {
+  for (let i = 0; i < idx && i < vars.length; i++) {
     if (src.a.type(vars[i]) === NT_SPLAT) {
       return -1;
     }
@@ -80,8 +82,9 @@ const sbhTuUnneeded = (src: RbSource, node: i32, out: SbhTuRange[]): void => {
   let main: SbhTuRange | null = null;
   const off = sbhTuFirstOffense(src, vars);
   if (off >= 0) {
-    const ov = vars[off];
-    if (a.exS(ov) === a.exS(vars[0]) && a.exE(ov) === a.exE(vars[0])) {
+    const ov = atI32(vars, off);
+    const v0 = atI32(vars, 0);
+    if (a.exS(ov) === a.exS(v0) && a.exE(ov) === a.exE(v0)) {
       // unused_range
       if (!masgn) {
         main = new SbhTuRange(a.exS(mlhs), a.exE(mlhs), "_");
@@ -92,7 +95,7 @@ const sbhTuUnneeded = (src: RbSource, node: i32, out: SbhTuRange[]): void => {
         main = new SbhTuRange(a.exS(mlhs), a.exS(rhs), a.type(rhs) === NT_ARRAY && !bracketed ? "[" : "");
       }
     } else if (ssxLocIs(src, mlhs, F_END, ")")) {
-      main = new SbhTuRange(a.exS(ov) - 1, a.exE(mlhs) - 1, "");
+      main = new SbhTuRange(sub32(a.exS(ov), 1), sub32(a.exE(mlhs), 1), "");
     } else {
       main = new SbhTuRange(a.exS(ov), ssxFS(src, node, F_OPERATOR), "");
     }

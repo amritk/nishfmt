@@ -6,6 +6,9 @@
 // Ported from RuboCop 1.92.3 (MIT License, Copyright (c) 2012-24 Bozhidar
 // Batsov).
 
+import { rbAtOff } from "../help";
+import { fault } from "../../core/fault";
+import { add32 } from "../../core/arr";
 import { RbCop } from "../cop";
 import { RbSource } from "../source";
 
@@ -27,7 +30,7 @@ const rbGemBase = (path: string): string => {
  */
 const rbGemHiddenDir = (path: string): boolean => {
   const n = toI32(path.length);
-  if (n > 0 && path.charCodeAt(0) === 47) {
+  if (path.length > 0 && path.charCodeAt(0) === 47) {
     return false;
   }
   let a = 0;
@@ -86,7 +89,7 @@ export const rbGemOutOfOrder = (a: string, b: string): boolean => rbGemLess(rbGe
 
 /** OrderedGemNode#consecutive_lines? (comments separate groups). */
 export const rbGemConsecutive = (src: RbSource, prev: i32, cur: i32): boolean =>
-  src.line(src.a.exE(prev)) === src.line(src.a.exS(cur)) - 1;
+  toI64(src.line(src.a.exE(prev))) === toI64(src.line(src.a.exS(cur))) - toI64(1);
 
 /** OrderedGemNode#gem_name: the first argument's string (the patterns make it a str). */
 export const rbGemName = (src: RbSource, n: i32): string => src.a.text(src.a.kid(src.a.kid(n, 2), 0));
@@ -94,7 +97,7 @@ export const rbGemName = (src: RbSource, n: i32): string => src.a.text(src.a.kid
 /** OrderedGemCorrector#declaration_with_comment: the declaration's whole lines with the final newline. */
 const rbGemDeclRange = (src: RbSource, n: i32): i32[] => {
   const s = src.lineStart(src.line(src.a.exS(n)));
-  let e = src.lineEnd(src.line(src.a.exE(n))) + 1;
+  let e = add32(src.lineEnd(src.line(src.a.exE(n))), 1);
   if (e > src.n) {
     e = src.n;
   }
@@ -109,12 +112,20 @@ export const rbGemRegister = (c: RbCop, src: RbSource, prev: i32, cur: i32): voi
   }
   const r1 = rbGemDeclRange(src, cur);
   const r2 = rbGemDeclRange(src, prev);
-  const s1 = src.src(r1[0], r1[1]);
-  if (r1[1] > r1[0] && src.at(r1[1] - 1) === 10) {
-    k.swap(r1[0], r1[1], r2[0], r2[1], s1, src.src(r2[0], r2[1]));
+  if (r1.length < 2 || r2.length < 2) {
+    fault();
+    return;
+  }
+  const r1s = r1[0];
+  const r1e = r1[1];
+  const r2s = r2[0];
+  const r2e = r2[1];
+  const s1 = src.src(r1s, r1e);
+  if (r1e > r1s && rbAtOff(src, r1e, -1) === 10) {
+    k.swap(r1s, r1e, r2s, r2e, s1, src.src(r2s, r2e));
   } else {
-    k.insertBefore(r2[0], r2[1], `${s1}\n`);
-    k.remove(r1[0], r1[1]);
+    k.insertBefore(r2s, r2e, `${s1}\n`);
+    k.remove(r1s, r1e);
   }
   c.commit(k);
 };

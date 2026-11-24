@@ -3,6 +3,7 @@
 // Ported from RuboCop 1.92.3 (MIT License, Copyright (c) 2012-24 Bozhidar
 // Batsov).
 
+import { atI32 } from "../../core/arr";
 import { F_DOT, NT_CSEND, NT_HASH, NT_SEND } from "../ast";
 import { RbCop } from "../cop";
 import { rnBraces, rnHas, rnPairs } from "../node";
@@ -46,8 +47,9 @@ export class CopLayoutArgumentAlignment {
       }
       // arguments_or_first_arg_pairs
       let items = args;
-      if (lalIsType(src, args[0], NT_HASH) && !rnBraces(src, args[0])) {
-        items = rnPairs(src, args[0]);
+      const a0 = atI32(args, 0);
+      if (lalIsType(src, a0, NT_HASH) && !rnBraces(src, a0)) {
+        items = rnPairs(src, a0);
       }
       this.al.check(this.c, src, items, 0, false);
     }

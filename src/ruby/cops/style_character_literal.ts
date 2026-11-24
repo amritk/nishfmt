@@ -3,6 +3,7 @@
 // Ported from RuboCop 1.92.3 (MIT License, Copyright (c) 2012-24 Bozhidar
 // Batsov).
 
+import { add32, sub32 } from "../../core/arr";
 import { F_BEGIN, NT_REGEXP, NT_STR } from "../ast";
 import { RbCop } from "../cop";
 import { rnFieldSrc, rnHas, rnHasAncestor } from "../node";
@@ -29,7 +30,7 @@ export class CopStyleCharacterLiteral {
       if (rnFieldSrc(src, n, F_BEGIN) !== "?") {
         continue;
       }
-      const size = e - s;
+      const size = sub32(e, s);
       if (size < 2 || size > 3) {
         continue;
       }
@@ -37,7 +38,7 @@ export class CopStyleCharacterLiteral {
       if (k === null) {
         continue;
       }
-      const string = src.src(s + 1, e);
+      const string = src.src(add32(s, 1), e);
       if (size - 1 === 2 || string === "'") {
         k.replace(s, e, `"${string}"`);
       } else if (size - 1 === 1) {

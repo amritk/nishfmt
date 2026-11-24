@@ -5,6 +5,9 @@
 // Ported from RuboCop 1.92.3 (MIT License, Copyright (c) 2012-24 Bozhidar
 // Batsov).
 
+import { faulted } from "../../core/fault";
+import { rbNKid } from "../node";
+import { add32 } from "../../core/arr";
 import {
   NT_BEGIN,
   NT_BLOCK,
@@ -42,15 +45,18 @@ const lulAllowed = (s: string): boolean => {
       if (i < 0) {
         break;
       }
-      let j = i + toI32(w.length);
+      let j = add32(i, toI32(w.length));
       const d0 = j;
-      while (j < toI32(s.length) && s.charCodeAt(j) >= 48 && s.charCodeAt(j) <= 57) {
+      while (j >= 0 && j < toI32(s.length) && s.charCodeAt(j) >= 48 && s.charCodeAt(j) <= 57) {
         j++;
       }
       if (j > d0 && s.substring(j, toI32(s.length)).startsWith(").times")) {
         return true;
       }
-      from = i + 1;
+      from = add32(i, 1);
+      if (faulted()) {
+        return false;
+      }
     }
   }
   return false;
@@ -130,7 +136,7 @@ const lulBreakStatement = (src: RbSource, n: i32): boolean => {
     if (e === V_NIL || !lulBreakStatement(src, e)) {
       return false;
     }
-    for (let i = 1; i < a.nKid(n) - 1; i++) {
+    for (let i = 1; i < rbNKid(src, n) - 1; i++) {
       const body = a.kid(a.kid(n, i), -1);
       if (body === V_NIL || !lulBreakStatement(src, body)) {
         return false;

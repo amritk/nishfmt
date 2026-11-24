@@ -3,9 +3,11 @@
 // Ported from RuboCop 1.92.3 (MIT License, Copyright (c) 2012-24 Bozhidar
 // Batsov).
 
+import { rbLine } from "../node";
+import { add32, atI32, sub32 } from "../../core/arr";
 import { NT_BLOCK, NT_CASGN, NT_CLASS, NT_DEF, NT_MODULE, NT_SCLASS, NT_SEND, V_NIL } from "../ast";
 import { RbCop } from "../cop";
-import { rbSpaceBegin } from "../help";
+import { rbAtOff, rbSpaceBegin } from "../help";
 import { RbSource } from "../source";
 import {
   ssxAccessModifier,
@@ -19,7 +21,7 @@ import {
 
 /** previous_line_comment? */
 const ssxAgPrevLineComment = (src: RbSource, n: i32): boolean =>
-  ssxCommentLine(ssxLineAt(src, src.line(src.a.exS(n)) - 2));
+  ssxCommentLine(ssxLineAt(src, rbLine(src, src.a.exS(n)) - 2));
 
 /** groupable_accessor? */
 const ssxAgGroupable = (src: RbSource, n: i32): boolean => {
@@ -47,12 +49,14 @@ const ssxAgGroupable = (src: RbSource, n: i32): boolean => {
   const pl = src.line(a.exS(prev));
   for (let ci = 0; ci < toI32(src.commS.length); ci++) {
     const s = src.commS[ci];
-    if (src.line(s) === pl && src.at(s) === 35 && src.at(s + 1) === 58) {
+    if (src.line(s) === pl && src.at(s) === 35 && rbAtOff(src, s, 1) === 58) {
       return false;
     }
   }
   return (
-    ssxAttributeAccessor(src, prev) || ssxAccessModifier(src, prev) || src.line(a.exS(n)) - src.line(a.exE(prev)) > 1
+    ssxAttributeAccessor(src, prev) ||
+    ssxAccessModifier(src, prev) ||
+    rbLine(src, a.exS(n)) - rbLine(src, a.exE(prev)) > 1
   );
 };
 
@@ -61,7 +65,7 @@ const ssxAgVisibility = (src: RbSource, n: i32): string => {
   const a = src.a;
   const p = src.parent(n);
   const i = ssxSiblingIndex(src, n);
-  for (let j = i - 1; j >= 0; j--) {
+  for (let j = sub32(i, 1); j >= 0; j--) {
     const s = a.kid(p, j);
     if (ssxIs(src, s, NT_SEND) && a.kid(s, 0) === V_NIL && a.nKid(s) === 2) {
       const m = ssxMeth(src, s);
@@ -102,7 +106,7 @@ const ssxAgSkip = (src: RbSource, n: i32): boolean => {
   const i = ssxSiblingIndex(src, n);
   let casgn = false;
   let acc = false;
-  for (let j = i + 1; j < a.nKid(p); j++) {
+  for (let j = add32(i, 1); j < a.nKid(p); j++) {
     const s = a.kid(p, j);
     if (ssxIs(src, s, NT_CASGN)) {
       casgn = true;
@@ -169,7 +173,8 @@ export class CopStyleAccessorGrouping {
     let has = false;
     if (!ssxAgSkip(src, n)) {
       const accs = ssxAgSiblings(src, n);
-      if (n === accs[0] || ssxAgSkip(src, accs[0])) {
+      const a0 = atI32(accs, 0);
+      if (n === a0 || ssxAgSkip(src, a0)) {
         const names: string[] = [];
         for (const x of accs) {
           for (let i = 2; i < a.nKid(x); i++) {

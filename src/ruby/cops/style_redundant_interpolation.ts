@@ -111,7 +111,7 @@ function rbRiVoidValue(src: RbSource, n: i32): boolean {
       return false;
     }
     if (ssxHas(src, n, F_ELSE)) {
-      return rbRiVoidValue(src, a.kid(n, k - 1));
+      return rbRiVoidValue(src, a.kid(n, -1));
     }
     for (let i = 1; i < k; i++) {
       const r = a.kid(n, i);

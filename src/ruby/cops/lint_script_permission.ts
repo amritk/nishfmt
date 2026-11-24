@@ -5,6 +5,7 @@
 // Ported from RuboCop 1.92.3 (MIT License, Copyright (c) 2012-24 Bozhidar
 // Batsov).
 
+import { atI32 } from "../../core/arr";
 import { RbCop } from "../cop";
 import { RbSource } from "../source";
 
@@ -28,6 +29,6 @@ export class CopLintScriptPermission {
     if (path.length === 0 || realpathSync(path) === null || isExecutableSync(path)) {
       return;
     }
-    this.c.offense(src.commS[0], src.commE[0]);
+    this.c.offense(atI32(src.commS, 0), atI32(src.commE, 0));
   }
 }

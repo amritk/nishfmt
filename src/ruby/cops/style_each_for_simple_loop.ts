@@ -7,7 +7,7 @@ import { NT_ARGS, NT_BEGIN, NT_BLOCK, NT_ERANGE, NT_INT, NT_IRANGE } from "../as
 import { RbCop } from "../cop";
 import { RbSource } from "../source";
 import { sbhMethodName } from "./style_body_help";
-import { ssxIntValue, ssxIsCall } from "./style_syntax_help";
+import { ssxAdd64, ssxIntValue, ssxIsCall, ssxSub64 } from "./style_syntax_help";
 
 const sbhEfIs = (src: RbSource, n: i32, t: i32): boolean => src.a.isNode(n) && src.a.type(n) === t;
 
@@ -54,9 +54,9 @@ export class CopStyleEachForSimpleLoop {
       const min = ssxIntValue(src, a.kid(r, 0));
       let max = ssxIntValue(src, a.kid(r, 1));
       if (a.type(r) === NT_IRANGE) {
-        max += 1;
+        max = ssxAdd64(max, toI64(1));
       }
-      k.replace(a.exS(send), a.exE(send), `${max - min}.times`);
+      k.replace(a.exS(send), a.exE(send), `${ssxSub64(max, min)}.times`);
       this.c.commit(k);
     }
   }

@@ -5,6 +5,9 @@
 // Ported from RuboCop 1.92.3 (MIT License, Copyright (c) 2012-24 Bozhidar
 // Batsov).
 
+import { faulted } from "../../core/fault";
+import { add32 } from "../../core/arr";
+import { rbAtOff } from "../help";
 import { F_BEGIN, F_END, NT_ARRAY, NT_XSTR } from "../ast";
 import { RbCop } from "../cop";
 import { rnE, rnFieldSrc, rnHas, rnS } from "../node";
@@ -77,12 +80,12 @@ export class CopLayoutSpaceInsidePercentLiteralDelimiters {
       }
       // /(?<!\\)( +)\z/
       let j = e;
-      while (j > s && src.at(j - 1) === 32) {
+      while (j > s && j > 0 && src.at(j - 1) === 32) {
         j--;
       }
       if (j < e) {
         let st = j;
-        if (st > s && src.at(st - 1) === 92) {
+        if (st > s && rbAtOff(src, st, -1) === 92) {
           st++;
         }
         if (st < e) {
@@ -126,14 +129,17 @@ export class CopLayoutSpaceInsideArrayPercentLiteral {
           continue;
         }
         let j = p + 1;
-        while (j + 1 < e && src.at(j) === 92 && src.at(j + 1) === 32) {
-          j += 2;
+        while (j < e && j + 1 < e && src.at(j) === 92 && src.at(j + 1) === 32) {
+          j = add32(j, 2);
+          if (faulted()) {
+            return;
+          }
         }
         let k = j;
         while (k < e && src.at(k) === 32) {
           k++;
         }
-        if (k - j >= 2 && k < e && !lspIsWs(src.at(k))) {
+        if (toI64(k) - toI64(j) >= toI64(2) && k < e && !lspIsWs(src.at(k))) {
           const r = this.c.offense(j, k);
           if (r !== null) {
             r.replace(j, k, " ");

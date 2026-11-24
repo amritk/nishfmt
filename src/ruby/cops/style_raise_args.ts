@@ -4,6 +4,7 @@
 // Ported from RuboCop 1.92.3 (MIT License, Copyright (c) 2012-24 Bozhidar
 // Batsov).
 
+import { rbNKid } from "../node";
 import {
   NT_FORWARDED_ARGS,
   NT_FORWARDED_KWRESTARG,
@@ -43,7 +44,7 @@ export class CopStyleRaiseArgs {
         continue;
       }
       // acceptable_exploded_args?
-      const k = a.nKid(x) - 2;
+      const k = rbNKid(src, x) - 2;
       if (k > 1) {
         continue;
       }

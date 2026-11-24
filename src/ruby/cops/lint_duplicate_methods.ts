@@ -5,6 +5,8 @@
 // Ported from RuboCop 1.92.3 (MIT License, Copyright (c) 2012-24 Bozhidar
 // Batsov).
 
+import { rbNKid } from "../node";
+import { add32, atI32 } from "../../core/arr";
 import {
   F_KEYWORD,
   F_NAME,
@@ -57,26 +59,29 @@ const ldmHumanizeSub = (s: string): string => {
   for (let p = 0; p < k; p++) {
     // Alternative 1: name `::#<Class:` name `>`, the longest name first.
     for (let len = k - p; len >= 0; len--) {
-      const name = s.substring(p, p + len);
+      const ne = add32(p, len);
+      const name = s.substring(p, ne);
       const tail = `::${mark}${name}>`;
-      if (p + len + toI32(tail.length) <= k && s.substring(p + len, p + len + toI32(tail.length)) === tail) {
-        return `${s.substring(0, p)}${name}.${s.substring(p + len + toI32(tail.length), k)}`;
+      const te = add32(ne, toI32(tail.length));
+      if (te <= k && s.substring(ne, te) === tail) {
+        return `${s.substring(0, p)}${name}.${s.substring(te, k)}`;
       }
     }
     // Alternative 2: `#<Class:` name `>` with the last `>`, then an optional `::`.
-    if (s.substring(p, p + 8) === mark) {
+    const p8 = add32(p, 8);
+    if (s.substring(p, p8) === mark) {
       let gt = -1;
-      for (let q = p + 8; q < k; q++) {
+      for (let q = p8; q >= 0 && q < k; q++) {
         if (s.charCodeAt(q) === 62) {
           gt = q;
         }
       }
       if (gt >= 0) {
-        let end = gt + 1;
-        if (s.substring(end, end + 2) === "::") {
-          end += 2;
+        let end = add32(gt, 1);
+        if (s.substring(end, add32(end, 2)) === "::") {
+          end = add32(end, 2);
         }
-        return `${s.substring(0, p)}${s.substring(p + 8, gt)}.${s.substring(end, k)}`;
+        return `${s.substring(0, p)}${s.substring(p8, gt)}.${s.substring(end, k)}`;
       }
     }
   }
@@ -174,7 +179,7 @@ export class CopLintDuplicateMethods {
       return;
     }
     const m = ssxMeth(src, n);
-    const argc = a.nKid(n) - 2;
+    const argc = rbNKid(src, n) - 2;
     // alias_method?: (send nil? :alias_method (sym $_name) (sym $_original_name))
     if (m === "alias_method" && argc === 2 && ssxIs(src, a.kid(n, 2), NT_SYM) && ssxIs(src, a.kid(n, 3), NT_SYM)) {
       const name = a.text(a.kid(a.kid(n, 2), 0));
@@ -234,7 +239,7 @@ export class CopLintDuplicateMethods {
     if (m === "attr") {
       writable = args.length === 2 && ssxIs(src, args[1], NT_TRUE);
       readable = true;
-      const first: i32[] = [args[0]];
+      const first: i32[] = [atI32(args, 0)];
       use = first;
     } else if (m === "attr_reader") {
       readable = true;
@@ -379,7 +384,7 @@ export class CopLintDuplicateMethods {
       if (t === NT_CLASS || t === NT_MODULE || t === NT_CASGN) {
         const dm = lbhDefinedModule(src, p);
         let ns = dm.length > 0 ? dm[0] : V_NIL;
-        let mod = dm.length > 0 ? a.text(dm[1]) : "";
+        let mod = dm.length > 0 ? a.text(atI32(dm, 1)) : "";
         let has = dm.length > 0;
         while (true) {
           if (has && mod === constName) {

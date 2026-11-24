@@ -4,6 +4,7 @@
 // Ported from RuboCop 1.92.3 (MIT License, Copyright (c) 2012-24 Bozhidar
 // Batsov).
 
+import { sub32 } from "../../core/arr";
 import {
   F_ELSE,
   F_END,
@@ -19,7 +20,7 @@ import {
   V_NIL,
 } from "../ast";
 import { RbCop } from "../cop";
-import { rnHas, rnS } from "../node";
+import { rbNKid, rnHas, rnS } from "../node";
 import { RbSource } from "../source";
 import { RbLayLines, rbLayCheckNoEmpty } from "./layout_empty_help";
 
@@ -34,7 +35,7 @@ const rbExcKwLocations = (src: RbSource, body: i32, out: i32[]): void => {
     if (rnHas(src, body, F_ELSE)) {
       out.push(rnS(src, body, F_ELSE));
     }
-    for (let i = 1; i < a.nKid(body) - 1; i++) {
+    for (let i = 1; i < rbNKid(src, body) - 1; i++) {
       const r = a.kid(body, i);
       if (r !== V_NIL && a.type(r) === NT_RESBODY && rnHas(src, r, F_KEYWORD)) {
         out.push(rnS(src, r, F_KEYWORD));
@@ -98,7 +99,7 @@ export class CopLayoutEmptyLinesAroundExceptionHandlingKeywords {
         continue;
       }
       rbLayCheckNoEmpty(this.c, L, line);
-      rbLayCheckNoEmpty(this.c, L, line - 2);
+      rbLayCheckNoEmpty(this.c, L, sub32(line, 2));
     }
   }
 }

@@ -4,6 +4,8 @@
 // Ported from RuboCop 1.92.3 (MIT License, Copyright (c) 2012-24 Bozhidar
 // Batsov).
 
+import { rbNKid } from "../node";
+import { add32 } from "../../core/arr";
 import {
   F_ELSE,
   F_END,
@@ -206,7 +208,7 @@ export class CopLintLiteralAsCondition {
         src,
         k,
         n,
-        `${ns.substring(0, at)}${keep}${ns.substring(at + toI32(cs.length), toI32(ns.length))}`,
+        `${ns.substring(0, at)}${keep}${ns.substring(add32(at, toI32(cs.length)), toI32(ns.length))}`,
       );
       return;
     }
@@ -277,7 +279,7 @@ export class CopLintLiteralAsCondition {
         continue;
       }
       let all = true;
-      for (let j = 0; j < a.nKid(w) - 1; j++) {
+      for (let j = 0; j < rbNKid(src, w) - 1; j++) {
         if (!lbhLiteral(src, a.kid(w, j))) {
           all = false;
         }
@@ -285,7 +287,7 @@ export class CopLintLiteralAsCondition {
       if (!all) {
         continue;
       }
-      this.c.offense(a.exS(a.kid(w, 0)), a.exE(a.kid(w, a.nKid(w) - 2)));
+      this.c.offense(a.exS(a.kid(w, 0)), a.exE(a.kid(w, rbNKid(src, w) - 2)));
     }
   }
 
@@ -403,7 +405,7 @@ export class CopLintLiteralAsCondition {
     } else if (scnElsifConditional(src, n)) {
       const es = src.nodeSrc(eb);
       const at = es.indexOf("elsif");
-      repl = at < 0 ? `${es}\nend` : `${es.substring(0, at)}if${es.substring(at + 5, toI32(es.length))}\nend`;
+      repl = at < 0 ? `${es}\nend` : `${es.substring(0, at)}if${es.substring(add32(at, 5), toI32(es.length))}\nend`;
     } else if (hasElse || ssxHas(src, n, F_QUESTION)) {
       repl = src.nodeSrc(eb);
     } else if (!this.removable(src, n)) {

@@ -5,6 +5,10 @@
 // Ported from RuboCop 1.92.3 (MIT License, Copyright (c) 2012-24 Bozhidar
 // Batsov).
 
+import { rbNKid } from "../node";
+import { rbAtOff } from "../help";
+import { fault } from "../../core/fault";
+import { add32 } from "../../core/arr";
 import { F_SELECTOR, NT_ARRAY, NT_CONST, NT_DSTR, NT_SEND, NT_SPLAT, NT_STR, V_NIL } from "../ast";
 import { RbCop } from "../cop";
 import { RbSource } from "../source";
@@ -14,8 +18,15 @@ import { ssxFE, ssxFS, ssxIs, ssxMeth } from "./style_syntax_help";
 /** The code points of a node's source. */
 const lfpmPoints = (src: RbSource, n: i32): i32[] => {
   const out: i32[] = [];
-  for (let i = src.a.exS(n); i < src.a.exE(n); i++) {
-    out.push(src.pts[i]);
+  const s = src.a.exS(n);
+  const e = src.a.exE(n);
+  const pts = src.pts;
+  if (s < e && (s < 0 || e > pts.length)) {
+    fault();
+    return out;
+  }
+  for (let i = s; i >= 0 && i < e && i < pts.length; i++) {
+    out.push(pts[i]);
   }
   return out;
 };
@@ -29,8 +40,9 @@ const lfpmMaxDollar = (m: SbhFstMatcher, q: SbhFstSeq): i32 => {
       let j = i;
       let v = 0;
       while (j < q.e && m.isDigit(j)) {
-        if (v < 100000000) {
-          v = v * 10 + (m.at(j) - 48);
+        if (v >= 0 && v < 100000000) {
+          // m.isDigit(j): a byte in 0-9.
+          v = v * 10 + ((m.at(j) & 0xff) - 48);
         }
         j++;
       }
@@ -114,10 +126,10 @@ class LfpmFormat {
       if (q.percent) {
         continue;
       }
-      k += 1;
+      k = add32(k, 1);
       for (let i = q.s; i < q.e; i++) {
         if (this.m.at(i) === 42) {
-          k++;
+          k = add32(k, 1);
         }
       }
     }
@@ -178,7 +190,11 @@ export class CopLintFormatParameterMismatch {
 
   private heredoc(src: RbSource, n: i32): boolean {
     const f = src.a.kid(n, 2);
-    return src.a.exE(f) - src.a.exS(f) >= 2 && src.at(src.a.exS(f)) === 60 && src.at(src.a.exS(f) + 1) === 60;
+    return (
+      toI64(src.a.exE(f)) - toI64(src.a.exS(f)) >= toI64(2) &&
+      src.at(src.a.exS(f)) === 60 &&
+      rbAtOff(src, src.a.exS(f), 1) === 60
+    );
   }
 
   /** format_method?(name, node). */
@@ -191,7 +207,7 @@ export class CopLintFormatParameterMismatch {
     if (ssxMeth(src, n) !== name) {
       return false;
     }
-    return a.nKid(n) - 2 > 1 && lfpmStringType(src, a.kid(n, 2));
+    return a.nKid(n) > 3 && lfpmStringType(src, a.kid(n, 2));
   }
 
   /** percent?. */
@@ -223,13 +239,13 @@ export class CopLintFormatParameterMismatch {
     let expected = 0;
     const fmtCall = this.formatMethod(src, n, "sprintf") || this.formatMethod(src, n, "format");
     if (fmtCall && !this.heredoc(src, n)) {
-      passed = a.nKid(n) - 3;
+      passed = rbNKid(src, n) - 3;
       expected = this.expectedFields(src, a.kid(n, 2));
     } else if (isPct && ssxIs(src, a.kid(n, 2), NT_ARRAY)) {
       const arr = a.kid(n, 2);
       for (let i = 0; i < a.nKid(arr); i++) {
         if (a.isNode(a.kid(arr, i))) {
-          passed++;
+          passed = add32(passed, 1);
         }
       }
       expected = this.expectedFields(src, a.kid(n, 0));

@@ -3,6 +3,8 @@
 // Ported from RuboCop 1.92.3 (MIT License, Copyright (c) 2012-24 Bozhidar
 // Batsov).
 
+import { rbByteAt } from "../util";
+import { add32, atI32 } from "../../core/arr";
 import {
   F_END,
   F_HEREDOC_BODY,
@@ -35,7 +37,7 @@ import {
   V_NIL,
 } from "../ast";
 import { RbCop } from "../cop";
-import { rnE, rnFieldSrc, rnHas, rnHeredoc, rnS } from "../node";
+import { rbLine, rnE, rnFieldSrc, rnHas, rnHeredoc, rnS } from "../node";
 import { RbRewriter } from "../rewriter";
 import { RbSource } from "../source";
 import {
@@ -93,11 +95,11 @@ const rbGuardClause = (src: RbSource, n0: i32): boolean => {
 /** SIMPLECOV_COMMENT_PATTERN: /\A#\s*(?::nocov:|simplecov\s*:\s*(?:disable|enable)\b)/. */
 const rbGuardSimplecov = (text: string): boolean => {
   const k = toI32(text.length);
-  if (k === 0 || text.charCodeAt(0) !== 35) {
+  if (k === 0 || rbByteAt(text, 0) !== 35) {
     return false;
   }
   let p = 1;
-  while (p < k && rbLayRxSpace(text.charCodeAt(p))) {
+  while (p >= 0 && p < k && rbLayRxSpace(text.charCodeAt(p))) {
     p++;
   }
   if (rbLayHasAt(text, p, ":nocov:")) {
@@ -106,15 +108,15 @@ const rbGuardSimplecov = (text: string): boolean => {
   if (!rbLayHasAt(text, p, "simplecov")) {
     return false;
   }
-  p += 9;
-  while (p < k && rbLayRxSpace(text.charCodeAt(p))) {
+  p = add32(p, 9);
+  while (p >= 0 && p < k && rbLayRxSpace(text.charCodeAt(p))) {
     p++;
   }
-  if (p >= k || text.charCodeAt(p) !== 58) {
+  if (p < 0 || p >= k || text.charCodeAt(p) !== 58) {
     return false;
   }
   p++;
-  while (p < k && rbLayRxSpace(text.charCodeAt(p))) {
+  while (p >= 0 && p < k && rbLayRxSpace(text.charCodeAt(p))) {
     p++;
   }
   let w = 0;
@@ -125,7 +127,8 @@ const rbGuardSimplecov = (text: string): boolean => {
   } else {
     return false;
   }
-  return p + w >= k || !rbLayWordByte(text.charCodeAt(p + w));
+  const q = add32(p, w);
+  return q >= k || !rbLayWordByte(rbByteAt(text, q));
 };
 
 export class CopLayoutEmptyLineAfterGuardClause {
@@ -171,8 +174,8 @@ export class CopLayoutEmptyLineAfterGuardClause {
         return;
       }
       if (h !== V_NIL) {
-        const bodyLines = src.line(rnE(src, h, F_HEREDOC_BODY)) - src.line(rnS(src, h, F_HEREDOC_BODY));
-        const hl = lastLine + bodyLines + 1;
+        const bodyLines = rbLine(src, rnE(src, h, F_HEREDOC_BODY)) - rbLine(src, rnS(src, h, F_HEREDOC_BODY));
+        const hl = add32(add32(lastLine, bodyLines), 1);
         if (this.nextLineEmptyOrDirective(src, L, hl) || this.crash) {
           return;
         }
@@ -202,13 +205,12 @@ export class CopLayoutEmptyLineAfterGuardClause {
 
   /** Corrects by a newline after the whole lines of [s, e) (or the directive comment after them). */
   private autocorrect(src: RbSource, L: RbLayLines, k: RbRewriter, s: i32, e: i32): void {
-    const last = src.line(e);
     let rs = L.start(src.line(s));
-    let re = L.end(last);
-    const cm = this.allowedDirective(src, last + 1);
+    let re = L.end(src.line(e));
+    const cm = this.allowedDirective(src, rbLine(src, e) + 1);
     if (cm >= 0) {
-      rs = src.commS[cm];
-      re = src.commE[cm];
+      rs = atI32(src.commS, cm);
+      re = atI32(src.commE, cm);
     }
     k.insertAfter(rs, re, "\n");
   }
@@ -267,7 +269,7 @@ export class CopLayoutEmptyLineAfterGuardClause {
     if (cm < 0) {
       return -1;
     }
-    const text = src.src(src.commS[cm], src.commE[cm]);
+    const text = src.src(atI32(src.commS, cm), atI32(src.commE, cm));
     return rbLayDirectiveEnabled(text) || rbGuardSimplecov(text) ? cm : -1;
   }
 
@@ -278,7 +280,8 @@ export class CopLayoutEmptyLineAfterGuardClause {
     if (this.crash) {
       return false;
     }
-    return this.allowedDirective(src, line + 1) >= 0 && this.blankLine(L, line + 1);
+    const next = add32(line, 1);
+    return this.allowedDirective(src, next) >= 0 && this.blankLine(L, next);
   }
 
   /** use_heredoc_in_condition?: a heredoc among the condition's descendants. */

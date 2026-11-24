@@ -3,6 +3,7 @@
 // Ported from RuboCop 1.92.3 (MIT License, Copyright (c) 2012-24 Bozhidar
 // Batsov).
 
+import { add32, atI32, sub32 } from "../../core/arr";
 import {
   F_END,
   F_KEYWORD,
@@ -305,7 +306,7 @@ export class CopStyleIfUnlessModifier {
     if (n === V_NIL) {
       return false;
     }
-    const sib = src.a.kid(n, index + 1);
+    const sib = src.a.kid(n, add32(index, 1));
     return sib !== V_NIL && src.a.isNode(sib) && src.line(src.a.exS(sib)) === lineNo;
   }
 
@@ -316,27 +317,41 @@ export class CopStyleIfUnlessModifier {
     const ci = scnCommentAt(src, src.line(a.exS(n)));
     if (ci >= 0) {
       const ls = scnLen(src.lineText(src.line(a.exS(n))));
-      const cl = src.commE[ci] - src.commS[ci];
-      if (SCN_MAX >= ls - cl && SCN_MAX <= ls) {
-        k.remove(rbSpaceBegin(src, src.commS[ci], 1, true, false, false), src.commE[ci]);
-        return `${src.src(src.commS[ci], src.commE[ci])}\n${indent}${src.nodeSrc(scnIfBranch(src, n))} ${scnKeyword(src, n)} ${src.nodeSrc(a.kid(n, 0))}`;
+      const cs0 = atI32(src.commS, ci);
+      const ce0 = atI32(src.commE, ci);
+      const cl = sub32(ce0, cs0);
+      if (toI64(SCN_MAX) >= toI64(ls) - toI64(cl) && SCN_MAX <= ls) {
+        k.remove(rbSpaceBegin(src, cs0, 1, true, false, false), ce0);
+        return `${src.src(cs0, ce0)}\n${indent}${src.nodeSrc(scnIfBranch(src, n))} ${scnKeyword(src, n)} ${src.nodeSrc(a.kid(n, 0))}`;
       }
     }
     const hs = this.heredocRanges(src, n);
     if (hs.length > 0) {
-      for (let i = 0; i < toI32(hs.length); i += 2) {
-        k.remove(scnWholeS(src, hs[i]), scnWholeE(src, hs[i + 1], true));
+      // Begin/end pairs.
+      let nx = 1;
+      for (let i = 1; i >= 1 && i < hs.length; i = nx) {
+        // add32 answers 0 after a fault, which ends the loop.
+        nx = add32(i, 2);
+        const h0 = hs[i - 1];
+        const h1 = hs[i];
+        k.remove(scnWholeS(src, h0), scnWholeE(src, h1, true));
       }
       const lines: string[] = [];
       lines.push(`${scnKeyword(src, n)} ${src.nodeSrc(a.kid(n, 0))}`);
       const hc = this.heredocRanges(src, a.kid(n, 0));
-      for (let i = 0; i < toI32(hc.length); i += 2) {
-        lines.push(src.src(hc[i], hc[i + 1]));
+      nx = 1;
+      for (let i = 1; i >= 1 && i < hc.length; i = nx) {
+        // add32 answers 0 after a fault, which ends the loop.
+        nx = add32(i, 2);
+        lines.push(src.src(hc[i - 1], hc[i]));
       }
       lines.push(`${indent}  ${src.nodeSrc(scnIfBranch(src, n))}`);
       const hb = this.heredocRanges(src, scnIfBranch(src, n));
-      for (let i = 0; i < toI32(hb.length); i += 2) {
-        lines.push(src.src(hb[i], hb[i + 1]));
+      nx = 1;
+      for (let i = 1; i >= 1 && i < hb.length; i = nx) {
+        // add32 answers 0 after a fault, which ends the loop.
+        nx = add32(i, 2);
+        lines.push(src.src(hb[i - 1], hb[i]));
       }
       lines.push(`${indent}end`);
       return lines.join("\n");
@@ -356,20 +371,22 @@ export class CopStyleIfUnlessModifier {
         continue;
       }
       const r = scnHeredocRange(src, h);
-      ss.push(scnWholeS(src, r[0]));
-      es.push(scnWholeE(src, r[1], false));
+      ss.push(scnWholeS(src, atI32(r, 0)));
+      es.push(scnWholeE(src, atI32(r, 1), false));
     }
     const out: i32[] = [];
-    for (let i = 0; i < toI32(ss.length); i++) {
+    for (let i = 0; i < ss.length && i < es.length; i++) {
       let contained = false;
-      for (let j = 0; j < toI32(ss.length); j++) {
+      for (let j = 0; j < ss.length && j < es.length; j++) {
         if (ss[j] <= ss[i] && es[i] <= es[j] && (ss[j] !== ss[i] || es[j] !== es[i])) {
           contained = true;
         }
       }
       if (!contained) {
-        out.push(ss[i]);
-        out.push(es[i]);
+        const si = ss[i];
+        const ei = es[i];
+        out.push(si);
+        out.push(ei);
       }
     }
     return out;

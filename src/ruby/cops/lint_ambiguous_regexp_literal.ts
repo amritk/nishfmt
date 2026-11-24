@@ -8,6 +8,7 @@
 // Ported from RuboCop 1.92.3 (MIT License, Copyright (c) 2012-24 Bozhidar
 // Batsov).
 
+import { add32, atI32 } from "../../core/arr";
 import {
   F_BEGIN,
   F_KEYWORD,
@@ -57,12 +58,15 @@ export class CopLintAmbiguousRegexpLiteral {
 
   run(src: RbSource): void {
     this.c.begin(src);
-    const nt = toI32(src.tokT.length);
-    for (let i = 0; i < nt; i++) {
-      if (src.tokT[i] !== TK_tREGEXP_BEG) {
+    const tokT = src.tokT;
+    const tokS = src.tokS;
+    const tokE = src.tokE;
+    const nt = toI32(tokT.length);
+    for (let i = 0; i < nt && i < tokT.length && i < tokS.length; i++) {
+      if (tokT[i] !== TK_tREGEXP_BEG) {
         continue;
       }
-      const tm = src.tokS[i];
+      const tm = tokS[i];
       if (src.at(tm) !== 47) {
         continue;
       }
@@ -83,15 +87,15 @@ export class CopLintAmbiguousRegexpLiteral {
       }
       // the token that ends there
       let prev = -1;
-      for (let j = 0; j < nt; j++) {
-        if (src.tokT[j] !== TK_COMMENT && src.tokE[j] === p && src.tokS[j] < p) {
+      for (let j = 0; j < nt && j < tokT.length && j < tokS.length && j < tokE.length; j++) {
+        if (tokT[j] !== TK_COMMENT && tokE[j] === p && tokS[j] < p) {
           prev = j;
         }
       }
       if (prev < 0) {
         continue;
       }
-      const pt = src.tokT[prev];
+      const pt = atI32(tokT, prev);
       if (
         pt !== TK_tIDENTIFIER &&
         pt !== TK_tFID &&
@@ -119,7 +123,7 @@ export class CopLintAmbiguousRegexpLiteral {
     if (re === V_NIL) {
       return;
     }
-    const k = this.c.offense(tm, tm + 1);
+    const k = this.c.offense(tm, add32(tm, 1));
     if (k === null) {
       return;
     }
@@ -171,8 +175,9 @@ export class CopLintAmbiguousRegexpLiteral {
     }
     const f = t === NT_SEND || t === NT_CSEND ? F_SELECTOR : F_KEYWORD;
     const b = rnE(src, node, f);
-    k.remove(b, b + 1);
-    k.insertBefore(b, b + 1, "(");
+    const b1 = add32(b, 1);
+    k.remove(b, b1);
+    k.insertBefore(b, b1, "(");
     k.insertAfter(a.exE(node), a.exE(node), ")");
   }
 }

@@ -3,6 +3,8 @@
 // Ported from RuboCop 1.92.3 (MIT License, Copyright (c) 2012-24 Bozhidar
 // Batsov).
 
+import { faulted } from "../../core/fault";
+import { add32 } from "../../core/arr";
 import { F_ASSIGNMENT, NT_DEF, NT_DEFS } from "../ast";
 import { RbCop } from "../cop";
 import { RbSource } from "../source";
@@ -19,7 +21,11 @@ const sdpSpacesBeforeAssignment = (src: RbSource, s: i32, e: i32): boolean => {
     if (c === 32 || c === 9) {
       p++;
     } else if (c === 92 && p + 1 < e && src.at(p + 1) === 10) {
-      p += 2;
+      // p + 1 < e
+      p = add32(p, 2);
+      if (faulted()) {
+        return false;
+      }
     } else {
       return false;
     }

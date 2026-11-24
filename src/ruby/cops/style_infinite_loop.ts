@@ -3,6 +3,7 @@
 // Ported from RuboCop 1.92.3 (MIT License, Copyright (c) 2012-24 Bozhidar
 // Batsov).
 
+import { fault } from "../../core/fault";
 import {
   F_KEYWORD,
   NT_ARRAY,
@@ -97,7 +98,12 @@ const rbInfLoopBlockDeclares = (src: RbSource, blk: i32, name: string): boolean 
  */
 const rbInfLoopReaches = (src: RbSource, f: VfForce, v: VfVar, n: i32): boolean => {
   const a = src.a;
-  const scope = f.scopes[v.scope].node;
+  const vs = v.scope;
+  if (vs < 0 || vs >= f.scopes.length) {
+    fault();
+    return false;
+  }
+  const scope = f.scopes[vs].node;
   let p = src.parent(n);
   while (p !== V_NIL && p !== scope) {
     const t = a.type(p);
@@ -187,6 +193,10 @@ export class CopStyleInfiniteLoop {
         let inside = false;
         let before = false;
         for (const k of v.asg) {
+          if (k < 0 || k >= fv.asgns.length) {
+            fault();
+            return;
+          }
           const an = fv.asgns[k].node;
           if (a.exS(an) >= s && a.exE(an) <= e) {
             inside = true;

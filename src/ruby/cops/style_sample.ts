@@ -3,15 +3,16 @@
 // Ported from RuboCop 1.92.3 (MIT License, Copyright (c) 2012-24 Bozhidar
 // Batsov).
 
+import { rbNKid } from "../node";
 import { F_SELECTOR, NT_ERANGE, NT_INT, NT_IRANGE, V_NIL } from "../ast";
 import { RbCop } from "../cop";
 import { RbSource } from "../source";
-import { ssxFS, ssxIntValue, ssxIs, ssxIsCall, ssxMeth } from "./style_syntax_help";
+import { ssxAdd64, ssxFS, ssxIntValue, ssxIs, ssxIsCall, ssxMeth } from "./style_syntax_help";
 
 /** sample_size as text: "" for nil, "?" for :unknown, else the size. */
 const ssxSampleSize = (src: RbSource, n: i32): string => {
   const a = src.a;
-  const k = a.nKid(n) - 2;
+  const k = rbNKid(src, n) - 2;
   if (k === 1) {
     const arg = a.kid(n, 2);
     if (ssxIs(src, arg, NT_IRANGE) || ssxIs(src, arg, NT_ERANGE)) {
@@ -22,7 +23,7 @@ const ssxSampleSize = (src: RbSource, n: i32): string => {
         return "?";
       }
       const hv = ssxIntValue(src, high);
-      return a.type(arg) === NT_ERANGE ? `${hv}` : `${hv + 1}`;
+      return a.type(arg) === NT_ERANGE ? `${hv}` : `${ssxAdd64(hv, toI64(1))}`;
     }
     if (ssxIs(src, arg, NT_INT)) {
       const v = ssxIntValue(src, arg);

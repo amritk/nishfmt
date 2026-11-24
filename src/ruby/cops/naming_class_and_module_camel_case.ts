@@ -4,6 +4,8 @@
 // Ported from RuboCop 1.92.3 (MIT License, Copyright (c) 2012-24 Bozhidar
 // Batsov).
 
+import { faulted } from "../../core/fault";
+import { add32 } from "../../core/arr";
 import { F_NAME, NT_CLASS, NT_MODULE } from "../ast";
 import { RbCop } from "../cop";
 import { RbSource } from "../source";
@@ -21,7 +23,10 @@ const nccRemoveAllowed = (s: string): string => {
       break;
     }
     out.push(s.substring(i, j));
-    i = j + 13;
+    i = add32(j, 13);
+    if (faulted()) {
+      return "";
+    }
   }
   return out.join("");
 };

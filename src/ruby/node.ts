@@ -5,7 +5,66 @@
 // Batsov).
 
 import { F_BEGIN, F_HEREDOC_END, M_HEREDOC, NT_PAIR, NT_SEND, V_NIL } from "./ast";
+import { fault } from "../core/fault";
 import { RbSource } from "./source";
+
+// ---- Bounded values ---------------------------------------------------------------
+
+// The offsets, lines, columns and child counts of a source below 2^30 code
+// points lie in [-2^30, 2^30]. These readers check it (a file that large
+// faults here and is left alone), and the compiler carries the range to a
+// direct use of the call, so `rbNKid(src, n) - 1` needs no guard of its own.
+// It carries an upper bound, and a lower bound of 0 or more, through literal
+// bounds like these; a local holding the result keeps neither.
+
+/** `x`, known to lie in [-2^30, 2^30]; outside it the file faults. */
+export const rbB = (x: i32): i32 => {
+  if (x >= -1073741823 && x <= 1073741823) {
+    return x;
+  }
+  fault();
+  return 0;
+};
+
+/** src.line: 1-based, so at least 1. */
+export const rbLine = (src: RbSource, pos: i32): i32 => {
+  const l = src.line(pos);
+  if (l >= 1 && l <= 1073741823) {
+    return l;
+  }
+  fault();
+  return 1;
+};
+
+/** src.column, bounded. */
+export const rbCol = (src: RbSource, pos: i32): i32 => {
+  const c = src.column(pos);
+  if (c >= -1073741823 && c <= 1073741823) {
+    return c;
+  }
+  fault();
+  return 0;
+};
+
+/** src.lineEnd, bounded. */
+export const rbLineEnd = (src: RbSource, l: i32): i32 => {
+  const e = src.lineEnd(l);
+  if (e >= -1073741823 && e <= 1073741823) {
+    return e;
+  }
+  fault();
+  return 0;
+};
+
+/** The node's child count, at least 0. */
+export const rbNKid = (src: RbSource, n: i32): i32 => {
+  const k = src.a.nKid(n);
+  if (k >= 0 && k <= 1073741823) {
+    return k;
+  }
+  fault();
+  return 0;
+};
 
 /** The node's type. */
 export const rnType = (src: RbSource, n: i32): i32 => src.a.type(n);
@@ -71,9 +130,14 @@ export const rnReceiver = (src: RbSource, n: i32): i32 => src.a.kid(n, 0);
 export const rnMethod = (src: RbSource, n: i32): string => src.a.text(src.a.kid(n, 1));
 
 /** The number of arguments of a send/csend. */
-export const rnArgCount = (src: RbSource, n: i32): i32 => src.a.nKid(n) - 2;
-
-export const rnArg = (src: RbSource, n: i32, i: i32): i32 => src.a.kid(n, i + 2);
+export const rnArgCount = (src: RbSource, n: i32): i32 => {
+  const k = src.a.nKid(n);
+  if (k >= 0 && k <= 1073741823) {
+    return k - 2;
+  }
+  fault();
+  return -2;
+};
 
 /** Node#argument?: one of the arguments of a send parent. */
 export const rnIsArgument = (src: RbSource, n: i32): boolean => {

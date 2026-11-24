@@ -5,6 +5,8 @@
 // Ported from RuboCop 1.92.3 (MIT License, Copyright (c) 2012-24 Bozhidar
 // Batsov).
 
+import { rbNKid } from "../node";
+import { add32 } from "../../core/arr";
 import { F_NAME, F_SELECTOR, NT_ALIAS, NT_DEF, NT_DEFS, NT_SEND, NT_STR, NT_SYM, V_NIL } from "../ast";
 import { RbCop } from "../cop";
 import { RbSource } from "../source";
@@ -67,7 +69,7 @@ export class CopNamingMethodName {
   private onSend(src: RbSource, n: i32): void {
     const a = src.a;
     const m = a.text(a.kid(n, 1));
-    const argc = a.nKid(n) - 2;
+    const argc = rbNKid(src, n) - 2;
     if (m === "define_method" || m === "define_singleton_method") {
       const first = a.kid(n, 2);
       if (argc > 0 && nmnSymStr(src, first)) {
@@ -134,7 +136,7 @@ export class CopNamingMethodName {
   /** check_name's offense at range_position. */
   private offenseAt(src: RbSource, n: i32): void {
     if (ssxHas(src, n, F_SELECTOR)) {
-      this.c.offense(ssxFE(src, n, F_SELECTOR) + 1, src.a.exE(n));
+      this.c.offense(add32(ssxFE(src, n, F_SELECTOR), 1), src.a.exE(n));
     } else {
       this.c.offense(src.a.exS(n), src.a.exE(n));
     }

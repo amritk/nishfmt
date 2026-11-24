@@ -3,6 +3,7 @@
 // Ported from RuboCop 1.92.3 (MIT License, Copyright (c) 2012-24 Bozhidar
 // Batsov).
 
+import { add32, sub32 } from "../../core/arr";
 import { F_BEGIN, F_END, NT_CSEND, NT_HASH, NT_SEND, V_NIL } from "../ast";
 import { RbCop } from "../cop";
 import { rnHas, rnPairs, rnS } from "../node";
@@ -67,8 +68,8 @@ export class CopLayoutFirstHashElementIndentation {
       // check_first_pair (the key style, never separator)
       if (lalBeginsItsLine(src, a.exS(first))) {
         const s = a.exS(first);
-        const expected = lalIndentBase(src, lb, first, lp, true) + 2;
-        const delta = expected - src.column(s);
+        const expected = add32(lalIndentBase(src, lb, first, lp, true), 2);
+        const delta = sub32(expected, src.column(s));
         if (delta !== 0) {
           const k = this.c.offense(s, a.exE(first));
           if (k !== null) {

@@ -3,6 +3,8 @@
 // Ported from RuboCop 1.92.3 (MIT License, Copyright (c) 2012-24 Bozhidar
 // Batsov).
 
+import { rbAtOff } from "../help";
+import { add32, sub32 } from "../../core/arr";
 import { F_HEREDOC_END, NT_SEND, V_NIL } from "../ast";
 import { RbCop } from "../cop";
 import { rnE, rnS } from "../node";
@@ -17,7 +19,7 @@ const rmlChiIndent = (src: RbSource, pos: i32): i32 => {
   while (i < e && src.at(i) === 32) {
     i++;
   }
-  return i - s;
+  return sub32(i, s);
 };
 
 export class CopLayoutClosingHeredocIndentation {
@@ -35,7 +37,7 @@ export class CopLayoutClosingHeredocIndentation {
         continue;
       }
       const ns = a.exS(n);
-      const ty = src.at(ns + 2);
+      const ty = rbAtOff(src, ns, 2);
       if (ty !== 126 && ty !== 45) {
         continue; // a simple `<<` heredoc
       }
@@ -66,7 +68,7 @@ export class CopLayoutClosingHeredocIndentation {
       }
       const l = src.line(es);
       const ls = src.lineStart(l);
-      k.replace(es, ee, `${rmlSpaces(opening)}${src.src(ls + closing, src.lineEnd(l))}`);
+      k.replace(es, ee, `${rmlSpaces(opening)}${src.src(add32(ls, closing), src.lineEnd(l))}`);
       this.c.commit(k);
     }
   }

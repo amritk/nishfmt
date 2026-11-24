@@ -5,6 +5,10 @@
 // Ported from RuboCop 1.92.3 (MIT License, Copyright (c) 2012-24 Bozhidar
 // Batsov).
 
+import { rbByteAt } from "../util";
+import { rbAtOff } from "../help";
+import { fault } from "../../core/fault";
+import { sub32 } from "../../core/arr";
 import { NT_BEGIN, NT_CLASS, NT_DEF, NT_DEFS, NT_MODULE, NT_SCLASS, RbAst, V_NIL, vTag } from "../ast";
 import { RbRewriter } from "../rewriter";
 import { RbSource } from "../source";
@@ -14,7 +18,7 @@ export const scnDecode = (s: string): i32[] => {
   const out: i32[] = [];
   const n = toI32(s.length);
   let i = 0;
-  while (i < n) {
+  while (i >= 0 && i < n) {
     const c = s.charCodeAt(i);
     if (c < 0x80) {
       out.push(c);
@@ -33,11 +37,15 @@ export const scnDecode = (s: string): i32[] => {
       k = 1;
       v = c & 0x1f;
     }
-    for (let j = 1; j <= k && i + j < n; j++) {
-      v = (v << 6) | (s.charCodeAt(i + j) & 0x3f);
+    let p = i + 1;
+    for (let j = 1; j <= k && p < n; j++) {
+      v = (v << 6) | (s.charCodeAt(p) & 0x3f);
+      p++;
     }
     out.push(v);
-    i += k + 1;
+    // i + k + 1, or past the end (which ends the loop all the same).
+    const next = toI64(i) + toI64(k) + toI64(1);
+    i = next >= toI64(n) ? n : toI32(next);
   }
   return out;
 };
@@ -104,10 +112,10 @@ export const scnReparseScope = (src: RbSource, s: i32, e: i32): i32 => {
 /** Whether the code points [s, e) contain `__LINE__`. */
 const scnHasLineKw = (src: RbSource, s: i32, e: i32): boolean => {
   const lit = "__LINE__";
-  for (let i = s; i + 8 <= e; i++) {
+  for (let i = s; i < e && toI64(i) + toI64(8) <= toI64(e); i++) {
     let ok = true;
     for (let j = 0; j < 8; j++) {
-      if (src.at(i + j) !== lit.charCodeAt(j)) {
+      if (rbAtOff(src, i, j) !== rbByteAt(lit, j)) {
         ok = false;
         break;
       }
@@ -128,13 +136,13 @@ export const scnVerifiedByReparse = (src: RbSource, rw: RbRewriter, s: i32, e: i
   const scope = scnReparseScope(src, s, e);
   const from = scope === V_NIL ? 0 : src.a.exS(scope);
   const to = scope === V_NIL ? src.n : src.a.exE(scope);
-  if (to - from > 64 * 1024) {
+  if (toI64(to) - toI64(from) > toI64(64 * 1024)) {
     return true;
   }
   const corrected = scnDecode(rw.process(src.pts));
-  const delta = toI32(corrected.length) - src.n;
+  const delta = sub32(toI32(corrected.length), src.n);
   const frag: i32[] = [];
-  for (let p = from; p < to + delta && p < toI32(corrected.length); p++) {
+  for (let p = from; p >= 0 && toI64(p) < toI64(to) + toI64(delta) && p < corrected.length; p++) {
     frag.push(corrected[p]);
   }
   const path = src.p.st.path;
@@ -142,8 +150,13 @@ export const scnVerifiedByReparse = (src: RbSource, rw: RbRewriter, s: i32, e: i
   let origRoot = scope === V_NIL ? src.root : scope;
   if (scnHasLineKw(src, from, to)) {
     const op: i32[] = [];
-    for (let p = from; p < to; p++) {
-      op.push(src.pts[p]);
+    const pts = src.pts;
+    if (from < to && (from < 0 || to > pts.length)) {
+      fault();
+      return false;
+    }
+    for (let p = from; p >= 0 && p < to && p < pts.length; p++) {
+      op.push(pts[p]);
     }
     const os = new RbSource(op, path);
     if (!os.valid) {

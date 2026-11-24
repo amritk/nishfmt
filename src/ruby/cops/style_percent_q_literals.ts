@@ -3,6 +3,7 @@
 // Ported from RuboCop 1.92.3 (MIT License, Copyright (c) 2012-24 Bozhidar
 // Batsov).
 
+import { add32 } from "../../core/arr";
 import { F_BEGIN, NT_STR, V_NIL } from "../ast";
 import { RbCop } from "../cop";
 import { rnE, rnS } from "../node";
@@ -32,7 +33,7 @@ export class CopStylePercentQLiterals {
       const e = a.exE(n);
       const pts: i32[] = [];
       for (let i = s; i < e; i++) {
-        pts.push(i === s + 1 ? 113 : src.at(i));
+        pts.push(toI64(i) === toI64(s) + toI64(1) ? 113 : src.at(i));
       }
       const re = new RbSource(pts, src.p.st.path);
       if (
@@ -45,7 +46,7 @@ export class CopStylePercentQLiterals {
       }
       const k = this.c.offense(rnS(src, n, F_BEGIN), rnE(src, n, F_BEGIN));
       if (k !== null) {
-        k.replace(s, e, src.src(s, s + 1) + "q" + src.src(s + 2, e));
+        k.replace(s, e, src.src(s, add32(s, 1)) + "q" + src.src(add32(s, 2), e));
         this.c.commit(k);
       }
     }

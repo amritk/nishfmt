@@ -3,6 +3,7 @@
 // Ported from RuboCop 1.92.3 (MIT License, Copyright (c) 2012-24 Bozhidar
 // Batsov).
 
+import { add32 } from "../../core/arr";
 import { F_HEREDOC_BODY, F_HEREDOC_END, NT_DSTR, NT_STR, NT_XSTR } from "../ast";
 import { RbCop } from "../cop";
 import { rnHeredoc } from "../node";
@@ -25,16 +26,16 @@ export const nhdcDelimiter = (s: string): string => {
   if (i < 0) {
     return "";
   }
-  let p = i + 2;
+  let p = add32(i, 2);
   const k = toI32(s.length);
-  if (p < k && (s.charCodeAt(p) === 126 || s.charCodeAt(p) === 45)) {
+  if (p >= 0 && p < k && (s.charCodeAt(p) === 126 || s.charCodeAt(p) === 45)) {
     p++;
   }
-  if (p < k && (s.charCodeAt(p) === 39 || s.charCodeAt(p) === 34 || s.charCodeAt(p) === 96)) {
+  if (p >= 0 && p < k && (s.charCodeAt(p) === 39 || s.charCodeAt(p) === 34 || s.charCodeAt(p) === 96)) {
     p++;
   }
   let q = p;
-  while (q < k && s.charCodeAt(q) !== 39 && s.charCodeAt(q) !== 34 && s.charCodeAt(q) !== 96) {
+  while (q >= 0 && q < k && s.charCodeAt(q) !== 39 && s.charCodeAt(q) !== 34 && s.charCodeAt(q) !== 96) {
     q++;
   }
   return s.substring(p, q);
@@ -49,7 +50,7 @@ const nhdcStrip = (s: string): string => {
   while (i < j && nhdcWs(s.charCodeAt(i))) {
     i++;
   }
-  while (j > i && nhdcWs(s.charCodeAt(j - 1))) {
+  while (j > i && j > 0 && j <= s.length && nhdcWs(s.charCodeAt(j - 1))) {
     j--;
   }
   return s.substring(i, j);
@@ -87,7 +88,7 @@ export class CopNamingHeredocDelimiterCase {
       const bk = toI32(body.length);
       while (st < bk && !inBody) {
         let nl = body.indexOf("\n", st);
-        nl = nl < 0 ? bk : nl + 1;
+        nl = nl < 0 ? bk : add32(nl, 1);
         if (nhdcStrip(body.substring(st, nl)) === up) {
           inBody = true;
         }

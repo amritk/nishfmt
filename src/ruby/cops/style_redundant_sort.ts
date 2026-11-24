@@ -3,6 +3,7 @@
 // Ported from RuboCop 1.92.3 (MIT License, Copyright (c) 2012-24 Bozhidar
 // Batsov).
 
+import { rbNKid } from "../node";
 import { F_DOT, F_SELECTOR, NT_AND, NT_INT, NT_OR, NT_SEND, V_NIL } from "../ast";
 import { RbCop } from "../cop";
 import { RbSource } from "../source";
@@ -20,7 +21,7 @@ const rbRsMatch = (src: RbSource, n: i32): i32 => {
     return V_NIL;
   }
   const m = ssxMeth(src, n);
-  const k = a.nKid(n) - 2;
+  const k = rbNKid(src, n) - 2;
   const firstLast = (m === "last" || m === "first") && k === 0;
   const index = (m === "[]" || m === "at" || m === "slice") && k === 1 && rbRsZeroOrLast(src, a.kid(n, 2));
   if (!firstLast && !index) {
@@ -29,7 +30,7 @@ const rbRsMatch = (src: RbSource, n: i32): i32 => {
   const r = a.kid(n, 0);
   if (ssxIsCall(src, r)) {
     const rm = ssxMeth(src, r);
-    const rk = a.nKid(r) - 2;
+    const rk = rbNKid(src, r) - 2;
     if (rm === "sort" && rk === 0) {
       return r;
     }

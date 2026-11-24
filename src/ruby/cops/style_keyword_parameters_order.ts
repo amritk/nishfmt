@@ -3,6 +3,7 @@
 // Ported from RuboCop 1.92.3 (MIT License, Copyright (c) 2012-24 Bozhidar
 // Batsov).
 
+import { rbNKid } from "../node";
 import { F_END, NT_BLOCK, NT_DEF, NT_DEFS, NT_KWARG, NT_KWOPTARG, V_NIL } from "../ast";
 import { RbCop } from "../cop";
 import { rbSpaceBegin, rbSpaceEnd } from "../help";
@@ -80,7 +81,7 @@ export class CopStyleKeywordParametersOrder {
         // append_newline_to_last_kwoptarg
         const last = a.kid(dargs, -1);
         if (a.isNode(last) && a.type(last) === NT_KWARG && a.type(def) !== NT_BLOCK) {
-          for (let i = a.nKid(dargs) - 1; i >= 0; i--) {
+          for (let i = rbNKid(src, dargs) - 1; i >= 0; i--) {
             const c = a.kid(dargs, i);
             if (a.isNode(c) && a.type(c) === NT_KWOPTARG) {
               k.insertAfter(a.exS(c), a.exE(c), "\n");
@@ -94,7 +95,7 @@ export class CopStyleKeywordParametersOrder {
         const s1 = rbSpaceBegin(src, a.exS(kw), 1, true, true, false);
         const e1 = rbSpaceEnd(src, a.exE(kw), 2, true, false, false);
         let s2 = s1;
-        while (src.at(s2 - 1) === 44) {
+        while (s2 > 0 && src.at(s2 - 1) === 44) {
           s2--;
         }
         k.remove(s2 < 0 ? 0 : s2, e1);

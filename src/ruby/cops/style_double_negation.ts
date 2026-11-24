@@ -4,6 +4,7 @@
 // Ported from RuboCop 1.92.3 (MIT License, Copyright (c) 2012-24 Bozhidar
 // Batsov).
 
+import { atI32 } from "../../core/arr";
 import {
   F_SELECTOR,
   NT_ARRAY,
@@ -56,7 +57,7 @@ const rbDnLastChild = (src: RbSource, n: i32): i32 => {
   if (t === NT_ENSURE) {
     return kids.length > 0 ? rbDnLastChild(src, kids[0]) : V_NIL;
   }
-  return kids.length > 0 ? kids[kids.length - 1] : V_NIL;
+  return kids.length > 0 ? atI32(kids, toI32(kids.length) - 1) : V_NIL;
 };
 
 /** find_def_node_from_ascendant. */

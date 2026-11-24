@@ -5,6 +5,7 @@
 // Ported from RuboCop 1.92.3 (MIT License, Copyright (c) 2012-24 Bozhidar
 // Batsov).
 
+import { fault } from "../../core/fault";
 import {
   NT_AND_ASGN,
   NT_BLOCK,
@@ -113,6 +114,10 @@ export class CopLintShadowedArgument {
     const f = new VfForce(src);
     f.run();
     for (const si of f.popped) {
+      if (si < 0 || si >= f.scopes.length) {
+        fault();
+        return;
+      }
       for (const vi of f.scopes[si].vars) {
         const node = this.check(src, f, vi);
         if (node !== V_NIL) {
@@ -125,6 +130,10 @@ export class CopLintShadowedArgument {
   /** check_argument: the offense node, or V_NIL. */
   private check(src: RbSource, f: VfForce, vi: i32): i32 {
     const a = src.a;
+    if (vi < 0 || vi >= f.vars.length) {
+      fault();
+      return V_NIL;
+    }
     const v = f.vars[vi];
     if (!(f.isMethodArgument(vi) || f.isBlockArgument(vi)) || a.type(v.decl) === NT_SHADOWARG) {
       return V_NIL;
@@ -132,9 +141,18 @@ export class CopLintShadowedArgument {
     if (v.refs.length === 0) {
       return V_NIL;
     }
-    const scopeNode = f.scopes[v.scope].node;
+    const vs = v.scope;
+    if (vs < 0 || vs >= f.scopes.length) {
+      fault();
+      return V_NIL;
+    }
+    const scopeNode = f.scopes[vs].node;
     let known = true;
     for (const k of v.asg) {
+      if (k < 0 || k >= f.asgns.length) {
+        fault();
+        return V_NIL;
+      }
       const asNode = f.asgns[k].node;
       const meta = lshaMetaAssignment(src, asNode);
       const an = meta !== V_NIL ? meta : asNode;
@@ -169,11 +187,19 @@ export class CopLintShadowedArgument {
   /** Whether one of argument_references starts at or before pos. */
   private usedBefore(src: RbSource, f: VfForce, vi: i32, pos: i32): boolean {
     const a = src.a;
+    if (vi < 0 || vi >= f.vars.length) {
+      fault();
+      return false;
+    }
     const v = f.vars[vi];
     // assignment_references: ranges of the references the assignments got
     const asgS: i32[] = [];
     const asgE: i32[] = [];
     for (const k of v.asg) {
+      if (k < 0 || k >= f.asgns.length) {
+        fault();
+        return false;
+      }
       for (const r of f.asgns[k].refs) {
         asgS.push(a.exS(r));
         asgE.push(a.exE(r));
@@ -184,7 +210,7 @@ export class CopLintShadowedArgument {
       const explicit = t !== NT_ZSUPER && t !== NT_SEND;
       if (explicit) {
         let taken = false;
-        for (let i = 0; i < toI32(asgS.length); i++) {
+        for (let i = 0; i < asgS.length && i < asgE.length; i++) {
           if (asgS[i] === a.exS(r) && asgE[i] === a.exE(r)) {
             taken = true;
           }

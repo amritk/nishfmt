@@ -3,6 +3,9 @@
 // Ported from RuboCop 1.92.3 (MIT License, Copyright (c) 2012-24 Bozhidar
 // Batsov).
 
+import { rbByteAt } from "../util";
+import { rbNKid } from "../node";
+import { fault } from "../../core/fault";
 import {
   F_DOT,
   F_SELECTOR,
@@ -82,11 +85,22 @@ class SsxRsState {
 
   add(n: i32, name: string): void {
     const id = this.get(n);
-    this.arrs[id] = `${this.arrs[id]}${name} `;
+    const arrs = this.arrs;
+    if (id < 0 || id >= arrs.length) {
+      fault();
+      return;
+    }
+    arrs[id] = `${arrs[id]}${name} `;
   }
 
   includes(n: i32, name: string): boolean {
-    return ssxInList(this.arrs[this.get(n)], name);
+    const id = this.get(n);
+    const arrs = this.arrs;
+    if (id < 0 || id >= arrs.length) {
+      fault();
+      return false;
+    }
+    return ssxInList(arrs[id], name);
   }
 
   /** add_scope: every descendant shares one array. */
@@ -98,7 +112,11 @@ class SsxRsState {
       }
     }
     while (stack.length > 0) {
-      const c = stack[stack.length - 1];
+      const sl = toI32(stack.length);
+      if (sl < 1) {
+        break;
+      }
+      const c = stack[sl - 1];
       stack.pop();
       this.arrOf.set(c, id);
       for (let i = 0; i < src.a.nKid(c); i++) {
@@ -151,16 +169,20 @@ class SsxRsState {
 const ssxRsDescendants = (src: RbSource, n: i32): i32[] => {
   const out: i32[] = [];
   const stack: i32[] = [];
-  for (let i = src.a.nKid(n) - 1; i >= 0; i--) {
+  for (let i = rbNKid(src, n) - 1; i >= 0; i--) {
     if (src.a.isNode(src.a.kid(n, i))) {
       stack.push(src.a.kid(n, i));
     }
   }
   while (stack.length > 0) {
-    const c = stack[stack.length - 1];
+    const sl = toI32(stack.length);
+    if (sl < 1) {
+      break;
+    }
+    const c = stack[sl - 1];
     stack.pop();
     out.push(c);
-    for (let i = src.a.nKid(c) - 1; i >= 0; i--) {
+    for (let i = rbNKid(src, c) - 1; i >= 0; i--) {
       if (src.a.isNode(src.a.kid(c, i))) {
         stack.push(src.a.kid(c, i));
       }
@@ -241,7 +263,7 @@ export class CopStyleRedundantSelf {
     }
     const m = ssxMeth(src, n);
     // regular_method_call?
-    const c0 = m.charCodeAt(0);
+    const c0 = rbByteAt(m, 0);
     if (ssxOperatorName(m) || ssxInList(SSX_RS_KEYWORDS, m) || (c0 >= 65 && c0 <= 90) || ssxSetter(src, n)) {
       return;
     }
