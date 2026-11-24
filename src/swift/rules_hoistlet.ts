@@ -18,6 +18,10 @@ import {
   SW_T_NON_SPACE_OR_COMMENT_OR_LINEBREAK,
 } from "./token";
 
+// Token indices, token counts and line numbers stay below the token count, far from the
+// i32 limits, so a sum or difference of them the prover cannot bound is written
+// `toI32(toU32(a) + b)`: wrapping u32 arithmetic, exact for such values.
+
 /** indicesOf(_:in:); an empty array for nil. */
 const swIndicesOf = (f: SwFormatter, keyword: string, lo: i32, hi: i32): i32[] => {
   const indices: i32[] = [];
@@ -35,7 +39,7 @@ const swIndicesOf = (f: SwFormatter, keyword: string, lo: i32, hi: i32): i32[] =
     } else if (k === SW_IDENT && !swPrevIsPrefixDot(f, index)) {
       identifierFound = true;
       if (keywordFound) {
-        count++;
+        count = toI32(toU32(count) + 1);
       }
     } else if (k === SW_DELIM && s === ",") {
       if (!(keywordFound || !identifierFound)) {
@@ -105,36 +109,36 @@ export const swRuleHoistPatternLet = (f: SwFormatter): void => {
       continue;
     }
     const si = f.indexAfter(SW_T_NON_SPACE_OR_COMMENT_OR_LINEBREAK, prevIndex);
-    const startIndex = si >= 0 ? si : prevIndex + 1;
+    const startIndex = si >= 0 ? si : toI32(toU32(prevIndex) + 1);
     if (f.kw(startIndex, "let") || f.kw(startIndex, "var")) {
       continue;
     }
     let keyword = "let";
-    let indices = swIndicesOf(f, keyword, i + 1, endIndex);
+    let indices = swIndicesOf(f, keyword, toI32(toU32(i) + 1), endIndex);
     if (indices.length === 0) {
       keyword = "var";
-      indices = swIndicesOf(f, keyword, i + 1, endIndex);
+      indices = swIndicesOf(f, keyword, toI32(toU32(i) + 1), endIndex);
     }
     if (indices.length === 0) {
       continue;
     }
-    for (let q = toI32(indices.length) - 1; q >= 0; q--) {
+    for (let q = toI32(indices.length) - 1; q >= 0 && q < indices.length; q--) {
       const index = indices[q];
-      if (f.k(index + 1) === SW_SPACE) {
-        f.removeToken(index + 1);
+      if (f.k(toI32(toU32(index) + 1)) === SW_SPACE) {
+        f.removeToken(toI32(toU32(index) + 1));
       }
       f.removeToken(index);
     }
     f.insert(SW_KEYWORD, keyword, 0, startIndex);
-    if (f.has(startIndex + 1)) {
-      const nk = f.k(startIndex + 1);
+    if (f.has(toI32(toU32(startIndex) + 1))) {
+      const nk = f.k(toI32(toU32(startIndex) + 1));
       if (nk !== SW_SPACE && nk !== SW_LINEBREAK) {
-        f.insert(SW_SPACE, " ", 0, startIndex + 1);
+        f.insert(SW_SPACE, " ", 0, toI32(toU32(startIndex) + 1));
       }
     }
-    if (f.has(startIndex - 1)) {
-      const pk = f.k(startIndex - 1);
-      if (pk !== SW_SPACE && pk !== SW_LINEBREAK && !f.isComment(startIndex - 1) && pk !== SW_START) {
+    if (f.has(toI32(toU32(startIndex) - 1))) {
+      const pk = f.k(toI32(toU32(startIndex) - 1));
+      if (pk !== SW_SPACE && pk !== SW_LINEBREAK && !f.isComment(toI32(toU32(startIndex) - 1)) && pk !== SW_START) {
         f.insert(SW_SPACE, " ", 0, startIndex);
       }
     }

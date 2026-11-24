@@ -4,7 +4,7 @@
 // Ported from SwiftFormat 0.64.7 (MIT License, Copyright (c) 2016 Nick
 // Lockwood).
 
-import { SW_UNI_UNCERTAIN, swUniJoinsPrevious } from "./unicode";
+import { swUniJoinsPrevious, swUniMarkUncertain } from "./unicode";
 import { SwFormatter } from "./formatter";
 import { swCurrentScope } from "./parsing";
 import { swLowercased } from "./rules_simple";
@@ -28,6 +28,10 @@ import {
 } from "./token";
 import { swCpAt, swCpIsSpace } from "./tokenizer";
 
+// Token indices, token counts and line numbers stay below the token count, far from the
+// i32 limits, so a sum or difference of them the prover cannot bound is written
+// `toI32(toU32(a) + b)`: wrapping u32 arithmetic, exact for such values.
+
 /** Removes a leading "/" followed by whitespace (the regex `^/(\s+)`). */
 const swStripSlashSpace = (s: string): string => {
   if (!s.startsWith("/")) {
@@ -35,11 +39,12 @@ const swStripSlashSpace = (s: string): string => {
   }
   let i = 1;
   const n = toI32(s.length);
-  const b = new Array<u8>(n);
+  const b: u8[] = [];
   for (let j = 0; j < n; j++) {
-    b[j] = toU8(s.charCodeAt(j));
+    b.push(toU8(s.charCodeAt(j)));
   }
-  while (i < n) {
+  // i < n, so the u32 sum below is exact.
+  while (i >= 0 && i < n) {
     const c = swCpAt(b, n, i);
     // \s: space, tab, linebreaks and Unicode whitespace
     if (
@@ -47,7 +52,7 @@ const swStripSlashSpace = (s: string): string => {
     ) {
       break;
     }
-    i += c < 0x80 ? 1 : c < 0x800 ? 2 : c < 0x10000 ? 3 : 4;
+    i = toI32(toU32(i) + toU32(c < 0x80 ? 1 : c < 0x800 ? 2 : c < 0x10000 ? 3 : 4));
   }
   if (i === 1) {
     return s;
@@ -88,14 +93,16 @@ export const swRuleTodos = (f: SwFormatter): void => {
     const vals = ["TODO:", "TODO:", "FIXME:", "FIXME:", "MARK:", "MARK:", "MARK: -", "MARK: -"];
     // A Kelvin sign lowercases to `k` (`mark`); Swift's hasPrefix and dropFirst work on Characters.
     if (string.substring(0, string.length < 24 ? toI32(string.length) : 24).indexOf("\u212a") >= 0) {
-      SW_UNI_UNCERTAIN[0] = 1;
+      swUniMarkUncertain();
     }
-    for (let q = 0; q < toI32(keys.length); q++) {
-      if (swLowercased(string).startsWith(keys[q])) {
-        if (swUniJoinsPrevious(string, toI32(keys[q].length))) {
-          SW_UNI_UNCERTAIN[0] = 1;
+    for (let q = 0; q < keys.length && q < vals.length; q++) {
+      const key = keys[q];
+      const val = vals[q];
+      if (swLowercased(string).startsWith(key)) {
+        if (swUniJoinsPrevious(string, toI32(key.length))) {
+          swUniMarkUncertain();
         }
-        string = vals[q] + string.substring(toI32(keys[q].length));
+        string = val + string.substring(toI32(key.length));
       }
     }
     let tag = "";
@@ -109,7 +116,7 @@ export const swRuleTodos = (f: SwFormatter): void => {
       continue;
     }
     if (swUniJoinsPrevious(string, toI32(tag.length))) {
-      SW_UNI_UNCERTAIN[0] = 1;
+      swUniMarkUncertain();
     }
     let suffix = string.substring(toI32(tag.length));
     if (suffix.length > 0) {
@@ -120,12 +127,12 @@ export const swRuleTodos = (f: SwFormatter): void => {
     }
     while (suffix.length > 0 && (suffix.charCodeAt(0) === 32 || suffix.charCodeAt(0) === 58)) {
       if (swUniJoinsPrevious(suffix, 1)) {
-        SW_UNI_UNCERTAIN[0] = 1;
+        swUniMarkUncertain();
       }
       suffix = suffix.substring(1);
     }
     if (tag === "MARK" && swUniJoinsPrevious(suffix, 1) && suffix.startsWith("-")) {
-      SW_UNI_UNCERTAIN[0] = 1;
+      swUniMarkUncertain();
     }
     if (tag === "MARK" && suffix.startsWith("-") && suffix !== "-" && !suffix.startsWith("- ")) {
       suffix = "- " + suffix.substring(1);
@@ -192,10 +199,10 @@ export const swRuleBlankLinesBetweenChainedFunctions = (f: SwFormatter): void =>
       if (eoc >= 0) {
         const eol = f.endOfLine(eoc);
         const sol = f.startOfLine(nextIndex);
-        f.removeTokens(eol + 1, sol);
+        f.removeTokens(toI32(toU32(eol) + 1), sol);
       }
     }
     const startOfLine = f.startOfLine(ntc);
-    f.removeTokens(endOfLine + 1, startOfLine);
+    f.removeTokens(toI32(toU32(endOfLine) + 1), startOfLine);
   }
 };

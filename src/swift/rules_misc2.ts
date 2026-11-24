@@ -34,6 +34,10 @@ import {
   SwTok,
 } from "./token";
 
+// Token indices, token counts and line numbers stay below the token count, far from the
+// i32 limits, so a sum or difference of them the prover cannot bound is written
+// `toI32(toU32(a) + b)`: wrapping u32 arithmetic, exact for such values.
+
 /** returnTypeOfEnclosingScope(at:) as [start, end], or []. */
 const swReturnTypeOfEnclosingScope = (f: SwFormatter, index: i32): i32[] => {
   const sob = swStartOfScope(f, index);
@@ -46,7 +50,7 @@ const swReturnTypeOfEnclosingScope = (f: SwFormatter, index: i32): i32[] => {
   }
   const kw = f.s(ki);
   if (kw === "func" || kw === "subscript") {
-    const arrow = f.indexOfIn(SW_OP, "->", SW_OP_INFIX, ki + 1, sob);
+    const arrow = f.indexOfIn(SW_OP, "->", SW_OP_INFIX, toI32(toU32(ki) + 1), sob);
     if (arrow >= 0) {
       const rti = f.indexAfter(SW_T_NON_SPACE_OR_COMMENT_OR_LINEBREAK, arrow);
       const rte = rti >= 0 ? swParseType(f, rti) : -1;
@@ -65,11 +69,11 @@ const swReturnTypeOfEnclosingScope = (f: SwFormatter, index: i32): i32[] => {
 };
 
 const swSameTokenRuns = (f: SwFormatter, a0: i32, a1: i32, b0: i32, b1: i32): boolean => {
-  if (a1 - a0 !== b1 - b0) {
+  if (toI32(toU32(a1) - toU32(a0)) !== toI32(toU32(b1) - toU32(b0))) {
     return false;
   }
-  for (let q = 0; q <= a1 - a0; q++) {
-    if (!f.same(a0 + q, b0 + q)) {
+  for (let q = 0; q <= toI32(toU32(a1) - toU32(a0)); q = toI32(toU32(q) + 1)) {
+    if (!f.same(toI32(toU32(a0) + toU32(q)), toI32(toU32(b0) + toU32(q)))) {
       return false;
     }
   }
@@ -108,22 +112,23 @@ export const swRuleRedundantVariable = (f: SwFormatter): void => {
     }
     if (p.typeStart >= 0) {
       const rt = swReturnTypeOfEnclosingScope(f, i);
-      if (rt.length === 0 || !swSameTokenRuns(f, rt[0], rt[1], p.typeStart, p.typeEnd)) {
+      // rt is [] or [start, end].
+      if (rt.length < 2 || !swSameTokenRuns(f, rt[0], rt[1], p.typeStart, p.typeEnd)) {
         continue;
       }
     }
     const valueEnd = p.valueEnd;
     const valueStart = p.valueStart;
-    f.removeTokens(rrLo, rrHi + 1);
+    f.removeTokens(rrLo, toI32(toU32(rrHi) + 1));
     let allSpace = true;
-    for (let j = valueEnd + 1; j < rrLo - 1; j++) {
+    for (let j = toI32(toU32(valueEnd) + 1); j < toI32(toU32(rrLo) - 1); j++) {
       if (!(f.k(j) === SW_SPACE || f.k(j) === SW_LINEBREAK)) {
         allSpace = false;
         break;
       }
     }
-    if (allSpace && valueEnd + 1 < rrLo - 1) {
-      f.removeTokens(valueEnd + 1, rrLo - 1);
+    if (allSpace && toI32(toU32(valueEnd) + 1) < toI32(toU32(rrLo) - 1)) {
+      f.removeTokens(toI32(toU32(valueEnd) + 1), toI32(toU32(rrLo) - 1));
     }
     f.replaceTokens(i, valueStart, [new SwTok(SW_KEYWORD, "return", 0), new SwTok(SW_SPACE, " ", 0)]);
   }
@@ -170,18 +175,22 @@ const swIsFunctionParameter = (f: SwFormatter, name: string, index: i32): boolea
 /** type.string.components(separatedBy: ".").last?.first: -1 for nil, 36 for `$`, 1 for a Character
  *  that uppercasing leaves unchanged, 0 otherwise. */
 const swTypeLastPartFirstChar = (f: SwFormatter, lo: i32, hi: i32): i32 => {
-  const s = swStringExcludingLinebreaksAndComments(f, lo, hi + 1);
-  let d = toI32(s.length) - 1;
-  while (d >= 0 && s.charCodeAt(d) !== 46) {
+  // A token index: the u32 sum is exact.
+  const s = swStringExcludingLinebreaksAndComments(f, lo, toI32(toU32(hi) + 1));
+  const n = toI32(s.length);
+  let d = n - 1;
+  while (d >= 0 && d < n && s.charCodeAt(d) !== 46) {
     d--;
   }
-  if (d + 1 >= toI32(s.length)) {
+  // d >= -1, so e >= 0.
+  const e = d + 1;
+  if (e < 0 || e >= n) {
     return -1;
   }
-  if (s.charCodeAt(d + 1) === 36 && swCharacterEnd(s, d + 1) === d + 2) {
+  if (s.charCodeAt(e) === 36 && swCharacterEnd(s, e) === e + 1) {
     return 36;
   }
-  return swCharacterUppercaseInvariant(s, d + 1) ? 1 : 0;
+  return swCharacterUppercaseInvariant(s, e) ? 1 : 0;
 };
 
 /** redundantInit. */
@@ -269,16 +278,16 @@ export const swRuleRedundantInit = (f: SwFormatter): void => {
       continue;
     }
     if (f.tok(open, SW_START, "(")) {
-      f.removeTokens(initIndex + 1, open);
+      f.removeTokens(toI32(toU32(initIndex) + 1), open);
     }
     let endOfTypeIndex = startOfTypeIndex;
-    for (let q = dotIndex - 1; q >= startOfTypeIndex; q--) {
+    for (let q = dotIndex - 1; q >= startOfTypeIndex; q = toI32(toU32(q) - 1)) {
       const k = f.k(q);
       if (k !== SW_SPACE && k !== SW_LINEBREAK && !f.isComment(q)) {
         endOfTypeIndex = q;
         break;
       }
     }
-    f.removeTokens(endOfTypeIndex + 1, initIndex + 1);
+    f.removeTokens(toI32(toU32(endOfTypeIndex) + 1), toI32(toU32(initIndex) + 1));
   }
 };

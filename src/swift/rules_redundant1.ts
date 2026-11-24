@@ -48,6 +48,10 @@ import {
 } from "./token";
 import { swParseIdentifierString, swTokenize } from "./tokenizer";
 
+// Token indices, token counts and line numbers stay below the token count, far from the
+// i32 limits, so a sum or difference of them the prover cannot bound is written
+// `toI32(toU32(a) + b)`: wrapping u32 arithmetic, exact for such values.
+
 /** assertionFailures. */
 export const swRuleAssertionFailures = (f: SwFormatter): void => {
   for (let i = f.enumStart(); i >= 0; i = f.enumNext()) {
@@ -84,14 +88,17 @@ export const swRuleAssertionFailures = (f: SwFormatter): void => {
 export const swRuleInitCoderUnavailable = (f: SwFormatter): void => {
   const src = "@available(*, unavailable)";
   const n = toI32(src.length);
-  const b = new Array<u8>(n);
+  const b: u8[] = [];
   for (let j = 0; j < n; j++) {
-    b[j] = toU8(src.charCodeAt(j));
+    b.push(toU8(src.charCodeAt(j)));
   }
   const ut = swTokenize(b, n);
   const unavailable: SwTok[] = [];
-  for (let j = 0; j < ut.count(); j++) {
-    unavailable.push(new SwTok(ut.k[j], ut.s[j], ut.a[j]));
+  const uk = ut.k;
+  const us = ut.s;
+  const ua = ut.a;
+  for (let j = 0; j < uk.length && j < us.length && j < ua.length; j++) {
+    unavailable.push(new SwTok(uk[j], us[j], ua[j]));
   }
   for (let i = f.enumStart(); i >= 0; i = f.enumNext()) {
     if (!f.tok(i, SW_IDENT, "required")) {
@@ -166,12 +173,12 @@ export const swRuleRedundantRawValues = (f: SwFormatter): void => {
       }
       const eq = f.indexAfter(SW_T_NON_SPACE_OR_LINEBREAK, nameIndex);
       const qi = eq >= 0 && f.op(eq, "=", SW_OP_INFIX) ? f.indexAfter(SW_T_NON_SPACE_OR_LINEBREAK, eq) : -1;
-      if (qi >= 0 && f.tok(qi, SW_START, '"') && f.tok(qi + 2, SW_END, '"')) {
-        if (f.has(qi + 1) && swUnescaped(f.s(nameIndex)) === f.s(qi + 1)) {
-          f.removeTokens(nameIndex + 1, qi + 3);
+      if (qi >= 0 && f.tok(qi, SW_START, '"') && f.tok(toI32(toU32(qi) + 2), SW_END, '"')) {
+        if (f.has(toI32(toU32(qi) + 1)) && swUnescaped(f.s(nameIndex)) === f.s(toI32(toU32(qi) + 1))) {
+          f.removeTokens(toI32(toU32(nameIndex) + 1), toI32(toU32(qi) + 3));
           index = nameIndex;
         } else {
-          index = qi + 2;
+          index = toI32(toU32(qi) + 2);
         }
       } else {
         index = nameIndex;
@@ -444,11 +451,11 @@ export const swRuleRedundantPattern = (f: SwFormatter): void => {
     if (
       nt < 0 ||
       !(f.tok(nt, SW_START, ":") || f.op(nt, "=", SW_OP_INFIX)) ||
-      !swRedundantBindings(f, i + 1, endIndex)
+      !swRedundantBindings(f, toI32(toU32(i) + 1), endIndex)
     ) {
       continue;
     }
-    f.removeTokens(i, endIndex + 1);
+    f.removeTokens(i, toI32(toU32(endIndex) + 1));
     if (prevIndex >= 0 && f.k(prevIndex) === SW_IDENT) {
       const l = f.indexBefore(SW_T_NON_SPACE_OR_COMMENT, prevIndex);
       if (l >= 0 && f.s(l) === ".") {
@@ -507,7 +514,7 @@ const swEndOfVoidType = (f: SwFormatter, index: i32): i32 => {
 /** isStartOfClosureType(at:). */
 export const swIsStartOfClosureType = (f: SwFormatter, i: i32): boolean => {
   const te = swParseType(f, i);
-  if (te < 0 || f.indexOfIn(SW_OP, "->", SW_OP_INFIX, i, te + 1) < 0) {
+  if (te < 0 || f.indexOfIn(SW_OP, "->", SW_OP_INFIX, i, toI32(toU32(te) + 1)) < 0) {
     return false;
   }
   const pk = swIndexOfLastSignificantKeyword(f, i, SW_EX_WHERE);
@@ -599,7 +606,7 @@ export const swRuleRedundantExtensionACL = (f: SwFormatter): void => {
       acl = "fileprivate";
     }
     while (true) {
-      const ai = f.lastIndexOfIn(SW_KEYWORD, acl, 0, startIndex + 1, endIndex);
+      const ai = f.lastIndexOfIn(SW_KEYWORD, acl, 0, toI32(toU32(startIndex) + 1), endIndex);
       if (ai < 0) {
         break;
       }

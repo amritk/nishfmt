@@ -3,6 +3,7 @@
 // Ported from SwiftFormat 0.64.7 (MIT License, Copyright (c) 2016 Nick
 // Lockwood).
 
+import { fault } from "../core/fault";
 import {
   swDeclHi,
   swDeclIsStoredInstanceProperty,
@@ -43,6 +44,10 @@ import {
 } from "./token";
 import { swTokenize } from "./tokenizer";
 
+// Token indices, token counts and line numbers stay below the token count, far from the
+// i32 limits, so a sum or difference of them the prover cannot bound is written
+// `toI32(toU32(a) + b)`: wrapping u32 arithmetic, exact for such values.
+
 /** Declaration collection's declaration(containing:): the innermost one. */
 const swDeclContaining = (f: SwFormatter, ds: SwDecl[], index: i32, best: SwDecl | null): SwDecl | null => {
   let cur = best;
@@ -80,8 +85,8 @@ export const swRuleTypeSugar = (f: SwFormatter): void => {
     if (endIndex < 0) {
       continue;
     }
-    const typeStart = f.indexInType(SW_T_NON_SPACE_OR_LINEBREAK, i + 1, endIndex);
-    const typeEnd = f.lastIndexInType(SW_T_NON_SPACE_OR_LINEBREAK, i + 1, endIndex);
+    const typeStart = f.indexInType(SW_T_NON_SPACE_OR_LINEBREAK, toI32(toU32(i) + 1), endIndex);
+    const typeEnd = f.lastIndexInType(SW_T_NON_SPACE_OR_LINEBREAK, toI32(toU32(i) + 1), endIndex);
     if (typeStart < 0 || typeEnd < 0) {
       continue;
     }
@@ -97,7 +102,7 @@ export const swRuleTypeSugar = (f: SwFormatter): void => {
     if (!(pt >= 0 && f.tok(pt, SW_DELIM, ":")) || (cs >= 0 && f.tok(cs, SW_START, "["))) {
       let startIndex = i;
       if (identifier === "Dictionary") {
-        const c = f.indexOfIn(SW_DELIM, ",", 0, i + 1, endIndex);
+        const c = f.indexOfIn(SW_DELIM, ",", 0, toI32(toU32(i) + 1), endIndex);
         if (c >= 0) {
           startIndex = c;
         }
@@ -121,11 +126,11 @@ export const swRuleTypeSugar = (f: SwFormatter): void => {
     }
     if (identifier === "Array") {
       const toks: SwTok[] = [new SwTok(SW_START, "[", 0)];
-      for (const t of f.slice(typeStart, typeEnd + 1)) {
+      for (const t of f.slice(typeStart, toI32(toU32(typeEnd) + 1))) {
         toks.push(t);
       }
       toks.push(new SwTok(SW_END, "]", 0));
-      f.replaceTokens(typeIndex, endIndex + 1, toks);
+      f.replaceTokens(typeIndex, toI32(toU32(endIndex) + 1), toks);
     } else if (identifier === "Dictionary") {
       const commaIndex = f.indexOfIn(SW_DELIM, ",", 0, typeStart, typeEnd);
       if (commaIndex < 0) {
@@ -133,11 +138,11 @@ export const swRuleTypeSugar = (f: SwFormatter): void => {
       }
       f.replaceToken(commaIndex, SW_DELIM, ":", 0);
       const toks: SwTok[] = [new SwTok(SW_START, "[", 0)];
-      for (const t of f.slice(typeStart, typeEnd + 1)) {
+      for (const t of f.slice(typeStart, toI32(toU32(typeEnd) + 1))) {
         toks.push(t);
       }
       toks.push(new SwTok(SW_END, "]", 0));
-      f.replaceTokens(typeIndex, endIndex + 1, toks);
+      f.replaceTokens(typeIndex, toI32(toU32(endIndex) + 1), toks);
     } else if (identifier === "Optional") {
       const parentType = swParseEnclosingType(f, i);
       if (parentType !== null) {
@@ -165,7 +170,7 @@ export const swRuleTypeSugar = (f: SwFormatter): void => {
       if (swLastSignificantKeyword(f, i) === "case" || (le >= 0 && f.tok(le, SW_END, "case"))) {
         continue;
       }
-      const typeTokens = f.slice(typeStart, typeEnd + 1);
+      const typeTokens = f.slice(typeStart, toI32(toU32(typeEnd) + 1));
       let wrap = false;
       for (const t of typeTokens) {
         if (t.k === SW_OP && t.a === SW_OP_INFIX && (t.s === "&" || t.s === "->")) {
@@ -186,7 +191,7 @@ export const swRuleTypeSugar = (f: SwFormatter): void => {
         toks.push(new SwTok(SW_END, ")", 0));
       }
       toks.push(new SwTok(SW_OP, "?", SW_OP_POSTFIX));
-      f.replaceTokens(typeIndex, endIndex + 1, toks);
+      f.replaceTokens(typeIndex, toI32(toU32(endIndex) + 1), toks);
     } else {
       continue;
     }
@@ -281,7 +286,7 @@ export const swRuleVoid = (f: SwFormatter): void => {
       if (swIsArgumentToken(f, nextIndex) || (lb >= 0 && f.k(lb) === SW_IDENT)) {
         // useVoid: keep
       } else {
-        f.removeTokens(i + 1, nextIndex + 1);
+        f.removeTokens(toI32(toU32(i) + 1), toI32(toU32(nextIndex) + 1));
         f.removeTokens(prevIndex, i);
       }
       continue;
@@ -310,7 +315,8 @@ export const swRuleVoid = (f: SwFormatter): void => {
       continue;
     }
     const endIndex = f.indexAfter(SW_T_NON_SPACE_OR_LINEBREAK, i);
-    if (endIndex < 0 || !f.tok(endIndex, SW_END, ")")) {
+    // f.tok is false past the last token, so endIndex + 1 cannot overflow below.
+    if (endIndex < 0 || endIndex >= f.count() || !f.tok(endIndex, SW_END, ")")) {
       continue;
     }
     const pt = f.indexBefore(SW_T_NON_SPACE_OR_COMMENT_OR_LINEBREAK, i);
@@ -354,12 +360,13 @@ const swApplyGrouping = (number: string, group: i32, threshold: i32): string => 
     return parts.join("");
   }
   const out: string[] = [];
-  for (let i = 0; i < n; i++) {
+  for (let i = 0; i < n && i < parts.length; i++) {
+    const part = parts[i];
     const fromEnd = n - i;
     if (i > 0 && fromEnd % group === 0) {
       out.push("_");
     }
-    out.push(parts[i]);
+    out.push(part);
   }
   return out.join("");
 };
@@ -381,12 +388,21 @@ const swSplitAny = (s: string, seps: string): string[] => {
 /** ASCII uppercased(). */
 const swUppercased = (s: string): string => {
   const n = toI32(s.length);
-  const b = new Array<u8>(n);
+  const parts: string[] = [];
+  let from = 0;
   for (let i = 0; i < n; i++) {
     const c = s.charCodeAt(i);
-    b[i] = toU8(c >= 97 && c <= 122 ? c - 32 : c);
+    if (c >= 97 && c <= 122) {
+      parts.push(s.substring(from, i));
+      parts.push(String.fromCharCode(c - 32));
+      from = i + 1;
+    }
   }
-  return String.fromBytes(b, 0, n);
+  if (from === 0) {
+    return s;
+  }
+  parts.push(s.substring(from));
+  return parts.join("");
 };
 
 /** availabilityArgumentRanges(), as [lo, hi] pairs. */
@@ -459,15 +475,22 @@ export const swRuleNumberFormatting = (f: SwFormatter): void => {
         parts.push(swUppercased(p));
       }
     }
+    // Each split answers at least one part.
+    if (parts.length < 1) {
+      fault();
+      return;
+    }
     let main = parts[0];
     let fraction = "";
     let exponent = "";
-    const pc = toI32(parts.length);
-    if (pc === 2 && number.indexOf(".") >= 0) {
-      fraction = parts[1];
-    } else if (pc === 2) {
-      exponent = parts[1];
-    } else if (pc === 3) {
+    const hasDot = number.indexOf(".") >= 0;
+    if (parts.length === 2) {
+      if (hasDot) {
+        fraction = parts[1];
+      } else {
+        exponent = parts[1];
+      }
+    } else if (parts.length === 3) {
       fraction = parts[1];
       exponent = parts[2];
     }
@@ -483,7 +506,7 @@ export const swRuleNumberFormatting = (f: SwFormatter): void => {
       continue;
     }
     let inAvail = false;
-    for (let q = 0; q + 1 < toI32(ranges.length); q += 2) {
+    for (let q = 0; q < ranges.length - 1; q += 2) {
       if (i >= ranges[q] && i <= ranges[q + 1]) {
         inAvail = true;
         break;
@@ -514,7 +537,7 @@ const swConditionHasLowerPrecedenceThanAnd = (f: SwFormatter, lo: i32, hi: i32):
       }
       index = e;
     }
-    index++;
+    index = toI32(toU32(index) + 1);
   }
   return false;
 };
@@ -535,7 +558,7 @@ export const swRuleAndOperator = (f: SwFormatter): void => {
     if (swIsInResultBuilder(f, i)) {
       continue;
     }
-    let index = i + 1;
+    let index = toI32(toU32(i) + 1);
     let chevronIndex = -1;
     let abort = false;
     while (index < endIndex) {
@@ -551,38 +574,45 @@ export const swRuleAndOperator = (f: SwFormatter): void => {
         if (chevronIndex >= 0 && f.indexOfIn(SW_OP, ">", SW_OP_INFIX, index, endIndex) >= 0) {
           // Check if this would cause ambiguity for chevrons
           const parts: string[] = [];
-          for (let j = i; j <= endIndex; j++) {
+          for (let j = i; j <= endIndex; j = toI32(toU32(j) + 1)) {
             parts.push(j === index ? "," : f.s(j));
           }
           parts.push("}");
           const text = parts.join("");
           const n = toI32(text.length);
-          const b = new Array<u8>(n);
+          const b: u8[] = [];
           for (let j = 0; j < n; j++) {
-            b[j] = toU8(text.charCodeAt(j));
+            b.push(toU8(text.charCodeAt(j)));
           }
           const re = swTokenize(b, n);
-          const ci = chevronIndex - i;
-          if (ci < re.count() && re.k[ci] === SW_START && re.s[ci] === "<") {
+          // Token indices: the u32 difference is exact.
+          const ci = toI32(toU32(chevronIndex) - toU32(i));
+          const rk = re.k;
+          const rs = re.s;
+          if (ci < 0) {
+            fault();
+            return;
+          }
+          if (ci < rk.length && ci < rs.length && rk[ci] === SW_START && rs[ci] === "<") {
             abort = true;
             break;
           }
         }
         f.replaceToken(index, SW_DELIM, ",", 0);
-        if (f.tok(index - 1, SW_SPACE, " ")) {
-          f.removeToken(index - 1);
-          endIndex -= 1;
-          index -= 1;
+        if (f.tok(toI32(toU32(index) - 1), SW_SPACE, " ")) {
+          f.removeToken(toI32(toU32(index) - 1));
+          endIndex = toI32(toU32(endIndex) - 1);
+          index = toI32(toU32(index) - 1);
         } else {
           const prevIndex = f.indexBefore(SW_T_NON_SPACE, index);
           if (prevIndex >= 0 && f.k(prevIndex) === SW_LINEBREAK) {
             const nl = f.indexBefore(SW_T_NON_SPACE_OR_COMMENT_OR_LINEBREAK, prevIndex);
             if (nl >= 0) {
               f.removeToken(index);
-              f.insert(SW_DELIM, ",", 0, nl + 1);
+              f.insert(SW_DELIM, ",", 0, toI32(toU32(nl) + 1));
               if (f.tok(index + 1, SW_SPACE, " ")) {
                 f.removeToken(index + 1);
-                endIndex -= 1;
+                endIndex = toI32(toU32(endIndex) - 1);
               }
             }
           }
@@ -596,7 +626,7 @@ export const swRuleAndOperator = (f: SwFormatter): void => {
         const e = swEndOfScope(f, index);
         index = e >= 0 ? e : endIndex;
       }
-      index++;
+      index = toI32(toU32(index) + 1);
     }
     if (abort) {
       continue;

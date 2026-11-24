@@ -32,6 +32,10 @@ import {
   SwTok,
 } from "./token";
 
+// Token indices, token counts and line numbers stay below the token count, far from the
+// i32 limits, so a sum or difference of them the prover cannot bound is written
+// `toI32(toU32(a) + b)`: wrapping u32 arithmetic, exact for such values.
+
 export const swAllSpaceOrLinebreak = (f: SwFormatter, lo: i32, hi: i32): boolean => {
   for (let j = lo; j < hi; j++) {
     if (f.k(j) !== SW_SPACE && f.k(j) !== SW_LINEBREAK) {
@@ -63,7 +67,11 @@ const swExpressionIsEmptyView = (f: SwFormatter, lo: i32, hi: i32): boolean => {
     return false;
   }
   const ea = swEndOfScope(f, sa);
-  return ea === hi && swAllSpaceOrLinebreak(f, ev + 1, sa) && swAllSpaceOrLinebreak(f, sa + 1, ea);
+  return (
+    ea === hi &&
+    swAllSpaceOrLinebreak(f, toI32(toU32(ev) + 1), sa) &&
+    swAllSpaceOrLinebreak(f, toI32(toU32(sa) + 1), ea)
+  );
 };
 
 /** redundantEmptyViewElseRange(at:) as its upper bound (the range starts after the previous `}`), or -1. */
@@ -75,11 +83,11 @@ const swRedundantEmptyViewElseEnd = (f: SwFormatter, elseIndex: i32): i32 => {
     return -1;
   }
   const p = f.indexBefore(SW_T_NON_SPACE_OR_COMMENT_OR_LINEBREAK, elseIndex);
-  if (p < 0 || !f.tok(p, SW_END, "}") || !swAllSpaceOrLinebreak(f, p + 1, elseIndex)) {
+  if (p < 0 || !f.tok(p, SW_END, "}") || !swAllSpaceOrLinebreak(f, toI32(toU32(p) + 1), elseIndex)) {
     return -1;
   }
   const sb = f.indexAfter(SW_T_NON_SPACE_OR_COMMENT_OR_LINEBREAK, elseIndex);
-  if (sb < 0 || !f.tok(sb, SW_START, "{") || !swAllSpaceOrLinebreak(f, elseIndex + 1, sb)) {
+  if (sb < 0 || !f.tok(sb, SW_START, "{") || !swAllSpaceOrLinebreak(f, toI32(toU32(elseIndex) + 1), sb)) {
     return -1;
   }
   const eb = swEndOfScope(f, sb);
@@ -89,8 +97,8 @@ const swRedundantEmptyViewElseEnd = (f: SwFormatter, elseIndex: i32): i32 => {
     return -1;
   }
   if (
-    !swAllSpaceOrLinebreak(f, sb + 1, first) ||
-    !swAllSpaceOrLinebreak(f, ee + 1, eb) ||
+    !swAllSpaceOrLinebreak(f, toI32(toU32(sb) + 1), first) ||
+    !swAllSpaceOrLinebreak(f, toI32(toU32(ee) + 1), eb) ||
     !swExpressionIsEmptyView(f, first, ee)
   ) {
     return -1;
@@ -107,7 +115,7 @@ export const swRuleRedundantEmptyView = (f: SwFormatter): void => {
     const e = swRedundantEmptyViewElseEnd(f, i);
     if (e >= 0) {
       const p = f.indexBefore(SW_T_NON_SPACE_OR_COMMENT_OR_LINEBREAK, i);
-      f.removeTokens(p + 1, e + 1);
+      f.removeTokens(toI32(toU32(p) + 1), toI32(toU32(e) + 1));
     }
   }
 };
@@ -118,8 +126,11 @@ const swTypeConformsTo = (f: SwFormatter, t: SwDecl | null, name: string): boole
     return false;
   }
   const c = swParseConformances(f, swDeclKeywordIndex(f, t));
-  for (let q = 0; q < toI32(c.starts.length); q++) {
-    if (swStringExcludingLinebreaksAndComments(f, c.starts[q], c.ends[q] + 1) === name) {
+  const starts = c.starts;
+  const ends = c.ends;
+  for (let q = 0; q < starts.length && q < ends.length; q++) {
+    // A token index: the u32 sum is exact.
+    if (swStringExcludingLinebreaksAndComments(f, starts[q], toI32(toU32(ends[q]) + 1)) === name) {
       return true;
     }
   }
@@ -129,7 +140,7 @@ const swTypeConformsTo = (f: SwFormatter, t: SwDecl | null, name: string): boole
 /** scopeBodyIsSingleExpression(at:) with nothing else allowed. */
 const swScopeBodyIsPlainExpression = (f: SwFormatter, sos: i32): boolean => {
   const e = swEndOfScope(f, sos);
-  return e >= 0 && swIsSingleExpression(f, swStartOfBody(f, sos) + 1, e, false);
+  return e >= 0 && swIsSingleExpression(f, toI32(toU32(swStartOfBody(f, sos)) + 1), e, false);
 };
 
 /** parseGroupCall(startingAt:) as [groupEnd, closureStart], or []. */
@@ -208,14 +219,15 @@ export const swRuleRedundantSwiftUIGroup = (f: SwFormatter): void => {
     if (first < 0 || first >= bodyHi || !f.tok(first, SW_IDENT, "Group")) {
       continue;
     }
+    // gc is [] or [group end, closure start].
     const gc = swParseGroupCall(f, first);
-    if (gc.length === 0) {
+    if (gc.length < 2) {
       continue;
     }
     const groupEnd = gc[0];
     const closureStart = gc[1];
     const ce = swEndOfScope(f, closureStart);
-    if (ce < 0 || closureStart + 1 >= ce) {
+    if (ce < 0 || toI32(toU32(closureStart) + 1) >= ce) {
       continue;
     }
     const ft = f.indexAfter(SW_T_NON_SPACE_OR_COMMENT_OR_LINEBREAK, closureStart);
@@ -237,8 +249,8 @@ export const swRuleRedundantSwiftUIGroup = (f: SwFormatter): void => {
     }
     const needsViewBuilder = !isBodyMember && !swScopeBodyIsPlainExpression(f, closureStart);
     const addAt = needsViewBuilder && !hasViewBuilder ? som : -1;
-    const bodyTokens = f.slice(ft, lt + 1);
-    f.removeTokens(first, groupEnd + 1);
+    const bodyTokens = f.slice(ft, toI32(toU32(lt) + 1));
+    f.removeTokens(first, toI32(toU32(groupEnd) + 1));
     f.insertToks(bodyTokens, first);
     if (addAt >= 0) {
       const indent = f.currentIndentForLine(addAt);
@@ -263,18 +275,18 @@ const swRemoveViewBuilderAttribute = (f: SwFormatter, a: i32): void => {
   const leadingSpaceIsAfterAttribute = hasLeadingSpace && a > 1 && f.k(a - 2) !== SW_LINEBREAK;
   const nn = f.indexAfter(SW_T_NON_SPACE, a);
   const hasTrailingLinebreak = nn >= 0 && f.k(nn) === SW_LINEBREAK;
-  const hasTrailingSpace = a + 1 < f.count() && f.k(a + 1) === SW_SPACE;
+  const hasTrailingSpace = toI32(toU32(a) + 1) < f.count() && f.k(toI32(toU32(a) + 1)) === SW_SPACE;
   if (leadingSpaceIsAfterAttribute) {
-    startIndex = a - 1;
+    startIndex = toI32(toU32(a) - 1);
   } else if (hasTrailingLinebreak) {
     endIndex = nn;
     if (hasLeadingSpace && a > 1 && f.k(a - 2) === SW_LINEBREAK) {
       startIndex = a - 1;
     }
   } else if (hasTrailingSpace) {
-    endIndex = a + 1;
+    endIndex = toI32(toU32(a) + 1);
   }
-  f.removeTokens(startIndex, endIndex + 1);
+  f.removeTokens(startIndex, toI32(toU32(endIndex) + 1));
 };
 
 /** contentBuilder (contentBuilder implicit, preferContentBuilder off). */
@@ -320,14 +332,14 @@ export const swRuleContentBuilder = (f: SwFormatter): void => {
     let redundant = isBodyMember;
     if (!redundant) {
       const e = swEndOfScope(f, bodyLo);
-      redundant = e >= 0 && swIsSingleExpression(f, swStartOfBody(f, bodyLo) + 1, e, true);
+      redundant = e >= 0 && swIsSingleExpression(f, toI32(toU32(swStartOfBody(f, bodyLo)) + 1), e, true);
     }
     if (redundant) {
       toRemove.push(vb);
     }
   }
   swReleaseDecls(f, decls);
-  for (let q = toI32(toRemove.length) - 1; q >= 0; q--) {
+  for (let q = toI32(toRemove.length) - 1; q >= 0 && q < toRemove.length; q--) {
     swRemoveViewBuilderAttribute(f, toRemove[q]);
   }
 };

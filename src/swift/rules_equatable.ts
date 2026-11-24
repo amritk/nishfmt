@@ -3,6 +3,7 @@
 // Ported from SwiftFormat 0.64.7 (MIT License, Copyright (c) 2016 Nick
 // Lockwood).
 
+import { fault } from "../core/fault";
 import {
   SW_DECL_IFDEF,
   SW_DECL_TYPE,
@@ -33,10 +34,17 @@ import {
   SW_T_NON_SPACE_OR_COMMENT_OR_LINEBREAK,
 } from "./token";
 
+// Token indices, token counts and line numbers stay below the token count, far from the
+// i32 limits, so a sum or difference of them the prover cannot bound is written
+// `toI32(toU32(a) + b)`: wrapping u32 arithmetic, exact for such values.
+
 const swConformsToAny = (f: SwFormatter, kw: i32, a: string, b: string): boolean => {
   const c = swParseConformances(f, kw);
-  for (let q = 0; q < toI32(c.starts.length); q++) {
-    const s = swStringExcludingLinebreaksAndComments(f, c.starts[q], c.ends[q] + 1);
+  const starts = c.starts;
+  const ends = c.ends;
+  for (let q = 0; q < starts.length && q < ends.length; q++) {
+    // A token index: the u32 sum is exact.
+    const s = swStringExcludingLinebreaksAndComments(f, starts[q], toI32(toU32(ends[q]) + 1));
     if (s === a || s === b) {
       return true;
     }
@@ -45,11 +53,11 @@ const swConformsToAny = (f: SwFormatter, kw: i32, a: string, b: string): boolean
 };
 
 const swSameRun = (f: SwFormatter, a0: i32, a1: i32, b0: i32, b1: i32): boolean => {
-  if (a1 - a0 !== b1 - b0) {
+  if (toI32(toU32(a1) - toU32(a0)) !== toI32(toU32(b1) - toU32(b0))) {
     return false;
   }
-  for (let q = 0; q <= a1 - a0; q++) {
-    if (!f.same(a0 + q, b0 + q)) {
+  for (let q = 0; q <= toI32(toU32(a1) - toU32(a0)); q = toI32(toU32(q) + 1)) {
+    if (!f.same(toI32(toU32(a0) + toU32(q)), toI32(toU32(b0) + toU32(q)))) {
       return false;
     }
   }
@@ -110,19 +118,19 @@ const swParseComparedProperties = (f: SwFormatter, funcIndex: i32): string[] | n
 
 /** TypeName.isTuple. */
 const swIsTupleType = (f: SwFormatter, lo: i32, hi: i32): boolean => {
-  const op = f.indexAfter(SW_T_NON_SPACE_OR_COMMENT_OR_LINEBREAK, lo - 1);
+  const op = f.indexAfter(SW_T_NON_SPACE_OR_COMMENT_OR_LINEBREAK, toI32(toU32(lo) - 1));
   if (op < 0 || !f.tok(op, SW_START, "(")) {
     return false;
   }
   const cp = swEndOfScope(f, op);
-  if (cp < 0 || op + 1 === cp) {
+  if (cp < 0 || toI32(toU32(op) + 1) === cp) {
     return false;
   }
   const ta = f.indexAfter(SW_T_NON_SPACE_OR_COMMENT_OR_LINEBREAK, cp);
   if (ta >= 0 && !(ta > hi || f.op(ta, "?", SW_OP_POSTFIX))) {
     return false;
   }
-  return f.indexOfIn(SW_DELIM, ",", 0, op + 1, cp) >= 0;
+  return f.indexOfIn(SW_DELIM, ",", 0, toI32(toU32(op) + 1), cp) >= 0;
 };
 
 const swHasStoredPropertyIn = (f: SwFormatter, ds: SwDecl[]): boolean => {
@@ -155,6 +163,11 @@ export const swRuleRedundantEquatable = (f: SwFormatter): void => {
     const fq = swFullyQualifiedName(f, d);
     if (definesType && fq.length !== 0) {
       const q = typeNames.indexOf(fq);
+      if (q >= typeDecls.length) {
+        // typeDecls is parallel to typeNames.
+        fault();
+        return;
+      }
       if (q >= 0) {
         typeDecls[q] = d;
       } else {
@@ -182,7 +195,7 @@ export const swRuleRedundantEquatable = (f: SwFormatter): void => {
         args[1].internalLabel === "rhs" &&
         swSameRun(f, args[0].typeStart, args[0].typeEnd, args[1].typeStart, args[1].typeEnd)
       ) {
-        let compared = swStringExcludingLinebreaksAndComments(f, args[0].typeStart, args[0].typeEnd + 1);
+        let compared = swStringExcludingLinebreaksAndComments(f, args[0].typeStart, toI32(toU32(args[0].typeEnd) + 1));
         const p = d.parent;
         if (p !== null) {
           const pfq = swFullyQualifiedName(f, p);
@@ -198,6 +211,11 @@ export const swRuleRedundantEquatable = (f: SwFormatter): void => {
           }
         }
         const q = implNames.indexOf(compared);
+        if (q >= implDecls.length) {
+          // implDecls is parallel to implNames.
+          fault();
+          return;
+        }
         if (q >= 0) {
           implDecls[q] = d;
         } else {
@@ -212,6 +230,10 @@ export const swRuleRedundantEquatable = (f: SwFormatter): void => {
     const ii = implNames.indexOf(tn);
     if (strideable.indexOf(tn) >= 0 || ti < 0 || ii < 0) {
       continue;
+    }
+    if (ti >= typeDecls.length || ii >= implDecls.length) {
+      fault();
+      return;
     }
     const td = typeDecls[ti];
     const fn = implDecls[ii];
@@ -262,7 +284,7 @@ export const swRuleRedundantEquatable = (f: SwFormatter): void => {
     for (const s of stored) {
       const p = swParsePropertyDeclaration(f, swDeclKeywordIndex(f, s));
       if (p !== null && p.typeStart >= 0) {
-        const ts = swStringExcludingLinebreaksAndComments(f, p.typeStart, p.typeEnd + 1);
+        const ts = swStringExcludingLinebreaksAndComments(f, p.typeStart, toI32(toU32(p.typeEnd) + 1));
         if (ts === "AnyClass" || ts === "Any.Type" || swIsTupleType(f, p.typeStart, p.typeEnd)) {
           nonEquatable = true;
         }
@@ -271,7 +293,7 @@ export const swRuleRedundantEquatable = (f: SwFormatter): void => {
     if (nonEquatable) {
       continue;
     }
-    f.removeTokens(swDeclLo(f, fn), swDeclHi(f, fn) + 1);
+    f.removeTokens(swDeclLo(f, fn), toI32(toU32(swDeclHi(f, fn)) + 1));
   }
   swReleaseDecls(f, decls);
 };

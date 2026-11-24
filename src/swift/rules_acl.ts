@@ -16,6 +16,7 @@ import {
   swParseDeclarations,
   swReleaseDecls,
 } from "./decl";
+import { fault } from "../core/fault";
 import { SwDecl, SwFormatter } from "./formatter";
 import { swHasModifier, swIndexOfModifier, swStartOfModifiers } from "./modifiers";
 import { swIndexOfLastSignificantKeyword, swStartOfScope, SW_EX_WHERE } from "./parsing";
@@ -27,6 +28,10 @@ import {
   SW_T_NON_SPACE_OR_COMMENT_OR_LINEBREAK,
   SwTok,
 } from "./token";
+
+// Token indices, token counts and line numbers stay below the token count, far from the
+// i32 limits, so a sum or difference of them the prover cannot bound is written
+// `toI32(toU32(a) + b)`: wrapping u32 arithmetic, exact for such values.
 
 /** Visibility as a level: higher is more visible; -1 for none. */
 export const swVisLevel = (s: string): i32 => {
@@ -56,12 +61,15 @@ const SW_VIS_NAMES: string = "private fileprivate internal package public open";
 const swVisName = (level: i32): string => {
   let k = 0;
   let st = 0;
-  for (let j = 0; j <= toI32(SW_VIS_NAMES.length); j++) {
-    if (j === toI32(SW_VIS_NAMES.length) || SW_VIS_NAMES.charCodeAt(j) === 32) {
+  const names = SW_VIS_NAMES;
+  const n = toI32(names.length);
+  // n is a string length, so j < 2147483647 changes nothing; k <= j keeps the u32 sum exact.
+  for (let j = 0; j <= n && j < 2147483647; j++) {
+    if (j === n || (j < n && names.charCodeAt(j) === 32)) {
       if (k === level) {
-        return SW_VIS_NAMES.substring(st, j);
+        return names.substring(st, j);
       }
-      k++;
+      k = toI32(toU32(k) + 1);
       st = j + 1;
     }
   }
@@ -75,11 +83,12 @@ export const swAddDeclarationVisibility = (f: SwFormatter, vis: string, kwIndex0
   if (existing.length !== 0) {
     const vi = swIndexOfModifier(f, existing, kwIndex);
     if (vi >= 0) {
+      // Token indices: the u32 differences are exact.
       f.removeToken(vi);
-      kwIndex--;
+      kwIndex = toI32(toU32(kwIndex) - 1);
       while (f.has(vi) && f.k(vi) === SW_SPACE) {
         f.removeToken(vi);
-        kwIndex--;
+        kwIndex = toI32(toU32(kwIndex) - 1);
       }
     }
   }
@@ -117,7 +126,7 @@ export const swFullyQualifiedName = (f: SwFormatter, d: SwDecl): string => {
     p = p.parent;
   }
   const out: string[] = [];
-  for (let q = toI32(parts.length) - 1; q >= 0; q--) {
+  for (let q = toI32(parts.length) - 1; q >= 0 && q < parts.length; q--) {
     out.push(parts[q]);
   }
   return out.join(".");
@@ -171,6 +180,11 @@ export const swRuleExtensionAccessControl = (f: SwFormatter): void => {
     const v = swInsidePublicExtension(f, d) ? 4 : swVisLevelOr(swDeclVisibility(f, d), 2);
     const q = typeNames.indexOf(qn);
     if (q >= 0) {
+      // typeVis is parallel to typeNames.
+      if (q >= typeVis.length) {
+        fault();
+        return;
+      }
       typeVis[q] = v;
     } else {
       typeNames.push(qn);
@@ -204,7 +218,8 @@ export const swRuleExtensionAccessControl = (f: SwFormatter): void => {
       let c = 0;
       for (const v of vis) {
         if (v === lv) {
-          c++;
+          // At most vis.length: the u32 sum is exact.
+          c = toI32(toU32(c) + 1);
         }
       }
       if (c > 0 && c > best) {
@@ -221,6 +236,10 @@ export const swRuleExtensionAccessControl = (f: SwFormatter): void => {
     if (member !== ev && !(member === 2 && vk < 0)) {
       const en = swDeclName(f, ext);
       const q = en.length === 0 ? -1 : typeNames.indexOf(en);
+      if (q >= typeVis.length) {
+        fault();
+        return;
+      }
       if (q >= 0 && typeVis[q] < member) {
         continue;
       }
@@ -275,10 +294,11 @@ export const swRuleRedundantInternal = (f: SwFormatter): void => {
         }
       }
     }
-    if (!(f.has(i + 1) && f.k(i + 1) === SW_SPACE)) {
+    // A token index: the u32 sums are exact.
+    if (!(f.has(toI32(toU32(i) + 1)) && f.k(toI32(toU32(i) + 1)) === SW_SPACE)) {
       continue;
     }
-    f.removeTokens(i, i + 2);
+    f.removeTokens(i, toI32(toU32(i) + 2));
   }
 };
 

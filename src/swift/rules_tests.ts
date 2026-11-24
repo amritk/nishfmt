@@ -32,6 +32,10 @@ import {
   swIsSwiftKeyword,
 } from "./token";
 
+// Token indices, token counts and line numbers stay below the token count, far from the
+// i32 limits, so a sum or difference of them the prover cannot bound is written
+// `toI32(toU32(a) + b)`: wrapping u32 arithmetic, exact for such values.
+
 export const SW_TEST_NONE: i32 = 0;
 export const SW_TEST_XCTEST: i32 = 1;
 export const SW_TEST_SWIFT_TESTING: i32 = 2;
@@ -96,7 +100,7 @@ const swEffects = (f: SwFormatter, fd: SwFuncDecl): string[] => {
   if (fd.effectsStart < 0) {
     return out;
   }
-  for (let j = fd.effectsStart; j <= fd.effectsEnd; j++) {
+  for (let j = fd.effectsStart; j <= fd.effectsEnd; j = toI32(toU32(j) + 1)) {
     const s = f.s(j);
     if (!(f.k(j) === SW_KEYWORD || f.k(j) === SW_IDENT) || !(s === "async" || s === "throws" || s === "rethrows")) {
       continue;
@@ -106,7 +110,7 @@ const swEffects = (f: SwFormatter, fd: SwFuncDecl): string[] => {
       if (p >= 0 && p <= fd.effectsEnd && f.tok(p, SW_START, "(")) {
         const e = swEndOfScope(f, p);
         if (e >= 0) {
-          out.push(f.text(j, e + 1));
+          out.push(f.text(j, toI32(toU32(e) + 1)));
           j = e;
           continue;
         }
@@ -132,14 +136,14 @@ export const swAddThrowsEffect = (f: SwFormatter, fd: SwFuncDecl): void => {
     return;
   }
   if (fd.effectsStart >= 0) {
-    const asyncIndex = f.indexOfIn(SW_IDENT, "async", 0, fd.effectsStart, fd.effectsEnd + 1);
+    const asyncIndex = f.indexOfIn(SW_IDENT, "async", 0, fd.effectsStart, toI32(toU32(fd.effectsEnd) + 1));
     if (asyncIndex >= 0) {
-      f.insertToks([new SwTok(SW_SPACE, " ", 0), new SwTok(SW_KEYWORD, "throws", 0)], asyncIndex + 1);
+      f.insertToks([new SwTok(SW_SPACE, " ", 0), new SwTok(SW_KEYWORD, "throws", 0)], toI32(toU32(asyncIndex) + 1));
     } else {
       f.insertToks([new SwTok(SW_KEYWORD, "throws", 0), new SwTok(SW_SPACE, " ", 0)], fd.effectsEnd);
     }
   } else {
-    f.insertToks([new SwTok(SW_SPACE, " ", 0), new SwTok(SW_KEYWORD, "throws", 0)], fd.argsEnd + 1);
+    f.insertToks([new SwTok(SW_SPACE, " ", 0), new SwTok(SW_KEYWORD, "throws", 0)], toI32(toU32(fd.argsEnd) + 1));
   }
 };
 
@@ -148,9 +152,9 @@ const swRemoveEffect = (f: SwFormatter, effect: string, fd: SwFuncDecl): void =>
   if (fd.effectsStart < 0) {
     return;
   }
-  let effectIndex = f.indexOfIn(SW_KEYWORD, effect, 0, fd.effectsStart, fd.effectsEnd + 1);
+  let effectIndex = f.indexOfIn(SW_KEYWORD, effect, 0, fd.effectsStart, toI32(toU32(fd.effectsEnd) + 1));
   if (effectIndex < 0) {
-    effectIndex = f.indexOfIn(SW_IDENT, effect, 0, fd.effectsStart, fd.effectsEnd + 1);
+    effectIndex = f.indexOfIn(SW_IDENT, effect, 0, fd.effectsStart, toI32(toU32(fd.effectsEnd) + 1));
   }
   if (effectIndex < 0) {
     return;
@@ -165,10 +169,10 @@ const swRemoveEffect = (f: SwFormatter, effect: string, fd: SwFuncDecl): void =>
       }
     }
   }
-  if (endIndex + 1 < f.count() && f.k(endIndex + 1) === SW_SPACE) {
-    endIndex++;
+  if (toI32(toU32(endIndex) + 1) < f.count() && f.k(toI32(toU32(endIndex) + 1)) === SW_SPACE) {
+    endIndex = toI32(toU32(endIndex) + 1);
   }
-  f.removeTokens(effectIndex, endIndex + 1);
+  f.removeTokens(effectIndex, toI32(toU32(endIndex) + 1));
 };
 
 /** noForceTryInTests. */
@@ -187,7 +191,7 @@ export const swRuleNoForceTryInTests = (f: SwFormatter): void => {
     }
     let found = false;
     let abort = false;
-    for (let index = fd.bodyEnd; index >= fd.bodyStart; index--) {
+    for (let index = fd.bodyEnd; index >= fd.bodyStart; index = toI32(toU32(index) - 1)) {
       if (!f.kw(index, "try")) {
         continue;
       }
@@ -234,7 +238,7 @@ const swRedundantEffect = (f: SwFormatter, effect: string): void => {
       continue;
     }
     let contains = false;
-    for (let index = fd.bodyStart; index <= fd.bodyEnd; index++) {
+    for (let index = fd.bodyStart; index <= fd.bodyEnd; index = toI32(toU32(index) + 1)) {
       if (f.kw(index, marker)) {
         if (effect === "throws") {
           const n = f.indexAfter(SW_T_NON_SPACE_OR_COMMENT_OR_LINEBREAK, index);
@@ -298,7 +302,8 @@ export const swRuleRedundantSwiftTestingSuite = (f: SwFormatter): void => {
     const leadingSpaceIsAfterAttribute = hasLeadingSpace && attrIndex > 1 && f.k(attrIndex - 2) !== SW_LINEBREAK;
     const nextNonSpaceIndex = f.indexAfter(SW_T_NON_SPACE, attributeEndIndex);
     const hasTrailingLinebreak = nextNonSpaceIndex >= 0 && f.k(nextNonSpaceIndex) === SW_LINEBREAK;
-    const hasTrailingSpace = attributeEndIndex + 1 < f.count() && f.k(attributeEndIndex + 1) === SW_SPACE;
+    const hasTrailingSpace =
+      toI32(toU32(attributeEndIndex) + 1) < f.count() && f.k(toI32(toU32(attributeEndIndex) + 1)) === SW_SPACE;
     if (leadingSpaceIsAfterAttribute) {
       startIndex = attrIndex - 1;
     } else if (hasTrailingLinebreak) {
@@ -307,9 +312,9 @@ export const swRuleRedundantSwiftTestingSuite = (f: SwFormatter): void => {
         startIndex = attrIndex - 1;
       }
     } else if (hasTrailingSpace) {
-      endIndex = attributeEndIndex + 1;
+      endIndex = toI32(toU32(attributeEndIndex) + 1);
     }
-    f.removeTokens(startIndex, endIndex + 1);
+    f.removeTokens(startIndex, toI32(toU32(endIndex) + 1));
   }
 };
 
@@ -317,7 +322,7 @@ const swIsAsciiLetter = (c: i32): boolean => (c >= 65 && c <= 90) || (c >= 97 &&
 
 /** Character.lowercased() of the first character; "" when it isn't ASCII (Unicode case mapping isn't ported). */
 const swLowerFirst = (s: string): string => {
-  if (s.length === 0) {
+  if (s.length < 1) {
     return s;
   }
   const c = s.charCodeAt(0);
@@ -356,7 +361,7 @@ const swUpdateDeclarationName = (f: SwFormatter, keywordIndex: i32, newName0: st
   let newName = newName0;
   const quoted = newName.startsWith("`") && newName.endsWith("`") && newName.length >= 2;
   const unescaped = quoted ? newName.substring(1, toI32(newName.length) - 1) : newName;
-  if (newName.length === 0) {
+  if (newName.length < 1) {
     return;
   }
   const c0 = newName.charCodeAt(0);

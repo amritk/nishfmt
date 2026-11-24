@@ -39,6 +39,10 @@ import {
   swStrIsMacro,
 } from "./token";
 
+// Token indices, token counts and line numbers stay below the token count, far from the
+// i32 limits, so a sum or difference of them the prover cannot bound is written
+// `toI32(toU32(a) + b)`: wrapping u32 arithmetic, exact for such values.
+
 /** endOfExpression(at:upTo:), the delimiters being none, `?` (infix) when `upToTernary`,
  *  and also infix `&&`, `||` and `:` when `upToLogical`. */
 export const swEndOfExpression = (
@@ -70,8 +74,8 @@ export const swEndOfExpression = (
       // break
     } else if (k === SW_KEYWORD && s === "as") {
       wasOperator = true;
-      if (swIsUnwrap(f, i + 1)) {
-        i++;
+      if (swIsUnwrap(f, toI32(toU32(i) + 1))) {
+        i = toI32(toU32(i) + 1);
       }
     } else if ((k === SW_KEYWORD && swStrIsMacro(s)) || k === SW_NUMBER || k === SW_IDENT) {
       if (!wasOperator) {
@@ -185,8 +189,10 @@ const swCompareTypes = (f: SwFormatter, j0: i32, i0: i32, typeEndIndex: i32): Sw
 
 const swStrIn = (s: string, list: string): boolean => {
   let st = 0;
-  for (let q = 0; q <= toI32(list.length); q++) {
-    if (q === toI32(list.length) || list.charCodeAt(q) === 32) {
+  const n = toI32(list.length);
+  // n is a string length, so q < 2147483647 changes nothing.
+  for (let q = 0; q <= n && q < 2147483647; q++) {
+    if (q === n || (q < n && list.charCodeAt(q) === 32)) {
       if (list.substring(st, q) === s) {
         return true;
       }
@@ -265,9 +271,9 @@ const swRemoveType = (
   wasValue: boolean,
 ): void => {
   if (c.isInferred) {
-    f.removeTokens(c.colonIndex, c.typeEndIndex + 1);
-    if (f.has(c.colonIndex - 1) && f.k(c.colonIndex - 1) === SW_SPACE) {
-      f.removeToken(c.colonIndex - 1);
+    f.removeTokens(c.colonIndex, toI32(toU32(c.typeEndIndex) + 1));
+    if (f.has(toI32(toU32(c.colonIndex) - 1)) && f.k(toI32(toU32(c.colonIndex) - 1)) === SW_SPACE) {
+      f.removeToken(toI32(toU32(c.colonIndex) - 1));
     }
     return;
   }
@@ -294,8 +300,8 @@ const swRemoveType = (
       litStart = f.indexAfter(SW_T_NON_SPACE_OR_COMMENT_OR_LINEBREAK, parenIndex);
     }
     if (lit >= 0) {
-      const toks = f.slice(litStart, lit + 1);
-      f.replaceTokens(valueStartIndex, closeParen + 1, toks);
+      const toks = f.slice(litStart, toI32(toU32(lit) + 1));
+      f.replaceTokens(valueStartIndex, toI32(toU32(closeParen) + 1), toks);
     } else if (f.indexOfIn(SW_OP, ".", SW_OP_INFIX, j, endIndex) < 0) {
       f.replaceTokens(valueStartIndex, j + 1, [new SwTok(SW_OP, ".", SW_OP_INFIX), new SwTok(SW_IDENT, "init", 0)]);
     }
@@ -304,7 +310,7 @@ const swRemoveType = (
     if (
       nextIndex >= 0 &&
       f.op(nextIndex, ".", SW_OP_INFIX) &&
-      f.indexOfIn(SW_OP, ".", SW_OP_INFIX, nextIndex + 1, endIndex) < 0
+      f.indexOfIn(SW_OP, ".", SW_OP_INFIX, toI32(toU32(nextIndex) + 1), endIndex) < 0
     ) {
       f.removeTokens(valueStartIndex, j + 1);
     }
@@ -314,8 +320,9 @@ const swRemoveType = (
 /** allRecursiveConditionalBranches(in:satisfy:) for the type comparison. */
 const swAllBranchesMatch = (f: SwFormatter, c: SwRTCtx, br: SwBranches): boolean => {
   let all = true;
-  for (let q = toI32(br.starts.length) - 1; q >= 0; q--) {
-    const sb = br.starts[q];
+  const starts = br.starts;
+  for (let q = toI32(starts.length) - 1; q >= 0 && q < starts.length; q--) {
+    const sb = starts[q];
     const ta = f.indexAfter(SW_T_NON_SPACE_OR_COMMENT_OR_LINEBREAK, sb);
     const inner: SwBranches | null = ta >= 0 ? swConditionalBranches(f, ta) : null;
     if (inner !== null) {
@@ -331,8 +338,9 @@ const swAllBranchesMatch = (f: SwFormatter, c: SwRTCtx, br: SwBranches): boolean
 
 /** forEachRecursiveConditionalBranch(in:) removing the type from each branch. */
 const swRemoveTypeInBranches = (f: SwFormatter, c: SwRTCtx, br: SwBranches): void => {
-  for (let q = toI32(br.starts.length) - 1; q >= 0; q--) {
-    const sb = br.starts[q];
+  const starts = br.starts;
+  for (let q = toI32(starts.length) - 1; q >= 0 && q < starts.length; q--) {
+    const sb = starts[q];
     const ta = f.indexAfter(SW_T_NON_SPACE_OR_COMMENT_OR_LINEBREAK, sb);
     const inner: SwBranches | null = ta >= 0 ? swConditionalBranches(f, ta) : null;
     if (inner !== null) {
@@ -470,7 +478,7 @@ export const swRuleRedundantType = (f: SwFormatter): void => {
         continue;
       }
       if (f.tok(base, SW_IDENT, "Set") && swArrayLiteralElementTypeIs(f, tokenAfterEquals, arg)) {
-        f.removeTokens(openAngle, typeEndIndex + 1);
+        f.removeTokens(openAngle, toI32(toU32(typeEndIndex) + 1));
       }
     }
   }

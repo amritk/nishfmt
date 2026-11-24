@@ -4,6 +4,7 @@
 // Ported from SwiftFormat 0.64.7 (MIT License, Copyright (c) 2016 Nick
 // Lockwood).
 
+import { fault } from "../core/fault";
 import { swSingularized } from "./singular";
 import { swIsUnsafeExpression } from "./expr";
 import { SwFormatter } from "./formatter";
@@ -30,6 +31,10 @@ import {
   swIsSwiftKeyword,
 } from "./token";
 
+// Token indices, token counts and line numbers stay below the token count, far from the
+// i32 limits, so a sum or difference of them the prover cannot bound is written
+// `toI32(toU32(a) + b)`: wrapping u32 arithmetic, exact for such values.
+
 const swIsAsciiString = (s: string): boolean => {
   for (let i = 0; i < toI32(s.length); i++) {
     if (s.charCodeAt(i) >= 128) {
@@ -41,14 +46,17 @@ const swIsAsciiString = (s: string): boolean => {
 
 const swTokenizeString = (src: string): SwTok[] => {
   const n = toI32(src.length);
-  const b = new Array<u8>(n);
+  const b: u8[] = [];
   for (let j = 0; j < n; j++) {
-    b[j] = toU8(src.charCodeAt(j));
+    b.push(toU8(src.charCodeAt(j)));
   }
   const t = swTokenize(b, n);
   const out: SwTok[] = [];
-  for (let j = 0; j < t.count(); j++) {
-    out.push(new SwTok(t.k[j], t.s[j], t.a[j]));
+  const tk = t.k;
+  const ts = t.s;
+  const ta = t.a;
+  for (let j = 0; j < tk.length && j < ts.length && j < ta.length; j++) {
+    out.push(new SwTok(tk[j], ts[j], ta[j]));
   }
   return out;
 };
@@ -169,14 +177,14 @@ const swParseClosureArguments = (f: SwFormatter, closureStart: i32): SwClosureAr
     if (paramsEnd < 0) {
       return null;
     }
-    let argIndex = firstParam + 1;
+    let argIndex = toI32(toU32(firstParam) + 1);
     while (argIndex < paramsEnd) {
       const nn = f.indexInType(SW_T_NON_SPACE_OR_COMMENT_OR_LINEBREAK, argIndex, paramsEnd);
       if (nn >= 0 && (f.k(nn) === SW_IDENT || f.k(nn) === SW_KEYWORD)) {
         out.args.push(nn);
         const comma = f.indexOfIn(SW_DELIM, ",", 0, nn, paramsEnd);
         if (comma >= 0) {
-          argIndex = comma + 1;
+          argIndex = toI32(toU32(comma) + 1);
         } else {
           break;
         }
@@ -198,7 +206,7 @@ const swParseClosureArguments = (f: SwFormatter, closureStart: i32): SwClosureAr
           break;
         }
         if (f.tok(nn, SW_DELIM, ",")) {
-          argIndex = nn + 1;
+          argIndex = toI32(toU32(nn) + 1);
           continue;
         }
         if (
@@ -230,7 +238,7 @@ const swParseClosureArguments = (f: SwFormatter, closureStart: i32): SwClosureAr
 /** loopBodies(in:_:) as [lo0, hi0, lo1, hi1, ...]. */
 const swLoopBodies = (f: SwFormatter, open: i32, close: i32): i32[] => {
   const out: i32[] = [];
-  for (let index = open + 1; index < close; index++) {
+  for (let index = toI32(toU32(open) + 1); index < close; index++) {
     if (swIndexIsWithinNestedClosure(f, index, open)) {
       continue;
     }
@@ -281,7 +289,7 @@ const swIsNonZeroDollarInt = (s: string): boolean => {
       return false;
     }
     if (c !== 48 || nonZero) {
-      digits++;
+      digits = toI32(toU32(digits) + 1);
     }
     if (c !== 48) {
       nonZero = true;
@@ -295,13 +303,16 @@ const swIsNonZeroDollarInt = (s: string): boolean => {
   }
   if (digits === 19) {
     // Int.max is 9223372036854775807 (Int.min's magnitude is one more).
+    // A non-zero digit follows, and 19 digits from it.
     let q = p;
-    while (s.charCodeAt(q) === 48) {
+    while (q >= 0 && q < n && s.charCodeAt(q) === 48) {
       q++;
     }
     const v = s.substring(q);
-    const lim = s.charCodeAt(1) === 45 ? "9223372036854775808" : "9223372036854775807";
-    for (let j = 0; j < 19; j++) {
+    const vn = toI32(v.length);
+    const lim = s.length > 1 && s.charCodeAt(1) === 45 ? "9223372036854775808" : "9223372036854775807";
+    const ln = toI32(lim.length);
+    for (let j = 0; j < 19 && j < vn && j < ln; j++) {
       if (v.charCodeAt(j) !== lim.charCodeAt(j)) {
         return v.charCodeAt(j) < lim.charCodeAt(j);
       }
@@ -400,7 +411,7 @@ const swPreferForLoopAt = (f: SwFormatter, forEachIndex: i32): void => {
   if (scope >= 0 && (f.tok(scope, SW_START, "(") || f.tok(scope, SW_START, "["))) {
     return;
   }
-  for (let i = subjectLo; i <= subjectHi; i++) {
+  for (let i = subjectLo; i <= subjectHi; i = toI32(toU32(i) + 1)) {
     if (f.k(i) === SW_LINEBREAK) {
       return;
     }
@@ -442,7 +453,7 @@ const swPreferForLoopAt = (f: SwFormatter, forEachIndex: i32): void => {
     let chosen = "";
     for (const name of eligible) {
       let used = false;
-      for (let i = open; i <= close; i++) {
+      for (let i = open; i <= close; i = toI32(toU32(i) + 1)) {
         if (f.s(i) === name) {
           used = true;
           break;
@@ -459,7 +470,7 @@ const swPreferForLoopAt = (f: SwFormatter, forEachIndex: i32): void => {
     names = [chosen];
   }
   const bodies = swLoopBodies(f, open, close);
-  for (let i = open; i <= close; i++) {
+  for (let i = open; i <= close; i = toI32(toU32(i) + 1)) {
     if (swIndexIsWithinNestedClosure(f, i, open)) {
       continue;
     }
@@ -468,7 +479,8 @@ const swPreferForLoopAt = (f: SwFormatter, forEachIndex: i32): void => {
       return;
     }
     if (f.kw(i, "return")) {
-      for (let b = 0; b < toI32(bodies.length); b += 2) {
+      // bodies holds start, end pairs.
+      for (let b = 0; b < bodies.length - 1; b += 2) {
         if (i >= bodies[b] && i <= bodies[b + 1]) {
           return;
         }
@@ -479,11 +491,15 @@ const swPreferForLoopAt = (f: SwFormatter, forEachIndex: i32): void => {
       }
     }
   }
-  for (let i = open; i <= close; i++) {
+  for (let i = open; i <= close; i = toI32(toU32(i) + 1)) {
     if (swIndexIsWithinNestedClosure(f, i, open)) {
       continue;
     }
     if (isAnonymous && f.s(i) === "$0") {
+      if (names.length < 1) {
+        fault();
+        return;
+      }
       f.replaceToken(i, SW_IDENT, names[0], 0);
     }
     if (f.kw(i, "return")) {
@@ -508,13 +524,13 @@ const swPreferForLoopAt = (f: SwFormatter, forEachIndex: i32): void => {
   toks.push(new SwTok(SW_SPACE, " ", 0));
   toks.push(new SwTok(SW_KEYWORD, "in", 0));
   toks.push(new SwTok(SW_SPACE, " ", 0));
-  for (let i = subjectLo; i <= subjectHi; i++) {
+  for (let i = subjectLo; i <= subjectHi; i = toI32(toU32(i) + 1)) {
     toks.push(new SwTok(f.k(i), f.s(i), f.a(i)));
   }
   toks.push(new SwTok(SW_SPACE, " ", 0));
   toks.push(new SwTok(SW_START, "{", 0));
   const end = inKeyword >= 0 ? inKeyword : open;
-  f.replaceTokens(subjectLo, end + 1, toks);
+  f.replaceTokens(subjectLo, toI32(toU32(end) + 1), toks);
 };
 
 /** preferForLoop. */

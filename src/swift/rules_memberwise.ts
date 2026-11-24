@@ -16,6 +16,7 @@ import {
   swStringExcludingLinebreaksAndComments,
   swVisibilityRank,
 } from "./decl";
+import { fault } from "../core/fault";
 import { swParsePropertyDeclaration } from "./expr";
 import { SwDecl, SwFormatter } from "./formatter";
 import { swParseFunctionDeclaration } from "./funcdecl";
@@ -34,6 +35,10 @@ import {
   SW_T_NON_SPACE,
   SW_T_NON_SPACE_OR_COMMENT_OR_LINEBREAK,
 } from "./token";
+
+// Token indices, token counts and line numbers stay below the token count, far from the
+// i32 limits, so a sum or difference of them the prover cannot bound is written
+// `toI32(toU32(a) + b)`: wrapping u32 arithmetic, exact for such values.
 
 /** Declaration.accessLevel() as a Visibility rank (internal when absent). */
 const swAccessRank = (f: SwFormatter, d: SwDecl): i32 => {
@@ -92,11 +97,11 @@ const swDocCommentStart = (f: SwFormatter, keywordIndex: i32): i32 => {
 
 /** Whether tokens [a0, a1] equal tokens [b0, b1]. */
 const swSameTokenRun = (f: SwFormatter, a0: i32, a1: i32, b0: i32, b1: i32): boolean => {
-  if (a1 - a0 !== b1 - b0) {
+  if (toI32(toU32(a1) - toU32(a0)) !== toI32(toU32(b1) - toU32(b0))) {
     return false;
   }
-  for (let q = 0; q <= a1 - a0; q++) {
-    if (!f.same(a0 + q, b0 + q)) {
+  for (let q = 0; q <= toI32(toU32(a1) - toU32(a0)); q = toI32(toU32(q) + 1)) {
+    if (!f.same(toI32(toU32(a0) + toU32(q)), toI32(toU32(b0) + toU32(q)))) {
       return false;
     }
   }
@@ -116,7 +121,7 @@ const swRemoveAll = (s: string, what: string): string => {
       break;
     }
     parts.push(s.substring(start, j));
-    start = j + toI32(what.length);
+    start = toI32(toU32(j) + toU32(toI32(what.length)));
   }
   parts.push(s.substring(start));
   return parts.join("");
@@ -176,7 +181,7 @@ export const swRuleRedundantMemberwiseInit = (f: SwFormatter): void => {
     let initDecl: SwDecl | null = null;
     for (const c of sd.body) {
       if (c.keyword === "init") {
-        inits++;
+        inits = toI32(toU32(inits) + 1);
         initDecl = c;
       }
     }
@@ -274,14 +279,15 @@ export const swRuleRedundantMemberwiseInit = (f: SwFormatter): void => {
     }
     // The stored properties without default values.
     const wd: i32[] = [];
-    for (let q = 0; q < toI32(propNames.length); q++) {
+    for (let q = 0; q < propNames.length; q++) {
+      const propName = propNames[q];
       let hasDefault = false;
       for (const c of sd.body) {
         if (!(c.keyword === "var" || c.keyword === "let")) {
           continue;
         }
         const p = swParsePropertyDeclaration(f, swDeclKeywordIndex(f, c));
-        if (p !== null && p.identifier === propNames[q] && p.valueStart >= 0) {
+        if (p !== null && p.identifier === propName && p.valueStart >= 0) {
           hasDefault = true;
           break;
         }
@@ -293,19 +299,37 @@ export const swRuleRedundantMemberwiseInit = (f: SwFormatter): void => {
     if (paramNames.length !== wd.length) {
       continue;
     }
-    for (let q = 0; q < toI32(wd.length); q++) {
+    const args = fd.args;
+    for (let q = 0; q < wd.length; q++) {
       const pi = wd[q];
-      const a = fd.args[q];
+      // The parameter arrays run parallel to fd.args, the property arrays to propNames.
+      if (
+        q >= args.length ||
+        q >= paramNames.length ||
+        q >= paramBuilder.length ||
+        pi < 0 ||
+        pi >= propNames.length ||
+        pi >= propTypeStart.length ||
+        pi >= propTypeEnd.length
+      ) {
+        fault();
+        return;
+      }
+      const a = args[q];
+      const builder = paramBuilder[q];
+      const typeStart = propTypeStart[pi];
+      const typeEnd = propTypeEnd[pi];
       if (paramNames[q] !== propNames[pi]) {
         ok = false;
         break;
       }
-      const propType = swStringExcludingLinebreaksAndComments(f, propTypeStart[pi], propTypeEnd[pi] + 1);
-      const paramType = swStringExcludingLinebreaksAndComments(f, a.typeStart, a.typeEnd + 1);
-      if (paramBuilder[q].length !== 0 && paramType === `() -> ${propType}`) {
+      // Token indices: the u32 sums are exact.
+      const propType = swStringExcludingLinebreaksAndComments(f, typeStart, toI32(toU32(typeEnd) + 1));
+      const paramType = swStringExcludingLinebreaksAndComments(f, a.typeStart, toI32(toU32(a.typeEnd) + 1));
+      if (builder.length !== 0 && paramType === `() -> ${propType}`) {
         continue;
       }
-      if (swSameTokenRun(f, a.typeStart, a.typeEnd, propTypeStart[pi], propTypeEnd[pi])) {
+      if (swSameTokenRun(f, a.typeStart, a.typeEnd, typeStart, typeEnd)) {
         continue;
       }
       if (swRemoveAll(paramType, "@escaping ") === propType) {
@@ -318,7 +342,7 @@ export const swRuleRedundantMemberwiseInit = (f: SwFormatter): void => {
       continue;
     }
     // The body: memberwise assignments only.
-    const bodyStart = fd.bodyStart + 1;
+    const bodyStart = toI32(toU32(fd.bodyStart) + 1);
     const bodyEnd = fd.bodyEnd;
     let isRedundant = true;
     let assignmentCount = 0;
@@ -332,7 +356,7 @@ export const swRuleRedundantMemberwiseInit = (f: SwFormatter): void => {
     let bodyIndex = bodyStart;
     if (isRedundant) {
       while (true) {
-        const nt = f.indexAfter(SW_T_NON_SPACE_OR_COMMENT_OR_LINEBREAK, bodyIndex - 1);
+        const nt = f.indexAfter(SW_T_NON_SPACE_OR_COMMENT_OR_LINEBREAK, toI32(toU32(bodyIndex) - 1));
         if (nt < 0 || nt >= bodyEnd) {
           break;
         }
@@ -351,6 +375,10 @@ export const swRuleRedundantMemberwiseInit = (f: SwFormatter): void => {
         const name = f.s(pr);
         let known = false;
         for (const q of wd) {
+          if (q < 0 || q >= propNames.length) {
+            fault();
+            return;
+          }
           if (propNames[q] === name) {
             known = true;
           }
@@ -359,20 +387,24 @@ export const swRuleRedundantMemberwiseInit = (f: SwFormatter): void => {
           isRedundant = false;
           break;
         }
-        let nextAfterValue = vi + 1;
+        let nextAfterValue = toI32(toU32(vi) + 1);
         const paren = f.indexAfter(SW_T_NON_SPACE_OR_COMMENT_OR_LINEBREAK, vi);
         const ep = paren >= 0 && f.tok(paren, SW_START, "(") ? swEndOfScope(f, paren) : -1;
         const inner = ep >= 0 ? f.indexAfter(SW_T_NON_SPACE_OR_COMMENT_OR_LINEBREAK, paren) : -1;
         if (ep >= 0 && !(inner >= 0 && inner < ep)) {
           needsBuilder.push(name);
-          nextAfterValue = ep + 1;
+          nextAfterValue = toI32(toU32(ep) + 1);
         } else {
           const pq = paramNames.indexOf(name);
+          if (pq >= paramBuilder.length) {
+            fault();
+            return;
+          }
           if (pq >= 0 && paramBuilder[pq].length !== 0) {
             needsBuilder.push(name);
           }
         }
-        assignmentCount++;
+        assignmentCount = toI32(toU32(assignmentCount) + 1);
         bodyIndex = nextAfterValue;
       }
     }
@@ -380,14 +412,24 @@ export const swRuleRedundantMemberwiseInit = (f: SwFormatter): void => {
       continue;
     }
     for (const q of wd) {
+      if (q < 0 || q >= propNames.length || q >= propDecls.length) {
+        fault();
+        return;
+      }
       const name = propNames[q];
+      const decl = propDecls[q];
       const pq = paramNames.indexOf(name);
-      if (needsBuilder.indexOf(name) < 0 || pq < 0 || paramBuilder[pq].length === 0) {
+      if (pq >= paramBuilder.length) {
+        fault();
+        return;
+      }
+      const builder = pq >= 0 ? paramBuilder[pq] : "";
+      if (needsBuilder.indexOf(name) < 0 || pq < 0 || builder.length === 0) {
         continue;
       }
-      const at = swDeclStartOfModifiers(f, propDecls[q], true);
+      const at = swDeclStartOfModifiers(f, decl, true);
       f.insert(SW_SPACE, " ", 0, at);
-      f.insert(SW_KEYWORD, paramBuilder[pq], 0, at);
+      f.insert(SW_KEYWORD, builder, 0, at);
     }
     const startRemoval = swDeclLo(f, initDecl);
     const ik2 = swDeclKeywordIndex(f, initDecl);
@@ -401,18 +443,18 @@ export const swRuleRedundantMemberwiseInit = (f: SwFormatter): void => {
     if (s > 0 && f.k(s - 1) === SW_LINEBREAK) {
       s--;
     }
-    while (e + 1 < f.count()) {
-      const k = f.k(e + 1);
+    while (toI32(toU32(e) + 1) < f.count()) {
+      const k = f.k(toI32(toU32(e) + 1));
       if (k === SW_SPACE) {
-        e++;
+        e = toI32(toU32(e) + 1);
       } else if (k === SW_LINEBREAK) {
-        e++;
+        e = toI32(toU32(e) + 1);
         break;
       } else {
         break;
       }
     }
-    f.removeTokens(s, e + 1);
+    f.removeTokens(s, toI32(toU32(e) + 1));
   }
   swReleaseDecls(f, all);
 };

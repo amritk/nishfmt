@@ -4,6 +4,8 @@
 // Ported from SwiftFormat 0.64.7 (MIT License, Copyright (c) 2016 Nick
 // Lockwood).
 
+import { fault } from "../core/fault";
+import { swRefLo } from "./decl";
 import { swParsePropertyDeclaration } from "./expr";
 import { swCommentDirective } from "./imports";
 import { SwFormatter } from "./formatter";
@@ -22,6 +24,10 @@ import {
   SwTok,
   swIsMultilineStringDelimiter,
 } from "./token";
+
+// Token indices, token counts and line numbers stay below the token count, far from the
+// i32 limits, so a sum or difference of them the prover cannot bound is written
+// `toI32(toU32(a) + b)`: wrapping u32 arithmetic, exact for such values.
 
 /** ifStatementBranches(at:) as [start0, end0, start1, end1, ...]. */
 const swIfBranchPairs = (f: SwFormatter, ifIndex: i32): i32[] => {
@@ -88,7 +94,7 @@ const swReplaceNestedIfIndentation = (
   let upperBound = upperBound0;
   while (lowerBound < upperBound) {
     let lb = -1;
-    for (let j = upperBound; j >= lowerBound; j--) {
+    for (let j = upperBound; j >= lowerBound; j = toI32(toU32(j) - 1)) {
       if (f.k(j) === SW_LINEBREAK) {
         lb = j;
         break;
@@ -97,10 +103,10 @@ const swReplaceNestedIfIndentation = (
     if (lb < 0 || lb <= lowerBound) {
       return;
     }
-    if (f.has(lb + 1) && f.k(lb + 1) === SW_SPACE) {
-      const indent = f.s(lb + 1);
+    if (f.has(toI32(toU32(lb) + 1)) && f.k(toI32(toU32(lb) + 1)) === SW_SPACE) {
+      const indent = f.s(toI32(toU32(lb) + 1));
       if (indent.startsWith(oldIndent)) {
-        f.insertSpace(newIndent + indent.substring(oldIndent.length), lb + 1);
+        f.insertSpace(newIndent + indent.substring(oldIndent.length), toI32(toU32(lb) + 1));
       }
     }
     upperBound = lb - 1;
@@ -115,7 +121,8 @@ const swFlattenElseIf = (f: SwFormatter, ifIndex: i32): boolean => {
   }
   if (swIsInResultBuilder(f, ifIndex)) {
     let hasReturn = false;
-    for (let q = 0; q < toI32(br.length); q += 2) {
+    // br holds start, end pairs; an array length keeps q below 2147483645.
+    for (let q = 0; q < br.length - 1 && q < 2147483645; q += 2) {
       if (f.nextIs(SW_T_NON_SPACE_OR_COMMENT_OR_LINEBREAK, br[q], SW_KEYWORD, "return")) {
         hasReturn = true;
       }
@@ -124,8 +131,14 @@ const swFlattenElseIf = (f: SwFormatter, ifIndex: i32): boolean => {
       return false;
     }
   }
-  const os = br[toI32(br.length) - 2];
-  const oe = br[toI32(br.length) - 1];
+  // br holds start, end pairs.
+  const nbr = toI32(br.length);
+  if (nbr < 2) {
+    fault();
+    return false;
+  }
+  const os = br[nbr - 2];
+  const oe = br[nbr - 1];
   const elseIndex = f.indexBefore(SW_T_NON_SPACE_OR_COMMENT_OR_LINEBREAK, os);
   if (elseIndex < 0 || !f.kw(elseIndex, "else")) {
     return false;
@@ -135,26 +148,27 @@ const swFlattenElseIf = (f: SwFormatter, ifIndex: i32): boolean => {
     return false;
   }
   const nb = swIfBranchPairs(f, nestedIfIndex);
-  if (nb.length === 0) {
+  const nnb = toI32(nb.length);
+  if (nnb < 1) {
     return false;
   }
-  const nestedEnd = nb[toI32(nb.length) - 1];
+  const nestedEnd = nb[nnb - 1];
   if (f.indexAfter(SW_T_NON_SPACE_OR_COMMENT_OR_LINEBREAK, nestedEnd) !== oe) {
     return false;
   }
   if (
-    swHasComment(f, elseIndex + 1, nestedIfIndex) ||
-    swHasComment(f, nestedEnd + 1, oe) ||
-    swHasMultilineString(f, nestedIfIndex, nestedEnd + 1) ||
-    swHasCommentDirective(f, nestedIfIndex, nestedEnd + 1)
+    swHasComment(f, toI32(toU32(elseIndex) + 1), nestedIfIndex) ||
+    swHasComment(f, toI32(toU32(nestedEnd) + 1), oe) ||
+    swHasMultilineString(f, nestedIfIndex, toI32(toU32(nestedEnd) + 1)) ||
+    swHasCommentDirective(f, nestedIfIndex, toI32(toU32(nestedEnd) + 1))
   ) {
     return false;
   }
   const outerIndent = f.currentIndentForLine(elseIndex);
   const nestedIndent = f.currentIndentForLine(nestedIfIndex);
-  f.removeTokens(nestedEnd + 1, oe + 1);
+  f.removeTokens(toI32(toU32(nestedEnd) + 1), toI32(toU32(oe) + 1));
   swReplaceNestedIfIndentation(f, nestedIndent, outerIndent, nestedIfIndex, nestedEnd);
-  f.replaceTokens(elseIndex + 1, nestedIfIndex, [new SwTok(SW_SPACE, " ", 0)]);
+  f.replaceTokens(toI32(toU32(elseIndex) + 1), nestedIfIndex, [new SwTok(SW_SPACE, " ", 0)]);
   return true;
 };
 
@@ -177,7 +191,7 @@ const swFirstConditionStart = (f: SwFormatter, ifIndex: i32): i32 => {
 /** conditionsAreWrapped(after:before:). */
 const swConditionsAreWrapped = (f: SwFormatter, keywordIndex: i32, endIndex: i32): boolean => {
   const last = f.indexBefore(SW_T_NON_SPACE_OR_COMMENT_OR_LINEBREAK, endIndex);
-  return last >= 0 && f.indexInType(SW_T_LINEBREAK, keywordIndex + 1, last) >= 0;
+  return last >= 0 && f.indexInType(SW_T_LINEBREAK, toI32(toU32(keywordIndex) + 1), last) >= 0;
 };
 
 /** nestedIfCommentLines(in:): null for nil; each line as [lo, hi). */
@@ -197,8 +211,8 @@ const swNestedIfCommentLines = (f: SwFormatter, lo: i32, hi: i32): i32[] | null 
       while (a < b && f.k(a) === SW_SPACE) {
         a++;
       }
-      while (b > a && f.k(b - 1) === SW_SPACE) {
-        b--;
+      while (b > a && f.k(toI32(toU32(b) - 1)) === SW_SPACE) {
+        b = toI32(toU32(b) - 1);
       }
       for (let q = a; q < b; q++) {
         if (!f.isComment(q) && f.k(q) !== SW_SPACE) {
@@ -235,7 +249,7 @@ const swMergeNestedIf = (f: SwFormatter, ifIndex: i32): boolean => {
   }
   const nbs = swStartOfConditionalBranchBody(f, nested);
   const nbe = nbs >= 0 ? swEndOfScope(f, nbs) : -1;
-  if (nbe < 0 || swHasMultilineString(f, nested, nbe + 1)) {
+  if (nbe < 0 || swHasMultilineString(f, nested, toI32(toU32(nbe) + 1))) {
     return false;
   }
   if (f.indexBefore(SW_T_NON_SPACE_OR_COMMENT_OR_LINEBREAK, obe) !== nbe) {
@@ -252,13 +266,15 @@ const swMergeNestedIf = (f: SwFormatter, ifIndex: i32): boolean => {
   if (oce < 0 || ocs < 0 || ncs < 0 || nce < 0) {
     return false;
   }
-  const ccl = swNestedIfCommentLines(f, obs + 1, nested);
-  if (ccl === null || swHasComment(f, oce + 1, obs + 1)) {
+  const ccl = swNestedIfCommentLines(f, toI32(toU32(obs) + 1), nested);
+  if (ccl === null || swHasComment(f, toI32(toU32(oce) + 1), toI32(toU32(obs) + 1))) {
     return false;
   }
   const lines: SwTok[][] = [];
-  for (let q = 0; q < toI32(ccl.length); q += 2) {
-    lines.push(f.slice(ccl[q], ccl[q + 1]));
+  // ccl holds start, end pairs; an array length keeps q below 2147483645.
+  const cl: i32[] = ccl;
+  for (let q = 0; q < cl.length - 1 && q < 2147483645; q += 2) {
+    lines.push(f.slice(cl[q], cl[q + 1]));
   }
   const wrapSeparator =
     lines.length === 0 && (swConditionsAreWrapped(f, ifIndex, obs) || swConditionsAreWrapped(f, nested, nbs));
@@ -266,7 +282,7 @@ const swMergeNestedIf = (f: SwFormatter, ifIndex: i32): boolean => {
   const outerIndent = f.currentIndentForLine(ifIndex);
   const nestedIndent = f.currentIndentForLine(nested);
   let tci = -1;
-  for (let j = nbe + 1; j <= obe; j++) {
+  for (let j = toI32(toU32(nbe) + 1); j <= obe; j = toI32(toU32(j) + 1)) {
     if (f.isComment(j)) {
       tci = j;
       break;
@@ -276,21 +292,21 @@ const swMergeNestedIf = (f: SwFormatter, ifIndex: i32): boolean => {
   if (tci >= 0) {
     const cbls = f.startOfLine(nbe);
     if (f.indexInType(SW_T_NON_SPACE_OR_COMMENT_OR_LINEBREAK, cbls, nbe) < 0 && !f.onSameLine(nbe, tci)) {
-      f.removeTokens(cbls, f.endOfLine(nbe) + 1);
+      f.removeTokens(cbls, toI32(toU32(f.endOfLine(nbe)) + 1));
     } else if (f.onSameLine(nbe, tci)) {
       f.removeTokens(nbe, tci);
     } else {
       f.removeToken(nbe);
     }
   } else {
-    f.removeTokens(nbe + 1, obe + 1);
+    f.removeTokens(toI32(toU32(nbe) + 1), toI32(toU32(obe) + 1));
   }
   const line = f.linebreakLine(ifIndex);
   if (wrapSeparator && f.indexAfter(SW_T_NON_SPACE_OR_LINEBREAK, nested) >= 0) {
     const ncs2 = f.indexAfter(SW_T_NON_SPACE_OR_LINEBREAK, nested);
-    f.replaceTokens(oce + 1, ncs2, [new SwTok(SW_DELIM, ",", 0), new SwTok(SW_LINEBREAK, "\n", line)]);
+    f.replaceTokens(toI32(toU32(oce) + 1), ncs2, [new SwTok(SW_DELIM, ",", 0), new SwTok(SW_LINEBREAK, "\n", line)]);
   } else if (lines.length === 0) {
-    f.replaceTokens(oce + 1, nested + 1, [new SwTok(SW_DELIM, ",", 0)]);
+    f.replaceTokens(toI32(toU32(oce) + 1), nested + 1, [new SwTok(SW_DELIM, ",", 0)]);
   } else {
     const ci = swSpaceEquivalentToTokens(f, f.startOfLine(ifIndex), ocs);
     const indented: SwTok[] = [new SwTok(SW_LINEBREAK, "\n", line)];
@@ -301,7 +317,7 @@ const swMergeNestedIf = (f: SwFormatter, ifIndex: i32): boolean => {
     if (outerIndent.length !== 0) {
       bodyBreak.push(new SwTok(SW_SPACE, outerIndent, 0));
     }
-    f.replaceTokens(nce + 1, nbs, bodyBreak);
+    f.replaceTokens(toI32(toU32(nce) + 1), nbs, bodyBreak);
     const sep: SwTok[] = [new SwTok(SW_DELIM, ",", 0)];
     for (const t of indented) {
       sep.push(t);
@@ -314,19 +330,20 @@ const swMergeNestedIf = (f: SwFormatter, ifIndex: i32): boolean => {
         sep.push(t);
       }
     }
-    f.replaceTokens(oce + 1, ncs, sep);
+    f.replaceTokens(toI32(toU32(oce) + 1), ncs, sep);
   }
   const mbs = swStartOfConditionalBranchBody(f, ifIndex);
   const mbe = mbs >= 0 ? swEndOfScope(f, mbs) : -1;
   if (mbe >= 0) {
-    const indentationEnd = h >= 0 ? f.startOfLine(f.refLo[h]) - 2 : mbe;
+    // A token index: the u32 difference is exact.
+    const indentationEnd = h >= 0 ? toI32(toU32(f.startOfLine(swRefLo(f, h))) - 2) : mbe;
     swReplaceNestedIfIndentation(f, nestedIndent, outerIndent, oce, indentationEnd);
   }
   if (h >= 0) {
     f.unref(h);
   }
   if (wrapSeparator) {
-    f.insertSpace(conditionIndent, oce + 3);
+    f.insertSpace(conditionIndent, toI32(toU32(oce) + 3));
   }
   return true;
 };

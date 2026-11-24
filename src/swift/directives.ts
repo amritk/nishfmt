@@ -5,6 +5,7 @@
 // Ported from SwiftFormat 0.64.7 (MIT License, Copyright (c) 2016 Nick
 // Lockwood).
 
+import { fault } from "../core/fault";
 import { SwFormatter } from "./formatter";
 import { SW_COMMENT, SW_LINEBREAK, SW_START, SwTokList } from "./token";
 
@@ -16,8 +17,14 @@ export const SW_DIRECTIVES_UNSUPPORTED: i32 = 2;
 
 /** Whether any comment holds `swiftformat:` (a directive, or a sort comment). */
 export const swHasDirectiveText = (t: SwTokList): boolean => {
-  for (let i = 0; i < t.count(); i++) {
-    if (t.k[i] === SW_COMMENT && t.s[i].indexOf("swiftformat:") >= 0) {
+  const ks = t.k;
+  const ss = t.s;
+  if (ss.length < ks.length) {
+    fault();
+    return false;
+  }
+  for (let i = 0; i < ks.length && i < ss.length; i++) {
+    if (ks[i] === SW_COMMENT && ss[i].indexOf("swiftformat:") >= 0) {
       return true;
     }
   }
@@ -26,8 +33,14 @@ export const swHasDirectiveText = (t: SwTokList): boolean => {
 
 /** Whether any comment holds `swiftformat:sort` (sortDeclarations is not ported). */
 export const swHasSortDirective = (t: SwTokList): boolean => {
-  for (let i = 0; i < t.count(); i++) {
-    if (t.k[i] === SW_COMMENT && t.s[i].indexOf("swiftformat:sort") >= 0) {
+  const ks = t.k;
+  const ss = t.s;
+  if (ss.length < ks.length) {
+    fault();
+    return false;
+  }
+  for (let i = 0; i < ks.length && i < ss.length; i++) {
+    if (ks[i] === SW_COMMENT && ss[i].indexOf("swiftformat:sort") >= 0) {
       return true;
     }
   }
@@ -51,8 +64,10 @@ const swIsWordByte = (c: i32): boolean =>
 const swDirectiveRuleNames = (s: string): string | null => {
   const parts: string[] = [];
   let start = -1;
-  for (let i = 0; i <= toI32(s.length); i++) {
-    const c = i < toI32(s.length) ? s.charCodeAt(i) : 32;
+  const n = toI32(s.length);
+  // n is a string length, so i < 2147483647 changes nothing.
+  for (let i = 0; i <= n && i < 2147483647; i++) {
+    const c = i < n ? s.charCodeAt(i) : 32;
     if (c >= 128) {
       // CharacterSet.alphanumerics and Unicode lowercasing are not ported.
       return null;
@@ -95,7 +110,8 @@ export const swProcessDirectives = (f: SwFormatter): i32 => {
   for (let i = 0; i < n; i++) {
     const k = f.k(i);
     if (k === SW_LINEBREAK) {
-      line = f.a(i) + 1;
+      // A linebreak's aux is its line number, below the token count: the sum is exact.
+      line = toI32(toU32(f.a(i)) + 1);
       lineIndex = i;
       tokenIndex = 0;
       continue;
@@ -105,7 +121,8 @@ export const swProcessDirectives = (f: SwFormatter): i32 => {
       continue;
     }
     if (k === SW_START && f.s(i) === "/*") {
-      tokenIndex = i - lineIndex;
+      // 0 <= lineIndex <= i: the u32 difference is exact.
+      tokenIndex = toI32(toU32(i) - toU32(lineIndex));
       continue;
     }
     if (k !== SW_COMMENT) {
@@ -116,28 +133,38 @@ export const swProcessDirectives = (f: SwFormatter): i32 => {
     if (at < 0) {
       continue;
     }
-    const comment = body.substring(at + 12);
+    // at < body.length: the u32 sum is exact.
+    const comment = body.substring(toI32(toU32(at) + 12));
     const words = swComponents(comment, 32);
+    if (words.length < 1) {
+      fault();
+      return SW_DIRECTIVES_UNSUPPORTED;
+    }
     const parts = swComponents(words[0], 58);
     const rest: string[] = [];
     for (let w = 1; w < toI32(words.length); w++) {
       rest.push(words[w]);
     }
     parts.push(rest.join(" "));
+    if (parts.length < 2) {
+      fault();
+      return SW_DIRECTIVES_UNSUPPORTED;
+    }
     const directive = parts[0];
+    const first = parts[1];
     if (directive.length === 0) {
       return SW_DIRECTIVES_FATAL;
     }
     let p = 1;
     let toggle = true;
-    const first = parts[1];
+    // Line numbers stay near the token count: the u32 sums are exact.
     if (first === "next") {
-      line += 1;
+      line = toI32(toU32(line) + 1);
       tokenIndex = 0;
       toggle = false;
       p = 2;
     } else if (first === "previous") {
-      line -= 1;
+      line = toI32(toU32(line) - 1);
       tokenIndex = 0;
       toggle = false;
       p = 2;
