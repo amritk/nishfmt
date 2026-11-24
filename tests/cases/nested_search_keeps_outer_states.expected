@@ -1,0 +1,21 @@
+tf::DataPipeline pl(
+    L,
+    tf::make_data_pipe<void, int>(
+        tf::PipeType::SERIAL,
+        [&, N, subN, subL](auto &pf) mutable {
+          if (j1 == N) {
+          }
+          tf::DataPipeline subpl(
+              subL,
+              tf::make_data_pipe<void, int>(tf::PipeType::SERIAL,
+                                            [&, subN](auto &subpf) mutable {
+                                              if (subj1 == subN) {
+                                              }
+                                            }),
+              // subpipe 2
+              tf::make_data_pipe<int, int>(tf::PipeType::PARALLEL,
+                                           [&, subN](int in, auto &subpf) mutable { REQUIRE(subj2++ < subN); }),
+              // subpipe 3
+              tf::make_data_pipe<int, void>(tf::PipeType::SERIAL, [&, subN](int in, auto &subpf) mutable { ++subj3; }));
+        }),
+    0);

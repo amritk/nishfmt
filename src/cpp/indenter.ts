@@ -434,8 +434,13 @@ export class Indenter {
   pmStamp: i32[][];
   pmUsed: i32[];
   pmGen: i32 = 0;
-  seenNode: i32[];
-  seenStamp: i32[];
+  // Per search depth, as each of clang-format's analyzeSolutionSpace calls
+  // has a seen set of its own: the expanded nodes, stamped by search
+  // generation. One table shared by the depths lost an enclosing search's
+  // entries whenever a nested search grew it, so a fresh engine (small
+  // tables) laid some files out unlike a warm one.
+  seenNodes: i32[][];
+  seenStamps: i32[][];
   seenGen: i32 = 1;
   depth: i32 = 0;
   // Penalties of child block lists already formatted (dry): by line and indent.
@@ -519,8 +524,8 @@ export class Indenter {
     this.pmVal = [];
     this.pmStamp = [];
     this.pmUsed = new Array<i32>(64);
-    this.seenNode = new Array<i32>(SEEN0);
-    this.seenStamp = new Array<i32>(SEEN0);
+    this.seenNodes = [];
+    this.seenStamps = [];
     this.cacheKey = new Array<i32>(4096);
     this.cacheVal = new Array<i64>(4096);
     this.cacheStamp = new Array<i32>(4096);
@@ -3405,8 +3410,13 @@ export class Indenter {
   seenInsert(n: i32, gen: i32): boolean {
     const ign = indAt(this.nIgn, n) === 1;
     const h = this.stateHash(n, !ign);
-    const sn = this.seenNode;
-    const ss = this.seenStamp;
+    const dd = this.depth;
+    if (dd < 0 || dd >= this.seenNodes.length || dd >= this.seenStamps.length) {
+      fault();
+      return false;
+    }
+    const sn = this.seenNodes[dd];
+    const ss = this.seenStamps[dd];
     const mask = toI32(sn.length) - 1;
     let s = h & mask;
     while (true) {
@@ -3442,7 +3452,14 @@ export class Indenter {
     this.seenGen = indAdd(this.seenGen, 1);
     const gen = this.seenGen;
     if (this.depth === 0 && this.seenGen > 1 << 30) {
+      // A stamp left from before the wrap would read as current again.
       this.seenGen = 1;
+      for (const st of this.seenStamps) {
+        st.fill(0);
+      }
+      for (const st of this.pmStamp) {
+        st.fill(0);
+      }
     }
     this.depth = indAdd(this.depth, 1);
     const dd = this.depth;
@@ -3450,6 +3467,10 @@ export class Indenter {
       this.pmKey.push(new Array<i64>(1024));
       this.pmVal.push(new Array<i32>(1024));
       this.pmStamp.push(new Array<i32>(1024));
+    }
+    while (toI32(this.seenNodes.length) <= dd) {
+      this.seenNodes.push(new Array<i32>(SEEN0));
+      this.seenStamps.push(new Array<i32>(SEEN0));
     }
     if (dd >= toI32(this.pmUsed.length)) {
       this.pmUsed = growI32(this.pmUsed, indAdd(dd, 1));
@@ -3525,7 +3546,7 @@ export class Indenter {
       }
       // (Twice `inserted` passes the length just when it passes half of it,
       // and a length is not negative.)
-      if (inserted > toI32(this.seenNode.length) >> 1) {
+      if (inserted > this.seenLength() >> 1) {
         this.growSeen(gen, nodeBase, true, flat);
       }
       if (!this.seenInsert(node, gen)) {
@@ -3613,18 +3634,39 @@ export class Indenter {
     return result;
   }
 
+  /** The length of this depth's seen table; 0 (after a fault) when it has none. */
+  seenLength(): i32 {
+    const dd = this.depth;
+    if (dd < 0 || dd >= this.seenNodes.length) {
+      fault();
+      return 0;
+    }
+    return toI32(this.seenNodes[dd].length);
+  }
+
   /**
    * Rebuilds the seen table holding this search's expanded nodes: twice as
    * large when `grow`, and hashed without their stacks once `flat`.
    */
   growSeen(gen: i32, nodeBase: i32, grow: boolean, flat: boolean): void {
-    const n = mul32(toI32(this.seenNode.length), grow ? 2 : 1);
-    const oldNode = this.seenNode;
-    const oldStamp = this.seenStamp;
-    this.seenNode = newI32s(n);
-    this.seenStamp = newI32s(n);
-    const sn = this.seenNode;
-    const ss = this.seenStamp;
+    const dd = this.depth;
+    if (dd < 0 || dd >= this.seenNodes.length || dd >= this.seenStamps.length) {
+      fault();
+      return;
+    }
+    const oldNode = this.seenNodes[dd];
+    const oldStamp = this.seenStamps[dd];
+    const n = mul32(toI32(oldNode.length), grow ? 2 : 1);
+    const sn = newI32s(n);
+    const ss = newI32s(n);
+    const nodes = this.seenNodes;
+    const stamps = this.seenStamps;
+    if (dd >= nodes.length || dd >= stamps.length) {
+      fault();
+      return;
+    }
+    nodes[dd] = sn;
+    stamps[dd] = ss;
     const mask = indSub(n, 1);
     for (let i = 0; i < toI32(oldNode.length); i++) {
       const node = oldNode[i];
