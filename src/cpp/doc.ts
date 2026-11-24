@@ -5,8 +5,16 @@
 // A worker keeps one Doc for every file it formats: `reset` points it at the
 // next file and keeps the columns, so memory stays at the largest file's.
 
-import { uncheckedGet } from "nish:unsafe";
-import { growI32 } from "../core/arr";
+import { bytesText, growI32, newI32s, sub32 } from "../core/arr";
+import { fault } from "../core/fault";
+
+/** `e - a`, a token's byte length from its offsets (never negative in a token table). */
+const docSpan = (a: i32, e: i32): i32 => {
+  if (a >= 0 && e >= 0) {
+    return e - a;
+  }
+  return sub32(e, a);
+};
 
 /** Formatting options (the LLVM style's knobs this formatter exposes). */
 export class Options {
@@ -112,59 +120,59 @@ export class Doc {
     this.n = n;
     this.opts = opts;
     const cap = n / 4 + 64;
-    this.kind = new Array<i32>(cap);
-    this.start = new Array<i32>(cap);
-    this.end = new Array<i32>(cap);
-    this.nl = new Array<i32>(cap);
-    this.ws = new Array<i32>(cap);
-    this.col = new Array<i32>(cap);
-    this.width = new Array<i32>(cap);
-    this.multi = new Array<i32>(cap);
-    this.plain = new Array<i32>(cap);
-    this.inPP = new Array<i32>(cap);
-    this.ppKind = new Array<i32>(cap);
-    this.ppId = new Array<i32>(cap);
-    this.unesc = new Array<i32>(cap);
-    this.nxt = new Array<i32>(cap);
-    this.prv = new Array<i32>(cap);
-    this.bk = new Array<i32>(cap);
-    this.childHead = new Array<i32>(cap);
-    this.childTail = new Array<i32>(cap);
-    this.childCount = new Array<i32>(cap);
-    this.type = new Array<i32>(cap);
-    this.final = new Array<i32>(cap);
-    this.eqList = new Array<i32>(cap);
-    this.hidSemi = new Array<i32>(cap);
-    this.fap = new Array<i32>(cap);
-    this.asmFin = new Array<i32>(cap);
-    this.passMul = new Array<i32>(cap);
-    this.keepWs = new Array<i32>(cap);
-    this.dec = new Array<i32>(cap);
-    this.match = new Array<i32>(cap);
-    this.nest = new Array<i32>(cap);
-    this.bind = new Array<i32>(cap);
-    this.mustBreak = new Array<i32>(cap);
-    this.spaces = new Array<i32>(cap);
+    this.kind = newI32s(cap);
+    this.start = newI32s(cap);
+    this.end = newI32s(cap);
+    this.nl = newI32s(cap);
+    this.ws = newI32s(cap);
+    this.col = newI32s(cap);
+    this.width = newI32s(cap);
+    this.multi = newI32s(cap);
+    this.plain = newI32s(cap);
+    this.inPP = newI32s(cap);
+    this.ppKind = newI32s(cap);
+    this.ppId = newI32s(cap);
+    this.unesc = newI32s(cap);
+    this.nxt = newI32s(cap);
+    this.prv = newI32s(cap);
+    this.bk = newI32s(cap);
+    this.childHead = newI32s(cap);
+    this.childTail = newI32s(cap);
+    this.childCount = newI32s(cap);
+    this.type = newI32s(cap);
+    this.final = newI32s(cap);
+    this.eqList = newI32s(cap);
+    this.hidSemi = newI32s(cap);
+    this.fap = newI32s(cap);
+    this.asmFin = newI32s(cap);
+    this.passMul = newI32s(cap);
+    this.keepWs = newI32s(cap);
+    this.dec = newI32s(cap);
+    this.match = newI32s(cap);
+    this.nest = newI32s(cap);
+    this.bind = newI32s(cap);
+    this.mustBreak = newI32s(cap);
+    this.spaces = newI32s(cap);
     const lcap = n / 24 + 32;
-    this.lFirst = new Array<i32>(lcap);
-    this.lLast = new Array<i32>(lcap);
-    this.lLevel = new Array<i32>(lcap);
-    this.lPP = new Array<i32>(lcap);
-    this.lType = new Array<i32>(lcap);
-    this.lMustDecl = new Array<i32>(lcap);
-    this.lMightFn = new Array<i32>(lcap);
-    this.lMultiVar = new Array<i32>(lcap);
-    this.lSibling = new Array<i32>(lcap);
-    this.lAbs = new Array<i32>(lcap);
-    this.lInlineCmt = new Array<i32>(lcap);
-    this.lParent = new Array<i32>(lcap);
-    this.lOpen = new Array<i32>(lcap);
-    this.lNamespace = new Array<i32>(lcap);
-    this.lInvalid = new Array<i32>(lcap);
-    this.lInClass = new Array<i32>(lcap);
-    this.lRetWrap = new Array<i32>(lcap);
-    this.lDefCode = new Array<i32>(lcap);
-    this.lObjC = new Array<i32>(lcap);
+    this.lFirst = newI32s(lcap);
+    this.lLast = newI32s(lcap);
+    this.lLevel = newI32s(lcap);
+    this.lPP = newI32s(lcap);
+    this.lType = newI32s(lcap);
+    this.lMustDecl = newI32s(lcap);
+    this.lMightFn = newI32s(lcap);
+    this.lMultiVar = newI32s(lcap);
+    this.lSibling = newI32s(lcap);
+    this.lAbs = newI32s(lcap);
+    this.lInlineCmt = newI32s(lcap);
+    this.lParent = newI32s(lcap);
+    this.lOpen = newI32s(lcap);
+    this.lNamespace = newI32s(lcap);
+    this.lInvalid = newI32s(lcap);
+    this.lInClass = newI32s(lcap);
+    this.lRetWrap = newI32s(lcap);
+    this.lDefCode = newI32s(lcap);
+    this.lObjC = newI32s(lcap);
   }
 
   /** Points the document at the next file, keeping the columns. */
@@ -183,6 +191,10 @@ export class Doc {
   /** Makes room for token `i`. */
   growTokens(i: i32): void {
     if (i < toI32(this.kind.length)) {
+      return;
+    }
+    if (i >= 2147483647) {
+      fault();
       return;
     }
     const n = i + 1;
@@ -226,6 +238,10 @@ export class Doc {
     if (i < toI32(this.lFirst.length)) {
       return;
     }
+    if (i >= 2147483647) {
+      fault();
+      return;
+    }
     const n = i + 1;
     this.lFirst = growI32(this.lFirst, n);
     this.lLast = growI32(this.lLast, n);
@@ -250,36 +266,76 @@ export class Doc {
 
   /** The byte at `i`, or 0 past the end. */
   at(i: i32): i32 {
+    const src = this.src;
     if (i < 0 || i >= this.n) {
       return 0;
     }
-    return toI32(uncheckedGet(this.src, i));
+    if (i < src.length) {
+      return toI32(src[i]);
+    }
+    // `n` is never past the source.
+    fault();
+    return 0;
   }
 
   /** Token `t`'s length in bytes. */
   len(t: i32): i32 {
-    return this.end[t] - this.start[t];
+    const start = this.start;
+    const end = this.end;
+    if (t >= 0 && t < start.length && t < end.length) {
+      return docSpan(start[t], end[t]);
+    }
+    fault();
+    return 0;
   }
 
   /** Whether tokens `a` and `b` have the same text. */
   sameText(a: i32, b: i32): boolean {
-    const sa = this.start[a];
-    const sb = this.start[b];
-    const n = this.end[a] - sa;
-    if (n !== this.end[b] - sb) {
+    const start = this.start;
+    const end = this.end;
+    if (a < 0 || a >= start.length || a >= end.length || b < 0 || b >= start.length || b >= end.length) {
+      fault();
       return false;
     }
-    for (let i = 0; i < n; i++) {
-      if (uncheckedGet(this.src, sa + i) !== uncheckedGet(this.src, sb + i)) {
+    const sa = start[a];
+    const ea = end[a];
+    const sb = start[b];
+    const eb = end[b];
+    const n = docSpan(sa, ea);
+    if (n !== docSpan(sb, eb)) {
+      return false;
+    }
+    if (n <= 0) {
+      return true;
+    }
+    const src = this.src;
+    // Token bytes lie inside the source.
+    if (sa < 0 || ea > src.length || sb < 0 || eb > src.length) {
+      fault();
+      return false;
+    }
+    let q = sb;
+    for (let p = sa; p < ea; p++) {
+      if (q >= eb) {
         return false;
       }
+      if (src[p] !== src[q]) {
+        return false;
+      }
+      q++;
     }
     return true;
   }
 
   /** Token `t`'s text, as a string (allocates; for rare paths). */
   text(t: i32): string {
-    return String.fromBytes(this.src, this.start[t], this.end[t]);
+    const start = this.start;
+    const end = this.end;
+    if (t >= 0 && t < start.length && t < end.length) {
+      return bytesText(this.src, start[t], end[t]);
+    }
+    fault();
+    return "";
   }
 
   /**
@@ -288,14 +344,37 @@ export class Doc {
    * bytes).
    */
   origCol(t: i32): i32 {
-    const s = this.start[t];
-    const ls = s - this.col[t];
+    const start = this.start;
+    const col = this.col;
+    const src = this.src;
+    if (t < 0 || t >= start.length || t >= col.length) {
+      fault();
+      return 0;
+    }
+    const s = start[t];
+    const ls = sub32(s, col[t]);
+    if (ls >= s) {
+      return 0;
+    }
+    // The line's bytes lie inside the source.
+    if (ls < 0 || s > src.length) {
+      fault();
+      return 0;
+    }
     let c = 0;
     for (let k = ls; k < s; k++) {
-      const b = toI32(uncheckedGet(this.src, k));
+      const b = src[k];
       if (b === 9) {
+        if (c < 0 || c > 2147483639) {
+          fault();
+          return 0;
+        }
         c = c + 8 - (c % 8);
       } else if (b < 0x80 || b >= 0xc0) {
+        if (c < 0 || c >= 2147483647) {
+          fault();
+          return 0;
+        }
         c++;
       }
     }
@@ -304,15 +383,36 @@ export class Doc {
 
   /** Whether token `t`'s text is `s` (no string is made). */
   is(t: i32, s: string): boolean {
-    const a = this.start[t];
-    const n = this.end[t] - a;
+    const start = this.start;
+    const end = this.end;
+    if (t < 0 || t >= start.length || t >= end.length) {
+      fault();
+      return false;
+    }
+    const a = start[t];
+    const e = end[t];
+    const n = docSpan(a, e);
     if (n !== toI32(s.length)) {
       return false;
     }
-    for (let i = 0; i < n; i++) {
-      if (toI32(uncheckedGet(this.src, a + i)) !== s.charCodeAt(i)) {
+    if (n === 0) {
+      return true;
+    }
+    const src = this.src;
+    // Token bytes lie inside the source.
+    if (a < 0 || e > src.length) {
+      fault();
+      return false;
+    }
+    let p = a;
+    for (let i = 0; i < s.length; i++) {
+      if (p >= e) {
         return false;
       }
+      if (toI32(src[p]) !== s.charCodeAt(i)) {
+        return false;
+      }
+      p++;
     }
     return true;
   }
@@ -320,24 +420,56 @@ export class Doc {
   /** Whether the bytes from `i` (before `e`) start with `s`. */
   startsWithAt(i: i32, e: i32, s: string): boolean {
     const n = toI32(s.length);
-    if (e - i < n) {
+    if (sub32(e, i) < n) {
       return false;
     }
-    for (let k = 0; k < n; k++) {
-      if (toI32(uncheckedGet(this.src, i + k)) !== s.charCodeAt(k)) {
+    if (n === 0) {
+      return true;
+    }
+    const src = this.src;
+    // The range lies inside the source.
+    if (i < 0 || i > toI32(src.length) - n) {
+      fault();
+      return false;
+    }
+    let p = i;
+    for (let k = 0; k < s.length; k++) {
+      if (p >= src.length) {
         return false;
       }
+      if (toI32(src[p]) !== s.charCodeAt(k)) {
+        return false;
+      }
+      p++;
     }
     return true;
   }
 
   /** The first byte of token `t`. */
   firstByte(t: i32): i32 {
-    return toI32(uncheckedGet(this.src, this.start[t]));
+    const start = this.start;
+    const src = this.src;
+    if (t >= 0 && t < start.length) {
+      const a = start[t];
+      if (a >= 0 && a < src.length) {
+        return toI32(src[a]);
+      }
+    }
+    fault();
+    return 0;
   }
 
   /** The last byte of token `t`. */
   lastByte(t: i32): i32 {
-    return toI32(uncheckedGet(this.src, this.end[t] - 1));
+    const end = this.end;
+    const src = this.src;
+    if (t >= 0 && t < end.length) {
+      const e = end[t];
+      if (e > 0 && e <= src.length) {
+        return toI32(src[e - 1]);
+      }
+    }
+    fault();
+    return 0;
   }
 }
