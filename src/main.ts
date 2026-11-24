@@ -273,6 +273,12 @@ const runJob = (job: Job): JobRoot => {
       cap = n + 1024;
     }
     const out = new Out(cap);
+    // The output, about the file's size, in one zero-filled block, which Out
+    // would otherwise grow a byte at a time (no module held to no panic can
+    // allocate an array of a length it computes).
+    if (cap < 2147483647) {
+      out.buf = new Array<u8>(cap);
+    }
     testCrash(path);
     faultReset();
     let ok = false;
@@ -319,11 +325,6 @@ const runJob = (job: Job): JobRoot => {
       // Tokens cut their text from it, which no module held to no panic
       // can make from bytes.
       d.text = String.fromBytes(src, 0, n);
-      // The output, about the file's size, in one zero-filled block, which
-      // Out would otherwise grow a byte at a time.
-      if (cap < 2147483647) {
-        out.buf = new Array<u8>(cap);
-      }
       ok = formatDart(d, path, src, n, out);
     } else {
       const cs = new CSharpEngine();

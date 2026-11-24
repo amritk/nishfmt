@@ -7,7 +7,7 @@
 //
 // Ported from google-java-format 2.0.0 (Apache License 2.0, Copyright 2019 Google Inc.).
 
-import { add32, atI32, bytesText, newI32s, strUtf16Len, sub32, utf16Len } from "../core/arr";
+import { add32, atI32, bytesText, newBools, newI32s, newStrs, strUtf16Len, sub32, utf16Len } from "../core/arr";
 import { fault, faulted } from "../core/fault";
 import { stableSort } from "../core/sort";
 import { Out } from "../core/out";
@@ -91,6 +91,10 @@ export class StringWrapper {
   sep: string = "\n";
   isPlusChild: i32[];
   selected: i32[];
+  // Each string literal's text, made once a pass: wrapLong reads every
+  // literal of a concatenation again for each long one in it.
+  litText: string[] = [];
+  litHave: boolean[] = [];
 
   constructor(inp: GInput, t: JTree) {
     this.inp = inp;
@@ -173,6 +177,8 @@ export class StringWrapper {
     const selected = newI32s(nn);
     this.isPlusChild = plus;
     this.selected = selected;
+    this.litText = newStrs(nn);
+    this.litHave = newBools(nn);
     const repls: Repl[] = [];
     const kind = t.kind;
     const op = t.op;
@@ -360,6 +366,21 @@ export class StringWrapper {
     return true;
   }
 
+  /** The text of literal `x`, `src[a, e)`, made once a pass. */
+  private litTextOf(x: i32, src: u8[], a: i32, e: i32): string {
+    const have = this.litHave;
+    const texts = this.litText;
+    if (x >= 0 && x < have.length && x < texts.length && have[x]) {
+      return texts[x];
+    }
+    const text = bytesText(src, a, e);
+    if (x >= 0 && x < have.length && x < texts.length) {
+      texts[x] = text;
+      have[x] = true;
+    }
+    return text;
+  }
+
   /** stringComponents: the literals' texts, split before whitespace and after runs of escaped newlines. */
   private components(flat: i32[], a: i32, b: i32): string[] {
     const t = this.t;
@@ -379,7 +400,7 @@ export class StringWrapper {
         fault();
         return result;
       }
-      const text = bytesText(src, xs + 1, xe - 1);
+      const text = this.litTextOf(x, src, xs + 1, xe - 1);
       const n = toI32(text.length);
       let start = 0;
       let next = 0;

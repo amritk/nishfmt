@@ -220,8 +220,10 @@ export const sliceStrs = (src: string[], a: i32, e: i32): string[] => {
  * The bytes `b[a, e)` as a string, as `String.fromBytes(b, a, e)` makes it; a
  * range outside `b` faults and answers "". Each byte is one character of
  * `String.fromCharCode`, so a multi-byte character is copied byte by byte.
- * Past 32 bytes the 256 one-byte strings are made once and joined from a
- * table, several times faster than a `fromCharCode` a byte.
+ * Past 256 bytes the 256 one-byte strings are made once and joined from a
+ * table, several times faster than a `fromCharCode` a byte; below that the
+ * table would cost more than it saves, and every string it makes is kept
+ * until the caller's arena scope ends.
  */
 export const bytesText = (b: u8[], a: i32, e: i32): string => {
   if (a < 0 || e < a || e > b.length) {
@@ -230,7 +232,7 @@ export const bytesText = (b: u8[], a: i32, e: i32): string => {
   }
   const parts: string[] = [];
   // `0 <= a <= e`, so the u32 difference is the true length.
-  if (toI32(toU32(e) - toU32(a)) <= 32) {
+  if (toI32(toU32(e) - toU32(a)) <= 256) {
     for (let i = a; i >= 0 && i < e && i < b.length; i++) {
       parts.push(String.fromCharCode(b[i]));
     }
