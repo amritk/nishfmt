@@ -10,8 +10,15 @@
 import { tryCopyBytes } from "nish/bytes";
 import { fault } from "./fault";
 
-/** `n` zeroes; a negative `n` faults and answers an empty array. */
+/**
+ * `n` elements of 0; a negative `n` faults and answers an empty array. Up
+ * to 65,535 it is one zero-filled `new Array` (a `u16` length needs no check);
+ * past that it grows by `push`.
+ */
 export const newI32s = (n: i32): i32[] => {
+  if (n >= 0 && n <= 65535) {
+    return new Array<i32>(toU16(n));
+  }
   const xs: i32[] = [];
   if (n < 0) {
     fault();
@@ -23,8 +30,15 @@ export const newI32s = (n: i32): i32[] => {
   return xs;
 };
 
-/** `n` zero bytes; a negative `n` faults and answers an empty array. */
+/**
+ * `n` elements of 0; a negative `n` faults and answers an empty array. Up
+ * to 65,535 it is one zero-filled `new Array` (a `u16` length needs no check);
+ * past that it grows by `push`.
+ */
 export const newU8s = (n: i32): u8[] => {
+  if (n >= 0 && n <= 65535) {
+    return new Array<u8>(toU16(n));
+  }
   const xs: u8[] = [];
   if (n < 0) {
     fault();
@@ -36,8 +50,15 @@ export const newU8s = (n: i32): u8[] => {
   return xs;
 };
 
-/** `n` zeroes; a negative `n` faults and answers an empty array. */
+/**
+ * `n` elements of toI64(0); a negative `n` faults and answers an empty array. Up
+ * to 65,535 it is one zero-filled `new Array` (a `u16` length needs no check);
+ * past that it grows by `push`.
+ */
 export const newI64s = (n: i32): i64[] => {
+  if (n >= 0 && n <= 65535) {
+    return new Array<i64>(toU16(n));
+  }
   const xs: i64[] = [];
   if (n < 0) {
     fault();
@@ -49,8 +70,15 @@ export const newI64s = (n: i32): i64[] => {
   return xs;
 };
 
-/** `n` falses; a negative `n` faults and answers an empty array. */
+/**
+ * `n` elements of false; a negative `n` faults and answers an empty array. Up
+ * to 65,535 it is one zero-filled `new Array` (a `u16` length needs no check);
+ * past that it grows by `push`.
+ */
 export const newBools = (n: i32): boolean[] => {
+  if (n >= 0 && n <= 65535) {
+    return new Array<boolean>(toU16(n));
+  }
   const xs: boolean[] = [];
   if (n < 0) {
     fault();
@@ -129,11 +157,22 @@ export const copyI32s = (dst: i32[], at: i32, src: i32[], from: i32, count: i32)
 
 /** A new array of `src[a, e)`; a range outside `src` faults and answers []. */
 export const sliceU8s = (src: u8[], a: i32, e: i32): u8[] => {
-  const xs: u8[] = [];
   if (a < 0 || e < a || e > src.length) {
     fault();
-    return xs;
+    return [];
   }
+  // `0 <= a <= e`, so the u32 difference is the true length.
+  const n = toI32(toU32(e) - toU32(a));
+  if (n <= 65535) {
+    const out = new Array<u8>(toU16(n));
+    let i = a;
+    for (let k = 0; k < out.length && i >= 0 && i < src.length; k++) {
+      out[k] = src[i];
+      i = i + 1;
+    }
+    return out;
+  }
+  const xs: u8[] = [];
   for (let i = a; i >= 0 && i < e && i < src.length; i++) {
     xs.push(src[i]);
   }
@@ -142,11 +181,22 @@ export const sliceU8s = (src: u8[], a: i32, e: i32): u8[] => {
 
 /** A new array of `src[a, e)`; a range outside `src` faults and answers []. */
 export const sliceI32s = (src: i32[], a: i32, e: i32): i32[] => {
-  const xs: i32[] = [];
   if (a < 0 || e < a || e > src.length) {
     fault();
-    return xs;
+    return [];
   }
+  // `0 <= a <= e`, so the u32 difference is the true length.
+  const n = toI32(toU32(e) - toU32(a));
+  if (n <= 65535) {
+    const out = new Array<i32>(toU16(n));
+    let i = a;
+    for (let k = 0; k < out.length && i >= 0 && i < src.length; k++) {
+      out[k] = src[i];
+      i = i + 1;
+    }
+    return out;
+  }
+  const xs: i32[] = [];
   for (let i = a; i >= 0 && i < e && i < src.length; i++) {
     xs.push(src[i]);
   }
@@ -183,26 +233,33 @@ export const bytesText = (b: u8[], a: i32, e: i32): string => {
   return parts.join("");
 };
 
-/** `xs` again when it holds `n` elements, else a copy grown to at least `n`. */
+/**
+ * `xs` when it holds at least `n` elements, else `xs` grown with zeroes to
+ * twice its length, or to `n` when that is more. Up to 65,535 elements the
+ * answer is a new zero-filled array with `xs` copied in; past that `xs` grows
+ * in place by `push`. Every caller stores the answer back where it read `xs`.
+ */
 export const growI32 = (xs: i32[], n: i32): i32[] => {
-  if (toI32(xs.length) >= n) {
+  const len = toI32(xs.length);
+  if (len >= n) {
     return xs;
   }
-  const out: i32[] = [];
-  for (const x of xs) {
-    out.push(x);
-  }
-  // Doubling, as a fresh `new Array` of twice the length did.
-  const len = toI32(xs.length);
   if (len > 1073741823) {
     fault();
-    return out;
+    return xs;
   }
   const cap = len + len >= n ? len + len : n;
-  while (out.length < cap) {
-    out.push(0);
+  if (cap <= 65535) {
+    const out = new Array<i32>(toU16(cap));
+    for (let i = 0; i < xs.length && i < out.length; i++) {
+      out[i] = xs[i];
+    }
+    return out;
   }
-  return out;
+  while (xs.length < cap) {
+    xs.push(0);
+  }
+  return xs;
 };
 
 /** `xs[i]`, or 0 after a fault when `i` is outside `xs`. */
