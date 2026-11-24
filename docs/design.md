@@ -67,12 +67,12 @@ ends the run.
 
 ## Regions and batches
 
-C++ files are formatted one at a time by an engine each worker keeps. Every
-other language formats in a Nish region (`regionWith`) that is freed after
+Every language formats in a Nish region (`regionWith`) that is freed after
 the batch, so a worker's memory does not grow with the files it has
-formatted. Java and Kotlin share one engine across a batch of up to 32 files
-or 1 MB, so its arrays grow once rather than once a file; the other
-languages take one file a batch. A formatter that cannot handle a file
+formatted. C++, Java and Kotlin share one engine across a batch of up to 32
+files or 1 MB, so its arrays grow once rather than once a file; the other
+languages take one file a batch. A file whose name no language claims (one
+named on the command line) is formatted as C++. A formatter that cannot handle a file
 answers `false`, and the file is left as it was and counted as skipped:
 nishfmt never writes output it is not sure of.
 

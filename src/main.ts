@@ -77,17 +77,15 @@ class Cli {
   }
 }
 
-/** One worker's reusable state: the C++ engine, its output buffer and the batch of other files. */
+/** One worker's reusable state: the batch it formats next. */
 class Engine {
-  cpp: CppEngine;
-  out: Out;
   job: Job;
   constructor(cli: Cli) {
     this.job = new Job();
-    this.cpp = new CppEngine(cli.width, cli.indent);
-    this.cpp.once = cli.once;
-    this.cpp.showReruns = cli.showReruns;
-    this.out = new Out(1 << 16);
+    this.job.width = cli.width;
+    this.job.indent = cli.indent;
+    this.job.once = cli.once;
+    this.job.showReruns = cli.showReruns;
   }
 }
 
@@ -109,9 +107,6 @@ class Stats {
  * exact in u64 below 2^63, which no count of files or bytes on disk reaches.
  */
 const plus = (a: i64, b: i64): i64 => toI64(toU64(a) + toU64(b));
-
-/** How much count `now` grew since it was `then`; counts never go below 0 nor shrink. */
-const grewBy = (now: i64, then: i64): i64 => (now >= 0 && then >= 0 ? now - then : 0);
 
 /** Nanoseconds from `t0` to `t1`, two monotonicNanos() readings, which are never below 0. */
 const nsBetween = (t0: i64, t1: i64): i64 => (t0 >= 0 && t1 >= 0 ? t1 - t0 : 0);
@@ -162,10 +157,10 @@ const BATCH_BYTES: i32 = 1048576;
 const BATCH_RES: i32 = 64;
 
 /**
- * Files in one language but C++ to format in a region of their own: what
- * goes in, and the numbers that come out. Kotlin and Java files share one
- * engine across a batch, so its arrays grow once rather than once a file;
- * the other languages take one file a batch.
+ * Files in one language to format in a region of their own: what goes in,
+ * and the numbers that come out. C++, Kotlin and Java files share one engine
+ * across a batch, so its arrays grow once rather than once a file; the other
+ * languages take one file a batch.
  */
 class Job {
   paths: string[];
@@ -179,7 +174,22 @@ class Job {
   mode: i32 = 0;
   base: i32 = 0;
   quiet: boolean = false;
+  // The C++ engine's settings, from the command line.
+  width: i32 = 120;
+  indent: i32 = 2;
+  once: boolean = false;
+  showReruns: boolean = false;
+  // C++ phase times (formatCpp's prof) and the line breaker's search
+  // counts, summed over the worker's batches for FFPROF.
+  prof: i64[];
+  searches: i64 = 0;
+  nodes: i64 = 0;
+  pops: i64 = 0;
+  depth: i64 = 0;
+  listMiss: i64 = 0;
+  listHit: i64 = 0;
   constructor() {
+    this.prof = [toI64(0), toI64(0), toI64(0), toI64(0), toI64(0), toI64(0)];
     this.paths = [];
     for (let i = 0; i < BATCH_FILES; i++) {
       this.paths.push("");
@@ -226,6 +236,7 @@ class JobRoot {
 
 /** The engines a batch formats with, made when a file first needs one. */
 class JobEngines {
+  cpp: CppEngine | null = null;
   kotlin: KotlinEngine | null = null;
   java: JavaEngine | null = null;
 }
@@ -239,6 +250,9 @@ class JobEngines {
 const runJob = (job: Job): JobRoot => {
   const root = new JobRoot();
   const engines = new JobEngines();
+  // C++ phase times for this batch, added to job.prof at its end: the
+  // engine may keep what it is given, so it gets the region's own array.
+  const prof: i64[] = [toI64(0), toI64(0), toI64(0), toI64(0), toI64(0), toI64(0)];
   const count = job.count;
   const base = job.base;
   // What the batch has read so far; it only decides when the batch is full,
@@ -282,7 +296,18 @@ const runJob = (job: Job): JobRoot => {
     testCrash(path);
     faultReset();
     let ok = false;
-    if (job.lang === LANG_KOTLIN) {
+    if (job.lang === LANG_CPP) {
+      const c0 = engines.cpp;
+      if (c0 !== null) {
+        ok = formatCpp(c0, path, src, n, out, prof);
+      } else {
+        const fresh = new CppEngine(job.width, job.indent);
+        fresh.once = job.once;
+        fresh.showReruns = job.showReruns;
+        engines.cpp = fresh;
+        ok = formatCpp(fresh, path, src, n, out, prof);
+      }
+    } else if (job.lang === LANG_KOTLIN) {
       const k0 = engines.kotlin;
       if (k0 !== null) {
         ok = formatKotlin(k0, path, src, n, out);
@@ -367,6 +392,20 @@ const runJob = (job: Job): JobRoot => {
     k++;
   }
   job.done = k;
+  const total = job.prof;
+  for (let i = 0; i < prof.length && i < total.length; i++) {
+    total[i] = plus(total[i], prof[i]);
+  }
+  const c1 = engines.cpp;
+  if (c1 !== null) {
+    const ind = c1.f.ind;
+    job.searches = plus(job.searches, ind.stSearches);
+    job.nodes = plus(job.nodes, ind.stNodes);
+    job.pops = plus(job.pops, ind.stPops);
+    job.depth = plus(job.depth, ind.stDepth);
+    job.listMiss = plus(job.listMiss, ind.stListMiss);
+    job.listHit = plus(job.listHit, ind.stListHit);
+  }
   return root;
 };
 
@@ -383,7 +422,16 @@ const testCrash = (path: string): void => {
 };
 
 /** Whether files of a language share an engine within a batch. */
-const batches = (lang: i32): boolean => lang === LANG_KOTLIN || lang === LANG_JAVA;
+const batches = (lang: i32): boolean => lang === LANG_CPP || lang === LANG_KOTLIN || lang === LANG_JAVA;
+
+/**
+ * The language a file is formatted as: its own, or C++ for a name no
+ * language claims (a file named on the command line, say).
+ */
+const langFor = (name: string): i32 => {
+  const lang = langOf(name);
+  return lang > 0 ? lang : LANG_CPP;
+};
 
 /**
  * Appends one finished entry of the worker's list to its progress log
@@ -407,9 +455,9 @@ const logDir = (log: string, at: i32, path: string, dirs: string[]): void => {
 };
 
 /**
- * Formats `files[a, b)` of the worker's list: C++ files one by one with the
- * worker's engine, the others in batches of one language, each batch in a
- * region of its own. Each entry is logged as soon as it is finished
+ * Formats `files[a, b)` of the worker's list in batches of one language,
+ * each batch in a region of its own, so a worker's memory does not grow with
+ * the files it has formatted. Each entry is logged as soon as it is finished
  * (logEntry). The walk does not stat names that look like sources, so a
  * directory named like one (`Directory.swift`) arrives here: it is logged as
  * a directory and added to `dirs`, and the parent walks it.
@@ -419,28 +467,7 @@ const formatFiles = (files: string[], a: i32, b: i32, cli: Cli, stats: Stats, en
   let i = a;
   // b is at most files.length (runWorker's chunks, formatInProcess's whole list).
   while (i >= 0 && i < b && i < files.length) {
-    const file = files[i];
-    const lang = langOf(file);
-    if (lang < LANG_JAVA) {
-      const files0 = stats.files;
-      const changed0 = stats.changed;
-      const skipped0 = stats.skipped;
-      const bytes0 = stats.bytes;
-      if (formatFile(file, cli, stats, eng) === 3) {
-        logDir(log, i, file, dirs);
-      } else {
-        logEntry(
-          log,
-          i,
-          toI32(grewBy(stats.files, files0)),
-          toI32(grewBy(stats.changed, changed0)),
-          toI32(grewBy(stats.skipped, skipped0)),
-          toI32(grewBy(stats.bytes, bytes0)),
-        );
-      }
-      i++;
-      continue;
-    }
+    const lang = langFor(files[i]);
     const job = eng.job;
     const cap = batches(lang) ? BATCH_FILES : 1;
     // The batch: files[i, end) of one language, at most `cap` of them.
@@ -448,7 +475,7 @@ const formatFiles = (files: string[], a: i32, b: i32, cli: Cli, stats: Stats, en
     let end = i;
     while (end >= 0 && end < b && end < files.length && count >= 0 && count < cap) {
       const f = files[end];
-      if (langOf(f) !== lang) {
+      if (langFor(f) !== lang) {
         break;
       }
       // job.paths holds BATCH_FILES entries, and cap is at most that.
@@ -524,62 +551,10 @@ const addRunTime = (stats: Stats, tr0: i64): void => {
   }
 };
 
-/** Formats one C++ file; answers 0 unchanged, 1 changed, 2 skipped, 3 a directory. */
-const formatFile = (path: string, cli: Cli, stats: Stats, eng: Engine): i32 => {
-  if (cli.trace) {
-    console.error(`file ${path}`);
-  }
-  const src = readFileBytesSync(path);
-  if (src === null) {
-    if (isDirectorySync(path)) {
-      return 3;
-    }
-    console.error(`nishfmt: cannot read ${path}`);
-    stats.skipped = plus(stats.skipped, 1);
-    return 2;
-  }
-  const n = toI32(src.length);
-  stats.files = plus(stats.files, 1);
-  stats.bytes = plus(stats.bytes, toI64(n));
-  const out = eng.out;
-  const tr0 = monotonicNanos();
-  testCrash(path);
-  faultReset();
-  const okRun = formatCpp(eng.cpp, path, src, n, out, stats.prof) && !faulted();
-  addRunTime(stats, tr0);
-  if (!okRun) {
-    stats.skipped = plus(stats.skipped, 1);
-    if (cli.mode === MODE_STDOUT) {
-      writeBytes(src, 0, n);
-    } else if (!cli.quiet) {
-      console.error(`nishfmt: skipped ${path} (does not parse)`);
-    }
-    return 2;
-  }
-  const same = sameBytes(out.buf, out.n, src, n);
-  if (cli.mode === MODE_STDOUT) {
-    writeBytes(out.buf, 0, out.n);
-    return same ? 0 : 1;
-  }
-  if (same) {
-    return 0;
-  }
-  stats.changed = plus(stats.changed, 1);
-  if (cli.mode === MODE_WRITE) {
-    const r = writeFileBytesSync(path, out.buf.slice(0, out.n));
-    if (r < 0) {
-      console.error(`nishfmt: cannot write ${path}`);
-    }
-  } else if (cli.mode === MODE_CHECK) {
-    console.log(path);
-  }
-  return 1;
-};
-
 /**
  * A worker's command line run through env(1) with glibc's heap trimming
- * off: each Java or Kotlin file is formatted in a region that is freed
- * after it, and with trimming on glibc hands that memory back to the kernel
+ * off: each batch of files is formatted in a region that is freed after
+ * it, and with trimming on glibc hands that memory back to the kernel
  * every time, so the next file faults it in again (about a third of the run's
  * time). Unchanged when GLIBC_TUNABLES is already set or env(1) is missing.
  */
@@ -724,16 +699,19 @@ const runWorker = (cli: Cli): i32 => {
     kprofPrint();
   }
   if (getenv("FFPROF") !== null) {
+    const job = eng.job;
     console.error(
-      `searches ${eng.cpp.f.ind.stSearches} nodes ${eng.cpp.f.ind.stNodes} pops ${eng.cpp.f.ind.stPops} depth ${eng.cpp.f.ind.stDepth} listMiss ${eng.cpp.f.ind.stListMiss} listHit ${eng.cpp.f.ind.stListHit}`,
+      `searches ${job.searches} nodes ${job.nodes} pops ${job.pops} depth ${job.depth} listMiss ${job.listMiss} listHit ${job.listHit}`,
     );
+    // The phases come from the C++ batches, the run time from every batch.
+    const phases = job.prof;
     const prof = stats.prof;
-    if (prof.length >= 6) {
-      const lex = prof[0];
-      const parse = prof[1];
-      const classify = prof[2];
-      const layout = prof[3];
-      const write = prof[4];
+    if (phases.length >= 5 && prof.length >= 6) {
+      const lex = phases[0];
+      const parse = phases[1];
+      const classify = phases[2];
+      const layout = phases[3];
+      const write = phases[4];
       const run = prof[5];
       console.error(
         `worker: lex ${ms(lex)} parse ${ms(parse)} classify ${ms(classify)} layout ${ms(layout)} write ${ms(write)} run ${ms(run)} ms`,
