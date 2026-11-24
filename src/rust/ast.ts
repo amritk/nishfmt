@@ -9,7 +9,8 @@
 // Developers), for rustfmt 1.10.0 (MIT OR Apache-2.0, Copyright The Rust
 // Project Developers).
 
-import { growI32 } from "../core/arr";
+import { growI32, newI32s } from "../core/arr";
+import { fault } from "../core/fault";
 
 // ---- Crate, attributes, visibility, macros
 export const N_CRATE: i32 = 1; // list: items; attrs: inner attributes
@@ -269,6 +270,29 @@ export const TY_DYN: i32 = 1;
 export const LOCAL_SUPER: i32 = 1;
 export const PATH_GLOBAL: i32 = 1;
 
+/** `xs[i] = v`; a fault when `i` is outside `xs` (a node or token the formatter never made). */
+export const rsAstPut = (xs: i32[], i: i32, v: i32): void => {
+  if (i >= 0 && i < xs.length) {
+    xs[i] = v;
+  } else {
+    fault();
+  }
+};
+
+/** `kids[starts[n] + i]`, or -1 after a fault when that is outside the arrays. */
+const rsAstListAt = (starts: i32[], kids: i32[], n: i32, i: i32): i32 => {
+  if (n >= 0 && n < starts.length) {
+    // In i64 the sum is exact; an index of `kids` fits an i32.
+    const p = toI64(starts[n]) + toI64(i);
+    const q = toI32(p);
+    if (toI64(q) === p && q >= 0 && q < kids.length) {
+      return kids[q];
+    }
+  }
+  fault();
+  return -1;
+};
+
 export class RsAst {
   n: i32 = 0;
   kind: i32[];
@@ -290,56 +314,96 @@ export class RsAst {
 
   constructor(cap: i32) {
     const c = cap < 64 ? 64 : cap;
-    this.kind = new Array<i32>(c);
-    this.lo = new Array<i32>(c);
-    this.hi = new Array<i32>(c);
-    this.a = new Array<i32>(c);
-    this.b = new Array<i32>(c);
-    this.c = new Array<i32>(c);
-    this.d = new Array<i32>(c);
-    this.e = new Array<i32>(c);
-    this.x = new Array<i32>(c);
-    this.fl = new Array<i32>(c);
-    this.ls = new Array<i32>(c);
-    this.ln = new Array<i32>(c);
-    this.ats = new Array<i32>(c);
-    this.atn = new Array<i32>(c);
-    this.kids = new Array<i32>(c);
+    // The node arrays grow a node at a time (`add`); `kids` starts `c` long.
+    this.kind = [];
+    this.lo = [];
+    this.hi = [];
+    this.a = [];
+    this.b = [];
+    this.c = [];
+    this.d = [];
+    this.e = [];
+    this.x = [];
+    this.fl = [];
+    this.ls = [];
+    this.ln = [];
+    this.ats = [];
+    this.atn = [];
+    this.kids = newI32s(c);
   }
 
   add(kind: i32, lo: i32): i32 {
     const i = this.n;
-    if (i >= toI32(this.kind.length)) {
-      const c = i * 2 + 16;
-      this.kind = growI32(this.kind, c);
-      this.lo = growI32(this.lo, c);
-      this.hi = growI32(this.hi, c);
-      this.a = growI32(this.a, c);
-      this.b = growI32(this.b, c);
-      this.c = growI32(this.c, c);
-      this.d = growI32(this.d, c);
-      this.e = growI32(this.e, c);
-      this.x = growI32(this.x, c);
-      this.fl = growI32(this.fl, c);
-      this.ls = growI32(this.ls, c);
-      this.ln = growI32(this.ln, c);
-      this.ats = growI32(this.ats, c);
-      this.atn = growI32(this.atn, c);
+    // A node takes a token: an AST this large is out of reach.
+    if (i < 0 || i > 1073741800) {
+      fault();
+      return -1;
     }
-    this.kind[i] = kind;
-    this.lo[i] = lo;
-    this.hi[i] = lo;
-    this.a[i] = -1;
-    this.b[i] = -1;
-    this.c[i] = -1;
-    this.d[i] = -1;
-    this.e[i] = -1;
-    this.x[i] = -1;
-    this.fl[i] = 0;
-    this.ls[i] = 0;
-    this.ln[i] = 0;
-    this.ats[i] = 0;
-    this.atn[i] = 0;
+    const kinds = this.kind;
+    const los = this.lo;
+    const his = this.hi;
+    const as = this.a;
+    const bs = this.b;
+    const cs = this.c;
+    const ds = this.d;
+    const es = this.e;
+    const xs = this.x;
+    const fls = this.fl;
+    const lss = this.ls;
+    const lns = this.ln;
+    const atss = this.ats;
+    const atns = this.atn;
+    if (
+      i < kinds.length &&
+      i < los.length &&
+      i < his.length &&
+      i < as.length &&
+      i < bs.length &&
+      i < cs.length &&
+      i < ds.length &&
+      i < es.length &&
+      i < xs.length &&
+      i < fls.length &&
+      i < lss.length &&
+      i < lns.length &&
+      i < atss.length &&
+      i < atns.length
+    ) {
+      // A node the parser backtracked over: made again in place.
+      kinds[i] = kind;
+      los[i] = lo;
+      his[i] = lo;
+      as[i] = -1;
+      bs[i] = -1;
+      cs[i] = -1;
+      ds[i] = -1;
+      es[i] = -1;
+      xs[i] = -1;
+      fls[i] = 0;
+      lss[i] = 0;
+      lns[i] = 0;
+      atss[i] = 0;
+      atns[i] = 0;
+    } else if (i === toI32(kinds.length)) {
+      // The arrays grow together, a node at a time.
+      kinds.push(kind);
+      los.push(lo);
+      his.push(lo);
+      as.push(-1);
+      bs.push(-1);
+      cs.push(-1);
+      ds.push(-1);
+      es.push(-1);
+      xs.push(-1);
+      fls.push(0);
+      lss.push(0);
+      lns.push(0);
+      atss.push(0);
+      atns.push(0);
+    } else {
+      fault();
+      return -1;
+    }
     this.n = i + 1;
     return i;
   }
@@ -347,10 +411,27 @@ export class RsAst {
   /** Appends `xs[from, to)` to `kids`; answers where they start. */
   addKids(xs: i32[], from: i32, to: i32): i32 {
     const s = this.nk;
-    const k = to - from;
+    // `xs[from, to)` is a list the parser built, and `kids` stays below 2^30.
+    if (from < 0 || to < from || to > xs.length || s < 0 || s > 1073741823) {
+      fault();
+      return s;
+    }
+    const k = toI32(toU32(to) - toU32(from)); // exact: to >= from >= 0
+    if (k > 1073741823) {
+      fault();
+      return s;
+    }
     this.kids = growI32(this.kids, s + k);
-    for (let i = 0; i < k; i++) {
-      this.kids[s + i] = xs[from + i];
+    const kids = this.kids;
+    let p = s;
+    for (let j = from; j >= 0 && j < to && j < xs.length; j++) {
+      // growI32 made room for `s + k`.
+      if (p < 0 || p >= kids.length) {
+        fault();
+        return s;
+      }
+      kids[p] = xs[j];
+      p++;
     }
     this.nk = s + k;
     return s;
@@ -358,12 +439,12 @@ export class RsAst {
 
   /** The `i`th element of `n`'s list. */
   kid(n: i32, i: i32): i32 {
-    return this.kids[this.ls[n] + i];
+    return rsAstListAt(this.ls, this.kids, n, i);
   }
 
   /** The `i`th outer attribute of `n`. */
   attr(n: i32, i: i32): i32 {
-    return this.kids[this.ats[n] + i];
+    return rsAstListAt(this.ats, this.kids, n, i);
   }
 }
 

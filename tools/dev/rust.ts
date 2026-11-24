@@ -19,6 +19,7 @@ const rsDevOne = (path: string, print: boolean): i32 => {
   src.set(read);
   const out = new Out(n + 1024);
   const e = new RustEngine();
+  e.text = String.fromBytes(src, 0, n);
   e.debug = getenv("FFDEBUG") !== null;
   e.dump = getenv("FFDUMP") !== null;
   e.parseOnly = getenv("FFPARSE") !== null;

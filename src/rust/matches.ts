@@ -27,9 +27,10 @@ import {
 import { rsAttrsContainSkip, rsRewriteAttrs } from "./attr";
 import {
   rsCombineStrsWithMissingComments,
-  rsFirstLineWidth,
   rsFindLastUncommented,
+  rsFirstLineWidth,
   rsRewriteComment,
+  rsSliceStr,
   rsTrimmedLastLineWidth,
 } from "./comment";
 import { RsCtx } from "./context";
@@ -49,18 +50,21 @@ import { RsShape, rsIndentStr, rsIndentStrNl, rsShapeIndented } from "./shape";
 import { rsHasByte, rsLastIndexOf, rsTrim, rsWidth, rsWsLenAt } from "./str";
 import { rsExprHasAttrs, rsExtraOffset, rsLastLineExtendable, rsLoWithAttrs } from "./utils";
 import { rsRewritePat } from "./patterns";
+import { add32, atI32, sub32 } from "../core/arr";
+import { fault } from "../core/fault";
 
 /** The Spanned span of arm `a`: [lo, hi). */
 const armLo = (ast: RsAst, a: i32): i32 => rsLoWithAttrs(ast, a);
-const armHi = (ast: RsAst, a: i32): i32 => (ast.c[a] >= 0 ? ast.hi[ast.c[a]] : ast.hi[ast.a[a]]);
+const armHi = (ast: RsAst, a: i32): i32 =>
+  atI32(ast.c, a) >= 0 ? atI32(ast.hi, atI32(ast.c, a)) : atI32(ast.hi, atI32(ast.a, a));
 
 /** rewrite_match for match expr `e`. */
 export const rsRewriteMatch = (ctx: RsCtx, e: i32, shape: RsShape): string | null => {
   const ast = ctx.ast;
   const cfg = ctx.cfg;
-  const cond = ast.a[e];
-  const lo = ast.lo[e];
-  const hi = ast.hi[e];
+  const cond = atI32(ast.a, e);
+  const lo = atI32(ast.lo, e);
+  const hi = atI32(ast.hi, e);
   const cs0 = shape.withWidth(ctx.budget(shape.usedWidth())).offsetLeft(6);
   if (cs0 === null) {
     return null;
@@ -73,15 +77,15 @@ export const rsRewriteMatch = (ctx: RsCtx, e: i32, shape: RsShape): string | nul
   let blockSep = " ";
   if (rsLastLineExtendable(condStr)) {
     blockSep = " ";
-  } else if (rsHasByte(condStr, 10) || toI32(condStr.length) + 2 > cs0.width) {
+  } else if (rsHasByte(condStr, 10) || add32(toI32(condStr.length), 2) > cs0.width) {
     blockSep = altBlockSep;
   }
-  const nbi = shape.bi + cfg.tabSpaces;
+  const nbi = add32(shape.bi, cfg.tabSpaces);
   const nestedIndentStr = rsIndentStr(cfg, nbi, shape.al);
   const inner: i32[] = [];
-  for (let i = 0; i < ast.atn[e]; i++) {
+  for (let i = 0; i < atI32(ast.atn, e); i++) {
     const a = ast.attr(e, i);
-    if ((ast.fl[a] & AT_INNER) !== 0) {
+    if ((atI32(ast.fl, a) & AT_INNER) !== 0) {
       inner.push(a);
     }
   }
@@ -94,22 +98,22 @@ export const rsRewriteMatch = (ctx: RsCtx, e: i32, shape: RsShape): string | nul
     }
     innerStr = nestedIndentStr + s + "\n";
   }
-  const na = ast.ln[e];
+  const na = atI32(ast.ln, e);
   let openBrace = 0;
   if (inner.length === 0) {
     const h = na === 0 ? hi : armLo(ast, ast.kid(e, 0));
-    openBrace = ctx.spanAfter(ast.hi[cond], h, "{");
+    openBrace = ctx.spanAfter(atI32(ast.hi, cond), h, "{");
   } else {
-    openBrace = ast.hi[inner[inner.length - 1]];
+    openBrace = atI32(ast.hi, atI32(inner, toI32(inner.length) - 1));
   }
   if (na === 0) {
-    const sn = ctx.snippet(openBrace, hi - 1);
+    const sn = ctx.snippet(openBrace, sub32(hi, 1));
     if (rsTrim(sn).length === 0) {
       return `match ${condStr} {}`;
     }
     return ctx.snippet(lo, hi);
   }
-  const arms = rewriteMatchArms(ctx, e, shape, ast.hi[cond], hi, openBrace);
+  const arms = rewriteMatchArms(ctx, e, shape, atI32(ast.hi, cond), hi, openBrace);
   if (arms === null) {
     return null;
   }
@@ -120,9 +124,9 @@ const armComma = (ast: RsAst, body: i32, isLast: boolean): string => {
   if (isLast && false) {
     return "";
   }
-  if (ast.kind[body] === N_EX_BLOCK) {
-    const block = ast.a[body];
-    if ((ast.fl[block] & BLK_UNSAFE) === 0) {
+  if (atI32(ast.kind, body) === N_EX_BLOCK) {
+    const block = atI32(ast.a, body);
+    if ((atI32(ast.fl, block) & BLK_UNSAFE) === 0) {
       return "";
     }
     return ",";
@@ -134,13 +138,13 @@ const rewriteMatchArms = (ctx: RsCtx, e: i32, shape: RsShape, lo: i32, hi: i32, 
   const ast = ctx.ast;
   const cfg = ctx.cfg;
   const armShape = shape.blockIndent(cfg.tabSpaces).withMaxWidth(cfg);
-  const n = ast.ln[e];
+  const n = atI32(ast.ln, e);
   // collect_beginning_verts.
   const verts: i32[] = [];
   for (let i = 0; i < n; i++) {
     const a = ast.kid(e, i);
-    const pat = ast.a[a];
-    verts.push(ctx.snippet(ast.lo[pat], ast.hi[pat]).startsWith("|") ? ast.lo[pat] : -1);
+    const pat = atI32(ast.a, a);
+    verts.push(ctx.snippet(atI32(ast.lo, pat), atI32(ast.hi, pat)).startsWith("|") ? atI32(ast.lo, pat) : -1);
   }
   if (lo < 0) {
     return null;
@@ -153,10 +157,11 @@ const rewriteMatchArms = (ctx: RsCtx, e: i32, shape: RsShape, lo: i32, hi: i32, 
     (i: i32): i32 => {
       const a = ast.kid(e, i);
       const l = armLo(ast, a);
-      return verts[i] >= 0 && verts[i] < l ? verts[i] : l;
+      const v = atI32(verts, i);
+      return v >= 0 && v < l ? v : l;
     },
     (i: i32): i32 => armHi(ast, ast.kid(e, i)),
-    (i: i32): string | null => rewriteMatchArm(ctx, ast.kid(e, i), armShape, i === n - 1, verts[i] >= 0),
+    (i: i32): string | null => rewriteMatchArm(ctx, ast.kid(e, i), armShape, i === sub32(n, 1), atI32(verts, i) >= 0),
     openBrace,
     hi,
     false,
@@ -176,8 +181,8 @@ const rewriteMatchArm = (
 ): string | null => {
   const ast = ctx.ast;
   const cfg = ctx.cfg;
-  const pat = ast.a[arm];
-  const body = ast.c[arm];
+  const pat = atI32(ast.a, arm);
+  const body = atI32(ast.c, arm);
   if (body < 0) {
     ctx.unsupported("arm without body");
     return null;
@@ -185,14 +190,14 @@ const rewriteMatchArm = (
   let mlo = armLo(ast, arm);
   let mhi = mlo;
   let attrsStr = "";
-  const na = ast.atn[arm];
+  const na = atI32(ast.atn, arm);
   if (na > 0) {
     if (rsAttrsContainSkip(ctx, arm)) {
       const fb = flattenArmBody(ctx, body, null);
       return ctx.snippet(armLo(ast, arm), armHi(ast, arm)) + armComma(ast, fb.body, isLast);
     }
-    mlo = ast.hi[ast.attr(arm, na - 1)];
-    mhi = ast.lo[pat];
+    mlo = atI32(ast.hi, ast.attr(arm, na - 1));
+    mhi = atI32(ast.lo, pat);
     const attrs: i32[] = [];
     for (let i = 0; i < na; i++) {
       attrs.push(ast.attr(arm, i));
@@ -207,9 +212,9 @@ const rewriteMatchArm = (
     // match_arm_leading_pipes is Never.
   }
   let ps0: RsShape | null = null;
-  if (ast.kind[body] === N_EX_BLOCK && ast.d[body] >= 0) {
-    const labelLen = toI32(ctx.tokStr(ast.d[body]).length);
-    ps0 = shape.subWidth(7 + labelLen);
+  if (atI32(ast.kind, body) === N_EX_BLOCK && atI32(ast.d, body) >= 0) {
+    const labelLen = toI32(ctx.tokStr(atI32(ast.d, body)).length);
+    ps0 = shape.subWidth(add32(7, labelLen));
   } else {
     ps0 = shape.subWidth(5);
   }
@@ -226,7 +231,7 @@ const rewriteMatchArm = (
   }
   const blockLikePat = rsTrimmedLastLineWidth(patsStr) <= cfg.tabSpaces;
   const newLineGuard = rsHasByte(patsStr, 10) && !blockLikePat;
-  const guardStr = rewriteGuard(ctx, ast.b[arm], shape, rsTrimmedLastLineWidth(patsStr), newLineGuard);
+  const guardStr = rewriteGuard(ctx, atI32(ast.b, arm), shape, rsTrimmedLastLineWidth(patsStr), newLineGuard);
   if (guardStr === null) {
     return null;
   }
@@ -240,27 +245,28 @@ const rewriteMatchArm = (
     lhs,
     shape,
     rsHasByte(guardStr, 10),
-    ast.hi[pat],
+    atI32(ast.hi, pat),
     rsLoWithAttrs(ast, body),
     isLast,
   );
 };
 
-const stmtIsExprMac = (ast: RsAst, s: i32): boolean => ast.kind[s] === N_STMT_EXPR && ast.kind[ast.a[s]] === N_EX_MAC;
+const stmtIsExprMac = (ast: RsAst, s: i32): boolean =>
+  atI32(ast.kind, s) === N_STMT_EXPR && atI32(ast.kind, atI32(ast.a, s)) === N_EX_MAC;
 
 /** block_can_be_flattened: the block, or -1. */
 const blockCanBeFlattened = (ctx: RsCtx, e: i32): i32 => {
   const ast = ctx.ast;
-  if (ast.kind[e] !== N_EX_BLOCK) {
+  if (atI32(ast.kind, e) !== N_EX_BLOCK) {
     return -1;
   }
-  const block = ast.a[e];
+  const block = atI32(ast.a, e);
   if (
-    ast.d[e] < 0 &&
-    (ast.fl[block] & BLK_UNSAFE) === 0 &&
+    atI32(ast.d, e) < 0 &&
+    (atI32(ast.fl, block) & BLK_UNSAFE) === 0 &&
     !ctx.insideMacro &&
     rsIsSimpleBlock(ctx, block, true) &&
-    ast.atn[e] === 0 &&
+    atI32(ast.atn, e) === 0 &&
     !stmtIsExprMac(ast, ast.kid(block, 0))
   ) {
     return block;
@@ -278,7 +284,7 @@ class Flattened {
 }
 
 const canFlattenBlockAroundThis = (ast: RsAst, e: i32): boolean => {
-  const k = ast.kind[e];
+  const k = atI32(ast.kind, e);
   if (
     k === N_EX_LOOP ||
     k === N_EX_MATCH ||
@@ -294,7 +300,7 @@ const canFlattenBlockAroundThis = (ast: RsAst, e: i32): boolean => {
     return true;
   }
   if (k === N_EX_ADDR_OF || k === N_EX_TRY || k === N_EX_UNARY || k === N_EX_INDEX || k === N_EX_CAST) {
-    return canFlattenBlockAroundThis(ast, ast.a[e]);
+    return canFlattenBlockAroundThis(ast, atI32(ast.a, e));
   }
   return false;
 };
@@ -304,9 +310,9 @@ const flattenArmBody = (ctx: RsCtx, body: i32, optShape: RsShape | null): Flatte
   const block = blockCanBeFlattened(ctx, body);
   if (block >= 0) {
     const s = ast.kid(block, 0);
-    if (ast.kind[s] === N_STMT_EXPR) {
-      const expr = ast.a[s];
-      if (ast.kind[expr] === N_EX_BLOCK) {
+    if (atI32(ast.kind, s) === N_STMT_EXPR) {
+      const expr = atI32(ast.a, s);
+      if (atI32(ast.kind, expr) === N_EX_BLOCK) {
         if (!rsExprHasAttrs(ast, expr)) {
           return flattenArmBody(ctx, expr, null);
         }
@@ -334,9 +340,15 @@ const nopBlockCollapse = (s: string | null, budget: number): string | null => {
   if (s.startsWith("{") && budget >= 2) {
     let k = 1;
     while (k < toI32(s.length) && rsWsLenAt(s, k) > 0) {
-      k += rsWsLenAt(s, k);
+      const w = rsWsLenAt(s, k);
+      // A whitespace char is at most three bytes, and text stays below 2^30 bytes.
+      if (w < 1 || w > 3 || k > 1073741823) {
+        fault();
+        return null;
+      }
+      k += w;
     }
-    if (k === toI32(s.length) - 1) {
+    if (k === sub32(toI32(s.length), 1)) {
       return "{}";
     }
   }
@@ -356,27 +368,27 @@ const rewriteMatchBody = (
 ): string | null => {
   const ast = ctx.ast;
   const cfg = ctx.cfg;
-  const fl = flattenArmBody(ctx, body0, shape.offsetLeft(rsExtraOffset(patsStr, shape.usedWidth()) + 4));
+  const fl = flattenArmBody(ctx, body0, shape.offsetLeft(add32(rsExtraOffset(patsStr, shape.usedWidth()), 4)));
   const extend = fl.extend;
   const body = fl.body;
   let isBlock = false;
   let isEmptyBlock = false;
-  if (ast.kind[body] === N_EX_BLOCK) {
+  if (atI32(ast.kind, body) === N_EX_BLOCK) {
     isBlock = true;
-    isEmptyBlock = rsIsEmptyBlock(ctx, ast.a[body]) && !hasInnerAttrs(ast, ast.a[body]);
+    isEmptyBlock = rsIsEmptyBlock(ctx, atI32(ast.a, body)) && !hasInnerAttrs(ast, atI32(ast.a, body));
   }
   const comma = armComma(ast, body, isLast);
   const altBlockSep = rsIndentStrNl(cfg, shape.bi, shape.al);
   let nbi = shape.bi;
   if (!isBlock || isEmptyBlock) {
-    nbi = shape.bi + cfg.tabSpaces;
+    nbi = add32(shape.bi, cfg.tabSpaces);
   }
   const forbidSameLine = (hasGuard && rsHasByte(patsStr, 10) && !isEmptyBlock) || rsExprHasAttrs(ast, body);
   // The comment after `=>`.
   const arrowSnippet = rsTrim(ctx.snippet(arrowLo, arrowHi));
   // From the end, since the guard may hold a match expression.
   const ai = cfg.styleEdition <= 2021 ? rsLastIndexOf(arrowSnippet, "=>") : rsFindLastUncommented(arrowSnippet, "=>");
-  const commentStr = ai < 0 ? "" : rsTrim(arrowSnippet.slice(ai + 2, toI32(arrowSnippet.length)));
+  const commentStr = ai < 0 ? "" : rsTrim(rsSliceStr(arrowSnippet, add32(ai, 2), toI32(arrowSnippet.length)));
   let arrowComment = "";
   if (commentStr.length !== 0) {
     const c = rsRewriteComment(commentStr, shape, cfg);
@@ -385,7 +397,7 @@ const rewriteMatchBody = (
     }
     arrowComment = c;
   }
-  const origShape0 = shape.offsetLeft(rsExtraOffset(patsStr, shape.usedWidth()) + 4);
+  const origShape0 = shape.offsetLeft(add32(rsExtraOffset(patsStr, shape.usedWidth()), 4));
   const origShape: RsShape | null = origShape0 === null ? null : origShape0.subWidth(toI32(comma.length));
   let origBody: string | null = null;
   if (forbidSameLine || arrowComment.length !== 0) {
@@ -497,8 +509,8 @@ const combineNextLine = (
 };
 
 const hasInnerAttrs = (ast: RsAst, b: i32): boolean => {
-  for (let i = 0; i < ast.atn[b]; i++) {
-    if ((ast.fl[ast.attr(b, i)] & AT_INNER) !== 0) {
+  for (let i = 0; i < atI32(ast.atn, b); i++) {
+    if ((atI32(ast.fl, ast.attr(b, i)) & AT_INNER) !== 0) {
       return true;
     }
   }
@@ -516,7 +528,7 @@ const rewriteGuard = (
   if (guard < 0) {
     return "";
   }
-  const c0 = shape.offsetLeft(patternWidth + 4);
+  const c0 = shape.offsetLeft(add32(patternWidth, 4));
   const cs: RsShape | null = c0 === null ? null : c0.subWidth(5);
   if (!multilinePattern && cs !== null) {
     const condStr = rsRewriteExpr(ctx, guard, cs);
@@ -524,7 +536,7 @@ const rewriteGuard = (
       return " if " + condStr;
     }
   }
-  const s1 = rsShapeIndented(shape.bi + cfg.tabSpaces, shape.al, cfg).offsetLeft(3);
+  const s1 = rsShapeIndented(add32(shape.bi, cfg.tabSpaces), shape.al, cfg).offsetLeft(3);
   if (s1 === null) {
     return null;
   }
