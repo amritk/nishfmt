@@ -14,7 +14,10 @@ if ! command -v "$NISH" >/dev/null 2>&1; then
   echo "build.sh: no nish compiler; run scripts/fetch-nish.sh or set NISH" >&2
   exit 1
 fi
-if ! "$NISH" src/main.ts --link "$out" > "$out.log" 2>&1; then
+# Every module but src/main.ts is held to no panic by package.json's
+# nish.noPanic (scripts/no-panic-list.mjs keeps it whole); --allow-panics
+# leaves main.ts out of that scope for the calls no proof removes.
+if ! "$NISH" src/main.ts --allow-panics --link "$out" > "$out.log" 2>&1; then
   grep -B1 -A4 "error" "$out.log" | head -40 || tail -20 "$out.log"
   exit 1
 fi

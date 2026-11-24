@@ -52,17 +52,13 @@ export class Out {
 
   /** Writes `k` copies of byte `c`. */
   fill(k: i32, c: u8): void {
+    if (k <= 0 || !this.room(toI64(this.n) + toI64(k))) {
+      return;
+    }
     const buf = this.buf;
     let n = this.n;
-    for (let i = 0; i < k; i++) {
-      if (n >= 0 && n < buf.length) {
-        buf[n] = c;
-      } else if (n === buf.length && n < 2147483647) {
-        buf.push(c);
-      } else {
-        fault();
-        return;
-      }
+    for (let i = 0; i < k && n >= 0 && n < buf.length; i++) {
+      buf[n] = c;
       n = n + 1;
     }
     this.n = n;
@@ -76,6 +72,23 @@ export class Out {
     this.fill(k, toU8(10));
   }
 
+  /**
+   * Grows `buf` with zeroes so it holds at least `need` bytes; false (after a
+   * fault) when `n` is outside it, which its invariant rules out.
+   */
+  room(need: i64): boolean {
+    const buf = this.buf;
+    const n = this.n;
+    if (n < 0 || n > buf.length || need > toI64(2147483647)) {
+      fault();
+      return false;
+    }
+    while (toI64(buf.length) < need) {
+      buf.push(0);
+    }
+    return true;
+  }
+
   range(src: u8[], a: i32, b: i32): void {
     if (b <= a) {
       return;
@@ -84,18 +97,14 @@ export class Out {
       fault();
       return;
     }
+    if (!this.room(toI64(this.n) + toI64(b) - toI64(a))) {
+      return;
+    }
+    // One copy loop with every index proven: `buf` now holds the bytes.
     const buf = this.buf;
     let n = this.n;
-    for (let i = a; i < b && i < src.length; i++) {
-      const c = src[i];
-      if (n >= 0 && n < buf.length) {
-        buf[n] = c;
-      } else if (n === buf.length && n < 2147483647) {
-        buf.push(c);
-      } else {
-        fault();
-        return;
-      }
+    for (let i = a; i < b && i < src.length && n >= 0 && n < buf.length; i++) {
+      buf[n] = src[i];
       n = n + 1;
     }
     this.n = n;
@@ -103,18 +112,13 @@ export class Out {
 
   str(s: string): void {
     const k = toI32(s.length);
+    if (!this.room(toI64(this.n) + toI64(k))) {
+      return;
+    }
     const buf = this.buf;
     let n = this.n;
-    for (let i = 0; i < k; i++) {
-      const c = toU8(s.charCodeAt(i));
-      if (n >= 0 && n < buf.length) {
-        buf[n] = c;
-      } else if (n === buf.length && n < 2147483647) {
-        buf.push(c);
-      } else {
-        fault();
-        return;
-      }
+    for (let i = 0; i < k && n >= 0 && n < buf.length; i++) {
+      buf[n] = toU8(s.charCodeAt(i));
       n = n + 1;
     }
     this.n = n;
