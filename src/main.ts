@@ -309,6 +309,9 @@ const runJob = (job: Job): JobRoot => {
     } else if (job.lang === LANG_RUST) {
       const rs = new RustEngine();
       rs.debug = getenv("FFDEBUG") !== null;
+      // The Rust formatter cuts snippets from the text, which no module held
+      // to no panic can make from bytes.
+      rs.text = String.fromBytes(src, 0, n);
       ok = formatRust(rs, path, src, n, out);
     } else if (job.lang === LANG_DART) {
       const d = new DartEngine();

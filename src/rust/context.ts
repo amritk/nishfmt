@@ -8,32 +8,11 @@ import { RsAst } from "./ast";
 import { rsFindUncommented, rsFindUncommentedIn, rsSliceStr } from "./comment";
 import { RsTokens } from "./lexer";
 import { RsConfig } from "./shape";
-import { add32, atI32, sub32 } from "../core/arr";
+import { add32, atI32, bytesText, sub32 } from "../core/arr";
 import { fault } from "../core/fault";
 
-/**
- * `String.fromBytes(src, a, n)`, a byte at a time: each byte's one-byte string
- * comes from a table, and the pieces join once.
- */
-export const rsBytesText = (src: u8[], a: i32, n: i32): string => {
-  if (a < 0 || n < a || n > src.length) {
-    fault();
-    return "";
-  }
-  const tab: string[] = [];
-  for (let c = 0; c < 256; c++) {
-    tab.push(String.fromCharCode(c));
-  }
-  const parts: string[] = [];
-  for (let i = a; i >= 0 && i < n && i < src.length; i++) {
-    const c = toI32(src[i]);
-    // A byte, so below 256.
-    if (c < tab.length) {
-      parts.push(tab[c]);
-    }
-  }
-  return parts.join("");
-};
+/** `String.fromBytes(src, a, n)`, through the shared `bytesText`. */
+export const rsBytesText = (src: u8[], a: i32, n: i32): string => bytesText(src, a, n);
 
 /** What one formatting run over a source shares: the source, its tokens and AST, and failure flags. */
 export class RsFile {
