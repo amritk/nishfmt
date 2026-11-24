@@ -126,8 +126,9 @@ import {
  * token.
  */
 const annGet = (xs: i32[], i: i32): i32 => {
-  if (i >= 0 && i < xs.length) {
-    return xs[i];
+  const u = toU32(i);
+  if (u < toU32(xs.length)) {
+    return xs[u];
   }
   fault();
   return -1;
@@ -135,8 +136,9 @@ const annGet = (xs: i32[], i: i32): i32 => {
 
 /** `xs[i] = v`; an index outside `xs` faults, as in annGet. */
 const annSet = (xs: i32[], i: i32, v: i32): void => {
-  if (i >= 0 && i < xs.length) {
-    xs[i] = v;
+  const u = toU32(i);
+  if (u < toU32(xs.length)) {
+    xs[u] = v;
   } else {
     fault();
   }
@@ -166,10 +168,11 @@ const annSpan = (e: i32, s: i32, w: i32): i32 => {
 
 /** `xs[i]++`; an index outside `xs`, or a count past i32, faults. */
 const annBump = (xs: i32[], i: i32): void => {
-  if (i >= 0 && i < xs.length) {
-    const v = xs[i];
+  const u = toU32(i);
+  if (u < toU32(xs.length)) {
+    const v = xs[u];
     if (v < 2147483647) {
-      xs[i] = v + 1;
+      xs[u] = v + 1;
       return;
     }
   }
