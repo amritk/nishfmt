@@ -5,6 +5,8 @@
 // Ported from RuboCop 1.92.3 (MIT License, Copyright (c) 2012-24 Bozhidar
 // Batsov).
 
+import { fault } from "../../core/fault";
+import { stableSort } from "../../core/sort";
 import { NT_PAIR, V_NIL } from "../ast";
 import { RbCop } from "../cop";
 import { RbSource, TK_COMMENT } from "../source";
@@ -36,7 +38,7 @@ class RmlEsProfile {
 }
 
 /** The key of a (column, token type) pair. */
-const rmlEsKey = (col: i32, t: i32): i64 => (toI64(col) << 32) | toI64(t + 16);
+const rmlEsKey = (col: i32, t: i32): i64 => (toI64(col) << 32) | (toI64(t) + toI64(16));
 
 /** The number of distinct values in `xs`. */
 const rmlEsDistinct = (xs: i32[]): i32 => {
@@ -50,9 +52,14 @@ const rmlEsDistinct = (xs: i32[]): i32 => {
 /** distinct_spacings(entries).count(&:positive?) over [line, spacing, ...] pairs. */
 const rmlEsPositiveDistinct = (entries: i32[]): i32 => {
   const s = new Set<i32>();
-  for (let i = 1; i < toI32(entries.length); i += 2) {
-    if (entries[i] > 0) {
-      s.add(entries[i]);
+  // The odd slots: the spacings.
+  for (let i = 1; i < entries.length; i++) {
+    if ((i & 1) === 0) {
+      continue;
+    }
+    const v = entries[i];
+    if (v > 0) {
+      s.add(v);
     }
   }
   return toI32(s.size);
@@ -71,21 +78,40 @@ export class CopLayoutExtraSpacing {
       return;
     }
     const st = new RmlEsState(src);
-    const nt = toI32(src.tokT.length);
-    for (let i = 0; i + 1 < nt; i++) {
-      if (src.tokT[i + 1] === TK_tNL) {
+    const tokT = src.tokT;
+    const tokS = src.tokS;
+    const tokE = src.tokE;
+    // Each token `j` after the first, with `i` the one before it.
+    for (let j = 1; j < tokT.length; j++) {
+      const i = j - 1;
+      if (tokT[j] === TK_tNL) {
         continue;
       }
+      if (j >= tokS.length || i >= tokS.length) {
+        fault();
+        return;
+      }
+      const si = tokS[i];
+      const sj = tokS[j];
       // extra_space_range
-      if (src.line(src.tokS[i]) !== src.line(src.tokS[i + 1])) {
+      if (src.line(si) !== src.line(sj)) {
         continue;
       }
-      const s = src.tokE[i];
-      const e = src.tokS[i + 1] - 1;
+      if (i >= tokE.length) {
+        fault();
+        return;
+      }
+      const s = tokE[i];
+      const e64 = toI64(sj) - toI64(1);
+      if (e64 < toI64(-2147483648)) {
+        fault();
+        return;
+      }
+      const e = toI32(e64);
       if (e <= s) {
         continue;
       }
-      if (st.alignedTok(i, i + 1)) {
+      if (st.alignedTok(i, j)) {
         continue;
       }
       if (st.ignored(s)) {
@@ -122,15 +148,24 @@ class RmlEsState {
     this.nLines = this.al.nLines;
     // aligned_locations(comments)
     this.alignedComments = new Set<i32>();
-    for (let i = 0; i + 1 < toI32(src.commS.length); i++) {
-      if (src.column(src.commS[i]) === src.column(src.commS[i + 1])) {
-        this.alignedComments.add(src.line(src.commS[i]));
-        this.alignedComments.add(src.line(src.commS[i + 1]));
+    const commS = src.commS;
+    for (let j = 1; j < commS.length; j++) {
+      const a = commS[j - 1];
+      const b = commS[j];
+      if (src.column(a) === src.column(b)) {
+        this.alignedComments.add(src.line(a));
+        this.alignedComments.add(src.line(b));
       }
     }
     this.byLine = new Map<i32, i32[]>();
-    for (let i = 0; i < toI32(src.tokT.length); i++) {
-      const l = src.line(src.tokS[i]);
+    const tokT = src.tokT;
+    const tokS = src.tokS;
+    for (let i = 0; i < tokT.length; i++) {
+      if (i >= tokS.length) {
+        fault();
+        break;
+      }
+      const l = src.line(tokS[i]);
       const xs = this.byLine.get(l);
       if (xs === undefined) {
         const ys: i32[] = [i];
@@ -170,8 +205,11 @@ class RmlEsState {
         this.ignE.push(src.a.exS(src.a.kid(n, 1)));
       }
     }
-    for (let i = 0; i < toI32(this.ignS.length); i++) {
-      if (pos >= this.ignS[i] && pos < this.ignE[i]) {
+    const ignS = this.ignS;
+    const ignE = this.ignE;
+    // The two grow together.
+    for (let i = 0; i < ignS.length && i < ignE.length; i++) {
+      if (pos >= ignS[i] && pos < ignE[i]) {
         return true;
       }
     }
@@ -181,11 +219,23 @@ class RmlEsState {
   /** aligned_tok?(previous_token, token) for token indexes. */
   alignedTok(pi: i32, ti: i32): boolean {
     const src = this.src;
-    const t = src.tokT[ti];
-    if (t === TK_COMMENT) {
-      return this.alignedComments.has(src.line(src.tokS[ti]));
+    const tokT = src.tokT;
+    const tokS = src.tokS;
+    const tokE = src.tokE;
+    if (ti < 0 || ti >= tokT.length || ti >= tokS.length) {
+      fault();
+      return false;
     }
-    if (!this.al.withSomething(src.tokS[ti], src.tokE[ti])) {
+    const t = tokT[ti];
+    const s = tokS[ti];
+    if (t === TK_COMMENT) {
+      return this.alignedComments.has(src.line(s));
+    }
+    if (ti >= tokE.length) {
+      fault();
+      return false;
+    }
+    if (!this.al.withSomething(s, tokE[ti])) {
       return false;
     }
     return lspAsgnOrCmp(t) || this.spacingVaries(pi, ti);
@@ -194,36 +244,73 @@ class RmlEsState {
   /** spacing_varies? */
   private spacingVaries(pi: i32, ti: i32): boolean {
     const src = this.src;
-    const line = src.line(src.tokS[ti]);
+    const tokT = src.tokT;
+    const tokS = src.tokS;
+    if (ti < 0 || ti >= tokT.length || ti >= tokS.length) {
+      fault();
+      return false;
+    }
+    const tt = tokT[ti];
+    const ts = tokS[ti];
+    const line = src.line(ts);
+    // A line number is at least 1 and below the file's length.
+    if (line < 1 || line > 1073741823) {
+      fault();
+      return false;
+    }
     const prof = this.profile(line);
-    const col = src.column(src.tokS[ti]);
-    const ent = prof.typed.get(rmlEsKey(col, src.tokT[ti])) ?? -1;
+    const col = src.column(ts);
+    const ent = prof.typed.get(rmlEsKey(col, tt)) ?? -1;
     const entries = prof.byCol.get(col);
     const nEntries = entries === undefined ? 0 : toI32(entries.length) / 2;
-    if (ent >= 0 && toI32(prof.tLines[ent].length) > 1) {
-      // uniform_alignment_allowed?
-      const v = prof.verdicts.get(ent);
-      if (v !== undefined) {
-        return v;
+    if (ent >= 0) {
+      const tLines = prof.tLines;
+      const tSpacings = prof.tSpacings;
+      if (ent >= tLines.length || ent >= tSpacings.length) {
+        fault();
+        return false;
       }
-      // spacings.uniq.size > 1 || distinct_spacings(entries).count(&:positive?) > 1 ||
-      //   aligned_on_other_column?
-      const r =
-        rmlEsDistinct(prof.tSpacings[ent]) > 1 ||
-        (entries !== undefined && rmlEsPositiveDistinct(entries) > 1) ||
-        this.otherColumn(prof, col, prof.tLines[ent]);
-      prof.verdicts.set(ent, r);
-      return r;
+      const ls = tLines[ent];
+      const sps = tSpacings[ent];
+      if (toI32(ls.length) > 1) {
+        // uniform_alignment_allowed?
+        const v = prof.verdicts.get(ent);
+        if (v !== undefined) {
+          return v;
+        }
+        // spacings.uniq.size > 1 || distinct_spacings(entries).count(&:positive?) > 1 ||
+        //   aligned_on_other_column?
+        const r =
+          rmlEsDistinct(sps) > 1 ||
+          (entries !== undefined && rmlEsPositiveDistinct(entries) > 1) ||
+          this.otherColumn(prof, col, ls);
+        prof.verdicts.set(ent, r);
+        return r;
+      }
     }
     if (nEntries > 1 && entries !== undefined) {
+      const es: i32[] = entries;
       const sp: i32[] = [];
-      for (let i = 1; i < toI32(entries.length); i += 2) {
-        sp.push(entries[i]);
+      // The odd slots: the spacings.
+      for (let i = 1; i < es.length; i++) {
+        if ((i & 1) !== 0) {
+          sp.push(es[i]);
+        }
       }
       return rmlEsDistinct(sp) > 1;
     }
     // nearest_spacing_varies?
-    const spacing = src.tokS[ti] - src.tokE[pi];
+    const tokE = src.tokE;
+    if (pi < 0 || pi >= tokE.length) {
+      fault();
+      return false;
+    }
+    const sp64 = toI64(ts) - toI64(tokE[pi]);
+    if (sp64 < toI64(-2147483648) || sp64 > toI64(2147483647)) {
+      fault();
+      return false;
+    }
+    const spacing = toI32(sp64);
     return this.nearestDiffers(line - 1, -1, col, spacing) || this.nearestDiffers(line + 1, 1, col, spacing);
   }
 
@@ -238,10 +325,17 @@ class RmlEsState {
       if (c === col || entries === undefined) {
         continue;
       }
+      const es: i32[] = entries;
       const shared: i32[] = [];
-      for (let i = 0; i + 1 < toI32(entries.length); i += 2) {
-        if (set.has(entries[i])) {
-          shared.push(entries[i + 1]);
+      // The (line, spacing) pairs: `i` runs over the spacings.
+      for (let i = 1; i < es.length; i++) {
+        if ((i & 1) === 0) {
+          continue;
+        }
+        const l = es[i - 1];
+        const s = es[i];
+        if (set.has(l)) {
+          shared.push(s);
         }
       }
       if (rmlEsDistinct(shared) > 1) {
@@ -256,9 +350,19 @@ class RmlEsState {
     const src = this.src;
     let l = from;
     const last = this.nLines;
+    // A line count is far below this.
+    if (last > 1073741823) {
+      fault();
+      return false;
+    }
     while (l >= 1 && l <= last) {
       const cur = l;
-      l += dir;
+      // `dir` is -1 or 1.
+      if (dir < 0) {
+        l--;
+      } else {
+        l++;
+      }
       if (this.boundary.has(cur)) {
         break;
       }
@@ -266,13 +370,21 @@ class RmlEsState {
         continue;
       }
       // spacing_before_token_at
-      const toks = this.byLine.get(cur);
-      if (toks === undefined) {
+      const found = this.byLine.get(cur);
+      if (found === undefined) {
         continue;
       }
+      const toks: i32[] = found;
+      const tokS = src.tokS;
+      const tokE = src.tokE;
       let idx = -1;
-      for (let i = 0; i < toI32(toks.length); i++) {
-        if (src.column(src.tokS[toks[i]]) === col) {
+      for (let i = 0; i < toks.length; i++) {
+        const tk = toks[i];
+        if (tk < 0 || tk >= tokS.length) {
+          fault();
+          return false;
+        }
+        if (src.column(tokS[tk]) === col) {
           idx = i;
           break;
         }
@@ -280,8 +392,22 @@ class RmlEsState {
       if (idx <= 0) {
         continue;
       }
-      const other = src.tokS[toks[idx]] - src.tokE[toks[idx - 1]];
-      return other !== spacing;
+      if (idx >= toks.length) {
+        fault();
+        return false;
+      }
+      const a = toks[idx];
+      const b = toks[idx - 1];
+      if (a < 0 || a >= tokS.length || b < 0 || b >= tokE.length) {
+        fault();
+        return false;
+      }
+      const other = toI64(tokS[a]) - toI64(tokE[b]);
+      if (other < toI64(-2147483648) || other > toI64(2147483647)) {
+        fault();
+        return false;
+      }
+      return other !== toI64(spacing);
     }
     return false;
   }
@@ -295,16 +421,36 @@ class RmlEsState {
     }
     const src = this.src;
     const p = new RmlEsProfile();
-    for (const l of this.groups[g]) {
-      const toks = this.byLine.get(l);
-      if (toks === undefined) {
+    const groups = this.groups;
+    if (g < 0 || g >= groups.length) {
+      fault();
+      return p;
+    }
+    const tokT = src.tokT;
+    const tokS = src.tokS;
+    const tokE = src.tokE;
+    for (const l of groups[g]) {
+      const found = this.byLine.get(l);
+      if (found === undefined) {
         continue;
       }
-      for (let i = 1; i < toI32(toks.length); i++) {
+      const toks: i32[] = found;
+      for (let i = 1; i < toks.length; i++) {
         const prev = toks[i - 1];
         const tok = toks[i];
-        const spacing = src.tokS[tok] - src.tokE[prev];
-        const col = src.column(src.tokS[tok]);
+        if (tok < 0 || tok >= tokS.length || tok >= tokT.length || prev < 0 || prev >= tokE.length) {
+          fault();
+          return p;
+        }
+        const ts = tokS[tok];
+        const tt = tokT[tok];
+        const sp64 = toI64(ts) - toI64(tokE[prev]);
+        if (sp64 < toI64(-2147483648) || sp64 > toI64(2147483647)) {
+          fault();
+          return p;
+        }
+        const spacing = toI32(sp64);
+        const col = src.column(ts);
         const bc = p.byCol.get(col);
         if (bc === undefined) {
           const ys: i32[] = [l, spacing];
@@ -314,18 +460,26 @@ class RmlEsState {
           bc.push(l);
           bc.push(spacing);
         }
-        const key = rmlEsKey(col, src.tokT[tok]);
+        const key = rmlEsKey(col, tt);
         let ent = p.typed.get(key) ?? -1;
+        const tLines = p.tLines;
+        const tSpacings = p.tSpacings;
         if (ent < 0) {
-          ent = toI32(p.tLines.length);
+          ent = toI32(tLines.length);
           p.typed.set(key, ent);
           const nl: i32[] = [];
           const ns: i32[] = [];
-          p.tLines.push(nl);
-          p.tSpacings.push(ns);
+          tLines.push(nl);
+          tSpacings.push(ns);
         }
-        p.tLines[ent].push(l);
-        p.tSpacings[ent].push(spacing);
+        if (ent >= tLines.length || ent >= tSpacings.length) {
+          fault();
+          return p;
+        }
+        const tl = tLines[ent];
+        const ts2 = tSpacings[ent];
+        tl.push(l);
+        ts2.push(spacing);
       }
     }
     this.profiles.set(g, p);
@@ -342,16 +496,8 @@ class RmlEsState {
     const lines: i32[] = [];
     this.relevant(line, -1, seen, lines);
     this.relevant(line, 1, seen, lines);
-    // sort
-    for (let i = 1; i < toI32(lines.length); i++) {
-      const x = lines[i];
-      let j = i - 1;
-      while (j >= 0 && lines[j] > x) {
-        lines[j + 1] = lines[j];
-        j--;
-      }
-      lines[j + 1] = x;
-    }
+    // sort (any sort of numbers gives the one order)
+    stableSort(lines, (a: i32, b: i32): i32 => (a > b ? 1 : 0));
     const g = toI32(this.groups.length);
     this.groups.push(lines);
     for (const l of lines) {
@@ -366,9 +512,20 @@ class RmlEsState {
     const origIndent = al.indentation(first);
     let atLevel = true;
     let l = first;
-    while (l >= 1 && l <= this.nLines) {
+    const last = this.nLines;
+    // A line count is far below this.
+    if (last > 1073741823) {
+      fault();
+      return;
+    }
+    while (l >= 1 && l <= last) {
       const cur = l;
-      l += dir;
+      // `dir` is -1 or 1.
+      if (dir < 0) {
+        l--;
+      } else {
+        l++;
+      }
       const ind = al.indentation(cur);
       const blank = al.blank(cur);
       if ((cur !== first && this.boundary.has(cur)) || (ind < origIndent && !blank) || (atLevel && blank)) {

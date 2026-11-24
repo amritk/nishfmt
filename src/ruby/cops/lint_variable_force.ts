@@ -8,6 +8,8 @@
 // Ported from RuboCop 1.92.3 (MIT License, Copyright (c) 2012-24 Bozhidar
 // Batsov).
 
+import { add32 } from "../../core/arr";
+import { fault } from "../../core/fault";
 import {
   F_BEGIN,
   F_END,
@@ -183,10 +185,24 @@ const VF_RESERVED: string =
   " __ENCODING__ __FILE__ __LINE__ BEGIN END alias and begin break case class def do else elsif end ensure false for if in module next nil not or redo rescue retry return self super then true undef unless until when while yield ";
 
 const vfHex = (s: string, from: i32, to: i32): i32 => {
+  const k = toI32(s.length);
+  if (from < to && (from < 0 || to > k)) {
+    fault();
+    return 0;
+  }
   let v = 0;
-  for (let i = from; i < to; i++) {
-    const c = s.charCodeAt(i);
-    v = v * 16 + (c <= 57 ? c - 48 : c - 87);
+  for (let i = from; i >= 0 && i < to && i < k; i++) {
+    // The table's numbers have at most six hex digits.
+    if (v < 0 || v > 134217000) {
+      fault();
+      return 0;
+    }
+    const c = s.charCodeAt(i) & 0xff;
+    if (c <= 57) {
+      v = v * 16 + (c - 48);
+    } else {
+      v = v * 16 + (c - 87);
+    }
   }
   return v;
 };
@@ -196,22 +212,32 @@ const vfBadStart = (c: i32): boolean => {
   const t = LVAR_BAD_START;
   const k = toI32(t.length);
   let i = 0;
-  while (i < k) {
+  while (i >= 0 && i < k) {
     let j = i;
     let dash = -1;
-    while (j < k && t.charCodeAt(j) !== 44) {
-      if (t.charCodeAt(j) === 45) {
+    while (j >= 0 && j < k) {
+      const d = t.charCodeAt(j);
+      if (d === 44) {
+        break;
+      }
+      if (d === 45) {
         dash = j;
       }
       j++;
     }
     const lo = vfHex(t, i, dash < 0 ? j : dash);
-    const hi = dash < 0 ? lo : vfHex(t, dash + 1, j);
+    let hi = lo;
+    if (dash >= 0 && dash < k) {
+      hi = vfHex(t, dash + 1, j);
+    }
     if (c < lo) {
       return false;
     }
     if (c <= hi) {
       return true;
+    }
+    if (j >= k) {
+      break;
     }
     i = j + 1;
   }
@@ -224,7 +250,7 @@ const vfLocalVariableName = (name: string): boolean => {
   if (k === 0 || VF_RESERVED.indexOf(` ${name} `) >= 0) {
     return false;
   }
-  const b = name.charCodeAt(0);
+  const b = name.length > 0 ? name.charCodeAt(0) : 0;
   if (b < 128) {
     if (!((b >= 97 && b <= 122) || b === 95)) {
       return false;
@@ -244,6 +270,11 @@ const vfLocalVariableName = (name: string): boolean => {
       n = 2;
     }
     for (let i = 1; i < n && i < k; i++) {
+      // At most three steps from a value below 32.
+      if (c < 0 || c > 33554431) {
+        fault();
+        return false;
+      }
       c = c * 64 + (name.charCodeAt(i) & 63);
     }
     if (vfBadStart(c)) {
@@ -277,9 +308,15 @@ export const vfNamedCaptures = (src: RbSource, re: i32): string[] => {
       }
     }
   }
+  // Both are positions in the source, far below 2^30; each step of the loop
+  // moves `i` forward, so `cls` stays below `e` too.
+  if (s < 0 || e > 1073741823) {
+    fault();
+    return out;
+  }
   let i = s;
   let cls = 0;
-  while (i < e) {
+  while (i >= 0 && i < e) {
     const c = src.at(i);
     if (c === 92) {
       i += 2;
@@ -287,6 +324,10 @@ export const vfNamedCaptures = (src: RbSource, re: i32): string[] => {
     }
     if (cls > 0) {
       if (c === 91) {
+        if (cls >= 1073741823) {
+          fault();
+          return out;
+        }
         cls++;
       } else if (c === 93) {
         cls--;
@@ -298,10 +339,10 @@ export const vfNamedCaptures = (src: RbSource, re: i32): string[] => {
       cls = 1;
       i++;
       if (src.at(i) === 94) {
-        i++;
+        i = add32(i, 1);
       }
       if (src.at(i) === 93) {
-        i++;
+        i = add32(i, 1);
       }
       continue;
     }
@@ -375,7 +416,8 @@ export const vfUnusedArgCorrect = (src: RbSource, k: RbRewriter, node: i32): voi
   }
   if (t === NT_BLOCKARG) {
     let s = rbSpaceBegin(src, a.exS(node), 1, true, false, false);
-    while (src.at(s - 1) === 44) {
+    // `src.at` answers -1 before the source.
+    while (s > 0 && src.at(s - 1) === 44) {
       s--;
     }
     k.remove(s, a.exE(node));
@@ -386,7 +428,8 @@ export const vfUnusedArgCorrect = (src: RbSource, k: RbRewriter, node: i32): voi
     name = a.text(a.kid(node, 0));
   } else {
     let s = a.exS(node);
-    while (src.at(s) === 42) {
+    // A `*` is at a position below the source's length.
+    while (s < 2147483647 && src.at(s) === 42) {
       s++;
     }
     name = src.src(s, a.exE(node));
@@ -430,16 +473,38 @@ export class VfForce {
       this.ord.push(-1);
       this.last.push(-1);
     }
-    const np = toI32(src.pre.length);
-    for (let i = 0; i < np; i++) {
-      this.ord[vIdx(src.pre[i])] = i;
-      this.last[vIdx(src.pre[i])] = i;
+    const pre = src.pre;
+    const ord = this.ord;
+    const last = this.last;
+    // Every node of `pre` has an index below nNodes, the length of both.
+    for (let i = 0; i < pre.length; i++) {
+      const ni = vIdx(pre[i]);
+      if (ni < 0 || ni >= ord.length || ni >= last.length) {
+        fault();
+        return;
+      }
+      ord[ni] = i;
+      last[ni] = i;
     }
-    for (let i = np - 1; i >= 0; i--) {
-      const n = src.pre[i];
+    let i = toI32(pre.length);
+    while (i > 0) {
+      i--;
+      if (i >= pre.length) {
+        fault();
+        return;
+      }
+      const n = pre[i];
       const p = src.parent(n);
-      if (p !== V_NIL && this.last[vIdx(n)] > this.last[vIdx(p)]) {
-        this.last[vIdx(p)] = this.last[vIdx(n)];
+      if (p !== V_NIL) {
+        const ni = vIdx(n);
+        const pi = vIdx(p);
+        if (ni < 0 || ni >= last.length || pi < 0 || pi >= last.length) {
+          fault();
+          return;
+        }
+        if (last[ni] > last[pi]) {
+          last[pi] = last[ni];
+        }
       }
     }
     this.pushScope(src.root);
@@ -451,18 +516,41 @@ export class VfForce {
 
   /** Whether x is a proper ancestor of y. */
   ancestorOf(x: i32, y: i32): boolean {
-    const ox = this.ord[vIdx(x)];
-    const oy = this.ord[vIdx(y)];
-    return ox < oy && oy <= this.last[vIdx(x)];
+    const ord = this.ord;
+    const last = this.last;
+    const xi = vIdx(x);
+    const yi = vIdx(y);
+    if (xi < 0 || xi >= ord.length || xi >= last.length || yi < 0 || yi >= ord.length) {
+      fault();
+      return false;
+    }
+    const ox = ord[xi];
+    const oy = ord[yi];
+    return ox < oy && oy <= last[xi];
   }
 
   /** The descendants of n in pre-order. */
   descendants(n: i32): i32[] {
     const out: i32[] = [];
-    const o = this.ord[vIdx(n)];
-    const l = this.last[vIdx(n)];
-    for (let i = o + 1; i <= l; i++) {
-      out.push(this.src.pre[i]);
+    const ord = this.ord;
+    const last = this.last;
+    const ni = vIdx(n);
+    if (ni < 0 || ni >= ord.length || ni >= last.length) {
+      fault();
+      return out;
+    }
+    const o = ord[ni];
+    const l = last[ni];
+    const pre = this.src.pre;
+    // The pre-order indexes o + 1 .. l.
+    let i = o;
+    while (i < l) {
+      i++;
+      if (i < 0 || i >= pre.length) {
+        fault();
+        break;
+      }
+      out.push(pre[i]);
     }
     return out;
   }
@@ -479,7 +567,7 @@ export class VfForce {
   include(si: i32, target: i32): boolean {
     const src = this.src;
     const a = src.a;
-    const sc = this.scopes[si];
+    const sc = this.scopeAt(si);
     const node = sc.node;
     // belong_to_outer_scope?
     if (!sc.naked && target === node) {
@@ -511,7 +599,7 @@ export class VfForce {
 
   /** Scope#body_node. */
   bodyNode(si: i32): i32 {
-    const sc = this.scopes[si];
+    const sc = this.scopeAt(si);
     if (sc.naked) {
       return sc.node;
     }
@@ -529,7 +617,7 @@ export class VfForce {
   /** Scope#each_node: the nodes of the scope itself, pre-order. */
   eachNode(si: i32): i32[] {
     const out: i32[] = [];
-    const sc = this.scopes[si];
+    const sc = this.scopeAt(si);
     if (sc.naked) {
       out.push(sc.node);
     }
@@ -623,9 +711,9 @@ export class VfForce {
 
   /** Assignment#branch (memoized). */
   asgBranch(k: i32): i32 {
-    const as = this.asgns[k];
+    const as = this.asgAt(k);
     if (!as.brDone) {
-      as.br = this.branchOf(as.node, this.vars[as.v].scope);
+      as.br = this.branchOf(as.node, this.varAt(as.v).scope);
       as.brDone = true;
     }
     return as.br;
@@ -635,15 +723,16 @@ export class VfForce {
 
   /** Variable#assign. */
   assignVar(vi: i32, node: i32): void {
-    const v = this.vars[vi];
+    const v = this.varAt(vi);
     const k = toI32(this.asgns.length);
     this.asgns.push(new VfAsgn(node, vi));
     // mark_last_as_reassigned!
-    const m = toI32(v.asg.length);
-    if (!v.captured && m > 0) {
-      const lk = v.asg[m - 1];
+    const asg = v.asg;
+    const ml = toI32(asg.length) - 1;
+    if (!v.captured && ml >= 0 && ml < asg.length) {
+      const lk = asg[ml];
       if (this.asgBranch(k) === this.asgBranch(lk)) {
-        const last = this.asgns[lk];
+        const last = this.asgAt(lk);
         if (!last.referenced) {
           last.reassigned = true;
         }
@@ -654,14 +743,26 @@ export class VfForce {
 
   /** Variable#reference!. */
   referenceVar(vi: i32, node: i32): void {
-    const v = this.vars[vi];
-    v.nref += 1;
+    const v = this.varAt(vi);
+    const nref = v.nref;
+    if (nref >= 2147483647) {
+      fault();
+      return;
+    }
+    v.nref = nref + 1;
     v.refs.push(node);
     const si = v.scope;
     const refBr = this.branchOf(node, si);
     const consumed: i32[] = [];
-    for (let j = toI32(v.asg.length) - 1; j >= 0; j--) {
-      const k = v.asg[j];
+    const asg = v.asg;
+    let j = toI32(asg.length);
+    while (j > 0) {
+      j--;
+      if (j >= asg.length) {
+        fault();
+        return;
+      }
+      const k = asg[j];
       const abr = this.asgBranch(k);
       let skip = false;
       if (abr !== V_NIL) {
@@ -676,10 +777,11 @@ export class VfForce {
       }
       const excl = abr !== V_NIL && refBr !== V_NIL && this.exclusiveWith(abr, refBr, si);
       if (!excl) {
-        this.asgns[k].referenced = true;
-        this.asgns[k].refs.push(node);
+        const as = this.asgAt(k);
+        as.referenced = true;
+        as.refs.push(node);
       }
-      if (this.inModifierConditional(this.asgns[k].node, node)) {
+      if (this.inModifierConditional(this.asgAt(k).node, node)) {
         continue;
       }
       if (abr === V_NIL || abr === refBr) {
@@ -734,37 +836,73 @@ export class VfForce {
 
   /** Variable#argument?. */
   isArgument(vi: i32): boolean {
-    return vfArgType(this.src.a.type(this.vars[vi].decl));
+    return vfArgType(this.src.a.type(this.varAt(vi).decl));
   }
 
   /** Variable#method_argument?. */
   isMethodArgument(vi: i32): boolean {
-    const t = this.src.a.type(this.scopes[this.vars[vi].scope].node);
+    const t = this.src.a.type(this.scopeAt(this.varAt(vi).scope).node);
     return this.isArgument(vi) && (t === NT_DEF || t === NT_DEFS);
   }
 
   /** Variable#block_argument? (block nodes only, not numblock). */
   isBlockArgument(vi: i32): boolean {
-    return this.isArgument(vi) && this.src.a.type(this.scopes[this.vars[vi].scope].node) === NT_BLOCK;
+    return this.isArgument(vi) && this.src.a.type(this.scopeAt(this.varAt(vi).scope).node) === NT_BLOCK;
   }
 
   /** Variable#keyword_argument?. */
   isKeywordArgument(vi: i32): boolean {
-    const t = this.src.a.type(this.vars[vi].decl);
+    const t = this.src.a.type(this.varAt(vi).decl);
     return t === NT_KWARG || t === NT_KWOPTARG;
   }
 
   /** Assignment#used?. */
   asgUsed(k: i32): boolean {
-    const as = this.asgns[k];
-    const v = this.vars[as.v];
+    const as = this.asgAt(k);
+    const v = this.varAt(as.v);
     return (!as.reassigned && v.captured && v.nref > 0) || as.referenced;
   }
 
   // ---- VariableTable --------------------------------------------------------------
 
   private cur(): i32 {
-    return this.stack[this.stack.length - 1];
+    const st = this.stack;
+    const top = toI32(st.length) - 1;
+    if (top >= 0 && top < st.length) {
+      return st[top];
+    }
+    fault();
+    return -1;
+  }
+
+  /** The scope `si`; a fault and a stand-in when it is not one. */
+  private scopeAt(si: i32): VfScope {
+    const scopes = this.scopes;
+    if (si >= 0 && si < scopes.length) {
+      return scopes[si];
+    }
+    fault();
+    return new VfScope(V_NIL, true);
+  }
+
+  /** The variable `vi`; a fault and a stand-in when it is not one. */
+  private varAt(vi: i32): VfVar {
+    const vars = this.vars;
+    if (vi >= 0 && vi < vars.length) {
+      return vars[vi];
+    }
+    fault();
+    return new VfVar("", V_NIL, -1);
+  }
+
+  /** The assignment `k`; a fault and a stand-in when it is not one. */
+  private asgAt(k: i32): VfAsgn {
+    const asgns = this.asgns;
+    if (k >= 0 && k < asgns.length) {
+      return asgns[k];
+    }
+    fault();
+    return new VfAsgn(V_NIL, -1);
   }
 
   private pushScope(node: i32): void {
@@ -776,7 +914,10 @@ export class VfForce {
 
   private popScope(): void {
     const si = this.cur();
-    this.stack.pop();
+    const st = this.stack;
+    if (st.length > 0) {
+      st.pop();
+    }
     this.popped.push(si);
   }
 
@@ -784,10 +925,17 @@ export class VfForce {
     const si = this.cur();
     const vi = toI32(this.vars.length);
     this.vars.push(new VfVar(name, node, si));
-    const sc = this.scopes[si];
-    for (let i = 0; i < toI32(sc.names.length); i++) {
-      if (sc.names[i] === name) {
-        sc.vars[i] = vi;
+    const sc = this.scopeAt(si);
+    const names = sc.names;
+    const vars = sc.vars;
+    for (let i = 0; i < names.length; i++) {
+      if (names[i] === name) {
+        // `names` and `vars` grow together.
+        if (i < vars.length) {
+          vars[i] = vi;
+        } else {
+          fault();
+        }
         return;
       }
     }
@@ -802,11 +950,25 @@ export class VfForce {
 
   /** find_variable: the variable index, or -1. */
   findVar(name: string): i32 {
-    for (let j = toI32(this.stack.length) - 1; j >= 0; j--) {
-      const sc = this.scopes[this.stack[j]];
-      for (let i = 0; i < toI32(sc.names.length); i++) {
-        if (sc.names[i] === name) {
-          return sc.vars[i];
+    const st = this.stack;
+    let j = toI32(st.length);
+    while (j > 0) {
+      j--;
+      if (j >= st.length) {
+        fault();
+        return -1;
+      }
+      const sc = this.scopeAt(st[j]);
+      const names = sc.names;
+      const vars = sc.vars;
+      for (let i = 0; i < names.length; i++) {
+        if (names[i] === name) {
+          // `names` and `vars` grow together.
+          if (i < vars.length) {
+            return vars[i];
+          }
+          fault();
+          return -1;
         }
       }
       if (!this.isAnyBlock(sc.node)) {
@@ -818,8 +980,15 @@ export class VfForce {
 
   private accessible(): i32[] {
     const out: i32[] = [];
-    for (let j = toI32(this.stack.length) - 1; j >= 0; j--) {
-      const sc = this.scopes[this.stack[j]];
+    const st = this.stack;
+    let j = toI32(st.length);
+    while (j > 0) {
+      j--;
+      if (j >= st.length) {
+        fault();
+        break;
+      }
+      const sc = this.scopeAt(st[j]);
       for (const v of sc.vars) {
         out.push(v);
       }
@@ -831,14 +1000,14 @@ export class VfForce {
   }
 
   private markCaptured(vi: i32): void {
-    const cs = this.scopes[this.cur()];
+    const cs = this.scopeAt(this.cur());
     if (!this.isAnyBlock(cs.node)) {
       return;
     }
-    if (this.scopes[this.vars[vi].scope].node === cs.node) {
+    if (this.scopeAt(this.varAt(vi).scope).node === cs.node) {
       return;
     }
-    this.vars[vi].captured = true;
+    this.varAt(vi).captured = true;
   }
 
   private assignTo(name: string, node: i32): void {
@@ -1058,8 +1227,8 @@ export class VfForce {
         continue;
       }
       const inLoop: i32[] = [];
-      for (const k of this.vars[vi].asg) {
-        const an = this.asgns[k].node;
+      for (const k of this.varAt(vi).asg) {
+        const an = this.asgAt(k).node;
         // Array#include? compares nodes structurally (AST::Node#==).
         let hit = asgNodes.has(an);
         if (!hit && a.type(an) === NT_LVASGN) {
@@ -1078,19 +1247,26 @@ export class VfForce {
         continue;
       }
       for (const k of inLoop) {
-        let p = src.parent(this.asgns[k].node);
+        let p = src.parent(this.asgAt(k).node);
         while (p !== V_NIL) {
           const t = a.type(p);
           if (t === NT_IF || t === NT_CASE || t === NT_CASE_MATCH || t === NT_RESCUE) {
-            this.asgns[k].referenced = true;
-            this.asgns[k].refs.push(loop);
+            const as = this.asgAt(k);
+            as.referenced = true;
+            as.refs.push(loop);
             break;
           }
           p = src.parent(p);
         }
       }
-      this.asgns[inLoop[inLoop.length - 1]].referenced = true;
-      this.asgns[inLoop[inLoop.length - 1]].refs.push(loop);
+      const il = toI32(inLoop.length) - 1;
+      if (il < 0 || il >= inLoop.length) {
+        fault();
+        return;
+      }
+      const as = this.asgAt(inLoop[il]);
+      as.referenced = true;
+      as.refs.push(loop);
     }
   }
 }
