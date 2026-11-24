@@ -4,8 +4,9 @@
 // comments as tokens, lexes `#include <x>`'s header name as one token, and
 // marks every token of a preprocessor directive.
 
-import { uncheckedGet, uncheckedSet } from "nish:unsafe";
 import { Doc } from "./doc";
+import { sub32 } from "../core/arr";
+import { fault } from "../core/fault";
 import { utf8Width } from "../core/uwidth";
 import {
   CW_FINAL,
@@ -193,10 +194,17 @@ const wordIs = (src: u8[], a: i32, n: i32, s: string): boolean => {
   if (n !== toI32(s.length)) {
     return false;
   }
-  for (let i = 0; i < n; i++) {
-    if (toI32(uncheckedGet(src, a + i)) !== s.charCodeAt(i)) {
+  // (A word is a token's bytes, inside `src`.)
+  if (a < 0 || a > src.length || n > src.length - a) {
+    fault();
+    return false;
+  }
+  let j = a;
+  for (let i = 0; i < s.length && j < src.length; i++) {
+    if (toI32(src[j]) !== s.charCodeAt(i)) {
       return false;
     }
+    j++;
   }
   return true;
 };
@@ -245,7 +253,8 @@ const isMsKeyword = (src: u8[], a: i32, n: i32): boolean => {
  * token of its own: `"%d"PRId64`.
  */
 const udSuffixEnd = (d: Doc, i: i32, n: i32, str: boolean): i32 => {
-  if (i >= n) {
+  // (Before the text `d.at` answers 0, which starts no suffix.)
+  if (i < 0 || i >= n) {
     return i;
   }
   const c = d.at(i);
@@ -259,12 +268,21 @@ const udSuffixEnd = (d: Doc, i: i32, n: i32, str: boolean): i32 => {
   if (c === 95) {
     return j;
   }
-  if (!str || j - i > 3) {
+  // `0 <= i <= j`: the u32 difference is the true one.
+  const len = toI32(toU32(j) - toU32(i));
+  if (!str || len > 3) {
     return i;
   }
-  const c1 = j - i > 1 ? d.at(i + 1) : 0;
-  const c2 = j - i > 2 ? d.at(i + 2) : 0;
-  switch (j - i) {
+  const i1 = i + 1;
+  let c1 = 0;
+  let c2 = 0;
+  if (len > 1) {
+    c1 = d.at(i1);
+  }
+  if (len > 2 && i1 < n) {
+    c2 = d.at(i1 + 1);
+  }
+  switch (len) {
     case 1:
       // h s i d y
       return c === 104 || c === 115 || c === 105 || c === 100 || c === 121 ? j : i;
@@ -285,7 +303,13 @@ const udSuffixEnd = (d: Doc, i: i32, n: i32, str: boolean): i32 => {
 
 /** The keyword id of the word at `a`, length `n`, or K_IDENT. */
 export const wordKind = (src: u8[], a: i32, n: i32): i32 => {
-  const c = toI32(uncheckedGet(src, a));
+  // (A word is a token's bytes, inside `src`.)
+  if (a < 0 || n < 1 || a >= src.length || n > src.length - a) {
+    fault();
+    return K_IDENT;
+  }
+  const c = toI32(src[a]);
+  const a1 = a + 1;
   // Microsoft's structured exception handling reads as try/catch.
   if (c === 95 && n >= 5 && n <= 9) {
     if (wordIs(src, a, n, "__try")) return KW_TRY;
@@ -300,7 +324,7 @@ export const wordKind = (src: u8[], a: i32, n: i32): i32 => {
     return KW_ASM;
   }
   // Keywords clang-format's lexer knows (it turns on Microsoft extensions).
-  if (c === 95 && n >= 5 && toI32(uncheckedGet(src, a + 1)) === 95 && isMsKeyword(src, a, n)) {
+  if (c === 95 && n >= 5 && a1 < src.length && toI32(src[a1]) === 95 && isMsKeyword(src, a, n)) {
     return KW_MS;
   }
   if (c === 95 && n === 8 && wordIs(src, a, n, "_Generic")) {
@@ -526,35 +550,59 @@ const ppKindOf = (src: u8[], a: i32, n: i32): i32 => {
 
 /** The display width of bytes [a, b): one column per UTF-8 lead byte. */
 export const widthOf = (src: u8[], a: i32, b: i32): i32 => {
+  if (b <= a) {
+    // (An empty or reversed range: its length, zero or below.)
+    return sub32(b, a);
+  }
+  if (a < 0 || b > src.length) {
+    fault();
+    return 0;
+  }
   // (ASCII alone, the usual case, is its length; tabs count one here.)
   let ascii = true;
   for (let i = a; i < b; i++) {
-    const c = toI32(uncheckedGet(src, i));
+    const c = toI32(src[i]);
     if (c >= 128) {
       ascii = false;
       break;
     }
   }
   if (ascii) {
-    return b - a;
+    // (`0 <= a < b`: the u32 difference is the true one.)
+    return toI32(toU32(b) - toU32(a));
   }
   // Tabs split the text into the pieces clang-format measures one by one.
+  // (A piece is at most its bytes wide, and the bytes number below 2^31.)
   let w = 0;
   let s = a;
-  for (let i = a; i <= b; i++) {
-    if (i === b || toI32(uncheckedGet(src, i)) === 9) {
-      w = w + utf8Width(src, s, i) + (i < b ? 1 : 0);
+  for (let i = a; i < b && i < src.length; i++) {
+    if (toI32(src[i]) === 9) {
+      const pw = utf8Width(src, s, i);
+      if (pw < 0 || pw > 1073741823 || w > 1073741823) {
+        fault();
+        return 0;
+      }
+      w = w + pw + 1;
       s = i + 1;
     }
   }
-  return w;
+  const pw = utf8Width(src, s, b);
+  if (pw < 0 || pw > 1073741823 || w > 1073741823) {
+    fault();
+    return 0;
+  }
+  return w + pw;
 };
 
 /** Whether the identifier [a, b) is a string-literal prefix; 2 when raw. */
 const stringPrefix = (src: u8[], a: i32, b: i32): i32 => {
-  const n = b - a;
+  const n = sub32(b, a);
   if (n === 1) {
-    const c = toI32(uncheckedGet(src, a));
+    if (a < 0 || a >= src.length) {
+      fault();
+      return 0;
+    }
+    const c = toI32(src[a]);
     if (c === 82) return 2; // R
     if (c === 117 || c === 85 || c === 76) return 1; // u U L
     return 0;
@@ -568,29 +616,46 @@ const stringPrefix = (src: u8[], a: i32, b: i32): i32 => {
   return 0;
 };
 
-/**
- * Lexes `d.src` into `d`'s token table, ending with one K_EOF token. Answers
- * false when the input has an unterminated comment, string or character.
- */
 /** Whether the document starts with a UTF-8 byte order mark. */
-export const hasBom = (d: Doc): boolean =>
-  d.n >= 3 &&
-  toI32(uncheckedGet(d.src, 0)) === 0xef &&
-  toI32(uncheckedGet(d.src, 1)) === 0xbb &&
-  toI32(uncheckedGet(d.src, 2)) === 0xbf;
+export const hasBom = (d: Doc): boolean => {
+  const src = d.src;
+  if (d.n < 3) {
+    return false;
+  }
+  if (src.length < 3) {
+    // (`src` holds the document's `d.n` bytes.)
+    fault();
+    return false;
+  }
+  return toI32(src[0]) === 0xef && toI32(src[1]) === 0xbb && toI32(src[2]) === 0xbf;
+};
 
 /**
  * The display column of byte `a` on the line starting at `ls`: tabs reach the
  * next stop of 8, as clang-format's lexer counts the column a token starts at.
  */
 export const displayColumn = (src: u8[], ls: i32, a: i32): i32 => {
+  if (a <= ls) {
+    return sub32(a, ls);
+  }
+  if (ls < 0 || a > src.length) {
+    fault();
+    return 0;
+  }
   let c = 0;
   let seg = ls;
   let high = false;
   for (let j = ls; j < a; j++) {
-    const b = toI32(uncheckedGet(src, j));
+    const b = toI32(src[j]);
     if (b === 9) {
-      c = c + (high ? utf8Width(src, seg, j) : j - seg);
+      // (`ls <= seg <= j`: the u32 difference is the true one. A piece is
+      // at most its bytes wide, and the bytes number below 2^31.)
+      const pw = high ? utf8Width(src, seg, j) : toI32(toU32(j) - toU32(seg));
+      if (pw < 0 || pw > 1073741800 || c < 0 || c > 1073741800) {
+        fault();
+        return 0;
+      }
+      c = c + pw;
       c = c + 8 - (c % 8);
       seg = j + 1;
       high = false;
@@ -598,7 +663,36 @@ export const displayColumn = (src: u8[], ls: i32, a: i32): i32 => {
       high = true;
     }
   }
-  return c + (high ? utf8Width(src, seg, a) : a - seg);
+  const pw = high ? utf8Width(src, seg, a) : toI32(toU32(a) - toU32(seg));
+  if (pw < 0 || pw > 1073741800 || c < 0 || c > 1073741800) {
+    fault();
+    return 0;
+  }
+  return c + pw;
+};
+
+/**
+ * Where the backslash-newline at `i` (`\` then LF, or CR LF) ends, or -1
+ * when byte `i` starts none. `src` holds the text's `n` bytes.
+ */
+const escNlEnd = (src: u8[], n: i32, i: i32): i32 => {
+  // (`n <= src.length`, so `i < n` bounds every read.)
+  if (i < 0 || i >= n || i >= src.length || toI32(src[i]) !== 92) {
+    return -1;
+  }
+  const i1 = i + 1;
+  if (i1 >= n || i1 >= src.length) {
+    return -1;
+  }
+  const c1 = toI32(src[i1]);
+  if (c1 === 10) {
+    return i1 + 1;
+  }
+  const i2 = i1 + 1;
+  if (c1 !== 13 || i2 >= n || i2 >= src.length || toI32(src[i2]) !== 10) {
+    return -1;
+  }
+  return i2 + 1;
 };
 
 /**
@@ -607,42 +701,83 @@ export const displayColumn = (src: u8[], ls: i32, a: i32): i32 => {
  * `<` or the next token is one (`<` or a `<<` it splits, not `<=` or `<<=`).
  */
 const lessSplits = (d: Doc, i: i32, t: i32): boolean => {
-  if (t > 0 && d.kind[t - 1] === P_LESS && d.end[t - 1] <= i) {
-    return true;
+  if (t > 0) {
+    // (Token `t - 1` is lexed: the columns hold it.)
+    const kind = d.kind;
+    const end = d.end;
+    if (t > kind.length || t > end.length) {
+      fault();
+      return false;
+    }
+    const p = t - 1;
+    if (kind[p] === P_LESS && end[p] <= i) {
+      return true;
+    }
+    // (`operator<< <T>` stays `operator<<`.)
+    if (kind[p] === KW_OPERATOR) {
+      return false;
+    }
   }
-  // (`operator<< <T>` stays `operator<<`.)
-  if (t > 0 && d.kind[t - 1] === KW_OPERATOR) {
+  const src = d.src;
+  const n = d.n;
+  // (The `<<` is inside the text, which `src` holds; see lex for the bound.)
+  if (n > src.length || n > 2147483632 || i < 0 || i >= n) {
+    fault();
     return false;
   }
   let j = i + 2;
-  while (j < d.n) {
-    const c = d.at(j);
+  while (j >= 0 && j < n) {
+    const c = toI32(src[j]);
     if (c === 32 || c === 9 || c === 10 || c === 13 || c === 12 || c === 11) {
       j++;
-    } else if (c === 92 && (d.at(j + 1) === 10 || (d.at(j + 1) === 13 && d.at(j + 2) === 10))) {
-      j += 2;
     } else {
-      break;
+      const e = c === 92 ? escNlEnd(src, n, j) : -1;
+      if (e < 0) {
+        break;
+      }
+      j = e;
     }
   }
-  if (j >= d.n || d.at(j) !== 60) {
+  if (j < 0 || j >= n || toI32(src[j]) !== 60) {
     return false;
   }
   // `<=` and `<<=` are no `<`.
   return !(d.at(j + 1) === 61 || (d.at(j + 1) === 60 && d.at(j + 2) === 61));
 };
 
+/** Sets `xs[0, n)` to `v`; `xs` holds a slot for each of the `n` tokens. */
+const fillTokens = (xs: i32[], n: i32, v: i32): void => {
+  if (n > xs.length) {
+    fault();
+    return;
+  }
+  for (let i = 0; i < n; i++) {
+    xs[i] = v;
+  }
+};
+
+/**
+ * Lexes `d.src` into `d`'s token table, ending with one K_EOF token. Answers
+ * false when the input has an unterminated comment, string or character.
+ */
 export const lex = (d: Doc): boolean => {
   const src = d.src;
   const n = d.n;
+  // `src` holds the document's `n` bytes (a reused buffer may hold more).
+  // (A text a few bytes short of 2^31 at most, so that the offset a token's
+  // lookahead reaches stays an i32: the compiler takes the bound as written.)
+  if (n < 0 || n > src.length || n > 2147483632) {
+    fault();
+    return false;
+  }
   // A UTF-8 byte order mark is not a token; the formatter writes it back.
   let i = hasBom(d) ? 3 : 0;
   d.strTabs = false;
   d.anyImplicit = false;
   d.anyAsm = false;
   d.anyDefine = false;
-  d.nCR = 0;
-  d.nLF = 0;
+  let nCR = 0;
+  let nLF = 0;
   let lineStart = 0;
   let nl = 0;
   let unesc = 0;
@@ -657,12 +792,27 @@ export const lex = (d: Doc): boolean => {
   let t = 0;
   let cap = toI32(d.kind.length);
   let highByte = false; // the token holds a byte >= 128
+  // (The columns of token `t` are written once it is lexed, in one place
+  // that checks they hold it.)
+  let tNl = 0;
+  let tWs = 0;
+  let tUnesc = 0;
+  let tCol = 0;
   while (true) {
-    // Whitespace.
-    while (i < n) {
-      const c = toI32(uncheckedGet(src, i));
+    // (Again after the calls of the last turn, for the compiler.)
+    if (n > src.length) {
+      fault();
+      return false;
+    }
+    // Whitespace. (Fewer newlines than bytes: the counts stay below `n`.)
+    while (i >= 0 && i < n) {
+      const c = toI32(src[i]);
       if (c === 10) {
-        d.nLF = d.nLF + 1;
+        if (nLF >= n || nl >= n) {
+          fault();
+          return false;
+        }
+        nLF++;
         nl++;
         unesc = 1;
         ws = 1;
@@ -676,58 +826,56 @@ export const lex = (d: Doc): boolean => {
         }
       } else if (c === 32 || c === 9 || c === 13 || c === 12 || c === 11) {
         if (c === 13) {
-          d.nCR = d.nCR + 1;
+          if (nCR >= n) {
+            fault();
+            return false;
+          }
+          nCR++;
         }
         ws = 1;
         i++;
-      } else if (c === 92 && (d.at(i + 1) === 10 || (d.at(i + 1) === 13 && d.at(i + 2) === 10))) {
+      } else {
         // An escaped newline: whitespace that keeps a directive going.
-        i += d.at(i + 1) === 13 ? 3 : 2;
+        const e = c === 92 ? escNlEnd(src, n, i) : -1;
+        if (e < 0) {
+          break;
+        }
+        if (nl >= n) {
+          fault();
+          return false;
+        }
+        i = e;
         lineStart = i;
         nl++;
         ws = 1;
-      } else {
-        break;
       }
     }
+    if (i < 0) {
+      fault();
+      return false;
+    }
     if (t >= cap) {
+      // (A token per byte at most, and the bytes number below 2^31.)
+      if (t > 1073741823) {
+        fault();
+        return false;
+      }
       d.growTokens(t + (t >> 1) + 64);
       cap = toI32(d.kind.length);
     }
-    uncheckedSet(d.nl, t, nl);
-    uncheckedSet(d.ws, t, ws);
-    uncheckedSet(d.unesc, t, unesc);
-    uncheckedSet(d.col, t, i - lineStart);
-    uncheckedSet(d.start, t, i);
-    uncheckedSet(d.multi, t, 0);
-    uncheckedSet(d.plain, t, 0);
-    uncheckedSet(d.ppKind, t, PP_NONE);
-    uncheckedSet(d.nxt, t, -1);
-    uncheckedSet(d.prv, t, -1);
-    uncheckedSet(d.match, t, -1);
-    uncheckedSet(d.childHead, t, -1);
-    uncheckedSet(d.childTail, t, -1);
-    uncheckedSet(d.childCount, t, 0);
-    uncheckedSet(d.bk, t, 0);
-    uncheckedSet(d.type, t, 0);
-    uncheckedSet(d.final, t, 0);
-    uncheckedSet(d.eqList, t, 0);
-    uncheckedSet(d.hidSemi, t, 0);
-    uncheckedSet(d.asmFin, t, 0);
-    uncheckedSet(d.nest, t, 0);
-    uncheckedSet(d.bind, t, 0);
-    uncheckedSet(d.mustBreak, t, 0);
-    uncheckedSet(d.spaces, t, 0);
+    if (n > src.length) {
+      fault();
+      return false;
+    }
+    tNl = nl;
+    tWs = ws;
+    tUnesc = unesc;
+    // (`lineStart <= i`: the u32 difference is the true one.)
+    tCol = toI32(toU32(i) - toU32(lineStart));
     nl = 0;
     unesc = 0;
     ws = 0;
     if (i >= n) {
-      d.kind[t] = K_EOF;
-      d.end[t] = i;
-      d.width[t] = 0;
-      d.inPP[t] = 0;
-      d.ppId[t] = -1;
-      t++;
       break;
     }
     const startOfLine = atLineStart;
@@ -735,28 +883,29 @@ export const lex = (d: Doc): boolean => {
     highByte = false;
     let scanWidth = false; // a comment or literal: measure its width
     const a = i;
-    const c = toI32(uncheckedGet(src, i));
+    const c = toI32(src[i]);
     let k = K_UNKNOWN;
+    let ppk = PP_NONE;
     if (startOfLine && c === 35) {
       // `#` opens a directive.
       inPP = true;
       ppWordNext = true;
       ppHashTok = t;
-      i++;
+      i = a + 1;
       k = P_HASH;
       if (d.at(i) === 35) {
-        i++;
+        i = a + 2;
         k = P_HASHHASH;
       } else {
         // A directive even with no name after it (the null directive `#`);
         // the name, when there is one, decides its kind.
-        d.ppKind[t] = PP_OTHER;
+        ppk = PP_OTHER;
       }
     } else if (isIdentStart(c)) {
-      i++;
+      i = a + 1;
       let hi = c;
       while (i < n) {
-        const e = toI32(uncheckedGet(src, i));
+        const e = toI32(src[i]);
         if (!isIdentChar(e)) {
           break;
         }
@@ -766,35 +915,41 @@ export const lex = (d: Doc): boolean => {
       highByte = hi >= 128;
       const q = d.at(i);
       const pre = q === 34 || q === 39 ? stringPrefix(src, a, i) : 0;
-      if (pre === 2 && q === 34) {
+      if (pre === 2 && q === 34 && i < n) {
         // A raw string: R"delim( ... )delim", as clang's
         // Lexer::LexRawStringLiteral finds it: up to 16 delimiter bytes,
         // then `(`; it ends only at `)`, the delimiter and `"`.
         i++;
         const dStart = i;
-        while (i - dStart !== 16 && i < n && isRawDelimBody(d.at(i))) {
+        let dLen = 0;
+        while (dLen < 16 && i < n && isRawDelimBody(d.at(i))) {
           i++;
+          dLen++;
         }
-        const dLen = i - dStart;
         let closed = false;
-        if (d.at(i) !== 40) {
+        if (i < n && d.at(i) === 40) {
+          i++;
+        } else {
           // Not a delimiter: clang lexes an unknown token up to the next `"`.
           ok = false;
           i = n;
-        } else {
-          i++;
         }
         while (i < n) {
           if (d.at(i) === 41) {
+            // (A byte past the text reads 0, which no delimiter byte is.)
             let m = true;
+            let x = i + 1;
+            let y = dStart;
             for (let j = 0; j < dLen; j++) {
-              if (d.at(i + 1 + j) !== d.at(dStart + j)) {
+              if (x >= n || y >= n || d.at(x) !== d.at(y)) {
                 m = false;
                 break;
               }
+              x++;
+              y++;
             }
-            if (m && d.at(i + 1 + dLen) === 34) {
-              i = i + 2 + dLen;
+            if (m && x < n && d.at(x) === 34) {
+              i = x + 1;
               closed = true;
               break;
             }
@@ -807,32 +962,57 @@ export const lex = (d: Doc): boolean => {
         i = udSuffixEnd(d, i, n, true);
         k = K_STRING;
         scanWidth = true;
-      } else if (pre === 1 || (pre === 2 && q === 39)) {
+      } else if (i < n && (pre === 1 || (pre === 2 && q === 39))) {
         i++;
-        while (i < n && d.at(i) !== q) {
-          if (d.at(i) === 92) {
-            i++;
-          } else if (d.at(i) === 10) {
+        while (i < n) {
+          const e = toI32(src[i]);
+          if (e === q) {
+            break;
+          }
+          if (e === 92) {
+            i = i + 2;
+            continue;
+          }
+          if (e === 10) {
             ok = false;
             break;
           }
           i++;
         }
-        i++;
+        // (Past the end, the suffix and the token stop at `n`.)
+        if (i < n) {
+          i++;
+        } else {
+          i = n;
+        }
         i = udSuffixEnd(d, i, n, q === 34);
         k = q === 34 ? K_STRING : K_CHAR;
         scanWidth = true;
       } else {
-        k = wordKind(src, a, i - a);
-        if (k === KW_IF && i - a === 11 && inPP && t === ppHashTok + 2 && d.ppKind[ppHashTok] === PP_DEFINE) {
+        // (`a <= i`: the u32 difference is the true one.)
+        const wl = toI32(toU32(i) - toU32(a));
+        k = wordKind(src, a, wl);
+        if (k === KW_IF && wl === 11 && inPP && t >= 2 && ppHashTok === t - 2) {
           // The name a `#define` gives stays a name.
-          k = K_IDENT;
+          const ppKA = d.ppKind;
+          if (ppHashTok < 0 || ppHashTok >= ppKA.length) {
+            fault();
+            return false;
+          }
+          if (ppKA[ppHashTok] === PP_DEFINE) {
+            k = K_IDENT;
+          }
         }
         if (ppWordNext) {
           ppWordNext = false;
-          const pk = ppKindOf(src, a, i - a);
+          const pk = ppKindOf(src, a, wl);
           if (ppHashTok >= 0) {
-            d.ppKind[ppHashTok] = pk;
+            const ppKA = d.ppKind;
+            if (ppHashTok >= ppKA.length) {
+              fault();
+              return false;
+            }
+            ppKA[ppHashTok] = pk;
             if (pk === PP_DEFINE) {
               d.anyDefine = true;
             }
@@ -844,9 +1024,9 @@ export const lex = (d: Doc): boolean => {
         }
       }
     } else if (isDigit(c) || (c === 46 && isDigit(d.at(i + 1)))) {
-      i++;
+      i = a + 1;
       while (i < n) {
-        const e = toI32(uncheckedGet(src, i));
+        const e = toI32(src[i]);
         if (isIdentChar(e) || e === 46) {
           i++;
         } else if (e === 39 && isIdentChar(d.at(i + 1))) {
@@ -864,28 +1044,39 @@ export const lex = (d: Doc): boolean => {
       }
       k = K_NUMBER;
     } else if (c === 34 || c === 39) {
-      i++;
-      while (i < n && d.at(i) !== c) {
-        if (d.at(i) === 92) {
-          i++;
-        } else if (d.at(i) === 10) {
+      i = a + 1;
+      while (i < n) {
+        const e = toI32(src[i]);
+        if (e === c) {
+          break;
+        }
+        if (e === 92) {
+          i = i + 2;
+          continue;
+        }
+        if (e === 10) {
           ok = false;
           break;
         }
         i++;
       }
-      i++;
+      // (Past the end, the suffix and the token stop at `n`.)
+      if (i < n) {
+        i++;
+      } else {
+        i = n;
+      }
       i = udSuffixEnd(d, i, n, c === 34);
       k = c === 34 ? K_STRING : K_CHAR;
       scanWidth = true;
     } else if (c === 47 && d.at(i + 1) === 47) {
-      i += 2;
+      i = a + 2;
       while (i < n) {
-        if (d.at(i) === 10) {
+        if (toI32(src[i]) === 10) {
           // A backslash ending the line (blanks may follow it) splices the
           // next line into the comment, as clang's lexer reads it.
           let j = i - 1;
-          while (j > a + 1 && (d.at(j) === 13 || d.at(j) === 32 || d.at(j) === 9)) {
+          while (j > a + 1 && j > 0 && (d.at(j) === 13 || d.at(j) === 32 || d.at(j) === 9)) {
             j--;
           }
           if (j > a + 1 && d.at(j) === 92) {
@@ -897,7 +1088,7 @@ export const lex = (d: Doc): boolean => {
               while (q < n && (d.at(q) === 32 || d.at(q) === 9 || d.at(q) === 11 || d.at(q) === 12 || d.at(q) === 13)) {
                 q++;
               }
-              if (q + 1 < n && d.at(q) === 47 && d.at(q + 1) === 47) {
+              if (q < n && q + 1 < n && d.at(q) === 47 && d.at(q + 1) === 47) {
                 break;
               }
             }
@@ -909,17 +1100,17 @@ export const lex = (d: Doc): boolean => {
         i++;
       }
       // Trailing whitespace is not part of the comment.
-      while (i > a + 2 && (d.at(i - 1) === 32 || d.at(i - 1) === 9 || d.at(i - 1) === 13)) {
+      while (i > a + 2 && i > 0 && (d.at(i - 1) === 32 || d.at(i - 1) === 9 || d.at(i - 1) === 13)) {
         i--;
       }
       k = K_COMMENT;
       scanWidth = true;
     } else if (c === 47 && d.at(i + 1) === 42) {
-      i += 2;
+      i = a + 2;
       let closed = false;
       while (i < n) {
-        if (d.at(i) === 42 && d.at(i + 1) === 47) {
-          i += 2;
+        if (toI32(src[i]) === 42 && d.at(i + 1) === 47) {
+          i = i + 2;
           closed = true;
           break;
         }
@@ -931,11 +1122,11 @@ export const lex = (d: Doc): boolean => {
       k = K_COMMENT;
       scanWidth = true;
     } else if (c === 60 && (ppIncludeNext || hasInclude === 2)) {
-      i++;
+      i = a + 1;
       while (i < n && d.at(i) !== 62 && d.at(i) !== 10) {
         i++;
       }
-      if (d.at(i) === 62) {
+      if (i < n && d.at(i) === 62) {
         i++;
       }
       k = K_HEADER;
@@ -944,7 +1135,7 @@ export const lex = (d: Doc): boolean => {
     } else {
       const c1 = d.at(i + 1);
       const c2 = d.at(i + 2);
-      i++;
+      i = a + 1;
       switch (c) {
         case 40:
           k = P_LPAREN;
@@ -984,7 +1175,7 @@ export const lex = (d: Doc): boolean => {
           break;
         case 58:
           if (c1 === 58) {
-            i++;
+            i = a + 2;
             k = P_COLONCOLON;
           } else {
             k = P_COLON;
@@ -992,10 +1183,10 @@ export const lex = (d: Doc): boolean => {
           break;
         case 46:
           if (c1 === 46 && c2 === 46) {
-            i += 2;
+            i = a + 3;
             k = P_ELLIPSIS;
           } else if (c1 === 42) {
-            i++;
+            i = a + 2;
             k = P_PERIODSTAR;
           } else {
             k = P_PERIOD;
@@ -1003,18 +1194,18 @@ export const lex = (d: Doc): boolean => {
           break;
         case 45:
           if (c1 === 62) {
-            i++;
+            i = a + 2;
             if (d.at(i) === 42) {
-              i++;
+              i = a + 3;
               k = P_ARROWSTAR;
             } else {
               k = P_ARROW;
             }
           } else if (c1 === 45) {
-            i++;
+            i = a + 2;
             k = P_MINUSMINUS;
           } else if (c1 === 61) {
-            i++;
+            i = a + 2;
             k = P_MINUSEQUAL;
           } else {
             k = P_MINUS;
@@ -1022,10 +1213,10 @@ export const lex = (d: Doc): boolean => {
           break;
         case 43:
           if (c1 === 43) {
-            i++;
+            i = a + 2;
             k = P_PLUSPLUS;
           } else if (c1 === 61) {
-            i++;
+            i = a + 2;
             k = P_PLUSEQUAL;
           } else {
             k = P_PLUS;
@@ -1033,19 +1224,19 @@ export const lex = (d: Doc): boolean => {
           break;
         case 60:
           if (c1 === 60 && c2 === 61) {
-            i += 2;
+            i = a + 3;
             k = P_LESSLESSEQUAL;
           } else if (c1 === 60 && !lessSplits(d, a, t)) {
-            i++;
+            i = a + 2;
             k = P_LESSLESS;
           } else if (c1 === 60) {
             // clang-format's lexer splits `<<` and merges it back only when no
             // `<` is next to it: `<<<` is three `<`.
             k = P_LESS;
           } else if (c1 === 61) {
-            i++;
+            i = a + 2;
             if (d.at(i) === 62) {
-              i++;
+              i = a + 3;
               k = P_SPACESHIP;
             } else {
               k = P_LESSEQUAL;
@@ -1057,10 +1248,10 @@ export const lex = (d: Doc): boolean => {
         case 62:
           // `>>` is two `>`; only `>=` and `>>=` fuse.
           if (c1 === 61) {
-            i++;
+            i = a + 2;
             k = P_GREATEREQUAL;
           } else if (c1 === 62 && c2 === 61) {
-            i += 2;
+            i = a + 3;
             k = P_GREATERGREATEREQUAL;
           } else {
             k = P_GREATER;
@@ -1068,7 +1259,7 @@ export const lex = (d: Doc): boolean => {
           break;
         case 61:
           if (c1 === 61) {
-            i++;
+            i = a + 2;
             k = P_EQUALEQUAL;
           } else {
             k = P_EQUAL;
@@ -1076,7 +1267,7 @@ export const lex = (d: Doc): boolean => {
           break;
         case 33:
           if (c1 === 61) {
-            i++;
+            i = a + 2;
             k = P_EXCLAIMEQUAL;
           } else {
             k = P_EXCLAIM;
@@ -1084,7 +1275,7 @@ export const lex = (d: Doc): boolean => {
           break;
         case 42:
           if (c1 === 61) {
-            i++;
+            i = a + 2;
             k = P_STAREQUAL;
           } else {
             k = P_STAR;
@@ -1092,7 +1283,7 @@ export const lex = (d: Doc): boolean => {
           break;
         case 47:
           if (c1 === 61) {
-            i++;
+            i = a + 2;
             k = P_SLASHEQUAL;
           } else {
             k = P_SLASH;
@@ -1100,7 +1291,7 @@ export const lex = (d: Doc): boolean => {
           break;
         case 37:
           if (c1 === 61) {
-            i++;
+            i = a + 2;
             k = P_PERCENTEQUAL;
           } else {
             k = P_PERCENT;
@@ -1108,10 +1299,10 @@ export const lex = (d: Doc): boolean => {
           break;
         case 38:
           if (c1 === 38) {
-            i++;
+            i = a + 2;
             k = P_AMPAMP;
           } else if (c1 === 61) {
-            i++;
+            i = a + 2;
             k = P_AMPEQUAL;
           } else {
             k = P_AMP;
@@ -1119,10 +1310,10 @@ export const lex = (d: Doc): boolean => {
           break;
         case 124:
           if (c1 === 124) {
-            i++;
+            i = a + 2;
             k = P_PIPEPIPE;
           } else if (c1 === 61) {
-            i++;
+            i = a + 2;
             k = P_PIPEEQUAL;
           } else {
             k = P_PIPE;
@@ -1130,7 +1321,7 @@ export const lex = (d: Doc): boolean => {
           break;
         case 94:
           if (c1 === 61) {
-            i++;
+            i = a + 2;
             k = P_CARETEQUAL;
           } else {
             k = P_CARET;
@@ -1138,7 +1329,7 @@ export const lex = (d: Doc): boolean => {
           break;
         case 35:
           if (c1 === 35) {
-            i++;
+            i = a + 2;
             k = P_HASHHASH;
           } else {
             k = P_HASH;
@@ -1152,9 +1343,10 @@ export const lex = (d: Doc): boolean => {
     if (i > n) {
       i = n;
     }
+    // (`a <= i`: the u32 difference is the true one.)
+    const tl = toI32(toU32(i) - toU32(a));
     if (inPP) {
-      const a0 = uncheckedGet(d.start, t);
-      if (wordIs(src, a0, i - a0, "__has_include") || wordIs(src, a0, i - a0, "__has_include_next")) {
+      if (wordIs(src, a, tl, "__has_include") || wordIs(src, a, tl, "__has_include_next")) {
         hasInclude = 1;
       } else if (hasInclude === 1 && k === P_LPAREN) {
         hasInclude = 2;
@@ -1162,70 +1354,190 @@ export const lex = (d: Doc): boolean => {
         hasInclude = 0;
       }
     }
-    uncheckedSet(d.kind, t, k);
     if (k === K_UNKNOWN || k === P_BACKSLASH || k === CW_HAS_INCLUDE) {
       d.anyImplicit = true;
     } else if (k === KW_ASM) {
       d.anyAsm = true;
     }
-    uncheckedSet(d.end, t, i);
-    uncheckedSet(d.inPP, t, inPP ? 1 : 0);
-    uncheckedSet(d.ppId, t, inPP ? ppHashTok : -1);
-    if (!scanWidth && !highByte) {
-      uncheckedSet(d.width, t, i - a);
-      uncheckedSet(d.plain, t, 1);
-      t++;
-      continue;
-    }
-    // Width, and whether the token runs past a newline. Between tabs the
-    // text is measured in display columns (see uwidth).
-    let w = 0;
+    let w = tl;
     let multi = 0;
-    let seg = a;
-    let end = i;
-    let segHigh = false; // the piece since the last tab holds a byte >= 128
-    let col0 = -1; // the token's display column, found at its first tab
-    let everHigh = false;
-    for (let j = a; j < i; j++) {
-      const b = toI32(uncheckedGet(src, j));
-      if (b === 10) {
-        multi = 1;
-        lineStart = j + 1;
-        end = j;
-        break;
-      }
-      if (b === 9) {
-        // A tab in a literal or comment reaches the next stop of 8 from where
-        // the token was written, as clang-format measures it.
-        w = w + (segHigh ? utf8Width(src, seg, j) : j - seg);
-        if (col0 < 0) {
-          col0 = displayColumn(src, lineStart, a);
-        }
-        if (k === K_STRING) {
-          d.strTabs = true;
-        }
-        const c = col0 + w;
-        w = w + 8 - (c % 8);
-        seg = j + 1;
-        segHigh = false;
-      } else if (b >= 128) {
-        segHigh = true;
-        everHigh = true;
-      }
-    }
-    w = w + (segHigh ? utf8Width(src, seg, end) : end - seg);
-    uncheckedSet(d.plain, t, multi === 0 && col0 < 0 && !everHigh ? 1 : 0);
-    if (multi === 1) {
-      for (let j = lineStart; j < i; j++) {
-        if (toI32(uncheckedGet(src, j)) === 10) {
+    let plain = 1;
+    if (scanWidth || highByte) {
+      // Width, and whether the token runs past a newline. Between tabs the
+      // text is measured in display columns (see uwidth). (A piece is at
+      // most its bytes wide, and the bytes number below 2^31.)
+      w = 0;
+      let seg = a;
+      let end = i;
+      let segHigh = false; // the piece since the last tab holds a byte >= 128
+      let col0 = -1; // the token's display column, found at its first tab
+      let everHigh = false;
+      for (let j = a; j < i && j < src.length; j++) {
+        const b = toI32(src[j]);
+        if (b === 10) {
+          multi = 1;
           lineStart = j + 1;
+          end = j;
+          break;
+        }
+        if (b === 9) {
+          // A tab in a literal or comment reaches the next stop of 8 from where
+          // the token was written, as clang-format measures it.
+          // (`seg <= j`: the u32 difference is the true one.)
+          const pw = segHigh ? utf8Width(src, seg, j) : toI32(toU32(j) - toU32(seg));
+          if (pw < 0 || pw > 1073741800 || w < 0 || w > 1073741800) {
+            fault();
+            return false;
+          }
+          w = w + pw;
+          if (col0 < 0) {
+            col0 = displayColumn(src, lineStart, a);
+          }
+          if (k === K_STRING) {
+            d.strTabs = true;
+          }
+          if (col0 < 0 || col0 > 1073741800 || w > 1073741800) {
+            fault();
+            return false;
+          }
+          const cc = col0 + w;
+          w = w + 8 - (cc % 8);
+          seg = j + 1;
+          segHigh = false;
+        } else if (b >= 128) {
+          segHigh = true;
+          everHigh = true;
+        }
+      }
+      // (`seg <= end`: the u32 difference is the true one.)
+      const pw = segHigh ? utf8Width(src, seg, end) : toI32(toU32(end) - toU32(seg));
+      if (pw < 0 || pw > 1073741800 || w < 0 || w > 1073741800) {
+        fault();
+        return false;
+      }
+      w = w + pw;
+      plain = multi === 0 && col0 < 0 && !everHigh ? 1 : 0;
+      if (multi === 1) {
+        for (let j = lineStart; j >= 0 && j < i && j < src.length; j++) {
+          if (toI32(src[j]) === 10) {
+            lineStart = j + 1;
+          }
         }
       }
     }
-    uncheckedSet(d.width, t, w);
-    uncheckedSet(d.multi, t, multi);
+    const nlA = d.nl;
+    const wsA = d.ws;
+    const unA = d.unesc;
+    const colA = d.col;
+    const stA = d.start;
+    const kindA = d.kind;
+    const endA = d.end;
+    const inPPA = d.inPP;
+    const ppIdA = d.ppId;
+    const ppKA = d.ppKind;
+    const widthA = d.width;
+    const plainA = d.plain;
+    const multiA = d.multi;
+    if (
+      t < 0 ||
+      t >= nlA.length ||
+      t >= wsA.length ||
+      t >= unA.length ||
+      t >= colA.length ||
+      t >= stA.length ||
+      t >= kindA.length ||
+      t >= endA.length ||
+      t >= inPPA.length ||
+      t >= ppIdA.length ||
+      t >= ppKA.length ||
+      t >= widthA.length ||
+      t >= plainA.length ||
+      t >= multiA.length
+    ) {
+      fault();
+      return false;
+    }
+    nlA[t] = tNl;
+    wsA[t] = tWs;
+    unA[t] = tUnesc;
+    colA[t] = tCol;
+    stA[t] = a;
+    kindA[t] = k;
+    endA[t] = i;
+    inPPA[t] = inPP ? 1 : 0;
+    ppIdA[t] = inPP ? ppHashTok : -1;
+    ppKA[t] = ppk;
+    widthA[t] = w;
+    plainA[t] = plain;
+    multiA[t] = multi;
     t++;
   }
+  // The end-of-file token, at `i`.
+  const nlA = d.nl;
+  const wsA = d.ws;
+  const unA = d.unesc;
+  const colA = d.col;
+  const stA = d.start;
+  const kindA = d.kind;
+  const endA = d.end;
+  const inPPA = d.inPP;
+  const ppIdA = d.ppId;
+  const ppKA = d.ppKind;
+  const widthA = d.width;
+  const plainA = d.plain;
+  const multiA = d.multi;
+  if (
+    t < 0 ||
+    t >= nlA.length ||
+    t >= wsA.length ||
+    t >= unA.length ||
+    t >= colA.length ||
+    t >= stA.length ||
+    t >= kindA.length ||
+    t >= endA.length ||
+    t >= inPPA.length ||
+    t >= ppIdA.length ||
+    t >= ppKA.length ||
+    t >= widthA.length ||
+    t >= plainA.length ||
+    t >= multiA.length
+  ) {
+    fault();
+    return false;
+  }
+  nlA[t] = tNl;
+  wsA[t] = tWs;
+  unA[t] = tUnesc;
+  colA[t] = tCol;
+  stA[t] = i;
+  kindA[t] = K_EOF;
+  endA[t] = i;
+  inPPA[t] = 0;
+  ppIdA[t] = -1;
+  ppKA[t] = PP_NONE;
+  widthA[t] = 0;
+  plainA[t] = 0;
+  multiA[t] = 0;
+  t++;
+  // The later passes' columns start out empty.
+  fillTokens(d.nxt, t, -1);
+  fillTokens(d.prv, t, -1);
+  fillTokens(d.match, t, -1);
+  fillTokens(d.childHead, t, -1);
+  fillTokens(d.childTail, t, -1);
+  fillTokens(d.childCount, t, 0);
+  fillTokens(d.bk, t, 0);
+  fillTokens(d.type, t, 0);
+  fillTokens(d.final, t, 0);
+  fillTokens(d.eqList, t, 0);
+  fillTokens(d.hidSemi, t, 0);
+  fillTokens(d.asmFin, t, 0);
+  fillTokens(d.nest, t, 0);
+  fillTokens(d.bind, t, 0);
+  fillTokens(d.mustBreak, t, 0);
+  fillTokens(d.spaces, t, 0);
+  d.nCR = nCR;
+  d.nLF = nLF;
   d.ntok = t;
   return ok;
 };
