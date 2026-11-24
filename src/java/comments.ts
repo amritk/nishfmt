@@ -19,11 +19,17 @@ import {
   trimTrailing,
 } from "../gdoc/comments";
 import { formatJavadoc } from "./javadoc";
+import { fault } from "../core/fault";
 
 /** JavaCommentsHelper.rewrite, as the engine's comment rewriter. */
 export const rewriteJavaComment = (g: GEngine, tok: i32, maxWidth: i32, column0: i32): string => {
   const inp = g.inp;
-  const f = inp.tFlags[tok];
+  const flags = inp.tFlags;
+  if (tok < 0 || tok >= flags.length) {
+    fault();
+    return "";
+  }
+  const f = flags[tok];
   let text = inp.text(tok);
   if ((f & TF_COMMENT) === 0) {
     return text;
