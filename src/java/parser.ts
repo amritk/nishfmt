@@ -4,6 +4,8 @@
 // Ambiguities (declarations, casts, lambdas, generic method references) are
 // settled the way javac settles them, by speculative parsing.
 
+import { add32, mul32 } from "../core/arr";
+import { fault } from "../core/fault";
 import { GInput } from "../gdoc/input";
 import { JK_CHAR, JK_IDENT, JK_NUMBER, JK_STRING, JK_TEXT_BLOCK } from "./lexer";
 import { modifierRank, RANK_NON_SEALED } from "./modifiers";
@@ -131,6 +133,59 @@ import {
 // which permitsClause reads). Above ast.ts's FL_* bits; only the parser reads it.
 const FL_MODS_SEALED: i32 = 65536;
 
+// A tree column's cell. The parser only indexes nodes, lists and items it
+// made, and `ensure` sized the columns before the parse, so the guards hold;
+// the column is passed before a value a call computes, as `t.a[n] = parse()`
+// read it.
+const jtSet = (col: i32[], i: i32, v: i32): void => {
+  if (i >= 0 && i < col.length) {
+    col[i] = v;
+    return;
+  }
+  fault();
+};
+
+const jtGet = (col: i32[], i: i32): i32 => {
+  if (i >= 0 && i < col.length) {
+    return col[i];
+  }
+  fault();
+  return -1;
+};
+
+/**
+ * `i + d` for a token offset, a position or a count; one past i32, which the parser
+ * never reaches, faults and answers an offset that reads as EOF.
+ */
+const jparOff = (i: i32, d: i32): i32 => {
+  const r = toI64(i) + toI64(d);
+  if (r >= toI64(-2147483648) && r <= toI64(2147483647)) {
+    return toI32(r);
+  }
+  fault();
+  return 2147483647;
+};
+
+/** Where tok `t` starts. */
+const jparTokPos = (inp: GInput, t: i32): i32 => {
+  const tPos = inp.tPos;
+  if (t >= 0 && t < tPos.length) {
+    return tPos[t];
+  }
+  fault();
+  return 0;
+};
+
+/** Where tok `t` ends. */
+const jparTokEnd = (inp: GInput, t: i32): i32 => {
+  const tEnd = inp.tEnd;
+  if (t >= 0 && t < tEnd.length) {
+    return tEnd[t];
+  }
+  fault();
+  return 0;
+};
+
 /** A saved parser position for speculation. */
 class Mark {
   rejected: boolean = false;
@@ -157,9 +212,25 @@ export class JParser {
 
   // ---- Tokens ----------------------------------------------------------------
 
+  /** The token at p+i, or the last (EOF) past the end; the EOF after a fault. */
   tokAt(i: i32): i32 {
-    const k = this.p + i;
-    return k < this.nT ? this.inp.kTok[k] : this.inp.kTok[this.nT - 1];
+    const kTok = this.inp.kTok;
+    const nT = this.nT;
+    // p is never negative, so the u32 sum is p + i, or reads as negative
+    // exactly when p + i leaves i32 or is negative.
+    const k = toI32(toU32(this.p) + toU32(i));
+    if (k >= 0 && k < nT && k < kTok.length) {
+      return kTok[k];
+    }
+    if (nT > 0 && nT <= kTok.length) {
+      const last = nT - 1;
+      if (k < 0) {
+        fault();
+      }
+      return kTok[last];
+    }
+    fault();
+    return 0;
   }
 
   is(s: string): boolean {
@@ -172,11 +243,23 @@ export class JParser {
 
   /** Whether token p+i starts right where token p+i-1 ends. */
   adjAt(i: i32): boolean {
-    return this.inp.tPos[this.tokAt(i)] === this.inp.tEnd[this.tokAt(i - 1)];
+    const a = this.tokAt(i);
+    const b = this.tokAt(jparOff(i, -1));
+    const tPos = this.inp.tPos;
+    const tEnd = this.inp.tEnd;
+    if (a >= 0 && a < tPos.length && b >= 0 && b < tEnd.length) {
+      return tPos[a] === tEnd[b];
+    }
+    fault();
+    return false;
   }
 
   op2At(i: i32, a: string, b: string): boolean {
-    return this.isAt(i, a) && this.isAt(i + 1, b) && this.adjAt(i + 1);
+    if (!this.isAt(i, a)) {
+      return false;
+    }
+    const i1 = jparOff(i, 1);
+    return this.isAt(i1, b) && this.adjAt(i1);
   }
 
   op2(a: string, b: string): boolean {
@@ -184,7 +267,11 @@ export class JParser {
   }
 
   op3At(i: i32, a: string, b: string, c: string): boolean {
-    return this.op2At(i, a, b) && this.isAt(i + 2, c) && this.adjAt(i + 2);
+    if (!this.op2At(i, a, b)) {
+      return false;
+    }
+    const i2 = jparOff(i, 2);
+    return this.isAt(i2, c) && this.adjAt(i2);
   }
 
   op3(a: string, b: string, c: string): boolean {
@@ -192,7 +279,13 @@ export class JParser {
   }
 
   kindAt(i: i32): i32 {
-    return this.inp.tKind[this.tokAt(i)];
+    const t = this.tokAt(i);
+    const tKind = this.inp.tKind;
+    if (t >= 0 && t < tKind.length) {
+      return tKind[t];
+    }
+    fault();
+    return 0;
   }
 
   isIdentAt(i: i32): boolean {
@@ -203,22 +296,37 @@ export class JParser {
     return this.isIdentAt(0);
   }
 
+  /** p >= nT - 1. */
   atEof(): boolean {
-    return this.p >= this.nT - 1;
+    const p = this.p;
+    const nT = this.nT;
+    return p >= nT || p + 1 >= nT;
   }
 
   pos(): i32 {
-    return this.inp.tPos[this.tokAt(0)];
+    return jparTokPos(this.inp, this.tokAt(0));
   }
 
   /** The end of the last consumed token. */
   prevEnd(): i32 {
-    return this.p > 0 ? this.inp.tEnd[this.inp.kTok[this.p - 1]] : 0;
+    const p = this.p;
+    if (p <= 0) {
+      return 0;
+    }
+    const kTok = this.inp.kTok;
+    const k = p - 1;
+    if (k < kTok.length) {
+      return jparTokEnd(this.inp, kTok[k]);
+    }
+    fault();
+    return 0;
   }
 
   next(): void {
-    if (this.p < this.nT - 1) {
-      this.p = this.p + 1;
+    const p = this.p;
+    const nT = this.nT;
+    if (p < nT && p + 1 < nT) {
+      this.p = p + 1;
     }
   }
 
@@ -283,7 +391,7 @@ export class JParser {
   }
 
   finish(node: i32): i32 {
-    this.t.end[node] = this.prevEnd();
+    jtSet(this.t.end, node, this.prevEnd());
     return node;
   }
 
@@ -298,7 +406,7 @@ export class JParser {
     this.rejected = false;
     this.allowVarType = false;
     // At most a few nodes per token (an enum constant makes three of one).
-    t.ensure(this.nT * 4 + 1024);
+    t.ensure(add32(mul32(this.nT, 4), 1024));
     const cu = t.node(N_COMPILATION_UNIT, 0);
     // Package annotations: annotations followed by `package`.
     const m = new Mark();
@@ -308,14 +416,14 @@ export class JParser {
       t.push(this.annotation());
     }
     if (this.is("package")) {
-      t.a[cu] = t.list(am);
+      jtSet(t.a, cu, t.list(am));
       this.next();
-      t.b[cu] = this.qualident(false);
+      jtSet(t.b, cu, this.qualident(false));
       this.expect(";");
     } else {
       t.nTmp = am;
       this.restore(m);
-      t.a[cu] = t.empty();
+      jtSet(t.a, cu, t.empty());
     }
     // javac (since JDK 21) rejects semicolons before an import declaration:
     // "extraneous semicolon". After the last import they are empty type
@@ -340,7 +448,7 @@ export class JParser {
         this.fail();
       }
     }
-    t.c[cu] = t.list(im);
+    jtSet(t.c, cu, t.list(im));
     const dm = t.mark();
     // A field or method at the top level makes every declaration a member
     // of an implicitly declared class (JEP 445, a preview javac 21 parses).
@@ -356,7 +464,7 @@ export class JParser {
         break;
       }
       if (this.looksLikeModule()) {
-        t.e[cu] = this.moduleDecl();
+        jtSet(t.e, cu, this.moduleDecl());
         continue;
       }
       const m0 = new Mark();
@@ -379,30 +487,30 @@ export class JParser {
       // for an initializer, a constructor-shaped member or `int a, b;`) is
       // an error.
       if (!this.err && t.nTmp > before) {
-        const m = t.tmp[before];
-        if (t.kind[m] === N_BLOCK || (t.kind[m] === N_METHOD && (t.flags[m] & FL_CTOR) !== 0)) {
+        const m = jtGet(t.tmp, before);
+        if (jtGet(t.kind, m) === N_BLOCK || (jtGet(t.kind, m) === N_METHOD && (jtGet(t.flags, m) & FL_CTOR) !== 0)) {
           this.fail();
-        } else if (t.kind[m] === N_VARIABLE && !fieldStartOk) {
+        } else if (jtGet(t.kind, m) === N_VARIABLE && !fieldStartOk) {
           this.fail();
         }
       }
     }
     if (implicit >= 0) {
-      if (t.b[cu] >= 0) {
+      if (jtGet(t.b, cu) >= 0) {
         // "unnamed class should not have package declaration".
         this.fail();
       }
-      t.f[implicit] = t.list(dm);
-      const n = t.len(t.f[implicit]);
+      jtSet(t.f, implicit, t.list(dm));
+      const n = t.len(jtGet(t.f, implicit));
       if (n > 0) {
-        t.start[implicit] = t.start[t.at(t.f[implicit], 0)];
-        t.end[implicit] = t.end[t.at(t.f[implicit], n - 1)];
+        jtSet(t.start, implicit, jtGet(t.start, t.at(jtGet(t.f, implicit), 0)));
+        jtSet(t.end, implicit, jtGet(t.end, t.at(jtGet(t.f, implicit), n - 1)));
       }
       const im2 = t.mark();
       t.push(implicit);
-      t.d[cu] = t.list(im2);
+      jtSet(t.d, cu, t.list(im2));
     } else {
-      t.d[cu] = t.list(dm);
+      jtSet(t.d, cu, t.list(dm));
     }
     this.finish(cu);
     if (this.rejected) {
@@ -436,16 +544,16 @@ export class JParser {
   private implicitClass(): i32 {
     const t = this.t;
     const c = t.node(N_CLASS, this.pos());
-    t.op[c] = CK_CLASS;
-    t.flags[c] = FL_IMPLICIT;
+    jtSet(t.op, c, CK_CLASS);
+    jtSet(t.flags, c, FL_IMPLICIT);
     const bm = t.node(N_MODIFIERS, -1);
-    t.a[bm] = t.empty();
-    t.end[bm] = -1;
-    t.a[c] = bm;
-    t.b[c] = t.empty();
-    t.d[c] = t.empty();
-    t.e[c] = t.empty();
-    t.g[c] = t.empty();
+    jtSet(t.a, bm, t.empty());
+    jtSet(t.end, bm, -1);
+    jtSet(t.a, c, bm);
+    jtSet(t.b, c, t.empty());
+    jtSet(t.d, c, t.empty());
+    jtSet(t.e, c, t.empty());
+    jtSet(t.g, c, t.empty());
     return c;
   }
 
@@ -455,9 +563,9 @@ export class JParser {
     this.next();
     if (this.is("static")) {
       this.next();
-      t.flags[n] = FL_STATIC;
+      jtSet(t.flags, n, FL_STATIC);
     }
-    t.a[n] = this.qualident(true);
+    jtSet(t.a, n, this.qualident(true));
     this.expect(";");
     return this.finish(n);
   }
@@ -467,17 +575,17 @@ export class JParser {
     const t = this.t;
     const start = this.pos();
     let e = t.node(N_IDENTIFIER, start);
-    t.name[e] = this.ident();
+    jtSet(t.name, e, this.ident());
     this.finish(e);
     while (this.is(".") && (this.kindAt(1) === JK_IDENT || (star && this.isAt(1, "*")))) {
       this.next();
       const s = t.node(N_MEMBER_SELECT, start);
-      t.a[s] = e;
+      jtSet(t.a, s, e);
       if (star && this.is("*")) {
-        t.name[s] = this.tokAt(0);
+        jtSet(t.name, s, this.tokAt(0));
         this.next();
       } else {
-        t.name[s] = this.ident();
+        jtSet(t.name, s, this.ident());
       }
       e = this.finish(s);
     }
@@ -488,30 +596,30 @@ export class JParser {
     let i = 0;
     // Skip annotations roughly.
     while (this.isAt(i, "@")) {
-      i++;
+      i = jparOff(i, 1);
       while (this.kindAt(i) === JK_IDENT || this.isAt(i, ".")) {
-        i++;
+        i = jparOff(i, 1);
       }
       if (this.isAt(i, "(")) {
         let depth = 0;
-        while (this.p + i < this.nT - 1) {
+        while (toI64(this.p) + toI64(i) < toI64(this.nT) - toI64(1)) {
           if (this.isAt(i, "(")) {
-            depth++;
+            depth = jparOff(depth, 1);
           } else if (this.isAt(i, ")")) {
-            depth--;
+            depth = jparOff(depth, -1);
             if (depth === 0) {
-              i++;
+              i = jparOff(i, 1);
               break;
             }
           }
-          i++;
+          i = jparOff(i, 1);
         }
       }
     }
     if (this.isAt(i, "open")) {
-      i++;
+      i = jparOff(i, 1);
     }
-    return this.isAt(i, "module") && this.kindAt(i + 1) === JK_IDENT;
+    return this.isAt(i, "module") && this.kindAt(jparOff(i, 1)) === JK_IDENT;
   }
 
   private moduleDecl(): i32 {
@@ -521,13 +629,13 @@ export class JParser {
     while (this.is("@")) {
       t.push(this.annotation());
     }
-    t.a[n] = t.list(am);
+    jtSet(t.a, n, t.list(am));
     if (this.is("open")) {
-      t.flags[n] = FL_OPEN_MODULE;
+      jtSet(t.flags, n, FL_OPEN_MODULE);
       this.next();
     }
     this.expect("module");
-    t.b[n] = this.qualident(false);
+    jtSet(t.b, n, this.qualident(false));
     this.expect("{");
     const dm = t.mark();
     while (!this.is("}") && !this.atEof() && !this.err) {
@@ -538,38 +646,38 @@ export class JParser {
         while ((this.is("static") || this.is("transitive")) && !this.isAt(1, ";") && !this.isAt(1, ".")) {
           this.next();
         }
-        t.a[d] = this.qualident(false);
+        jtSet(t.a, d, this.qualident(false));
         this.expect(";");
         t.push(this.finish(d));
       } else if (this.is("exports") || this.is("opens")) {
         const d = t.node(this.is("exports") ? N_EXPORTS : N_OPENS, d0);
         this.next();
-        t.a[d] = this.qualident(false);
+        jtSet(t.a, d, this.qualident(false));
         if (this.is("to")) {
           this.next();
-          t.b[d] = this.qualidentList();
+          jtSet(t.b, d, this.qualidentList());
         }
         this.expect(";");
         t.push(this.finish(d));
       } else if (this.is("provides")) {
         const d = t.node(N_PROVIDES, d0);
         this.next();
-        t.a[d] = this.qualident(false);
+        jtSet(t.a, d, this.qualident(false));
         this.expect("with");
-        t.b[d] = this.qualidentList();
+        jtSet(t.b, d, this.qualidentList());
         this.expect(";");
         t.push(this.finish(d));
       } else if (this.is("uses")) {
         const d = t.node(N_USES, d0);
         this.next();
-        t.a[d] = this.qualident(false);
+        jtSet(t.a, d, this.qualident(false));
         this.expect(";");
         t.push(this.finish(d));
       } else {
         this.fail();
       }
     }
-    t.c[n] = t.list(dm);
+    jtSet(t.c, n, t.list(dm));
     this.expect("}");
     return this.finish(n);
   }
@@ -662,13 +770,13 @@ export class JParser {
     while (!this.err) {
       if (this.is("@") && !this.isAt(1, "interface")) {
         if (!any) {
-          t.start[n] = this.pos();
+          jtSet(t.start, n, this.pos());
         }
         any = true;
         t.push(this.annotation());
       } else if (this.isModifierWord()) {
         if (!any) {
-          t.start[n] = this.pos();
+          jtSet(t.start, n, this.pos());
         }
         any = true;
         const non = this.is("non");
@@ -681,7 +789,7 @@ export class JParser {
           this.skip(3);
         } else {
           if (this.is("sealed")) {
-            t.flags[n] = t.flags[n] | FL_MODS_SEALED;
+            jtSet(t.flags, n, jtGet(t.flags, n) | FL_MODS_SEALED);
           }
           this.next();
         }
@@ -689,11 +797,11 @@ export class JParser {
         break;
       }
     }
-    t.a[n] = t.list(am);
+    jtSet(t.a, n, t.list(am));
     if (any) {
       this.finish(n);
     } else {
-      t.end[n] = -1;
+      jtSet(t.end, n, -1);
     }
     return n;
   }
@@ -702,7 +810,7 @@ export class JParser {
     const t = this.t;
     const n = t.node(N_ANNOTATION, this.pos());
     this.expect("@");
-    t.a[n] = this.qualident(false);
+    jtSet(t.a, n, this.qualident(false));
     if (this.is("(")) {
       this.next();
       const am = t.mark();
@@ -712,11 +820,11 @@ export class JParser {
             const a0 = this.pos();
             const as = t.node(N_ASSIGNMENT, a0);
             const id = t.node(N_IDENTIFIER, a0);
-            t.name[id] = this.ident();
+            jtSet(t.name, id, this.ident());
             this.finish(id);
-            t.a[as] = id;
+            jtSet(t.a, as, id);
             this.expect("=");
-            t.b[as] = this.elementValue();
+            jtSet(t.b, as, this.elementValue());
             t.push(this.finish(as));
             if (!this.accept(",")) {
               break;
@@ -726,10 +834,10 @@ export class JParser {
           t.push(this.elementValue());
         }
       }
-      t.b[n] = t.list(am);
+      jtSet(t.b, n, t.list(am));
       this.expect(")");
     } else {
-      t.b[n] = t.empty();
+      jtSet(t.b, n, t.empty());
     }
     return this.finish(n);
   }
@@ -748,10 +856,10 @@ export class JParser {
   private arrayInit(elemtype: i32, start: i32): i32 {
     const t = this.t;
     const n = t.node(N_NEW_ARRAY, start);
-    t.a[n] = elemtype;
-    t.b[n] = t.empty();
-    t.d[n] = t.empty();
-    t.e[n] = t.empty();
+    jtSet(t.a, n, elemtype);
+    jtSet(t.b, n, t.empty());
+    jtSet(t.d, n, t.empty());
+    jtSet(t.e, n, t.empty());
     this.expect("{");
     const im = t.mark();
     while (!this.is("}") && !this.err) {
@@ -766,7 +874,7 @@ export class JParser {
         break;
       }
     }
-    t.c[n] = t.list(im);
+    jtSet(t.c, n, t.list(im));
     this.expect("}");
     return this.finish(n);
   }
@@ -786,77 +894,77 @@ export class JParser {
   /** A class, interface, enum, record or annotation type after its modifiers. */
   classDecl(mods: i32): i32 {
     const t = this.t;
-    const start = t.start[mods] >= 0 ? t.start[mods] : this.pos();
+    const start = jtGet(t.start, mods) >= 0 ? jtGet(t.start, mods) : this.pos();
     const n = t.node(N_CLASS, start);
-    t.a[n] = mods;
-    t.d[n] = t.empty();
-    t.e[n] = t.empty();
-    t.b[n] = t.empty();
-    t.g[n] = t.empty();
-    t.parent[mods] = n;
+    jtSet(t.a, n, mods);
+    jtSet(t.d, n, t.empty());
+    jtSet(t.e, n, t.empty());
+    jtSet(t.b, n, t.empty());
+    jtSet(t.g, n, t.empty());
+    jtSet(t.parent, mods, n);
     if (this.is("class")) {
-      t.op[n] = CK_CLASS;
+      jtSet(t.op, n, CK_CLASS);
       this.next();
-      t.name[n] = this.typeName();
+      jtSet(t.name, n, this.typeName());
       if (this.is("<")) {
-        t.b[n] = this.typeParameters();
+        jtSet(t.b, n, this.typeParameters());
       }
       if (this.accept("extends")) {
-        t.c[n] = this.type();
+        jtSet(t.c, n, this.type());
       }
       if (this.accept("implements")) {
-        t.d[n] = this.typeList();
+        jtSet(t.d, n, this.typeList());
       }
-      t.e[n] = this.permitsClause(mods);
-      t.f[n] = this.classBody(n);
+      jtSet(t.e, n, this.permitsClause(mods));
+      jtSet(t.f, n, this.classBody(n));
     } else if (this.is("interface")) {
-      t.op[n] = CK_INTERFACE;
+      jtSet(t.op, n, CK_INTERFACE);
       this.next();
-      t.name[n] = this.typeName();
+      jtSet(t.name, n, this.typeName());
       if (this.is("<")) {
-        t.b[n] = this.typeParameters();
+        jtSet(t.b, n, this.typeParameters());
       }
       if (this.accept("extends")) {
-        t.d[n] = this.typeList();
+        jtSet(t.d, n, this.typeList());
       }
-      t.e[n] = this.permitsClause(mods);
-      t.f[n] = this.classBody(n);
+      jtSet(t.e, n, this.permitsClause(mods));
+      jtSet(t.f, n, this.classBody(n));
     } else if (this.is("enum")) {
-      t.op[n] = CK_ENUM;
+      jtSet(t.op, n, CK_ENUM);
       this.next();
-      t.name[n] = this.typeName();
+      jtSet(t.name, n, this.typeName());
       if (this.accept("implements")) {
-        t.d[n] = this.typeList();
+        jtSet(t.d, n, this.typeList());
       }
-      t.f[n] = this.enumBody(n);
+      jtSet(t.f, n, this.enumBody(n));
     } else if (this.is("@")) {
-      t.op[n] = CK_ANNOTATION;
+      jtSet(t.op, n, CK_ANNOTATION);
       this.skip(2);
-      t.name[n] = this.typeName();
-      t.f[n] = this.classBody(n);
+      jtSet(t.name, n, this.typeName());
+      jtSet(t.f, n, this.classBody(n));
     } else if (this.is("record")) {
-      t.op[n] = CK_RECORD;
+      jtSet(t.op, n, CK_RECORD);
       this.next();
-      t.name[n] = this.typeName();
+      jtSet(t.name, n, this.typeName());
       if (this.is("<")) {
-        t.b[n] = this.typeParameters();
+        jtSet(t.b, n, this.typeParameters());
       }
       this.expect("(");
       const cm = t.mark();
       while (!this.is(")") && !this.err) {
         const v = this.formalParameter(false);
-        t.flags[v] = t.flags[v] | FL_RECORD;
+        jtSet(t.flags, v, jtGet(t.flags, v) | FL_RECORD);
         t.push(v);
         if (!this.accept(",")) {
           break;
         }
       }
-      t.g[n] = t.list(cm);
+      jtSet(t.g, n, t.list(cm));
       this.expect(")");
       if (this.accept("implements")) {
-        t.d[n] = this.typeList();
+        jtSet(t.d, n, this.typeList());
       }
-      t.f[n] = this.classBody(n);
+      jtSet(t.f, n, this.classBody(n));
     } else {
       this.fail();
     }
@@ -873,7 +981,7 @@ export class JParser {
     if (!this.is("permits")) {
       return t.empty();
     }
-    if ((t.flags[mods] & FL_MODS_SEALED) === 0) {
+    if ((jtGet(t.flags, mods) & FL_MODS_SEALED) === 0) {
       this.rejected = true;
     }
     this.next();
@@ -913,8 +1021,8 @@ export class JParser {
       }
       const annos = t.list(am);
       const n = t.node(N_TYPE_PARAMETER, start);
-      t.a[n] = annos;
-      t.name[n] = this.typeName();
+      jtSet(t.a, n, annos);
+      jtSet(t.name, n, this.typeName());
       const bm = t.mark();
       if (this.accept("extends")) {
         t.push(this.type());
@@ -922,7 +1030,7 @@ export class JParser {
           t.push(this.type());
         }
       }
-      t.b[n] = t.list(bm);
+      jtSet(t.b, n, t.list(bm));
       t.push(this.finish(n));
       if (!this.accept(",")) {
         break;
@@ -953,10 +1061,10 @@ export class JParser {
     if (this.is("{") || (this.is("static") && this.isAt(1, "{"))) {
       const b = t.node(N_BLOCK, this.pos());
       if (this.is("static")) {
-        t.flags[b] = FL_STATIC;
+        jtSet(t.flags, b, FL_STATIC);
         this.next();
       }
-      t.a[b] = this.blockStats();
+      jtSet(t.a, b, this.blockStats());
       t.push(this.finish(b));
       return;
     }
@@ -965,7 +1073,7 @@ export class JParser {
       t.push(this.classDecl(mods));
       return;
     }
-    const start = t.start[mods] >= 0 ? t.start[mods] : this.pos();
+    const start = jtGet(t.start, mods) >= 0 ? jtGet(t.start, mods) : this.pos();
     let typarams = -1;
     if (this.is("<")) {
       typarams = this.typeParameters();
@@ -981,20 +1089,20 @@ export class JParser {
       return;
     }
     if (
-      t.op[cls] === CK_RECORD &&
+      jtGet(t.op, cls) === CK_RECORD &&
       this.kindAt(0) === JK_IDENT &&
       this.isAt(1, "{") &&
-      this.inp.sameText(this.tokAt(0), t.name[cls])
+      this.inp.sameText(this.tokAt(0), jtGet(t.name, cls))
     ) {
       const n = t.node(N_METHOD, start);
-      t.a[n] = mods;
-      t.b[n] = typarams >= 0 ? typarams : t.empty();
-      t.flags[n] = FL_CTOR | FL_COMPACT_CTOR;
-      t.name[n] = this.ident();
-      t.d[n] = t.empty();
-      t.f[n] = t.empty();
-      t.g[n] = this.block();
-      t.parent[mods] = n;
+      jtSet(t.a, n, mods);
+      jtSet(t.b, n, typarams >= 0 ? typarams : t.empty());
+      jtSet(t.flags, n, FL_CTOR | FL_COMPACT_CTOR);
+      jtSet(t.name, n, this.ident());
+      jtSet(t.d, n, t.empty());
+      jtSet(t.f, n, t.empty());
+      jtSet(t.g, n, this.block());
+      jtSet(t.parent, mods, n);
       t.push(this.finish(n));
       return;
     }
@@ -1013,19 +1121,19 @@ export class JParser {
     const t = this.t;
     while (!this.err) {
       const v = t.node(N_VARIABLE, start);
-      t.a[v] = mods;
-      t.name[v] = this.ident();
+      jtSet(t.a, v, mods);
+      jtSet(t.name, v, this.ident());
       if (type >= 0) {
-        t.b[v] = this.bracketsOpt(type);
+        jtSet(t.b, v, this.bracketsOpt(type));
       } else if (this.is("[") || this.is("@")) {
         // `var x[]` (`var` is type -1): javac's variableDeclaratorRest, "'var'
         // is not allowed as an element type of an array".
         this.fail();
       } else {
-        t.b[v] = -1;
+        jtSet(t.b, v, -1);
       }
       if (this.accept("=")) {
-        t.c[v] = this.is("{") ? this.arrayInit(-1, this.pos()) : this.expression();
+        jtSet(t.c, v, this.is("{") ? this.arrayInit(-1, this.pos()) : this.expression());
       }
       t.push(this.finish(v));
       if (!this.is(",")) {
@@ -1043,22 +1151,22 @@ export class JParser {
   private method(mods: i32, start: i32, typarams: i32, restype: i32, ctor: boolean): i32 {
     const t = this.t;
     const n = t.node(N_METHOD, start);
-    t.a[n] = mods;
-    t.parent[mods] = n;
-    t.b[n] = typarams >= 0 ? typarams : t.empty();
-    t.c[n] = restype;
+    jtSet(t.a, n, mods);
+    jtSet(t.parent, mods, n);
+    jtSet(t.b, n, typarams >= 0 ? typarams : t.empty());
+    jtSet(t.c, n, restype);
     if (ctor) {
-      t.flags[n] = FL_CTOR;
+      jtSet(t.flags, n, FL_CTOR);
     }
-    t.name[n] = this.ident();
+    jtSet(t.name, n, this.ident());
     this.expect("(");
     const pm = t.mark();
     if (!this.is(")")) {
       while (!this.err) {
         const v = this.formalParameter(true);
-        if (t.d[v] >= 0) {
+        if (jtGet(t.d, v) >= 0) {
           // A receiver parameter.
-          t.e[n] = v;
+          jtSet(t.e, n, v);
         } else {
           t.push(v);
         }
@@ -1067,10 +1175,10 @@ export class JParser {
         }
       }
     }
-    t.d[n] = t.list(pm);
+    jtSet(t.d, n, t.list(pm));
     this.expect(")");
     if (restype >= 0) {
-      t.c[n] = this.bracketsOpt(restype);
+      jtSet(t.c, n, this.bracketsOpt(restype));
     }
     if (this.accept("throws")) {
       const tm = t.mark();
@@ -1078,15 +1186,15 @@ export class JParser {
       while (this.accept(",") && !this.err) {
         t.push(this.qualifiedType());
       }
-      t.f[n] = t.list(tm);
+      jtSet(t.f, n, t.list(tm));
     } else {
-      t.f[n] = t.empty();
+      jtSet(t.f, n, t.empty());
     }
     if (this.is("{")) {
-      t.g[n] = this.block();
+      jtSet(t.g, n, this.block());
     } else if (this.is("default")) {
       this.next();
-      t.h[n] = this.elementValue();
+      jtSet(t.h, n, this.elementValue());
       this.expect(";");
     } else {
       this.expect(";");
@@ -1098,10 +1206,10 @@ export class JParser {
   private formalParameter(allowReceiver: boolean, allowVar: boolean = false): i32 {
     const t = this.t;
     const mods = this.modifiers();
-    const start = t.start[mods] >= 0 ? t.start[mods] : this.pos();
+    const start = jtGet(t.start, mods) >= 0 ? jtGet(t.start, mods) : this.pos();
     const v = t.node(N_VARIABLE, start);
-    t.a[v] = mods;
-    t.parent[mods] = v;
+    jtSet(t.a, v, mods);
+    jtSet(t.parent, mods, v);
     this.allowVarType = allowVar;
     let type = this.type();
     let varAnnos = -1;
@@ -1114,16 +1222,16 @@ export class JParser {
     }
     if (this.op3(".", ".", ".")) {
       this.skip(3);
-      const at = t.node(N_ARRAY_TYPE, t.start[type]);
-      t.a[at] = type;
+      const at = t.node(N_ARRAY_TYPE, jtGet(t.start, type));
+      jtSet(t.a, at, type);
       type = this.finish(at);
       if (varAnnos >= 0) {
-        const an = t.node(N_ANNOTATED_TYPE, t.start[type]);
-        t.a[an] = varAnnos;
-        t.b[an] = type;
+        const an = t.node(N_ANNOTATED_TYPE, jtGet(t.start, type));
+        jtSet(t.a, an, varAnnos);
+        jtSet(t.b, an, type);
         type = this.finish(an);
       }
-      t.flags[v] = FL_VARARGS;
+      jtSet(t.flags, v, FL_VARARGS);
     }
     // A receiver: `Type this` or `Type Outer.this`.
     if (
@@ -1131,22 +1239,22 @@ export class JParser {
       (this.is("this") || (this.kindAt(0) === JK_IDENT && this.isAt(1, ".") && this.isAt(2, "this")))
     ) {
       let ne = t.node(N_IDENTIFIER, this.pos());
-      t.name[ne] = this.ident();
+      jtSet(t.name, ne, this.ident());
       this.finish(ne);
       if (this.is(".")) {
         this.next();
-        const s = t.node(N_MEMBER_SELECT, t.start[ne]);
-        t.a[s] = ne;
-        t.name[s] = this.ident();
+        const s = t.node(N_MEMBER_SELECT, jtGet(t.start, ne));
+        jtSet(t.a, s, ne);
+        jtSet(t.name, s, this.ident());
         ne = this.finish(s);
       }
-      t.d[v] = ne;
-      t.b[v] = type;
-      t.name[v] = this.tokAt(-1);
+      jtSet(t.d, v, ne);
+      jtSet(t.b, v, type);
+      jtSet(t.name, v, this.tokAt(-1));
       return this.finish(v);
     }
-    t.name[v] = this.ident();
-    t.b[v] = this.bracketsOpt(type);
+    jtSet(t.name, v, this.ident());
+    jtSet(t.b, v, this.bracketsOpt(type));
     return this.finish(v);
   }
 
@@ -1161,34 +1269,34 @@ export class JParser {
         continue;
       }
       const mods = this.modifiers();
-      const start = t.start[mods] >= 0 ? t.start[mods] : this.pos();
+      const start = jtGet(t.start, mods) >= 0 ? jtGet(t.start, mods) : this.pos();
       const v = t.node(N_VARIABLE, start);
-      t.a[v] = mods;
-      t.parent[mods] = v;
-      t.flags[v] = FL_ENUM;
+      jtSet(t.a, v, mods);
+      jtSet(t.parent, mods, v);
+      jtSet(t.flags, v, FL_ENUM);
       const nameTok = this.tokAt(0);
-      t.name[v] = this.ident();
-      const nc = t.node(N_NEW_CLASS, this.inp.tPos[nameTok]);
-      t.b[nc] = t.empty();
+      jtSet(t.name, v, this.ident());
+      const nc = t.node(N_NEW_CLASS, jparTokPos(this.inp, nameTok));
+      jtSet(t.b, nc, t.empty());
       if (this.is("(")) {
-        t.d[nc] = this.args();
+        jtSet(t.d, nc, this.args());
       } else {
-        t.d[nc] = t.empty();
+        jtSet(t.d, nc, t.empty());
       }
       if (this.is("{")) {
         const body = t.node(N_CLASS, this.pos());
         const bm = t.node(N_MODIFIERS, -1);
-        t.a[bm] = t.empty();
-        t.end[bm] = -1;
-        t.a[body] = bm;
-        t.b[body] = t.empty();
-        t.d[body] = t.empty();
-        t.e[body] = t.empty();
-        t.g[body] = t.empty();
-        t.f[body] = this.classBody(body);
-        t.e[nc] = this.finish(body);
+        jtSet(t.a, bm, t.empty());
+        jtSet(t.end, bm, -1);
+        jtSet(t.a, body, bm);
+        jtSet(t.b, body, t.empty());
+        jtSet(t.d, body, t.empty());
+        jtSet(t.e, body, t.empty());
+        jtSet(t.g, body, t.empty());
+        jtSet(t.f, body, this.classBody(body));
+        jtSet(t.e, nc, this.finish(body));
       }
-      t.c[v] = this.finish(nc);
+      jtSet(t.c, v, this.finish(nc));
       t.push(this.finish(v));
       if (!this.accept(",")) {
         break;
@@ -1256,11 +1364,15 @@ export class JParser {
   /** javac's restrictedTypeName: the restricted name (its tok) a type is, looked through array types, or -1. */
   private restrictedTypeName(ty: i32): i32 {
     let e = ty;
-    while (this.t.kind[e] === N_ARRAY_TYPE) {
-      e = this.t.a[e];
+    while (jtGet(this.t.kind, e) === N_ARRAY_TYPE) {
+      e = jtGet(this.t.a, e);
     }
-    if (this.t.kind[e] === N_IDENTIFIER && this.t.name[e] >= 0 && this.isRestrictedTypeName(this.t.name[e])) {
-      return this.t.name[e];
+    if (
+      jtGet(this.t.kind, e) === N_IDENTIFIER &&
+      jtGet(this.t.name, e) >= 0 &&
+      this.isRestrictedTypeName(jtGet(this.t.name, e))
+    ) {
+      return jtGet(this.t.name, e);
     }
     return -1;
   }
@@ -1295,11 +1407,11 @@ export class JParser {
       const annos = t.list(am);
       const under = this.typeNoDims();
       const at = t.node(N_ANNOTATED_TYPE, start);
-      t.a[at] = annos;
-      t.b[at] = under;
+      jtSet(t.a, at, annos);
+      jtSet(t.b, at, under);
       this.finish(at);
-      if (t.kind[under] === N_MEMBER_SELECT) {
-        t.start[at] = t.start[under];
+      if (jtGet(t.kind, under) === N_MEMBER_SELECT) {
+        jtSet(t.start, at, jtGet(t.start, under));
       }
       return this.bracketsOpt(at);
     }
@@ -1310,7 +1422,7 @@ export class JParser {
     const t = this.t;
     if (this.isPrimitive(0)) {
       const n = t.node(N_PRIMITIVE_TYPE, this.pos());
-      t.name[n] = this.tokAt(0);
+      jtSet(t.name, n, this.tokAt(0));
       this.next();
       return this.finish(n);
     }
@@ -1318,11 +1430,11 @@ export class JParser {
       const n = t.node(N_WILDCARD, this.pos());
       this.next();
       if (this.accept("extends")) {
-        t.op[n] = 1;
-        t.a[n] = this.type();
+        jtSet(t.op, n, 1);
+        jtSet(t.a, n, this.type());
       } else if (this.accept("super")) {
-        t.op[n] = 2;
-        t.a[n] = this.type();
+        jtSet(t.op, n, 2);
+        jtSet(t.a, n, this.type());
       }
       return this.finish(n);
     }
@@ -1340,7 +1452,7 @@ export class JParser {
       return t.node(N_IDENTIFIER, start);
     }
     let e = t.node(N_IDENTIFIER, start);
-    t.name[e] = this.refIdent();
+    jtSet(t.name, e, this.refIdent());
     this.finish(e);
     if (this.is("<")) {
       e = this.typeArgsOn(e, start);
@@ -1358,12 +1470,12 @@ export class JParser {
         }
         const annos = t.list(am);
         const s = t.node(N_MEMBER_SELECT, start);
-        t.a[s] = e;
-        t.name[s] = this.refIdent();
+        jtSet(t.a, s, e);
+        jtSet(t.name, s, this.refIdent());
         this.finish(s);
         const at = t.node(N_ANNOTATED_TYPE, start);
-        t.a[at] = annos;
-        t.b[at] = s;
+        jtSet(t.a, at, annos);
+        jtSet(t.b, at, s);
         e = this.finish(at);
       } else if (
         this.kindAt(1) === JK_IDENT &&
@@ -1374,8 +1486,8 @@ export class JParser {
       ) {
         this.next();
         const s = t.node(N_MEMBER_SELECT, start);
-        t.a[s] = e;
-        t.name[s] = this.refIdent();
+        jtSet(t.a, s, e);
+        jtSet(t.name, s, this.refIdent());
         e = this.finish(s);
       } else {
         break;
@@ -1390,8 +1502,8 @@ export class JParser {
   private typeArgsOn(base: i32, start: i32): i32 {
     const t = this.t;
     const pt = t.node(N_PARAMETERIZED_TYPE, start);
-    t.a[pt] = base;
-    t.b[pt] = this.typeArgs();
+    jtSet(t.a, pt, base);
+    jtSet(t.b, pt, this.typeArgs());
     return this.finish(pt);
   }
 
@@ -1425,7 +1537,7 @@ export class JParser {
       this.rejected = true;
     }
     for (let i = 0; i < n; i++) {
-      if (t.kind[t.at(l, i)] === N_WILDCARD) {
+      if (jtGet(t.kind, t.at(l, i)) === N_WILDCARD) {
         this.rejected = true;
       }
     }
@@ -1452,8 +1564,8 @@ export class JParser {
     while (!this.err) {
       if (this.is("[") && this.isAt(1, "]")) {
         this.skip(2);
-        const at = t.node(N_ARRAY_TYPE, t.start[type]);
-        t.a[at] = e;
+        const at = t.node(N_ARRAY_TYPE, jtGet(t.start, type));
+        jtSet(t.a, at, e);
         e = this.finish(at);
       } else if (this.is("@") && this.annotatedDimAhead()) {
         const am = t.mark();
@@ -1463,12 +1575,12 @@ export class JParser {
         const annos = t.list(am);
         this.expect("[");
         this.expect("]");
-        const at = t.node(N_ARRAY_TYPE, t.start[type]);
-        t.a[at] = e;
+        const at = t.node(N_ARRAY_TYPE, jtGet(t.start, type));
+        jtSet(t.a, at, e);
         this.finish(at);
-        const an = t.node(N_ANNOTATED_TYPE, t.start[type]);
-        t.a[an] = annos;
-        t.b[an] = at;
+        const an = t.node(N_ANNOTATED_TYPE, jtGet(t.start, type));
+        jtSet(t.a, an, annos);
+        jtSet(t.b, an, at);
         e = this.finish(an);
       } else {
         break;
@@ -1506,7 +1618,7 @@ export class JParser {
   block(): i32 {
     const t = this.t;
     const b = t.node(N_BLOCK, this.pos());
-    t.a[b] = this.blockStats();
+    jtSet(t.a, b, this.blockStats());
     return this.finish(b);
   }
 
@@ -1568,7 +1680,7 @@ export class JParser {
   /** Declarators of a local variable after its modifiers; pushes each VARIABLE. */
   private localVariables(mods: i32): void {
     const t = this.t;
-    const start = t.start[mods] >= 0 ? t.start[mods] : this.pos();
+    const start = jtGet(t.start, mods) >= 0 ? jtGet(t.start, mods) : this.pos();
     let type = -1;
     if (this.is("var") && this.kindAt(1) === JK_IDENT && !this.isAt(1, "instanceof")) {
       this.next();
@@ -1584,8 +1696,8 @@ export class JParser {
       // `int.class`, `int[].class` and `int[]::new` are expressions: javac's
       // term(EXPR | TYPE) leaves type mode at bracketsSuffix's `.class` or `::`.
       let i = 1;
-      while (this.isAt(i, "[") && this.isAt(i + 1, "]")) {
-        i += 2;
+      while (this.isAt(i, "[") && this.isAt(jparOff(i, 1), "]")) {
+        i = jparOff(i, 2);
       }
       return !this.isAt(i, ".") && !this.op2At(i, ":", ":");
     }
@@ -1636,7 +1748,12 @@ export class JParser {
   private isYieldStatement(): boolean {
     const n1 = this.tokAt(1);
     const inp = this.inp;
-    const k = inp.tKind[n1];
+    const tKind = inp.tKind;
+    if (n1 < 0 || n1 >= tKind.length) {
+      fault();
+      return false;
+    }
+    const k = tKind[n1];
     if (k === JK_IDENT) {
       return !inp.is(n1, "instanceof");
     }
@@ -1676,10 +1793,10 @@ export class JParser {
     if (this.is("if")) {
       const n = t.node(N_IF, start);
       this.next();
-      t.a[n] = this.parExpression();
-      t.b[n] = this.statement();
+      jtSet(t.a, n, this.parExpression());
+      jtSet(t.b, n, this.statement());
       if (this.accept("else")) {
-        t.c[n] = this.statement();
+        jtSet(t.c, n, this.statement());
       }
       return this.finish(n);
     }
@@ -1689,16 +1806,16 @@ export class JParser {
     if (this.is("while")) {
       const n = t.node(N_WHILE, start);
       this.next();
-      t.a[n] = this.parExpression();
-      t.b[n] = this.statement();
+      jtSet(t.a, n, this.parExpression());
+      jtSet(t.b, n, this.statement());
       return this.finish(n);
     }
     if (this.is("do")) {
       const n = t.node(N_DO_WHILE, start);
       this.next();
-      t.a[n] = this.statement();
+      jtSet(t.a, n, this.statement());
       this.expect("while");
-      t.b[n] = this.parExpression();
+      jtSet(t.b, n, this.parExpression());
       this.expect(";");
       return this.finish(n);
     }
@@ -1708,22 +1825,22 @@ export class JParser {
     if (this.is("switch")) {
       const n = t.node(N_SWITCH, start);
       this.next();
-      t.a[n] = this.parExpression();
-      t.b[n] = this.switchBody(true);
+      jtSet(t.a, n, this.parExpression());
+      jtSet(t.b, n, this.switchBody(true));
       return this.finish(n);
     }
     if (this.is("synchronized")) {
       const n = t.node(N_SYNCHRONIZED, start);
       this.next();
-      t.a[n] = this.parExpression();
-      t.b[n] = this.block();
+      jtSet(t.a, n, this.parExpression());
+      jtSet(t.b, n, this.block());
       return this.finish(n);
     }
     if (this.is("return")) {
       const n = t.node(N_RETURN, start);
       this.next();
       if (!this.is(";")) {
-        t.a[n] = this.expression();
+        jtSet(t.a, n, this.expression());
       }
       this.expect(";");
       return this.finish(n);
@@ -1731,7 +1848,7 @@ export class JParser {
     if (this.is("throw")) {
       const n = t.node(N_THROW, start);
       this.next();
-      t.a[n] = this.expression();
+      jtSet(t.a, n, this.expression());
       this.expect(";");
       return this.finish(n);
     }
@@ -1739,7 +1856,7 @@ export class JParser {
       const n = t.node(this.is("break") ? N_BREAK : N_CONTINUE, start);
       this.next();
       if (this.kindAt(0) === JK_IDENT) {
-        t.name[n] = this.ident();
+        jtSet(t.name, n, this.ident());
       }
       this.expect(";");
       return this.finish(n);
@@ -1747,9 +1864,9 @@ export class JParser {
     if (this.is("assert")) {
       const n = t.node(N_ASSERT, start);
       this.next();
-      t.a[n] = this.expression();
+      jtSet(t.a, n, this.expression());
       if (this.accept(":")) {
-        t.b[n] = this.expression();
+        jtSet(t.b, n, this.expression());
       }
       this.expect(";");
       return this.finish(n);
@@ -1757,15 +1874,15 @@ export class JParser {
     if (this.is("yield") && this.isYieldStatement()) {
       const n = t.node(N_YIELD, start);
       this.next();
-      t.a[n] = this.expression();
+      jtSet(t.a, n, this.expression());
       this.expect(";");
       return this.finish(n);
     }
     if (this.isIdent() && this.isAt(1, ":") && !this.isAt(2, ":")) {
       const n = t.node(N_LABELED, start);
-      t.name[n] = this.ident();
+      jtSet(t.name, n, this.ident());
       this.next();
-      t.a[n] = this.statement();
+      jtSet(t.a, n, this.statement());
       return this.finish(n);
     }
     if (this.isClassStart()) {
@@ -1773,7 +1890,7 @@ export class JParser {
       return this.classDecl(mods);
     }
     const n = t.node(N_EXPRESSION_STATEMENT, start);
-    t.a[n] = this.checkExprStat(this.expression());
+    jtSet(t.a, n, this.checkExprStat(this.expression()));
     this.expect(";");
     return this.finish(n);
   }
@@ -1785,14 +1902,17 @@ export class JParser {
    */
   private checkExprStat(e: i32): i32 {
     const t = this.t;
-    const k = t.kind[e];
+    const k = jtGet(t.kind, e);
     const ok =
       k === N_ASSIGNMENT ||
       k === N_COMPOUND_ASSIGNMENT ||
       k === N_METHOD_INVOCATION ||
       k === N_NEW_CLASS ||
       (k === N_UNARY &&
-        (t.op[e] === OP_PREINC || t.op[e] === OP_PREDEC || t.op[e] === OP_POSTINC || t.op[e] === OP_POSTDEC));
+        (jtGet(t.op, e) === OP_PREINC ||
+          jtGet(t.op, e) === OP_PREDEC ||
+          jtGet(t.op, e) === OP_POSTINC ||
+          jtGet(t.op, e) === OP_POSTDEC));
     if (!ok) {
       this.rejected = true;
     }
@@ -1803,7 +1923,7 @@ export class JParser {
     const t = this.t;
     const n = t.node(N_PARENTHESIZED, this.pos());
     this.expect("(");
-    t.a[n] = this.expression();
+    jtSet(t.a, n, this.expression());
     this.expect(")");
     return this.finish(n);
   }
@@ -1817,23 +1937,23 @@ export class JParser {
     if (this.isEnhancedFor()) {
       const n = t.node(N_ENHANCED_FOR, start);
       const mods = this.modifiers();
-      const vs = t.start[mods] >= 0 ? t.start[mods] : this.pos();
+      const vs = jtGet(t.start, mods) >= 0 ? jtGet(t.start, mods) : this.pos();
       const v = t.node(N_VARIABLE, vs);
-      t.a[v] = mods;
-      t.parent[mods] = v;
+      jtSet(t.a, v, mods);
+      jtSet(t.parent, mods, v);
       if (this.is("var") && this.kindAt(1) === JK_IDENT) {
         this.next();
       } else {
-        t.b[v] = this.type();
+        jtSet(t.b, v, this.type());
       }
-      t.name[v] = this.ident();
-      t.b[v] = t.b[v] >= 0 ? this.bracketsOpt(t.b[v]) : -1;
+      jtSet(t.name, v, this.ident());
+      jtSet(t.b, v, jtGet(t.b, v) >= 0 ? this.bracketsOpt(jtGet(t.b, v)) : -1);
       this.finish(v);
-      t.a[n] = v;
+      jtSet(t.a, n, v);
       this.expect(":");
-      t.b[n] = this.expression();
+      jtSet(t.b, n, this.expression());
       this.expect(")");
-      t.c[n] = this.statement();
+      jtSet(t.c, n, this.statement());
       return this.finish(n);
     }
     const n = t.node(N_FOR, start);
@@ -1845,7 +1965,7 @@ export class JParser {
       } else {
         while (!this.err) {
           const es = t.node(N_EXPRESSION_STATEMENT, this.pos());
-          t.a[es] = this.checkExprStat(this.expression());
+          jtSet(t.a, es, this.checkExprStat(this.expression()));
           t.push(this.finish(es));
           if (!this.accept(",")) {
             break;
@@ -1853,26 +1973,26 @@ export class JParser {
         }
       }
     }
-    t.a[n] = t.list(im);
+    jtSet(t.a, n, t.list(im));
     this.expect(";");
     if (!this.is(";")) {
-      t.b[n] = this.expression();
+      jtSet(t.b, n, this.expression());
     }
     this.expect(";");
     const um = t.mark();
     if (!this.is(")")) {
       while (!this.err) {
         const es = t.node(N_EXPRESSION_STATEMENT, this.pos());
-        t.a[es] = this.checkExprStat(this.expression());
+        jtSet(t.a, es, this.checkExprStat(this.expression()));
         t.push(this.finish(es));
         if (!this.accept(",")) {
           break;
         }
       }
     }
-    t.c[n] = t.list(um);
+    jtSet(t.c, n, t.list(um));
     this.expect(")");
-    t.d[n] = this.statement();
+    jtSet(t.d, n, this.statement());
     return this.finish(n);
   }
 
@@ -1908,18 +2028,18 @@ export class JParser {
       while (!this.is(")") && !this.err) {
         if (this.is("final") || this.is("@") || this.isLocalVarDecl()) {
           const mods = this.modifiers();
-          const start = t.start[mods] >= 0 ? t.start[mods] : this.pos();
+          const start = jtGet(t.start, mods) >= 0 ? jtGet(t.start, mods) : this.pos();
           const v = t.node(N_VARIABLE, start);
-          t.a[v] = mods;
-          t.parent[mods] = v;
+          jtSet(t.a, v, mods);
+          jtSet(t.parent, mods, v);
           if (this.is("var") && this.kindAt(1) === JK_IDENT) {
             this.next();
           } else {
-            t.b[v] = this.type();
+            jtSet(t.b, v, this.type());
           }
-          t.name[v] = this.ident();
+          jtSet(t.name, v, this.ident());
           this.expect("=");
-          t.c[v] = this.expression();
+          jtSet(t.c, v, this.expression());
           t.push(this.finish(v));
         } else {
           t.push(this.expression());
@@ -1930,40 +2050,40 @@ export class JParser {
       }
       this.expect(")");
     }
-    t.a[n] = t.list(rm);
-    t.b[n] = this.block();
+    jtSet(t.a, n, t.list(rm));
+    jtSet(t.b, n, this.block());
     const cm = t.mark();
     while (this.is("catch") && !this.err) {
       const c = t.node(N_CATCH, this.pos());
       this.next();
       this.expect("(");
       const mods = this.modifiers();
-      const start = t.start[mods] >= 0 ? t.start[mods] : this.pos();
+      const start = jtGet(t.start, mods) >= 0 ? jtGet(t.start, mods) : this.pos();
       const v = t.node(N_VARIABLE, start);
-      t.a[v] = mods;
-      t.parent[mods] = v;
+      jtSet(t.a, v, mods);
+      jtSet(t.parent, mods, v);
       const first = this.type();
       if (this.is("|")) {
-        const u = t.node(N_UNION_TYPE, t.start[first]);
+        const u = t.node(N_UNION_TYPE, jtGet(t.start, first));
         const um = t.mark();
         t.push(first);
         while (this.accept("|") && !this.err) {
           t.push(this.type());
         }
-        t.a[u] = t.list(um);
-        t.b[v] = this.finish(u);
+        jtSet(t.a, u, t.list(um));
+        jtSet(t.b, v, this.finish(u));
       } else {
-        t.b[v] = first;
+        jtSet(t.b, v, first);
       }
-      t.name[v] = this.ident();
-      t.a[c] = this.finish(v);
+      jtSet(t.name, v, this.ident());
+      jtSet(t.a, c, this.finish(v));
       this.expect(")");
-      t.b[c] = this.block();
+      jtSet(t.b, c, this.block());
       t.push(this.finish(c));
     }
-    t.c[n] = t.list(cm);
+    jtSet(t.c, n, t.list(cm));
     if (this.accept("finally")) {
-      t.d[n] = this.block();
+      jtSet(t.d, n, this.block());
     }
     return this.finish(n);
   }
@@ -1997,22 +2117,22 @@ export class JParser {
         }
       }
     }
-    t.a[n] = t.list(lm);
+    jtSet(t.a, n, t.list(lm));
     if (this.is("when")) {
       this.next();
-      t.b[n] = this.expression();
+      jtSet(t.b, n, this.expression());
     }
     if (this.op2("-", ">")) {
       this.skip(2);
-      t.flags[n] = FL_RULE;
+      jtSet(t.flags, n, FL_RULE);
       const sm = t.mark();
       if (this.is("{")) {
         const b = this.block();
-        t.d[n] = b;
+        jtSet(t.d, n, b);
         t.push(b);
       } else if (this.is("throw")) {
         const s = this.statement();
-        t.d[n] = s;
+        jtSet(t.d, n, s);
         t.push(s);
       } else {
         const e = this.expression();
@@ -2021,10 +2141,10 @@ export class JParser {
         if (statement) {
           this.checkExprStat(e);
         }
-        t.d[n] = e;
+        jtSet(t.d, n, e);
         this.expect(";");
       }
-      t.c[n] = t.list(sm);
+      jtSet(t.c, n, t.list(sm));
     } else {
       this.expect(":");
       const sm = t.mark();
@@ -2037,7 +2157,7 @@ export class JParser {
       ) {
         this.blockStatement();
       }
-      t.c[n] = t.list(sm);
+      jtSet(t.c, n, t.list(sm));
     }
     return this.finish(n);
   }
@@ -2052,11 +2172,11 @@ export class JParser {
     }
     if (this.isPatternStart()) {
       const l = t.node(N_PATTERN_CASE_LABEL, start);
-      t.a[l] = this.pattern();
+      jtSet(t.a, l, this.pattern());
       return this.finish(l);
     }
     const l = t.node(N_CONSTANT_CASE_LABEL, start);
-    t.a[l] = this.conditional();
+    jtSet(t.a, l, this.conditional());
     return this.finish(l);
   }
 
@@ -2091,7 +2211,7 @@ export class JParser {
       return this.finish(a);
     }
     const mods = this.modifiers();
-    const vstart = t.start[mods] >= 0 ? t.start[mods] : this.pos();
+    const vstart = jtGet(t.start, mods) >= 0 ? jtGet(t.start, mods) : this.pos();
     let type = -1;
     if (this.is("var") && this.kindAt(1) === JK_IDENT) {
       // `var` types only a record pattern's components: "'var' is not allowed here".
@@ -2104,7 +2224,7 @@ export class JParser {
     }
     if (this.is("(")) {
       const d = t.node(N_DECONSTRUCTION_PATTERN, vstart);
-      t.a[d] = type;
+      jtSet(t.a, d, type);
       this.next();
       const pm = t.mark();
       while (!this.is(")") && !this.err) {
@@ -2113,18 +2233,18 @@ export class JParser {
           break;
         }
       }
-      t.b[d] = t.list(pm);
+      jtSet(t.b, d, t.list(pm));
       this.expect(")");
       return this.finish(d);
     }
     const b = t.node(N_BINDING_PATTERN, vstart);
     const v = t.node(N_VARIABLE, vstart);
-    t.a[v] = mods;
-    t.parent[mods] = v;
-    t.b[v] = type;
-    t.name[v] = this.ident();
+    jtSet(t.a, v, mods);
+    jtSet(t.parent, mods, v);
+    jtSet(t.b, v, type);
+    jtSet(t.name, v, this.ident());
     this.finish(v);
-    t.a[b] = v;
+    jtSet(t.a, b, v);
     return this.finish(b);
   }
 
@@ -2140,11 +2260,11 @@ export class JParser {
     if (op === 0) {
       return lhs;
     }
-    const n = t.node(op === -1 ? N_ASSIGNMENT : N_COMPOUND_ASSIGNMENT, t.start[lhs]);
-    t.op[n] = op === -1 ? 0 : op;
+    const n = t.node(op === -1 ? N_ASSIGNMENT : N_COMPOUND_ASSIGNMENT, jtGet(t.start, lhs));
+    jtSet(t.op, n, op === -1 ? 0 : op);
     this.skip(this.assignOpLen);
-    t.a[n] = lhs;
-    t.b[n] = this.expression();
+    jtSet(t.a, n, lhs);
+    jtSet(t.b, n, this.expression());
     return this.finish(n);
   }
 
@@ -2196,18 +2316,18 @@ export class JParser {
     // The matching paren followed by `->`.
     let depth = 0;
     let i = 0;
-    while (this.p + i < this.nT - 1) {
+    while (toI64(this.p) + toI64(i) < toI64(this.nT) - toI64(1)) {
       if (this.isAt(i, "(")) {
-        depth++;
+        depth = jparOff(depth, 1);
       } else if (this.isAt(i, ")")) {
-        depth--;
+        depth = jparOff(depth, -1);
         if (depth === 0) {
-          return this.op2At(i + 1, "-", ">");
+          return this.op2At(jparOff(i, 1), "-", ">");
         }
       } else if (this.isAt(i, ";") || this.isAt(i, "{") || this.isAt(i, "}")) {
         return false;
       }
-      i++;
+      i = jparOff(i, 1);
     }
     return false;
   }
@@ -2230,27 +2350,27 @@ export class JParser {
             // (javac rejects it; a failed type has no name to read.)
             break;
           }
-          const ty = t.b[p];
+          const ty = jtGet(t.b, p);
           // javac's lambdaExpressionOrStatement: a restricted type with array
           // brackets, `var[] x` or `var x[]`, is "not allowed as an element type of an array".
-          if (ty >= 0 && t.kind[ty] === N_ARRAY_TYPE && this.restrictedTypeName(ty) >= 0) {
+          if (ty >= 0 && jtGet(t.kind, ty) === N_ARRAY_TYPE && this.restrictedTypeName(ty) >= 0) {
             this.rejected = true;
           }
-          if (ty >= 0 && t.kind[ty] === N_IDENTIFIER && this.inp.is(t.name[ty], "var")) {
-            nVar++;
+          if (ty >= 0 && jtGet(t.kind, ty) === N_IDENTIFIER && this.inp.is(jtGet(t.name, ty), "var")) {
+            nVar = jparOff(nVar, 1);
           } else {
-            nOther++;
+            nOther = jparOff(nOther, 1);
           }
           t.push(p);
         } else {
-          nOther++;
+          nOther = jparOff(nOther, 1);
           const v = t.node(N_VARIABLE, this.pos());
           const mods = t.node(N_MODIFIERS, -1);
-          t.a[mods] = t.empty();
-          t.end[mods] = -1;
-          t.a[v] = mods;
-          t.parent[mods] = v;
-          t.name[v] = this.ident();
+          jtSet(t.a, mods, t.empty());
+          jtSet(t.end, mods, -1);
+          jtSet(t.a, v, mods);
+          jtSet(t.parent, mods, v);
+          jtSet(t.name, v, this.ident());
           t.push(this.finish(v));
         }
         if (!this.accept(",")) {
@@ -2264,23 +2384,23 @@ export class JParser {
     } else {
       const v = t.node(N_VARIABLE, this.pos());
       const mods = t.node(N_MODIFIERS, -1);
-      t.a[mods] = t.empty();
-      t.end[mods] = -1;
-      t.a[v] = mods;
-      t.parent[mods] = v;
-      t.name[v] = this.ident();
+      jtSet(t.a, mods, t.empty());
+      jtSet(t.end, mods, -1);
+      jtSet(t.a, v, mods);
+      jtSet(t.parent, mods, v);
+      jtSet(t.name, v, this.ident());
       t.push(this.finish(v));
     }
-    t.a[n] = t.list(pm);
+    jtSet(t.a, n, t.list(pm));
     if (!this.op2("-", ">")) {
       this.fail();
     }
     this.skip(2);
     if (this.is("{")) {
-      t.flags[n] = FL_STATEMENT_BODY;
-      t.b[n] = this.block();
+      jtSet(t.flags, n, FL_STATEMENT_BODY);
+      jtSet(t.b, n, this.block());
     } else {
-      t.b[n] = this.expression();
+      jtSet(t.b, n, this.expression());
     }
     return this.finish(n);
   }
@@ -2291,12 +2411,12 @@ export class JParser {
     if (!this.is("?")) {
       return c;
     }
-    const n = t.node(N_CONDITIONAL, t.start[c]);
+    const n = t.node(N_CONDITIONAL, jtGet(t.start, c));
     this.next();
-    t.a[n] = c;
-    t.b[n] = this.isLambdaStart() ? this.lambda() : this.expression();
+    jtSet(t.a, n, c);
+    jtSet(t.b, n, this.isLambdaStart() ? this.lambda() : this.expression());
     this.expect(":");
-    t.c[n] = this.isLambdaStart() ? this.lambda() : this.conditional();
+    jtSet(t.c, n, this.isLambdaStart() ? this.lambda() : this.conditional());
     return this.finish(n);
   }
 
@@ -2407,20 +2527,20 @@ export class JParser {
         if (10 < minPrec) {
           break;
         }
-        const n = t.node(N_INSTANCE_OF, t.start[lhs]);
+        const n = t.node(N_INSTANCE_OF, jtGet(t.start, lhs));
         this.next();
-        t.a[n] = lhs;
+        jtSet(t.a, n, lhs);
         if (this.is("final") || this.is("@")) {
-          t.c[n] = this.pattern();
+          jtSet(t.c, n, this.pattern());
         } else {
           const m = new Mark();
           this.save(m);
           const ty = this.type();
           if (!this.err && (this.is("(") || (this.kindAt(0) === JK_IDENT && !isJavaKeyword(this.inp, this.tokAt(0))))) {
             this.restore(m);
-            t.c[n] = this.pattern();
+            jtSet(t.c, n, this.pattern());
           } else {
-            t.b[n] = ty;
+            jtSet(t.b, n, ty);
           }
         }
         lhs = this.finish(n);
@@ -2435,11 +2555,11 @@ export class JParser {
         break;
       }
       this.skip(this.binOpLen);
-      const rhs = this.binary(prec + 1);
-      const n = t.node(N_BINARY, t.start[lhs]);
-      t.op[n] = op;
-      t.a[n] = lhs;
-      t.b[n] = rhs;
+      const rhs = this.binary(jparOff(prec, 1));
+      const n = t.node(N_BINARY, jtGet(t.start, lhs));
+      jtSet(t.op, n, op);
+      jtSet(t.a, n, lhs);
+      jtSet(t.b, n, rhs);
       lhs = this.finish(n);
     }
     return lhs;
@@ -2450,16 +2570,16 @@ export class JParser {
     const start = this.pos();
     if (this.op2("+", "+") || this.op2("-", "-")) {
       const n = t.node(N_UNARY, start);
-      t.op[n] = this.is("+") ? OP_PREINC : OP_PREDEC;
+      jtSet(t.op, n, this.is("+") ? OP_PREINC : OP_PREDEC);
       this.skip(2);
-      t.a[n] = this.unary();
+      jtSet(t.a, n, this.unary());
       return this.finish(n);
     }
     if (this.is("+") || this.is("!") || this.is("~")) {
       const n = t.node(N_UNARY, start);
-      t.op[n] = this.is("+") ? OP_POS : this.is("!") ? OP_NOT : OP_COMPL;
+      jtSet(t.op, n, this.is("+") ? OP_POS : this.is("!") ? OP_NOT : OP_COMPL);
       this.next();
-      t.a[n] = this.unary();
+      jtSet(t.a, n, this.unary());
       return this.finish(n);
     }
     if (this.is("-")) {
@@ -2468,13 +2588,13 @@ export class JParser {
       if (nk === JK_NUMBER && this.isDecimalIntegral(this.tokAt(1))) {
         this.next();
         const lit = this.literal();
-        t.start[lit] = start;
+        jtSet(t.start, lit, start);
         return this.postfix(this.selectors(lit));
       }
       const n = t.node(N_UNARY, start);
-      t.op[n] = OP_NEG;
+      jtSet(t.op, n, OP_NEG);
       this.next();
-      t.a[n] = this.unary();
+      jtSet(t.a, n, this.unary());
       return this.finish(n);
     }
     if (this.is("(")) {
@@ -2488,14 +2608,23 @@ export class JParser {
 
   private isDecimalIntegral(tok: i32): boolean {
     const inp = this.inp;
-    const a = inp.tPos[tok];
-    const e = inp.tEnd[tok];
+    const src = inp.src;
+    const a = jparTokPos(inp, tok);
+    const e = jparTokEnd(inp, tok);
+    if (a < 0 || a >= src.length) {
+      fault();
+      return false;
+    }
     // javac scans a leading 0 as octal (radix 8), hex or binary: never radix 10.
-    if (toI32(inp.src[a]) === 48) {
+    if (toI32(src[a]) === 48) {
       return false;
     }
     for (let i = a; i < e; i++) {
-      const c = toI32(inp.src[i]);
+      if (i < 0 || i >= src.length) {
+        fault();
+        return false;
+      }
+      const c = toI32(src[i]);
       if (c === 46 || c === 101 || c === 69 || c === 102 || c === 70 || c === 100 || c === 68) {
         return false;
       }
@@ -2515,8 +2644,8 @@ export class JParser {
       if (!this.err && this.is(")")) {
         this.next();
         const n = t.node(N_TYPE_CAST, start);
-        t.a[n] = ty;
-        t.b[n] = this.unary();
+        jtSet(t.a, n, ty);
+        jtSet(t.b, n, this.unary());
         return this.finish(n);
       }
       this.restore(m);
@@ -2528,13 +2657,13 @@ export class JParser {
     }
     let ty = this.type();
     if (!this.err && this.is("&")) {
-      const it = t.node(N_INTERSECTION_TYPE, t.start[ty]);
+      const it = t.node(N_INTERSECTION_TYPE, jtGet(t.start, ty));
       const im = t.mark();
       t.push(ty);
       while (this.accept("&") && !this.err) {
         t.push(this.type());
       }
-      t.a[it] = t.list(im);
+      jtSet(t.a, it, t.list(im));
       ty = this.finish(it);
     }
     if (this.err || !this.is(")")) {
@@ -2557,8 +2686,8 @@ export class JParser {
     }
     this.next();
     const n = t.node(N_TYPE_CAST, start);
-    t.a[n] = ty;
-    t.b[n] = this.isLambdaStart() ? this.lambda() : this.unary();
+    jtSet(t.a, n, ty);
+    jtSet(t.b, n, this.isLambdaStart() ? this.lambda() : this.unary());
     return this.finish(n);
   }
 
@@ -2566,10 +2695,10 @@ export class JParser {
     const t = this.t;
     let e = e0;
     while ((this.op2("+", "+") || this.op2("-", "-")) && !this.err) {
-      const n = t.node(N_UNARY, t.start[e]);
-      t.op[n] = this.is("+") ? OP_POSTINC : OP_POSTDEC;
+      const n = t.node(N_UNARY, jtGet(t.start, e));
+      jtSet(t.op, n, this.is("+") ? OP_POSTINC : OP_POSTDEC);
       this.skip(2);
-      t.a[n] = e;
+      jtSet(t.a, n, e);
       e = this.finish(n);
     }
     return e;
@@ -2593,14 +2722,14 @@ export class JParser {
           if (this.is("this")) {
             this.rejected = true;
           }
-          const s = t.node(N_MEMBER_SELECT, t.start[e]);
-          t.a[s] = e;
-          t.name[s] = this.refIdent();
+          const s = t.node(N_MEMBER_SELECT, jtGet(t.start, e));
+          jtSet(t.a, s, e);
+          jtSet(t.name, s, this.refIdent());
           this.finish(s);
-          const mi = t.node(N_METHOD_INVOCATION, t.start[e]);
-          t.a[mi] = targs;
-          t.b[mi] = s;
-          t.c[mi] = this.args();
+          const mi = t.node(N_METHOD_INVOCATION, jtGet(t.start, e));
+          jtSet(t.a, mi, targs);
+          jtSet(t.b, mi, s);
+          jtSet(t.c, mi, this.args());
           e = this.finish(mi);
           continue;
         }
@@ -2615,19 +2744,19 @@ export class JParser {
           break;
         }
         this.next();
-        const s = t.node(N_MEMBER_SELECT, t.start[e]);
-        t.a[s] = e;
-        t.name[s] = this.refIdent();
+        const s = t.node(N_MEMBER_SELECT, jtGet(t.start, e));
+        jtSet(t.a, s, e);
+        jtSet(t.name, s, this.refIdent());
         this.finish(s);
         if (this.is("(")) {
           // `o.this(...)`: javac's term3 ends at `o.this`, "not a statement".
-          if (this.inp.is(t.name[s], "this")) {
+          if (this.inp.is(jtGet(t.name, s), "this")) {
             this.rejected = true;
           }
-          const mi = t.node(N_METHOD_INVOCATION, t.start[e]);
-          t.a[mi] = t.empty();
-          t.b[mi] = s;
-          t.c[mi] = this.args();
+          const mi = t.node(N_METHOD_INVOCATION, jtGet(t.start, e));
+          jtSet(t.a, mi, t.empty());
+          jtSet(t.b, mi, s);
+          jtSet(t.c, mi, this.args());
           e = this.finish(mi);
         } else {
           e = s;
@@ -2636,9 +2765,9 @@ export class JParser {
       }
       if (this.is("[")) {
         this.next();
-        const n = t.node(N_ARRAY_ACCESS, t.start[e]);
-        t.a[n] = e;
-        t.b[n] = this.expression();
+        const n = t.node(N_ARRAY_ACCESS, jtGet(t.start, e));
+        jtSet(t.a, n, e);
+        jtSet(t.b, n, this.expression());
         this.expect("]");
         e = this.finish(n);
         continue;
@@ -2654,17 +2783,17 @@ export class JParser {
 
   private memberRef(qual: i32): i32 {
     const t = this.t;
-    const n = t.node(N_MEMBER_REFERENCE, t.start[qual]);
-    t.a[n] = qual;
+    const n = t.node(N_MEMBER_REFERENCE, jtGet(t.start, qual));
+    jtSet(t.a, n, qual);
     this.skip(2);
     if (this.is("<")) {
-      t.b[n] = this.exprTypeArgs();
+      jtSet(t.b, n, this.exprTypeArgs());
     }
     if (this.is("new")) {
-      t.flags[n] = FL_NEW_REF;
+      jtSet(t.flags, n, FL_NEW_REF);
       this.next();
     } else {
-      t.name[n] = this.refIdent();
+      jtSet(t.name, n, this.refIdent());
     }
     return this.finish(n);
   }
@@ -2690,19 +2819,24 @@ export class JParser {
     const tok = this.tokAt(0);
     const inp = this.inp;
     const n = t.node(N_LITERAL, this.pos());
-    const k = inp.tKind[tok];
-    if (k === JK_STRING || k === JK_TEXT_BLOCK) {
-      t.op[n] = LIT_STRING;
-    } else if (k === JK_CHAR) {
-      t.op[n] = LIT_CHAR;
-    } else if (k === JK_NUMBER) {
-      t.op[n] = numberKind(inp, tok);
-    } else if (inp.is(tok, "true") || inp.is(tok, "false")) {
-      t.op[n] = LIT_BOOLEAN;
-    } else {
-      t.op[n] = LIT_NULL;
+    const tKind = inp.tKind;
+    if (tok < 0 || tok >= tKind.length) {
+      fault();
+      return n;
     }
-    t.name[n] = tok;
+    const k = tKind[tok];
+    if (k === JK_STRING || k === JK_TEXT_BLOCK) {
+      jtSet(t.op, n, LIT_STRING);
+    } else if (k === JK_CHAR) {
+      jtSet(t.op, n, LIT_CHAR);
+    } else if (k === JK_NUMBER) {
+      jtSet(t.op, n, numberKind(inp, tok));
+    } else if (inp.is(tok, "true") || inp.is(tok, "false")) {
+      jtSet(t.op, n, LIT_BOOLEAN);
+    } else {
+      jtSet(t.op, n, LIT_NULL);
+    }
+    jtSet(t.name, n, tok);
     this.next();
     return this.finish(n);
   }
@@ -2725,7 +2859,7 @@ export class JParser {
     if (this.is("(")) {
       const n = t.node(N_PARENTHESIZED, start);
       this.next();
-      t.a[n] = this.expression();
+      jtSet(t.a, n, this.expression());
       this.expect(")");
       return this.finish(n);
     }
@@ -2742,20 +2876,20 @@ export class JParser {
         return t.node(N_IDENTIFIER, start);
       }
       const id = t.node(N_IDENTIFIER, this.pos());
-      t.name[id] = this.tokAt(0);
+      jtSet(t.name, id, this.tokAt(0));
       this.next();
       this.finish(id);
       const mi = t.node(N_METHOD_INVOCATION, start);
-      t.a[mi] = targs;
-      t.b[mi] = id;
-      t.c[mi] = this.args();
+      jtSet(t.a, mi, targs);
+      jtSet(t.b, mi, id);
+      jtSet(t.c, mi, this.args());
       return this.finish(mi);
     }
     if (this.is("switch")) {
       const n = t.node(N_SWITCH_EXPRESSION, start);
       this.next();
-      t.a[n] = this.parExpression();
-      t.b[n] = this.switchBody(false);
+      jtSet(t.a, n, this.parExpression());
+      jtSet(t.b, n, this.switchBody(false));
       return this.finish(n);
     }
     if (this.isPrimitive(0)) {
@@ -2780,7 +2914,7 @@ export class JParser {
       // annotations is read in EXPR mode: `@A Outer.@B Inner::new` is
       // "<identifier> expected".
       const ty = this.type();
-      if (!this.op2(":", ":") || t.kind[ty] === N_ARRAY_TYPE || this.hasDotAnnotation(ty)) {
+      if (!this.op2(":", ":") || jtGet(t.kind, ty) === N_ARRAY_TYPE || this.hasDotAnnotation(ty)) {
         this.rejected = true;
       }
       return ty;
@@ -2814,18 +2948,18 @@ export class JParser {
       }
       // Qualified names with array types: a.b.C[].class
       const id = t.node(N_IDENTIFIER, start);
-      t.name[id] = this.ident();
+      jtSet(t.name, id, this.ident());
       this.finish(id);
       if (this.is("(")) {
         // javac's isInvalidUnqualifiedMethodIdentifier: "invalid use of a
         // restricted identifier 'yield'"; `this.yield(1)` and `A.yield(1)` are calls.
-        if (this.inp.is(t.name[id], "yield")) {
+        if (this.inp.is(jtGet(t.name, id), "yield")) {
           this.rejected = true;
         }
         const mi = t.node(N_METHOD_INVOCATION, start);
-        t.a[mi] = t.empty();
-        t.b[mi] = id;
-        t.c[mi] = this.args();
+        jtSet(t.a, mi, t.empty());
+        jtSet(t.b, mi, id);
+        jtSet(t.c, mi, this.args());
         return this.finish(mi);
       }
       return this.qualifiedArrayType(id);
@@ -2842,14 +2976,17 @@ export class JParser {
     const t = this.t;
     let e = ty;
     // Past the dims and their annotations to the leading annotations' type.
-    while (t.kind[e] === N_ARRAY_TYPE || (t.kind[e] === N_ANNOTATED_TYPE && t.kind[t.b[e]] === N_ARRAY_TYPE)) {
-      e = t.kind[e] === N_ARRAY_TYPE ? t.a[e] : t.b[e];
+    while (
+      jtGet(t.kind, e) === N_ARRAY_TYPE ||
+      (jtGet(t.kind, e) === N_ANNOTATED_TYPE && jtGet(t.kind, jtGet(t.b, e)) === N_ARRAY_TYPE)
+    ) {
+      e = jtGet(t.kind, e) === N_ARRAY_TYPE ? jtGet(t.a, e) : jtGet(t.b, e);
     }
-    if (t.kind[e] !== N_ANNOTATED_TYPE) {
+    if (jtGet(t.kind, e) !== N_ANNOTATED_TYPE) {
       return false;
     }
-    for (e = t.b[e]; e >= 0; e = t.a[e]) {
-      const k = t.kind[e];
+    for (e = jtGet(t.b, e); e >= 0; e = jtGet(t.a, e)) {
+      const k = jtGet(t.kind, e);
       if (k === N_ANNOTATED_TYPE) {
         return true;
       }
@@ -2871,16 +3008,16 @@ export class JParser {
       return ty;
     }
     let e = ty;
-    while (t.kind[e] === N_ARRAY_TYPE) {
-      e = t.a[e];
+    while (jtGet(t.kind, e) === N_ARRAY_TYPE) {
+      e = jtGet(t.a, e);
     }
-    if (t.kind[e] === N_ANNOTATED_TYPE) {
+    if (jtGet(t.kind, e) === N_ANNOTATED_TYPE) {
       this.rejected = true;
     }
     this.next();
     const s = t.node(N_MEMBER_SELECT, start);
-    t.a[s] = ty;
-    t.name[s] = this.tokAt(0);
+    jtSet(t.a, s, ty);
+    jtSet(t.name, s, this.tokAt(0));
     this.next();
     return this.finish(s);
   }
@@ -2892,7 +3029,7 @@ export class JParser {
    * the type of a class literal", anything else "'.class' expected").
    */
   private annotatedDimsRef(ty: i32): i32 {
-    const k = this.t.kind[ty];
+    const k = jtGet(this.t.kind, ty);
     if ((k !== N_ANNOTATED_TYPE && k !== N_ARRAY_TYPE) || !this.op2(":", ":")) {
       this.rejected = true;
     }
@@ -2907,42 +3044,45 @@ export class JParser {
   private isUnboundMemberRef(i: i32): boolean {
     let k = i;
     let depth = 0;
-    while (this.p + k < this.nT) {
+    while (toI64(this.p) + toI64(k) < toI64(this.nT)) {
       if (this.isAt(k, "(")) {
         // Annotation values.
         let nesting = 0;
         while (true) {
-          if (this.p + k >= this.nT) {
+          if (toI64(this.p) + toI64(k) >= toI64(this.nT)) {
             return false;
           }
           if (this.isAt(k, "(")) {
-            nesting++;
+            nesting = jparOff(nesting, 1);
           } else if (this.isAt(k, ")")) {
-            nesting--;
+            nesting = jparOff(nesting, -1);
             if (nesting === 0) {
               break;
             }
           }
-          k++;
+          k = jparOff(k, 1);
         }
       } else if (this.isAt(k, "<")) {
-        if (this.adjAt(k + 1) && (this.isAt(k + 1, "<") || this.isAt(k + 1, "="))) {
+        const k1 = jparOff(k, 1);
+        if (this.adjAt(k1) && (this.isAt(k1, "<") || this.isAt(k1, "="))) {
           return false; // `<<`, `<=`
         }
-        depth++;
+        depth = jparOff(depth, 1);
       } else if (this.isAt(k, ">")) {
         // javac's GT, GTGT or GTGTGT: one token of adjacent `>`s.
         let n = 1;
-        while (n < 3 && this.isAt(k + n, ">") && this.adjAt(k + n)) {
+        while (n < 3 && this.isAt(jparOff(k, n), ">") && this.adjAt(jparOff(k, n))) {
           n++;
         }
-        if (this.isAt(k + n, "=") && this.adjAt(k + n)) {
+        const kn = jparOff(k, n);
+        if (this.isAt(kn, "=") && this.adjAt(kn)) {
           return false; // `>=`, `>>=`, `>>>=`
         }
-        k += n - 1;
-        depth -= n;
+        k = jparOff(k, n - 1);
+        depth = jparOff(depth, -n);
         if (depth === 0) {
-          return this.isAt(k + 1, ".") || this.isAt(k + 1, "[") || this.op2At(k + 1, ":", ":");
+          const k1 = jparOff(k, 1);
+          return this.isAt(k1, ".") || this.isAt(k1, "[") || this.op2At(k1, ":", ":");
         }
       } else if (this.isAt(k, ".")) {
         if (this.op3At(k, ".", ".", ".")) {
@@ -2961,7 +3101,7 @@ export class JParser {
       ) {
         return false;
       }
-      k++;
+      k = jparOff(k, 1);
     }
     return false;
   }
@@ -2971,37 +3111,41 @@ export class JParser {
     const t = this.t;
     // Look for `( . ident )* [ ]`.
     let i = 0;
-    while (this.isAt(i, ".") && this.kindAt(i + 1) === JK_IDENT && !isJavaKeyword(this.inp, this.tokAt(i + 1))) {
-      i += 2;
+    while (
+      this.isAt(i, ".") &&
+      this.kindAt(jparOff(i, 1)) === JK_IDENT &&
+      !isJavaKeyword(this.inp, this.tokAt(jparOff(i, 1)))
+    ) {
+      i = jparOff(i, 2);
     }
     const annotated = this.isAt(i, "@");
-    if (i > 0 && ((this.isAt(i, "[") && this.isAt(i + 1, "]")) || annotated)) {
+    if (i > 0 && ((this.isAt(i, "[") && this.isAt(jparOff(i, 1), "]")) || annotated)) {
       let e = id;
-      for (let q = 0; q < i; q += 2) {
+      for (let q = 0; q < i; q = jparOff(q, 2)) {
         this.next();
-        const s = t.node(N_MEMBER_SELECT, t.start[id]);
-        t.a[s] = e;
-        t.name[s] = this.refIdent();
+        const s = t.node(N_MEMBER_SELECT, jtGet(t.start, id));
+        jtSet(t.a, s, e);
+        jtSet(t.name, s, this.refIdent());
         e = this.finish(s);
       }
       const ty = this.bracketsOpt(e);
-      return annotated ? this.annotatedDimsRef(ty) : this.arrayTypeSuffix(ty, t.start[id]);
+      return annotated ? this.annotatedDimsRef(ty) : this.arrayTypeSuffix(ty, jtGet(t.start, id));
     }
     // A generic qualified type before `::`: a.b.C<T>::new.
     if (i > 0 && this.isAt(i, "<") && this.isUnboundMemberRef(i)) {
       const m = new Mark();
       this.save(m);
       let e = id;
-      for (let q = 0; q < i; q += 2) {
+      for (let q = 0; q < i; q = jparOff(q, 2)) {
         this.next();
-        const s = t.node(N_MEMBER_SELECT, t.start[id]);
-        t.a[s] = e;
-        t.name[s] = this.refIdent();
+        const s = t.node(N_MEMBER_SELECT, jtGet(t.start, id));
+        jtSet(t.a, s, e);
+        jtSet(t.name, s, this.refIdent());
         e = this.finish(s);
       }
-      const pt = t.node(N_PARAMETERIZED_TYPE, t.start[id]);
-      t.a[pt] = e;
-      t.b[pt] = this.typeArgs();
+      const pt = t.node(N_PARAMETERIZED_TYPE, jtGet(t.start, id));
+      jtSet(t.a, pt, e);
+      jtSet(t.b, pt, this.typeArgs());
       this.finish(pt);
       if (!this.err && this.op2(":", ":")) {
         return pt;
@@ -3014,7 +3158,7 @@ export class JParser {
   /** `new ...` (with an enclosing instance `encl` for `a.new Inner()`). */
   private creator(encl: i32): i32 {
     const t = this.t;
-    const start = encl >= 0 ? t.start[encl] : this.pos();
+    const start = encl >= 0 ? jtGet(t.start, encl) : this.pos();
     this.expect("new");
     let targs = -1;
     if (this.is("<")) {
@@ -3032,16 +3176,16 @@ export class JParser {
     }
     if (this.isPrimitive(0)) {
       const p = t.node(N_PRIMITIVE_TYPE, this.pos());
-      t.name[p] = this.tokAt(0);
+      jtSet(t.name, p, this.tokAt(0));
       this.next();
       ty = this.finish(p);
     } else {
       ty = this.qualifiedType();
     }
     if (annos >= 0) {
-      const at = t.node(N_ANNOTATED_TYPE, t.start[t.items[t.lStart[annos]]]);
-      t.a[at] = annos;
-      t.b[at] = ty;
+      const at = t.node(N_ANNOTATED_TYPE, jtGet(t.start, jtGet(t.items, jtGet(t.lStart, annos))));
+      jtSet(t.a, at, annos);
+      jtSet(t.b, at, ty);
       ty = this.finish(at);
       annos = -1;
     }
@@ -3049,22 +3193,22 @@ export class JParser {
       return this.arrayCreator(start, ty, annos);
     }
     const n = t.node(N_NEW_CLASS, start);
-    t.a[n] = encl;
-    t.b[n] = targs >= 0 ? targs : t.empty();
-    t.c[n] = ty;
-    t.d[n] = this.args();
+    jtSet(t.a, n, encl);
+    jtSet(t.b, n, targs >= 0 ? targs : t.empty());
+    jtSet(t.c, n, ty);
+    jtSet(t.d, n, this.args());
     if (this.is("{")) {
       const body = t.node(N_CLASS, this.pos());
       const bm = t.node(N_MODIFIERS, -1);
-      t.a[bm] = t.empty();
-      t.end[bm] = -1;
-      t.a[body] = bm;
-      t.b[body] = t.empty();
-      t.d[body] = t.empty();
-      t.e[body] = t.empty();
-      t.g[body] = t.empty();
-      t.f[body] = this.classBody(body);
-      t.e[n] = this.finish(body);
+      jtSet(t.a, bm, t.empty());
+      jtSet(t.end, bm, -1);
+      jtSet(t.a, body, bm);
+      jtSet(t.b, body, t.empty());
+      jtSet(t.d, body, t.empty());
+      jtSet(t.e, body, t.empty());
+      jtSet(t.g, body, t.empty());
+      jtSet(t.f, body, this.classBody(body));
+      jtSet(t.e, n, this.finish(body));
     }
     return this.finish(n);
   }
@@ -3072,7 +3216,7 @@ export class JParser {
   private arrayCreator(start: i32, base: i32, annos0: i32): i32 {
     const t = this.t;
     const n = t.node(N_NEW_ARRAY, start);
-    t.d[n] = annos0 >= 0 ? annos0 : t.empty();
+    jtSet(t.d, n, annos0 >= 0 ? annos0 : t.empty());
     const dm = t.mark();
     let elem = base;
     let sawEmpty = false;
@@ -3098,8 +3242,8 @@ export class JParser {
           sawEmpty = true;
           continue;
         }
-        const at = t.node(N_ARRAY_TYPE, t.start[base]);
-        t.a[at] = elem;
+        const at = t.node(N_ARRAY_TYPE, jtGet(t.start, base));
+        jtSet(t.a, at, elem);
         elem = this.finish(at);
         sawEmpty = true;
         continue;
@@ -3116,16 +3260,16 @@ export class JParser {
     }
     // The dims list holds the expressions pushed above (after dimAnnoMark).
     const dimsList = t.list(dm);
-    t.b[n] = dimsList;
+    jtSet(t.b, n, dimsList);
     const em = t.mark();
     for (const l of dimAnnoLists) {
       t.push(l >= 0 ? l : t.empty());
     }
-    t.e[n] = t.list(em);
-    t.a[n] = elem;
+    jtSet(t.e, n, t.list(em));
+    jtSet(t.a, n, elem);
     if (this.is("{")) {
       const init = this.arrayInit(-1, this.pos());
-      t.c[n] = t.c[init];
+      jtSet(t.c, n, jtGet(t.c, init));
     }
     return this.finish(n);
   }
@@ -3133,10 +3277,30 @@ export class JParser {
 
 /** The literal kind of a number token. */
 const numberKind = (inp: GInput, tok: i32): i32 => {
-  const a = inp.tPos[tok];
-  const e = inp.tEnd[tok];
-  const last = toI32(inp.src[e - 1]);
-  const hex = e - a >= 2 && toI32(inp.src[a]) === 48 && (toI32(inp.src[a + 1]) === 120 || toI32(inp.src[a + 1]) === 88);
+  const src = inp.src;
+  const a = jparTokPos(inp, tok);
+  const e = jparTokEnd(inp, tok);
+  if (e < 1 || e > src.length) {
+    fault();
+    return LIT_INT;
+  }
+  const last = toI32(src[e - 1]);
+  let hex = false;
+  if (toI64(e) - toI64(a) >= toI64(2)) {
+    if (a < 0 || a >= src.length) {
+      fault();
+      return LIT_INT;
+    }
+    if (toI32(src[a]) === 48) {
+      const a1 = a + 1;
+      if (a1 >= src.length) {
+        fault();
+        return LIT_INT;
+      }
+      const x = toI32(src[a1]);
+      hex = x === 120 || x === 88;
+    }
+  }
   if (last === 108 || last === 76) {
     return LIT_LONG;
   }
@@ -3147,7 +3311,11 @@ const numberKind = (inp: GInput, tok: i32): i32 => {
     return LIT_DOUBLE;
   }
   for (let i = a; i < e; i++) {
-    const c = toI32(inp.src[i]);
+    if (i < 0 || i >= src.length) {
+      fault();
+      return LIT_INT;
+    }
+    const c = toI32(src[i]);
     if (c === 46 || (!hex && (c === 101 || c === 69)) || (hex && (c === 112 || c === 80))) {
       return LIT_DOUBLE;
     }
@@ -3189,8 +3357,12 @@ const precOf = (op: i32): i32 => {
 
 /** Reserved words that cannot be identifiers. */
 export const isJavaKeyword = (inp: GInput, t: i32): boolean => {
-  const n = inp.tEnd[t] - inp.tPos[t];
-  if (n < 2 || n > 12) {
+  if (t < 0 || t >= inp.tPos.length || t >= inp.tEnd.length) {
+    fault();
+    return false;
+  }
+  const n = toI64(inp.tEnd[t]) - toI64(inp.tPos[t]);
+  if (n < toI64(2) || n > toI64(12)) {
     return false;
   }
   const c = inp.firstByte(t);
