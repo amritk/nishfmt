@@ -27,6 +27,10 @@ import { rsTrimRawPrefix, rsVersionSort } from "./sort";
 import { rsHasByte, rsTrimEnd } from "./str";
 import { rsFormatVisibility, rsIdentStr } from "./utils";
 import { RsVisitor } from "./visitor";
+import { rsNA, rsNAtn, rsND, rsNE, rsNFl, rsNHi, rsNKind, rsNLn, rsNLo } from "./nodes";
+import { add32, sub32 } from "../core/arr";
+import { fault } from "../core/fault";
+import { stableSort } from "../core/sort";
 
 export const USK_IDENT: i32 = 0;
 export const USK_SELF: i32 = 1;
@@ -65,7 +69,7 @@ export class RsUseTree {
   }
   spanLo(ast: RsAst): i32 {
     if (this.hasAttrs && this.attrs.length > 0) {
-      return ast.lo[this.attrs[0]];
+      return rsNLo(ast, this.attrs[0]);
     }
     return this.lo;
   }
@@ -98,8 +102,8 @@ const useTreeFromAst = (
   attrs: i32[] | null,
 ): RsUseTree => {
   const ast = ctx.ast;
-  const lo = optLo >= 0 ? optLo : ast.lo[a];
-  const r = new RsUseTree(lo, ast.hi[a]);
+  const lo = optLo >= 0 ? optLo : rsNLo(ast, a);
+  const r = new RsUseTree(lo, rsNHi(ast, a));
   r.listItem = listItem;
   r.hasVis = hasVis;
   r.vis = vis;
@@ -107,35 +111,35 @@ const useTreeFromAst = (
     r.hasAttrs = true;
     r.attrs = attrs;
   }
-  const prefix = ast.a[a];
-  const leadingModsep = (ast.fl[prefix] & PATH_GLOBAL) !== 0;
+  const prefix = rsNA(ast, a);
+  const leadingModsep = (rsNFl(ast, prefix) & PATH_GLOBAL) !== 0;
   let modsep = leadingModsep;
-  const np = ast.ln[prefix];
+  const np = rsNLn(ast, prefix);
   for (let i = 0; i < np; i++) {
-    const s = segFromName(rsIdentStr(ctx, ast.d[ast.kid(prefix, i)]), modsep);
+    const s = segFromName(rsIdentStr(ctx, rsND(ast, ast.kid(prefix, i))), modsep);
     if (s !== null) {
       r.path.push(s);
       modsep = false;
     }
   }
-  const f = ast.fl[a];
+  const f = rsNFl(ast, a);
   if ((f & UT_GLOB) !== 0) {
     if (np === 0 && leadingModsep) {
       r.path.push(new RsUseSeg(USK_IDENT, "", null));
     }
     r.path.push(new RsUseSeg(USK_GLOB, "", null));
   } else if ((f & UT_NESTED) !== 0) {
-    const n = ast.ln[a];
+    const n = rsNLn(ast, a);
     const items = rsItemizeList(
       ctx,
       n,
       "}",
       ",",
-      (i: i32): i32 => ast.lo[ast.a[ast.kid(a, i)]],
-      (i: i32): i32 => ast.hi[ast.kid(a, i)],
+      (i: i32): i32 => rsNLo(ast, rsNA(ast, ast.kid(a, i))),
+      (i: i32): i32 => rsNHi(ast, ast.kid(a, i)),
       (i: i32): string | null => (i >= 0 ? "" : null),
-      ctx.spanAfter(ast.lo[a], ast.hi[a], "{"),
-      ast.hi[a],
+      ctx.spanAfter(rsNLo(ast, a), rsNHi(ast, a), "{"),
+      rsNHi(ast, a),
       false,
     );
     if (np === 0 && leadingModsep) {
@@ -143,20 +147,24 @@ const useTreeFromAst = (
     }
     const seg = new RsUseSeg(USK_LIST, "", null);
     for (let i = 0; i < n; i++) {
+      if (i < 0 || i >= items.length) {
+        fault();
+        break;
+      }
       seg.list.push(useTreeFromAst(ctx, ast.kid(a, i), items[i], false, -1, -1, null));
     }
     r.path.push(seg);
   } else {
     let name = "";
     if (np === 1 && leadingModsep) {
-      name = ctx.snippet(ast.lo[prefix], ast.hi[prefix]);
+      name = ctx.snippet(rsNLo(ast, prefix), rsNHi(ast, prefix));
     } else {
-      name = np > 0 ? rsIdentStr(ctx, ast.d[ast.kid(prefix, np - 1)]) : "";
+      name = np > 0 ? rsIdentStr(ctx, rsND(ast, ast.kid(prefix, np - 1))) : "";
     }
     let alias: string | null = null;
     if ((f & UT_RENAME) !== 0) {
-      const rn = rsIdentStr(ctx, ast.d[a]);
-      const last = np > 0 ? rsIdentStr(ctx, ast.d[ast.kid(prefix, np - 1)]) : "";
+      const rn = rsIdentStr(ctx, rsND(ast, a));
+      const last = np > 0 ? rsIdentStr(ctx, rsND(ast, ast.kid(prefix, np - 1))) : "";
       if (rn === "_") {
         alias = "_";
       } else if (rn === last) {
@@ -241,7 +249,12 @@ const cloneTree = (t: RsUseTree): RsUseTree => {
 /** UseTree::normalize. */
 const normalizeTree = (t0: RsUseTree, se: i32): RsUseTree => {
   const t = cloneTree(t0);
-  let last = t.path.pop();
+  const tp0 = t.path;
+  if (tp0.length === 0) {
+    fault();
+    return t;
+  }
+  let last = tp0.length > 0 ? tp0.pop() : new RsUseSeg(USK_GLOB, "", null);
   if (!t.hasAttrs) {
     if (last.k === USK_LIST && last.list.length === 0) {
       t.path = [];
@@ -253,26 +266,36 @@ const normalizeTree = (t0: RsUseTree, se: i32): RsUseTree => {
     }
   }
   if (last.k === USK_SELF && last.alias === null) {
-    if (t.path.length > 0) {
-      const second = t.path[t.path.length - 1];
+    const tp = t.path;
+    const k = toI32(tp.length);
+    if (k > 0) {
+      const second = tp[k - 1];
       if (second.k !== USK_SELF) {
         return t;
       }
     }
   }
   let aliasedSelf = false;
-  if (last.k === USK_SELF && t.path.length > 0) {
-    const pl = t.path[t.path.length - 1];
+  const tpk = toI32(t.path.length);
+  if (last.k === USK_SELF && tpk > 0) {
+    const pl = t.path[tpk - 1];
     if (pl.k === USK_IDENT && pl.alias === null) {
       aliasedSelf = true;
     }
   }
   if (aliasedSelf) {
     const la = last.alias;
+    const tp = t.path;
+    const k = toI32(tp.length);
     if (la !== null) {
-      const pl = t.path[t.path.length - 1];
+      // aliasedSelf saw a segment before `self`.
+      if (k <= 0) {
+        fault();
+        return t;
+      }
+      const pl = tp[k - 1];
       const ns = new RsUseSeg(USK_IDENT, pl.name, la);
-      t.path[t.path.length - 1] = ns;
+      tp[k - 1] = ns;
       return t;
     }
   }
@@ -292,11 +315,12 @@ const normalizeTree = (t0: RsUseTree, se: i32): RsUseTree => {
     for (const sub of last.list) {
       list.push(normalizeTree(sub, se));
     }
-    list.sort((x: RsUseTree, y: RsUseTree): i32 => rsCmpUseTree(x, y, se));
+    stableSort(list, (x: RsUseTree, y: RsUseTree): i32 => rsCmpUseTree(x, y, se));
     // dedup.
     const dd: RsUseTree[] = [];
     for (const x of list) {
-      if (dd.length > 0 && useTreeEq(dd[dd.length - 1], x)) {
+      const k = toI32(dd.length);
+      if (k > 0 && useTreeEq(dd[k - 1], x)) {
         continue;
       }
       dd.push(x);
@@ -314,11 +338,13 @@ const segEq = (a: RsUseSeg, b: RsUseSeg): boolean => {
     return false;
   }
   if (a.k === USK_LIST) {
-    if (a.list.length !== b.list.length) {
+    const al = a.list;
+    const bl = b.list;
+    if (al.length !== bl.length) {
       return false;
     }
-    for (let i = 0; i < a.list.length; i++) {
-      if (!useTreeEq(a.list[i], b.list[i])) {
+    for (let i = 0; i < al.length && i < bl.length; i++) {
+      if (!useTreeEq(al[i], bl[i])) {
         return false;
       }
     }
@@ -335,11 +361,13 @@ const strOptEq = (a: string | null, b: string | null): boolean => {
 };
 
 const useTreeEq = (a: RsUseTree, b: RsUseTree): boolean => {
-  if (a.path.length !== b.path.length) {
+  const ap = a.path;
+  const bp = b.path;
+  if (ap.length !== bp.length) {
     return false;
   }
-  for (let i = 0; i < a.path.length; i++) {
-    if (!segEq(a.path[i], b.path[i])) {
+  for (let i = 0; i < ap.length && i < bp.length; i++) {
+    if (!segEq(ap[i], bp[i])) {
       return false;
     }
   }
@@ -360,7 +388,7 @@ const startsUpper = (s: string): boolean => s.length > 0 && s.charCodeAt(0) >= 6
 
 const cmpStr = (a: string, b: string): i32 => {
   const n = toI32(a.length) < toI32(b.length) ? toI32(a.length) : toI32(b.length);
-  for (let i = 0; i < n; i++) {
+  for (let i = 0; i < n && i < a.length && i < b.length; i++) {
     const x = a.charCodeAt(i);
     const y = b.charCodeAt(i);
     if (x !== y) {
@@ -434,9 +462,10 @@ const cmpSeg = (a: RsUseSeg, b: RsUseSeg, se: i32): i32 => {
       return cmpAlias(a.alias, b.alias, se);
     }
     // Lists: lexicographic.
-    const n = a.list.length < b.list.length ? a.list.length : b.list.length;
-    for (let i = 0; i < n; i++) {
-      const o = rsCmpUseTree(a.list[i], b.list[i], se);
+    const al = a.list;
+    const bl = b.list;
+    for (let i = 0; i < al.length && i < bl.length; i++) {
+      const o = rsCmpUseTree(al[i], bl[i], se);
       if (o !== 0) {
         return o;
       }
@@ -457,10 +486,13 @@ const removeAlias = (s: RsUseSeg): RsUseSeg => {
 
 /** Ord for UseTree. */
 export const rsCmpUseTree = (a: RsUseTree, b: RsUseTree, se: i32): i32 => {
-  const n = a.path.length < b.path.length ? a.path.length : b.path.length;
-  for (let i = 0; i < n; i++) {
-    const o = cmpSeg(a.path[i], b.path[i], se);
-    if (o !== 0 && cmpSeg(removeAlias(a.path[i]), removeAlias(b.path[i]), se) !== 0) {
+  const ap = a.path;
+  const bp = b.path;
+  for (let i = 0; i < ap.length && i < bp.length; i++) {
+    const pa = ap[i];
+    const pb = bp[i];
+    const o = cmpSeg(pa, pb, se);
+    if (o !== 0 && cmpSeg(removeAlias(pa), removeAlias(pb), se) !== 0) {
       return o;
     }
   }
@@ -494,13 +526,15 @@ const rewriteNestedUseTree = (ctx: RsCtx, list: RsUseTree[], shape: RsShape): st
   }
   let hasNestedList = false;
   for (const t of list) {
-    if (t.path.length > 0 && t.path[t.path.length - 1].k === USK_LIST) {
+    const tp = t.path;
+    const k = toI32(tp.length);
+    if (k > 0 && tp[k - 1].k === USK_LIST) {
       hasNestedList = true;
     }
   }
   let remaining = 0;
   if (!hasNestedList) {
-    remaining = shape.width - 2;
+    remaining = sub32(shape.width, 2);
     if (remaining < 0) {
       remaining = 0;
     }
@@ -558,7 +592,7 @@ export const rsRewriteUseTree = (ctx: RsCtx, t: RsUseTree, shape0: RsShape): str
     result = result + ss;
     if (i + 1 < t.path.length) {
       result = result + "::";
-      shape = shape.offsetLeft(2 + toI32(ss.length));
+      shape = shape.offsetLeft(add32(2, toI32(ss.length)));
     }
   }
   return result;
@@ -581,7 +615,13 @@ export const rsRewriteUseTopLevel = (ctx: RsCtx, t: RsUseTree, shape: RsShape): 
     if (attrStr === null) {
       return null;
     }
-    const lo = ctx.ast.hi[t.attrs[t.attrs.length - 1]];
+    const ta = t.attrs;
+    const k = toI32(ta.length);
+    if (k <= 0) {
+      fault();
+      return null;
+    }
+    const lo = rsNHi(ctx.ast, ta[k - 1]);
     return rsCombineStrsWithMissingComments(ctx, attrStr, useStr, lo, t.lo, shape, false);
   }
   return useStr;
@@ -591,10 +631,18 @@ export const rsRewriteUseTopLevel = (ctx: RsCtx, t: RsUseTree, shape: RsShape): 
 export const rsUseTreeOfItem = (ctx: RsCtx, item: i32): RsUseTree => {
   const ast = ctx.ast;
   const attrs: i32[] = [];
-  for (let i = 0; i < ast.atn[item]; i++) {
+  for (let i = 0; i < rsNAtn(ast, item); i++) {
     attrs.push(ast.attr(item, i));
   }
-  const t = useTreeFromAst(ctx, ast.a[item], null, true, ast.e[item], ast.lo[item], attrs.length === 0 ? null : attrs);
+  const t = useTreeFromAst(
+    ctx,
+    rsNA(ast, item),
+    null,
+    true,
+    rsNE(ast, item),
+    rsNLo(ast, item),
+    attrs.length === 0 ? null : attrs,
+  );
   return normalizeTree(t, ctx.cfg.styleEdition);
 };
 
@@ -603,19 +651,17 @@ export const rsFormatImport = (v: RsVisitor, item: i32): void => {
   const ast = v.ast;
   const ctx = v.ctx();
   const attrs: i32[] = [];
-  for (let i = 0; i < ast.atn[item]; i++) {
+  for (let i = 0; i < rsNAtn(ast, item); i++) {
     attrs.push(ast.attr(item, i));
   }
-  const t = useTreeFromAst(ctx, ast.a[item], null, true, ast.e[item], ast.lo[item], attrs);
+  const t = useTreeFromAst(ctx, rsNA(ast, item), null, true, rsNE(ast, item), rsNLo(ast, item), attrs);
   const rw = rsRewriteUseTopLevel(ctx, t, v.shape());
-  const lo = attrs.length > 0 ? ast.lo[attrs[0]] : ast.lo[item];
-  const hi = ast.hi[item];
+  const lo = attrs.length > 0 ? rsNLo(ast, attrs[0]) : rsNLo(ast, item);
+  const hi = rsNHi(ast, item);
   if (rw !== null && rw.length === 0) {
     const prev = rsTrimEnd(v.snippet(v.lastPos, lo));
-    v.formatMissing(v.lastPos + toI32(prev.length));
-    if (v.buf.n > 0 && toI32(v.buf.buf[v.buf.n - 1]) === 10) {
-      v.buf.n = v.buf.n - 1;
-    }
+    v.formatMissing(add32(v.lastPos, toI32(prev.length)));
+    v.dropFinalNewline();
     v.lastPos = hi;
   } else if (rw !== null) {
     v.formatMissingWithIndent(lo);
@@ -627,4 +673,4 @@ export const rsFormatImport = (v: RsVisitor, item: i32): void => {
   }
 };
 
-export const rsIsUseTreeNode = (ast: RsAst, n: i32): boolean => ast.kind[n] === N_USE_TREE;
+export const rsIsUseTreeNode = (ast: RsAst, n: i32): boolean => rsNKind(ast, n) === N_USE_TREE;
