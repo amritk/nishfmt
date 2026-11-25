@@ -1523,7 +1523,13 @@ export class Classifier {
             // `#define`'s body joined onto it).
             invalid = true;
           }
-          this.markPtrRun(t);
+          // clang-format's modifyContext types the `*` and `&` before a `)`,
+          // `>` or `,` as declarators, but not before a `]` or `}`: the `&`
+          // of a lambda's `[&]` stays a unary operator, before which no line
+          // may break.
+          if (k === P_RPAREN) {
+            this.markPtrRun(t);
+          }
           if (clAt(d.lMustDecl, l) === 1 && !this.ctorSeen) {
             // (The level the closer returned to, at or below `dep`.)
             const cur = this.depth;
