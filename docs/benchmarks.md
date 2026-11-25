@@ -75,13 +75,13 @@ The harder corpora are built from a language's `raw/`:
 
 Files the reference tool accepts, and how many of them nishfmt formats byte
 for byte as it does, on the corpora the README's table is measured on
-(`repos.txt`). For C++, "Identical" is against one `clang-format -i` run;
-against clang-format's settled output it is 10319 of the 10341 files that
-settle ([below](#c-one-run-and-the-settled-output)).
+(`repos.txt`). For C++, "Identical" is against clang-format's settled output,
+of the 10341 files that settle; against one `clang-format -i` run it is 10295
+of 10343 ([below](#c-one-run-and-the-settled-output)).
 
 | Corpus | Files | Identical |
 | --- | ---: | ---: |
-| C++ | 10343 | 10307 |
+| C++ | 10341 | 10331 |
 | Java | 7627 | 7627 |
 | Kotlin | 9602 | 9602 |
 | C# | 13988 | 13988 |
@@ -91,21 +91,23 @@ settle ([below](#c-one-run-and-the-settled-output)).
 | Dart, `dart4` (3.7, 3.8, 3.12) | 8663 | 8663 |
 | Dart, `dart5` (a package at 3.8) | 8571 | 8571 |
 | Dart, `dart6` (every version) | 7849 | 7849 |
-| Swift | 6710 | 6710 |
+| Swift | 6707 | 6707 |
 | Rust | 8321 | 8321 |
 | Rust, `rust2` (other configs first) | 8321 | 8321 |
 | Ruby | 1999 | 1999 |
 
-The 36 C++ files left are described in [C++](cpp.md#results-by-repository).
+The 10 C++ files left are described in [C++](cpp.md#results-by-repository).
+Swift counts 6707 files where it counted 6710: rebuilt at the same commits on
+2026-11-25, SwiftFormat 0.64.7 rejects 5 of the 6712 files, not 2.
 
 On the second corpus, `repos2.txt`, every language measured on 2026-11-20
-at main 0d672fc, except C++, measured again on 2026-11-21 after the
-per-file state and long-tail fixes (C++ against one run; against the settled output, 13830
-of the 13901 files that settle):
+at main 0d672fc, except C++, measured again on 2026-11-25 (against the
+settled output, of the 13901 files that settle; against one run, 13809 of
+13902):
 
 | Corpus | Files | Identical |
 | --- | ---: | ---: |
-| C++ | 13902 | 13829 |
+| C++ | 13901 | 13853 |
 | Java | 11914 | 11914 |
 | Kotlin | 6219 | 6219 |
 | C# | 18673 | 18673 |
@@ -121,26 +123,32 @@ left, described in [C++](cpp.md#results-by-repository).
 ### C++: one run and the settled output
 
 clang-format 23.1.5 is not idempotent on every file: run again on its own
-output, it changes 39 files of the first corpus and 53 of the second. `ref/`
-holds one `clang-format -i` run, the reference every other count on this page
-uses; `ref-settled/` holds the output rerun until it stops changing, and
-`cmp.sh cpp` reports both. A file that never settles, or that clang-format
-rejects on a rerun, has no settled output and is left out of the settled
-count:
+output, it changes 39 files of the first corpus and 53 of the second. A CI
+check runs it once on the committed file (`clang-format --dry-run --Werror`)
+and fails when anything changes, so a file clang-format has just formatted
+can fail it. `ref/` holds one `clang-format -i` run; `ref-settled/` holds the
+output rerun until it stops changing, which is what passes the check, and
+`cmp.sh cpp` reports both. nishfmt formats a C++ file again until a run
+leaves it as it is, so its reference is the settled output. A file that never
+settles, or that clang-format rejects on a rerun, has no settled output and
+is left out of the settled count; nishfmt skips a file whose output still
+changes after eight runs ("does not settle").
 
-| Corpus | Files | Identical to one run | Identical to the settled output | Never settle |
+| Corpus | Files | Identical to the settled output | Identical to one run | Never settle |
 | --- | ---: | ---: | ---: | ---: |
-| `repos.txt` | 10343 | 10307 | 10319 of 10341 | 2 |
-| `repos2.txt` | 13902 | 13829 | 13830 of 13901 | 1 |
+| `repos.txt` | 10343 | 10331 of 10341 | 10295 | 2 |
+| `repos2.txt` | 13902 | 13853 of 13901 | 13809 | 1 |
 
-A file can match one and not the other: nishfmt makes clang-format's
-decisions on the source as found, and where clang-format's second run
-changes its first, nishfmt's output is often the second. Of the 27
-first-corpus files that differ from one run and that a rerun changes, 24
-match its second run and the settled output. Of the second corpus's 30, 24
-do, and 6 match neither its first run nor its second (one of them never
-settles); [C++](cpp.md#results-by-repository) lists them. The other way, files nishfmt matches on one run but not settled
-(12 and 23) are files where clang-format's rerun departs from its first.
+Every file that matches one run and not the settled output is one where
+clang-format's second run changes its first; nishfmt gives the second.
+
+`bench/corpus/verify.sh`, after `cmp.sh <nishfmt> cpp`, runs that check on
+nishfmt's output: clang-format once on each file, failing those it would
+change. It fails 6 files of the first corpus and 38 of the second; nishfmt
+skips the first corpus's 2 files that never settle. Ten files of the second
+corpus differ from the settled output and pass the check all the same, a
+layout clang-format leaves as it is too.
+[C++](cpp.md#results-by-repository) lists the files that fail it.
 
 ## Comparing
 
@@ -158,15 +166,22 @@ every corpus: a file that matched before must still match.
 ## Timing
 
 The README's times are for formatting the whole of `raw/` in place, on a
-fresh copy each run:
+fresh copy each run, as `bench/corpus/time.sh` measures them:
+
+```bash
+bash bench/corpus/time.sh dist/nishfmt cpp     # or java, kt, rb, swift, rust, dart, cs, dart3
+```
 
 - **4 cores**: `nishfmt -i -q <dir>`, one worker per core.
 - **1 core**: `taskset -c 0 nishfmt -i -q -j 1 <dir>`.
-- nishfmt's time is the best of three; each reference tool's is one run (they
-  take minutes). clang-format ran 50 files a process; google-java-format as
-  one JVM over all the files; ktfmt with `--kotlinlang-style`, 300 files a
-  process, 4 at a time, as `mk.sh` runs it; RuboCop with `--parallel` on 4 cores; rustfmt
-  100 files a process; CSharpier on .NET 10 with `--no-cache`.
+- nishfmt's time is the median of five runs on each side, interleaved, with
+  the range beside it; each reference tool's is one run on each side (they
+  take minutes; `REF=0` skips them). clang-format runs 50 files a process;
+  google-java-format as one JVM over all the files; ktfmt with
+  `--kotlinlang-style`, 300 files a process; rustfmt 100 files a process;
+  RuboCop with `--parallel`; SwiftFormat, `dart format` and CSharpier (on
+  .NET 10, with `--no-cache`) over the directory. On one core every one of
+  them runs under `taskset -c 0`, one process at a time.
 
 ## Rust reimplementations
 
@@ -181,9 +196,10 @@ ktrs 0.5.1, a Rust reimplementation of ktfmt, had a Kotlin row here, measured
 against ktfmt 0.64 in its default (Meta) style; it was not re-measured against
 the kotlinlang corpus, so the row is gone.
 
-The Ruby times here and in the README were measured under the previous RuboCop, when
-the corpus counted 1998 files; rebuilt at the same commits it now counts 1999
-(see Corpus results), and the times were not re-measured.
+The Ruby times here were measured under the previous RuboCop, when the
+corpus counted 1998 files, on another machine; rebuilt at the same commits it
+now counts 1999 (see Corpus results). The README's Ruby row was measured
+again on 2026-11-25; rbcop was not, so compare this table only within itself.
 
 nitrocop, another Rust reimplementation of RuboCop, matched on fewer than a
 quarter of the files of an earlier sample and is left out. rustfmt is itself
