@@ -195,9 +195,9 @@ A single file with no mode prints the result to stdout.
   -v, --version   print the version
 
 A file nishfmt cannot format exactly as the reference tool would (one that
-does not parse, say, or one its formatter crashes on) is left untouched and
-counted as skipped. In C++, a `// nishfmt off` ... `// nishfmt on` region is
-left as written.
+does not parse, say, or one its formatter crashes or faults on) is left
+untouched and counted as skipped. In C++, a `// nishfmt off` ...
+`// nishfmt on` region is left as written.
 
 Exit status: 0; 1 with --check when a file would change; 2 for a bad command
 line. A skipped file does not change it.
@@ -216,6 +216,11 @@ is left untouched with `nishfmt: skipped <path> (formatter crashed)` on
 stderr, even under `-q`, and the summary counts it among the skipped:
 `skipped 3 (1 crashed)`. Like any skipped file, it does not change the exit
 status, so one file nishfmt cannot handle never fails a run.
+
+A formatter that reaches a state its own checks rule out (also a bug)
+faults instead: the file is left untouched with
+`nishfmt: skipped <path> (formatter fault)` on stderr, even under `-q`, and
+the summary counts it as `skipped 3 (1 faulted)`.
 
 ## Documentation
 

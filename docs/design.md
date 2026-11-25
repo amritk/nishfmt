@@ -34,8 +34,12 @@ No formatter can panic: every module but `src/main.ts` is held to no panic
 a formatter is proven safe by the compiler or guarded. A guard whose other
 branch is a state the formatter's invariants rule out calls `fault()`
 (`src/core/fault.ts`): the worker clears that flag before each file, and a
-file whose formatter faulted is skipped as one it could not format
-(`does not parse`). A worker can still die, killed by a signal or out of
+file whose formatter faulted is skipped as one it could not format. Since
+a fault is a nishfmt bug, as a crash is, it is reported as one:
+`skipped <path> (formatter fault)` on stderr even under `-q` and with
+output to stdout, and the summary counts it (`skipped 2 (1 faulted)`).
+`NISHFMT_TEST_FAULT`, a path suffix, makes `src/main.ts` fault each file
+that ends with it, which is how `tests/run.sh` checks this. A worker can still die, killed by a signal or out of
 memory, or by a panic in `src/main.ts` (`NISHFMT_TEST_CRASH`, which
 `tests/run.sh` sets to take a worker down on purpose), and that takes down
 that worker only. The parent starts a replacement

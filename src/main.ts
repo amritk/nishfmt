@@ -4,7 +4,7 @@
 // paths it is given, formats every source in parallel worker processes, and
 // prints a timing summary.
 
-import { faultReset, faulted } from "./core/fault";
+import { fault, faultReset, faulted } from "./core/fault";
 import { newU8s } from "./core/arr";
 import { Out } from "./core/out";
 import { Ignore, walk } from "./core/files";
@@ -99,6 +99,7 @@ class Stats {
   changed: i64 = 0;
   skipped: i64 = 0;
   crashed: i64 = 0; // of the skipped, files a worker died on
+  faulted: i64 = 0; // of the skipped, files a formatter faulted on
   bytes: i64 = 0;
 }
 
@@ -142,9 +143,9 @@ const usage = (): string =>
     "  -v, --version   print the version",
     "",
     "A file nishfmt cannot format exactly as the reference tool would (one that",
-    "does not parse, say, or one its formatter crashes on) is left untouched and",
-    "counted as skipped. In C++, a `// nishfmt off` ... `// nishfmt on` region is",
-    "left as written.",
+    "does not parse, say, or one its formatter crashes or faults on) is left",
+    "untouched and counted as skipped. In C++, a `// nishfmt off` ...",
+    "`// nishfmt on` region is left as written.",
     "",
     "Exit status: 0; 1 with --check when a file would change; 2 for a bad command",
     "line. A skipped file does not change it.",
@@ -259,6 +260,9 @@ const runJob = (job: Job): JobRoot => {
   // so it stops at BATCH_BYTES. It is 0 for the first file, which always runs.
   let bytes = 0;
   let k = 0;
+  // The test hooks (testCrash, testFault), read once a batch.
+  const crashOn = getenv("NISHFMT_TEST_CRASH");
+  const faultOn = getenv("NISHFMT_TEST_FAULT");
   while (k < count && bytes < BATCH_BYTES) {
     // The engines keep what they are given, so the path is a copy the region
     // allocates; readFileBytesSync allocates the bytes in the region itself.
@@ -293,7 +297,7 @@ const runJob = (job: Job): JobRoot => {
     if (cap < 2147483647) {
       out.buf = new Array<u8>(cap);
     }
-    testCrash(path);
+    testCrash(path, crashOn);
     faultReset();
     let ok = false;
     if (job.lang === LANG_CPP) {
@@ -356,19 +360,25 @@ const runJob = (job: Job): JobRoot => {
       cs.debug = getenv("FFDEBUG") !== null;
       ok = formatCSharp(cs, path, src, n, out);
     }
+    testFault(path, faultOn);
     // A formatter that met a state its guards rule out faulted: its output
-    // is not used, as a panic's was not.
-    if (faulted()) {
+    // is not used, as a panic's was not, and the file is reported as a crash
+    // is, since either is a nishfmt bug.
+    const fell = faulted();
+    if (fell) {
       ok = false;
     }
     if (!ok) {
-      setRes(job.res, k, 2, n);
+      setRes(job.res, k, fell ? 4 : 2, n);
       if (job.mode === MODE_STDOUT) {
         writeBytes(src, 0, n);
-      } else if (!job.quiet) {
+      }
+      if (fell) {
+        console.error(`nishfmt: skipped ${path} (formatter fault)`);
+      } else if (job.mode !== MODE_STDOUT && !job.quiet) {
         console.error(`nishfmt: skipped ${path} (does not parse)`);
       }
-      logEntry(job.log, at, 1, 0, 1, n);
+      logEntry(job.log, at, 1, 0, 1, n, fell ? 1 : 0);
     } else {
       const same = sameBytes(out.buf, out.n, src, n);
       setRes(job.res, k, same ? 0 : 1, n);
@@ -381,7 +391,7 @@ const runJob = (job: Job): JobRoot => {
       } else if (!same && job.mode === MODE_CHECK) {
         console.log(path);
       }
-      logEntry(job.log, at, 1, same ? 0 : 1, 0, n);
+      logEntry(job.log, at, 1, same ? 0 : 1, 0, n, 0);
     }
     // 1048576 is BATCH_BYTES.
     if (n >= 0 && n < 1048576 && bytes >= 0 && bytes < 1048576) {
@@ -410,14 +420,25 @@ const runJob = (job: Job): JobRoot => {
 };
 
 /**
- * With NISHFMT_TEST_CRASH set to a suffix, a worker panics on each file whose
- * path ends with it, before formatting it. No formatter panics on any input,
- * so this is how tests/run.sh's worker-crash cases take a worker down.
+ * With NISHFMT_TEST_CRASH set to a suffix (`suffix`), a worker panics on each
+ * file whose path ends with it, before formatting it. No formatter panics on
+ * any input, so this is how tests/run.sh's worker-crash cases take a worker
+ * down.
  */
-const testCrash = (path: string): void => {
-  const suffix = getenv("NISHFMT_TEST_CRASH");
+const testCrash = (path: string, suffix: string | null): void => {
   if (suffix !== null && suffix.length > 0 && path.endsWith(suffix)) {
     panic(`NISHFMT_TEST_CRASH: crashing on ${path}`);
+  }
+};
+
+/**
+ * With NISHFMT_TEST_FAULT set to a suffix (`suffix`), each file whose path
+ * ends with it faults after its formatter ran. No input is known to fault a
+ * formatter, so this is how tests/run.sh's fault cases make one.
+ */
+const testFault = (path: string, suffix: string | null): void => {
+  if (suffix !== null && suffix.length > 0 && path.endsWith(suffix)) {
+    fault();
   }
 };
 
@@ -436,20 +457,20 @@ const langFor = (name: string): i32 => {
 /**
  * Appends one finished entry of the worker's list to its progress log
  * `cli.stats` (nothing when it is "", outside a worker): its index, then the
- * files, changed, skipped and bytes it added to the counts. The parent sums
+ * files, changed, skipped, bytes and faulted files it added to the counts. The parent sums
  * the counts from these lines, and an entry with no line was never finished:
  * its worker died.
  */
-const logEntry = (log: string, at: i32, files: i32, changed: i32, skipped: i32, bytes: i32): void => {
+const logEntry = (log: string, at: i32, files: i32, changed: i32, skipped: i32, bytes: i32, faulted: i32): void => {
   if (log.length !== 0) {
-    appendFileSync(log, `${at} ${files} ${changed} ${skipped} ${bytes}\n`);
+    appendFileSync(log, `${at} ${files} ${changed} ${skipped} ${bytes} ${faulted}\n`);
   }
 };
 
-/** Entry `at`, `path`, is a directory: logged as `<at> 0 0 0 0 d`, and kept in `dirs`. */
+/** Entry `at`, `path`, is a directory: logged as `<at> 0 0 0 0 0 d`, and kept in `dirs`. */
 const logDir = (log: string, at: i32, path: string, dirs: string[]): void => {
   if (log.length !== 0) {
-    appendFileSync(log, `${at} 0 0 0 0 d\n`);
+    appendFileSync(log, `${at} 0 0 0 0 0 d\n`);
   }
   dirs.push(path);
 };
@@ -520,13 +541,16 @@ const formatFiles = (files: string[], a: i32, b: i32, cli: Cli, stats: Stats, en
         } else {
           console.error(`nishfmt: cannot read ${f}`);
           stats.skipped = plus(stats.skipped, 1);
-          logEntry(log, at, 0, 0, 1, 0);
+          logEntry(log, at, 0, 0, 1, 0, 0);
         }
       } else {
         stats.files = plus(stats.files, 1);
         stats.bytes = plus(stats.bytes, toI64(read));
         if (result === 2) {
           stats.skipped = plus(stats.skipped, 1);
+        } else if (result === 4) {
+          stats.skipped = plus(stats.skipped, 1);
+          stats.faulted = plus(stats.faulted, 1);
         } else if (result === 1) {
           stats.changed = plus(stats.changed, 1);
         }
@@ -746,12 +770,14 @@ const readLog = (path: string, files: string[], done: u8[], into: Stats, dirs: s
     return;
   }
   const s: string = text;
-  // A line's fields: the entry, then the files, changed, skipped and bytes it added.
+  // A line's fields: the entry, then the files, changed, skipped, bytes and
+  // faulted files it added.
   let v0 = 0;
   let v1 = 0;
   let v2 = 0;
   let v3 = 0;
   let v4 = 0;
+  let v5 = 0;
   let a = 0;
   for (let i = 0; i < s.length; i++) {
     if (s.charCodeAt(i) !== 10) {
@@ -759,9 +785,9 @@ const readLog = (path: string, files: string[], done: u8[], into: Stats, dirs: s
     }
     let f = 0;
     let w = a;
-    for (let j = a; j >= 0 && j <= i && j < s.length && f < 6; j++) {
+    for (let j = a; j >= 0 && j <= i && j < s.length && f < 7; j++) {
       if (j === i || s.charCodeAt(j) === 32) {
-        if (f < 5) {
+        if (f < 6) {
           const num = parseNum(s, w, j);
           if (f === 0) {
             v0 = num;
@@ -771,8 +797,10 @@ const readLog = (path: string, files: string[], done: u8[], into: Stats, dirs: s
             v2 = num;
           } else if (f === 3) {
             v3 = num;
-          } else {
+          } else if (f === 4) {
             v4 = num;
+          } else {
+            v5 = num;
           }
         }
         f++;
@@ -781,10 +809,10 @@ const readLog = (path: string, files: string[], done: u8[], into: Stats, dirs: s
     }
     a = i + 1;
     const at = v0;
-    if (f >= 5 && at >= 0 && at < toI32(done.length) && done[at] === 0) {
+    if (f >= 6 && at >= 0 && at < toI32(done.length) && done[at] === 0) {
       done[at] = 1;
       // done has an entry for each of files.
-      if (f === 6 && at < files.length) {
+      if (f === 7 && at < files.length) {
         dirs.push(files[at]);
       }
       // parseNum's numbers are at least 0.
@@ -792,6 +820,7 @@ const readLog = (path: string, files: string[], done: u8[], into: Stats, dirs: s
       into.changed = plus(into.changed, toI64(v2));
       into.skipped = plus(into.skipped, toI64(v3));
       into.bytes = plus(into.bytes, toI64(v4));
+      into.faulted = plus(into.faulted, toI64(v5));
     }
   }
 };
@@ -1055,7 +1084,15 @@ export const main = (): i32 => {
     const perSec = toI32((toI64(kb) * toI64(1000)) / toI64(1024));
     const rate = ms > 0 ? perSec / ms : 0;
     const verb = cli.mode === MODE_WRITE ? "reformatted" : "would reformat";
-    const crash = stats.crashed > 0 ? ` (${stats.crashed} crashed)` : "";
+    // The skipped files that were nishfmt bugs: workers that died, formatters that faulted.
+    let crash = "";
+    if (stats.crashed > 0 && stats.faulted > 0) {
+      crash = ` (${stats.crashed} crashed, ${stats.faulted} faulted)`;
+    } else if (stats.crashed > 0) {
+      crash = ` (${stats.crashed} crashed)`;
+    } else if (stats.faulted > 0) {
+      crash = ` (${stats.faulted} faulted)`;
+    }
     console.error(
       `nishfmt: ${stats.files} files, ${verb} ${stats.changed}, skipped ${stats.skipped}${crash}; ${mbTenths / 10}.${mbTenths % 10} MB in ${ms} ms (${rate} MB/s, ${jobs} workers)`,
     );

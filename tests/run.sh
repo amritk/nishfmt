@@ -259,5 +259,73 @@ else
   fail=$((fail + 1))
 fi
 
+# A file whose formatter faults (src/core/fault.ts) is a nishfmt bug, as a
+# crash is: it is left untouched, reported as `formatter fault` even under -q
+# and to stdout, and counted as skipped (and faulted). No input is known to
+# fault a formatter, so NISHFMT_TEST_FAULT=_fault.rs faults each file whose
+# path ends with it, after its formatter ran. Those files would format
+# (good_src), so a binary that ignores the fault rewrites them.
+# fault_tree <dir> <good files>: a_fault.rs and g05_fault.rs fault, g01.rs ... format.
+fault_tree() {
+  rm -rf "$1" && mkdir -p "$1"
+  printf "$good_src" > "$1/a_fault.rs"
+  printf "$good_src" > "$1/g05_fault.rs"
+  for i in $(seq -w 1 "$2"); do printf "$good_src" > "$1/g$i.rs"; done
+}
+# fault_check <label> <dir> <good files> <stderr> <exit> <want exit> <want summary or "">
+fault_check() {
+  local ok=1 f
+  for f in a_fault g05_fault; do
+    case $4 in *"nishfmt: skipped $2/$f.rs (formatter fault)"*) ;; *) ok=0; echo "FAIL $1: no fault reported for $f.rs" ;; esac
+    printf "$good_src" | cmp -s - "$2/$f.rs" || { ok=0; echo "FAIL $1: $f.rs was rewritten"; }
+  done
+  if [ -n "$7" ]; then
+    case $4 in *"$7"*) ;; *) ok=0; echo "FAIL $1: no summary \"$7\"" ;; esac
+  fi
+  [ "$5" -eq "$6" ] || { ok=0; echo "FAIL $1: exit $5, want $6"; }
+  local bad=0 want=$work/good.expected
+  [ "$6" -eq 1 ] && { want=$work/good.src; printf "$good_src" > "$want"; }
+  for i in $(seq -w 1 "$3"); do
+    cmp -s "$2/g$i.rs" "$want" || bad=$((bad + 1))
+  done
+  [ "$bad" -eq 0 ] || { ok=0; echo "FAIL $1: $bad of the $3 other files not as expected"; }
+  if [ "$ok" -eq 1 ]; then
+    pass=$((pass + 1))
+  else
+    echo "$4" | head -20
+    fail=$((fail + 1))
+  fi
+}
+for run in "8 -i" "70 -i -j 3" "8 --check" "8 -i -q"; do
+  set -- $run
+  n=$1
+  shift
+  d=$work/fault
+  fault_tree "$d" "$n"
+  msg=$(NISHFMT_TEST_FAULT=_fault.rs "$bin" "$@" "$d" 2>&1)
+  st=$?
+  want=0 verb=reformatted summary=
+  [ "$1" = --check ] && want=1 verb="would reformat"
+  [ "${2:-}" = -q ] || summary="nishfmt: $((n + 2)) files, $verb $n, skipped 2 (2 faulted);"
+  fault_check "fault ($run)" "$d" "$n" "$msg" "$st" "$want" "$summary"
+done
+# A crash and a fault in one run: both counted.
+d=$work/fault
+fault_tree "$d" 8
+printf "$crash_src" > "$d/a.cs"
+msg=$(NISHFMT_TEST_CRASH=.cs NISHFMT_TEST_FAULT=_fault.rs "$bin" -i "$d" 2>&1)
+st=$?
+fault_check "fault and crash" "$d" 8 "$msg" "$st" 0 "nishfmt: 11 files, reformatted 8, skipped 3 (1 crashed, 2 faulted);"
+# One file to stdout: printed as it is, the fault on stderr.
+printf "$good_src" > "$work/one_fault.rs"
+out=$(NISHFMT_TEST_FAULT=_fault.rs "$bin" "$work/one_fault.rs" 2> "$work/err")
+st=$?
+if [ "$st" -eq 0 ] && [ "$out" = "$(printf "$good_src")" ] && grep -qF "skipped $work/one_fault.rs (formatter fault)" "$work/err"; then
+  pass=$((pass + 1))
+else
+  echo "FAIL fault (stdout): exit $st, $(cat "$work/err" | head -5)"
+  fail=$((fail + 1))
+fi
+
 echo "$pass passed, $fail failed"
 [ "$fail" -eq 0 ]
