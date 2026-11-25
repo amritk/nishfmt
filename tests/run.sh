@@ -6,7 +6,9 @@
 # Each tests/cases/<name>.cpp with a <name>.expected (clang-format 23.1.5, LLVM
 # style, ColumnLimit 120) must format to it, and formatting the expected file
 # must leave it unchanged. unbalanced.cpp and each tests/cases/<lang>/skip_*
-# (a file the reference tool rejects) must be skipped and left untouched.
+# (a file the reference tool rejects) must be skipped and left untouched, and
+# each tests/cases/<lang>/fault_* (a file a formatter is known to write wrong
+# code for) reported as a formatter fault and left untouched.
 set -uo pipefail
 here=$(cd "$(dirname "$0")" && pwd)
 bin=${1:-$here/../dist/nishfmt}
@@ -176,6 +178,30 @@ for src in "$here"/cases/*/skip_*; do
     pass=$((pass + 1))
   else
     echo "FAIL $label: not skipped and left untouched"
+    fail=$((fail + 1))
+  fi
+done
+
+# A file on which a formatter is known to write different code, which the
+# check of the code it keeps (src/cpp/samecode.ts) must catch: each
+# tests/cases/<lang>/fault_<name>.<ext> must be reported as a formatter fault
+# and left byte for byte as it is. Once the formatter is fixed, the case
+# becomes an ordinary one with an .expected.
+for src in "$here"/cases/*/fault_*; do
+  [ -f "$src" ] || continue
+  file=${src##*/}
+  label=${src#"$here"/cases/}
+  label=${label%.*}
+  cp "$src" "$work/$file"
+  msg=$("$bin" -i "$work/$file" 2>&1)
+  case $msg in
+    *"nishfmt: skipped $work/$file (formatter fault)"*) faulted=1 ;;
+    *) faulted=0 ;;
+  esac
+  if [ "$faulted" -eq 1 ] && cmp -s "$work/$file" "$src"; then
+    pass=$((pass + 1))
+  else
+    echo "FAIL $label: not caught as a fault and left untouched"
     fail=$((fail + 1))
   fi
 done

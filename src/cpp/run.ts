@@ -6,6 +6,9 @@ import { Formatter } from "./format";
 import { Out } from "../core/out";
 import { toCRLF } from "../core/files";
 import { sliceU8s } from "../core/arr";
+import { fault } from "../core/fault";
+import { lex } from "./lexer";
+import { CppCodePrint, cppCodePrint, cppSameCode } from "./samecode";
 
 /** One worker's reusable C++ state: the token tables and the formatter. */
 export class CppEngine {
@@ -14,12 +17,18 @@ export class CppEngine {
   once: boolean = false; // FFONCE: one run per file, to compare with a single clang-format run
   showReruns: boolean = false; // FFRERUN: name each file run again
   unsettled: boolean = false; // the last file still changed on its last run
+  // A second token table, to check that a run kept the code (samecode.ts):
+  // the prints of the run's input and of its output.
+  chk: Doc;
+  before: CppCodePrint = new CppCodePrint();
+  after: CppCodePrint = new CppCodePrint();
   constructor(width: i32, indent: i32) {
     const opts = new Options();
     opts.columnLimit = width;
     opts.indentWidth = indent;
     this.d = new Doc(new Array<u8>(0), 0, opts);
     this.f = new Formatter(this.d);
+    this.chk = new Doc(new Array<u8>(0), 0, opts);
   }
 }
 
@@ -49,7 +58,35 @@ export const formatCpp = (e: CppEngine, path: string, src: u8[], n: i32, out: Ou
   let prev = src;
   let prevN = n;
   let runs = 1;
+  let printed = false;
   while (okRun && !cppSameBytes(prev, prevN, out.buf, out.n)) {
+    const once = sliceU8s(out.buf, 0, out.n);
+    const onceN = toI32(once.length);
+    // Each run that changed the file must have kept its code: one that did
+    // not is a nishfmt bug, and the file is left as it was.
+    const chk = e.chk;
+    if (!printed) {
+      chk.reset(prev, prevN);
+      if (!lex(chk)) {
+        fault();
+        return false;
+      }
+      cppCodePrint(chk, e.before);
+      printed = true;
+    }
+    chk.reset(once, onceN);
+    if (!lex(chk)) {
+      fault();
+      return false;
+    }
+    cppCodePrint(chk, e.after);
+    if (!cppSameCode(e.before, e.after)) {
+      fault();
+      return false;
+    }
+    const kept = e.before;
+    e.before = e.after;
+    e.after = kept;
     if (runs >= CPP_MAX_RUNS) {
       e.unsettled = true;
       return false;
@@ -58,9 +95,8 @@ export const formatCpp = (e: CppEngine, path: string, src: u8[], n: i32, out: Ou
     if (e.showReruns) {
       console.error(`rerun ${runs - 1} ${path}`);
     }
-    const once = sliceU8s(out.buf, 0, out.n);
     prev = once;
-    prevN = toI32(once.length);
+    prevN = onceN;
     d.reset(once, prevN);
     f.reset();
     f.setPath(path);

@@ -22,6 +22,16 @@ against clang-format's behaviour and source.
   fails on a lexer that skips every `#` not first on its line.
 - whole files whose output still changes when formatted again after eight
   runs ("does not settle"): no output passes a clang-format check.
+- whole files on which a run would change the code, not only its layout
+  (`src/cpp/samecode.ts`). Each run that changes a file has its input and its
+  output lexed again and compared: the same tokens in the same directives,
+  once comments are set aside, adjacent string literals joined, and the
+  #include lines (a set: clang-format drops a repeated one) and
+  using-declarations (a multiset) taken out of the order, since clang-format
+  sorts them. When a `#` stands in code, which clang-format may move to the
+  start of a line and so make a directive, the directives are not compared.
+  A difference is a nishfmt bug, reported as a formatter fault
+  (`tests/cases/cpp/fault_*`).
 - Objective-C beyond declarations: a header with literals, `@implementation`
   or method bodies is left untouched.
 

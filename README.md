@@ -23,7 +23,7 @@ pinned to one core:
 
 | Language | Matches | Identical | Reference tool, 4 cores / 1 core | nishfmt, 4 cores / 1 core |
 | --- | --- | ---: | ---: | ---: |
-| C++ | clang-format 23.1.5, `{BasedOnStyle: LLVM, ColumnLimit: 120}` | 99.9% of 10,341 | 90.9 s / 230.5 s | **12.8 s / 50.9 s** |
+| C++ | clang-format 23.1.5, `{BasedOnStyle: LLVM, ColumnLimit: 120}` | 99.9% of 10,341 | 90.9 s / 230.5 s | **14.0 s / 58.3 s** |
 | Java | google-java-format 2.0.0 | 100% of 7,627 | 39.4 s / 143.5 s | **2.46 s / 9.13 s** |
 | Kotlin | ktfmt 0.65, `--kotlinlang-style` | 100% of 9,602 | 130.0 s / 407.1 s | **2.99 s / 11.0 s** |
 | C# | CSharpier 1.4.0, default options except `end_of_line = crlf` | 100% of 13,988 | 49.0 s / 126.6 s | **2.17 s / 7.63 s** |
