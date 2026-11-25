@@ -154,8 +154,6 @@ written to make the same decisions clang-format makes.
      distinct penalties;
    - a state's no-break successor that is sure to be popped next is expanded
      without queueing;
-   - a child block's cost is counted only when its state reaches the front of
-     the queue;
    - results are cached by line and indent within a file, and by a 64-bit
      hash of everything the search reads across files, so a statement that
      recurs (common in generated code) is searched once.

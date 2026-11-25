@@ -205,9 +205,12 @@ const F_CMP: i32 = 0x7ffffbbf; // every flag but NOLBOP and HMNB
 // A search makes at most MAXCOUNT (25000000) states.
 // clang-format keeps penalties in 32-bit unsigned integers: sums wrap.
 const U32: i64 = 4294967295;
-// Child blocks are counted eagerly from this penalty on, well before a wrap.
-const LAZY_LIMIT: i64 = 1073741824;
-const RC_SIZE: i32 = 8192; // power of two
+// The per-file caches (line results, child block penalties) start at these
+// sizes, powers of two, and double when half full: clang-format's PenaltyCache
+// is unbounded, and a cache that stopped storing would search a deeply nested
+// block again for every state that reaches it.
+const RC_SIZE: i32 = 8192;
+const LC_SIZE: i32 = 4096;
 const CC_SIZE: i32 = 65536; // power of two
 const IGNORE_AFTER: i32 = 50000;
 // The guards below write their bounds as literals, which the compiler's
@@ -421,15 +424,8 @@ export class Indenter {
   bTail: i32[];
   bn: i32 = 0;
   nNextB: i32[];
-  // A node whose child block's penalty is not counted yet: the block and its indent.
-  nPendH: i32[];
-  nPendI: i32[];
-  nCnt: i32[];
-  lazyKids: boolean = false;
   asWritten: boolean = false; // noLineBreak for a line with no layout: its blocks' lines are written too
-  pendHead: i32 = -1;
   childPen: i64 = 0;
-  pendInd: i32 = 0;
   // Per search depth: penalty -> bucket, stamped by search generation.
   pmKey: i64[][];
   pmVal: i32[][];
@@ -446,9 +442,13 @@ export class Indenter {
   seenGen: i32 = 1;
   depth: i32 = 0;
   // Penalties of child block lists already formatted (dry): by line and indent.
+  // Child block penalties of the current file, by block (the list's first
+  // line) and extra indent: clang-format's PenaltyCache.
   cacheKey: i32[];
+  cacheInd: i32[];
   cacheVal: i64[];
   cacheStamp: i32[];
+  cacheUsed: i32 = 0;
   fileStamp: i32 = 1;
   ignoreStack: boolean = false;
   debug: boolean = false;
@@ -519,36 +519,37 @@ export class Indenter {
     this.bHead = new Array<i32>(1024);
     this.bTail = new Array<i32>(1024);
     this.nNextB = new Array<i32>(1024);
-    this.nPendH = new Array<i32>(1024);
-    this.nPendI = new Array<i32>(1024);
-    this.nCnt = new Array<i32>(1024);
     this.pmKey = [];
     this.pmVal = [];
     this.pmStamp = [];
     this.pmUsed = new Array<i32>(64);
     this.seenNodes = [];
     this.seenStamps = [];
-    this.cacheKey = new Array<i32>(4096);
-    this.cacheVal = new Array<i64>(4096);
-    this.cacheStamp = new Array<i32>(4096);
+    this.cacheKey = new Array<i32>(LC_SIZE);
+    this.cacheInd = new Array<i32>(LC_SIZE);
+    this.cacheVal = new Array<i64>(LC_SIZE);
+    this.cacheStamp = new Array<i32>(LC_SIZE);
   }
 
   reset(): void {
     this.fileStamp = indAdd(this.fileStamp, 1);
     this.rcUsed = 0;
+    this.cacheUsed = 0;
     this.nbits = 0;
   }
 
-  /** The cache slot of line `l` at `ind`: found (stamp current) or free; -1 when full. */
+  /** The cache slot of line `l` at `ind`: found (stamp current) or free; -1 after a fault. */
   rcSlot(l: i32, ind: i32): i32 {
-    let h = Math.imul(l, 0x2545f491) ^ Math.imul(ind, 0x01000193);
-    h = h & (RC_SIZE - 1);
     const stamp = this.rcStamp;
     const line = this.rcLine;
     const rind = this.rcInd;
-    for (let i = 0; i < 64; i++) {
-      const s = (h + i) & (RC_SIZE - 1);
-      if (s >= stamp.length || s >= line.length || s >= rind.length) {
+    // The length is a power of two, and the table at most half full.
+    const mask = toI32(stamp.length) - 1;
+    const h = (Math.imul(l, 0x2545f491) ^ Math.imul(ind, 0x01000193)) & mask;
+    for (let i = 0; i < stamp.length; i++) {
+      // `h` lies in [0, mask] and `i` below the length, so the u32 sum is exact.
+      const s = toI32((toU32(h) + toU32(i)) & toU32(mask));
+      if (s < 0 || s >= stamp.length || s >= line.length || s >= rind.length) {
         fault();
         return -1;
       }
@@ -559,19 +560,78 @@ export class Indenter {
         return s;
       }
     }
+    fault();
     return -1;
+  }
+
+  /** Doubles the line cache, keeping the current file's entries. */
+  rcGrow(): void {
+    const oStamp = this.rcStamp;
+    const oLine = this.rcLine;
+    const oInd = this.rcInd;
+    const oPen = this.rcPen;
+    const oOff = this.rcOff;
+    const oN = this.rcN;
+    const n = mul32(toI32(oStamp.length), 2);
+    this.rcStamp = newI32s(n);
+    this.rcLine = newI32s(n);
+    this.rcInd = newI32s(n);
+    this.rcPen = newI64s(n);
+    this.rcOff = newI32s(n);
+    this.rcN = newI32s(n);
+    for (let i = 0; i < oStamp.length; i++) {
+      if (i >= oLine.length || i >= oInd.length || i >= oPen.length || i >= oOff.length || i >= oN.length) {
+        fault();
+        return;
+      }
+      if (oStamp[i] !== this.fileStamp) {
+        continue;
+      }
+      const s = this.rcSlot(oLine[i], oInd[i]);
+      const stamp = this.rcStamp;
+      const line = this.rcLine;
+      const rind = this.rcInd;
+      const rpen = this.rcPen;
+      const off = this.rcOff;
+      const rn = this.rcN;
+      if (s < 0 || s >= stamp.length || s >= line.length || s >= rind.length || s >= rpen.length) {
+        fault();
+        return;
+      }
+      if (s >= off.length || s >= rn.length) {
+        fault();
+        return;
+      }
+      stamp[s] = oStamp[i];
+      line[s] = oLine[i];
+      rind[s] = oInd[i];
+      rpen[s] = oPen[i];
+      off[s] = oOff[i];
+      rn[s] = oN[i];
+    }
   }
 
   rcHit(s: i32): boolean {
     return s >= 0 && indAt(this.rcStamp, s) === this.fileStamp;
   }
 
-  rcStore(s: i32, l: i32, ind: i32, pen: i64, withPath: boolean): void {
-    // (4096 is RC_SIZE / 2: the table stays at most half full.)
+  /**
+   * Stores line `l`'s result at `ind` (with the last search's decisions when
+   * `withPath`) and answers its slot, or -1 after a fault. The slot is looked
+   * up here, not before the search: the nested searches store too, and may
+   * grow the table.
+   */
+  rcStore(l: i32, ind: i32, pen: i64, withPath: boolean): i32 {
     const used = this.rcUsed;
-    if (s < 0 || used > 4096) {
-      return;
+    // Kept at most half full.
+    if (toI64(used) * toI64(2) >= toI64(this.rcStamp.length)) {
+      this.rcGrow();
     }
+    const s = this.rcSlot(l, ind);
+    if (s < 0) {
+      return -1;
+    }
+    const fresh = indAt(this.rcStamp, s) !== this.fileStamp;
     const stamp = this.rcStamp;
     const line = this.rcLine;
     const rind = this.rcInd;
@@ -579,7 +639,7 @@ export class Indenter {
     const rn = this.rcN;
     if (s >= stamp.length || s >= line.length || s >= rind.length || s >= rpen.length || s >= rn.length) {
       fault();
-      return;
+      return -1;
     }
     stamp[s] = this.fileStamp;
     line[s] = l;
@@ -599,7 +659,7 @@ export class Indenter {
       for (let i = 0; i < n; i++) {
         if (i >= src.length || j < 0 || j >= bits.length) {
           fault();
-          return;
+          return -1;
         }
         bits[j] = src[i];
         j++;
@@ -607,13 +667,16 @@ export class Indenter {
       const off = this.rcOff;
       if (s >= off.length || s >= rn.length) {
         fault();
-        return;
+        return -1;
       }
       off[s] = nb;
       rn[s] = n;
       this.nbits = end;
     }
-    this.rcUsed = used + 1;
+    if (fresh) {
+      this.rcUsed = indAdd(used, 1);
+    }
+    return s;
   }
 
   // ---- Stack access -------------------------------------------------------
@@ -2412,12 +2475,6 @@ export class Indenter {
         lv = indLink(d.lSibling, lv);
       }
       const addInd = indSub(this.top(R_IND), mul32(indAt(d.lLevel, lv), d.opts.indentWidth));
-      if (this.lazyKids) {
-        // Counted when the state reaches the front of the queue.
-        this.pendHead = c0;
-        this.pendInd = addInd;
-        return 0;
-      }
       return this.childList(c0, addInd);
     }
     const cf = indLink(d.lFirst, c0);
@@ -2450,6 +2507,80 @@ export class Indenter {
     return pen;
   }
 
+  /** The child cache slot of block `head` at `ind`: found (stamp current) or free; -1 after a fault. */
+  lcSlot(head: i32, ind: i32): i32 {
+    const stamp = this.cacheStamp;
+    const key = this.cacheKey;
+    const kind = this.cacheInd;
+    // The length is a power of two, and the table at most half full.
+    const mask = toI32(stamp.length) - 1;
+    const h = (Math.imul(head, 0x2545f491) ^ Math.imul(ind, 0x01000193)) & mask;
+    for (let i = 0; i < stamp.length; i++) {
+      // `h` lies in [0, mask] and `i` below the length, so the u32 sum is exact.
+      const s = toI32((toU32(h) + toU32(i)) & toU32(mask));
+      if (s < 0 || s >= stamp.length || s >= key.length || s >= kind.length) {
+        fault();
+        return -1;
+      }
+      if (stamp[s] !== this.fileStamp) {
+        return s;
+      }
+      if (key[s] === head && kind[s] === ind) {
+        return s;
+      }
+    }
+    fault();
+    return -1;
+  }
+
+  lcHit(s: i32): boolean {
+    return s >= 0 && indAt(this.cacheStamp, s) === this.fileStamp;
+  }
+
+  /** Stores child block `head`'s penalty at `ind`, doubling the table when half full. */
+  lcStore(head: i32, ind: i32, pen: i64): void {
+    if (toI64(this.cacheUsed) * toI64(2) >= toI64(this.cacheStamp.length)) {
+      const oStamp = this.cacheStamp;
+      const oKey = this.cacheKey;
+      const oInd = this.cacheInd;
+      const oVal = this.cacheVal;
+      const n = mul32(toI32(oStamp.length), 2);
+      this.cacheStamp = newI32s(n);
+      this.cacheKey = newI32s(n);
+      this.cacheInd = newI32s(n);
+      this.cacheVal = newI64s(n);
+      for (let i = 0; i < oStamp.length; i++) {
+        if (i >= oKey.length || i >= oInd.length || i >= oVal.length) {
+          fault();
+          return;
+        }
+        if (oStamp[i] === this.fileStamp) {
+          this.lcPut(this.lcSlot(oKey[i], oInd[i]), oKey[i], oInd[i], oVal[i]);
+        }
+      }
+    }
+    const s = this.lcSlot(head, ind);
+    if (s >= 0 && !this.lcHit(s)) {
+      this.cacheUsed = indAdd(this.cacheUsed, 1);
+    }
+    this.lcPut(s, head, ind, pen);
+  }
+
+  lcPut(s: i32, head: i32, ind: i32, pen: i64): void {
+    const stamp = this.cacheStamp;
+    const key = this.cacheKey;
+    const kind = this.cacheInd;
+    const val = this.cacheVal;
+    if (s < 0 || s >= stamp.length || s >= key.length || s >= kind.length || s >= val.length) {
+      fault();
+      return;
+    }
+    stamp[s] = this.fileStamp;
+    key[s] = head;
+    kind[s] = ind;
+    val[s] = pen;
+  }
+
   /** The penalty of child block list `head` at `addInd` (emitted unless dry). */
   childList(head: i32, addInd: i32): i64 {
     const o = this.save();
@@ -2457,50 +2588,16 @@ export class Indenter {
     const rb = this.nrec;
     let pen: i64 = 0;
     if (this.dry) {
-      const key = indAdd(mul32(head, 4096), addInd & 4095);
-      const h = Math.imul(key, 0x2545f491) >>> 20;
-      let found = false;
-      const cs = this.cacheStamp;
-      const ck = this.cacheKey;
-      const cv = this.cacheVal;
-      for (let i = 0; i < 4096; i++) {
-        const s = (h + i) & 4095;
-        if (s >= cs.length || s >= ck.length || s >= cv.length) {
-          fault();
-          break;
-        }
-        if (cs[s] !== this.fileStamp) {
-          break;
-        }
-        if (ck[s] === key) {
-          pen = cv[s];
-          found = true;
-          break;
-        }
-      }
-      if (found) {
+      const s = this.lcSlot(head, addInd);
+      if (this.lcHit(s)) {
         this.stListHit = indAdd64(this.stListHit, toI64(1));
-      }
-      if (!found) {
+        pen = indAtI64(this.cacheVal, s);
+      } else {
         this.stListMiss = indAdd64(this.stListMiss, toI64(1));
         const fm = this.fm;
         pen = fm !== null ? fm.listPenalty(head, addInd) & U32 : 0;
-        const cs2 = this.cacheStamp;
-        const ck2 = this.cacheKey;
-        const cv2 = this.cacheVal;
-        for (let i = 0; i < 4096; i++) {
-          const s = (h + i) & 4095;
-          if (s >= cs2.length || s >= ck2.length || s >= cv2.length) {
-            fault();
-            break;
-          }
-          if (cs2[s] !== this.fileStamp) {
-            cs2[s] = this.fileStamp;
-            ck2[s] = key;
-            cv2[s] = pen;
-            break;
-          }
-        }
+        // The nested searches stored too, and may have grown the table.
+        this.lcStore(head, addInd, pen);
       }
     } else {
       const fm = this.fm;
@@ -2753,7 +2850,7 @@ export class Indenter {
         }
         this.pathN = n;
         const cpen = indAtI64(this.ccPen, cslot);
-        this.rcStore(slot, l, indent, cpen, true);
+        this.rcStore(l, indent, cpen, true);
         if (!dry) {
           a.annotateFull(l);
           this.replayPath();
@@ -2773,11 +2870,11 @@ export class Indenter {
       this.ccUsed = used + 1;
     }
     if (this.pathN >= 0) {
-      this.rcStore(slot, l, indent, pen, true);
+      const stored = this.rcStore(l, indent, pen, true);
       if (!dry) {
         this.pathOff = indSub(this.nbits, this.pathN);
-        if (this.rcHit(slot) && indAt(this.rcN, slot) >= 0) {
-          this.replayBits(indAt(this.rcOff, slot), indAt(this.rcN, slot));
+        if (this.rcHit(stored) && indAt(this.rcN, stored) >= 0) {
+          this.replayBits(indAt(this.rcOff, stored), indAt(this.rcN, stored));
         } else {
           this.replayPath();
         }
@@ -2997,17 +3094,13 @@ export class Indenter {
       this.nNl = growI32(this.nNl, n);
       this.nIgn = growI32(this.nIgn, n);
       this.nNextB = growI32(this.nNextB, n);
-      this.nPendH = growI32(this.nPendH, n);
-      this.nPendI = growI32(this.nPendI, n);
-      this.nCnt = growI32(this.nCnt, n);
     }
     const off = this.save();
     const no = this.nOff;
     const np = this.nPrev;
     const nnl = this.nNl;
     const ni = this.nIgn;
-    const nph = this.nPendH;
-    if (i < 0 || i >= no.length || i >= np.length || i >= nnl.length || i >= ni.length || i >= nph.length) {
+    if (i < 0 || i >= no.length || i >= np.length || i >= nnl.length || i >= ni.length) {
       fault();
       return -1;
     }
@@ -3015,7 +3108,6 @@ export class Indenter {
     np[i] = prev;
     nnl[i] = nl;
     ni[i] = 0;
-    nph[i] = -1;
     this.nn = i + 1;
     return i;
   }
@@ -3488,7 +3580,6 @@ export class Indenter {
     }
     const root = this.newNode(-1, 0);
     let count = 0;
-    indPut(this.nCnt, root, 0);
     this.qPush(vBase, dd, gen, toI64(0), root);
     count++;
     let pen: i64 = 0;
@@ -3520,17 +3611,6 @@ export class Indenter {
         }
         pen = indAtI64(this.vhPen, vBase);
         node = indAt(this.bHead, indAt(this.vhB, vBase));
-        const ph = indAt(this.nPendH, node);
-        if (ph >= 0) {
-          // Count the child block now; requeue the node at its true key when it costs.
-          const cp = this.childList(ph, indAt(this.nPendI, node));
-          indPut(this.nPendH, node, -1);
-          if (cp > 0) {
-            this.qPop(vBase);
-            this.qInsert(vBase, dd, gen, indAdd64(pen, cp) & U32, node);
-            continue;
-          }
-        }
         if (indAt(this.pool, indAdd(indAt(this.nOff, node), S_NEXT)) < 0) {
           best = node;
           break;
@@ -3575,11 +3655,9 @@ export class Indenter {
         p1 = this.childPen;
       }
       if (s0 >= 0) {
-        indPut(this.nCnt, s0, count);
         count++;
       }
       if (s1 >= 0) {
-        indPut(this.nCnt, s1, count);
         count = indAdd(count, 1);
       }
       if (s0 >= 0) {
@@ -3708,51 +3786,20 @@ export class Indenter {
   makeChild(node: i32, pen: i64, nl: boolean): i32 {
     this.load(indAt(this.nOff, node));
     let p = pen;
-    this.pendHead = -1;
-    // Child blocks are counted when their state reaches the front of the
-    // queue, which assumes a cost only raises a key; near the 32-bit wrap
-    // (below) they are counted now.
-    this.lazyKids = pen < LAZY_LIMIT;
+    // A child block's penalty is counted as the state is made, as in
+    // clang-format's addNextStateToQueue. Counting it only once the state
+    // reached the front of the queue assumed the penalty can only raise the
+    // state's key, which a sum that wraps past 2^32 breaks.
     const cp = this.formatChildren(nl);
-    this.lazyKids = false;
     if (cp < 0) {
       return -1;
     }
     p = indAdd64(p, cp);
-    const ph = this.pendHead;
-    const pi = this.pendInd;
     // clang-format's penalties are 32-bit unsigned and wrap.
     p = indAdd64(p, this.addToken(nl, 0)) & U32;
     const n = this.newNode(node, nl ? 1 : 0);
-    indPut(this.nPendH, n, ph);
-    indPut(this.nPendI, n, pi);
     this.childPen = p;
     return n;
-  }
-
-  /** Queues node `n` (key `pen`) after the nodes of its bucket made before it. */
-  qInsert(vBase: i32, dd: i32, gen: i32, pen: i64, n: i32): void {
-    const b = this.bucketOf(pen, dd, gen);
-    if (indAt(this.bHead, b) < 0) {
-      this.qPush(vBase, dd, gen, pen, n);
-      return;
-    }
-    const cnt = indAt(this.nCnt, n);
-    let prev = -1;
-    let q = indAt(this.bHead, b);
-    while (q >= 0 && indAt(this.nCnt, q) < cnt) {
-      prev = q;
-      q = indLink(this.nNextB, q);
-    }
-    indPut(this.nNextB, n, q);
-    if (prev < 0) {
-      indPut(this.bHead, b, n);
-    } else {
-      indPut(this.nNextB, prev, n);
-    }
-    if (q < 0) {
-      indPut(this.bTail, b, n);
-    }
   }
 
   /** Re-runs the decisions of path bits [off, off + n) for real (emitting). */
