@@ -21,7 +21,8 @@ File.write(File.join(__dir__, "coporder.txt"), enabled.map { |c| "#{c.cop_name}\
 puts <<~TS
   // Cop facts the team needs: RuboCop's registry order (corrections merge in
   // it) and autocorrect_incompatible_with. Generated from RuboCop #{major}.#{minor}.#{patch}'s
-  // registry with the default configuration by tools/ruby/genregistry.rb.
+  // registry with the default configuration by tools/ruby/genregistry.rb
+  // (RuboCop: MIT License, Copyright (c) 2012-24 Bozhidar Batsov).
 
   /** Every enabled cop, in registry order (for rubocop:disable all and departments). */
   export const RB_COP_NAMES: string =

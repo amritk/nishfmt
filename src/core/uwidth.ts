@@ -2,7 +2,8 @@
 // printable code points (categories L, M, N, P, S and Zs, and U+00AD) take
 // one column, non-spacing and enclosing marks (Mn, Me) none, and East Asian
 // wide or fullwidth ones (plus U+4DC0-4DFF, U+1F300-1F5FF and U+1F900-1F9FF)
-// two. The ranges are generated from the Unicode 15.1 character database.
+// two. The ranges are generated from the Unicode 15.1 character database
+// (Unicode License V3, Copyright © Unicode, Inc.).
 
 import { fault } from "./fault";
 

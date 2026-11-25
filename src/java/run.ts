@@ -1,6 +1,9 @@
 // The Java entry point: google-java-format 2.0.0's pipeline over one file
 // (Formatter.formatSource as the CLI calls it): the cleanup passes, the
 // formatter, then StringWrapper.
+//
+// Ported from google-java-format 2.0.0's Formatter (Apache License 2.0,
+// Copyright 2015 Google Inc.).
 
 import { sliceU8s } from "../core/arr";
 import { guessSep } from "../core/files";

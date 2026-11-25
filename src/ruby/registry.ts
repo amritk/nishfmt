@@ -1,6 +1,7 @@
 // Cop facts the team needs: RuboCop's registry order (corrections merge in
 // it) and autocorrect_incompatible_with. Generated from RuboCop 1.92.3's
-// registry with the default configuration by tools/ruby/genregistry.rb.
+// registry with the default configuration by tools/ruby/genregistry.rb
+// (RuboCop: MIT License, Copyright (c) 2012-24 Bozhidar Batsov).
 
 /** Every enabled cop, in registry order (for rubocop:disable all and departments). */
 export const RB_COP_NAMES: string =

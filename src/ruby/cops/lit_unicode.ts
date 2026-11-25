@@ -1,6 +1,7 @@
 // Unicode tables of Ruby 3.3's regexps (Onigmo), for code points past ASCII:
 // `\p{Word}` and `[[:alnum:]]`. Each range is twelve hex digits, its first and
-// last code point. Generated from Ruby 3.3.6.
+// last code point. Generated from Ruby 3.3.6. The properties are the Unicode
+// Character Database's (Unicode License V3, Copyright © Unicode, Inc.).
 
 import { rbByteAt } from "../util";
 import { fault } from "../../core/fault";

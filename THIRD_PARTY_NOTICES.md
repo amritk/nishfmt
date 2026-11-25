@@ -5,6 +5,7 @@ nishfmt is MIT licensed ([LICENSE](LICENSE)). Its formatters for Java, Kotlin, R
 | Language | Project | License | Copyright | Where |
 | --- | --- | --- | --- | --- |
 | C++ | clang-format 23.1.5 (LLVM) | Apache-2.0 WITH LLVM-exception | — | Not ported: nishfmt's C++ formatter is its own code, written to make clang-format's decisions. No LLVM code is included. |
+| C++ | the Unicode Character Database 15.1 | Unicode-3.0 | Copyright © Unicode, Inc. | `src/core/uwidth.ts` (generated tables) |
 | Java | google-java-format 2.0.0 | Apache-2.0 | Copyright 2015, 2016, 2019, 2026 Google Inc. | `src/java/` |
 | Kotlin, Java | google-java-format 1.28.0: the Doc engine ktfmt runs on, and the token input and comment re-indentation both languages share. ktfmt 0.65 runs on 1.23.0 and Java on 2.0.0; the ported parts give the same output in all three ([tools/kotlin/NOTES.md](tools/kotlin/NOTES.md#srcgdocs-version)) | Apache-2.0 | Copyright 2015, 2016 Google Inc. | `src/gdoc/` |
 | Kotlin | ktfmt 0.65 | Apache-2.0 | Copyright (c) Meta Platforms, Inc. and affiliates | `src/kotlin/` |
@@ -15,6 +16,7 @@ nishfmt is MIT licensed ([LICENSE](LICENSE)). Its formatters for Java, Kotlin, R
 | Ruby | racc 1.8.1 | Ruby License / BSD-2-Clause | Copyright (c) 1999-2006 Minero Aoki | `src/ruby/parser.ts` (the parser driver) |
 | Ruby | regexp_parser 2.13.4 | MIT | Copyright (c) 2010-2026 Ammar Ali | `src/ruby/` |
 | Ruby | unicode-display_width 3.3.0 | MIT | Copyright (c) 2011, 2015-2025 Jan Lelis | `src/ruby/` |
+| Ruby | the Unicode Character Database, as Ruby 3.3.6's regexps (Onigmo) have it | Unicode-3.0 | Copyright © Unicode, Inc. | `src/ruby/cops/lit_unicode.ts` (generated tables) |
 | Swift | SwiftFormat 0.64.7 | MIT | Copyright (c) 2016 Nick Lockwood | `src/swift/` |
 | Swift | the Unicode Character Database 15.0 and 15.1 | Unicode-3.0 | Copyright © Unicode, Inc. | `src/swift/unicode_data.ts` (generated tables) |
 | Rust | rustfmt 1.10.0 | MIT OR Apache-2.0 | Copyright The Rust Project Developers | `src/rust/` |
@@ -22,11 +24,39 @@ nishfmt is MIT licensed ([LICENSE](LICENSE)). Its formatters for Java, Kotlin, R
 | Rust | unicode-ident 1.0.24 | (MIT OR Apache-2.0) AND Unicode-3.0 | Copyright David Tolnay; Unicode data Copyright © Unicode, Inc. | `src/rust/uident_table.ts` (generated tables) |
 | Rust | unicode-properties 0.1.4 | MIT OR Apache-2.0 | Copyright The Rust Project Developers | `src/rust/uident_table.ts` (generated tables) |
 | Rust | unicode-width 0.1.14 | MIT OR Apache-2.0 | Copyright 2012-2022 The Rust Project Developers | `src/rust/uwidth.ts`, `src/rust/uwidth_table.ts` (generated tables) |
-| Dart | dart_style 3.1.14-wip at 5a9534fad9ff (Dart SDK 3.14.1) and _fe_analyzer_shared; package_config 3.0.1-wip and yaml 3.2.0-wip (dart-lang/tools at d87eaf7946e7) | BSD-3-Clause | Copyright the Dart project authors | `src/dart/` |
+| Dart | dart_style 3.1.14-wip at 5a9534fad9ff (Dart SDK 3.14.1) and _fe_analyzer_shared, with package:analyzer's AST node kinds and fields; package_config 3.0.1-wip and yaml 3.2.0-wip (dart-lang/tools at d87eaf7946e7) | BSD-3-Clause | Copyright the Dart project authors | `src/dart/` |
 | C# | CSharpier 1.4.0 | MIT | Copyright (c) 2021 Bela VanderVoort | `src/csharp/` |
 | C# | Roslyn | MIT | Copyright the .NET Foundation and Contributors | `src/csharp/` (lexer and parser) |
+| All | Nish 0.45.1's `std/sort.ts` | MIT | Copyright (c) 2026 Nish contributors | `src/core/sort.ts` |
 
 nishfmt uses the reference tools only to check its output. None of them is bundled, linked or run by the nishfmt binary.
+
+The binary is compiled by [Nish](https://github.com/amritk/nish) (the version `.nish-version` pins) and links Nish's runtime and standard library, which are MIT licensed (Copyright (c) 2026 Nish contributors; the MIT License below) and carry their own third-party notices in the Nish distribution's `LICENSE` files.
+
+## NOTICE files
+
+Two of the Apache-2.0 projects above ship a NOTICE file, which section 4(d) of the license requires a derivative work to reproduce. Their text, verbatim:
+
+The Kotlin compiler 2.4.10 (`license/NOTICE.txt`):
+
+```text
+   =========================================================================
+   ==  NOTICE file corresponding to the section 4 d of                    ==
+   ==  the Apache License, Version 2.0,                                   ==
+   ==  in this case for the Kotlin Compiler distribution.                 ==
+   =========================================================================
+
+   Kotlin Compiler
+   Copyright 2010-2024 JetBrains s.r.o and respective authors and developers
+```
+
+The IntelliJ platform, IntelliJ IDEA Community Edition 251.27812.49 (`NOTICE.txt`):
+
+```text
+This software includes code from IntelliJ IDEA Community Edition
+Copyright (C) JetBrains s.r.o.
+https://www.jetbrains.com/idea/
+```
 
 ## MIT License
 
@@ -327,7 +357,7 @@ SUCH DAMAGE.
 
 ## Unicode License V3
 
-Applies to the Unicode Character Database tables generated into `src/swift/unicode_data.ts`, and to the Unicode data in unicode-ident, generated into `src/rust/uident_table.ts`.
+Applies to the Unicode Character Database tables generated into `src/swift/unicode_data.ts`, `src/ruby/cops/lit_unicode.ts` and `src/core/uwidth.ts`, and to the Unicode data in unicode-ident, generated into `src/rust/uident_table.ts`.
 
 ```text
 UNICODE LICENSE V3

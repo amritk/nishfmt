@@ -66,8 +66,10 @@ read `.nish/docs/AI.md` (the language as rules, traps first), then
 
 Every formatter but C++ is ported from its reference tool, and each ported
 module starts with a comment naming the project, its version and its
-license. Keep it when you change the module, add it to a new one, and add a
-newly ported project to [THIRD_PARTY_NOTICES.md](THIRD_PARTY_NOTICES.md).
+license. Keep it when you change the module, add it to a new one (a
+generated table too, and in its generator), and add a newly ported project
+to [THIRD_PARTY_NOTICES.md](THIRD_PARTY_NOTICES.md), with its NOTICE file's
+text verbatim when an Apache-2.0 project ships one.
 Port the reference's decision exactly: when a file differs, find the code
 that decides the differing whitespace and port that, rather than a heuristic
 that happens to fit the corpus.
