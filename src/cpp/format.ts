@@ -12,10 +12,10 @@ import { add32, bytesText, copyU8s, growI32, newI32s, newI64s, sliceU8s, sub32 }
 import { fault, faulted } from "../core/fault";
 import { Annot } from "./annotate";
 import { Indenter } from "./indenter";
-import { displayColumn, hasBom, lex, widthOf } from "./lexer";
+import { hasBom, lex, widthOf } from "./lexer";
 import { Out } from "../core/out";
 import { utf8Width } from "../core/uwidth";
-import { Parser, isOperatorAfterVar, isQtWord, tokenCanStartNewLine } from "./parser";
+import { Parser, isOperatorAfterVar, isQtWord } from "./parser";
 import {
   BK_BLOCK,
   K_COMMENT,
@@ -392,8 +392,6 @@ export class Formatter {
   gE: i32 = 0;
   gStart: i32 = 0;
   gPre: i32 = 0;
-  rerunMacro: boolean = false; // the rerun is for a macro call left alone: run until it settles
-  rerun: boolean = false; // writeBlockComment inside a directive (drops `\`, keeps room for it)
   bcFirstW: i32 = 0; // blockCommentPenalty: the width of the comment's first line
   bcShrink: i32 = 0; // blockCommentPenalty: how much narrower the comment got, kept on one line
   bcScratch: Out; // blockCommentPenalty's dry run
@@ -560,8 +558,6 @@ export class Formatter {
 
   /** Records the path being formatted (its main include sorts first). */
   setPath(path: string): void {
-    this.rerun = false;
-    this.rerunMacro = false;
     let base = path;
     // (`slash` and `dot` lie in their strings: substring cuts what slice cut.)
     const slash = lastIndexOfChar(path, 47);
@@ -867,10 +863,8 @@ export class Formatter {
     this.secEnd = j;
     const o = this.secScratch;
     o.n = 0;
-    const saveRerun = this.rerun;
     const saveWs = this.wsCol;
     this.writeSection(o, i, col);
-    this.rerun = saveRerun;
     this.wsCol = saveWs;
     let w = 0;
     let ls = 0;
@@ -5892,31 +5886,11 @@ export class Formatter {
         out.spaces(sub32(c, col));
         col = c;
       }
-      if (!this.rerun && nl === 1 && i > 0 && tk === K_COMMENT && ty === TT_LINE_COMMENT) {
-        this.checkSectionRerun(i);
-      }
-      if (!this.rerun && nl === 1 && i > 0 && tn === 0) {
-        this.checkMacroRerun(i);
-      }
-      if (!this.rerun && d.strTabs && tk === K_STRING) {
-        this.checkTabStringRerun(t, c > col ? c : col);
-      }
       // clang-format never breaks or reflows an include line's comment.
       const inInclude = tpp >= 0 && fwAt0(d.ppKind, tpp) === PP_INCLUDE;
       // (A line comment a backslash spliced over lines is written as it is:
       // clang-format's multiline token.)
       if (tk === K_COMMENT && ty === TT_LINE_COMMENT && !this.verbatimAt(i) && !inInclude && tm === 0) {
-        // `//x` gets its space, which takes a comment that just fit past the
-        // limit: the next run lays the line out with it.
-        if (
-          !this.rerun &&
-          d.opts.reflowComments &&
-          add32(col, tw) <= lim &&
-          add32(add32(col, tw), this.missingCommentSpace(t)) > lim
-        ) {
-          this.rerun = true;
-        }
-        const o0 = out.n;
         const last = this.writeSection(out, i, col);
         // (The section's last entry: at or after i, before n.)
         if (last < i || last >= n) {
@@ -5925,9 +5899,6 @@ export class Formatter {
         }
         i = last;
         col = this.wsCol;
-        if (!this.rerun) {
-          this.checkPieceRerun(out, o0, col);
-        }
       } else if (tk === K_COMMENT && !this.verbatimAt(i)) {
         const o0 = out.n;
         col = this.writeComment(out, t, col, i);
@@ -6154,11 +6125,6 @@ export class Formatter {
           }
           return add32(r, sh);
         }
-        // A one-line comment broken here is several lines on the next run,
-        // which can lay out what is around it anew: run again.
-        if (tm === 0 && !this.rerun) {
-          this.rerun = true;
-        }
         return this.writeBlockComment(out, t, col);
       }
       // Several lines inside a directive: each line break is escaped at the
@@ -6178,9 +6144,6 @@ export class Formatter {
       ) {
         this.bcEsc = fwAt0(this.escStamp, pp) === this.fileStamp ? fwAt0(this.escCol, pp) : lim;
         this.bcPP = true;
-        if (tm === 0) {
-          this.rerun = true;
-        }
         const r = this.writeBlockComment(out, t, col);
         this.bcEsc = -1;
         this.bcPP = false;
@@ -6638,163 +6601,6 @@ export class Formatter {
     return len;
   }
 
-  /**
-   * A line comment split into pieces one of which, not the last, still
-   * overflows: on clang-format's next run that piece is a comment line of its
-   * own, which the line's layout then pays for, so the file is formatted once
-   * more. (`o0`: where the comment's output starts; its first line starts
-   * at the column the write left, worked out back from `endCol`.)
-   */
-  checkPieceRerun(out: Out, o0: i32, endCol: i32): void {
-    const lim = this.d.opts.columnLimit;
-    const buf = out.buf;
-    let ls = out.n;
-    // (out.n <= buf.length)
-    while (ls > 0 && ls <= buf.length && buf[ls - 1] !== 10) {
-      ls--;
-    }
-    if (ls <= o0 || ls <= 0) {
-      return;
-    }
-    // Lines before the last: each from its start to the newline.
-    let q = ls - 1;
-    while (q > o0) {
-      let st = q;
-      while (st > 0 && st <= buf.length && buf[st - 1] !== 10) {
-        st--;
-      }
-      if (widthOf(buf, st, q) > lim) {
-        this.rerun = true;
-        return;
-      }
-      q = sub32(st, 1);
-    }
-  }
-
-  /**
-   * A line comment written on its own line under a trailing line comment of
-   * the same line, to its right of where that output line starts: on
-   * clang-format's next run it continues the trailing comment's section, so
-   * the file is formatted once more.
-   */
-  /**
-   * Whether string literal `t`, written at output column `col`, holds a tab
-   * that reaches a different stop than where it was written: clang-format
-   * measures it from its new column on the next run, so the file is
-   * formatted once more.
-   */
-  checkTabStringRerun(t: i32, col: i32): void {
-    const d = this.d;
-    const st = fwAt0(d.start, t);
-    const en = fwAt0(d.end, t);
-    let tab = false;
-    for (let k = st; k < en; k++) {
-      if (d.at(k) === 9) {
-        tab = true;
-        break;
-      }
-    }
-    if (!tab) {
-      return;
-    }
-    let ls = st;
-    while (ls > 0 && d.at(ls - 1) !== 10) {
-      ls--;
-    }
-    if (displayColumn(d.src, ls, st) % 8 !== col % 8) {
-      this.rerun = true;
-    }
-  }
-
-  /**
-   * Whether the break before emitted token `i` leaves an all-caps word alone
-   * on the first line of a statement: on clang-format's next run that word
-   * is a macro on a line of its own, so the file is formatted once more.
-   */
-  checkMacroRerun(i: i32): void {
-    const d = this.d;
-    // (An entry after the first.)
-    if (i <= 0) {
-      fault();
-      return;
-    }
-    const t = fwAt0(this.emTok, i);
-    let pt = fwAt0(this.emTok, i - 1);
-    if (pt < 0 || fwAt0(d.prv, t) !== pt || !tokenCanStartNewLine(d, t)) {
-      return;
-    }
-    // `MACRO(args)` then the break: a function-like macro of any length.
-    let functionLike = false;
-    if (fwAt0(d.kind, pt) === P_RPAREN) {
-      const m = fwAt0(d.match, pt);
-      if (m >= 0 && m < pt) {
-        const w = fwAt0(d.prv, m);
-        if (w < 0 || fwAt0(d.prv, w) >= 0 || fwAt0(d.kind, w) !== K_IDENT) {
-          return;
-        }
-        pt = w;
-        functionLike = true;
-      }
-    }
-    if (fwAt0(d.prv, pt) >= 0 || fwAt0(d.kind, pt) !== K_IDENT || fwAt0(d.inPP, pt) === 1) {
-      return;
-    }
-    const ps = fwAt0(d.start, pt);
-    const pe = fwAt0(d.end, pt);
-    if (!functionLike && ((i > 1 && fwAt0(this.emNl, i - 1) === 0) || sub32(pe, ps) < 5)) {
-      return;
-    }
-    for (let k = ps; k < pe; k++) {
-      const c = d.at(k);
-      if (c >= 97 && c <= 122) {
-        return;
-      }
-    }
-    this.rerun = true;
-    this.rerunMacro = true;
-    if (this.ind.debug) {
-      console.error(`macro rerun at ${d.text(pt)} before ${d.text(t)}`);
-    }
-  }
-
-  checkSectionRerun(i: i32): void {
-    const d = this.d;
-    // (An entry after the first.)
-    if (i <= 0) {
-      fault();
-      return;
-    }
-    const emTok = this.emTok;
-    const emNl = this.emNl;
-    const emCol = this.emCol;
-    const t = fwAt0(emTok, i);
-    const pt = fwAt0(emTok, i - 1);
-    if (
-      pt < 0 ||
-      fwAt0(emNl, i - 1) !== 0 ||
-      fwAt0(d.kind, pt) !== K_COMMENT ||
-      fwAt0(d.type, pt) !== TT_LINE_COMMENT ||
-      fwAt0(d.prv, t) !== pt
-    ) {
-      return;
-    }
-    if (fwAt0(emCol, i) === fwAt0(emCol, i - 1)) {
-      return;
-    }
-    let j = i - 1;
-    while (j > 0 && fwAt0(emNl, j) === 0) {
-      j--;
-    }
-    const mt = fwAt0(emTok, j);
-    const minCol = add32(
-      fwAt0(emCol, j),
-      mt >= 0 && fwAt0(d.kind, mt) === K_COMMENT && fwAt0(d.type, mt) === TT_LINE_COMMENT ? 0 : 1,
-    );
-    if (fwAt0(emCol, i) >= minCol) {
-      this.rerun = true;
-    }
-  }
-
   /** The line whose token chain holds `t`, or -1. */
   lineOfTok(t: i32): i32 {
     const d = this.d;
@@ -7160,14 +6966,6 @@ export class Formatter {
         cppfSet(scCol, k, add32(startCol, fwAt0(scKeep, k)));
       }
     }
-  }
-
-  /** Whether a line comment's text starting with byte `c` takes a space after its prefix. */
-  wantsPrefixSpace(t: i32, c: i32): boolean {
-    if (!this.d.opts.reflowComments || this.switchesFormatting(t)) {
-      return false;
-    }
-    return !(c < 128 && (c === 92 || isPunct(c) || c === 32 || c === 9) && c !== 35);
   }
 
   /** Whether lines `k - 1` and `k` have the same original prefix bytes. */
@@ -7994,9 +7792,6 @@ export class Formatter {
     const scA = this.scA;
     const scE = this.scE;
     const scCol = this.scCol;
-    const scKeep = this.scKeep;
-    const scKnown = this.scKnown;
-    const scExtra = this.scExtra;
     const src = d.src;
     const lim = d.opts.columnLimit;
     const reflow = d.opts.reflowComments;
@@ -8046,17 +7841,6 @@ export class Formatter {
           rem = this.cw(tk, add32(a, off), e, csc);
           continue;
         }
-        // A prefix left without its space (`///@name`) gets one on the next
-        // run when the split-off text starts with a letter, which can move
-        // the breaks after it: run again.
-        if (
-          !this.rerun &&
-          add32(sub32(fwAt0(scKeep, k), fwAt0(scKnown, k)), fwAt0(scExtra, k)) === 0 &&
-          after < e &&
-          this.wantsPrefixSpace(tk, d.at(after))
-        ) {
-          this.rerun = true;
-        }
         const pad = 0;
         const ncsc = add32(fwAt0(scCol, k), pad);
         const nrem = this.cw(tk, after, e, ncsc);
@@ -8076,11 +7860,6 @@ export class Formatter {
         off = add32(add32(off, sA), sN);
         rem = nrem;
         newBreak = true;
-        // A comment split inside brackets (a braced list's item): on the
-        // next run it is a section of lines, which can change the layout.
-        if (!this.rerun && k === 0 && fwAt0(d.nest, fwAt0(emTok, i)) > 0) {
-          this.rerun = true;
-        }
       }
       if (k + 1 < n) {
         const k1 = k + 1;
@@ -8096,8 +7875,8 @@ export class Formatter {
           const tk1 = fwAt0(emTok, add32(i, k1));
           if (this.scSamePrefix(k1) && this.mayReflowContent(na, ne) && !this.isPragma(tk1)) {
             // (A tab after the prefix is content: clang-format keeps it, but
-            // measures and splits the line without it. The next run measures
-            // it where it landed: run again.)
+            // measures and splits the line without it. The next run, which a
+            // changed file always gets, measures it where it landed.)
             let lead = na;
             while (lead < ne && d.at(lead) === 32) {
               lead++;
@@ -8120,9 +7899,6 @@ export class Formatter {
               }
             }
             if (reflowing) {
-              if (mlead > lead) {
-                this.rerun = true;
-              }
               fwRange(out, src, seg, e);
               out.byte(32);
               seg = lead;
