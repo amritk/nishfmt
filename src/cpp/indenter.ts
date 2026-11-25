@@ -214,7 +214,9 @@ const IGNORE_AFTER: i32 = 50000;
 // proofs read: 153391689 records is what a pool of i32 length can hold (the
 // last field of record 153391688 still has an i32 offset), and 12 is PS.
 const REC0: i32 = 57344; // RS * 4096
-const SEEN0: i32 = 65536;
+// A depth's seen table starts small and doubles as it fills (search), so a
+// nested depth that expands few states costs a few KB, not 512 KB.
+const SEEN0: i32 = 1024;
 
 /** An implicit paren's record has no token: its R_TOK holds its precedence. */
 const fakeTok = (prec: i32): i32 => indSub(-2, prec);
