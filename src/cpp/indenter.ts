@@ -205,8 +205,6 @@ const F_CMP: i32 = 0x7ffffbbf; // every flag but NOLBOP and HMNB
 // A search makes at most MAXCOUNT (25000000) states.
 // clang-format keeps penalties in 32-bit unsigned integers: sums wrap.
 const U32: i64 = 4294967295;
-// Child blocks are counted eagerly from this penalty on, well before a wrap.
-const LAZY_LIMIT: i64 = 1073741824;
 const RC_SIZE: i32 = 8192; // power of two
 const CC_SIZE: i32 = 65536; // power of two
 const IGNORE_AFTER: i32 = 50000;
@@ -421,15 +419,8 @@ export class Indenter {
   bTail: i32[];
   bn: i32 = 0;
   nNextB: i32[];
-  // A node whose child block's penalty is not counted yet: the block and its indent.
-  nPendH: i32[];
-  nPendI: i32[];
-  nCnt: i32[];
-  lazyKids: boolean = false;
   asWritten: boolean = false; // noLineBreak for a line with no layout: its blocks' lines are written too
-  pendHead: i32 = -1;
   childPen: i64 = 0;
-  pendInd: i32 = 0;
   // Per search depth: penalty -> bucket, stamped by search generation.
   pmKey: i64[][];
   pmVal: i32[][];
@@ -519,9 +510,6 @@ export class Indenter {
     this.bHead = new Array<i32>(1024);
     this.bTail = new Array<i32>(1024);
     this.nNextB = new Array<i32>(1024);
-    this.nPendH = new Array<i32>(1024);
-    this.nPendI = new Array<i32>(1024);
-    this.nCnt = new Array<i32>(1024);
     this.pmKey = [];
     this.pmVal = [];
     this.pmStamp = [];
@@ -2412,12 +2400,6 @@ export class Indenter {
         lv = indLink(d.lSibling, lv);
       }
       const addInd = indSub(this.top(R_IND), mul32(indAt(d.lLevel, lv), d.opts.indentWidth));
-      if (this.lazyKids) {
-        // Counted when the state reaches the front of the queue.
-        this.pendHead = c0;
-        this.pendInd = addInd;
-        return 0;
-      }
       return this.childList(c0, addInd);
     }
     const cf = indLink(d.lFirst, c0);
@@ -2997,17 +2979,13 @@ export class Indenter {
       this.nNl = growI32(this.nNl, n);
       this.nIgn = growI32(this.nIgn, n);
       this.nNextB = growI32(this.nNextB, n);
-      this.nPendH = growI32(this.nPendH, n);
-      this.nPendI = growI32(this.nPendI, n);
-      this.nCnt = growI32(this.nCnt, n);
     }
     const off = this.save();
     const no = this.nOff;
     const np = this.nPrev;
     const nnl = this.nNl;
     const ni = this.nIgn;
-    const nph = this.nPendH;
-    if (i < 0 || i >= no.length || i >= np.length || i >= nnl.length || i >= ni.length || i >= nph.length) {
+    if (i < 0 || i >= no.length || i >= np.length || i >= nnl.length || i >= ni.length) {
       fault();
       return -1;
     }
@@ -3015,7 +2993,6 @@ export class Indenter {
     np[i] = prev;
     nnl[i] = nl;
     ni[i] = 0;
-    nph[i] = -1;
     this.nn = i + 1;
     return i;
   }
@@ -3488,7 +3465,6 @@ export class Indenter {
     }
     const root = this.newNode(-1, 0);
     let count = 0;
-    indPut(this.nCnt, root, 0);
     this.qPush(vBase, dd, gen, toI64(0), root);
     count++;
     let pen: i64 = 0;
@@ -3520,17 +3496,6 @@ export class Indenter {
         }
         pen = indAtI64(this.vhPen, vBase);
         node = indAt(this.bHead, indAt(this.vhB, vBase));
-        const ph = indAt(this.nPendH, node);
-        if (ph >= 0) {
-          // Count the child block now; requeue the node at its true key when it costs.
-          const cp = this.childList(ph, indAt(this.nPendI, node));
-          indPut(this.nPendH, node, -1);
-          if (cp > 0) {
-            this.qPop(vBase);
-            this.qInsert(vBase, dd, gen, indAdd64(pen, cp) & U32, node);
-            continue;
-          }
-        }
         if (indAt(this.pool, indAdd(indAt(this.nOff, node), S_NEXT)) < 0) {
           best = node;
           break;
@@ -3575,11 +3540,9 @@ export class Indenter {
         p1 = this.childPen;
       }
       if (s0 >= 0) {
-        indPut(this.nCnt, s0, count);
         count++;
       }
       if (s1 >= 0) {
-        indPut(this.nCnt, s1, count);
         count = indAdd(count, 1);
       }
       if (s0 >= 0) {
@@ -3708,51 +3671,20 @@ export class Indenter {
   makeChild(node: i32, pen: i64, nl: boolean): i32 {
     this.load(indAt(this.nOff, node));
     let p = pen;
-    this.pendHead = -1;
-    // Child blocks are counted when their state reaches the front of the
-    // queue, which assumes a cost only raises a key; near the 32-bit wrap
-    // (below) they are counted now.
-    this.lazyKids = pen < LAZY_LIMIT;
+    // A child block's penalty is counted as the state is made, as in
+    // clang-format's addNextStateToQueue. Counting it only once the state
+    // reached the front of the queue assumed the penalty can only raise the
+    // state's key, which a sum that wraps past 2^32 breaks.
     const cp = this.formatChildren(nl);
-    this.lazyKids = false;
     if (cp < 0) {
       return -1;
     }
     p = indAdd64(p, cp);
-    const ph = this.pendHead;
-    const pi = this.pendInd;
     // clang-format's penalties are 32-bit unsigned and wrap.
     p = indAdd64(p, this.addToken(nl, 0)) & U32;
     const n = this.newNode(node, nl ? 1 : 0);
-    indPut(this.nPendH, n, ph);
-    indPut(this.nPendI, n, pi);
     this.childPen = p;
     return n;
-  }
-
-  /** Queues node `n` (key `pen`) after the nodes of its bucket made before it. */
-  qInsert(vBase: i32, dd: i32, gen: i32, pen: i64, n: i32): void {
-    const b = this.bucketOf(pen, dd, gen);
-    if (indAt(this.bHead, b) < 0) {
-      this.qPush(vBase, dd, gen, pen, n);
-      return;
-    }
-    const cnt = indAt(this.nCnt, n);
-    let prev = -1;
-    let q = indAt(this.bHead, b);
-    while (q >= 0 && indAt(this.nCnt, q) < cnt) {
-      prev = q;
-      q = indLink(this.nNextB, q);
-    }
-    indPut(this.nNextB, n, q);
-    if (prev < 0) {
-      indPut(this.bHead, b, n);
-    } else {
-      indPut(this.nNextB, prev, n);
-    }
-    if (q < 0) {
-      indPut(this.bTail, b, n);
-    }
   }
 
   /** Re-runs the decisions of path bits [off, off + n) for real (emitting). */
