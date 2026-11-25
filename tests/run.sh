@@ -158,9 +158,9 @@ fi
 
 # Files the reference tool rejects are skipped, not formatted: each
 # tests/cases/<lang>/skip_<name>.<ext>, which has no .expected, must be
-# reported skipped by -i as not parsing (a formatter that crashes on it does
-# not count) and left byte for byte as it is, and --check must find nothing to
-# change.
+# reported skipped by -i as not parsing, or for C++ as not settling (a
+# formatter that crashes on it does not count), and left byte for byte as it
+# is, and --check must find nothing to change.
 for src in "$here"/cases/*/skip_*; do
   [ -f "$src" ] || continue
   file=${src##*/}
@@ -169,7 +169,7 @@ for src in "$here"/cases/*/skip_*; do
   cp "$src" "$work/$file"
   msg=$("$bin" -i "$work/$file" 2>&1)
   case $msg in
-    *"nishfmt: skipped $work/$file (does not parse)"*) skipped=1 ;;
+    *"nishfmt: skipped $work/$file (does not parse)"* | *"nishfmt: skipped $work/$file (does not settle)"*) skipped=1 ;;
     *) skipped=0 ;;
   esac
   if [ "$skipped" -eq 1 ] && cmp -s "$work/$file" "$src" && "$bin" --check -q "$work/$file" > /dev/null 2>&1; then

@@ -1,0 +1,7 @@
+#if A
+// first
+#include <a.h>
+#elif B
+// second
+#include <b.h>
+#endif

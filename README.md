@@ -196,7 +196,9 @@ A single file with no mode prints the result to stdout.
 
 A file nishfmt cannot format exactly as the reference tool would (one that
 does not parse, say, or one its formatter crashes or faults on) is left
-untouched and counted as skipped. In C++, a `// nishfmt off` ...
+untouched and counted as skipped. C++ output is formatted again until it
+stops changing, so that one clang-format run leaves it as it is; a file
+that never settles is skipped too. In C++, a `// nishfmt off` ...
 `// nishfmt on` region is left as written.
 
 Exit status: 0; 1 with --check when a file would change; 2 for a bad command
