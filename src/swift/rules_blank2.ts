@@ -6,6 +6,8 @@
 // Lockwood).
 
 import { SW_UNI_UNCERTAIN } from "./unicode";
+import { add32, atI32, sub32 } from "../core/arr";
+import { fault } from "../core/fault";
 import { swDeclKeywordIndex, swDeclLo, swParseDeclarations, swReleaseDecls } from "./decl";
 import { SwDecl, SwFormatter, swIndexAfterWhere, swIndexBeforeWhere } from "./formatter";
 import { swCommentDirective } from "./imports";
@@ -105,7 +107,7 @@ export const swRuleBlankLinesBetweenScopes = (f: SwFormatter): void => {
       continue;
     }
     const ob = f.indexOfBefore(SW_START, "{", 0, i0);
-    if (ob < 0 || f.lastIndexInType(SW_T_LINEBREAK, ob + 1, i0) < 0) {
+    if (ob < 0 || f.lastIndexInType(SW_T_LINEBREAK, add32(ob, 1), i0) < 0) {
       continue;
     }
     let i = i0;
@@ -120,8 +122,8 @@ export const swRuleBlankLinesBetweenScopes = (f: SwFormatter): void => {
     if (nextTokenIndex < 0 || !f.isEnabled()) {
       continue;
     }
-    const flb = f.indexInType(SW_T_LINEBREAK, i + 1, nextTokenIndex);
-    if (flb < 0 || f.indexInType(SW_T_LINEBREAK, flb + 1, nextTokenIndex) >= 0) {
+    const flb = f.indexInType(SW_T_LINEBREAK, add32(i, 1), nextTokenIndex);
+    if (flb < 0 || f.indexInType(SW_T_LINEBREAK, add32(flb, 1), nextTokenIndex) >= 0) {
       continue;
     }
     let nnc = f.indexAfter(SW_T_NON_SPACE_OR_COMMENT_OR_LINEBREAK, i);
@@ -173,7 +175,11 @@ const swTrimWS = (s: string): string => {
   while (a < b && (s.charCodeAt(a) === 32 || s.charCodeAt(a) === 9)) {
     a++;
   }
-  while (b > a && (s.charCodeAt(b - 1) === 32 || s.charCodeAt(b - 1) === 9)) {
+  while (b > a && b > 0 && b <= s.length) {
+    const c = s.charCodeAt(b - 1);
+    if (c !== 32 && c !== 9) {
+      break;
+    }
     b--;
   }
   return s.substring(a, b);
@@ -193,7 +199,7 @@ const swHeaderCommentRangeAll = (f: SwFormatter): i32[] | null => {
       const s2 = f.indexAfter(SW_T_NON_SPACE_OR_LINEBREAK, e);
       startIndex = s2 >= 0 ? s2 : e;
       start = startIndex;
-      lastHeader = startIndex - 1;
+      lastHeader = sub32(startIndex, 1);
     }
     if (f.tok(startIndex, SW_START, "//")) {
       const b = f.indexAfter(SW_T_NON_SPACE, startIndex);
@@ -214,19 +220,16 @@ const swHeaderCommentRangeAll = (f: SwFormatter): i32[] | null => {
         if (index < 0) {
           break;
         }
-        if (f.tok(index + 1, SW_START, "//")) {
+        const i1 = add32(index, 1);
+        if (f.tok(i1, SW_START, "//")) {
           lastIndex = index;
           continue;
         }
-        if (f.has(index + 1) && f.k(index + 1) === SW_LINEBREAK) {
-          lastHeader = index + 1;
-        } else if (
-          f.has(index + 1) &&
-          f.k(index + 1) === SW_SPACE &&
-          f.has(index + 2) &&
-          f.k(index + 2) === SW_LINEBREAK
-        ) {
-          lastHeader = index + 2;
+        const i2 = add32(index, 2);
+        if (f.has(i1) && f.k(i1) === SW_LINEBREAK) {
+          lastHeader = i1;
+        } else if (f.has(i1) && f.k(i1) === SW_SPACE && f.has(i2) && f.k(i2) === SW_LINEBREAK) {
+          lastHeader = i2;
         }
         break;
       }
@@ -267,7 +270,7 @@ const swHeaderCommentRangeAll = (f: SwFormatter): i32[] | null => {
       }
     }
   }
-  return [start, lastHeader + 1];
+  return [start, add32(lastHeader, 1)];
 };
 
 /** headerFileName. */
@@ -275,7 +278,7 @@ export const swRuleHeaderFileName = (f: SwFormatter): void => {
   let fileName = f.path;
   let p = fileName.indexOf("/");
   while (p >= 0) {
-    fileName = fileName.substring(p + 1);
+    fileName = fileName.substring(add32(p, 1));
     p = fileName.indexOf("/");
   }
   if (fileName.length === 0 || !fileName.endsWith(".swift")) {
@@ -285,7 +288,8 @@ export const swRuleHeaderFileName = (f: SwFormatter): void => {
   if (r === null) {
     return;
   }
-  for (let i = r[0]; i < r[1]; i++) {
+  const hi = atI32(r, 1);
+  for (let i = atI32(r, 0); i < hi; i++) {
     if (f.k(i) !== SW_COMMENT) {
       continue;
     }
@@ -303,8 +307,10 @@ const SW_MODIFIER_ORDER: string =
 export const swRuleModifierOrder = (f: SwFormatter): void => {
   const order: string[] = [];
   let st = 0;
-  for (let j = 0; j <= toI32(SW_MODIFIER_ORDER.length); j++) {
-    if (j === toI32(SW_MODIFIER_ORDER.length) || SW_MODIFIER_ORDER.charCodeAt(j) === 32) {
+  const mo = SW_MODIFIER_ORDER;
+  const ml = toI32(mo.length);
+  for (let j = 0; j >= 0 && j <= ml && j < 2147483647; j++) {
+    if (j === ml || (j < mo.length && mo.charCodeAt(j) === 32)) {
       order.push(SW_MODIFIER_ORDER.substring(st, j));
       st = j + 1;
     }
@@ -372,10 +378,13 @@ export const swRuleModifierOrder = (f: SwFormatter): void => {
     const sorted: SwTok[] = [];
     for (const m of order) {
       const q = names.indexOf(m);
-      if (q >= 0) {
+      if (q >= 0 && q < ranges.length) {
         for (const t of ranges[q]) {
           sorted.push(t);
         }
+      } else if (q >= 0) {
+        // names and ranges are pushed together.
+        fault();
       }
     }
     f.replaceTokens(lastIndex, i, sorted);
@@ -384,8 +393,10 @@ export const swRuleModifierOrder = (f: SwFormatter): void => {
 
 const swSetModifier = (names: string[], ranges: SwTok[][], name: string, toks: SwTok[]): void => {
   const q = names.indexOf(name);
-  if (q >= 0) {
+  if (q >= 0 && q < ranges.length) {
     ranges[q] = toks;
+  } else if (q >= 0) {
+    fault();
   } else {
     names.push(name);
     ranges.push(toks);
@@ -398,7 +409,7 @@ export const swUnwrapLine = (f: SwFormatter, tokenIndex: i32): void => {
   if (nw < 0 || f.k(nw) === SW_COMMENT) {
     return;
   }
-  f.replaceTokens(nw + 1, tokenIndex, [new SwTok(SW_SPACE, " ", 0)]);
+  f.replaceTokens(add32(nw, 1), tokenIndex, [new SwTok(SW_SPACE, " ", 0)]);
 };
 
 const swModifiersOnSameLineDecls = (f: SwFormatter, ds: SwDecl[]): void => {
@@ -433,7 +444,7 @@ const swModifiersOnSameLineDecl = (f: SwFormatter, d: SwDecl): void => {
       break;
     }
     let lb = false;
-    for (let j = prev + 1; j < cur; j++) {
+    for (let j = add32(prev, 1); j < cur; j++) {
       if (f.k(j) === SW_LINEBREAK) {
         lb = true;
         break;
@@ -467,10 +478,12 @@ export const swRuleConsistentSwitchCaseSpacing = (f: SwFormatter): void => {
     const last: boolean[] = [];
     const lbEnd: i32[] = [];
     const lbBlank: i32[] = [];
-    const nb = toI32(br.starts.length);
-    for (let c = 0; c < nb; c++) {
-      const sb = br.starts[c];
-      const eb = br.ends[c];
+    const starts = br.starts;
+    const ends = br.ends;
+    const nb = toI32(starts.length);
+    for (let c = 0; c < nb && c < starts.length && c < ends.length; c++) {
+      const sb = starts[c];
+      const eb = ends[c];
       if (f.kw(eb, "#else") || f.kw(eb, "#elseif")) {
         continue;
       }
@@ -543,25 +556,36 @@ export const swRuleConsistentSwitchCaseSpacing = (f: SwFormatter): void => {
     }
     let withBlank = 0;
     let without = 0;
-    for (let q = 0; q < toI32(followed.length); q++) {
+    // followed, last, lbEnd and lbBlank are pushed together; the counts stay below their length.
+    for (let q = 0; q < followed.length && q < last.length; q++) {
       if (!last[q]) {
         if (followed[q]) {
-          withBlank++;
-        } else {
+          if (withBlank < 2147483647) {
+            withBlank++;
+          }
+        } else if (without < 2147483647) {
           without++;
         }
       }
     }
     const all = withBlank >= without;
     for (let q = toI32(followed.length) - 1; q >= 0; q--) {
-      if (!followed[q] && all && !last[q]) {
-        if (lbEnd[q] >= 0) {
-          f.insertLinebreak(lbEnd[q]);
+      if (q >= followed.length || q >= last.length || q >= lbEnd.length || q >= lbBlank.length) {
+        fault();
+        break;
+      }
+      const fq = followed[q];
+      const lq = last[q];
+      const le = lbEnd[q];
+      const lb = lbBlank[q];
+      if (!fq && all && !lq) {
+        if (le >= 0) {
+          f.insertLinebreak(le);
         }
       }
-      if (followed[q] && (!all || last[q])) {
-        if (lbEnd[q] >= 0 && lbBlank[q] >= 0) {
-          f.removeTokens(lbBlank[q] + 1, lbEnd[q] + 1);
+      if (fq && (!all || lq)) {
+        if (le >= 0 && lb >= 0) {
+          f.removeTokens(add32(lb, 1), add32(le, 1));
         }
       }
     }
@@ -623,11 +647,18 @@ class SwTaElem {
   }
 }
 
+/** Sets the flag's one slot. */
+const swMarkUncertain = (flag: Int32Array): void => {
+  if (flag.length > 0) {
+    flag[0] = 1;
+  }
+};
+
 const swTaKey = (t: string): string => {
   for (let i = 0; i < toI32(t.length); i++) {
     if (t.charCodeAt(i) >= 0x80) {
       // String.lexicographicallyPrecedes compares Characters.
-      SW_UNI_UNCERTAIN[0] = 1;
+      swMarkUncertain(SW_UNI_UNCERTAIN);
       break;
     }
   }
@@ -640,12 +671,13 @@ export const swRuleSortTypealiases = (f: SwFormatter): void => {
     if (!f.kw(ti, "typealias")) {
       continue;
     }
-    const pc = swParseProtocolCompositionTypealias(f, ti);
-    if (pc === null) {
+    const pcn = swParseProtocolCompositionTypealias(f, ti);
+    if (pcn === null) {
       continue;
     }
-    const eq = pc[0];
-    const endIndex = pc[1];
+    const pc: i32[] = pcn;
+    const eq = atI32(pc, 0);
+    const endIndex = atI32(pc, 1);
     const nameIndex = f.indexBefore(SW_T_NON_SPACE_OR_COMMENT_OR_LINEBREAK, eq);
     if (nameIndex < 0) {
       continue;
@@ -657,34 +689,36 @@ export const swRuleSortTypealiases = (f: SwFormatter): void => {
     const seen: string[] = [];
     const parsed: SwTaElem[] = [];
     let bad = false;
-    for (let d = 0; d < toI32(delims.length); d++) {
-      const eop = parsed.length === 0 ? nameIndex : parsed[toI32(parsed.length) - 1].end;
+    for (let d = 0; d < delims.length; d++) {
+      const dd = delims[d];
+      const pl = toI32(parsed.length);
+      const eop = pl > 0 ? parsed[pl - 1].end : nameIndex;
       let es = f.indexAfter(SW_T_NON_SPACE_OR_LINEBREAK, eop);
       if (es < 0) {
-        es = delims[d];
+        es = dd;
       }
       let ee = 0;
       let sameLine = false;
       if (d === toI32(delims.length) - 1) {
         ee = endIndex;
       } else {
-        const nd = delims[d + 1];
+        const nd = atI32(delims, d + 1);
         ee = f.indexBefore(SW_T_NON_SPACE_OR_COMMENT_OR_LINEBREAK, nd);
         if (ee < 0) {
-          ee = nd - 1;
+          ee = sub32(nd, 1);
         }
         sameLine = f.endOfLine(nd) === f.endOfLine(ee);
       }
       if (!sameLine) {
-        ee = f.endOfLine(ee) - 1;
+        ee = sub32(f.endOfLine(ee), 1);
       }
       if (ee < es) {
         bad = true;
         break;
       }
-      const toks = f.slice(es, ee + 1);
+      const toks = f.slice(es, add32(ee, 1));
       const parts: string[] = [];
-      for (let j = es; j <= ee; j++) {
+      for (let j = es; j <= ee && j < 2147483647; j++) {
         const k = f.k(j);
         if (!(k === SW_SPACE || k === SW_LINEBREAK || f.isComment(j)) && k !== SW_OP) {
           parts.push(f.s(j));
@@ -693,7 +727,7 @@ export const swRuleSortTypealiases = (f: SwFormatter): void => {
       const tn = parts.join("");
       const dup = seen.indexOf(tn) >= 0;
       seen.push(tn);
-      parsed.push(new SwTaElem(es, delims[d], ee, tn, toks, dup));
+      parsed.push(new SwTaElem(es, dd, ee, tn, toks, dup));
     }
     if (bad) {
       continue;
@@ -702,17 +736,32 @@ export const swRuleSortTypealiases = (f: SwFormatter): void => {
     for (const e of parsed) {
       sorted.push(e);
     }
-    for (let a = 1; a < toI32(sorted.length); a++) {
+    // Insertion sort: b stays in [-1, a), inside sorted.
+    for (let a = 1; a < sorted.length; a++) {
       const x = sorted[a];
       let b = a - 1;
-      while (b >= 0 && swStrLess(swTaKey(x.type), swTaKey(sorted[b].type))) {
-        sorted[b + 1] = sorted[b];
+      while (b >= 0 && b < sorted.length) {
+        const sb = sorted[b];
+        if (!swStrLess(swTaKey(x.type), swTaKey(sb.type))) {
+          break;
+        }
+        const b1 = b + 1;
+        if (b1 >= sorted.length) {
+          fault();
+          return;
+        }
+        sorted[b1] = sb;
         b--;
       }
-      sorted[b + 1] = x;
+      const b1 = add32(b, 1);
+      if (b1 < 0 || b1 >= sorted.length) {
+        fault();
+        return;
+      }
+      sorted[b1] = x;
     }
     let same = true;
-    for (let q = 0; q < toI32(parsed.length); q++) {
+    for (let q = 0; q < parsed.length && q < sorted.length; q++) {
       if (parsed[q].start !== sorted[q].start) {
         same = false;
       }
@@ -734,19 +783,32 @@ export const swRuleSortTypealiases = (f: SwFormatter): void => {
       for (const t of e.toks) {
         toks.push(t);
       }
-      const di = e.delim - e.start;
+      const di = sub32(e.delim, e.start);
+      if (di < 0 || di >= toks.length) {
+        fault();
+        return;
+      }
       if (q === firstNonDup) {
         toks[di] = new SwTok(SW_OP, "=", SW_OP_INFIX);
       } else {
         toks[di] = new SwTok(SW_OP, "&", SW_OP_INFIX);
       }
       if (q !== toI32(sorted.length) - 1) {
-        const lastTok = toks[toI32(toks.length) - 1];
+        const tl = toI32(toks.length);
+        if (tl <= 0 || q >= parsed.length) {
+          fault();
+          return;
+        }
+        const lastTok = toks[tl - 1];
         const pe = parsed[q].end;
         const nt = swIndexAfterWhere(f, pe, (g, j) => g.has(j));
         if (swKindIsCommentTok(lastTok) && nt >= 0 && f.k(nt) !== SW_LINEBREAK) {
           toks.push(new SwTok(SW_LINEBREAK, "\n", f.linebreakLine(pe)));
         }
+      }
+      if (toks.length <= 0 || q >= parsed.length) {
+        fault();
+        return;
       }
       if (q !== 0 && swKindIsCommentTok(toks[0])) {
         const ps = parsed[q].start;
@@ -764,13 +826,18 @@ export const swRuleSortTypealiases = (f: SwFormatter): void => {
       newToks.push(toks);
     }
     for (let q = toI32(parsed.length) - 1; q >= 0; q--) {
+      if (q >= parsed.length || q >= sorted.length || q >= newToks.length) {
+        fault();
+        return;
+      }
       const o = parsed[q];
       const nw = sorted[q];
+      const nt = newToks[q];
       const tb = f.indexBefore(SW_T_NON_SPACE_OR_LINEBREAK, o.start);
       if (nw.dup && tb >= 0) {
-        f.removeTokens(tb + 1, o.end + 1);
+        f.removeTokens(add32(tb, 1), add32(o.end, 1));
       } else {
-        f.replaceTokens(o.start, o.end + 1, newToks[q]);
+        f.replaceTokens(o.start, add32(o.end, 1), nt);
       }
     }
     const neq = f.indexOfAfter(SW_OP, "=", SW_OP_INFIX, ti);
@@ -779,10 +846,11 @@ export const swRuleSortTypealiases = (f: SwFormatter): void => {
       const pc2 = swParseProtocolCompositionTypealias(f, ti);
       const fa = f.indexOfAfter(SW_OP, "&", SW_OP_INFIX, neq);
       if (sot >= 0 && pc2 !== null && fa >= 0) {
-        const ai = f.indexOfIn(SW_IDENT, "any", 0, fa, pc2[1] + 1);
+        const ai = f.indexOfIn(SW_IDENT, "any", 0, fa, add32(atI32(pc2, 1), 1));
         if (ai >= 0) {
-          const re = f.has(ai + 1) && f.k(ai + 1) === SW_SPACE ? ai + 1 : ai;
-          f.removeTokens(ai, re + 1);
+          const a1 = add32(ai, 1);
+          const re = f.has(a1) && f.k(a1) === SW_SPACE ? a1 : ai;
+          f.removeTokens(ai, add32(re, 1));
           f.insertToks([new SwTok(SW_IDENT, "any", 0), new SwTok(SW_SPACE, " ", 0)], sot);
         }
       }

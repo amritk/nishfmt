@@ -38,6 +38,7 @@ import {
   NT_WHILE,
   V_NIL,
 } from "../ast";
+import { add32, sub32 } from "../../core/arr";
 import { RbCop } from "../cop";
 import { RbRewriter } from "../rewriter";
 import { RbSource } from "../source";
@@ -180,7 +181,7 @@ export class CopStyleGuardClause {
       return;
     }
     // min_body_length?
-    if (src.line(ssxFS(src, n, F_END)) - src.line(ssxFS(src, n, F_KEYWORD)) <= 1) {
+    if (sub32(src.line(ssxFS(src, n, F_END)), src.line(ssxFS(src, n, F_KEYWORD))) <= 1) {
       return;
     }
     this.registerOffense(src, n, "return", scnInverseKeyword(src, n), 0);
@@ -193,7 +194,7 @@ export class CopStyleGuardClause {
     const cond = src.nodeSrc(a.kid(n, 0));
     let example = `${exitKw} ${condKw} ${cond}`;
     let multi: string | null = null;
-    if (src.column(a.exS(n)) + scnLen(example) > SCN_MAX) {
+    if (add32(src.column(a.exS(n)), scnLen(example)) > SCN_MAX) {
       if (this.trivial(src, n)) {
         return;
       }
@@ -308,7 +309,7 @@ export class CopStyleGuardClause {
     if (!ssxIsCall(src, n)) {
       return V_NIL;
     }
-    for (let i = src.a.nKid(n) - 1; i >= 2; i--) {
+    for (let i = sub32(src.a.nKid(n), 1); i >= 2; i--) {
       const h = this.findHeredocArgument(src, src.a.kid(n, i));
       if (h !== V_NIL) {
         return h;
@@ -326,7 +327,7 @@ export class CopStyleGuardClause {
     let k = 0;
     for (const b of scnBranches(src, n)) {
       if (b !== V_NIL) {
-        k++;
+        k = add32(k, 1);
       }
     }
     return k === 1 && !ssxIs(src, ib, NT_IF) && !ssxIs(src, ib, NT_BEGIN);

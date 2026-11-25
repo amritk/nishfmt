@@ -11,7 +11,6 @@
 // kept in flat arrays: a state is a header and a stack of fixed-size records
 // copied into one pool.
 
-import { uncheckedGet, uncheckedSet, wrappingAdd } from "nish:unsafe";
 import {
   Annot,
   M_AFTERBRACE,
@@ -75,7 +74,8 @@ import {
   PEN_FIRST_LESSLESS,
 } from "./annotate";
 import { Doc } from "./doc";
-import { growI32 } from "../core/arr";
+import { growI32, mul32, newI32s, newI64s } from "../core/arr";
+import { fault, faulted } from "../core/fault";
 import { utf8Width } from "../core/uwidth";
 import { Formatter } from "./format";
 import { requiresExprBrace } from "./classify";
@@ -158,20 +158,15 @@ import {
   TT_UNARY_OPERATOR,
 } from "./tok";
 
-// State header.
+// State header, H fields: S_COL (0), S_NEXT (1), S_NOCONT (2), S_SOL (3,
+// the start-of-line nesting level), S_LOWEST (4, the lowest nesting level on
+// the line), S_SOSL (5, the start of a string literal run), S_NOLB (6),
+// S_DEPTH (7) and S_TOP (8, the top record). The code that copies a header
+// writes the offsets as literals, which the compiler's proofs read.
 const H: i32 = 9;
-const S_COL: i32 = 0;
 const S_NEXT: i32 = 1;
-const S_NOCONT: i32 = 2;
-const S_SOL: i32 = 3; // start-of-line nesting level
-const S_LOWEST: i32 = 4; // lowest nesting level on the line
-const S_SOSL: i32 = 5; // start of a string literal run
-const S_NOLB: i32 = 6;
-const S_DEPTH: i32 = 7;
-const S_TOP: i32 = 8; // the top record
 
-// One record per open bracket or implicit paren.
-const PS: i32 = 12;
+// One record per open bracket or implicit paren: PS (12) fields, R_TOK to R_FL.
 // A record in the pool: its parent, its hash (with everything under it), then the PS fields.
 const RS: i32 = 14;
 const RP: i32 = 0;
@@ -207,7 +202,7 @@ const F_OSNF: i32 = 16384; // an Objective-C selector part was placed (ObjCSelec
 const F_NOALIGN: i32 = 32768; // the selector's colons are not aligned (AlignColons off)
 const F_CMP: i32 = 0x7ffffbbf; // every flag but NOLBOP and HMNB
 
-const MAXCOUNT: i32 = 25000000;
+// A search makes at most MAXCOUNT (25000000) states.
 // clang-format keeps penalties in 32-bit unsigned integers: sums wrap.
 const U32: i64 = 4294967295;
 // Child blocks are counted eagerly from this penalty on, well before a wrap.
@@ -215,9 +210,143 @@ const LAZY_LIMIT: i64 = 1073741824;
 const RC_SIZE: i32 = 8192; // power of two
 const CC_SIZE: i32 = 65536; // power of two
 const IGNORE_AFTER: i32 = 50000;
+// The guards below write their bounds as literals, which the compiler's
+// proofs read: 153391689 records is what a pool of i32 length can hold (the
+// last field of record 153391688 still has an i32 offset), and 12 is PS.
+const REC0: i32 = 57344; // RS * 4096
+// A depth's seen table starts small and doubles as it fills (search), so a
+// nested depth that expands few states costs a few KB, not 512 KB.
+const SEEN0: i32 = 1024;
 
 /** An implicit paren's record has no token: its R_TOK holds its precedence. */
-const fakeTok = (prec: i32): i32 => -2 - prec;
+const fakeTok = (prec: i32): i32 => indSub(-2, prec);
+
+/** `xs[t]` of a token or line link, or -1 (none) after a fault when `t` is outside `xs`. */
+const indLink = (xs: i32[], t: i32): i32 => {
+  // (A negative `t` is a u32 past any length: one compare tests both ends.)
+  const u = toU32(t);
+  if (u < toU32(xs.length)) {
+    return xs[u];
+  }
+  fault();
+  return -1;
+};
+
+/** `a + b`, or 0 after a fault when the sum leaves i32. */
+const indAdd = (a: i32, b: i32): i32 => {
+  // The u32 sum has the true sum's bits; it left i32 when its sign differs
+  // from both operands'.
+  const r = toI32(toU32(a) + toU32(b));
+  if (((a ^ r) & (b ^ r)) < 0) {
+    fault();
+    return 0;
+  }
+  return r;
+};
+
+/** `a - b`, or 0 after a fault when the difference leaves i32. */
+const indSub = (a: i32, b: i32): i32 => {
+  // The u32 difference has the true one's bits; it left i32 when the
+  // operands' signs differ and its sign differs from `a`'s.
+  const r = toI32(toU32(a) - toU32(b));
+  if (((a ^ b) & (a ^ r)) < 0) {
+    fault();
+    return 0;
+  }
+  return r;
+};
+
+/** `xs[i]`, or 0 after a fault when `i` is outside `xs`. */
+const indAt = (xs: i32[], i: i32): i32 => {
+  const u = toU32(i);
+  if (u < toU32(xs.length)) {
+    return xs[u];
+  }
+  fault();
+  return 0;
+};
+
+/** `a + b` of two penalties or counts, or 0 after a fault when the sum leaves i64. */
+const indAdd64 = (a: i64, b: i64): i64 => {
+  // The u64 sum has the true sum's bits; it left i64 when its sign differs
+  // from both operands'.
+  const r = toI64(toU64(a) + toU64(b));
+  if (((a ^ r) & (b ^ r)) < toI64(0)) {
+    fault();
+    return toI64(0);
+  }
+  return r;
+};
+
+/** Sets `xs[i]`; faults when `i` is outside `xs`. */
+const indPut = (xs: i32[], i: i32, v: i32): void => {
+  const u = toU32(i);
+  if (u < toU32(xs.length)) {
+    xs[u] = v;
+    return;
+  }
+  fault();
+};
+
+/** `xs[i]`, or 0 after a fault when `i` is outside `xs`. */
+const indAtI64 = (xs: i64[], i: i32): i64 => {
+  const u = toU32(i);
+  if (u < toU32(xs.length)) {
+    return xs[u];
+  }
+  fault();
+  return toI64(0);
+};
+
+// A record index is -1 or one newRec made, below 153391689: its u32 offset
+// is the true one, or (for -1) past any pool, so one compare tests both ends.
+
+/** The u32 offset of slot `k` (RP, RH, or RF + an R_* field) of record `r`. */
+const indSlot = (r: i32, k: i32): u32 => toU32(r) * toU32(RS) + toU32(k);
+
+/** Field `f` (an R_* index) of record `r` in pool `rec`, or 0 after a fault when it is outside. */
+const indField = (rec: i32[], r: i32, f: i32): i32 => {
+  if (f >= 0 && f < 12) {
+    const i = indSlot(r, RF + f);
+    if (i < toU32(rec.length)) {
+      return rec[i];
+    }
+  }
+  fault();
+  return 0;
+};
+
+/** Sets field `f` of record `r`; faults when it is outside the pool. */
+const indSetField = (rec: i32[], r: i32, f: i32, v: i32): void => {
+  if (f >= 0 && f < 12) {
+    const i = indSlot(r, RF + f);
+    if (i < toU32(rec.length)) {
+      rec[i] = v;
+      return;
+    }
+  }
+  fault();
+};
+
+/** Record `r`'s parent, or -1 (none) after a fault when it is outside the pool. */
+const indParent = (rec: i32[], r: i32): i32 => {
+  const i = indSlot(r, RP);
+  if (i < toU32(rec.length)) {
+    return rec[i];
+  }
+  fault();
+  return -1;
+};
+
+/** Sets record `r`'s parent; faults when it is outside the pool. */
+const indSetParent = (rec: i32[], r: i32, v: i32): void => {
+  const i = indSlot(r, RP);
+  if (i < toU32(rec.length)) {
+    rec[i] = v;
+    return;
+  }
+  fault();
+};
 
 const isHex = (c: i32): boolean => (c >= 48 && c <= 57) || (c >= 97 && c <= 102) || (c >= 65 && c <= 70);
 
@@ -243,10 +372,10 @@ const utf8Len = (c: i32): i32 => {
  * newline in it takes the written 1-based spelling column.
  */
 const implicitColumn = (d: Doc, t: i32, col: i32): i32 => {
-  if (d.nl[t] > 0) {
-    return d.col[t] + 1;
+  if (indAt(d.nl, t) > 0) {
+    return indAdd(indAt(d.col, t), 1);
   }
-  return col + d.start[t] - d.end[d.prv[t]];
+  return indSub(indAdd(col, indAt(d.start, t)), indAt(d.end, indLink(d.prv, t)));
 };
 
 export class Indenter {
@@ -307,8 +436,13 @@ export class Indenter {
   pmStamp: i32[][];
   pmUsed: i32[];
   pmGen: i32 = 0;
-  seenNode: i32[];
-  seenStamp: i32[];
+  // Per search depth, as each of clang-format's analyzeSolutionSpace calls
+  // has a seen set of its own: the expanded nodes, stamped by search
+  // generation. One table shared by the depths lost an enclosing search's
+  // entries whenever a nested search grew it, so a fresh engine (small
+  // tables) laid some files out unlike a warm one.
+  seenNodes: i32[][];
+  seenStamps: i32[][];
   seenGen: i32 = 1;
   depth: i32 = 0;
   // Penalties of child block lists already formatted (dry): by line and indent.
@@ -357,7 +491,7 @@ export class Indenter {
   constructor(d: Doc, a: Annot) {
     this.d = d;
     this.a = a;
-    this.rec = new Array<i32>(RS * 4096);
+    this.rec = new Array<i32>(REC0);
     this.path = new Array<i32>(64);
     this.cuts = new Array<i32>(16);
     this.rcLine = new Array<i32>(RC_SIZE);
@@ -392,15 +526,15 @@ export class Indenter {
     this.pmVal = [];
     this.pmStamp = [];
     this.pmUsed = new Array<i32>(64);
-    this.seenNode = new Array<i32>(1 << 16);
-    this.seenStamp = new Array<i32>(1 << 16);
+    this.seenNodes = [];
+    this.seenStamps = [];
     this.cacheKey = new Array<i32>(4096);
     this.cacheVal = new Array<i64>(4096);
     this.cacheStamp = new Array<i32>(4096);
   }
 
   reset(): void {
-    this.fileStamp = this.fileStamp + 1;
+    this.fileStamp = indAdd(this.fileStamp, 1);
     this.rcUsed = 0;
     this.nbits = 0;
   }
@@ -409,12 +543,19 @@ export class Indenter {
   rcSlot(l: i32, ind: i32): i32 {
     let h = Math.imul(l, 0x2545f491) ^ Math.imul(ind, 0x01000193);
     h = h & (RC_SIZE - 1);
+    const stamp = this.rcStamp;
+    const line = this.rcLine;
+    const rind = this.rcInd;
     for (let i = 0; i < 64; i++) {
       const s = (h + i) & (RC_SIZE - 1);
-      if (this.rcStamp[s] !== this.fileStamp) {
+      if (s >= stamp.length || s >= line.length || s >= rind.length) {
+        fault();
+        return -1;
+      }
+      if (stamp[s] !== this.fileStamp) {
         return s;
       }
-      if (this.rcLine[s] === l && this.rcInd[s] === ind) {
+      if (line[s] === l && rind[s] === ind) {
         return s;
       }
     }
@@ -422,105 +563,176 @@ export class Indenter {
   }
 
   rcHit(s: i32): boolean {
-    return s >= 0 && this.rcStamp[s] === this.fileStamp;
+    return s >= 0 && indAt(this.rcStamp, s) === this.fileStamp;
   }
 
   rcStore(s: i32, l: i32, ind: i32, pen: i64, withPath: boolean): void {
-    if (s < 0 || this.rcUsed * 2 > RC_SIZE) {
+    // (4096 is RC_SIZE / 2: the table stays at most half full.)
+    const used = this.rcUsed;
+    if (s < 0 || used > 4096) {
       return;
     }
-    this.rcStamp[s] = this.fileStamp;
-    this.rcLine[s] = l;
-    this.rcInd[s] = ind;
-    this.rcPen[s] = pen;
-    this.rcN[s] = -1;
+    const stamp = this.rcStamp;
+    const line = this.rcLine;
+    const rind = this.rcInd;
+    const rpen = this.rcPen;
+    const rn = this.rcN;
+    if (s >= stamp.length || s >= line.length || s >= rind.length || s >= rpen.length || s >= rn.length) {
+      fault();
+      return;
+    }
+    stamp[s] = this.fileStamp;
+    line[s] = l;
+    rind[s] = ind;
+    rpen[s] = pen;
+    rn[s] = -1;
     if (withPath) {
       const n = this.pathN;
-      if (this.nbits + n > toI32(this.rcBits.length)) {
-        this.rcBits = growI32(this.rcBits, (this.nbits + n) * 2);
+      const nb = this.nbits;
+      const end = indAdd(nb, n);
+      if (end > toI32(this.rcBits.length)) {
+        this.rcBits = growI32(this.rcBits, mul32(end, 2));
       }
+      const bits = this.rcBits;
+      const src = this.pathBits;
+      let j = nb;
       for (let i = 0; i < n; i++) {
-        this.rcBits[this.nbits + i] = this.pathBits[i];
+        if (i >= src.length || j < 0 || j >= bits.length) {
+          fault();
+          return;
+        }
+        bits[j] = src[i];
+        j++;
       }
-      this.rcOff[s] = this.nbits;
-      this.rcN[s] = n;
-      this.nbits = this.nbits + n;
+      const off = this.rcOff;
+      if (s >= off.length || s >= rn.length) {
+        fault();
+        return;
+      }
+      off[s] = nb;
+      rn[s] = n;
+      this.nbits = end;
     }
-    this.rcUsed = this.rcUsed + 1;
+    this.rcUsed = used + 1;
   }
 
   // ---- Stack access -------------------------------------------------------
 
   top(f: i32): i32 {
-    return uncheckedGet(this.rec, this.topRec * RS + RF + f);
+    return indField(this.rec, this.topRec, f);
   }
 
   /** The record `k` levels under the top (0 is the top). */
   below(k: i32): i32 {
+    const rec = this.rec;
     let r = this.topRec;
     for (let i = 0; i < k; i++) {
-      r = uncheckedGet(this.rec, r * RS + RP);
+      r = indParent(rec, r);
     }
     return r;
   }
 
   /** Field `f` of the record at depth `i` (0 is the bottom). */
   at(i: i32, f: i32): i32 {
-    return uncheckedGet(this.rec, this.below(this.sp - 1 - i) * RS + RF + f);
+    return indField(this.rec, this.below(indSub(indSub(this.sp, 1), i)), f);
   }
 
   newRec(parent: i32): i32 {
     const r = this.nrec;
-    if ((r + 1) * RS > toI32(this.rec.length)) {
-      this.rec = growI32(this.rec, (r + 1) * RS * 2);
+    // (`(r + 1) * RS` leaves i32 from 153391689 on.)
+    if (r < 0 || r >= 153391689) {
+      fault();
+      return -1;
     }
-    uncheckedSet(this.rec, r * RS + RP, parent);
-    uncheckedSet(this.rec, r * RS + RH, 0);
+    const end = (r + 1) * RS;
+    if (end > toI32(this.rec.length)) {
+      this.rec = growI32(this.rec, mul32(end, 2));
+    }
+    const rec = this.rec;
+    const o = r * RS;
+    if (o + 1 < rec.length) {
+      rec[o] = parent; // RP
+      rec[o + 1] = 0; // RH
+    } else {
+      fault();
+    }
     this.nrec = r + 1;
     return r;
   }
 
   /** A mutable copy of record `r` (same parent). */
   cloneRec(r: i32): i32 {
-    const c = this.newRec(uncheckedGet(this.rec, r * RS + RP));
-    const a = r * RS + RF;
-    const b = c * RS + RF;
-    for (let i = 0; i < PS; i++) {
-      uncheckedSet(this.rec, b + i, uncheckedGet(this.rec, a + i));
+    const c = this.newRec(indParent(this.rec, r));
+    const rec = this.rec;
+    if (r >= 0 && r < 153391689 && c >= 0 && c < 153391689) {
+      const a = r * RS + RF;
+      const b = c * RS + RF;
+      // The PS fields, R_TOK (+0) to R_FL (+11).
+      if (a + 11 < rec.length && b + 11 < rec.length) {
+        rec[b] = rec[a];
+        rec[b + 1] = rec[a + 1];
+        rec[b + 2] = rec[a + 2];
+        rec[b + 3] = rec[a + 3];
+        rec[b + 4] = rec[a + 4];
+        rec[b + 5] = rec[a + 5];
+        rec[b + 6] = rec[a + 6];
+        rec[b + 7] = rec[a + 7];
+        rec[b + 8] = rec[a + 8];
+        rec[b + 9] = rec[a + 9];
+        rec[b + 10] = rec[a + 10];
+        rec[b + 11] = rec[a + 11];
+        return c;
+      }
     }
+    fault();
     return c;
   }
 
   setTop(f: i32, v: i32): void {
     if (this.topRec < this.fresh0) {
-      if (uncheckedGet(this.rec, this.topRec * RS + RF + f) === v) {
+      if (indField(this.rec, this.topRec, f) === v) {
         return;
       }
       this.topRec = this.cloneRec(this.topRec);
     }
-    uncheckedSet(this.rec, this.topRec * RS + RF + f, v);
+    indSetField(this.rec, this.topRec, f, v);
   }
 
   /** Makes the records from depth `i` to the top this step's own, re-linking parents. */
   ownFrom(i: i32): void {
-    const n = this.sp - i;
+    const n = indSub(this.sp, i);
     if (n > toI32(this.path.length)) {
       this.path = growI32(this.path, n);
     }
+    const path = this.path;
     let r = this.topRec;
     for (let k = 0; k < n; k++) {
-      this.path[k] = r;
-      r = uncheckedGet(this.rec, r * RS + RP);
+      if (k >= path.length) {
+        fault();
+        return;
+      }
+      path[k] = r;
+      r = indParent(this.rec, r);
     }
     // r is the parent of depth i's record; walk back up, copying what is shared.
     let parent = r;
-    for (let k = n - 1; k >= 0; k--) {
-      let x = this.path[k];
+    let k = n;
+    while (k > 0) {
+      k--;
+      if (k >= path.length) {
+        fault();
+        return;
+      }
+      let x = path[k];
       if (x < this.fresh0) {
         x = this.cloneRec(x);
       }
-      uncheckedSet(this.rec, x * RS + RP, parent);
-      this.path[k] = x;
+      indSetParent(this.rec, x, parent);
+      if (k >= path.length) {
+        fault();
+        return;
+      }
+      path[k] = x;
       parent = x;
     }
     this.topRec = parent;
@@ -531,28 +743,40 @@ export class Indenter {
       return;
     }
     this.ownFrom(i);
-    uncheckedSet(this.rec, this.path[this.sp - 1 - i] * RS + RF + f, v);
+    indSetField(this.rec, indAt(this.path, indSub(indSub(this.sp, 1), i)), f, v);
   }
 
   /** Sets flag `fl` on every level below the top (and the top too when `withTop`). */
   flagAll(fl: i32, withTop: boolean): void {
     // The lowest level missing the flag; nothing to do when none is.
     let lowest = -1;
+    const sp = this.sp;
+    const rec = this.rec;
     let r = this.topRec;
-    for (let k = 0; k < this.sp; k++) {
-      if ((k > 0 || withTop) && (uncheckedGet(this.rec, r * RS + RF + R_FL) & fl) === 0) {
-        lowest = this.sp - 1 - k;
+    for (let k = 0; k < sp; k++) {
+      if ((k > 0 || withTop) && (indField(rec, r, R_FL) & fl) === 0) {
+        lowest = indSub(indSub(sp, 1), k);
       }
-      r = uncheckedGet(this.rec, r * RS + RP);
+      r = indParent(rec, r);
     }
     if (lowest < 0) {
       return;
     }
     this.ownFrom(lowest);
-    const n = this.sp - lowest;
-    for (let k = withTop ? 0 : 1; k < n; k++) {
-      const x = this.path[k];
-      uncheckedSet(this.rec, x * RS + RF + R_FL, uncheckedGet(this.rec, x * RS + RF + R_FL) | fl);
+    const n = indSub(sp, lowest);
+    const path = this.path;
+    const rec2 = this.rec;
+    let k0 = 1;
+    if (withTop) {
+      k0 = 0;
+    }
+    for (let k = k0; k < n; k++) {
+      if (k >= path.length) {
+        fault();
+        return;
+      }
+      const x = path[k];
+      indSetField(rec2, x, R_FL, indField(rec2, x, R_FL) | fl);
     }
   }
 
@@ -567,35 +791,44 @@ export class Indenter {
 
   push(tok: i32, ind: i32, ls: i32, avoid: boolean, noLB: boolean): void {
     const r = this.newRec(this.topRec);
-    const o = r * RS + RF;
     const x = this.rec;
-    x[o + R_TOK] = tok;
-    x[o + R_IND] = ind;
-    x[o + R_LS] = ls;
-    x[o + R_NBI] = ind;
-    x[o + R_FLL] = 0;
-    x[o + R_QC] = 0;
-    x[o + R_SOFC] = 0;
-    x[o + R_SOAS] = 0;
-    x[o + R_CC] = 0;
-    x[o + R_VP] = 0;
-    x[o + R_COLON] = 0;
-    x[o + R_FL] = F_LOW | (avoid ? F_AVOID : 0) | (noLB ? F_NOLB : 0);
+    let ok = false;
+    if (r >= 0 && r < 153391689) {
+      const o = r * RS + RF;
+      if (o + 11 < x.length) {
+        x[o] = tok; // R_TOK
+        x[o + 1] = ind; // R_IND
+        x[o + 2] = ls; // R_LS
+        x[o + 3] = ind; // R_NBI
+        x[o + 4] = 0; // R_FLL
+        x[o + 5] = 0; // R_QC
+        x[o + 6] = 0; // R_SOFC
+        x[o + 7] = 0; // R_SOAS
+        x[o + 8] = 0; // R_CC
+        x[o + 9] = 0; // R_VP
+        x[o + 10] = 0; // R_COLON
+        x[o + 11] = F_LOW | (avoid ? F_AVOID : 0) | (noLB ? F_NOLB : 0); // R_FL
+        ok = true;
+      }
+    }
+    if (!ok) {
+      fault();
+    }
     this.topRec = r;
-    this.sp = this.sp + 1;
+    this.sp = indAdd(this.sp, 1);
   }
 
   /** Pushes a copy of the top record. */
   dupTop(): void {
     const c = this.cloneRec(this.topRec);
-    uncheckedSet(this.rec, c * RS + RP, this.topRec);
+    indSetParent(this.rec, c, this.topRec);
     this.topRec = c;
-    this.sp = this.sp + 1;
+    this.sp = indAdd(this.sp, 1);
   }
 
   pop(): void {
-    this.topRec = uncheckedGet(this.rec, this.topRec * RS + RP);
-    this.sp = this.sp - 1;
+    this.topRec = indParent(this.rec, this.topRec);
+    this.sp = indSub(this.sp, 1);
   }
 
   // ---- Snapshots ----------------------------------------------------------
@@ -604,24 +837,83 @@ export class Indenter {
   hashFresh(): void {
     let n = 0;
     let r = this.topRec;
-    while (r >= this.fresh0) {
+    const f0 = this.fresh0;
+    while (r >= f0) {
       if (n >= toI32(this.path.length)) {
-        this.path = growI32(this.path, n + 1);
+        this.path = growI32(this.path, indAdd(n, 1));
       }
-      this.path[n] = r;
+      const path = this.path;
+      if (n >= path.length) {
+        fault();
+        return;
+      }
+      path[n] = r;
       n++;
-      r = uncheckedGet(this.rec, r * RS + RP);
+      r = indParent(this.rec, r);
     }
-    for (let k = n - 1; k >= 0; k--) {
-      const x = this.path[k];
-      const p = uncheckedGet(this.rec, x * RS + RP);
-      let h = p >= 0 ? uncheckedGet(this.rec, p * RS + RH) : 0x2545f491;
-      const o = x * RS + RF;
-      for (let f = 1; f < PS - 1; f++) {
-        h = Math.imul(h ^ uncheckedGet(this.rec, o + f), 0x01000193);
+    const rec = this.rec;
+    const path = this.path;
+    let k = n;
+    while (k > 0) {
+      k--;
+      if (k >= path.length) {
+        fault();
+        return;
       }
-      h = Math.imul(h ^ (uncheckedGet(this.rec, o + R_FL) & F_CMP), 0x01000193);
-      uncheckedSet(this.rec, x * RS + RH, h);
+      const x = path[k];
+      const p = indParent(rec, x);
+      let h = 0x2545f491;
+      if (p >= 0) {
+        // The parent's hash, its RH.
+        if (p >= 153391689) {
+          fault();
+          return;
+        }
+        const ph = p * RS + RH;
+        if (ph >= rec.length) {
+          fault();
+          return;
+        }
+        h = rec[ph];
+      }
+      if (x < 0 || x >= 153391689) {
+        fault();
+        return;
+      }
+      const o = x * RS + RF;
+      if (o + 11 >= rec.length) {
+        fault();
+        return;
+      }
+      // The PS fields from R_IND (+1) to R_COLON (+10), then R_FL (+11); the
+      // record's own hash is its RH (-1).
+      const f1 = rec[o + 1];
+      const f2 = rec[o + 2];
+      const f3 = rec[o + 3];
+      const f4 = rec[o + 4];
+      const f5 = rec[o + 5];
+      const f6 = rec[o + 6];
+      const f7 = rec[o + 7];
+      const f8 = rec[o + 8];
+      const f9 = rec[o + 9];
+      const f10 = rec[o + 10];
+      const f11 = rec[o + 11] & F_CMP;
+      h = Math.imul(h ^ f1, 0x01000193);
+      h = Math.imul(h ^ f2, 0x01000193);
+      h = Math.imul(h ^ f3, 0x01000193);
+      h = Math.imul(h ^ f4, 0x01000193);
+      h = Math.imul(h ^ f5, 0x01000193);
+      h = Math.imul(h ^ f6, 0x01000193);
+      h = Math.imul(h ^ f7, 0x01000193);
+      h = Math.imul(h ^ f8, 0x01000193);
+      h = Math.imul(h ^ f9, 0x01000193);
+      h = Math.imul(h ^ f10, 0x01000193);
+      h = Math.imul(h ^ f11, 0x01000193);
+      if (o + 11 >= rec.length) {
+        fault();
+        return;
+      }
+      rec[o - 1] = h;
     }
   }
 
@@ -629,56 +921,68 @@ export class Indenter {
   save(): i32 {
     this.hashFresh();
     const o = this.pn;
-    if (o + H > toI32(this.pool.length)) {
-      this.pool = growI32(this.pool, (o + H) * 2);
+    const end = indAdd(o, H);
+    if (end > toI32(this.pool.length)) {
+      this.pool = growI32(this.pool, mul32(end, 2));
     }
     const p = this.pool;
-    uncheckedSet(p, o + S_COL, this.col);
-    uncheckedSet(p, o + S_NEXT, this.next);
-    uncheckedSet(p, o + S_NOCONT, this.noCont);
-    uncheckedSet(p, o + S_SOL, this.sol);
-    uncheckedSet(p, o + S_LOWEST, this.lowest);
-    uncheckedSet(p, o + S_SOSL, this.sosl);
-    uncheckedSet(p, o + S_NOLB, this.noLB);
-    uncheckedSet(p, o + S_DEPTH, this.sp);
-    uncheckedSet(p, o + S_TOP, this.topRec);
-    this.pn = o + H;
+    // The H header fields, S_COL (+0) to S_TOP (+8).
+    if (o >= 0 && o < p.length - 8) {
+      p[o] = this.col; // S_COL
+      p[o + 1] = this.next; // S_NEXT
+      p[o + 2] = this.noCont; // S_NOCONT
+      p[o + 3] = this.sol; // S_SOL
+      p[o + 4] = this.lowest; // S_LOWEST
+      p[o + 5] = this.sosl; // S_SOSL
+      p[o + 6] = this.noLB; // S_NOLB
+      p[o + 7] = this.sp; // S_DEPTH
+      p[o + 8] = this.topRec; // S_TOP
+    } else {
+      fault();
+    }
+    this.pn = end;
     this.fresh0 = this.nrec;
     return o;
   }
 
   load(o: i32): void {
     const p = this.pool;
-    this.col = uncheckedGet(p, o + S_COL);
-    this.next = uncheckedGet(p, o + S_NEXT);
-    this.noCont = uncheckedGet(p, o + S_NOCONT);
-    this.sol = uncheckedGet(p, o + S_SOL);
-    this.lowest = uncheckedGet(p, o + S_LOWEST);
-    this.sosl = uncheckedGet(p, o + S_SOSL);
-    this.noLB = uncheckedGet(p, o + S_NOLB);
-    this.sp = uncheckedGet(p, o + S_DEPTH);
-    this.topRec = uncheckedGet(p, o + S_TOP);
+    if (o >= 0 && o < p.length - 8) {
+      this.col = p[o]; // S_COL
+      this.next = p[o + 1]; // S_NEXT
+      this.noCont = p[o + 2]; // S_NOCONT
+      this.sol = p[o + 3]; // S_SOL
+      this.lowest = p[o + 4]; // S_LOWEST
+      this.sosl = p[o + 5]; // S_SOSL
+      this.noLB = p[o + 6]; // S_NOLB
+      this.sp = p[o + 7]; // S_DEPTH
+      this.topRec = p[o + 8]; // S_TOP
+    } else {
+      // No such state: nothing more to place.
+      fault();
+      this.next = -1;
+    }
     this.fresh0 = this.nrec;
   }
 
   // ---- Token helpers ------------------------------------------------------
 
   isStringLit(t: i32): boolean {
-    return this.d.kind[t] === K_STRING;
+    return indAt(this.d.kind, t) === K_STRING;
   }
 
   isIdent(t: i32): boolean {
-    const k = this.d.kind[t];
+    const k = indAt(this.d.kind, t);
     return k === K_IDENT || k >= 200;
   }
 
   startsNextParameter(t: i32): boolean {
-    const p = this.d.prv[t];
-    return p >= 0 && this.d.kind[p] === P_COMMA && !this.a.isTrailingComment(t);
+    const p = indLink(this.d.prv, t);
+    return p >= 0 && indAt(this.d.kind, p) === P_COMMA && !this.a.isTrailingComment(t);
   }
 
   startsBuilderSegment(t: i32): boolean {
-    const p = this.d.prv[t];
+    const p = indLink(this.d.prv, t);
     return this.a.isMemberAccess(t) && p >= 0 && this.a.closesScope(p);
   }
 
@@ -686,16 +990,16 @@ export class Indenter {
     const d = this.d;
     let q = t;
     while (q >= 0) {
-      if (d.kind[q] === P_RBRACE || d.kind[q] === P_LBRACE) {
-        const m = d.kind[q] === P_RBRACE ? d.match[q] : q;
-        if (m >= 0 && d.bk[m] === BK_BLOCK) {
+      if (indAt(d.kind, q) === P_RBRACE || indAt(d.kind, q) === P_LBRACE) {
+        const m = indAt(d.kind, q) === P_RBRACE ? indLink(d.match, q) : q;
+        if (m >= 0 && indAt(d.bk, m) === BK_BLOCK) {
           return true;
         }
       }
       if (!this.a.closesScope(q)) {
         return false;
       }
-      q = d.prv[q];
+      q = indLink(d.prv, q);
     }
     return false;
   }
@@ -706,45 +1010,51 @@ export class Indenter {
     if (t < 0) {
       return false;
     }
-    if (d.kind[t] === KW_IF) {
+    if (indAt(d.kind, t) === KW_IF) {
       return true;
     }
-    const p = d.prv[t];
-    return p >= 0 && d.kind[p] === KW_IF && (d.kind[t] === KW_CONSTEXPR || d.kind[t] === K_IDENT);
+    const p = indLink(d.prv, t);
+    return p >= 0 && indAt(d.kind, p) === KW_IF && (indAt(d.kind, t) === KW_CONSTEXPR || indAt(d.kind, t) === K_IDENT);
   }
 
   /** Width up to the first possible break after the bracket closing `t`'s. */
   lengthToMatchingParen(t: i32): i32 {
     const d = this.d;
     const a = this.a;
-    const m = d.match[t];
+    const m = indLink(d.match, t);
     if (m < 0) {
       return 0;
     }
     let end = m;
     let r = this.topRec;
-    while (end !== this.lineLast && d.nxt[end] >= 0) {
-      const n = d.nxt[end];
-      if (a.canB[n] === 1) {
+    const rec = this.rec;
+    while (end !== this.lineLast) {
+      const n = indLink(d.nxt, end);
+      if (n < 0) {
+        break;
+      }
+      if (indAt(a.canB, n) === 1) {
         break;
       }
       if (a.closesScope(n)) {
-        const nm = d.match[n];
+        const nm = indLink(d.match, n);
         if (
           nm >= 0 &&
-          (d.kind[nm] === P_LBRACE || d.type[nm] === TT_ARRAY_INITIALIZER_LSQUARE || d.kind[nm] === P_LESS)
+          (indAt(d.kind, nm) === P_LBRACE ||
+            indAt(d.type, nm) === TT_ARRAY_INITIALIZER_LSQUARE ||
+            indAt(d.kind, nm) === P_LESS)
         ) {
-          while (r >= 0 && uncheckedGet(this.rec, r * RS + RF + R_TOK) !== nm) {
-            r = uncheckedGet(this.rec, r * RS + RP);
+          while (r >= 0 && indField(rec, r, R_TOK) !== nm) {
+            r = indParent(rec, r);
           }
-          if (r >= 0 && (uncheckedGet(this.rec, r * RS + RF + R_FL) & F_BBCB) !== 0) {
+          if (r >= 0 && (indField(rec, r, R_FL) & F_BBCB) !== 0) {
             break;
           }
         }
       }
       end = n;
     }
-    return a.tot[end] - a.tot[t] + 1;
+    return indAdd(indSub(indAt(a.tot, end), indAt(a.tot, t)), 1);
   }
 
   // ---- Can, must, where ---------------------------------------------------
@@ -753,33 +1063,37 @@ export class Indenter {
     const d = this.d;
     const a = this.a;
     const cur = this.next;
-    const prev = d.prv[cur];
-    if (a.canB[cur] === 0 && !(this.topHas(F_BBCB) && a.closesBlockList(cur))) {
+    const prev = indLink(d.prv, cur);
+    if (indAt(a.canB, cur) === 0 && !(this.topHas(F_BBCB) && a.closesBlockList(cur))) {
       return false;
     }
-    const pk = d.kind[prev];
-    if (a.mustB[cur] === 0 && pk === P_LBRACE && d.bk[prev] === BK_BRACED_INIT) {
-      const pp = d.prv[prev];
-      if (pp >= 0 && (d.kind[pp] === P_LBRACE || d.kind[pp] === P_LPAREN || d.kind[pp] === P_COMMA)) {
+    const pk = indAt(d.kind, prev);
+    if (indAt(a.mustB, cur) === 0 && pk === P_LBRACE && indAt(d.bk, prev) === BK_BRACED_INIT) {
+      const pp = indLink(d.prv, prev);
+      if (
+        pp >= 0 &&
+        (indAt(d.kind, pp) === P_LBRACE || indAt(d.kind, pp) === P_LPAREN || indAt(d.kind, pp) === P_COMMA)
+      ) {
         return false;
       }
     }
-    if (a.opensScope(prev) && pk !== P_LBRACE && this.lowest < this.sol && this.lowest < a.nest[cur]) {
+    if (a.opensScope(prev) && pk !== P_LBRACE && this.lowest < this.sol && this.lowest < indAt(a.nest, cur)) {
       return false;
     }
     if (a.isMemberAccess(cur) && this.topHas(F_CUB)) {
       return false;
     }
-    if (pk === P_LBRACE && this.sp > 1) {
-      const fl = this.at(this.sp - 2, R_FL);
+    const sp = this.sp;
+    if (pk === P_LBRACE && sp > 1) {
+      const fl = this.at(sp - 2, R_FL);
       if ((fl & F_NBI) !== 0 && (fl & F_HMNB) !== 0) {
         return false;
       }
     }
-    if (d.type[cur] === TT_FUNCTION_DECLARATION_NAME && this.col < 6) {
+    if (indAt(d.type, cur) === TT_FUNCTION_DECLARATION_NAME && this.col < 6) {
       return false;
     }
-    if (!(d.type[cur] === TT_BINARY_OPERATOR || d.kind[cur] === P_COMMA) && this.topHas(F_NOLBOP)) {
+    if (!(indAt(d.type, cur) === TT_BINARY_OPERATOR || indAt(d.kind, cur) === P_COMMA) && this.topHas(F_NOLBOP)) {
       return false;
     }
     return this.noLB === 0 && !this.topHas(F_NOLB);
@@ -789,14 +1103,14 @@ export class Indenter {
     const d = this.d;
     const a = this.a;
     const cur = this.next;
-    const prev = d.prv[cur];
-    const ck = d.kind[cur];
-    const ct = d.type[cur];
-    const pk = d.kind[prev];
-    const pt = d.type[prev];
+    const prev = indLink(d.prv, cur);
+    const ck = indAt(d.kind, cur);
+    const ct = indAt(d.type, cur);
+    const pk = indAt(d.kind, prev);
+    const pt = indAt(d.type, prev);
     // BreakBeforeInlineASMColon OnlyMultiline: every operand colon of a
     // line that does not fit.
-    if (a.mustB[cur] === 1 || ct === TT_INLINE_ASM_COLON) {
+    if (indAt(a.mustB, cur) === 1 || ct === TT_INLINE_ASM_COLON) {
       return true;
     }
     if (this.topHas(F_BBCB) && a.closesBlockList(cur)) {
@@ -805,7 +1119,9 @@ export class Indenter {
     if (
       (this.startsNextParameter(cur) ||
         pk === P_SEMI ||
-        (pt === TT_TEMPLATE_CLOSER && ct === TT_START_OF_NAME && d.type[d.lFirst[this.line]] !== TT_ATTRIBUTE_SQUARE) ||
+        (pt === TT_TEMPLATE_CLOSER &&
+          ct === TT_START_OF_NAME &&
+          indAt(d.type, indLink(d.lFirst, this.line)) !== TT_ATTRIBUTE_SQUARE) ||
         (ct === TT_CONDITIONAL_EXPR && pk !== P_QUESTION)) &&
       this.topHas(F_BBP) &&
       !a.isTrailingComment(cur) &&
@@ -819,8 +1135,8 @@ export class Indenter {
     }
     if (
       ct === TT_CTOR_INITIALIZER_COLON &&
-      (this.col + a.tot[this.lineLast] - a.tot[prev] > this.lim || this.topHas(F_BBP)) &&
-      (!a.isTrailingComment(cur) || d.nl[cur] > 0)
+      (indSub(indAdd(this.col, indAt(a.tot, this.lineLast)), indAt(a.tot, prev)) > this.lim || this.topHas(F_BBP)) &&
+      (!a.isTrailingComment(cur) || indAt(d.nl, cur) > 0)
     ) {
       return true;
     }
@@ -829,7 +1145,7 @@ export class Indenter {
     if (
       ct === TT_OBJC_METHOD_EXPR &&
       pt !== TT_SELECTOR_NAME &&
-      d.type[d.lFirst[this.line]] === TT_OBJC_METHOD_SPECIFIER
+      indAt(d.type, indLink(d.lFirst, this.line)) === TT_OBJC_METHOD_SPECIFIER
     ) {
       return true;
     }
@@ -839,8 +1155,8 @@ export class Indenter {
     const nlc = this.newLineColumn();
     if (
       a.isMemberAccess(cur) &&
-      this.col + this.lengthToNextOperator(cur) > d.opts.columnLimit &&
-      (this.col > nlc || a.nest[cur] < this.sol)
+      indAdd(this.col, this.lengthToNextOperator(cur)) > d.opts.columnLimit &&
+      (this.col > nlc || indAt(a.nest, cur) < this.sol)
     ) {
       return true;
     }
@@ -851,30 +1167,30 @@ export class Indenter {
     ) {
       return true;
     }
-    if (a.ctd[prev] === 1 && this.topHas(F_BBP) && a.canB[cur] === 1) {
+    if (indAt(a.ctd, prev) === 1 && this.topHas(F_BBP) && indAt(a.canB, cur) === 1) {
       return true;
     }
-    if (d.kind[d.lFirst[this.line]] !== KW_ENUM && this.col <= nlc) {
+    if (indAt(d.kind, indLink(d.lFirst, this.line)) !== KW_ENUM && this.col <= nlc) {
       return false;
     }
-    if (pt === TT_BINARY_OPERATOR && a.canB[cur] === 1) {
+    if (pt === TT_BINARY_OPERATOR && indAt(a.canB, cur) === 1) {
       const pp = a.prec(prev);
       if (pp !== PREC_ASSIGNMENT && this.topHas(F_BBP) && !a.isTrailingComment(cur)) {
-        const lhs = d.prv[prev];
-        if (lhs >= 0 && a.ebin[lhs] === 1) {
+        const lhs = indLink(d.prv, prev);
+        if (lhs >= 0 && indAt(a.ebin, lhs) === 1) {
           return true;
         }
         const isCmp =
           (pp === PREC_RELATIONAL || pp === PREC_EQUALITY || pp === PREC_SPACESHIP) &&
           lhs >= 0 &&
-          d.type[lhs] !== TT_BINARY_OPERATOR;
+          indAt(d.type, lhs) !== TT_BINARY_OPERATOR;
         if (!isCmp) {
           return true;
         }
       }
     } else if (
       ct === TT_BINARY_OPERATOR &&
-      a.canB[cur] === 1 &&
+      indAt(a.canB, cur) === 1 &&
       a.prec(cur) !== PREC_ASSIGNMENT &&
       this.topHas(F_BBP)
     ) {
@@ -883,30 +1199,30 @@ export class Indenter {
     if (ck === P_LESSLESS && ct !== TT_OVERLOADED_OPERATOR && this.topHas(F_BBP) && this.top(R_FLL) === 0) {
       return true;
     }
-    if (a.nest[cur] === 0 && !a.isTrailingComment(cur)) {
-      if (a.ctd[prev] === 1) {
+    if (indAt(a.nest, cur) === 0 && !a.isTrailingComment(cur)) {
+      if (indAt(a.ctd, prev) === 1) {
         return true;
       }
-      if (pt === TT_FUNCTION_ANNOTATION_RPAREN && d.lType[this.line] !== LT_PREPROCESSOR) {
+      if (pt === TT_FUNCTION_ANNOTATION_RPAREN && indAt(d.lType, this.line) !== LT_PREPROCESSOR) {
         return true;
       }
     }
     if (
       ct === TT_FUNCTION_DECLARATION_NAME &&
       pk !== KW_TEMPLATE &&
-      d.lRetWrap[this.line] === 0 &&
+      indAt(d.lRetWrap, this.line) === 0 &&
       this.topHas(F_BBP)
     ) {
       // (clang-format 23: not past a line comment or an inner directive.)
-      return a.nbb[cur] === 0;
+      return indAt(a.nbb, cur) === 0;
     }
-    if (pk === P_LBRACE && d.bk[prev] === BK_BLOCK && ck !== P_RBRACE && ck !== K_COMMENT) {
+    if (pk === P_LBRACE && indAt(d.bk, prev) === BK_BLOCK && ck !== P_RBRACE && ck !== K_COMMENT) {
       return true;
     }
     if (ck === P_LESSLESS && this.endsLine(prev)) {
       return true;
     }
-    if (pt === TT_BLOCK_COMMENT && d.multi[prev] === 1) {
+    if (pt === TT_BLOCK_COMMENT && indAt(d.multi, prev) === 1) {
       return true;
     }
     return this.noCont === 1;
@@ -915,23 +1231,26 @@ export class Indenter {
   /** `endl`, or a literal ending in a `\n`. */
   endsLine(t: i32): boolean {
     const d = this.d;
-    const k = d.kind[t];
-    if (
-      k === K_IDENT &&
-      d.len(t) === 4 &&
-      d.at(d.start[t]) === 101 &&
-      d.at(d.start[t] + 1) === 110 &&
-      d.at(d.start[t] + 2) === 100 &&
-      d.at(d.start[t] + 3) === 108
-    ) {
-      return true;
-    }
-    if (k === K_STRING || k === K_CHAR || k === K_NUMBER) {
-      const e = d.end[t];
-      if (k === K_STRING && e - d.start[t] >= 3 && d.at(e - 1) === 34 && d.at(e - 2) === 110 && d.at(e - 3) === 92) {
+    const k = indAt(d.kind, t);
+    if (k === K_IDENT && d.len(t) === 4) {
+      const s = indAt(d.start, t);
+      if (d.at(s) === 101 && d.at(indAdd(s, 1)) === 110 && d.at(indAdd(s, 2)) === 100 && d.at(indAdd(s, 3)) === 108) {
         return true;
       }
-      if (k === K_CHAR && e - d.start[t] === 4 && d.at(d.start[t] + 1) === 92 && d.at(d.start[t] + 2) === 110) {
+    }
+    if (k === K_STRING || k === K_CHAR || k === K_NUMBER) {
+      const e = indAt(d.end, t);
+      const s = indAt(d.start, t);
+      if (
+        k === K_STRING &&
+        indSub(e, s) >= 3 &&
+        d.at(indSub(e, 1)) === 34 &&
+        d.at(indSub(e, 2)) === 110 &&
+        d.at(indSub(e, 3)) === 92
+      ) {
+        return true;
+      }
+      if (k === K_CHAR && indSub(e, s) === 4 && d.at(indAdd(s, 1)) === 92 && d.at(indAdd(s, 2)) === 110) {
         return true;
       }
     }
@@ -939,8 +1258,8 @@ export class Indenter {
   }
 
   lengthToNextOperator(t: i32): i32 {
-    const n = this.a.nextOp[t];
-    return n < 0 ? 0 : this.a.tot[n] - this.a.tot[t];
+    const n = indLink(this.a.nextOp, t);
+    return n < 0 ? 0 : indSub(indAt(this.a.tot, n), indAt(this.a.tot, t));
   }
 
   /**
@@ -950,21 +1269,21 @@ export class Indenter {
    */
   selectorColumn(cur: i32, ind: i32): i32 {
     const d = this.d;
-    const w = d.width[cur];
+    const w = indAt(d.width, cur);
     if (!this.topHas(F_OSNF)) {
       let minInd = ind;
-      const ci = this.firstIndent + d.opts.continuationIndent;
-      if (d.type[d.lFirst[this.line]] === TT_OBJC_METHOD_SPECIFIER && ci > minInd) {
+      const ci = indAdd(this.firstIndent, d.opts.continuationIndent);
+      if (indAt(d.type, indLink(d.lFirst, this.line)) === TT_OBJC_METHOD_SPECIFIER && ci > minInd) {
         minInd = ci;
       }
       const longest = this.longestSelector(cur);
-      return minInd + (longest > w ? longest : w) - w;
+      return indSub(indAdd(minInd, longest > w ? longest : w), w);
     }
     if (this.topHas(F_NOALIGN)) {
       return ind;
     }
     const cp = this.top(R_COLON);
-    return cp > w ? cp - w : ind;
+    return cp > w ? indSub(cp, w) : ind;
   }
 
   /**
@@ -975,15 +1294,15 @@ export class Indenter {
   longestSelector(t: i32): i32 {
     const d = this.d;
     const a = this.a;
-    const f = d.lFirst[this.line];
-    if (d.type[f] !== TT_OBJC_METHOD_SPECIFIER) {
+    const f = indLink(d.lFirst, this.line);
+    if (indAt(d.type, f) !== TT_OBJC_METHOD_SPECIFIER) {
       return 0;
     }
-    const lv = a.nest[t];
+    const lv = indAt(a.nest, t);
     let first = -1;
     let longest = 0;
-    for (let q = f; q >= 0; q = d.nxt[q]) {
-      if (d.type[q] !== TT_SELECTOR_NAME || a.nest[q] !== lv) {
+    for (let q = f; q >= 0; q = indLink(d.nxt, q)) {
+      if (indAt(d.type, q) !== TT_SELECTOR_NAME || indAt(a.nest, q) !== lv) {
         continue;
       }
       if (first < 0) {
@@ -991,8 +1310,8 @@ export class Indenter {
         if (q !== t) {
           return 0;
         }
-      } else if (d.width[q] > longest) {
-        longest = d.width[q];
+      } else if (indAt(d.width, q) > longest) {
+        longest = indAt(d.width, q);
       }
     }
     return longest;
@@ -1000,25 +1319,41 @@ export class Indenter {
 
   newLineColumn(): i32 {
     const cur = this.next;
-    if (cur < 0 || uncheckedGet(this.d.prv, cur) < 0) {
+    if (cur < 0 || indLink(this.d.prv, cur) < 0) {
       return 0;
     }
-    const r = uncheckedGet(this.a.nlc, cur);
+    const r = indAt(this.a.nlc, cur);
     const rc = this.rec;
-    const o = this.topRec * RS + RF;
-    const ind = uncheckedGet(rc, o + R_IND);
-    const ls = uncheckedGet(rc, o + R_LS);
-    const ci = (ls > ind ? ls : ind) + this.d.opts.continuationIndent;
+    const tr = this.topRec;
+    if (tr < 0 || tr >= 153391689) {
+      fault();
+      return 0;
+    }
+    const o = tr * RS + RF;
+    if (o + 11 >= rc.length) {
+      fault();
+      return 0;
+    }
+    // The top record's fields, at o + R_*.
+    const ind = rc[o + 1];
+    const ls = rc[o + 2];
+    const fll = rc[o + 4];
+    const qc = rc[o + 5];
+    const soas = rc[o + 7];
+    const cc = rc[o + 8];
+    const vp = rc[o + 9];
+    const fl = rc[o + 11];
+    const parent = rc[o - 2];
+    const ci = indAdd(ls > ind ? ls : ind, this.d.opts.continuationIndent);
     if ((r & N_BLOCK) !== 0) {
-      return uncheckedGet(this.a.nest, cur) === 0 ? this.firstIndent : ind;
+      return indAt(this.a.nest, cur) === 0 ? this.firstIndent : ind;
     }
     if ((r & N_LARROW) !== 0) {
       return ci;
     }
     if ((r & N_CLOSEBR) !== 0 && this.sp > 1) {
-      const b = uncheckedGet(rc, this.topRec * RS + RP) * RS + RF;
       if ((r & N_CLOSEBL) !== 0) {
-        return uncheckedGet(rc, b + R_NBI);
+        return indField(rc, parent, R_NBI);
       }
       if ((r & N_BRINIT) !== 0) {
         // At the top level, or right inside an assignment, the brace lines
@@ -1029,59 +1364,54 @@ export class Indenter {
         ) {
           return this.firstIndent;
         }
-        return uncheckedGet(rc, b + R_LS);
+        return indField(rc, parent, R_LS);
       }
       return this.firstIndent;
     }
     if ((r & N_RPAREN) !== 0 && this.sp > 1) {
-      return uncheckedGet(rc, uncheckedGet(rc, this.topRec * RS + RP) * RS + RF + R_LS);
+      return indField(rc, parent, R_LS);
     }
     if ((r & N_STRING) !== 0 && this.sosl !== 0) {
       return this.sosl;
     }
-    if (uncheckedGet(this.d.type, cur) === TT_SELECTOR_NAME) {
+    if (indAt(this.d.type, cur) === TT_SELECTOR_NAME) {
       return this.selectorColumn(cur, ind);
     }
     if ((r & N_LESSLESS) !== 0) {
-      const fll = uncheckedGet(rc, o + R_FLL);
       if (fll !== 0) {
         return fll;
       }
     }
     if ((r & N_MEMBER) !== 0) {
-      const cc = uncheckedGet(rc, o + R_CC);
       return cc === 0 ? ci : cc;
     }
     if ((r & N_QC) !== 0) {
-      const qc = uncheckedGet(rc, o + R_QC);
       if (qc !== 0) {
-        if ((r & N_QCIND) !== 0 && (uncheckedGet(rc, o + R_FL) & F_IWC) === 0) {
-          return ind - this.d.opts.continuationIndent;
+        if ((r & N_QCIND) !== 0 && (fl & F_IWC) === 0) {
+          return indSub(ind, this.d.opts.continuationIndent);
         }
         return qc;
       }
     }
     if ((r & N_COMMA) !== 0) {
-      const vp = uncheckedGet(rc, o + R_VP);
       if (vp !== 0) {
         return vp;
       }
     }
     if ((r & N_RQC) !== 0) {
-      return ind + this.d.opts.indentWidth;
+      return indAdd(ind, this.d.opts.indentWidth);
     }
     if ((r & N_CTORCOL) !== 0) {
-      return this.firstIndent + 4;
+      return indAdd(this.firstIndent, 4);
     }
     if ((r & N_MAXLSIND) !== 0) {
       return ls > ind ? ls : ind;
     }
     if ((r & N_SUBSCRIPT) !== 0) {
-      const so = uncheckedGet(rc, o + R_SOAS);
-      return so !== 0 ? so : ci;
+      return soas !== 0 ? soas : ci;
     }
     if ((r & N_OMP) !== 0) {
-      return ind + this.d.opts.continuationIndent;
+      return indAdd(ind, this.d.opts.continuationIndent);
     }
     if ((r & N_CI) !== 0) {
       return ci;
@@ -1093,15 +1423,15 @@ export class Indenter {
       return ci;
     }
     if ((r & N_PNCOK) !== 0 && ind === this.firstIndent) {
-      return ind + this.d.opts.continuationIndent;
+      return indAdd(ind, this.d.opts.continuationIndent);
     }
     return ind;
   }
 
   /** The outermost implicit paren starting at `t`, or -1. */
   outerFake(t: i32): i32 {
-    const h = this.a.fkHead[t];
-    return h < 0 ? -1 : this.a.fkPrec[h];
+    const h = indLink(this.a.fkHead, t);
+    return h < 0 ? -1 : indAt(this.a.fkPrec, h);
   }
 
   // ---- Steps ----------------------------------------------------------------
@@ -1114,7 +1444,7 @@ export class Indenter {
     } else {
       this.addOnCurrentLine(extra);
     }
-    return this.moveToNext(newline) + pen;
+    return indAdd64(this.moveToNext(newline), pen);
   }
 
   addOnCurrentLine(extra: i32): void {
@@ -1124,7 +1454,7 @@ export class Indenter {
     // An implicit string literal keeps the whitespace before it as written:
     // after a newline in it, the column is the written one (clang-format's
     // 1-based spelling column).
-    if (d.anyImplicit && d.type[cur] === TT_IMPLICIT_STRING_LITERAL) {
+    if (d.anyImplicit && indAt(d.type, cur) === TT_IMPLICIT_STRING_LITERAL) {
       this.col = implicitColumn(d, cur, this.col);
       const fm0 = this.fm;
       if (!this.dry && fm0 !== null) {
@@ -1132,32 +1462,32 @@ export class Indenter {
       }
       return;
     }
-    const r = uncheckedGet(a.cf, cur);
+    const r = indAt(a.cf, cur);
     if ((r & C_NOLB) !== 0) {
       this.noLB = 1;
     }
     if ((r & C_VP) !== 0 && this.top(R_VP) === 0) {
       let vp = this.col;
-      let tk = d.prv[cur];
-      while (tk >= 0 && vp >= d.width[tk]) {
-        vp = vp - d.width[tk];
-        if (d.spaces[tk] !== 0) {
+      let tk = indLink(d.prv, cur);
+      while (tk >= 0 && vp >= indAt(d.width, tk)) {
+        vp = indSub(vp, indAt(d.width, tk));
+        if (indAt(d.spaces, tk) !== 0) {
           break;
         }
-        tk = d.prv[tk];
+        tk = indLink(d.prv, tk);
       }
       this.setTop(R_VP, vp);
-      if (a.pmv[d.prv[cur]] === 1) {
+      if (indAt(a.pmv, indLink(d.prv, cur)) === 1) {
         this.setTop(R_LS, vp);
       }
     }
-    const spaces = d.spaces[cur] + extra;
+    const spaces = indAdd(indAt(d.spaces, cur), extra);
     const fm = this.fm;
     if (!this.dry && fm !== null) {
-      fm.emit(cur, 0, this.col + spaces);
+      fm.emit(cur, 0, indAdd(this.col, spaces));
     }
     if ((r & C_ALIGN) !== 0) {
-      this.setTop(R_IND, this.col + spaces);
+      this.setTop(R_IND, indAdd(this.col, spaces));
       this.setTopFlag(F_ALIGNED, true);
     }
     if ((r & C_NEXTPARAM) !== 0 && this.topHas(F_AVOID)) {
@@ -1172,20 +1502,21 @@ export class Indenter {
     if ((r & C_NOLBOP) !== 0 || ((r & C_NOLBOP_LOW) !== 0 && !this.topHas(F_LOW))) {
       this.setTopFlag(F_NOLBOP, true);
     }
-    if (d.type[cur] === TT_SELECTOR_NAME && !this.topHas(F_OSNF)) {
+    if (indAt(d.type, cur) === TT_SELECTOR_NAME && !this.topHas(F_OSNF)) {
       // The first selector part on the line sets where the colons align.
-      const ci = this.firstIndent + d.opts.continuationIndent;
+      const ci = indAdd(this.firstIndent, d.opts.continuationIndent);
       const ind = this.top(R_IND);
       const minInd = ci > ind ? ci : ind;
-      const firstColon = this.col + spaces + d.width[cur];
+      const firstColon = indAdd(indAdd(this.col, spaces), indAt(d.width, cur));
       const longest = this.longestSelector(cur);
       if (longest === 0) {
         this.setTopFlag(F_NOALIGN, true);
       } else {
-        this.setTop(R_COLON, minInd + longest > firstColon ? minInd + longest : firstColon);
+        const ml = indAdd(minInd, longest);
+        this.setTop(R_COLON, ml > firstColon ? ml : firstColon);
       }
     }
-    this.col = this.col + spaces;
+    this.col = indAdd(this.col, spaces);
     const ls = (r >> C_LS_SHIFT) & 7;
     if (ls === 1) {
       this.setTop(R_LS, this.col);
@@ -1196,7 +1527,8 @@ export class Indenter {
       this.setTop(R_IND, this.col);
       this.setTop(R_LS, this.col);
     } else if (ls === 4) {
-      if (this.sp > 1 && this.at(this.sp - 2, R_CC) === 0) {
+      const sp = this.sp;
+      if (sp > 1 && this.at(sp - 2, R_CC) === 0) {
         this.setTop(R_LS, this.col);
       }
     }
@@ -1205,17 +1537,17 @@ export class Indenter {
   /** The last comma directly inside the bracket `o`, or -1. */
   lastComma(o: i32): i32 {
     const d = this.d;
-    const c = d.match[o];
+    const c = indLink(d.match, o);
     if (c < 0) {
       return -1;
     }
     let last = -1;
-    for (let t = d.nxt[o]; t >= 0 && t !== c; t = d.nxt[t]) {
-      if (this.a.opensScope(t) && d.match[t] > t) {
-        t = d.match[t];
+    for (let t = indLink(d.nxt, o); t >= 0 && t !== c; t = indLink(d.nxt, t)) {
+      if (this.a.opensScope(t) && indLink(d.match, t) > t) {
+        t = indLink(d.match, t);
         continue;
       }
-      if (d.kind[t] === P_COMMA) {
+      if (indAt(d.kind, t) === P_COMMA) {
         last = t;
       }
     }
@@ -1226,7 +1558,7 @@ export class Indenter {
     const d = this.d;
     const a = this.a;
     const cur = this.next;
-    const prev = d.prv[cur];
+    const prev = indLink(d.prv, cur);
     let pen: i64 = 0;
     const pnc = a.prevNonComment(cur);
     let nnc = a.nextNonComment(prev);
@@ -1237,34 +1569,34 @@ export class Indenter {
       pen = pen + 15;
     }
     this.setTopFlag(F_CLB, true);
-    pen = pen + toI64(a.pen[cur]);
+    pen = indAdd64(pen, toI64(indAt(a.pen, cur)));
     if (
-      d.kind[nnc] === P_LESSLESS &&
+      indAt(d.kind, nnc) === P_LESSLESS &&
       this.top(R_FLL) === 0 &&
       (this.col <= d.opts.columnLimit / 3 || this.topHas(F_BBP))
     ) {
-      pen = pen + toI64(PEN_FIRST_LESSLESS);
+      pen = indAdd64(pen, toI64(PEN_FIRST_LESSLESS));
     }
     this.col = this.newLineColumn();
-    if (d.type[nnc] === TT_SELECTOR_NAME) {
-      const w = d.width[nnc];
+    if (indAt(d.type, nnc) === TT_SELECTOR_NAME) {
+      const w = indAt(d.width, nnc);
       if (!this.topHas(F_OSNF)) {
         const longest = this.longestSelector(nnc);
         if (longest === 0) {
           this.setTopFlag(F_NOALIGN, true);
         } else {
           let base = this.top(R_IND);
-          const ci = this.firstIndent + d.opts.continuationIndent;
-          if (d.type[d.lFirst[this.line]] === TT_OBJC_METHOD_SPECIFIER && ci > base) {
+          const ci = indAdd(this.firstIndent, d.opts.continuationIndent);
+          if (indAt(d.type, indLink(d.lFirst, this.line)) === TT_OBJC_METHOD_SPECIFIER && ci > base) {
             base = ci;
           }
-          this.setTop(R_COLON, base + (longest > w ? longest : w));
+          this.setTop(R_COLON, indAdd(base, longest > w ? longest : w));
         }
       } else if (!this.topHas(F_NOALIGN) && this.top(R_COLON) <= w) {
-        this.setTop(R_COLON, this.col + w);
+        this.setTop(R_COLON, indAdd(this.col, w));
       }
     }
-    if (d.type[cur] !== TT_LAMBDA_ARROW) {
+    if (indAt(d.type, cur) !== TT_LAMBDA_ARROW) {
       this.setTop(R_NBI, this.col);
     }
     if (a.isMemberAccess(nnc)) {
@@ -1272,34 +1604,34 @@ export class Indenter {
         this.setTop(R_CC, this.col);
       }
     }
-    const pnk = pnc >= 0 ? d.kind[pnc] : -1;
-    const pnt = pnc >= 0 ? d.type[pnc] : -1;
+    const pnk = pnc >= 0 ? indAt(d.kind, pnc) : -1;
+    const pnt = pnc >= 0 ? indAt(d.type, pnc) : -1;
     if (
       (pnc >= 0 && (pnk === P_COMMA || pnk === P_SEMI) && !this.topHas(F_AVOID)) ||
-      d.type[prev] === TT_BINARY_OPERATOR
+      indAt(d.type, prev) === TT_BINARY_OPERATOR
     ) {
       this.setTopFlag(F_BBP, false);
     }
-    if (pnc >= 0 && (pnt === TT_TEMPLATE_CLOSER || a.crc[pnc] === 1) && a.nest[cur] === 0) {
+    if (pnc >= 0 && (pnt === TT_TEMPLATE_CLOSER || indAt(a.crc, pnc) === 1) && indAt(a.nest, cur) === 0) {
       this.setTopFlag(F_BBP, false);
     }
-    if (d.kind[nnc] === P_QUESTION || pnk === P_QUESTION) {
+    if (indAt(d.kind, nnc) === P_QUESTION || pnk === P_QUESTION) {
       this.setTopFlag(F_BBP, true);
     }
-    if (d.type[cur] === TT_BINARY_OPERATOR && a.canB[cur] === 1) {
+    if (indAt(d.type, cur) === TT_BINARY_OPERATOR && indAt(a.canB, cur) === 1) {
       this.setTopFlag(F_BBP, false);
     }
     if (!this.dry) {
-      let nls = d.nl[cur];
+      let nls = indAt(d.nl, cur);
       if (nls > 2) {
         nls = 2;
       }
       if (nls < 1) {
         nls = 1;
       }
-      if (d.kind[cur] === P_RBRACE) {
-        const m = d.match[cur];
-        if (m >= 0 && d.childHead[m] >= 0) {
+      if (indAt(d.kind, cur) === P_RBRACE) {
+        const m = indLink(d.match, cur);
+        if (m >= 0 && indLink(d.childHead, m) >= 0) {
           nls = 1;
         }
       }
@@ -1311,14 +1643,16 @@ export class Indenter {
     if (!a.isTrailingComment(cur)) {
       this.setTop(R_LS, this.col);
     }
-    if (d.kind[cur] === P_LESSLESS) {
-      this.setTop(R_LS, this.top(R_LS) + 3);
+    if (indAt(d.kind, cur) === P_LESSLESS) {
+      this.setTop(R_LS, indAdd(this.top(R_LS), 3));
     }
-    this.sol = a.nest[cur];
-    this.lowest = a.nest[cur];
+    this.sol = indAt(a.nest, cur);
+    this.lowest = indAt(a.nest, cur);
     // Any break means the levels around have broken (clang-format's
     // NestedBlockSpecialCase: not for the `}` of a requires expression).
-    if (!(d.kind[cur] === P_RBRACE && d.match[cur] >= 0 && requiresExprBrace(d, d.match[cur]))) {
+    if (
+      !(indAt(d.kind, cur) === P_RBRACE && indLink(d.match, cur) >= 0 && requiresExprBrace(d, indLink(d.match, cur)))
+    ) {
       this.flagAll(F_BBP, false);
     }
     if (
@@ -1326,10 +1660,10 @@ export class Indenter {
       pnk !== P_COMMA &&
       pnk !== P_COLON &&
       pnk !== P_SEMI &&
-      ((pnt !== TT_TEMPLATE_CLOSER && a.crc[pnc] === 0) || a.nest[cur] !== 0) &&
+      ((pnt !== TT_TEMPLATE_CLOSER && indAt(a.crc, pnc) === 0) || indAt(a.nest, cur) !== 0) &&
       pnt !== TT_BINARY_OPERATOR &&
       pnt !== TT_FUNCTION_ANNOTATION_RPAREN &&
-      d.type[cur] !== TT_BINARY_OPERATOR &&
+      indAt(d.type, cur) !== TT_BINARY_OPERATOR &&
       !a.opensScope(pnc)
     ) {
       this.setTopFlag(F_BBP, true);
@@ -1338,8 +1672,8 @@ export class Indenter {
       this.setTopFlag(F_BBCB, true);
     }
     if (this.topHas(F_AVOID)) {
-      const pk = d.kind[prev];
-      if (!(pk === P_LPAREN || pk === P_LBRACE || d.type[prev] === TT_BINARY_OPERATOR)) {
+      const pk = indAt(d.kind, prev);
+      if (!(pk === P_LPAREN || pk === P_LBRACE || indAt(d.type, prev) === TT_BINARY_OPERATOR)) {
         this.setTopFlag(F_BBP, true);
       }
     }
@@ -1350,8 +1684,8 @@ export class Indenter {
     const d = this.d;
     const a = this.a;
     const cur = this.next;
-    const mf = uncheckedGet(a.mf, cur);
-    if (d.type[cur] === TT_SELECTOR_NAME) {
+    const mf = indAt(a.mf, cur);
+    if (indAt(d.type, cur) === TT_SELECTOR_NAME) {
       this.setTopFlag(F_OSNF, true);
     }
     if ((mf & M_NOLBOP_CLR) !== 0) {
@@ -1380,33 +1714,34 @@ export class Indenter {
       this.setTop(R_QC, this.col);
     }
     if ((mf & M_LOWEST) !== 0) {
-      const nst = uncheckedGet(a.nest, cur);
+      const nst = indAt(a.nest, cur);
       if (nst < this.lowest) {
         this.lowest = nst;
       }
     }
     if ((mf & M_MEMBER) !== 0) {
-      this.setTop(R_SOFC, a.nextOp[cur] < 0 ? 0 : this.col);
+      this.setTop(R_SOFC, indLink(a.nextOp, cur) < 0 ? 0 : this.col);
     }
     if ((mf & M_CTORCOLON) !== 0) {
-      this.setTop(R_IND, this.col + 2);
+      this.setTop(R_IND, indAdd(this.col, 2));
       this.setTop(R_NBI, this.top(R_IND));
       this.setTopFlag(F_BBP, false);
     }
     if ((mf & M_INHCOLON) !== 0) {
-      this.setTop(R_IND, this.firstIndent + 4);
+      this.setTop(R_IND, indAdd(this.firstIndent, 4));
     }
     if ((mf & M_NBINL) !== 0 && newline) {
-      this.setTop(R_NBI, this.col + d.width[cur] + 1);
+      this.setTop(R_NBI, indAdd(indAdd(this.col, indAt(d.width, cur)), 1));
     }
     if ((mf & M_LSSET) !== 0) {
       this.setTop(R_LS, this.col);
     }
-    if ((mf & M_AFTERBRACE) !== 0 && this.sp > 1 && !this.topHas(F_HMNB)) {
-      if ((this.at(this.sp - 2, R_FL) & F_NBI) !== 0 && newline) {
+    const sp = this.sp;
+    if ((mf & M_AFTERBRACE) !== 0 && sp > 1 && !this.topHas(F_HMNB)) {
+      if ((this.at(sp - 2, R_FL) & F_NBI) !== 0 && newline) {
         this.flagAll(F_NOLB, false);
       }
-      this.setAt(this.sp - 2, R_FL, this.at(this.sp - 2, R_FL) & ~F_NBI);
+      this.setAt(sp - 2, R_FL, this.at(sp - 2, R_FL) & ~F_NBI);
     }
     if ((mf & M_NBIPREV) !== 0) {
       this.setTopFlag(F_NBI, !newline && (mf & M_NBIINL) !== 0);
@@ -1431,19 +1766,19 @@ export class Indenter {
     } else if ((mf & M_SOSLRESET) !== 0) {
       this.sosl = 0;
     }
-    this.col = this.col + (d.kind[cur] !== K_COMMENT ? d.width[cur] : this.widthAt(cur, this.col));
-    this.next = cur === this.lineLast ? -1 : d.nxt[cur];
+    this.col = indAdd(this.col, indAt(d.kind, cur) !== K_COMMENT ? indAt(d.width, cur) : this.widthAt(cur, this.col));
+    this.next = cur === this.lineLast ? -1 : indLink(d.nxt, cur);
     let pen: i64 = 0;
     if ((mf & M_EOL) !== 0) {
       pen = this.endOfLine(cur, allowBreak);
     } else if (this.col > this.lim) {
-      pen = PEN_EXCESS * toI64(this.col - this.lim);
+      pen = PEN_EXCESS * toI64(indSub(this.col, this.lim));
     }
     if ((mf & M_ROLEAVOID) !== 0) {
       this.setTopFlag(F_AVOID, true);
     }
     if ((mf & M_PREVROLE) !== 0) {
-      pen = pen + this.formatListAfter(a.pnc[cur], cur);
+      pen = indAdd64(pen, this.formatListAfter(indLink(a.pnc, cur), cur));
     }
     return pen;
   }
@@ -1452,25 +1787,25 @@ export class Indenter {
     const d = this.d;
     const a = this.a;
     const cur = this.next;
-    let node = a.fkHead[cur];
+    let node = indLink(a.fkHead, cur);
     if (node < 0) {
       return;
     }
     const prev = a.prevNonComment(cur);
     let skipFirst = false;
     if (prev >= 0) {
-      const pk = d.kind[prev];
+      const pk = indAt(d.kind, prev);
       skipFirst =
         a.opensScope(prev) ||
         pk === P_SEMI ||
         pk === KW_RETURN ||
-        a.rqc[prev] === 1 ||
+        indAt(a.rqc, prev) === 1 ||
         a.prec(prev) === PREC_ASSIGNMENT;
     }
     const trailing = a.isTrailingComment(cur);
     let first = true;
     while (node >= 0) {
-      const p = a.fkPrec[node];
+      const p = indAt(a.fkPrec, node);
       const topNoLbop = this.topHas(F_NOLBOP);
       const topLs = this.top(R_LS);
       const topIwc = this.topHas(F_IWC);
@@ -1485,7 +1820,7 @@ export class Indenter {
         fl = fl & ~F_AVOID;
       }
       this.setTop(R_TOK, fakeTok(p));
-      if (!trailing && (prev < 0 || d.kind[prev] !== KW_RETURN || p > 0)) {
+      if (!trailing && (prev < 0 || indAt(d.kind, prev) !== KW_RETURN || p > 0)) {
         let ind = this.top(R_IND);
         if (this.col > ind) {
           ind = this.col;
@@ -1499,18 +1834,19 @@ export class Indenter {
       // from the state around the keyword's parenthesis, not under it
       // (clang-format 23: `Stack[size - 2].Indent + ContinuationIndentWidth`;
       // `dupTop` has pushed the new state, so that one is `sp - 3`).
-      if (prev >= 0 && d.kind[prev] === P_LPAREN && this.sp > 2) {
+      const sp = this.sp;
+      if (prev >= 0 && indAt(d.kind, prev) === P_LPAREN && sp > 2) {
         const gk = a.prevNonComment(prev);
-        if (gk >= 0 && d.kind[gk] === KW_GENERIC) {
-          this.setTop(R_IND, this.at(this.sp - 3, R_IND) + d.opts.continuationIndent);
+        if (gk >= 0 && indAt(d.kind, gk) === KW_GENERIC) {
+          this.setTop(R_IND, indAdd(this.at(sp - 3, R_IND), d.opts.continuationIndent));
         }
       }
       if (
         (this.unindentNext(cur) ||
           (prev >= 0 &&
             p === PREC_CONDITIONAL &&
-            d.kind[prev] === P_QUESTION &&
-            d.type[prev] === TT_CONDITIONAL_EXPR)) &&
+            indAt(d.kind, prev) === P_QUESTION &&
+            indAt(d.type, prev) === TT_CONDITIONAL_EXPR)) &&
         !newline
       ) {
         fl = fl | F_ALIGNED;
@@ -1518,20 +1854,20 @@ export class Indenter {
       if (p > PREC_UNKNOWN && this.col > this.top(R_LS)) {
         this.setTop(R_LS, this.col);
       }
-      if (p !== PREC_CONDITIONAL && d.type[cur] !== TT_UNARY_OPERATOR) {
+      if (p !== PREC_CONDITIONAL && indAt(d.type, cur) !== TT_UNARY_OPERATOR) {
         this.setTop(R_SOFC, this.col);
       }
       if (
         p === PREC_CONDITIONAL &&
         prev >= 0 &&
-        d.kind[prev] === P_COLON &&
-        d.type[prev] === TT_CONDITIONAL_EXPR &&
+        indAt(d.kind, prev) === P_COLON &&
+        indAt(d.type, prev) === TT_CONDITIONAL_EXPR &&
         first &&
         !topIwc
       ) {
         fl = fl | F_ICC;
       } else if (p === PREC_CONDITIONAL || (!skipFirst && p > PREC_ASSIGNMENT && !trailing)) {
-        this.setTop(R_IND, this.top(R_IND) + d.opts.continuationIndent);
+        this.setTop(R_IND, indAdd(this.top(R_IND), d.opts.continuationIndent));
       }
       if ((prev >= 0 && !a.opensScope(prev)) || p !== PREC_COMMA) {
         fl = fl & ~F_BBP;
@@ -1539,17 +1875,20 @@ export class Indenter {
       this.setTop(R_FL, fl);
       skipFirst = false;
       first = false;
-      node = a.fkNext[node];
+      node = indLink(a.fkNext, node);
     }
   }
 
   unindentNext(t: i32): boolean {
     const p = this.a.prevNonComment(t);
-    return p >= 0 && (this.a.prec(p) === PREC_ASSIGNMENT || this.d.kind[p] === KW_RETURN || this.a.rqc[p] === 1);
+    return (
+      p >= 0 &&
+      (this.a.prec(p) === PREC_ASSIGNMENT || indAt(this.d.kind, p) === KW_RETURN || indAt(this.a.rqc, p) === 1)
+    );
   }
 
   pastFakeR(): void {
-    const n = this.a.fakeR[this.next];
+    const n = indAt(this.a.fakeR, this.next);
     for (let i = 0; i < n; i++) {
       const vp = this.top(R_VP);
       if (this.sp === 1) {
@@ -1558,8 +1897,8 @@ export class Indenter {
       this.pop();
       this.setTop(R_VP, vp);
     }
-    if (this.a.crc[this.next] === 1) {
-      this.setTop(R_LS, this.top(R_LS) - this.d.opts.indentWidth);
+    if (indAt(this.a.crc, this.next) === 1) {
+      this.setTop(R_LS, indSub(this.top(R_LS), this.d.opts.indentWidth));
     }
   }
 
@@ -1570,9 +1909,9 @@ export class Indenter {
     if (!a.opensScope(cur)) {
       return;
     }
-    if (d.match[cur] >= 0 && d.kind[cur] === P_LBRACE && d.bk[cur] === BK_BLOCK) {
+    if (indLink(d.match, cur) >= 0 && indAt(d.kind, cur) === P_LBRACE && indAt(d.bk, cur) === BK_BLOCK) {
       const nbi = this.top(R_NBI);
-      this.push(cur, nbi + d.opts.indentWidth, this.top(R_LS), true, false);
+      this.push(cur, indAdd(nbi, d.opts.indentWidth), this.top(R_LS), true, false);
       this.setTop(R_NBI, nbi);
       this.setTopFlag(F_BBP, true);
       return;
@@ -1582,32 +1921,33 @@ export class Indenter {
     let avoid = false;
     let bbp = false;
     let nbi = this.top(R_SOFC) > this.top(R_NBI) ? this.top(R_SOFC) : this.top(R_NBI);
-    const ck = d.kind[cur];
-    const m = d.match[cur];
-    if (ck === P_LBRACE || d.type[cur] === TT_ARRAY_INITIALIZER_LSQUARE) {
+    const ck = indAt(d.kind, cur);
+    const m = indLink(d.match, cur);
+    if (ck === P_LBRACE || indAt(d.type, cur) === TT_ARRAY_INITIALIZER_LSQUARE) {
       if (a.opensBlockList(cur)) {
-        newIndent = d.opts.indentWidth + (this.col < this.top(R_NBI) ? this.col : this.top(R_NBI));
+        newIndent = indAdd(d.opts.indentWidth, this.col < this.top(R_NBI) ? this.col : this.top(R_NBI));
       } else {
-        newIndent = this.top(R_LS) + d.opts.continuationIndent;
+        newIndent = indAdd(this.top(R_LS), d.opts.continuationIndent);
       }
       const nn = a.nextNonComment(cur);
       // (clang-format 23 looks past comments before the `}`.)
       const lc = m >= 0 ? a.prevNonComment(m) : -1;
-      const endsInComma = lc >= 0 && d.kind[lc] === P_COMMA;
+      const endsInComma = lc >= 0 && indAt(d.kind, lc) === P_COMMA;
       avoid =
         endsInComma ||
         (nn >= 0 &&
-          (d.type[nn] === TT_DESIGNATED_INITIALIZER_PERIOD || d.type[nn] === TT_DESIGNATED_INITIALIZER_LSQUARE));
+          (indAt(d.type, nn) === TT_DESIGNATED_INITIALIZER_PERIOD ||
+            indAt(d.type, nn) === TT_DESIGNATED_INITIALIZER_LSQUARE));
       bbp = endsInComma;
-      if (a.pcnt[cur] > 1 && this.col + 1 > nbi) {
-        nbi = this.col + 1;
+      if (indAt(a.pcnt, cur) > 1 && indAdd(this.col, 1) > nbi) {
+        nbi = indAdd(this.col, 1);
       }
     } else {
       const base = this.top(R_LS) > this.top(R_SOFC) ? this.top(R_LS) : this.top(R_SOFC);
-      newIndent = d.opts.continuationIndent + base;
+      newIndent = indAdd(d.opts.continuationIndent, base);
       // A `_Generic` selection takes one association per line.
       const gp = a.prevNonComment(cur);
-      if (ck === P_LPAREN && gp >= 0 && d.kind[gp] === KW_GENERIC) {
+      if (ck === P_LPAREN && gp >= 0 && indAt(d.kind, gp) === KW_GENERIC) {
         avoid = true;
       }
       if (ck === P_LESS && this.parentIsParen(cur)) {
@@ -1620,25 +1960,28 @@ export class Indenter {
       }
     }
     const noLB =
-      d.childHead[cur] < 0 &&
-      d.type[cur] !== TT_ARRAY_INITIALIZER_LSQUARE &&
-      (this.topHas(F_NOLB) || this.topHas(F_NOLBOP) || (d.type[cur] === TT_TEMPLATE_OPENER && this.topHas(F_CUB)));
+      indLink(d.childHead, cur) < 0 &&
+      indAt(d.type, cur) !== TT_ARRAY_INITIALIZER_LSQUARE &&
+      (this.topHas(F_NOLB) ||
+        this.topHas(F_NOLBOP) ||
+        (indAt(d.type, cur) === TT_TEMPLATE_OPENER && this.topHas(F_CUB)));
     this.push(cur, newIndent, ls, avoid, noLB);
     this.setTop(R_NBI, nbi);
     this.setTopFlag(F_BBP, bbp);
-    this.setTopFlag(F_HMNB, a.bpcnt[cur] > 1);
+    this.setTopFlag(F_HMNB, indAt(a.bpcnt, cur) > 1);
   }
 
   /** Whether the bracket enclosing `t` is a `(`. */
   parentIsParen(t: i32): boolean {
     const d = this.d;
+    const rec = this.rec;
     let r = this.topRec;
     while (r >= 0) {
-      const tok = uncheckedGet(this.rec, r * RS + RF + R_TOK);
+      const tok = indField(rec, r, R_TOK);
       if (tok >= 0) {
-        return d.kind[tok] === P_LPAREN;
+        return indAt(d.kind, tok) === P_LPAREN;
       }
-      r = uncheckedGet(this.rec, r * RS + RP);
+      r = indParent(rec, r);
     }
     return t < 0;
   }
@@ -1650,19 +1993,19 @@ export class Indenter {
     if (!a.closesScope(cur)) {
       return;
     }
-    const ck = d.kind[cur];
+    const ck = indAt(d.kind, cur);
     if (
       this.sp > 1 &&
       (ck === P_RPAREN ||
         ck === P_RSQUARE ||
-        (ck === P_RBRACE && cur !== d.lFirst[this.line]) ||
-        d.type[cur] === TT_TEMPLATE_CLOSER)
+        (ck === P_RBRACE && cur !== indLink(d.lFirst, this.line)) ||
+        indAt(d.type, cur) === TT_TEMPLATE_CLOSER)
     ) {
       this.pop();
     }
     if (ck === P_RSQUARE) {
       const n = a.nextNonComment(cur);
-      if (n >= 0 && d.kind[n] !== P_LSQUARE) {
+      if (n >= 0 && indAt(d.kind, n) !== P_LSQUARE) {
         this.setTop(R_SOAS, 0);
       }
     }
@@ -1672,67 +2015,68 @@ export class Indenter {
     const d = this.d;
     const a = this.a;
     let pen: i64 = 0;
-    if (d.multi[cur] === 1 && d.type[cur] !== TT_BLOCK_COMMENT) {
+    if (indAt(d.multi, cur) === 1 && indAt(d.type, cur) !== TT_BLOCK_COMMENT) {
       this.flagAll(F_BBP, true);
       const used = this.col;
       const fm = this.fm;
-      this.col = fm !== null ? fm.lastLineWidth(cur) : d.width[cur];
+      this.col = fm !== null ? fm.lastLineWidth(cur) : indAt(d.width, cur);
       if (used > this.lim) {
-        pen = pen + PEN_EXCESS * toI64(used - this.lim);
+        pen = indAdd64(pen, PEN_EXCESS * toI64(indSub(used, this.lim)));
       }
     } else if (
-      d.lType[this.line] !== LT_IMPORT &&
+      indAt(d.lType, this.line) !== LT_IMPORT &&
       allowBreak &&
-      d.kind[cur] === K_STRING &&
-      d.lType[this.line] !== LT_PREPROCESSOR
+      indAt(d.kind, cur) === K_STRING &&
+      indAt(d.lType, this.line) !== LT_PREPROCESSOR
     ) {
       pen = pen + this.breakString(cur);
     }
     const fmc = this.fm;
     if (
-      d.kind[cur] === K_COMMENT &&
-      d.type[cur] === TT_LINE_COMMENT &&
+      indAt(d.kind, cur) === K_COMMENT &&
+      indAt(d.type, cur) === TT_LINE_COMMENT &&
       fmc !== null &&
-      d.lType[this.line] !== LT_IMPORT
+      indAt(d.lType, this.line) !== LT_IMPORT
     ) {
       // A line comment is split to fit, as clang-format's breakProtrudingToken.
-      pen = pen + fmc.commentPenalty(cur, this.col - d.width[cur]);
+      pen = indAdd64(pen, fmc.commentPenalty(cur, indSub(this.col, indAt(d.width, cur))));
     } else if (
-      d.kind[cur] === K_COMMENT &&
-      d.type[cur] === TT_BLOCK_COMMENT &&
+      indAt(d.kind, cur) === K_COMMENT &&
+      indAt(d.type, cur) === TT_BLOCK_COMMENT &&
       fmc !== null &&
       (this.col > this.lim ||
-        d.multi[cur] === 1 ||
-        (this.col + a.tot[this.lineLast] - a.tot[cur] > this.lim && this.col + fmc.unbreakableTail(cur) > this.lim))
+        indAt(d.multi, cur) === 1 ||
+        (indSub(indAdd(this.col, indAt(a.tot, this.lineLast)), indAt(a.tot, cur)) > this.lim &&
+          indAdd(this.col, fmc.unbreakableTail(cur)) > this.lim))
     ) {
       // So is a block comment, reflowed; one whose blanks were squeezed to
       // fit ends that much sooner.
-      pen = pen + fmc.blockCommentPenalty(cur, this.col - d.width[cur]);
-      if (d.multi[cur] === 0 && fmc.bcShrink > 0) {
-        this.col = this.col - fmc.bcShrink;
+      pen = indAdd64(pen, fmc.blockCommentPenalty(cur, indSub(this.col, indAt(d.width, cur))));
+      if (indAt(d.multi, cur) === 0 && fmc.bcShrink > 0) {
+        this.col = indSub(this.col, fmc.bcShrink);
       }
     } else if (this.col > this.lim) {
-      pen = pen + PEN_EXCESS * toI64(this.col - this.lim);
+      pen = indAdd64(pen, PEN_EXCESS * toI64(indSub(this.col, this.lim)));
     }
     // Line comments continuing this one's section go under it, each on its own line.
-    if (d.kind[cur] === K_COMMENT && d.type[cur] === TT_LINE_COMMENT) {
-      const startCol = this.col - d.width[cur];
+    if (indAt(d.kind, cur) === K_COMMENT && indAt(d.type, cur) === TT_LINE_COMMENT) {
+      const startCol = indSub(this.col, indAt(d.width, cur));
       while (
         this.next >= 0 &&
-        d.kind[this.next] === K_COMMENT &&
-        d.type[this.next] === TT_LINE_COMMENT &&
-        d.nl[this.next] === 1 &&
-        this.continuesSection(this.next, d.prv[this.next])
+        indAt(d.kind, this.next) === K_COMMENT &&
+        indAt(d.type, this.next) === TT_LINE_COMMENT &&
+        indAt(d.nl, this.next) === 1 &&
+        this.continuesSection(this.next, indLink(d.prv, this.next))
       ) {
         const fm = this.fm;
         if (!this.dry && fm !== null) {
           fm.emit(this.next, 1, startCol);
         }
         // Each is split or overflows where the section's column puts it.
-        if (fm !== null && d.lType[this.line] !== LT_PREPROCESSOR) {
-          pen = pen + fm.commentPenalty(this.next, startCol);
+        if (fm !== null && indAt(d.lType, this.line) !== LT_PREPROCESSOR) {
+          pen = indAdd64(pen, fm.commentPenalty(this.next, startCol));
         }
-        this.next = this.next === this.lineLast ? -1 : d.nxt[this.next];
+        this.next = this.next === this.lineLast ? -1 : indLink(d.nxt, this.next);
       }
     }
     return pen;
@@ -1744,41 +2088,47 @@ export class Indenter {
    */
   continuesSection(c: i32, prev: i32): boolean {
     const d = this.d;
-    const f = d.lFirst[this.line];
+    const f = indLink(d.lFirst, this.line);
     let minTok = f;
-    for (let q = f; q >= 0; q = d.nxt[q]) {
-      const n = d.nxt[q];
-      if (n >= 0 && d.kind[q] === P_LBRACE && d.kind[n] === K_COMMENT && d.type[n] === TT_LINE_COMMENT) {
+    for (let q = f; q >= 0; q = indLink(d.nxt, q)) {
+      const n = indLink(d.nxt, q);
+      if (
+        n >= 0 &&
+        indAt(d.kind, q) === P_LBRACE &&
+        indAt(d.kind, n) === K_COMMENT &&
+        indAt(d.type, n) === TT_LINE_COMMENT
+      ) {
         minTok = q;
         break;
       }
-      if (d.nl[q] > 0) {
+      if (indAt(d.nl, q) > 0) {
         minTok = q;
       }
       if (q === prev) {
         break;
       }
     }
-    const isLine = d.kind[minTok] === K_COMMENT && d.type[minTok] === TT_LINE_COMMENT;
-    return d.origCol(c) >= d.origCol(minTok) + (isLine ? 0 : 1);
+    const isLine = indAt(d.kind, minTok) === K_COMMENT && indAt(d.type, minTok) === TT_LINE_COMMENT;
+    return d.origCol(c) >= indAdd(d.origCol(minTok), isLine ? 0 : 1);
   }
 
   /** The prefix length (through the quote) of a breakable string literal, or 0. */
   stringPrefix(t: i32): i32 {
     const d = this.d;
-    const a = d.start[t];
-    const n = d.end[t] - a;
-    if (n < 2 || d.at(d.end[t] - 1) !== 34) {
+    const a = indAt(d.start, t);
+    const e = indAt(d.end, t);
+    const n = indSub(e, a);
+    if (n < 2 || d.at(indSub(e, 1)) !== 34) {
       return 0;
     }
     const c0 = d.at(a);
     if (c0 === 34) {
       return 1;
     }
-    if ((c0 === 117 || c0 === 85 || c0 === 76 || c0 === 64) && d.at(a + 1) === 34) {
+    if ((c0 === 117 || c0 === 85 || c0 === 76 || c0 === 64) && d.at(indAdd(a, 1)) === 34) {
       return 2;
     }
-    if (c0 === 117 && d.at(a + 1) === 56 && d.at(a + 2) === 34) {
+    if (c0 === 117 && d.at(indAdd(a, 1)) === 56 && d.at(indAdd(a, 2)) === 34) {
       return 3;
     }
     return 0;
@@ -1789,30 +2139,36 @@ export class Indenter {
     // Between tabs, clang-format's columnWidth: display columns, or the
     // byte count when a code point is not printable.
     const src = this.d.src;
+    if (a < b && (a < 0 || b > src.length)) {
+      fault();
+      return 0;
+    }
     let w = 0;
     let seg = a;
     let high = false;
-    for (let i = a; i < b; i++) {
-      const ch = toI32(uncheckedGet(src, i));
+    for (let i = a; i >= 0 && i < b && i < src.length; i++) {
+      const ch = toI32(src[i]);
       if (ch === 9) {
-        w = w + (high ? utf8Width(src, seg, i) : i - seg);
-        w = w + 8 - ((c + w) % 8);
+        // (`a <= seg <= i`: the u32 difference is the true one.)
+        w = indAdd(w, high ? utf8Width(src, seg, i) : toI32(toU32(i) - toU32(seg)));
+        w = indSub(indAdd(w, 8), indAdd(c, w) % 8);
         seg = i + 1;
         high = false;
       } else if (ch >= 128) {
         high = true;
       }
     }
-    return w + (high ? utf8Width(src, seg, b) : b - seg);
+    return indAdd(w, high ? utf8Width(src, seg, b) : indSub(b, seg));
   }
 
   /** The length of the escape sequence at `i` (a backslash), bounded by `e`. */
   escapeLen(i: i32, e: i32): i32 {
     const d = this.d;
-    if (i + 1 >= e) {
+    const i1 = indAdd(i, 1);
+    if (i1 >= e) {
       return 1;
     }
-    const c = d.at(i + 1);
+    const c = d.at(i1);
     if (c === 117) {
       return 6;
     }
@@ -1820,15 +2176,20 @@ export class Indenter {
       return 10;
     }
     if (c === 120) {
-      let k = 2;
-      while (i + k < e && isHex(d.at(i + k))) {
-        k++;
+      // p is i + k.
+      let p = indAdd(i, 2);
+      while (p < e && isHex(d.at(p))) {
+        p++;
       }
-      return k;
+      return indSub(p, i);
     }
     if (c >= 48 && c <= 55) {
       let k = 1;
-      while (i + k < e && k < 4 && d.at(i + k) >= 48 && d.at(i + k) <= 55) {
+      while (true) {
+        const p = indAdd(i, k);
+        if (!(p < e && k < 4 && d.at(p) >= 48 && d.at(p) <= 55)) {
+          break;
+        }
         k++;
       }
       return k;
@@ -1842,7 +2203,7 @@ export class Indenter {
     if (a >= e || limit <= used) {
       return -1;
     }
-    const maxSplit = limit - used;
+    const maxSplit = indSub(limit, used);
     let spaceOff = 0;
     let slashOff = 0;
     let wordOff = 0;
@@ -1854,16 +2215,16 @@ export class Indenter {
       let adv = 1;
       if (c === 92) {
         adv = this.escapeLen(i, e);
-        chars = chars + adv;
+        chars = indAdd(chars, adv);
       } else {
         adv = utf8Len(c);
         if (c === 9) {
-          chars = chars + 8 - ((used + chars) % 8);
+          chars = indSub(indAdd(chars, 8), indAdd(used, chars) % 8);
         } else {
-          chars = chars + 1;
+          chars = indAdd(chars, 1);
         }
       }
-      if (chars > maxSplit || e - i <= adv) {
+      if (chars > maxSplit || indSub(e, i) <= adv || faulted()) {
         break;
       }
       if (c === 32 || c === 9 || c === 11 || c === 12 || c === 13) {
@@ -1875,17 +2236,17 @@ export class Indenter {
       if (adv === 1 && !isAlnum(c)) {
         wordOff = split;
       }
-      split = split + adv;
-      i = i + adv;
+      split = indAdd(split, adv);
+      i = indAdd(i, adv);
     }
     if (spaceOff !== 0) {
-      return spaceOff + 1;
+      return indAdd(spaceOff, 1);
     }
     if (slashOff !== 0) {
-      return slashOff + 1;
+      return indAdd(slashOff, 1);
     }
     if (wordOff !== 0) {
-      return wordOff + 1;
+      return indAdd(wordOff, 1);
     }
     if (split !== 0) {
       return split;
@@ -1898,44 +2259,49 @@ export class Indenter {
     const d = this.d;
     const a = this.a;
     // Nothing to split when even the unbreakable tail after it fits.
-    if (this.col + a.tail[cur] <= this.lim && a.strTab[cur] === 0) {
+    if (indAdd(this.col, indAt(a.tail, cur)) <= this.lim && indAt(a.strTab, cur) === 0) {
       return 0;
     }
     const pl = this.stringPrefix(cur);
     if (pl === 0) {
       return 0;
     }
-    const utl = this.next >= 0 && this.canBreak() ? 0 : a.tail[cur];
-    if (a.tail[cur] >= this.lim) {
+    const utl = this.next >= 0 && this.canBreak() ? 0 : indAt(a.tail, cur);
+    if (indAt(a.tail, cur) >= this.lim) {
       return 0;
     }
-    const startCol = this.col - d.width[cur];
-    const e = d.end[cur] - 1;
-    let off = d.start[cur] + pl;
-    let csc = startCol + pl;
-    let rem = utl + 1 + this.cols(off, e, csc);
+    const startCol = indSub(this.col, indAt(d.width, cur));
+    const e = indSub(indAt(d.end, cur), 1);
+    let off = indAdd(indAt(d.start, cur), pl);
+    let csc = indAdd(startCol, pl);
+    let rem = indAdd(indAdd(utl, 1), this.cols(off, e, csc));
     let pen: i64 = 0;
     let n = 0;
-    while (csc + rem > this.lim) {
-      const sp = this.stringSplit(off, e, csc, this.lim - 1);
+    while (indAdd(csc, rem) > this.lim && !faulted()) {
+      const sp = this.stringSplit(off, e, csc, indSub(this.lim, 1));
       if (sp < 0) {
         break;
       }
-      csc = startCol + pl;
-      const nr = utl + 1 + this.cols(off + sp, e, csc);
+      csc = indAdd(startCol, pl);
+      const nr = indAdd(indAdd(utl, 1), this.cols(indAdd(off, sp), e, csc));
       if (nr >= rem) {
         break;
       }
       if (n >= toI32(this.cuts.length)) {
-        this.cuts = growI32(this.cuts, n + 1);
+        this.cuts = growI32(this.cuts, indAdd(n, 1));
       }
-      this.cuts[n] = off + sp;
+      const cuts = this.cuts;
+      if (n < 0 || n >= cuts.length) {
+        fault();
+        return pen;
+      }
+      cuts[n] = indAdd(off, sp);
       n++;
-      pen = pen + toI64(PEN_BREAK_STRING);
-      off = off + sp;
+      pen = indAdd64(pen, toI64(PEN_BREAK_STRING));
+      off = indAdd(off, sp);
       rem = nr;
     }
-    this.col = csc + rem - a.tail[cur];
+    this.col = indSub(indAdd(csc, rem), indAt(a.tail, cur));
     if (n > 0) {
       // A string after others in a run of adjacent literals: on its next run
       // clang-format aligns each piece, now a literal of its own, under the
@@ -1943,7 +2309,7 @@ export class Indenter {
       let pieceCol = startCol;
       if (this.sosl > 0 && this.sosl < startCol) {
         pieceCol = this.sosl;
-        this.col = this.col - (startCol - pieceCol);
+        this.col = indSub(this.col, indSub(startCol, pieceCol));
       }
       this.flagAll(F_BBP, true);
       this.setTop(R_LS, pieceCol);
@@ -1959,18 +2325,23 @@ export class Indenter {
   formatListAfter(lb: i32, cur: i32): i64 {
     const d = this.d;
     const a = this.a;
-    const r = a.role[lb];
-    if (a.rlFmtN[r] <= 1 || this.next < 0) {
+    const r = indAt(a.role, lb);
+    if (indAt(a.rlFmtN, r) <= 1 || this.next < 0) {
       return 0;
     }
     if (
-      !(d.kind[lb] === P_LBRACE || d.type[lb] === TT_ARRAY_INITIALIZER_LSQUARE) ||
-      d.bk[lb] === BK_BLOCK ||
-      (d.nxt[lb] >= 0 && d.type[d.nxt[lb]] === TT_DESIGNATED_INITIALIZER_PERIOD)
+      !(indAt(d.kind, lb) === P_LBRACE || indAt(d.type, lb) === TT_ARRAY_INITIALIZER_LSQUARE) ||
+      indAt(d.bk, lb) === BK_BLOCK ||
+      (indLink(d.nxt, lb) >= 0 && indAt(d.type, indLink(d.nxt, lb)) === TT_DESIGNATED_INITIALIZER_PERIOD)
     ) {
       return 0;
     }
-    const remaining = d.opts.columnLimit - this.col + d.width[cur];
+    const remaining = indAdd(indSub(d.opts.columnLimit, this.col), indAt(d.width, cur));
+    // (Read just above: `r` is a list; columnFormat's proofs read this test.)
+    if (r < 0 || r >= a.rlFmtN.length) {
+      fault();
+      return 0;
+    }
     const f = a.columnFormat(r, remaining);
     if (f < 0) {
       return 10000;
@@ -1978,46 +2349,46 @@ export class Indenter {
     let pen: i64 = 0;
     let column = 0;
     let item = 0;
-    const co = a.rlCommaOff[r];
-    const nc = a.rlCommaN[r];
-    const cols = a.fmtCols[f];
-    const so = a.fmtSizeOff[f];
-    const io = a.rlItemOff[r];
-    const close = d.match[lb];
+    const co = indAt(a.rlCommaOff, r);
+    const nc = indAt(a.rlCommaN, r);
+    const cols = indAt(a.fmtCols, f);
+    const so = indAt(a.fmtSizeOff, f);
+    const io = indAt(a.rlItemOff, r);
+    const close = indLink(d.match, lb);
     while (this.next >= 0 && this.next !== close) {
       let nl = false;
       let extra = 0;
-      if (item < nc && d.prv[this.next] === a.commaPool[co + item]) {
+      if (item < nc && indLink(d.prv, this.next) === indAt(a.commaPool, indAdd(co, item))) {
         if (!a.isTrailingComment(this.next)) {
-          extra = extra + a.sizePool[so + column] - a.itemLen[io + item];
-          column++;
+          extra = indSub(indAdd(extra, indAt(a.sizePool, indAdd(so, column))), indAt(a.itemLen, indAdd(io, item)));
+          column = indAdd(column, 1);
         }
         item++;
       }
-      if (column === cols || a.mustB[this.next] === 1) {
+      if (column === cols || indAt(a.mustB, this.next) === 1) {
         column = 0;
         nl = true;
       }
       // clang-format's column layout places no child block: a lambda body
       // in the list keeps its whitespace as written.
-      const pv = d.prv[this.next];
+      const pv = indLink(d.prv, this.next);
       const fm = this.fm;
-      if (!this.dry && fm !== null && pv >= 0 && d.childHead[pv] >= 0) {
-        let c = d.childHead[pv];
+      if (!this.dry && fm !== null && pv >= 0 && indLink(d.childHead, pv) >= 0) {
+        let c = indLink(d.childHead, pv);
         let last = -1;
         while (c >= 0) {
-          while (d.lSibling[c] >= 0) {
-            c = d.lSibling[c];
+          while (indLink(d.lSibling, c) >= 0) {
+            c = indLink(d.lSibling, c);
           }
-          last = d.lLast[c];
-          c = d.childHead[last];
+          last = indLink(d.lLast, c);
+          c = indLink(d.childHead, last);
         }
         if (last >= 0) {
-          const e = d.end[last];
-          fm.emitRaw(d.end[pv], d.at(e) === 32 ? e + 1 : e);
+          const e = indAt(d.end, last);
+          fm.emitRaw(indAt(d.end, pv), d.at(e) === 32 ? indAdd(e, 1) : e);
         }
       }
-      pen = pen + this.addToken(nl, extra);
+      pen = indAdd64(pen, this.addToken(nl, extra));
     }
     return pen;
   }
@@ -2029,18 +2400,18 @@ export class Indenter {
     const d = this.d;
     const a = this.a;
     const nt = this.next;
-    const prev = d.prv[nt];
+    const prev = indLink(d.prv, nt);
     const lb = a.prevNonComment(nt);
-    if (d.childHead[prev] < 0 || lb < 0 || !(d.kind[lb] === P_LBRACE && d.bk[lb] === BK_BLOCK)) {
+    if (indLink(d.childHead, prev) < 0 || lb < 0 || !(indAt(d.kind, lb) === P_LBRACE && indAt(d.bk, lb) === BK_BLOCK)) {
       return 0;
     }
-    const c0 = d.childHead[prev];
+    const c0 = indLink(d.childHead, prev);
     if (newline) {
       let lv = c0;
-      while (d.lAbs[lv] === 1 && d.lSibling[lv] >= 0) {
-        lv = d.lSibling[lv];
+      while (indAt(d.lAbs, lv) === 1 && indLink(d.lSibling, lv) >= 0) {
+        lv = indLink(d.lSibling, lv);
       }
-      const addInd = this.top(R_IND) - d.lLevel[lv] * d.opts.indentWidth;
+      const addInd = indSub(this.top(R_IND), mul32(indAt(d.lLevel, lv), d.opts.indentWidth));
       if (this.lazyKids) {
         // Counted when the state reaches the front of the queue.
         this.pendHead = c0;
@@ -2049,24 +2420,24 @@ export class Indenter {
       }
       return this.childList(c0, addInd);
     }
-    const cf = d.lFirst[c0];
+    const cf = indLink(d.lFirst, c0);
     // A block literal's body never shares its line (AllowShortBlocksOnASingleLine: Never).
     if (
-      a.mustB[cf] === 1 ||
-      d.kind[prev] === K_COMMENT ||
-      d.childCount[prev] > 1 ||
-      d.type[prev] === TT_BLOCK_LITERAL_LBRACE
+      indAt(a.mustB, cf) === 1 ||
+      indAt(d.kind, prev) === K_COMMENT ||
+      indAt(d.childCount, prev) > 1 ||
+      indAt(d.type, prev) === TT_BLOCK_LITERAL_LBRACE
     ) {
       return -1;
     }
-    const cl = d.lLast[c0];
+    const cl = indLink(d.lLast, c0);
     if (a.isTrailingComment(cl)) {
       return -1;
     }
-    if (a.tot[cl] + this.col + 2 > this.lim) {
+    if (indAdd(indAdd(indAt(a.tot, cl), this.col), 2) > this.lim) {
       return -1;
     }
-    const at = this.col + 1;
+    const at = indAdd(this.col, 1);
     const o = this.save();
     const saved = this.saveLine();
     const rb = this.nrec;
@@ -2075,7 +2446,7 @@ export class Indenter {
     this.nrec = rb;
     this.load(o);
     this.pn = o;
-    this.col = this.col + 1 + a.tot[cl];
+    this.col = indAdd(indAdd(this.col, 1), indAt(a.tot, cl));
     return pen;
   }
 
@@ -2086,38 +2457,51 @@ export class Indenter {
     const rb = this.nrec;
     let pen: i64 = 0;
     if (this.dry) {
-      const key = head * 4096 + (addInd & 4095);
-      let h = Math.imul(key, 0x2545f491) >>> 20;
+      const key = indAdd(mul32(head, 4096), addInd & 4095);
+      const h = Math.imul(key, 0x2545f491) >>> 20;
       let found = false;
+      const cs = this.cacheStamp;
+      const ck = this.cacheKey;
+      const cv = this.cacheVal;
       for (let i = 0; i < 4096; i++) {
         const s = (h + i) & 4095;
-        if (this.cacheStamp[s] !== this.fileStamp) {
+        if (s >= cs.length || s >= ck.length || s >= cv.length) {
+          fault();
           break;
         }
-        if (this.cacheKey[s] === key) {
-          pen = this.cacheVal[s];
+        if (cs[s] !== this.fileStamp) {
+          break;
+        }
+        if (ck[s] === key) {
+          pen = cv[s];
           found = true;
           break;
         }
       }
       if (found) {
-        this.stListHit = this.stListHit + 1;
+        this.stListHit = indAdd64(this.stListHit, toI64(1));
       }
       if (!found) {
-        this.stListMiss = this.stListMiss + 1;
+        this.stListMiss = indAdd64(this.stListMiss, toI64(1));
         const fm = this.fm;
         pen = fm !== null ? fm.listPenalty(head, addInd) & U32 : 0;
+        const cs2 = this.cacheStamp;
+        const ck2 = this.cacheKey;
+        const cv2 = this.cacheVal;
         for (let i = 0; i < 4096; i++) {
           const s = (h + i) & 4095;
-          if (this.cacheStamp[s] !== this.fileStamp) {
-            this.cacheStamp[s] = this.fileStamp;
-            this.cacheKey[s] = key;
-            this.cacheVal[s] = pen;
+          if (s >= cs2.length || s >= ck2.length || s >= cv2.length) {
+            fault();
+            break;
+          }
+          if (cs2[s] !== this.fileStamp) {
+            cs2[s] = this.fileStamp;
+            ck2[s] = key;
+            cv2[s] = pen;
             break;
           }
         }
       }
-      h = 0;
     } else {
       const fm = this.fm;
       if (fm !== null) {
@@ -2134,24 +2518,35 @@ export class Indenter {
   saveLine(): i32 {
     // line, firstIndent, lim, lineLast, dry packed into the pool.
     const o = this.pn;
-    if (o + 5 > toI32(this.pool.length)) {
-      this.pool = growI32(this.pool, o + 5);
+    const end = indAdd(o, 5);
+    if (end > toI32(this.pool.length)) {
+      this.pool = growI32(this.pool, end);
     }
-    this.pool[o] = this.line;
-    this.pool[o + 1] = this.firstIndent;
-    this.pool[o + 2] = this.lim;
-    this.pool[o + 3] = this.lineLast;
-    this.pool[o + 4] = this.dry ? 1 : 0;
-    this.pn = o + 5;
+    const p = this.pool;
+    if (o >= 0 && o < p.length - 4) {
+      p[o] = this.line;
+      p[o + 1] = this.firstIndent;
+      p[o + 2] = this.lim;
+      p[o + 3] = this.lineLast;
+      p[o + 4] = this.dry ? 1 : 0;
+    } else {
+      fault();
+    }
+    this.pn = end;
     return o;
   }
 
   restoreLine(o: i32): void {
-    this.line = this.pool[o];
-    this.firstIndent = this.pool[o + 1];
-    this.lim = this.pool[o + 2];
-    this.lineLast = this.pool[o + 3];
-    this.dry = this.pool[o + 4] === 1;
+    const p = this.pool;
+    if (o >= 0 && o < p.length - 4) {
+      this.line = p[o];
+      this.firstIndent = p[o + 1];
+      this.lim = p[o + 2];
+      this.lineLast = p[o + 3];
+      this.dry = p[o + 4] === 1;
+    } else {
+      fault();
+    }
   }
 
   // ---- Lines ------------------------------------------------------------
@@ -2159,7 +2554,8 @@ export class Indenter {
   /** Mixes `v` into the two running hashes. */
   mix(v: i32): void {
     this.hh1 = Math.imul(this.hh1 ^ v, 0x01000193);
-    this.hh2 = Math.imul(wrappingAdd(this.hh2, v), 0x2545f491) ^ (this.hh2 >>> 15);
+    // (The sum wraps: u32 arithmetic has the same bits.)
+    this.hh2 = Math.imul(toI32(toU32(this.hh2) + toU32(v)), 0x2545f491) ^ (this.hh2 >>> 15);
   }
 
   /**
@@ -2175,46 +2571,63 @@ export class Indenter {
     this.hh2 = 0x5bd1e995;
     this.mix(indent);
     this.mix(this.lim);
-    this.mix(d.lType[l] | (d.lMightFn[l] << 4) | (d.lMultiVar[l] << 5) | (d.lMustDecl[l] << 6));
-    const f = d.lFirst[l];
+    this.mix(
+      indAt(d.lType, l) | (indAt(d.lMightFn, l) << 4) | (indAt(d.lMultiVar, l) << 5) | (indAt(d.lMustDecl, l) << 6),
+    );
+    const f = indLink(d.lFirst, l);
     // (`#pragma omp` clauses take their own indent: the word is read.)
     this.mix(isOmpPragmaLine(d, l) ? 1 : 0);
-    const last = d.lLast[l];
+    const last = indLink(d.lLast, l);
     this.hlen = 0;
     const src = d.src;
-    for (let t = f; ; t = d.nxt[t]) {
-      if (d.childHead[t] >= 0) {
+    for (let t = f; ; t = indLink(d.nxt, t)) {
+      if (t < 0) {
+        fault();
         return false;
       }
-      this.hlen = this.hlen + 1;
+      if (indLink(d.childHead, t) >= 0) {
+        return false;
+      }
+      this.hlen = indAdd(this.hlen, 1);
       this.mix(
-        d.kind[t] |
-          (d.type[t] << 8) |
-          (d.bk[t] << 16) |
-          (d.multi[t] << 18) |
-          (a.mustB[t] << 19) |
-          (d.spaces[t] << 20) |
-          (d.unesc[t] << 21) |
-          (d.inPP[t] << 23) |
-          (d.mustBreak[t] << 24) |
-          (d.dec[t] << 25),
+        indAt(d.kind, t) |
+          (indAt(d.type, t) << 8) |
+          (indAt(d.bk, t) << 16) |
+          (indAt(d.multi, t) << 18) |
+          (indAt(a.mustB, t) << 19) |
+          (indAt(d.spaces, t) << 20) |
+          (indAt(d.unesc, t) << 21) |
+          (indAt(d.inPP, t) << 23) |
+          (indAt(d.mustBreak, t) << 24) |
+          (indAt(d.dec, t) << 25),
       );
-      this.mix(d.width[t] | ((d.nl[t] > 2 ? 2 : d.nl[t]) << 16));
-      if (d.anyImplicit && d.type[t] === TT_IMPLICIT_STRING_LITERAL && t !== f) {
+      this.mix(indAt(d.width, t) | ((indAt(d.nl, t) > 2 ? 2 : indAt(d.nl, t)) << 16));
+      if (d.anyImplicit && indAt(d.type, t) === TT_IMPLICIT_STRING_LITERAL && t !== f) {
         this.mix(implicitColumn(d, t, 0));
       }
-      this.mix(d.match[t] < 0 ? -1 : d.match[t] - t);
-      if (d.kind[t] === K_COMMENT || d.nl[t] > 0) {
+      const m = indLink(d.match, t);
+      this.mix(m < 0 ? -1 : m - t);
+      if (indAt(d.kind, t) === K_COMMENT || indAt(d.nl, t) > 0) {
         // Comment sections continue by the columns tokens were written at.
-        this.mix(d.col[t]);
+        this.mix(indAt(d.col, t));
       }
-      const pp = d.prv[t];
-      this.mix((a.joined[t] > 0 ? 1 : 0) | (pp >= 0 && t > pp + 1 && d.inPP[t - 1] === 1 ? 2 : 0) | (d.len(t) << 2));
-      const k = d.kind[t];
-      if (k === K_STRING || k === K_CHAR || d.multi[t] === 1) {
+      const pp = indLink(d.prv, t);
+      this.mix(
+        (indAt(a.joined, t) > 0 ? 1 : 0) |
+          (pp >= 0 && t > indAdd(pp, 1) && indAt(d.inPP, t - 1) === 1 ? 2 : 0) |
+          (d.len(t) << 2),
+      );
+      const k = indAt(d.kind, t);
+      if (k === K_STRING || k === K_CHAR || indAt(d.multi, t) === 1) {
         // Splitting and the `<<` rules read literal bytes; names matter only as `endl`.
-        for (let i = d.start[t]; i < d.end[t]; i++) {
-          this.mix(toI32(uncheckedGet(src, i)));
+        const s0 = indAt(d.start, t);
+        const e = indAt(d.end, t);
+        if (s0 < e && (s0 < 0 || e > src.length)) {
+          fault();
+          return false;
+        }
+        for (let i = s0; i >= 0 && i < e && i < src.length; i++) {
+          this.mix(toI32(src[i]));
         }
       } else if (k === K_IDENT && this.endsLine(t)) {
         this.mix(-11);
@@ -2229,12 +2642,23 @@ export class Indenter {
   /** The content cache slot for the current hash (found or free); -1 when the probe runs out. */
   ccSlot(len: i32): i32 {
     const i = this.hh1 & (CC_SIZE - 1);
+    const cl = this.ccLen;
+    const c1 = this.ccH1;
+    const c2 = this.ccH2;
     for (let k = 0; k < 32; k++) {
       const s = (i + k) & (CC_SIZE - 1);
-      if (this.ccLen[s] === 0) {
+      if (s >= cl.length) {
+        fault();
+        return -1;
+      }
+      if (cl[s] === 0) {
         return s;
       }
-      if (this.ccH1[s] === this.hh1 && this.ccH2[s] === this.hh2 && this.ccLen[s] === len) {
+      if (s >= c1.length || s >= c2.length) {
+        fault();
+        return -1;
+      }
+      if (c1[s] === this.hh1 && c2[s] === this.hh2 && cl[s] === len) {
         return s;
       }
     }
@@ -2253,24 +2677,24 @@ export class Indenter {
     this.line = l;
     this.firstIndent = indent;
     this.lim = d.opts.columnLimit;
-    this.lineLast = d.lLast[l];
+    this.lineLast = indLink(d.lLast, l);
     this.dry = dry;
-    const f = d.lFirst[l];
+    const f = indLink(d.lFirst, l);
     const fm = this.fm;
     if (!dry && fm !== null) {
       fm.emit(f, inline ? 0 : nl, indent);
     }
     let fitLim = this.lim;
-    if (d.lPP[l] === 1) {
+    if (indAt(d.lPP, l) === 1) {
       // A directive leaves room for ` \`; only a line the directive continues past must.
-      this.lim = this.lim - 2;
-      const nx = d.lSibling[l];
-      const pp = d.ppId[f];
-      if (pp >= 0 && nx >= 0 && d.ppId[d.lFirst[nx]] === pp) {
+      this.lim = indSub(this.lim, 2);
+      const nx = indLink(d.lSibling, l);
+      const pp = indLink(d.ppId, f);
+      if (pp >= 0 && nx >= 0 && indLink(d.ppId, indLink(d.lFirst, nx)) === pp) {
         fitLim = this.lim;
       }
     }
-    const fits = a.tot[this.lineLast] + indent <= fitLim || d.lType[l] === LT_IMPORT;
+    const fits = indAdd(indAt(a.tot, this.lineLast), indent) <= fitLim || indAt(d.lType, l) === LT_IMPORT;
     if (this.debug && !dry) {
       this.dump(l, fits);
     }
@@ -2280,7 +2704,7 @@ export class Indenter {
       a.annotateFull(l);
       return this.noLineBreak();
     }
-    if (fits && !inline && a.lLate[l] === 1) {
+    if (fits && !inline && indAt(a.lLate, l) === 1) {
       // It fits but for a break clang-format sets late: only that break.
       a.annotateFull(l);
       return this.noLineBreak();
@@ -2293,12 +2717,12 @@ export class Indenter {
       return 0;
     }
     const slot = this.rcSlot(l, indent);
-    if (this.rcHit(slot) && this.rcN[slot] >= 0) {
+    if (this.rcHit(slot) && indAt(this.rcN, slot) >= 0) {
       if (!dry) {
         a.annotateFull(l);
-        this.replayBits(this.rcOff[slot], this.rcN[slot]);
+        this.replayBits(indAt(this.rcOff, slot), indAt(this.rcN, slot));
       }
-      return this.rcPen[slot];
+      return indAtI64(this.rcPen, slot);
     }
     // The same line (by content) broken before, in this file or an earlier one.
     let ntok = 0;
@@ -2306,16 +2730,29 @@ export class Indenter {
     if (this.contentHash(l, indent)) {
       ntok = this.hlen;
       cslot = this.ccSlot(ntok);
-      if (cslot >= 0 && this.ccLen[cslot] === ntok && this.ccH1[cslot] === this.hh1 && this.ccH2[cslot] === this.hh2) {
-        const n = this.ccN[cslot];
+      if (
+        cslot >= 0 &&
+        indAt(this.ccLen, cslot) === ntok &&
+        indAt(this.ccH1, cslot) === this.hh1 &&
+        indAt(this.ccH2, cslot) === this.hh2
+      ) {
+        const n = indAt(this.ccN, cslot);
         if (n > toI32(this.pathBits.length)) {
-          this.pathBits = growI32(this.pathBits, n * 2);
+          this.pathBits = growI32(this.pathBits, mul32(n, 2));
         }
+        const pb = this.pathBits;
+        const cb = this.ccBits;
+        let j = indAt(this.ccOff, cslot);
         for (let i = 0; i < n; i++) {
-          this.pathBits[i] = this.ccBits[this.ccOff[cslot] + i];
+          if (i >= pb.length || j < 0 || j >= cb.length) {
+            fault();
+            return toI64(0);
+          }
+          pb[i] = cb[j];
+          j++;
         }
         this.pathN = n;
-        const cpen = this.ccPen[cslot];
+        const cpen = indAtI64(this.ccPen, cslot);
         this.rcStore(slot, l, indent, cpen, true);
         if (!dry) {
           a.annotateFull(l);
@@ -2328,29 +2765,19 @@ export class Indenter {
     const h2 = this.hh2;
     a.annotateFull(l);
     const pen = this.search();
-    if (cslot >= 0 && this.pathN >= 0 && this.ccLen[cslot] === 0 && this.ccUsed * 2 < CC_SIZE) {
-      const n = this.pathN;
-      if (this.ccNb + n > toI32(this.ccBits.length)) {
-        this.ccBits = growI32(this.ccBits, (this.ccNb + n) * 2);
-      }
-      for (let i = 0; i < n; i++) {
-        this.ccBits[this.ccNb + i] = this.pathBits[i];
-      }
-      this.ccH1[cslot] = h1;
-      this.ccH2[cslot] = h2;
-      this.ccLen[cslot] = ntok;
-      this.ccPen[cslot] = pen;
-      this.ccOff[cslot] = this.ccNb;
-      this.ccN[cslot] = n;
-      this.ccNb = this.ccNb + n;
-      this.ccUsed = this.ccUsed + 1;
+    // (32768 is CC_SIZE / 2: the table stays at most half full.) The table
+    // outlives the file, so a search that faulted stores nothing in it.
+    const used = this.ccUsed;
+    if (cslot >= 0 && this.pathN >= 0 && indAt(this.ccLen, cslot) === 0 && used < 32768 && !faulted()) {
+      this.ccStore(cslot, h1, h2, ntok, pen);
+      this.ccUsed = used + 1;
     }
     if (this.pathN >= 0) {
       this.rcStore(slot, l, indent, pen, true);
       if (!dry) {
-        this.pathOff = this.nbits - this.pathN;
-        if (this.rcHit(slot) && this.rcN[slot] >= 0) {
-          this.replayBits(this.rcOff[slot], this.rcN[slot]);
+        this.pathOff = indSub(this.nbits, this.pathN);
+        if (this.rcHit(slot) && indAt(this.rcN, slot) >= 0) {
+          this.replayBits(indAt(this.rcOff, slot), indAt(this.rcN, slot));
         } else {
           this.replayPath();
         }
@@ -2368,17 +2795,69 @@ export class Indenter {
     return pen;
   }
 
+  /** Stores the last search's decisions (pathN of pathBits) and penalty in content cache slot `cs`. */
+  ccStore(cs: i32, h1: i32, h2: i32, ntok: i32, pen: i64): void {
+    const n = this.pathN;
+    const nb = this.ccNb;
+    const end = indAdd(nb, n);
+    if (end > toI32(this.ccBits.length)) {
+      this.ccBits = growI32(this.ccBits, mul32(end, 2));
+    }
+    const cb = this.ccBits;
+    const pb = this.pathBits;
+    let j = nb;
+    for (let i = 0; i < n; i++) {
+      if (i >= pb.length || j < 0 || j >= cb.length) {
+        fault();
+        return;
+      }
+      cb[j] = pb[i];
+      j++;
+    }
+    const c1 = this.ccH1;
+    const c2 = this.ccH2;
+    const cl = this.ccLen;
+    const cp = this.ccPen;
+    const co = this.ccOff;
+    const cn = this.ccN;
+    // The entry is written whole or not at all: it is read by later files.
+    if (
+      cs < 0 ||
+      cs >= c1.length ||
+      cs >= c2.length ||
+      cs >= cl.length ||
+      cs >= cp.length ||
+      cs >= co.length ||
+      cs >= cn.length
+    ) {
+      fault();
+      return;
+    }
+    c1[cs] = h1;
+    c2[cs] = h2;
+    cl[cs] = ntok;
+    cp[cs] = pen;
+    co[cs] = nb;
+    cn[cs] = n;
+    this.ccNb = end;
+  }
+
   /** Marks line `l`'s tokens (from the second, unless `all`) and its blocks' lines to keep their whitespace. */
   keepAsWritten(l: i32, all: boolean): void {
     const d = this.d;
-    const f = d.lFirst[l];
-    for (let t = f; t >= 0; t = d.nxt[t]) {
+    const f = indLink(d.lFirst, l);
+    for (let t = f; t >= 0; t = indLink(d.nxt, t)) {
       // An earlier pass's tokens are finalized: that pass's layout stands.
       const fm = this.fm;
       if ((t !== f || all) && !(fm !== null && fm.seenTok(t))) {
-        d.keepWs[t] = 1;
+        const kw = d.keepWs;
+        if (t >= kw.length) {
+          fault();
+          return;
+        }
+        kw[t] = 1;
       }
-      for (let c = d.childHead[t]; c >= 0; c = d.lSibling[c]) {
+      for (let c = indLink(d.childHead, t); c >= 0; c = indLink(d.lSibling, c)) {
         this.keepAsWritten(c, true);
       }
     }
@@ -2388,17 +2867,17 @@ export class Indenter {
     const d = this.d;
     const a = this.a;
     console.error(
-      `line ${l} level ${d.lLevel[l]} type ${d.lType[l]} fn ${d.lMightFn[l]} decl ${d.lMustDecl[l]} fits ${fits}`,
+      `line ${l} level ${indAt(d.lLevel, l)} type ${indAt(d.lType, l)} fn ${indAt(d.lMightFn, l)} decl ${indAt(d.lMustDecl, l)} fits ${fits}`,
     );
-    for (let t = d.lFirst[l]; t >= 0; t = d.nxt[t]) {
+    for (let t = indLink(d.lFirst, l); t >= 0; t = indLink(d.nxt, t)) {
       let fk = "";
-      for (let n = a.fkHead[t]; n >= 0; n = a.fkNext[n]) {
-        fk = fk + `${a.fkPrec[n]} `;
+      for (let n = indLink(a.fkHead, t); n >= 0; n = indLink(a.fkNext, n)) {
+        fk = fk + `${indAt(a.fkPrec, n)} `;
       }
       console.error(
-        `  ${d.text(t)}  tt=${d.type[t]} nest=${a.nest[t]} bind=${a.bind[t]} can=${a.canB[t]} must=${a.mustB[t]} pen=${a.pen[t]} tot=${a.tot[t]} sp=${d.spaces[t]} fk=[${fk}] fr=${a.fakeR[t]} pc=${a.pcnt[t]} ch=${d.childHead[t]}`,
+        `  ${d.text(t)}  tt=${indAt(d.type, t)} nest=${indAt(a.nest, t)} bind=${indAt(a.bind, t)} can=${indAt(a.canB, t)} must=${indAt(a.mustB, t)} pen=${indAt(a.pen, t)} tot=${indAt(a.tot, t)} sp=${indAt(d.spaces, t)} fk=[${fk}] fr=${indAt(a.fakeR, t)} pc=${indAt(a.pcnt, t)} ch=${indLink(d.childHead, t)}`,
       );
-      if (t === d.lLast[l]) {
+      if (t === indLink(d.lLast, l)) {
         break;
       }
     }
@@ -2408,23 +2887,30 @@ export class Indenter {
   emitFlat(l: i32, col0: i32): i32 {
     const d = this.d;
     const fm = this.fm;
-    const f = d.lFirst[l];
-    const last = d.lLast[l];
+    const f = indLink(d.lFirst, l);
+    const last = indLink(d.lLast, l);
     let col = col0;
-    for (let t = f; ; t = d.nxt[t]) {
+    for (let t = f; ; t = indLink(d.nxt, t)) {
+      if (t < 0) {
+        fault();
+        return col;
+      }
       if (t !== f) {
-        col = d.anyImplicit && d.type[t] === TT_IMPLICIT_STRING_LITERAL ? implicitColumn(d, t, col) : col + d.spaces[t];
+        col =
+          d.anyImplicit && indAt(d.type, t) === TT_IMPLICIT_STRING_LITERAL
+            ? implicitColumn(d, t, col)
+            : indAdd(col, indAt(d.spaces, t));
         if (fm !== null) {
           fm.emit(t, 0, col);
         }
       }
-      col = col + (d.kind[t] !== K_COMMENT ? d.width[t] : this.widthAt(t, col));
-      const c = d.childHead[t];
+      col = indAdd(col, indAt(d.kind, t) !== K_COMMENT ? indAt(d.width, t) : this.widthAt(t, col));
+      const c = indLink(d.childHead, t);
       if (c >= 0) {
         if (fm !== null) {
-          fm.emit(d.lFirst[c], 0, col + 1);
+          fm.emit(indLink(d.lFirst, c), 0, indAdd(col, 1));
         }
-        col = this.emitFlat(c, col + 1);
+        col = this.emitFlat(c, indAdd(col, 1));
       }
       if (t === last) {
         break;
@@ -2440,14 +2926,20 @@ export class Indenter {
   widthAt(t: i32, col: i32): i32 {
     const d = this.d;
     const fm = this.fm;
-    if (d.kind[t] !== K_COMMENT || d.multi[t] === 1 || d.type[t] === TT_LINE_COMMENT || fm === null || !fm.hasTab(t)) {
-      return d.width[t];
+    if (
+      indAt(d.kind, t) !== K_COMMENT ||
+      indAt(d.multi, t) === 1 ||
+      indAt(d.type, t) === TT_LINE_COMMENT ||
+      fm === null ||
+      !fm.hasTab(t)
+    ) {
+      return indAt(d.width, t);
     }
-    return fm.colsAt(d.start[t], d.end[t], col);
+    return fm.colsAt(indAt(d.start, t), indAt(d.end, t), col);
   }
 
   initialState(): i64 {
-    const f = this.d.lFirst[this.line];
+    const f = indLink(this.d.lFirst, this.line);
     this.col = this.firstIndent;
     this.next = f;
     this.noCont = 0;
@@ -2465,9 +2957,9 @@ export class Indenter {
   /** Whether line `l` holds a string literal with a tab in it. */
   lineHasTabString(l: i32): boolean {
     const d = this.d;
-    for (let t = d.lFirst[l]; t >= 0; t = d.nxt[t]) {
-      if (d.kind[t] === K_STRING) {
-        for (let i = d.start[t]; i < d.end[t]; i++) {
+    for (let t = indLink(d.lFirst, l); t >= 0; t = indLink(d.nxt, t)) {
+      if (indAt(d.kind, t) === K_STRING) {
+        for (let i = indAt(d.start, t); i < indAt(d.end, t); i++) {
           if (d.at(i) === 9) {
             return true;
           }
@@ -2487,9 +2979,9 @@ export class Indenter {
         cp = this.formatChildren(true);
       }
       if (cp > 0) {
-        pen = pen + cp;
+        pen = indAdd64(pen, cp);
       }
-      pen = pen + this.addToken(this.a.mustB[this.next] === 1, 0);
+      pen = indAdd64(pen, this.addToken(indAt(this.a.mustB, this.next) === 1, 0));
     }
     return pen & U32;
   }
@@ -2499,7 +2991,7 @@ export class Indenter {
   newNode(prev: i32, nl: i32): i32 {
     const i = this.nn;
     if (i >= toI32(this.nOff.length)) {
-      const n = i * 2;
+      const n = mul32(i, 2);
       this.nOff = growI32(this.nOff, n);
       this.nPrev = growI32(this.nPrev, n);
       this.nNl = growI32(this.nNl, n);
@@ -2509,221 +3001,446 @@ export class Indenter {
       this.nPendI = growI32(this.nPendI, n);
       this.nCnt = growI32(this.nCnt, n);
     }
-    this.nOff[i] = this.save();
-    this.nPrev[i] = prev;
-    this.nNl[i] = nl;
-    this.nIgn[i] = 0;
-    this.nPendH[i] = -1;
+    const off = this.save();
+    const no = this.nOff;
+    const np = this.nPrev;
+    const nnl = this.nNl;
+    const ni = this.nIgn;
+    const nph = this.nPendH;
+    if (i < 0 || i >= no.length || i >= np.length || i >= nnl.length || i >= ni.length || i >= nph.length) {
+      fault();
+      return -1;
+    }
+    no[i] = off;
+    np[i] = prev;
+    nnl[i] = nl;
+    ni[i] = 0;
+    nph[i] = -1;
     this.nn = i + 1;
     return i;
   }
 
   /** The bucket of penalty `pen` in this search (depth `dd`, generation `gen`), made when missing. */
   bucketOf(pen: i64, dd: i32, gen: i32): i32 {
+    if (dd < 0 || dd >= this.pmKey.length || dd >= this.pmVal.length || dd >= this.pmStamp.length) {
+      fault();
+      return -1;
+    }
     let keys = this.pmKey[dd];
+    let st = this.pmStamp[dd];
     let mask = toI32(keys.length) - 1;
     const h = Math.imul(toI32(pen & toI64(0x7fffffff)) ^ toI32(pen >> 31), 0x2545f491);
     let i = h & mask;
-    let st = this.pmStamp[dd];
-    while (st[i] === gen) {
+    while (true) {
+      if (i < 0 || i >= st.length || i >= keys.length) {
+        fault();
+        return -1;
+      }
+      if (st[i] !== gen) {
+        break;
+      }
       if (keys[i] === pen) {
-        return this.pmVal[dd][i];
+        return indAt(this.pmVal[dd], i);
       }
       i = (i + 1) & mask;
     }
-    if (this.pmUsed[dd] * 2 >= mask) {
+    if (toI64(indAt(this.pmUsed, dd)) * toI64(2) >= toI64(mask)) {
       this.growPm(dd, gen);
+      if (dd >= this.pmKey.length || dd >= this.pmStamp.length) {
+        fault();
+        return -1;
+      }
       keys = this.pmKey[dd];
       mask = toI32(keys.length) - 1;
       st = this.pmStamp[dd];
       i = h & mask;
-      while (st[i] === gen) {
+      while (true) {
+        if (i < 0 || i >= st.length) {
+          fault();
+          return -1;
+        }
+        if (st[i] !== gen) {
+          break;
+        }
         i = (i + 1) & mask;
       }
     }
     const b = this.bn;
     if (b >= toI32(this.bHead.length)) {
-      this.bHead = growI32(this.bHead, (b + 1) * 2);
-      this.bTail = growI32(this.bTail, (b + 1) * 2);
+      const n = mul32(indAdd(b, 1), 2);
+      this.bHead = growI32(this.bHead, n);
+      this.bTail = growI32(this.bTail, n);
     }
-    this.bHead[b] = -1;
-    this.bTail[b] = -1;
+    const bh = this.bHead;
+    const bt = this.bTail;
+    if (b < 0 || b >= bh.length || b >= bt.length) {
+      fault();
+      return -1;
+    }
+    bh[b] = -1;
+    bt[b] = -1;
     this.bn = b + 1;
+    if (dd >= this.pmVal.length) {
+      fault();
+      return -1;
+    }
+    const vals = this.pmVal[dd];
+    const pu = this.pmUsed;
+    if (i < 0 || i >= st.length || i >= keys.length || i >= vals.length || dd >= pu.length) {
+      fault();
+      return -1;
+    }
     st[i] = gen;
     keys[i] = pen;
-    this.pmVal[dd][i] = b;
-    this.pmUsed[dd] = this.pmUsed[dd] + 1;
+    vals[i] = b;
+    pu[dd] = indAdd(pu[dd], 1);
     return b;
   }
 
   /** Doubles depth `dd`'s penalty map, keeping this generation's entries. */
   growPm(dd: i32, gen: i32): void {
+    if (dd < 0 || dd >= this.pmKey.length || dd >= this.pmVal.length || dd >= this.pmStamp.length) {
+      fault();
+      return;
+    }
     const ok = this.pmKey[dd];
     const ov = this.pmVal[dd];
     const os = this.pmStamp[dd];
-    const n = toI32(ok.length) * 2;
-    const nk = new Array<i64>(n);
-    const nv = new Array<i32>(n);
-    const ns = new Array<i32>(n);
-    const mask = n - 1;
+    const n = mul32(toI32(ok.length), 2);
+    const nk = newI64s(n);
+    const nv = newI32s(n);
+    const ns = newI32s(n);
+    const mask = indSub(n, 1);
     for (let i = 0; i < toI32(ok.length); i++) {
+      const pen = ok[i];
+      if (i >= os.length || i >= ov.length) {
+        fault();
+        return;
+      }
       if (os[i] !== gen) {
         continue;
       }
-      const pen = ok[i];
       let j = Math.imul(toI32(pen & toI64(0x7fffffff)) ^ toI32(pen >> 31), 0x2545f491) & mask;
-      while (ns[j] === gen) {
+      while (true) {
+        if (j < 0 || j >= ns.length) {
+          fault();
+          return;
+        }
+        if (ns[j] !== gen) {
+          break;
+        }
         j = (j + 1) & mask;
+      }
+      if (j < 0 || j >= ns.length || j >= nk.length || j >= nv.length) {
+        fault();
+        return;
       }
       ns[j] = gen;
       nk[j] = pen;
       nv[j] = ov[i];
     }
-    this.pmKey[dd] = nk;
-    this.pmVal[dd] = nv;
-    this.pmStamp[dd] = ns;
+    const pk = this.pmKey;
+    const pv = this.pmVal;
+    const ps = this.pmStamp;
+    if (dd >= pk.length || dd >= pv.length || dd >= ps.length) {
+      fault();
+      return;
+    }
+    pk[dd] = nk;
+    pv[dd] = nv;
+    ps[dd] = ns;
   }
 
   /** Queues node `node` at penalty `pen`. */
   qPush(vBase: i32, dd: i32, gen: i32, pen: i64, node: i32): void {
     const b = this.bucketOf(pen, dd, gen);
-    this.nNextB[node] = -1;
-    const t = this.bTail[b];
-    if (t >= 0) {
-      this.nNextB[t] = node;
-      this.bTail[b] = node;
+    const nb = this.nNextB;
+    const bh = this.bHead;
+    const bt = this.bTail;
+    if (node < 0 || node >= nb.length || b < 0 || b >= bh.length || b >= bt.length) {
+      fault();
       return;
     }
-    this.bHead[b] = node;
-    this.bTail[b] = node;
+    nb[node] = -1;
+    const t = bt[b];
+    if (t >= 0) {
+      if (t >= nb.length) {
+        fault();
+        return;
+      }
+      nb[t] = node;
+      bt[b] = node;
+      return;
+    }
+    bh[b] = node;
+    bt[b] = node;
     // The bucket joins the heap of penalties.
     let i = this.vn;
     if (i >= toI32(this.vhB.length)) {
-      const hp = new Array<i64>(i * 2);
-      hp.set(this.vhPen);
+      const n = mul32(i, 2);
+      const hp = newI64s(n);
+      const old = this.vhPen;
+      if (old.length > hp.length) {
+        fault();
+        return;
+      }
+      for (let k = 0; k < old.length && k < hp.length; k++) {
+        hp[k] = old[k];
+      }
       this.vhPen = hp;
-      this.vhB = growI32(this.vhB, i * 2);
+      this.vhB = growI32(this.vhB, n);
     }
-    this.vn = i + 1;
+    this.vn = indAdd(i, 1);
+    const vp = this.vhPen;
+    const vb = this.vhB;
+    // The heap starts at vBase, this search's first entry.
+    if (vBase < 0) {
+      fault();
+      return;
+    }
     while (i > vBase) {
-      const par = vBase + ((i - vBase - 1) >> 1);
-      const pp = this.vhPen[par];
+      // (0 <= vBase < i: the u32 sum is the true parent, below i.)
+      const par = toI32(toU32(vBase) + (toU32(i) - toU32(vBase) - toU32(1)) / toU32(2));
+      if (par < 0 || par >= vp.length || par >= vb.length || i >= vp.length || i >= vb.length) {
+        fault();
+        return;
+      }
+      const pp = vp[par];
       if (pp < pen) {
         break;
       }
-      this.vhPen[i] = pp;
-      this.vhB[i] = this.vhB[par];
+      if (i < 0) {
+        fault();
+        return;
+      }
+      vp[i] = pp;
+      vb[i] = vb[par];
       i = par;
     }
-    this.vhPen[i] = pen;
-    this.vhB[i] = b;
+    if (i < 0 || i >= vp.length || i >= vb.length) {
+      fault();
+      return;
+    }
+    vp[i] = pen;
+    vb[i] = b;
   }
 
   /** Removes the cheapest bucket's head (the bucket leaves the heap when it empties). */
   qPop(vBase: i32): void {
-    const b = this.vhB[vBase];
-    const h = this.bHead[b];
-    const nx = this.nNextB[h];
-    this.bHead[b] = nx;
+    const vp = this.vhPen;
+    const vb = this.vhB;
+    const bh = this.bHead;
+    const bt = this.bTail;
+    const nb = this.nNextB;
+    if (vBase < 0 || vBase >= vb.length) {
+      fault();
+      return;
+    }
+    const b = vb[vBase];
+    if (b < 0 || b >= bh.length || b >= bt.length) {
+      fault();
+      return;
+    }
+    const h = bh[b];
+    if (h < 0 || h >= nb.length) {
+      fault();
+      return;
+    }
+    const nx = nb[h];
+    bh[b] = nx;
     if (nx >= 0) {
       return;
     }
-    this.bTail[b] = -1;
-    const last = this.vn - 1;
+    bt[b] = -1;
+    const last = indSub(this.vn, 1);
     this.vn = last;
     if (last === vBase) {
       return;
     }
-    const pen = this.vhPen[last];
-    const lb = this.vhB[last];
+    // A pop leaves the heap's last entry in [vBase, last); it sifts down
+    // from vBase.
+    if (last < vBase || last < 0 || last >= vp.length || last >= vb.length) {
+      fault();
+      return;
+    }
+    const pen = vp[last];
+    const lb = vb[last];
+    // (0 <= vBase <= i < last below: each u32 difference and sum is the
+    // true one while it stays below last.)
+    const n = toU32(last) - toU32(vBase);
     let i = vBase;
-    const n = last - vBase;
-    while (true) {
-      const rel = i - vBase;
-      if (rel * 2 + 1 >= n) {
+    while (i >= vBase && i < last) {
+      const rel = toU32(i) - toU32(vBase);
+      if (rel * toU32(2) + toU32(1) >= n) {
         break;
       }
-      let c = vBase + rel * 2 + 1;
-      if (rel * 2 + 2 < n && this.vhPen[c + 1] < this.vhPen[c]) {
-        c = c + 1;
+      let c = toI32(toU32(vBase) + rel * toU32(2) + toU32(1));
+      if (c < 0 || c >= vp.length || c >= vb.length) {
+        fault();
+        return;
       }
-      if (pen < this.vhPen[c]) {
+      if (rel * toU32(2) + toU32(2) < n) {
+        // c + 1 < last
+        const c1 = toI32(toU32(c) + toU32(1));
+        if (c1 < 0 || c1 >= vp.length) {
+          fault();
+          return;
+        }
+        if (vp[c1] < vp[c]) {
+          c = c1;
+        }
+      }
+      if (c >= vp.length || c >= vb.length || i < 0 || i >= vp.length || i >= vb.length) {
+        fault();
+        return;
+      }
+      if (pen < vp[c]) {
         break;
       }
-      this.vhPen[i] = this.vhPen[c];
-      this.vhB[i] = this.vhB[c];
+      vp[i] = vp[c];
+      vb[i] = vb[c];
       i = c;
     }
-    this.vhPen[i] = pen;
-    this.vhB[i] = lb;
+    if (i < 0 || i >= vp.length || i >= vb.length) {
+      fault();
+      return;
+    }
+    vp[i] = pen;
+    vb[i] = lb;
   }
 
   /** A hash of node `n`'s state over the compared fields. */
   stateHash(n: i32, withStack: boolean): i32 {
     const p = this.pool;
-    const o = this.nOff[n];
-    let h = 0x011c9dc5;
-    for (let i = 0; i < 6; i++) {
-      h = Math.imul(h ^ uncheckedGet(p, o + i), 0x01000193);
+    const o = indAt(this.nOff, n);
+    if (o < 0 || o >= p.length - 8) {
+      fault();
+      return 0;
     }
+    // The header's first six fields, S_COL (+0) to S_SOSL (+5).
+    let h = 0x011c9dc5;
+    h = Math.imul(h ^ p[o], 0x01000193);
+    h = Math.imul(h ^ p[o + 1], 0x01000193);
+    h = Math.imul(h ^ p[o + 2], 0x01000193);
+    h = Math.imul(h ^ p[o + 3], 0x01000193);
+    h = Math.imul(h ^ p[o + 4], 0x01000193);
+    h = Math.imul(h ^ p[o + 5], 0x01000193);
     if (withStack) {
-      h = Math.imul(h ^ uncheckedGet(p, o + S_DEPTH), 0x01000193);
-      const t = uncheckedGet(p, o + S_TOP);
-      h = Math.imul(h ^ uncheckedGet(this.rec, t * RS + RH), 0x01000193);
+      h = Math.imul(h ^ p[o + 7], 0x01000193); // S_DEPTH
+      const t = p[o + 8]; // S_TOP
+      const rc = this.rec;
+      if (t < 0 || t >= 153391689) {
+        fault();
+        return 0;
+      }
+      const th = t * RS + RH;
+      if (th >= rc.length) {
+        fault();
+        return 0;
+      }
+      h = Math.imul(h ^ rc[th], 0x01000193);
     }
     return h;
   }
 
   sameState(x: i32, y: i32, withStack: boolean): boolean {
     const p = this.pool;
-    const ox = this.nOff[x];
-    const oy = this.nOff[y];
-    for (let i = 0; i < 6; i++) {
-      if (uncheckedGet(p, ox + i) !== uncheckedGet(p, oy + i)) {
-        return false;
-      }
+    const ox = indAt(this.nOff, x);
+    const oy = indAt(this.nOff, y);
+    if (ox < 0 || ox >= p.length - 8 || oy < 0 || oy >= p.length - 8) {
+      fault();
+      return false;
+    }
+    // The header's first six fields, S_COL (+0) to S_SOSL (+5).
+    if (
+      p[ox] !== p[oy] ||
+      p[ox + 1] !== p[oy + 1] ||
+      p[ox + 2] !== p[oy + 2] ||
+      p[ox + 3] !== p[oy + 3] ||
+      p[ox + 4] !== p[oy + 4] ||
+      p[ox + 5] !== p[oy + 5]
+    ) {
+      return false;
     }
     if (!withStack) {
       return true;
     }
-    if (uncheckedGet(p, ox + S_DEPTH) !== uncheckedGet(p, oy + S_DEPTH)) {
+    if (p[ox + 7] !== p[oy + 7]) {
+      // S_DEPTH
       return false;
     }
-    let rx = uncheckedGet(p, ox + S_TOP);
-    let ry = uncheckedGet(p, oy + S_TOP);
+    let rx = p[ox + 8]; // S_TOP
+    let ry = p[oy + 8];
     const rc = this.rec;
     while (rx !== ry) {
-      const a = rx * RS + RF;
-      const b = ry * RS + RF;
-      for (let f = 1; f < PS - 1; f++) {
-        if (uncheckedGet(rc, a + f) !== uncheckedGet(rc, b + f)) {
-          return false;
-        }
-      }
-      if ((uncheckedGet(rc, a + R_FL) & F_CMP) !== (uncheckedGet(rc, b + R_FL) & F_CMP)) {
+      if (rx < 0 || rx >= 153391689 || ry < 0 || ry >= 153391689) {
+        fault();
         return false;
       }
-      rx = uncheckedGet(rc, rx * RS + RP);
-      ry = uncheckedGet(rc, ry * RS + RP);
+      const a = rx * RS + RF;
+      const b = ry * RS + RF;
+      if (a + 11 >= rc.length || b + 11 >= rc.length) {
+        fault();
+        return false;
+      }
+      // The PS fields from R_IND (+1) to R_COLON (+10), then R_FL (+11).
+      if (
+        rc[a + 1] !== rc[b + 1] ||
+        rc[a + 2] !== rc[b + 2] ||
+        rc[a + 3] !== rc[b + 3] ||
+        rc[a + 4] !== rc[b + 4] ||
+        rc[a + 5] !== rc[b + 5] ||
+        rc[a + 6] !== rc[b + 6] ||
+        rc[a + 7] !== rc[b + 7] ||
+        rc[a + 8] !== rc[b + 8] ||
+        rc[a + 9] !== rc[b + 9] ||
+        rc[a + 10] !== rc[b + 10]
+      ) {
+        return false;
+      }
+      if ((rc[a + 11] & F_CMP) !== (rc[b + 11] & F_CMP)) {
+        return false;
+      }
+      // The parents, at RP (-2).
+      rx = rc[a - 2];
+      ry = rc[b - 2];
     }
     return true;
   }
 
   /** Records node `n` as expanded; false when an equal state already was. */
   seenInsert(n: i32, gen: i32): boolean {
-    const ign = this.nIgn[n] === 1;
+    const ign = indAt(this.nIgn, n) === 1;
     const h = this.stateHash(n, !ign);
-    const mask = toI32(this.seenNode.length) - 1;
+    const dd = this.depth;
+    if (dd < 0 || dd >= this.seenNodes.length || dd >= this.seenStamps.length) {
+      fault();
+      return false;
+    }
+    const sn = this.seenNodes[dd];
+    const ss = this.seenStamps[dd];
+    const mask = toI32(sn.length) - 1;
     let s = h & mask;
-    while (this.seenStamp[s] === gen) {
-      const o = this.seenNode[s];
-      if (this.sameState(o, n, !(ign || this.nIgn[o] === 1))) {
+    while (true) {
+      if (s < 0 || s >= ss.length || s >= sn.length) {
+        fault();
+        return false;
+      }
+      if (ss[s] !== gen) {
+        break;
+      }
+      const o = sn[s];
+      if (this.sameState(o, n, !(ign || indAt(this.nIgn, o) === 1))) {
         return false;
       }
       s = (s + 1) & mask;
     }
-    this.seenStamp[s] = gen;
-    this.seenNode[s] = n;
+    if (s < 0 || s >= ss.length || s >= sn.length) {
+      fault();
+      return false;
+    }
+    ss[s] = gen;
+    sn[s] = n;
     return true;
   }
 
@@ -2734,33 +3451,44 @@ export class Indenter {
     const bBase = this.bn;
     const recBase = this.nrec;
     // A fresh seen table generation; a nested search takes the next ones.
-    this.seenGen = this.seenGen + 1;
+    this.seenGen = indAdd(this.seenGen, 1);
     const gen = this.seenGen;
     if (this.depth === 0 && this.seenGen > 1 << 30) {
+      // A stamp left from before the wrap would read as current again.
       this.seenGen = 1;
+      for (const st of this.seenStamps) {
+        st.fill(0);
+      }
+      for (const st of this.pmStamp) {
+        st.fill(0);
+      }
     }
-    this.depth = this.depth + 1;
+    this.depth = indAdd(this.depth, 1);
     const dd = this.depth;
     while (toI32(this.pmKey.length) <= dd) {
       this.pmKey.push(new Array<i64>(1024));
       this.pmVal.push(new Array<i32>(1024));
       this.pmStamp.push(new Array<i32>(1024));
     }
-    if (dd >= toI32(this.pmUsed.length)) {
-      this.pmUsed = growI32(this.pmUsed, dd + 1);
+    while (toI32(this.seenNodes.length) <= dd) {
+      this.seenNodes.push(new Array<i32>(SEEN0));
+      this.seenStamps.push(new Array<i32>(SEEN0));
     }
-    this.pmUsed[dd] = 0;
+    if (dd >= toI32(this.pmUsed.length)) {
+      this.pmUsed = growI32(this.pmUsed, indAdd(dd, 1));
+    }
+    indPut(this.pmUsed, dd, 0);
     const dry = this.dry;
     this.dry = true;
     this.initialState();
     // clang-format's OptimizingLineFormatter: an Objective-C method
     // declaration that does not fit takes one selector part per line.
-    if (this.d.type[this.d.lFirst[this.line]] === TT_OBJC_METHOD_SPECIFIER) {
+    if (indAt(this.d.type, indLink(this.d.lFirst, this.line)) === TT_OBJC_METHOD_SPECIFIER) {
       this.setTopFlag(F_BBP, true);
     }
     const root = this.newNode(-1, 0);
     let count = 0;
-    this.nCnt[root] = 0;
+    indPut(this.nCnt, root, 0);
     this.qPush(vBase, dd, gen, toI64(0), root);
     count++;
     let pen: i64 = 0;
@@ -2772,7 +3500,9 @@ export class Indenter {
     let carryPen: i64 = 0;
     let flat = false;
     while (true) {
-      if (count > MAXCOUNT) {
+      // (25000000 is MAXCOUNT.) A fault leaves the search: its state is not
+      // one the formatter's invariants allow.
+      if (count > 25000000 || faulted()) {
         break;
       }
       let node = -1;
@@ -2780,7 +3510,7 @@ export class Indenter {
         node = carry;
         pen = carryPen;
         carry = -1;
-        if (this.pool[this.nOff[node] + S_NEXT] < 0) {
+        if (indAt(this.pool, indAdd(indAt(this.nOff, node), S_NEXT)) < 0) {
           best = node;
           break;
         }
@@ -2788,26 +3518,27 @@ export class Indenter {
         if (this.vn <= vBase) {
           break;
         }
-        pen = this.vhPen[vBase];
-        node = this.bHead[this.vhB[vBase]];
-        if (this.nPendH[node] >= 0) {
+        pen = indAtI64(this.vhPen, vBase);
+        node = indAt(this.bHead, indAt(this.vhB, vBase));
+        const ph = indAt(this.nPendH, node);
+        if (ph >= 0) {
           // Count the child block now; requeue the node at its true key when it costs.
-          const cp = this.childList(this.nPendH[node], this.nPendI[node]);
-          this.nPendH[node] = -1;
+          const cp = this.childList(ph, indAt(this.nPendI, node));
+          indPut(this.nPendH, node, -1);
           if (cp > 0) {
             this.qPop(vBase);
-            this.qInsert(vBase, dd, gen, (pen + cp) & U32, node);
+            this.qInsert(vBase, dd, gen, indAdd64(pen, cp) & U32, node);
             continue;
           }
         }
-        if (this.pool[this.nOff[node] + S_NEXT] < 0) {
+        if (indAt(this.pool, indAdd(indAt(this.nOff, node), S_NEXT)) < 0) {
           best = node;
           break;
         }
         this.qPop(vBase);
       }
       if (count > IGNORE_AFTER) {
-        this.nIgn[node] = 1;
+        indPut(this.nIgn, node, 1);
         if (!flat) {
           // clang-format now compares states without their stacks, against
           // every state already seen: rehash those without their stacks too.
@@ -2815,22 +3546,24 @@ export class Indenter {
           this.growSeen(gen, nodeBase, false, true);
         }
       }
-      if (inserted * 2 > toI32(this.seenNode.length)) {
+      // (Twice `inserted` passes the length just when it passes half of it,
+      // and a length is not negative.)
+      if (inserted > this.seenLength() >> 1) {
         this.growSeen(gen, nodeBase, true, flat);
       }
       if (!this.seenInsert(node, gen)) {
         continue;
       }
-      inserted++;
-      this.stPops = this.stPops + 1;
-      this.load(this.nOff[node]);
-      this.stDepth = this.stDepth + toI64(this.sp);
+      inserted = indAdd(inserted, 1);
+      this.stPops = indAdd64(this.stPops, toI64(1));
+      this.load(indAt(this.nOff, node));
+      this.stDepth = indAdd64(this.stDepth, toI64(this.sp));
       const can = this.canBreak();
       const must = this.mustBreak();
       let s0 = -1;
       let p0: i64 = 0;
       // A token an earlier pass formatted keeps that pass's decision.
-      const dec = this.d.dec[this.next];
+      const dec = indAt(this.d.dec, this.next);
       if (!must && dec !== 2) {
         s0 = this.makeChild(node, pen, false);
         p0 = this.childPen;
@@ -2842,15 +3575,15 @@ export class Indenter {
         p1 = this.childPen;
       }
       if (s0 >= 0) {
-        this.nCnt[s0] = count;
+        indPut(this.nCnt, s0, count);
         count++;
       }
       if (s1 >= 0) {
-        this.nCnt[s1] = count;
-        count++;
+        indPut(this.nCnt, s1, count);
+        count = indAdd(count, 1);
       }
       if (s0 >= 0) {
-        if ((this.vn <= vBase || this.vhPen[vBase] > p0) && (s1 < 0 || p1 >= p0)) {
+        if ((this.vn <= vBase || indAtI64(this.vhPen, vBase) > p0) && (s1 < 0 || p1 >= p0)) {
           carry = s0;
           carryPen = p0;
         } else {
@@ -2861,33 +3594,39 @@ export class Indenter {
         this.qPush(vBase, dd, gen, p1, s1);
       }
     }
-    this.stSearches = this.stSearches + 1;
+    this.stSearches = indAdd64(this.stSearches, toI64(1));
     if (this.debug) {
       console.error(
-        `search depth=${this.depth} line=${this.line} nodes=${this.nn - nodeBase} pen=${pen} ind=${this.firstIndent} first=${this.d.text(this.d.lFirst[this.line])}`,
+        `search depth=${this.depth} line=${this.line} nodes=${toI64(this.nn) - toI64(nodeBase)} pen=${pen} ind=${this.firstIndent} first=${this.d.text(indLink(this.d.lFirst, this.line))}`,
       );
     }
-    this.stNodes = this.stNodes + toI64(this.nn - nodeBase);
+    this.stNodes = indAdd64(this.stNodes, toI64(this.nn) - toI64(nodeBase));
     let result: i64 = 0;
     this.pathN = -1;
     if (best >= 0) {
       result = pen;
       let n = 0;
-      for (let q = best; q >= 0 && this.nPrev[q] >= 0; q = this.nPrev[q]) {
-        n++;
+      for (let q = best; q >= 0 && indLink(this.nPrev, q) >= 0; q = indLink(this.nPrev, q)) {
+        n = indAdd(n, 1);
       }
       if (n > toI32(this.pathBits.length)) {
-        this.pathBits = growI32(this.pathBits, n * 2);
+        this.pathBits = growI32(this.pathBits, mul32(n, 2));
       }
-      let i = n - 1;
-      for (let q = best; q >= 0 && this.nPrev[q] >= 0; q = this.nPrev[q]) {
-        this.pathBits[i] = this.nNl[q];
+      const pb = this.pathBits;
+      let i = indSub(n, 1);
+      for (let q = best; q >= 0 && indLink(this.nPrev, q) >= 0; q = indLink(this.nPrev, q)) {
+        const v = indAt(this.nNl, q);
+        if (i < 0 || i >= pb.length) {
+          fault();
+          break;
+        }
+        pb[i] = v;
         i--;
       }
       this.pathN = n;
     }
     this.dry = dry;
-    this.depth = this.depth - 1;
+    this.depth = indSub(this.depth, 1);
     this.nn = nodeBase;
     this.pn = poolBase;
     this.vn = vBase;
@@ -2897,39 +3636,77 @@ export class Indenter {
     return result;
   }
 
+  /** The length of this depth's seen table; 0 (after a fault) when it has none. */
+  seenLength(): i32 {
+    const dd = this.depth;
+    if (dd < 0 || dd >= this.seenNodes.length) {
+      fault();
+      return 0;
+    }
+    return toI32(this.seenNodes[dd].length);
+  }
+
   /**
    * Rebuilds the seen table holding this search's expanded nodes: twice as
    * large when `grow`, and hashed without their stacks once `flat`.
    */
   growSeen(gen: i32, nodeBase: i32, grow: boolean, flat: boolean): void {
-    const n = toI32(this.seenNode.length) * (grow ? 2 : 1);
-    const oldNode = this.seenNode;
-    const oldStamp = this.seenStamp;
-    this.seenNode = new Array<i32>(n);
-    this.seenStamp = new Array<i32>(n);
-    const mask = n - 1;
+    const dd = this.depth;
+    if (dd < 0 || dd >= this.seenNodes.length || dd >= this.seenStamps.length) {
+      fault();
+      return;
+    }
+    const oldNode = this.seenNodes[dd];
+    const oldStamp = this.seenStamps[dd];
+    const n = mul32(toI32(oldNode.length), grow ? 2 : 1);
+    const sn = newI32s(n);
+    const ss = newI32s(n);
+    const nodes = this.seenNodes;
+    const stamps = this.seenStamps;
+    if (dd >= nodes.length || dd >= stamps.length) {
+      fault();
+      return;
+    }
+    nodes[dd] = sn;
+    stamps[dd] = ss;
+    const mask = indSub(n, 1);
     for (let i = 0; i < toI32(oldNode.length); i++) {
+      const node = oldNode[i];
+      if (i >= oldStamp.length) {
+        fault();
+        return;
+      }
       const st = oldStamp[i];
       if (st === 0) {
         continue;
       }
-      const node = oldNode[i];
       if (st !== gen || node < nodeBase) {
         continue;
       }
-      let s = this.stateHash(node, !flat && this.nIgn[node] === 0) & mask;
-      while (this.seenStamp[s] !== 0) {
+      let s = this.stateHash(node, !flat && indAt(this.nIgn, node) === 0) & mask;
+      while (true) {
+        if (s < 0 || s >= ss.length || s >= sn.length) {
+          fault();
+          return;
+        }
+        if (ss[s] === 0) {
+          break;
+        }
         s = (s + 1) & mask;
       }
-      this.seenStamp[s] = st;
-      this.seenNode[s] = node;
+      if (s < 0 || s >= ss.length || s >= sn.length) {
+        fault();
+        return;
+      }
+      ss[s] = st;
+      sn[s] = node;
     }
   }
 
   /** Adds the state after placing the next token (with or without a break). */
   /** The state after placing the next token of node `node` (with or without a break); -1 when it cannot be. */
   makeChild(node: i32, pen: i64, nl: boolean): i32 {
-    this.load(this.nOff[node]);
+    this.load(indAt(this.nOff, node));
     let p = pen;
     this.pendHead = -1;
     // Child blocks are counted when their state reaches the front of the
@@ -2941,14 +3718,14 @@ export class Indenter {
     if (cp < 0) {
       return -1;
     }
-    p = p + cp;
+    p = indAdd64(p, cp);
     const ph = this.pendHead;
     const pi = this.pendInd;
     // clang-format's penalties are 32-bit unsigned and wrap.
-    p = (p + this.addToken(nl, 0)) & U32;
+    p = indAdd64(p, this.addToken(nl, 0)) & U32;
     const n = this.newNode(node, nl ? 1 : 0);
-    this.nPendH[n] = ph;
-    this.nPendI[n] = pi;
+    indPut(this.nPendH, n, ph);
+    indPut(this.nPendI, n, pi);
     this.childPen = p;
     return n;
   }
@@ -2956,25 +3733,25 @@ export class Indenter {
   /** Queues node `n` (key `pen`) after the nodes of its bucket made before it. */
   qInsert(vBase: i32, dd: i32, gen: i32, pen: i64, n: i32): void {
     const b = this.bucketOf(pen, dd, gen);
-    if (this.bHead[b] < 0) {
+    if (indAt(this.bHead, b) < 0) {
       this.qPush(vBase, dd, gen, pen, n);
       return;
     }
-    const cnt = this.nCnt[n];
+    const cnt = indAt(this.nCnt, n);
     let prev = -1;
-    let q = this.bHead[b];
-    while (q >= 0 && this.nCnt[q] < cnt) {
+    let q = indAt(this.bHead, b);
+    while (q >= 0 && indAt(this.nCnt, q) < cnt) {
       prev = q;
-      q = this.nNextB[q];
+      q = indLink(this.nNextB, q);
     }
-    this.nNextB[n] = q;
+    indPut(this.nNextB, n, q);
     if (prev < 0) {
-      this.bHead[b] = n;
+      indPut(this.bHead, b, n);
     } else {
-      this.nNextB[prev] = n;
+      indPut(this.nNextB, prev, n);
     }
     if (q < 0) {
-      this.bTail[b] = n;
+      indPut(this.bTail, b, n);
     }
   }
 
@@ -2983,7 +3760,7 @@ export class Indenter {
     this.dry = false;
     this.initialState();
     for (let k = 0; k < n; k++) {
-      const nl = this.rcBits[off + k] === 1;
+      const nl = indAt(this.rcBits, indAdd(off, k)) === 1;
       this.formatChildren(nl);
       this.addToken(nl, 0);
     }
@@ -2992,13 +3769,22 @@ export class Indenter {
   /** Re-runs the last search's decisions (kept in pathBits) for real. */
   replayPath(): void {
     const n = this.pathN;
-    const bits = new Array<i32>(n);
+    const bits = newI32s(n);
+    const pb = this.pathBits;
     for (let k = 0; k < n; k++) {
-      bits[k] = this.pathBits[k];
+      if (k >= bits.length || k >= pb.length) {
+        fault();
+        return;
+      }
+      bits[k] = pb[k];
     }
     this.dry = false;
     this.initialState();
     for (let k = 0; k < n; k++) {
+      if (k >= bits.length) {
+        fault();
+        return;
+      }
       const nl = bits[k] === 1;
       this.formatChildren(nl);
       this.addToken(nl, 0);

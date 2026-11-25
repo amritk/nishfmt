@@ -42,8 +42,10 @@ export class CopStyleLambdaCall {
       const s = a.exS(n);
       const e = a.exE(n);
       let comment = false;
-      for (let i = 0; i < toI32(src.commS.length); i++) {
-        if (s <= src.commS[i] && src.commE[i] <= e) {
+      const commS = src.commS;
+      const commE = src.commE;
+      for (let i = 0; i < commS.length && i < commE.length; i++) {
+        if (s <= commS[i] && commE[i] <= e) {
           comment = true;
         }
       }
@@ -68,7 +70,7 @@ export class CopStyleLambdaCall {
         continue;
       }
       let ignored = false;
-      for (let i = 0; i < toI32(igS.length); i++) {
+      for (let i = 0; i < igS.length && i < igE.length; i++) {
         if (igS[i] <= s && igE[i] >= e) {
           ignored = true;
         }

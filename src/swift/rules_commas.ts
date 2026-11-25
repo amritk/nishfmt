@@ -27,6 +27,10 @@ import {
   SW_T_NON_SPACE_OR_COMMENT_OR_LINEBREAK,
 } from "./token";
 
+// Token indices, token counts and line numbers stay below the token count, far from the
+// i32 limits, so a sum or difference of them the prover cannot bound is written
+// `toI32(toU32(a) + b)`: wrapping u32 arithmetic, exact for such values.
+
 /** addOrRemoveTrailingComma(beforeEndOfScope:trailingCommaSupported:) for a known answer. */
 const swAddOrRemoveTrailingComma = (f: SwFormatter, endOfListIndex: i32, insert: boolean): void => {
   const prevTokenIndex = f.indexBefore(SW_T_NON_SPACE_OR_COMMENT, endOfListIndex);
@@ -34,7 +38,7 @@ const swAddOrRemoveTrailingComma = (f: SwFormatter, endOfListIndex: i32, insert:
     return;
   }
   if (f.k(prevTokenIndex) === SW_LINEBREAK) {
-    const p = f.indexBefore(SW_T_NON_SPACE_OR_COMMENT_OR_LINEBREAK, prevTokenIndex + 1);
+    const p = f.indexBefore(SW_T_NON_SPACE_OR_COMMENT_OR_LINEBREAK, toI32(toU32(prevTokenIndex) + 1));
     if (p < 0) {
       return;
     }
@@ -46,7 +50,7 @@ const swAddOrRemoveTrailingComma = (f: SwFormatter, endOfListIndex: i32, insert:
         f.removeToken(p);
       }
     } else if (insert) {
-      f.insert(SW_DELIM, ",", 0, p + 1);
+      f.insert(SW_DELIM, ",", 0, toI32(toU32(p) + 1));
     }
   } else if (f.tok(prevTokenIndex, SW_DELIM, ",")) {
     f.removeToken(prevTokenIndex);

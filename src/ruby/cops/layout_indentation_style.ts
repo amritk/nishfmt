@@ -3,6 +3,7 @@
 // Ported from RuboCop 1.92.3 (MIT License, Copyright (c) 2012-24 Bozhidar
 // Batsov).
 
+import { fault } from "../../core/fault";
 import { F_BEGIN, F_HEREDOC_BODY, F_HEREDOC_END, NT_DSTR, NT_STR, NT_XSTR } from "../ast";
 import { RbCop } from "../cop";
 import { rnHas, rnHeredoc, rnS } from "../node";
@@ -24,14 +25,21 @@ export class CopLayoutIndentationStyle {
     let ready = false;
     const rs: i32[] = [];
     const re: i32[] = [];
-    for (let i = 0; i < L.n; i++) {
-      const s = L.s[i];
-      const e = L.e[i];
+    const ls = L.s;
+    const le = L.e;
+    const pts = src.pts;
+    for (let i = 0; i < L.n && i < ls.length && i < le.length; i++) {
+      const s = ls[i];
+      const e = le[i];
       // /\A\s*\t+/: the leading whitespace up to its last tab
       let p = s;
       let end = -1;
-      while (p < e && lalIsWs(src.pts[p])) {
-        if (src.pts[p] === 9) {
+      if (p < 0 && p < e) {
+        fault();
+        return;
+      }
+      while (p >= 0 && p < e && p < pts.length && lalIsWs(pts[p])) {
+        if (pts[p] === 9) {
           end = p + 1;
         }
         p++;
@@ -58,7 +66,7 @@ export class CopLayoutIndentationStyle {
         }
       }
       let inside = false;
-      for (let j = 0; j < toI32(rs.length); j++) {
+      for (let j = 0; j < rs.length && j < re.length; j++) {
         if (s >= rs[j] && end <= re[j]) {
           inside = true;
           break;
@@ -70,8 +78,8 @@ export class CopLayoutIndentationStyle {
       const k = this.c.offense(s, end);
       if (k !== null) {
         const out: string[] = [];
-        for (let q = s; q < end; q++) {
-          out.push(src.pts[q] === 9 ? "  " : src.src(q, q + 1));
+        for (let q = s; q >= 0 && q < end && q < pts.length; q++) {
+          out.push(pts[q] === 9 ? "  " : src.src(q, q + 1));
         }
         k.replace(s, end, out.join(""));
         this.c.commit(k);

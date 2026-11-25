@@ -8,6 +8,8 @@
 // Batsov).
 
 import { NT_CLASS, NT_DEFS, NT_KWRESTARG, NT_MLHS, NT_RESTARG, rbTypeName, V_NIL, vTag, VT_SYM } from "../ast";
+import { add32 } from "../../core/arr";
+import { fault } from "../../core/fault";
 import { RbCop } from "../cop";
 import { RbSource } from "../source";
 
@@ -25,10 +27,22 @@ const NMH_DIGIT: string =
 
 /** Six hex digits of `t` at `i`. */
 const nmhHex6 = (t: string, i: i32): i32 => {
+  // i is an entry's offset in a table of hex digits.
+  if (i < 0 || i > toI32(t.length) - 6) {
+    fault();
+    return 0;
+  }
   let v = 0;
+  let q = i;
   for (let j = 0; j < 6; j++) {
-    const d = t.charCodeAt(i + j);
-    v = v * 16 + (d <= 57 ? d - 48 : d - 87);
+    if (q < 0 || q >= t.length) {
+      fault();
+      return 0;
+    }
+    const d = t.charCodeAt(q) & 0xff;
+    // A hex digit's value, which the mask keeps; six of them fit in 24 bits.
+    v = (v << 4) | ((d <= 57 ? d - 48 : d - 87) & 15);
+    q++;
   }
   return v;
 };
@@ -37,8 +51,14 @@ const nmhHex6 = (t: string, i: i32): i32 => {
 const nmhInTable = (t: string, c: i32): boolean => {
   let lo = 0;
   let hi = toI32(t.length) / 12 - 1;
-  while (lo <= hi) {
-    const mid = (lo + hi) >> 1;
+  while (lo >= 0 && lo <= hi) {
+    // 0 <= lo <= hi, so the u32 sum is exact.
+    const mid = toI32((toU32(lo) + toU32(hi)) >> toU32(1));
+    // An entry of 12 digits lies in the table.
+    if (mid < 0 || mid > 178956970) {
+      fault();
+      return false;
+    }
     const s = nmhHex6(t, mid * 12);
     const e = nmhHex6(t, mid * 12 + 6);
     if (c < s) {
@@ -77,10 +97,10 @@ export const nmhCps = (s: string): i32[] => {
     } else if (b < 0xe0 && i + 1 < n) {
       out.push(((b & 0x1f) << 6) | (s.charCodeAt(i + 1) & 0x3f));
       i += 2;
-    } else if (b < 0xf0 && i + 2 < n) {
+    } else if (b < 0xf0 && i < n - 2) {
       out.push(((b & 0x0f) << 12) | ((s.charCodeAt(i + 1) & 0x3f) << 6) | (s.charCodeAt(i + 2) & 0x3f));
       i += 3;
-    } else if (i + 3 < n) {
+    } else if (i < n - 3) {
       out.push(
         ((b & 0x07) << 18) |
           ((s.charCodeAt(i + 1) & 0x3f) << 12) |
@@ -112,24 +132,33 @@ export const nmhHasUpper = (s: string): boolean => {
  */
 export const nmhSnakeCase = (name: string): boolean => {
   const cs = nmhCps(name);
+  const n = toI32(cs.length);
+  // The loop runs to the length inclusive.
+  if (n >= 2147483647) {
+    fault();
+    return false;
+  }
   let ls = 0;
-  for (let i = 0; i <= cs.length; i++) {
+  for (let i = 0; i <= n; i++) {
     if (i < cs.length && cs[i] !== 10) {
       continue;
     }
-    // One line: [ls, i).
+    // One line: [ls, i), inside cs.
     let p = ls;
     let at = 0;
-    while (p < i && at < 2 && cs[p] === 64) {
+    while (p >= 0 && p < i && p < cs.length && at < 2 && cs[p] === 64) {
       p++;
       at++;
     }
     // `@{0,2}` backtracks: an `@` it takes is never in the class anyway.
     let q = p;
-    while (q < i && (nmhAsciiDigit(cs[q]) || nmhLower(cs[q]) || cs[q] === 95)) {
+    while (q >= 0 && q < i && q < cs.length && (nmhAsciiDigit(cs[q]) || nmhLower(cs[q]) || cs[q] === 95)) {
       q++;
     }
-    if (q > p && (q === i || (q + 1 === i && (cs[q] === 33 || cs[q] === 63 || cs[q] === 61)))) {
+    if (
+      q > p &&
+      (q === i || (q >= 0 && q < i && q < cs.length && q + 1 === i && (cs[q] === 33 || cs[q] === 63 || cs[q] === 61)))
+    ) {
       return true;
     }
     ls = i + 1;
@@ -180,7 +209,7 @@ export const nmhSexp = (src: RbSource, n: i32, indent: i32): string => {
     const k = a.kid(n, i);
     if (a.isNode(k)) {
       out.push("\n");
-      out.push(nmhSexp(src, k, indent + 1));
+      out.push(nmhSexp(src, k, add32(indent, 1)));
     } else {
       out.push(" ");
       out.push(a.inspect(k));
@@ -225,17 +254,17 @@ export const nmhUncommunicative = (c: RbCop, src: RbSource, args: i32, minLen: i
     }
     let len = nmhSize(full);
     if (a.type(arg) === NT_RESTARG) {
-      len += 1;
+      len = add32(len, 1);
     }
     if (a.type(arg) === NT_KWRESTARG) {
-      len += 2;
+      len = add32(len, 2);
     }
     const s = a.exS(arg);
     if (nmhHasUpper(name)) {
-      c.offense(s, s + len);
+      c.offense(s, add32(s, len));
     }
     if (nmhSize(name) < minLen) {
-      c.offense(s, s + len);
+      c.offense(s, add32(s, len));
     }
   }
 };

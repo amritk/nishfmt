@@ -4,6 +4,8 @@
 // Batsov).
 
 import { F_DOT, F_END, NT_ARRAY, NT_BLOCK, NT_NUMBLOCK, NT_SEND, NT_SUPER, NT_ZSUPER, V_NIL } from "../ast";
+import { add32, atI32, sub32 } from "../../core/arr";
+import { fault } from "../../core/fault";
 import { RbCop } from "../cop";
 import { RbSource, TK_COMMENT } from "../source";
 import { ssxGlobalConst, ssxHas, ssxIs, ssxIsSpace, ssxLocIs, ssxMeth, ssxOperatorName } from "./style_syntax_help";
@@ -72,7 +74,11 @@ const ssxMcStrip = (s: string): string => {
   while (i < j && (ssxIsSpace(s.charCodeAt(i)) || s.charCodeAt(i) === 0)) {
     i++;
   }
-  while (j > i && (ssxIsSpace(s.charCodeAt(j - 1)) || s.charCodeAt(j - 1) === 0)) {
+  while (j > i && j > 0 && j <= s.length) {
+    const c = s.charCodeAt(j - 1);
+    if (!(ssxIsSpace(c) || c === 0)) {
+      break;
+    }
     j--;
   }
   return s.substring(i, j);
@@ -105,20 +111,25 @@ export const ssxMagicFrozenFalse = (line: string): boolean => {
   const e1 = line.indexOf("-*-");
   let e2 = -1;
   if (e1 >= 0) {
-    let from = e1 + 3;
+    let from = add32(e1, 3);
     let at = line.substring(from, k).indexOf("-*-");
     while (at >= 0) {
-      e2 = from + at;
-      from = e2 + 1;
+      e2 = add32(from, at);
+      from = add32(e2, 1);
       at = line.substring(from, k).indexOf("-*-");
     }
   }
-  if (e1 >= 0 && e2 >= e1 + 4) {
-    const body = line.substring(e1 + 3, e2);
+  if (e1 >= 0 && e2 >= add32(e1, 4)) {
+    const body = line.substring(add32(e1, 3), e2);
     let st = 0;
     const bk = toI32(body.length);
+    // The loop runs to the length inclusive.
+    if (bk >= 2147483647) {
+      fault();
+      return false;
+    }
     for (let i = 0; i <= bk; i++) {
-      if (i === bk || body.charCodeAt(i) === 59) {
+      if (i >= bk || body.charCodeAt(i) === 59) {
         const tok = ssxMcStrip(body.substring(st, i));
         st = i + 1;
         const kl = ssxMcKeyword(tok, false);
@@ -148,15 +159,16 @@ export const ssxMagicFrozenFalse = (line: string): boolean => {
   // VimComment: no frozen_string_literal.
   const vi = line.indexOf("vim:");
   if (vi >= 0) {
+    // indexOf answers a position in the line.
     let j = vi - 1;
-    while (j >= 0 && ssxIsSpace(line.charCodeAt(j))) {
+    while (j >= 0 && j < line.length && ssxIsSpace(line.charCodeAt(j))) {
       j--;
     }
-    let q = vi + 4;
-    while (q < k && ssxIsSpace(line.charCodeAt(q))) {
+    let q = add32(vi, 4);
+    while (q >= 0 && q < k && ssxIsSpace(line.charCodeAt(q))) {
       q++;
     }
-    if (j >= 0 && line.charCodeAt(j) === 35 && q < k) {
+    if (j >= 0 && j < line.length && line.charCodeAt(j) === 35 && q < k) {
       return false;
     }
   }
@@ -176,8 +188,8 @@ export const ssxMagicFrozenFalse = (line: string): boolean => {
   if (kl < 0) {
     return false;
   }
-  p += kl;
-  if (p >= k || line.charCodeAt(p) !== 58) {
+  p = add32(p, kl);
+  if (p < 0 || p >= k || line.charCodeAt(p) !== 58) {
     return false;
   }
   p++;
@@ -189,7 +201,7 @@ export const ssxMagicFrozenFalse = (line: string): boolean => {
 export const ssxLeadingCommentLinesEnd = (src: RbSource): i32 => {
   for (let i = 0; i < toI32(src.tokT.length); i++) {
     if (src.tokT[i] !== TK_COMMENT) {
-      return src.line(src.tokS[i]) - 1;
+      return sub32(src.line(atI32(src.tokS, i)), 1);
     }
   }
   return src.lineCount();
@@ -218,6 +230,11 @@ export class CopStyleEmptyLiteral {
         if (!frozenKnown) {
           frozenKnown = true;
           const last = ssxLeadingCommentLinesEnd(src);
+          // A line number, below the largest i32.
+          if (last >= 2147483647) {
+            fault();
+            return;
+          }
           for (let l = 1; l <= last; l++) {
             if (ssxMagicFrozenFalse(src.lineText(l))) {
               frozen = false;
@@ -255,10 +272,10 @@ export class CopStyleEmptyLiteral {
         if (unpar) {
           const from = ssxElArg0(src, p);
           const parts: string[] = ["{}"];
-          for (let i = from + 1; i < a.nKid(p); i++) {
+          for (let i = add32(from, 1); i < a.nKid(p); i++) {
             parts.push(src.nodeSrc(a.kid(p, i)));
           }
-          k.replace(a.exS(a.kid(p, from)) - 1, a.exE(a.kid(p, -1)), `(${parts.join(", ")})`);
+          k.replace(sub32(a.exS(a.kid(p, from)), 1), a.exE(a.kid(p, -1)), `(${parts.join(", ")})`);
         } else {
           k.replace(a.exS(n), a.exE(n), "{}");
         }

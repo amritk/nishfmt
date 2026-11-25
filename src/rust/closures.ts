@@ -14,6 +14,7 @@ import {
   N_EX_ADDR_OF,
   N_EX_ASSIGN,
   N_EX_ASSIGN_OP,
+  N_EX_ASYNC,
   N_EX_BINARY,
   N_EX_BLOCK,
   N_EX_CALL,
@@ -31,10 +32,10 @@ import {
   N_EX_TRY_BLOCK,
   N_EX_UNARY,
   N_EX_WHILE,
-  N_EX_ASYNC,
   N_STMT_EXPR,
   N_TY_INFER,
   RsAst,
+  rsAstPut,
 } from "./ast";
 import { rsLastLineWidth } from "./comment";
 import { RsCtx } from "./context";
@@ -59,12 +60,13 @@ import { RsShape, rsIndentStr } from "./shape";
 import { rsHasByte, rsLines } from "./str";
 import { rsRewriteBoundParams } from "./types";
 import { rsExprHasAttrs, rsLeftMostSubExpr } from "./utils";
+import { add32, atI32, sub32 } from "../core/arr";
 
 /** rewrite_closure for closure expr `e`. */
 export const rsRewriteClosure = (ctx: RsCtx, e: i32, shape: RsShape): string | null => {
   const ast = ctx.ast;
-  const body = ast.a[e];
-  const decl = ast.b[e];
+  const body = atI32(ast.a, e);
+  const decl = atI32(ast.b, e);
   const fd = rewriteClosureFnDecl(ctx, e, body, shape);
   if (fd === null) {
     return null;
@@ -74,14 +76,14 @@ export const rsRewriteClosure = (ctx: RsCtx, e: i32, shape: RsShape): string | n
   if (bodyShape === null) {
     return null;
   }
-  if (ast.kind[body] === N_EX_BLOCK) {
-    const block = ast.a[body];
-    if (ast.ln[block] === 0 && !rsBlockContainsComment(ctx, block)) {
+  if (atI32(ast.kind, body) === N_EX_BLOCK) {
+    const block = atI32(ast.a, body);
+    if (atI32(ast.ln, block) === 0 && !rsBlockContainsComment(ctx, block)) {
       const s = rsRewriteExpr(ctx, body, shape);
       return s === null ? null : prefix + " " + s;
     }
     let result: string | null = null;
-    if (ast.a[decl] < 0 && !ctx.insideMacro) {
+    if (atI32(ast.a, decl) < 0 && !ctx.insideMacro) {
       result = tryRewriteWithoutBlock(ctx, body, prefix, shape, bodyShape);
     }
     if (result !== null) {
@@ -113,13 +115,13 @@ const tryRewriteWithoutBlock = (
 
 const getInnerExpr = (ctx: RsCtx, expr: i32, prefix: string): i32 => {
   const ast = ctx.ast;
-  if (ast.kind[expr] === N_EX_BLOCK) {
-    const block = ast.a[expr];
-    if (!needsBlock(ctx, block, ast.d[expr], prefix)) {
-      if (ast.ln[block] > 0) {
+  if (atI32(ast.kind, expr) === N_EX_BLOCK) {
+    const block = atI32(ast.a, expr);
+    if (!needsBlock(ctx, block, atI32(ast.d, expr), prefix)) {
+      if (atI32(ast.ln, block) > 0) {
         const s = ast.kid(block, 0);
-        if (ast.kind[s] === N_STMT_EXPR) {
-          return getInnerExpr(ctx, ast.a[s], prefix);
+        if (atI32(ast.kind, s) === N_STMT_EXPR) {
+          return getInnerExpr(ctx, atI32(ast.a, s), prefix);
         }
       }
     }
@@ -130,16 +132,16 @@ const getInnerExpr = (ctx: RsCtx, expr: i32, prefix: string): i32 => {
 const needsBlock = (ctx: RsCtx, block: i32, label: i32, prefix: string): boolean => {
   const ast = ctx.ast;
   let hasAttributes = false;
-  if (ast.ln[block] > 0) {
+  if (atI32(ast.ln, block) > 0) {
     const s = ast.kid(block, 0);
-    const k = ast.kind[s];
-    const holder = k === N_STMT_EXPR || k === 154 ? ast.a[s] : k === 152 ? ast.a[s] : s;
+    const k = atI32(ast.kind, s);
+    const holder = k === N_STMT_EXPR || k === 154 ? atI32(ast.a, s) : k === 152 ? atI32(ast.a, s) : s;
     // get_attrs_from_stmt: an expression's attributes include its block's inner ones.
-    hasAttributes = k === N_STMT_EXPR || k === 154 ? rsExprHasAttrs(ast, holder) : ast.atn[holder] > 0;
+    hasAttributes = k === N_STMT_EXPR || k === 154 ? rsExprHasAttrs(ast, holder) : atI32(ast.atn, holder) > 0;
   }
   return (
-    (ast.fl[block] & BLK_UNSAFE) !== 0 ||
-    ast.ln[block] > 1 ||
+    (atI32(ast.fl, block) & BLK_UNSAFE) !== 0 ||
+    atI32(ast.ln, block) > 1 ||
     hasAttributes ||
     rsBlockContainsComment(ctx, block) ||
     rsHasByte(prefix, 10) ||
@@ -148,7 +150,7 @@ const needsBlock = (ctx: RsCtx, block: i32, label: i32, prefix: string): boolean
 };
 
 const vetoBlock = (ast: RsAst, e: i32): boolean => {
-  const k = ast.kind[e];
+  const k = atI32(ast.kind, e);
   return (
     k === N_EX_CALL ||
     k === N_EX_BINARY ||
@@ -163,7 +165,7 @@ const vetoBlock = (ast: RsAst, e: i32): boolean => {
 };
 
 const exprRequiresSemiToBeStmt = (ast: RsAst, e: i32): boolean => {
-  const k = ast.kind[e];
+  const k = atI32(ast.kind, e);
   return !(
     k === N_EX_IF ||
     k === N_EX_MATCH ||
@@ -177,14 +179,14 @@ const exprRequiresSemiToBeStmt = (ast: RsAst, e: i32): boolean => {
 
 /** A block `{ body }` made at rewrite time, as rustfmt does. */
 const syntheticBlock = (ast: RsAst, body: i32, lo: i32, hi: i32): i32 => {
-  const s = ast.add(N_STMT_EXPR, ast.lo[body]);
-  ast.hi[s] = ast.hi[body];
-  ast.a[s] = body;
+  const s = ast.add(N_STMT_EXPR, atI32(ast.lo, body));
+  rsAstPut(ast.hi, s, atI32(ast.hi, body));
+  rsAstPut(ast.a, s, body);
   const b = ast.add(N_BLOCK, lo);
-  ast.hi[b] = hi;
+  rsAstPut(ast.hi, b, hi);
   const kids: i32[] = [s];
-  ast.ls[b] = ast.addKids(kids, 0, 1);
-  ast.ln[b] = 1;
+  rsAstPut(ast.ls, b, ast.addKids(kids, 0, 1));
+  rsAstPut(ast.ln, b, 1);
   return b;
 };
 
@@ -194,15 +196,15 @@ const rewriteClosureWithBlock = (ctx: RsCtx, body: i32, prefix: string, shape: R
   if (vetoBlock(ast, body) && !exprRequiresSemiToBeStmt(ast, leftMost)) {
     return null;
   }
-  let lo = ast.lo[body];
-  for (let i = 0; i < ast.atn[body]; i++) {
+  let lo = atI32(ast.lo, body);
+  for (let i = 0; i < atI32(ast.atn, body); i++) {
     const a = ast.attr(body, i);
-    if ((ast.fl[a] & AT_INNER) === 0) {
-      lo = ast.lo[a];
+    if ((atI32(ast.fl, a) & AT_INNER) === 0) {
+      lo = atI32(ast.lo, a);
       break;
     }
   }
-  const block = syntheticBlock(ast, body, lo, ast.hi[body]);
+  const block = syntheticBlock(ast, body, lo, atI32(ast.hi, body));
   const s = rsRewriteBlockWithVisitor(ctx, "", block, false, -1, shape, false);
   if (s === null) {
     return null;
@@ -211,7 +213,7 @@ const rewriteClosureWithBlock = (ctx: RsCtx, body: i32, prefix: string, shape: R
 };
 
 const allowMultiLine = (ast: RsAst, e: i32): boolean => {
-  const k = ast.kind[e];
+  const k = atI32(ast.kind, e);
   if (
     k === N_EX_MATCH ||
     k === N_EX_ASYNC ||
@@ -223,7 +225,7 @@ const allowMultiLine = (ast: RsAst, e: i32): boolean => {
     return true;
   }
   if (k === N_EX_ADDR_OF || k === N_EX_TRY || k === N_EX_UNARY || k === N_EX_CAST) {
-    return allowMultiLine(ast, ast.a[e]);
+    return allowMultiLine(ast, atI32(ast.a, e));
   }
   return false;
 };
@@ -251,26 +253,26 @@ class FnDecl {
 
 const paramSpanHi = (ctx: RsCtx, p: i32): i32 => {
   const ast = ctx.ast;
-  const ty = ast.b[p];
-  if (ast.kind[ty] === N_TY_INFER) {
-    if (ctx.snippet(ast.lo[ty], ast.hi[ty]) === "_") {
-      return ast.hi[ty];
+  const ty = atI32(ast.b, p);
+  if (atI32(ast.kind, ty) === N_TY_INFER) {
+    if (ctx.snippet(atI32(ast.lo, ty), atI32(ast.hi, ty)) === "_") {
+      return atI32(ast.hi, ty);
     }
-    if (ast.a[p] >= 0) {
-      return ast.hi[ast.a[p]];
+    if (atI32(ast.a, p) >= 0) {
+      return atI32(ast.hi, atI32(ast.a, p));
     }
   }
-  return ast.hi[ty];
+  return atI32(ast.hi, ty);
 };
 
 const rewriteClosureFnDecl = (ctx: RsCtx, e: i32, body: i32, shape: RsShape): FnDecl | null => {
   const ast = ctx.ast;
   const cfg = ctx.cfg;
-  const decl = ast.b[e];
+  const decl = atI32(ast.b, e);
   let binder = "";
-  const bp = ast.c[e];
+  const bp = atI32(ast.c, e);
   if (bp >= 0) {
-    if (ast.ln[bp] === 0) {
+    if (atI32(ast.ln, bp) === 0) {
       binder = "for<> ";
     } else {
       const ls = rsRewriteBoundParams(ctx, shape, bp);
@@ -280,13 +282,15 @@ const rewriteClosureFnDecl = (ctx: RsCtx, e: i32, body: i32, shape: RsShape): Fn
       binder = `for<${ls}> `;
     }
   }
-  const f = ast.fl[e];
+  const f = atI32(ast.fl, e);
   const const_ = (f & CL_CONST) !== 0 ? "const " : "";
   const immovable = (f & CL_STATIC) !== 0 ? "static " : "";
   const coro = (f & CL_ASYNC) !== 0 ? "async " : "";
   const capture = (f & CL_MOVE) !== 0 ? "move " : "";
-  const offset =
-    toI32(binder.length) + toI32(const_.length) + toI32(immovable.length) + toI32(coro.length) + toI32(capture.length);
+  const offset = add32(
+    add32(add32(add32(toI32(binder.length), toI32(const_.length)), toI32(immovable.length)), toI32(coro.length)),
+    toI32(capture.length),
+  );
   const ns0 = shape.shrinkLeft(offset);
   if (ns0 === null) {
     return null;
@@ -296,23 +300,23 @@ const rewriteClosureFnDecl = (ctx: RsCtx, e: i32, body: i32, shape: RsShape): Fn
     return null;
   }
   const pbi = nestedShape.bi;
-  const pal = nestedShape.al + 1;
+  const pal = add32(nestedShape.al, 1);
   const ps0 = nestedShape.offsetLeft(1);
   if (ps0 === null) {
     return null;
   }
   let paramShape = ps0.visualIndent(0);
   let retStr = "";
-  if (ast.a[decl] >= 0) {
+  if (atI32(ast.a, decl) >= 0) {
     const r = rsRewriteFnRetTy(ctx, decl, paramShape);
     if (r === null) {
       return null;
     }
     retStr = r;
   }
-  const lo = ast.lo[e];
-  const hi = ast.hi[e];
-  const n = ast.ln[decl];
+  const lo = atI32(ast.lo, e);
+  const hi = atI32(ast.hi, e);
+  const n = atI32(ast.ln, decl);
   const ps = paramShape;
   const items = rsItemizeList(
     ctx,
@@ -323,16 +327,16 @@ const rewriteClosureFnDecl = (ctx: RsCtx, e: i32, body: i32, shape: RsShape): Fn
     (i: i32): i32 => paramSpanHi(ctx, ast.kid(decl, i)),
     (i: i32): string | null => rsRewriteParam(ctx, ast.kid(decl, i), ps),
     ctx.spanAfter(lo, hi, "|"),
-    ast.lo[body],
+    atI32(ast.lo, body),
     false,
   );
-  let hb = nestedShape.width - (toI32(retStr.length) + 1);
+  let hb = sub32(nestedShape.width, add32(toI32(retStr.length), 1));
   if (hb < 0) {
     hb = 0;
   }
   const tactic = rsDefinitiveTactic(items, LT_HORIZONTAL_VERTICAL, SEP_COMMA, hb);
   if (tactic === DLT_HORIZONTAL) {
-    const s = paramShape.subWidth(toI32(retStr.length) + 1);
+    const s = paramShape.subWidth(add32(toI32(retStr.length), 1));
     if (s === null) {
       return null;
     }
@@ -354,28 +358,28 @@ const rewriteClosureFnDecl = (ctx: RsCtx, e: i32, body: i32, shape: RsShape): Fn
     }
     prefix = prefix + retStr;
   }
-  return new FnDecl(prefix, rsLastLineWidth(prefix, cfg.tabSpaces) + 1);
+  return new FnDecl(prefix, add32(rsLastLineWidth(prefix, cfg.tabSpaces), 1));
 };
 
 /** rewrite_last_closure. */
 export const rsRewriteLastClosure = (ctx: RsCtx, e: i32, shape: RsShape): string | null => {
   const ast = ctx.ast;
-  if (ast.kind[e] !== N_EX_CLOSURE) {
+  if (atI32(ast.kind, e) !== N_EX_CLOSURE) {
     return null;
   }
-  let body = ast.a[e];
-  if (ast.kind[body] === N_EX_BLOCK) {
-    const block = ast.a[body];
+  let body = atI32(ast.a, e);
+  if (atI32(ast.kind, body) === N_EX_BLOCK) {
+    const block = atI32(ast.a, body);
     if (
-      (ast.fl[block] & BLK_UNSAFE) === 0 &&
+      (atI32(ast.fl, block) & BLK_UNSAFE) === 0 &&
       !ctx.insideMacro &&
       rsIsSimpleBlock(ctx, block, true) &&
-      ast.atn[body] === 0 &&
-      ast.d[body] < 0
+      atI32(ast.atn, body) === 0 &&
+      atI32(ast.d, body) < 0
     ) {
       const s = ast.kid(block, 0);
-      if (ast.kind[s] === N_STMT_EXPR) {
-        body = ast.a[s];
+      if (atI32(ast.kind, s) === N_STMT_EXPR) {
+        body = atI32(ast.a, s);
       }
     }
   }
@@ -396,7 +400,7 @@ export const rsRewriteLastClosure = (ctx: RsCtx, e: i32, shape: RsShape): string
     if (bs === null) {
       return null;
     }
-    if (ast.a[ast.b[e]] < 0 && rsLines(bs).length <= 7) {
+    if (atI32(ast.a, atI32(ast.b, e)) < 0 && rsLines(bs).length <= 7) {
       const sl = rewriteClosureExpr(ctx, body, prefix, shape);
       if (sl !== null && !rsHasByte(sl, 10)) {
         return sl;
@@ -417,7 +421,8 @@ export const rsArgsHaveManyClosure = (ctx: RsCtx, oc: i32, items: i32[]): boolea
   const ast = ctx.ast;
   let n = 0;
   for (const it of items) {
-    if (ast.kind[it] === N_EX_CLOSURE) {
+    // Two settle the answer.
+    if (atI32(ast.kind, it) === N_EX_CLOSURE && n < 2) {
       n++;
     }
   }
@@ -432,7 +437,7 @@ const isBlockClosureForced = (ctx: RsCtx, e: i32): boolean => {
 };
 
 const forcedInner = (ast: RsAst, e: i32, styleEdition: i32): boolean => {
-  const k = ast.kind[e];
+  const k = atI32(ast.kind, e);
   if (k === N_EX_IF || k === N_EX_WHILE || k === N_EX_FOR) {
     return true;
   }
@@ -440,7 +445,7 @@ const forcedInner = (ast: RsAst, e: i32, styleEdition: i32): boolean => {
     return true;
   }
   if (k === N_EX_ADDR_OF || k === N_EX_TRY || k === N_EX_UNARY || k === N_EX_CAST) {
-    return forcedInner(ast, ast.a[e], styleEdition);
+    return forcedInner(ast, atI32(ast.a, e), styleEdition);
   }
   return false;
 };

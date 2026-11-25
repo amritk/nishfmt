@@ -19,6 +19,10 @@ import {
   SW_T_NON_SPACE_OR_COMMENT_OR_LINEBREAK,
 } from "./token";
 
+// Token indices, token counts and line numbers stay below the token count, far from the
+// i32 limits, so a sum or difference of them the prover cannot bound is written
+// `toI32(toU32(a) + b)`: wrapping u32 arithmetic, exact for such values.
+
 /** parseGenericTypes(from:)'s range end (the clause starts at `start`, a `<` or `where`). */
 export const swGenericTypesEnd = (f: SwFormatter, start: i32): i32 => {
   let currentIndex = start;
@@ -172,7 +176,7 @@ export const swParseFunctionArguments = (f: SwFormatter, startOfScope: i32): SwF
   }
   let currentIndex = startOfScope;
   while (true) {
-    const colon = f.indexOfIn(SW_DELIM, ":", 0, currentIndex + 1, endOfScope);
+    const colon = f.indexOfIn(SW_DELIM, ":", 0, toI32(toU32(currentIndex) + 1), endOfScope);
     if (colon < 0) {
       break;
     }
@@ -269,7 +273,7 @@ export const swParseFunctionDeclaration = (f: SwFormatter, keywordIndex: i32): S
   if (ee >= 0) {
     d.effectsStart = f.indexAfter(SW_T_NON_SPACE_OR_COMMENT_OR_LINEBREAK, currentIndex);
     d.effectsEnd = ee;
-    currentIndex = ee + 1;
+    currentIndex = toI32(toU32(ee) + 1);
   }
   const ri = f.indexAfter(SW_T_NON_SPACE_OR_COMMENT_OR_LINEBREAK, currentIndex);
   if (ri >= 0 && f.op(ri, "->", SW_OP_INFIX)) {

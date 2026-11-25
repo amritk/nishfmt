@@ -3,6 +3,7 @@
 // Ported from RuboCop 1.92.3 (MIT License, Copyright (c) 2012-24 Bozhidar
 // Batsov).
 
+import { rbNKid } from "../node";
 import {
   F_DOT,
   F_DOUBLE_COLON,
@@ -45,13 +46,18 @@ const ldocSplit = (s: string, out: string[]): void => {
   const parts: string[] = [];
   let st = 0;
   const k = toI32(s.length);
-  for (let i = 0; i <= k; i++) {
-    if (i === k || s.charCodeAt(i) === 45) {
+  for (let i = 0; i < k; i++) {
+    if (s.charCodeAt(i) === 45) {
       parts.push(s.substring(st, i));
       st = i + 1;
     }
   }
-  while (parts.length > 0 && parts[parts.length - 1].length === 0) {
+  parts.push(s.substring(st, k));
+  while (parts.length > 0) {
+    const pl = toI32(parts.length);
+    if (pl < 1 || parts[pl - 1].length !== 0) {
+      break;
+    }
     parts.pop();
   }
   for (const p of parts) {
@@ -122,7 +128,7 @@ export class CopLintDeprecatedOpenSSLConstant {
   /** replacement_args, or null where RuboCop raises. */
   private replacementArgs(src: RbSource, n: i32, x: i32): string | null {
     const a = src.a;
-    const argc = a.nKid(n) - 2;
+    const argc = rbNKid(src, n) - 2;
     if (src.nodeSrc(x) === "OpenSSL::Cipher::Cipher") {
       return argc > 0 ? src.nodeSrc(a.kid(n, 2)) : null;
     }
@@ -131,7 +137,8 @@ export class CopLintDeprecatedOpenSSLConstant {
     if (klass === "OpenSSL::Cipher" && !ldocNoArg(name)) {
       // name.scan(/.{3}/).join('-'): whole groups of three characters
       const groups: string[] = [];
-      for (let i = 0; i + 3 <= toI32(name.length); i += 3) {
+      const nl = toI32(name.length);
+      for (let i = 0; i <= nl - 3; i += 3) {
         groups.push(name.substring(i, i + 3));
       }
       name = groups.join("-");
@@ -166,8 +173,10 @@ export class CopLintDeprecatedOpenSSLConstant {
         sizeMode.push(ldocDown(p));
       }
     }
-    if (ldocNoArg(ldocUp(algo[0])) && argc === 0) {
-      return `'${algo[0]}'`;
+    // algo is not empty (checked above).
+    const a0 = algo.length > 0 ? algo[0] : "";
+    if (ldocNoArg(ldocUp(a0)) && argc === 0) {
+      return `'${a0}'`;
     }
     const all: string[] = [];
     for (const p of algo) {

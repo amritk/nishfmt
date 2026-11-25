@@ -3,6 +3,7 @@
 // Ported from RuboCop 1.92.3 (MIT License, Copyright (c) 2012-24 Bozhidar
 // Batsov).
 
+import { rbByteAt } from "../util";
 import { RbCop } from "../cop";
 import { rbSpaceEnd } from "../help";
 import { RbSource } from "../source";
@@ -20,7 +21,7 @@ const rbEncIsUtf8 = (s: string): boolean => {
     if (c >= 65 && c <= 90) {
       c += 32;
     }
-    if (c !== w.charCodeAt(i)) {
+    if (c !== rbByteAt(w, i)) {
       return false;
     }
   }
@@ -39,7 +40,7 @@ export class CopStyleEncoding {
     if (src.n === 0) {
       return;
     }
-    for (let l = 1; l <= src.lineCount(); l++) {
+    for (let l = 1; l <= src.lineCount() && l < 2147483647; l++) {
       const line = src.lineText(l);
       if (line.startsWith("#!")) {
         continue;

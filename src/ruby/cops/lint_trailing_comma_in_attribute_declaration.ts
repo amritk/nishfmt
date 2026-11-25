@@ -3,6 +3,7 @@
 // Ported from RuboCop 1.92.3 (MIT License, Copyright (c) 2012-24 Bozhidar
 // Batsov).
 
+import { add32 } from "../../core/arr";
 import { NT_DEF, NT_DEFS } from "../ast";
 import { RbCop } from "../cop";
 import { rbSpaceEnd } from "../help";
@@ -28,9 +29,10 @@ export class CopLintTrailingCommaInAttributeDeclaration {
         continue;
       }
       const e = rbSpaceEnd(src, a.exE(a.kid(n, -2)), 2, true, false, false);
-      const k = this.c.offense(e, e + 1);
+      const e1 = add32(e, 1);
+      const k = this.c.offense(e, e1);
       if (k !== null) {
-        k.remove(e, e + 1);
+        k.remove(e, e1);
         this.c.commit(k);
       }
     }

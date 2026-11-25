@@ -4,6 +4,7 @@
 // token and ends after its last.
 
 import { growI32 } from "../core/arr";
+import { fault } from "../core/fault";
 
 // Node kinds (javac's Tree.Kind, coarse; `op` refines operators and literals).
 export const N_COMPILATION_UNIT: i32 = 1;
@@ -310,22 +311,21 @@ export class JTree {
   nTmp: i32 = 0;
 
   constructor() {
-    const c = 1024;
-    this.kind = new Array<i32>(c);
-    this.op = new Array<i32>(c);
-    this.start = new Array<i32>(c);
-    this.end = new Array<i32>(c);
-    this.name = new Array<i32>(c);
-    this.flags = new Array<i32>(c);
-    this.parent = new Array<i32>(c);
-    this.a = new Array<i32>(c);
-    this.b = new Array<i32>(c);
-    this.c = new Array<i32>(c);
-    this.d = new Array<i32>(c);
-    this.e = new Array<i32>(c);
-    this.f = new Array<i32>(c);
-    this.g = new Array<i32>(c);
-    this.h = new Array<i32>(c);
+    this.kind = new Array<i32>(1024);
+    this.op = new Array<i32>(1024);
+    this.start = new Array<i32>(1024);
+    this.end = new Array<i32>(1024);
+    this.name = new Array<i32>(1024);
+    this.flags = new Array<i32>(1024);
+    this.parent = new Array<i32>(1024);
+    this.a = new Array<i32>(1024);
+    this.b = new Array<i32>(1024);
+    this.c = new Array<i32>(1024);
+    this.d = new Array<i32>(1024);
+    this.e = new Array<i32>(1024);
+    this.f = new Array<i32>(1024);
+    this.g = new Array<i32>(1024);
+    this.h = new Array<i32>(1024);
     this.lStart = new Array<i32>(256);
     this.lLen = new Array<i32>(256);
     this.items = new Array<i32>(1024);
@@ -370,40 +370,68 @@ export class JTree {
 
   node(kind: i32, start: i32): i32 {
     const i = this.n;
+    if (i < 0) {
+      fault();
+      return -1;
+    }
     if (i >= toI32(this.kind.length)) {
       // Only reached past the parser's estimate; see `ensure`.
-      const c = i * 2 + 16;
-      this.kind = growI32(this.kind, c);
-      this.op = growI32(this.op, c);
-      this.start = growI32(this.start, c);
-      this.end = growI32(this.end, c);
-      this.name = growI32(this.name, c);
-      this.flags = growI32(this.flags, c);
-      this.parent = growI32(this.parent, c);
-      this.a = growI32(this.a, c);
-      this.b = growI32(this.b, c);
-      this.c = growI32(this.c, c);
-      this.d = growI32(this.d, c);
-      this.e = growI32(this.e, c);
-      this.f = growI32(this.f, c);
-      this.g = growI32(this.g, c);
-      this.h = growI32(this.h, c);
+      if (i > 1073741815) {
+        fault();
+        return -1;
+      }
+      this.grow(i * 2 + 16);
     }
-    this.kind[i] = kind;
-    this.op[i] = 0;
-    this.start[i] = start;
-    this.end[i] = start;
-    this.name[i] = -1;
-    this.flags[i] = 0;
-    this.parent[i] = -1;
-    this.a[i] = -1;
-    this.b[i] = -1;
-    this.c[i] = -1;
-    this.d[i] = -1;
-    this.e[i] = -1;
-    this.f[i] = -1;
-    this.g[i] = -1;
-    this.h[i] = -1;
+    const kindC = this.kind;
+    const opC = this.op;
+    const startC = this.start;
+    const endC = this.end;
+    const nameC = this.name;
+    const flagsC = this.flags;
+    const parentC = this.parent;
+    const aC = this.a;
+    const bC = this.b;
+    const cC = this.c;
+    const dC = this.d;
+    const eC = this.e;
+    const fC = this.f;
+    const gC = this.g;
+    const hC = this.h;
+    if (
+      i >= kindC.length ||
+      i >= opC.length ||
+      i >= startC.length ||
+      i >= endC.length ||
+      i >= nameC.length ||
+      i >= flagsC.length ||
+      i >= parentC.length ||
+      i >= aC.length ||
+      i >= bC.length ||
+      i >= cC.length ||
+      i >= dC.length ||
+      i >= eC.length ||
+      i >= fC.length ||
+      i >= gC.length ||
+      i >= hC.length
+    ) {
+      fault();
+      return -1;
+    }
+    kindC[i] = kind;
+    opC[i] = 0;
+    startC[i] = start;
+    endC[i] = start;
+    nameC[i] = -1;
+    flagsC[i] = 0;
+    parentC[i] = -1;
+    aC[i] = -1;
+    bC[i] = -1;
+    cC[i] = -1;
+    dC[i] = -1;
+    eC[i] = -1;
+    fC[i] = -1;
+    gC[i] = -1;
+    hC[i] = -1;
     this.n = i + 1;
     return i;
   }
@@ -414,30 +442,77 @@ export class JTree {
   }
 
   push(x: i32): void {
-    if (this.nTmp >= toI32(this.tmp.length)) {
-      this.tmp = growI32(this.tmp, this.nTmp * 2 + 16);
+    const n = this.nTmp;
+    if (n < 0) {
+      fault();
+      return;
     }
-    this.tmp[this.nTmp] = x;
-    this.nTmp = this.nTmp + 1;
+    if (n >= toI32(this.tmp.length)) {
+      if (n > 1073741815) {
+        fault();
+        return;
+      }
+      this.tmp = growI32(this.tmp, n * 2 + 16);
+    }
+    const tmp = this.tmp;
+    if (n >= tmp.length) {
+      fault();
+      return;
+    }
+    tmp[n] = x;
+    this.nTmp = n + 1;
   }
 
   /** Copies the stack from `mark` into a new list and pops it. */
   list(mark: i32): i32 {
-    const len = this.nTmp - mark;
+    const nTmp = this.nTmp;
+    const nItems = this.nItems;
     const l = this.nLists;
+    if (mark < 0 || nTmp < 0 || nItems < 0 || l < 0) {
+      fault();
+      return -1;
+    }
+    // Negative when the stack was popped below `mark`, which copies nothing.
+    const len = nTmp - mark;
     if (l >= toI32(this.lStart.length)) {
+      if (l > 1073741815) {
+        fault();
+        return -1;
+      }
       this.lStart = growI32(this.lStart, l * 2 + 16);
       this.lLen = growI32(this.lLen, l * 2 + 16);
     }
-    if (this.nItems + len > toI32(this.items.length)) {
-      this.items = growI32(this.items, (this.nItems + len) * 2 + 16);
+    const end = toI64(nItems) + toI64(len);
+    if (end > toI64(1073741815)) {
+      fault();
+      return -1;
     }
-    this.lStart[l] = this.nItems;
-    this.lLen[l] = len;
-    for (let i = 0; i < len; i++) {
-      this.items[this.nItems + i] = this.tmp[mark + i];
+    const newItems = toI32(end);
+    const items0 = this.items;
+    // `end` is in [0, 1073741815] whenever this grows, so the conversion is exact.
+    if (newItems > items0.length && newItems >= 0 && newItems <= 1073741815) {
+      this.items = growI32(items0, newItems * 2 + 16);
     }
-    this.nItems = this.nItems + len;
+    const lStart = this.lStart;
+    const lLen = this.lLen;
+    const items = this.items;
+    const tmp = this.tmp;
+    if (l >= lStart.length || l >= lLen.length) {
+      fault();
+      return -1;
+    }
+    lStart[l] = nItems;
+    lLen[l] = len;
+    let d = nItems;
+    for (let s = mark; s < nTmp; s++) {
+      if (s >= tmp.length || d < 0 || d >= items.length) {
+        fault();
+        return -1;
+      }
+      items[d] = tmp[s];
+      d = d + 1;
+    }
+    this.nItems = newItems;
     this.nTmp = mark;
     this.nLists = l + 1;
     return l;
@@ -449,14 +524,48 @@ export class JTree {
   }
 
   len(l: i32): i32 {
-    return l < 0 ? 0 : this.lLen[l];
+    if (l < 0) {
+      return 0;
+    }
+    const lLen = this.lLen;
+    if (l < lLen.length) {
+      return lLen[l];
+    }
+    fault();
+    return 0;
   }
 
   at(l: i32, i: i32): i32 {
-    return this.items[this.lStart[l] + i];
+    const lStart = this.lStart;
+    const items = this.items;
+    if (l >= 0 && l < lStart.length) {
+      const p = toI64(lStart[l]) + toI64(i);
+      if (p >= toI64(0) && p < toI64(items.length)) {
+        // In range, so the conversion is exact.
+        const q = toI32(p);
+        if (q >= 0 && q < items.length) {
+          return items[q];
+        }
+      }
+    }
+    fault();
+    return -1;
   }
 
   last(l: i32): i32 {
-    return this.items[this.lStart[l] + this.lLen[l] - 1];
+    const lStart = this.lStart;
+    const lLen = this.lLen;
+    const items = this.items;
+    if (l >= 0 && l < lStart.length && l < lLen.length) {
+      const p = toI64(lStart[l]) + toI64(lLen[l]) - toI64(1);
+      if (p >= toI64(0) && p < toI64(items.length)) {
+        const q = toI32(p);
+        if (q >= 0 && q < items.length) {
+          return items[q];
+        }
+      }
+    }
+    fault();
+    return -1;
   }
 }

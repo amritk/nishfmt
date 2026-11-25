@@ -7,7 +7,7 @@
 import { F_END, F_SELECTOR, NT_CSEND, NT_SEND, V_NIL } from "../ast";
 import { RbCop } from "../cop";
 import { rbSpaceBegin } from "../help";
-import { rnHas, rnS } from "../node";
+import { rbB, rbLine, rnHas, rnS } from "../node";
 import { RbSource } from "../source";
 import { RbLayLines } from "./layout_empty_help";
 
@@ -49,12 +49,13 @@ export class CopLayoutEmptyLinesAroundArguments {
   /** empty_range_for_starting_point: the line before `start` when blank lines lead up to it. */
   private startingPoint(src: RbSource, L: RbLayLines, start: i32): void {
     const b = rbSpaceBegin(src, start, 1, true, true, false);
-    const last = src.line(start);
-    if (last - src.line(b) <= 1) {
+    // The line before start's.
+    const prev = rbLine(src, start) - 1;
+    if (prev <= src.line(b)) {
       return;
     }
-    const s = L.start(last - 1);
-    const e = L.end(last - 1) + 1;
+    const s = L.start(prev);
+    const e = rbB(L.end(prev)) + 1;
     const k = this.c.offense(s, e);
     if (k !== null) {
       k.remove(s, e);

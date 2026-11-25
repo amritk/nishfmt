@@ -2,6 +2,8 @@
 // Copyright (c) 2013-2024 parser contributors): its Ragel lexer tables and
 // racc parser tables, 3 characters per entry (see rbAt). Do not edit.
 
+import { fault, faulted } from "../core/fault";
+
 export const RL_LEX_TRANS_KEYS: string =
   "H((H((H((H)gH((H)gH((H)gH((H)gH((H)gH((H)gH((H)gH(bH(bH(bH(bH(VH(VH((H)gH(bH(bH(dH(dH(fH(fH(2H(2H((H)gH((H)gH((H)gH((H)gH((H)gH((H)gH((H)gH((H)gH((H)gH((H)gH((H)gH((H)gH((H)gH((H)gH((H)gH((H)gH((H)gH((H)gH)[H)[H)KH)KH)]H)]H)MH)MH)TH)\\H)MH)MH)[H)[H)[H)[H)QH)QH)TH)TH)QH)QH)TH)TH(bH(bH((H)gH(2H(2H((H)gH(1H)DH(2H(2H(1H)DH(bH(bH)JH)JH)MH)MH)OH)OH)QH)QH)VH)VH((H)gH(eH(eH(1H)DH(1H)DH(1H)DH(1H)DH(1H)DH(2H(2H((H)gH((H)gH(eH)fH)EH)EH((H)gH((H)gH(2H(2H(JH(JH(2H(2H(OH(OH((H)gH(2H)HH)HH)HH((H)gH((H)gH((H)gH((H)gH((H)gH((H)gH(bH(bH(bH(bH((H)gH(SH(aH(XH(aH(XH(aH(XH(aH(XH(aH)[H)[H)KH)KH)]H)]H)MH)MH)KH)KH)]H)]H)MH)MH((H)gH(bH(bH(1H)DH(1H)DH(1H)DH(1H)DH(1H)DH(1H)DH(dH(dH(2H(2H(1H)DH(1H)DH(2H(2H(2H(2H(2H(2H(2H(2H(VH(VH)MH)MH)OH)OH)QH)QH)VH)VH)-H)-H)6H)6H),H),H)GH)GH)GH)GH((H(BH((H((H(LH)(H((H)gH(XH(aH((H)gH((H)gH((H)gH((H)gH(1H(HH((H((H(eH)fH(2H(2H(2H(2H((H)gH((H)gH(XH(aH)[H)[H(NH(NH(RH(RH)(H)(H(bH(bH(dH(eH(fH(fH(eH)fH(eH(eH(eH(fH((H)gH((H)gH((H)gH((H)gH((H)gH((H)gH((H)gH)EH)EH(2H(2H((H)gH((H)gH((H)gH((H)gH((H)gH((H)gH((H)gH((H)gH((H)gH((H)gH((H)gH((H)gH((H)gH((H)gH((H)gH((H)gH((H)gH((H)gH((H)gH((H)gH((H)gH((H)gH((H)gH((H)gH((H)gH((H)gH((H)gH((H)gH((H)gH((H)gH((H)gH((H)gH((H)gH((H)gH((H)gH((H)gH((H)gH((H)gH((H)gH((H)gH((H)gH((H)gH((H)gH((H)gH((H)gH((H)gH((H)gH((H)gH((H)gH((H)gH((H)gH((H)gH((H)gH((H)gH((H)gH((H)gH((H)gH((H)gH((H)gH((H)gH((H)gH((H)gH((H)gH((H)gH((H)gH((H)gH((H)gH((H)gH((H)gH((H)gH((H)gH((H)gH((H)gH((H)gH((H)gH((H)gH((H)gH((H)gH((H)gH((H)gH((H)gH((H)gH((H)gH)dH)dH((H)gH((H)gH(1H(HH(2H(2H(2H(2H(VH(VH(2H(2H((H((H((H)gH((H)gH(eH(eH((H((H(1H(HH((H((H(eH)fH(2H(2H(2H(2H(NH(NH(RH(RH)(H)(H(dH(eH(fH(fH(eH)fH(eH(eH(eH(fH((H)gH)EH)EH(2H(2H)dH)dH((H)fH((H)gH((H(eH(1H(eH(1H(eH((H((H(1H(eH(1H(fH(VH(VH(VH(VH(bH(bH(1H(HH((H((H((H)gH((H((H(1H)dH((H((H(2H(2H(2H(2H((H((H(1H(eH(bH(bH(dH(dH(fH(fH(1H(HH(2H(2H((H)gH)NH)NH)MH)MH)VH)VH)PH)PH((H)gH((H)gH((H)gH((H((H((H)gH(2H(2H((H)cH(1H(HH(2H(2H(2H(2H(2H(2H((H((H)WH)WH((H((H((H)gH((H)gH(1H(HH((H((H(2H(2H(2H(2H(2H(2H((H((H((H)gH((H)gH((H)gH((H)gH((H)gH((H)gH((H)gH((H)gH((H)gH((H)gH((H)gH((H)gH((H)gH((H)gH((H)gH((H)gH((H)gH((H)gH(bH(eH((H((H(eH)fH(eH(eH((H((H((H((H((H((H(1H(HH(eH(eH(1H(HH(eH)fH(2H(2H(2H(2H((H)gH(NH(eH((H((H(RH(eH(eH(eH(1H)DH(1H)DH(1H)DH(VH(VH(VH(VH(2H(2H((H(BH((H)gH((H)gH(eH(eH((H((H(eH)fH(eH(fH((H((H((H((H((H((H((H((H(eH)fH((H)gH(XH(aH(NH(NH(RH(RH)(H)(H(dH(eH(fH(fH(eH(eH(eH(fH((H)gH(XH(aH((H)gH)dH)dH)(H)(H(dH(eH((H((H(2H(JH(2H(OH)HH)HH(fH(fH(eH)fH(eH(fH((H(BH((H)gH((H)gH((H)gH((H((H(2H(2H((H((H((H)gH((H)gH((H)gH((H)gH((H)gH((H)gH((H)gH((H)gH((H)gH((H)gH((H)gH((H)gH((H)gH((H)gH((H)gH((H)gH((H)gH((H)gH((H)gH((H)gH((H)gH((H)gH((H)gH((H)gH((H)gH((H)gH((H)gH((H)gH((H)gH((H)gH((H)gH((H)gH((H)gH((H)gH((H)gH((H)gH((H)gH((H)gH((H)gH((H)gH((H)gH((H)gH((H)gH((H)gH((H)gH((H)gH((H)gH((H)gH((H)gH((H)gH((H)gH((H)gH((H)gH((H)gH((H)gH((H)gH((H)gH((H)gH((H)gH((H)gH((H)gH(eH)fH((H)gH((H)gH((H)gH((H)gH((H)gH((H)gH((H)gH((H)gH((H)gH((H)gH((H)gH((H)gH((H)gH((H)gH((H)gH((H)gH((H)gH((H)gH((H)gH((H)gH((H)gH((H)gH((H)gH((H)gH((H)gH((H((H(eH)dH((H)DH(1H(HH((H((H(2H(2H(2H(2H(2H(2H((H((H((H)gH((H)gH(1H(HH((H((H(2H(2H(2H(2H(2H(2H((H((H((H)gH((H)gH(eH(eH((H((H(1H(HH((H((H(eH)fH(2H(2H(2H(2H((H)gH((H)gH(XH(aH(eH(eH(NH(eH((H((H((H((H(RH(eH(eH(fH(VH(aH(VH(VH(2H(2H(XH)MH(XH)GH(VH)`H(XH)ZH(SH(aH(XH)QH)NH)NH((H((H)MH)QH((H((H((H((H(XH)ZH(XH)ZH(XH)ZH(XH)ZH)QH)ZH)NH)NH((H((H)MH)QH)[H)[H((H((H((H((H(XH)ZH(XH)ZH(XH)ZH(XH)ZH(XH)ZH(XH)ZH(XH)ZH(XH)ZH(VH)ZH(XH)ZH(VH)ZH(XH)ZH(bH(bH(dH(eH(fH(fH(eH)fH(eH(eH(eH(fH((H)gH((H)gH((H((H((H)gH((H)gH((H)gH((H)gH((H)gH((H)gH((H((H(2H(2H((H((H((H((H((H)gH((H)gH((H)gH((H)gH((H)gH((H)gH((H)gH((H)gH((H)gH((H)gH((H)gH((H)gH((H)gH((H)gH((H)gH((H)gH((H)gH((H)gH((H)gH((H)gH((H)gH((H)gH((H)gH((H)gH((H)gH((H)gH((H)gH((H)gH((H)gH((H)gH((H)gH((H)gH((H)gH((H)gH((H)gH((H)gH((H)gH(1H)DH((H)gH((H)gH((H)gH((H)gH((H)gH((H)gH((H)gH((H)gH((H)gH((H)gH((H)gH((H)gH((H)gH((H)gH((H)gH((H)gH((H)gH((H)gH((H)gH((H)gH((H)gH((H)gH((H)gH((H)gH((H)gH((H)gH((H)gH((H)gH((H)gH((H)gH((H)gH((H)gH((H)gH((H)gH((H)gH((H)gH((H)gH((H)gH((H)gH((H)gH((H)gH((H)gH((H)gH((H)gH((H)gH((H)gH((H)gH((H)gH((H)gH((H)gH((H)gH((H)gH((H)gH((H)gH((H)gH((H)gH((H)gH((H)gH((H)gH((H)gH((H)gH((H)gH((H)gH((H)gH((H)gH((H((H(eH)dH((H((H(1H)DH(1H)DH(1H)DH(VH(VH(VH(VH(2H(2H(VH(VH(2H(2H(2H(eH(2H(2H(2H)MH(2H)VH(2H)LH(2H(2H((H)GH(1H(HH((H((H(2H(2H(2H(2H)JH)JH(1H(HH(2H(2H)GH)GH((";
 export const RL_LEX_TRANS_KEYS_N: i32 = 1439;
@@ -274,8 +276,20 @@ export const TK_tLOWEST: i32 = 146;
 
 /** Entry `i` of a table string. */
 export const rbAt = (t: string, i: i32): i32 => {
+  if (i < 0 || i > 715827881) {
+    fault();
+    return RB_NIL;
+  }
   const k = i * 3;
-  const x = ((t.charCodeAt(k) - 40) << 12) | ((t.charCodeAt(k + 1) - 40) << 6) | (t.charCodeAt(k + 2) - 40);
+  if (k > toI32(t.length) - 3) {
+    fault();
+    return RB_NIL;
+  }
+  // Each character holds 6 bits above 40, so the masks change nothing.
+  const a = (t.charCodeAt(k) - 40) & 63;
+  const b = (t.charCodeAt(k + 1) - 40) & 63;
+  const c = (t.charCodeAt(k + 2) - 40) & 63;
+  const x = a * 4096 + b * 64 + c;
   return x === 262143 ? RB_NIL : x - 131072;
 };
 
@@ -315,100 +329,70 @@ export const RP_REDUCE_NT_D = new Int32Array(RP_REDUCE_NT_N);
 export const RP_REDUCE_ACT_D = new Int32Array(RP_REDUCE_ACT_N);
 const RB_TABLES_READY = new Int32Array(1);
 
+/** Decodes the table string `t` into `d`, one entry a step (see rbAt). */
+const rbDecode = (t: string, d: Int32Array): void => {
+  const m = toI32(t.length);
+  let k = 0;
+  for (let i = 0; i < d.length; i++) {
+    if (k < 0 || k > m - 3) {
+      fault();
+      return;
+    }
+    const a = (t.charCodeAt(k) - 40) & 63;
+    const b = (t.charCodeAt(k + 1) - 40) & 63;
+    const c = (t.charCodeAt(k + 2) - 40) & 63;
+    const x = a * 4096 + b * 64 + c;
+    d[i] = x === 262143 ? RB_NIL : x - 131072;
+    k = k + 3;
+  }
+};
+
+const rbFlag = (flag: Int32Array): i32 => (flag.length > 0 ? flag[0] : 0);
+
+const rbFlagSet = (flag: Int32Array): void => {
+  if (flag.length > 0) {
+    flag[0] = 1;
+  }
+};
+
 /** Decodes every table on the first call. */
 export const rbTablesInit = (): void => {
-  if (RB_TABLES_READY[0] === 1) {
+  if (rbFlag(RB_TABLES_READY) === 1) {
     return;
   }
-  for (let i = 0; i < RL_LEX_TRANS_KEYS_N; i++) {
-    RL_LEX_TRANS_KEYS_D[i] = rbAt(RL_LEX_TRANS_KEYS, i);
+  rbDecode(RL_LEX_TRANS_KEYS, RL_LEX_TRANS_KEYS_D);
+  rbDecode(RL_LEX_KEY_SPANS, RL_LEX_KEY_SPANS_D);
+  rbDecode(RL_LEX_INDEX_OFFSETS, RL_LEX_INDEX_OFFSETS_D);
+  rbDecode(RL_LEX_INDICIES, RL_LEX_INDICIES_D);
+  rbDecode(RL_LEX_TRANS_TARGS, RL_LEX_TRANS_TARGS_D);
+  rbDecode(RL_LEX_TRANS_ACTIONS, RL_LEX_TRANS_ACTIONS_D);
+  rbDecode(RL_LEX_TO_STATE_ACTIONS, RL_LEX_TO_STATE_ACTIONS_D);
+  rbDecode(RL_LEX_FROM_STATE_ACTIONS, RL_LEX_FROM_STATE_ACTIONS_D);
+  rbDecode(RL_LEX_EOF_TRANS, RL_LEX_EOF_TRANS_D);
+  rbDecode(RS_LEX_ACTIONS, RS_LEX_ACTIONS_D);
+  rbDecode(RS_LEX_TRANS_KEYS, RS_LEX_TRANS_KEYS_D);
+  rbDecode(RS_LEX_KEY_SPANS, RS_LEX_KEY_SPANS_D);
+  rbDecode(RS_LEX_INDEX_OFFSETS, RS_LEX_INDEX_OFFSETS_D);
+  rbDecode(RS_LEX_INDICIES, RS_LEX_INDICIES_D);
+  rbDecode(RS_LEX_TRANS_TARGS, RS_LEX_TRANS_TARGS_D);
+  rbDecode(RS_LEX_TRANS_ACTIONS, RS_LEX_TRANS_ACTIONS_D);
+  rbDecode(RS_LEX_TO_STATE_ACTIONS, RS_LEX_TO_STATE_ACTIONS_D);
+  rbDecode(RS_LEX_FROM_STATE_ACTIONS, RS_LEX_FROM_STATE_ACTIONS_D);
+  rbDecode(RS_LEX_EOF_TRANS, RS_LEX_EOF_TRANS_D);
+  rbDecode(RP_ACTION_TABLE, RP_ACTION_TABLE_D);
+  rbDecode(RP_ACTION_CHECK, RP_ACTION_CHECK_D);
+  rbDecode(RP_ACTION_POINTER, RP_ACTION_POINTER_D);
+  rbDecode(RP_ACTION_DEFAULT, RP_ACTION_DEFAULT_D);
+  rbDecode(RP_GOTO_TABLE, RP_GOTO_TABLE_D);
+  rbDecode(RP_GOTO_CHECK, RP_GOTO_CHECK_D);
+  rbDecode(RP_GOTO_POINTER, RP_GOTO_POINTER_D);
+  rbDecode(RP_GOTO_DEFAULT, RP_GOTO_DEFAULT_D);
+  rbDecode(RP_REDUCE_LEN, RP_REDUCE_LEN_D);
+  rbDecode(RP_REDUCE_NT, RP_REDUCE_NT_D);
+  rbDecode(RP_REDUCE_ACT, RP_REDUCE_ACT_D);
+  // A table that failed to decode faulted this file; left unready, the next
+  // file decodes again (and faults again) rather than reading it half filled.
+  if (!faulted()) {
+    rbFlagSet(RB_TABLES_READY);
   }
-  for (let i = 0; i < RL_LEX_KEY_SPANS_N; i++) {
-    RL_LEX_KEY_SPANS_D[i] = rbAt(RL_LEX_KEY_SPANS, i);
-  }
-  for (let i = 0; i < RL_LEX_INDEX_OFFSETS_N; i++) {
-    RL_LEX_INDEX_OFFSETS_D[i] = rbAt(RL_LEX_INDEX_OFFSETS, i);
-  }
-  for (let i = 0; i < RL_LEX_INDICIES_N; i++) {
-    RL_LEX_INDICIES_D[i] = rbAt(RL_LEX_INDICIES, i);
-  }
-  for (let i = 0; i < RL_LEX_TRANS_TARGS_N; i++) {
-    RL_LEX_TRANS_TARGS_D[i] = rbAt(RL_LEX_TRANS_TARGS, i);
-  }
-  for (let i = 0; i < RL_LEX_TRANS_ACTIONS_N; i++) {
-    RL_LEX_TRANS_ACTIONS_D[i] = rbAt(RL_LEX_TRANS_ACTIONS, i);
-  }
-  for (let i = 0; i < RL_LEX_TO_STATE_ACTIONS_N; i++) {
-    RL_LEX_TO_STATE_ACTIONS_D[i] = rbAt(RL_LEX_TO_STATE_ACTIONS, i);
-  }
-  for (let i = 0; i < RL_LEX_FROM_STATE_ACTIONS_N; i++) {
-    RL_LEX_FROM_STATE_ACTIONS_D[i] = rbAt(RL_LEX_FROM_STATE_ACTIONS, i);
-  }
-  for (let i = 0; i < RL_LEX_EOF_TRANS_N; i++) {
-    RL_LEX_EOF_TRANS_D[i] = rbAt(RL_LEX_EOF_TRANS, i);
-  }
-  for (let i = 0; i < RS_LEX_ACTIONS_N; i++) {
-    RS_LEX_ACTIONS_D[i] = rbAt(RS_LEX_ACTIONS, i);
-  }
-  for (let i = 0; i < RS_LEX_TRANS_KEYS_N; i++) {
-    RS_LEX_TRANS_KEYS_D[i] = rbAt(RS_LEX_TRANS_KEYS, i);
-  }
-  for (let i = 0; i < RS_LEX_KEY_SPANS_N; i++) {
-    RS_LEX_KEY_SPANS_D[i] = rbAt(RS_LEX_KEY_SPANS, i);
-  }
-  for (let i = 0; i < RS_LEX_INDEX_OFFSETS_N; i++) {
-    RS_LEX_INDEX_OFFSETS_D[i] = rbAt(RS_LEX_INDEX_OFFSETS, i);
-  }
-  for (let i = 0; i < RS_LEX_INDICIES_N; i++) {
-    RS_LEX_INDICIES_D[i] = rbAt(RS_LEX_INDICIES, i);
-  }
-  for (let i = 0; i < RS_LEX_TRANS_TARGS_N; i++) {
-    RS_LEX_TRANS_TARGS_D[i] = rbAt(RS_LEX_TRANS_TARGS, i);
-  }
-  for (let i = 0; i < RS_LEX_TRANS_ACTIONS_N; i++) {
-    RS_LEX_TRANS_ACTIONS_D[i] = rbAt(RS_LEX_TRANS_ACTIONS, i);
-  }
-  for (let i = 0; i < RS_LEX_TO_STATE_ACTIONS_N; i++) {
-    RS_LEX_TO_STATE_ACTIONS_D[i] = rbAt(RS_LEX_TO_STATE_ACTIONS, i);
-  }
-  for (let i = 0; i < RS_LEX_FROM_STATE_ACTIONS_N; i++) {
-    RS_LEX_FROM_STATE_ACTIONS_D[i] = rbAt(RS_LEX_FROM_STATE_ACTIONS, i);
-  }
-  for (let i = 0; i < RS_LEX_EOF_TRANS_N; i++) {
-    RS_LEX_EOF_TRANS_D[i] = rbAt(RS_LEX_EOF_TRANS, i);
-  }
-  for (let i = 0; i < RP_ACTION_TABLE_N; i++) {
-    RP_ACTION_TABLE_D[i] = rbAt(RP_ACTION_TABLE, i);
-  }
-  for (let i = 0; i < RP_ACTION_CHECK_N; i++) {
-    RP_ACTION_CHECK_D[i] = rbAt(RP_ACTION_CHECK, i);
-  }
-  for (let i = 0; i < RP_ACTION_POINTER_N; i++) {
-    RP_ACTION_POINTER_D[i] = rbAt(RP_ACTION_POINTER, i);
-  }
-  for (let i = 0; i < RP_ACTION_DEFAULT_N; i++) {
-    RP_ACTION_DEFAULT_D[i] = rbAt(RP_ACTION_DEFAULT, i);
-  }
-  for (let i = 0; i < RP_GOTO_TABLE_N; i++) {
-    RP_GOTO_TABLE_D[i] = rbAt(RP_GOTO_TABLE, i);
-  }
-  for (let i = 0; i < RP_GOTO_CHECK_N; i++) {
-    RP_GOTO_CHECK_D[i] = rbAt(RP_GOTO_CHECK, i);
-  }
-  for (let i = 0; i < RP_GOTO_POINTER_N; i++) {
-    RP_GOTO_POINTER_D[i] = rbAt(RP_GOTO_POINTER, i);
-  }
-  for (let i = 0; i < RP_GOTO_DEFAULT_N; i++) {
-    RP_GOTO_DEFAULT_D[i] = rbAt(RP_GOTO_DEFAULT, i);
-  }
-  for (let i = 0; i < RP_REDUCE_LEN_N; i++) {
-    RP_REDUCE_LEN_D[i] = rbAt(RP_REDUCE_LEN, i);
-  }
-  for (let i = 0; i < RP_REDUCE_NT_N; i++) {
-    RP_REDUCE_NT_D[i] = rbAt(RP_REDUCE_NT, i);
-  }
-  for (let i = 0; i < RP_REDUCE_ACT_N; i++) {
-    RP_REDUCE_ACT_D[i] = rbAt(RP_REDUCE_ACT, i);
-  }
-  RB_TABLES_READY[0] = 1;
 };

@@ -3,6 +3,8 @@
 // Ported from RuboCop 1.92.3 (MIT License, Copyright (c) 2012-24 Bozhidar
 // Batsov).
 
+import { rbNKid } from "../node";
+import { atI32 } from "../../core/arr";
 import {
   F_BEGIN,
   F_ELSE,
@@ -71,10 +73,10 @@ export class CopStyleRedundantReturn {
         break;
       case NT_CASE:
       case NT_CASE_MATCH:
-        for (let i = 1; i < k - 1; i++) {
+        for (let i = 1; i < rbNKid(src, n) - 1; i++) {
           this.check(src, a.kid(a.kid(n, i), -1));
         }
-        this.check(src, a.kid(n, k - 1));
+        this.check(src, a.kid(n, -1));
         break;
       case NT_IF: {
         if (ssxHas(src, n, F_QUESTION)) {
@@ -86,11 +88,11 @@ export class CopStyleRedundantReturn {
         break;
       }
       case NT_RESCUE:
-        for (let i = 1; i < k - 1; i++) {
+        for (let i = 1; i < rbNKid(src, n) - 1; i++) {
           this.check(src, a.kid(a.kid(n, i), 2));
         }
         if (ssxHas(src, n, F_ELSE)) {
-          this.check(src, a.kid(n, k - 1));
+          this.check(src, a.kid(n, -1));
         } else {
           this.check(src, a.kid(n, 0));
         }
@@ -141,7 +143,7 @@ export class CopStyleRedundantReturn {
       k.insertBefore(a.exS(a.kid(n, 0)), a.exE(a.kid(n, 0)), "[");
       k.insertAfter(a.exS(a.kid(n, -1)), a.exE(a.kid(n, -1)), "]");
     } else {
-      const fa = args[0];
+      const fa = atI32(args, 0);
       if (a.isNode(fa) && a.type(fa) === NT_HASH && !ssxHas(src, fa, F_BEGIN) && a.nKid(fa) > 0) {
         k.insertBefore(a.exS(a.kid(fa, 0)), a.exE(a.kid(fa, 0)), "{");
         k.insertAfter(a.exS(a.kid(fa, -1)), a.exE(a.kid(fa, -1)), "}");
@@ -154,7 +156,7 @@ export class CopStyleRedundantReturn {
       }
     }
     if (splat) {
-      const fa = args[0];
+      const fa = atI32(args, 0);
       const s = src.nodeSrc(fa);
       k.replace(a.exS(fa), a.exE(fa), s.startsWith("*") ? s.substring(1, toI32(s.length)) : s);
     }

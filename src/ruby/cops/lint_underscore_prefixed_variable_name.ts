@@ -4,6 +4,7 @@
 // Ported from RuboCop 1.92.3 (MIT License, Copyright (c) 2012-24 Bozhidar
 // Batsov).
 
+import { fault } from "../../core/fault";
 import { F_NAME, NT_MATCH_WITH_LVASGN, NT_SEND, NT_ZSUPER } from "../ast";
 import { RbCop } from "../cop";
 import { RbSource } from "../source";
@@ -25,7 +26,15 @@ export class CopLintUnderscorePrefixedVariableName {
     const f = new VfForce(src);
     f.run();
     for (const si of f.popped) {
+      if (si < 0 || si >= f.scopes.length) {
+        fault();
+        return;
+      }
       for (const vi of f.scopes[si].vars) {
+        if (vi < 0 || vi >= f.vars.length) {
+          fault();
+          return;
+        }
         const v = f.vars[vi];
         if (!v.name.startsWith("_")) {
           continue;

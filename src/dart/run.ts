@@ -3,12 +3,15 @@
 // Ported from dart_style 3.1.14-wip at 5a9534fad9ff, the commit Dart SDK
 // 3.14.1 pins (BSD-3-Clause, Copyright the Dart project authors).
 
+import { add32, atI32, mul32, newI32s, sub32 } from "../core/arr";
+import { fault } from "../core/fault";
 import { Out } from "../core/out";
+import { stableSort } from "../core/sort";
 import { DtFileConfig, dtConfigFor } from "./config";
 import { DtFeature, dtFeatures } from "./features";
 import { DtAst, dtNodeName, dtSig, N_NAMED_TYPE } from "./ast";
 import { DtParser } from "./parser";
-import { DT_STYLE, DtPiece, dtFixedState, dtKids, dtPin } from "./pieces";
+import { DtPiece, dtFixedState, dtKids, dtPin, dtSetStyle, dtV313 } from "./pieces";
 import { DtTokens, dtPredictionsHeld, dtScan, dtScanPlain } from "./scanner";
 import { DtBuilder, DtCache, dtEmit, dtSolve } from "./solver";
 import { DtVisitor } from "./visitor";
@@ -19,6 +22,9 @@ import { DtsVisitor } from "./shortvisit";
 export class DartEngine {
   debug: boolean = false;
   dump: string = "";
+  // The file's text, `String.fromBytes(src, 0, n)`: the caller sets it, and
+  // tokens cut their text from it.
+  text: string = "";
   constructor() {}
 }
 
@@ -26,7 +32,7 @@ export class DartEngine {
 export const formatDart = (e: DartEngine, path: string, src: u8[], n: i32, out: Out): boolean => {
   out.n = 0;
   const t0 = monotonicNanos();
-  let toks = dtScan(src, n);
+  let toks = dtScan(src, n, e.text);
   if (toks.failed) {
     if (e.debug) {
       console.error(`${path}: scan: ${toks.why}`);
@@ -39,10 +45,12 @@ export const formatDart = (e: DartEngine, path: string, src: u8[], n: i32, out: 
   }
   if (e.dump === "tokens") {
     for (let i = 0; i < toks.count; i++) {
+      const a = atI32(toks.start, i);
+      const b = atI32(toks.end, i);
       out.str(
-        `${toks.kind[i]} ${toks.kw[i]} ${toks.start[i]} ${toks.end[i]} L${toks.lineS[i]}-${toks.lineE[i]} c${toks.cCount[i]} `,
+        `${atI32(toks.kind, i)} ${atI32(toks.kw, i)} ${a} ${b} L${atI32(toks.lineS, i)}-${atI32(toks.lineE, i)} c${atI32(toks.cCount, i)} `,
       );
-      out.range(src, toks.start[i], toks.end[i]);
+      out.range(src, a, b);
       out.byte(10);
     }
     return true;
@@ -78,7 +86,7 @@ export const formatDart = (e: DartEngine, path: string, src: u8[], n: i32, out: 
     if (e.debug) {
       console.error(`${path}: ${toks.npred} predicted >> splits did not hold`);
     }
-    toks = dtScanPlain(src, n);
+    toks = dtScanPlain(src, n, e.text);
     p = new DtParser(toks);
     p.patterns = patterns;
     p.primaryCtors = primaryCtors;
@@ -115,13 +123,11 @@ export const formatDart = (e: DartEngine, path: string, src: u8[], n: i32, out: 
   }
   // The language version picks the style: the short style up to 3.6.
   if (ver <= 3006) {
-    DTS_STATE[0] = 0;
-    DTS_STATE[1] = 0;
-    DTS_STATE[2] = 0;
+    dtsClearState(DTS_STATE);
     // The short style takes the configured width; `// dart format width=` is the tall style's.
     const sv = new DtsVisitor(toks, p.a, cfg.pageWidth);
     const text = sv.run(unit, dtLineEnding(src, n));
-    if (sv.failed || DTS_STATE[2] !== 0) {
+    if (sv.failed || dtsThrew(DTS_STATE)) {
       if (e.debug) {
         console.error(`${path}: short style: ${sv.failed ? sv.why : "dart_style would throw"}`);
       }
@@ -131,8 +137,7 @@ export const formatDart = (e: DartEngine, path: string, src: u8[], n: i32, out: 
     return true;
   }
   // The tall style's language-versioned switches (FormattingStyle).
-  DT_STYLE[0] = ver === 3007 ? 1 : 0;
-  DT_STYLE[1] = ver >= 3013 ? 1 : 0;
+  dtSetStyle(ver === 3007, ver >= 3013);
   const v = new DtVisitor(toks, p.a);
   const root = v.buildUnit(unit);
   const t3 = monotonicNanos();
@@ -143,7 +148,7 @@ export const formatDart = (e: DartEngine, path: string, src: u8[], n: i32, out: 
     return false;
   }
   const pageWidth = dtPageWidth(toks, cfg.pageWidth);
-  if (DT_STYLE[1] !== 0) {
+  if (dtV313()) {
     // pinStateByPageWidthBeforeSolving (3.13 on); before that the writer
     // binds by page width while formatting.
     dtPinByPageWidth(root, pageWidth);
@@ -156,17 +161,49 @@ export const formatDart = (e: DartEngine, path: string, src: u8[], n: i32, out: 
   dtEmit(cache, sol, root, 0, 0);
   b.finish();
   const t5 = monotonicNanos();
-  DT_PROF[0] = DT_PROF[0] + toF64(t1 - t0);
-  DT_PROF[1] = DT_PROF[1] + toF64(t2 - t1);
-  DT_PROF[2] = DT_PROF[2] + toF64(t3 - t2);
-  DT_PROF[3] = DT_PROF[3] + toF64(t4 - t3);
-  DT_PROF[4] = DT_PROF[4] + toF64(t5 - t4);
+  dtProfAdd(DT_PROF, t0, t1, t2, t3, t4, t5);
   return true;
+};
+
+/** Zeroes the short style's counters and its "would throw" flag, DTS_STATE[0, 3). */
+const dtsClearState = (st: Int32Array): void => {
+  if (st.length < 3) {
+    fault();
+    return;
+  }
+  st[0] = 0;
+  st[1] = 0;
+  st[2] = 0;
+};
+
+/** DTS_STATE[2]: whether the short style met a form dart_style throws on. */
+const dtsThrew = (st: Int32Array): boolean => {
+  if (st.length > 2) {
+    return st[2] !== 0;
+  }
+  fault();
+  return true;
+};
+
+/** `b - a` of two monotonic clock readings, exact as long as it fits. */
+const dtNanosBetween = (a: i64, b: i64): f64 => toF64(toI64(toU64(b) - toU64(a)));
+
+/** Adds each phase's time to DT_PROF. */
+const dtProfAdd = (prof: Float64Array, t0: i64, t1: i64, t2: i64, t3: i64, t4: i64, t5: i64): void => {
+  if (prof.length < 5) {
+    fault();
+    return;
+  }
+  prof[0] = prof[0] + dtNanosBetween(t0, t1);
+  prof[1] = prof[1] + dtNanosBetween(t1, t2);
+  prof[2] = prof[2] + dtNanosBetween(t2, t3);
+  prof[3] = prof[3] + dtNanosBetween(t3, t4);
+  prof[4] = prof[4] + dtNanosBetween(t4, t5);
 };
 
 /** A language version as one number, major * 1000 + minor (minor clamped below 1000). */
 const dtVer = (major: i32, minor: i32): i32 =>
-  major > 1000000 ? 1000000000 : major * 1000 + (minor < 999 ? minor : 999);
+  major > 1000000 ? 1000000000 : add32(mul32(major, 1000), minor < 999 ? minor : 999);
 
 /** No `// @dart=` comment and no package: dart_style's newest version, which takes every newer side. */
 const DT_VER_NEWEST: i32 = 2000000000;
@@ -174,39 +211,69 @@ const DT_VER_NEWEST: i32 = 2000000000;
 /** Nanoseconds spent per phase: scan, parse, pieces, solve, output. */
 export const DT_PROF = new Float64Array(8);
 
-export const dtProfReport = (): string =>
-  `scan ${DT_PROF[0] / 1e6} ms, parse ${DT_PROF[1] / 1e6} ms, pieces ${DT_PROF[2] / 1e6} ms, solve ${DT_PROF[3] / 1e6} ms, output ${DT_PROF[4] / 1e6} ms`;
+const dtProfReportOf = (prof: Float64Array): string => {
+  if (prof.length < 5) {
+    return "";
+  }
+  return `scan ${prof[0] / 1e6} ms, parse ${prof[1] / 1e6} ms, pieces ${prof[2] / 1e6} ms, solve ${prof[3] / 1e6} ms, output ${prof[4] / 1e6} ms`;
+};
+
+export const dtProfReport = (): string => dtProfReportOf(DT_PROF);
 
 /** A `// dart format width=N` comment before the first token, or `dflt`. */
 const dtPageWidth = (t: DtTokens, dflt: i32): i32 => {
-  const first = t.cFirst[1];
-  for (let k = 0; k < t.cCount[1]; k++) {
-    const ci = first + k;
-    const a = t.cStart[ci];
-    const b = t.cEnd[ci];
+  const cFirst = t.cFirst;
+  const cCount = t.cCount;
+  const cStart = t.cStart;
+  const cEnd = t.cEnd;
+  const src = t.src;
+  if (cFirst.length < 2 || cCount.length < 2) {
+    fault();
+    return dflt;
+  }
+  const n = cCount[1];
+  let ci = cFirst[1];
+  for (let k = 0; k < n; k++) {
+    if (ci < 0 || ci >= cStart.length || ci >= cEnd.length) {
+      fault();
+      return dflt;
+    }
+    const a = cStart[ci];
+    const b = cEnd[ci];
+    ci = ci + 1;
     const pre = "// dart format width=";
     const pn = toI32(pre.length);
-    if (b - a <= pn) {
+    if (sub32(b, a) <= pn) {
       continue;
     }
     let ok = true;
+    let x = a;
     for (let j = 0; j < pn; j++) {
-      if (toI32(t.src[a + j]) !== pre.charCodeAt(j)) {
+      if (x < 0 || x >= src.length) {
+        fault();
+        return dflt;
+      }
+      if (toI32(src[x]) !== pre.charCodeAt(j)) {
         ok = false;
         break;
       }
+      x = x + 1;
     }
     if (!ok) {
       continue;
     }
     let w = 0;
-    for (let j = a + pn; j < b; j++) {
-      const c = toI32(t.src[j]);
-      if (c < 48 || c > 57) {
+    for (let j = x; j < b; j++) {
+      if (j < 0 || j >= src.length) {
+        fault();
+        return dflt;
+      }
+      const c = toI32(src[j]);
+      if (c < 48 || c > 57 || w < 0 || w > 100000000) {
         ok = false;
         break;
       }
-      w = w * 10 + c - 48;
+      w = w * 10 + (c - 48);
       if (w > 100000000) {
         ok = false;
         break;
@@ -222,9 +289,21 @@ const dtPageWidth = (t: DtTokens, dflt: i32): i32 => {
 /** "\r\n" when the first line ends with one, else "\n". */
 const dtLineEnding = (src: u8[], n: i32): string => {
   for (let i = 0; i < n; i++) {
+    if (i >= src.length) {
+      fault();
+      return "\n";
+    }
     const c = toI32(src[i]);
     if (c === 13) {
-      return i + 1 < n && toI32(src[i + 1]) === 10 ? "\r\n" : "\n";
+      const j = i + 1;
+      if (j >= n) {
+        return "\n";
+      }
+      if (j >= src.length) {
+        fault();
+        return "\n";
+      }
+      return toI32(src[j]) === 10 ? "\r\n" : "\n";
     }
     if (c === 10) {
       return "\n";
@@ -245,13 +324,20 @@ const dtPinByPageWidth = (p: DtPiece, width: i32): void => {
 
 /** The UTF-16 offset of each byte offset. */
 const dtUtf16Offsets = (src: u8[], n: i32): i32[] => {
-  const xs = new Array<i32>(n + 1);
+  const xs = newI32s(add32(n, 1));
+  if (n < 0 || n > src.length || n >= xs.length) {
+    fault();
+    return xs;
+  }
   let u = 0;
-  for (let i = 0; i < n; i++) {
+  for (let i = 0; i < n && i < src.length && i < xs.length; i++) {
     xs[i] = u;
     const c = toI32(src[i]);
-    if (c < 0x80 || c >= 0xc0) {
-      u += c >= 0xf0 ? 2 : 1;
+    // At most two units a byte, and n is a byte count.
+    if (c >= 0xf0) {
+      u = add32(u, 2);
+    } else if (c < 0x80 || c >= 0xc0) {
+      u = add32(u, 1);
     }
   }
   xs[n] = u;
@@ -259,8 +345,10 @@ const dtUtf16Offsets = (src: u8[], n: i32): i32[] => {
 };
 
 const dtDumpNode = (a: DtAst, t: DtTokens, u16: i32[], node: i32, depth: i32, out: Out): void => {
-  const k = a.kind[node];
-  out.str(`${depth} ${dtNodeName(k)} ${u16[t.start[a.beg[node]]]} ${u16[t.end[a.end[node]]]}\n`);
+  const k = atI32(a.kind, node);
+  const from = atI32(u16, atI32(t.start, atI32(a.beg, node)));
+  const to = atI32(u16, atI32(t.end, atI32(a.end, node)));
+  out.str(`${depth} ${dtNodeName(k)} ${from} ${to}\n`);
   const kids: i32[] = [];
   const sig = dtSig(k);
   for (let i = 0; i < toI32(sig.length); i++) {
@@ -274,13 +362,13 @@ const dtDumpNode = (a: DtAst, t: DtTokens, u16: i32[], node: i32, depth: i32, ou
       }
     }
   }
-  kids.sort((x: i32, y: i32): i32 => {
-    const bx = t.start[a.beg[x]];
-    const by = t.start[a.beg[y]];
+  stableSort(kids, (x: i32, y: i32): i32 => {
+    const bx = atI32(t.start, atI32(a.beg, x));
+    const by = atI32(t.start, atI32(a.beg, y));
     return bx < by ? -1 : bx > by ? 1 : 0;
   });
   for (let i = 0; i < toI32(kids.length); i++) {
-    dtDumpNode(a, t, u16, kids[i], depth + 1, out);
+    dtDumpNode(a, t, u16, kids[i], add32(depth, 1), out);
   }
   if (k === N_NAMED_TYPE) {
     return;

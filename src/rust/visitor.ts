@@ -5,7 +5,9 @@
 // Ported from rustfmt 1.10.0 (MIT OR Apache-2.0, Copyright The Rust Project
 // Developers): visitor.rs, missed_spans.rs.
 
-import { Out } from "../core/out";
+import { add32, sub32 } from "../core/arr";
+
+import { fault } from "../core/fault";
 import {
   AT_DOC,
   AT_INNER,
@@ -75,13 +77,24 @@ import {
 import { rsMacroPosItem, rsMacroPosStatement, rsMacroStyleIsBraces, rsRewriteMacro, rsRewriteMacroDef } from "./macros";
 import { rsVisitItemsWithReordering } from "./reorder";
 import { RsShape, rsIndentFromWidth, rsIndentStr, rsIndentStrNl, rsShapeIndented } from "./shape";
-import { rsCountNewlines, rsHasByte, rsIndexOfByte, rsIsBlank, rsTrim, rsTrimEnd, rsWsLenAt } from "./str";
+import {
+  RsStrBuf,
+  rsCountNewlines,
+  rsCut,
+  rsHasByte,
+  rsIndexOfByte,
+  rsIsBlank,
+  rsTrim,
+  rsTrimEnd,
+  rsWsLenAt,
+} from "./str";
+
 import { rsFormatVisibility, rsIdentStr } from "./utils";
+import { rsNA, rsNAtn, rsNC, rsND, rsNE, rsNFl, rsNHi, rsNKind, rsNLastI32, rsNLn, rsNLo } from "./nodes";
 
 export class RsVisitor {
   f: RsFile;
   ast: RsAst;
-  buf: Out;
   lastPos: i32 = 0;
   bi: i32 = 0; // block_indent.block_indent
   al: i32 = 0; // block_indent.alignment
@@ -92,6 +105,10 @@ export class RsVisitor {
   assocKind: i32 = 1;
   macroRewriteFailure: boolean = false;
   skipped: RsRanges;
+  // The output so far.
+  out: RsStrBuf;
+  // Reads the source for `snippet`.
+  srcCtx: RsCtx;
   // The source span this visitor works over (the snippet provider's).
   startPos: i32 = 0;
   endPos: i32 = 0;
@@ -99,9 +116,10 @@ export class RsVisitor {
   constructor(f: RsFile) {
     this.f = f;
     this.ast = f.ast;
-    this.buf = new Out(256);
     this.endPos = f.n;
     this.skipped = new RsRanges();
+    this.out = new RsStrBuf();
+    this.srcCtx = new RsCtx(f);
   }
 
   shape(): RsShape {
@@ -131,32 +149,23 @@ export class RsVisitor {
 
   /** line_number: the newlines in the buffer. */
   lineNumber(): i32 {
-    let k = 0;
-    const b = this.buf.buf;
-    for (let i = 0; i < this.buf.n; i++) {
-      if (toI32(b[i]) === 10) {
-        k++;
-      }
-    }
-    return k;
+    return this.out.newlineCount();
   }
 
+  /** The source text [lo, hi), as the context reads it (RsCtx.snippet). */
   snippet(lo: i32, hi: i32): string {
-    if (lo >= hi) {
-      return "";
-    }
-    return String.fromBytes(this.f.src, lo, hi);
+    return this.srcCtx.snippet(lo, hi);
   }
 
   blockIndent(): void {
-    this.bi = this.bi + this.f.cfg.tabSpaces;
+    this.bi = add32(this.bi, this.f.cfg.tabSpaces);
   }
 
   blockUnindent(): void {
     if (this.bi < this.f.cfg.tabSpaces) {
       this.al = 0;
     } else {
-      this.bi = this.bi - this.f.cfg.tabSpaces;
+      this.bi = sub32(this.bi, this.f.cfg.tabSpaces);
     }
   }
 
@@ -168,28 +177,29 @@ export class RsVisitor {
     return rsIndentStrNl(this.f.cfg, this.bi, this.al);
   }
 
+  /** The buffer so far, as a string. */
+  text(): string {
+    return this.out.str();
+  }
+
   pushStr(s: string): void {
-    this.buf.str(s);
+    this.out.add(s);
   }
 
   /** The buffer's last line width (last_line_width(&self.buffer)). */
   bufLastLineWidth(): i32 {
-    let i = this.buf.n - 1;
-    while (i >= 0 && toI32(this.buf.buf[i]) !== 10) {
-      i--;
-    }
-    const s = String.fromBytes(this.buf.buf, i + 1, this.buf.n);
-    return rsLastLineWidth(s, this.f.cfg.tabSpaces);
+    return rsLastLineWidth(this.out.lastLine(), this.f.cfg.tabSpaces);
   }
 
   bufTrailingNewlines(): i32 {
-    let k = 0;
-    let i = this.buf.n - 1;
-    while (i >= 0 && toI32(this.buf.buf[i]) === 10) {
-      k++;
-      i--;
+    return this.out.trailingNewlines();
+  }
+
+  /** Drops the buffer's final byte when it is a newline. */
+  dropFinalNewline(): void {
+    if (this.out.lastByte() === 10) {
+      this.out.dropLast();
     }
-    return k;
   }
 
   // ---------------------------------------------------------------- missed spans
@@ -219,7 +229,7 @@ export class RsVisitor {
       return;
     }
     this.pushStr(rsTrimEnd(last));
-    if (isSame && this.buf.n !== 0) {
+    if (isSame && this.out.len() !== 0) {
       this.pushStr("\n");
     }
     if (mode === 1) {
@@ -230,7 +240,7 @@ export class RsVisitor {
   formatMissingInner(end: i32, mode: i32): void {
     const start = this.lastPos;
     if (start === end) {
-      if (this.buf.n !== 0) {
+      if (this.out.len() !== 0) {
         this.processLast(mode, "", "", true);
       }
       return;
@@ -257,45 +267,66 @@ export class RsVisitor {
     const offset = this.bufTrailingNewlines();
     const upper = 2; // blank_lines_upper_bound + 1
     const lower = 1; // blank_lines_lower_bound + 1
-    if (nc + offset > upper) {
+    // A count of newlines is never negative.
+    if (offset < 0) {
+      fault();
+      return;
+    }
+    const total = add32(nc, offset);
+    if (total > upper) {
       nc = offset >= upper ? 0 : upper - offset;
-    } else if (nc + offset < lower) {
+    } else if (total < lower) {
       nc = offset >= lower ? 0 : lower - offset;
     }
-    this.buf.newlines(nc);
+    for (let i = 0; i < nc; i++) {
+      this.out.add("\n");
+    }
   }
 
   writeSnippet(spanLo: i32, snippet: string, mode: i32): void {
     let lineStart = 0;
     let lastWs = -1;
     const sl = rsCommentCodeSlices(snippet);
+    const slKind = sl.kind;
+    const slStart = sl.start;
+    const slEnd = sl.end;
     for (let si = 0; si < sl.n; si++) {
-      const kind = sl.kind[si];
-      const offset = sl.start[si];
-      const sub = snippet.slice(sl.start[si], sl.end[si]);
+      if (si < 0 || si >= slKind.length || si >= slStart.length || si >= slEnd.length) {
+        fault();
+        return;
+      }
+      const kind = slKind[si];
+      const offset = slStart[si];
+      const sub = rsCut(snippet, offset, slEnd[si]);
       const nlc = rsCountNewlines(sub);
       if (kind === CK_COMMENT) {
-        this.processComment(snippet, spanLo + offset, offset, sub);
+        this.processComment(snippet, add32(spanLo, offset), offset, sub);
         lastWs = -1;
-        lineStart = offset + toI32(sub.length);
+        lineStart = add32(offset, toI32(sub.length));
       } else if (rsIsBlank(sub) && nlc > 0) {
         this.pushVerticalSpaces(nlc);
-        lineStart = offset + toI32(sub.length);
+        lineStart = add32(offset, toI32(sub.length));
       } else {
         // process_missing_code
         const n = toI32(sub.length);
+        if (offset < 0) {
+          fault();
+          return;
+        }
         for (let k = 0; k < n; k++) {
-          const i = k + offset;
+          // 0 <= offset and sub = snippet[offset, offset + n), so i is exact.
+          const i = toI32(toU32(k) + toU32(offset));
           const c = sub.charCodeAt(k);
           if (c === 10) {
+            const i1 = add32(i, 1);
             if (lastWs >= 0) {
-              this.pushStr(snippet.slice(lineStart, lastWs));
+              this.pushStr(rsCut(snippet, lineStart, lastWs));
               this.pushStr("\n");
               lastWs = -1;
             } else {
-              this.pushStr(snippet.slice(lineStart, i + 1));
+              this.pushStr(rsCut(snippet, lineStart, i1));
             }
-            lineStart = i + 1;
+            lineStart = i1;
           } else if ((c & 0xc0) === 0x80) {
             // (inside a char)
           } else if (lastWs < 0 && rsWsLenAt(sub, k) > 0) {
@@ -305,8 +336,9 @@ export class RsVisitor {
             lastWs = -1;
           }
         }
-        let remaining = snippet.slice(lineStart, n + offset);
-        lineStart = n + offset;
+        const end = add32(n, offset);
+        let remaining = rsCut(snippet, lineStart, end);
+        lineStart = end;
         remaining = rsTrim(remaining);
         if (remaining.length !== 0) {
           this.pushStr(this.indentStr());
@@ -314,7 +346,7 @@ export class RsVisitor {
         this.pushStr(remaining);
       }
     }
-    const last = snippet.slice(lineStart, toI32(snippet.length));
+    const last = rsCut(snippet, lineStart, toI32(snippet.length));
     this.processLast(mode, last, snippet, lineStart === 0);
   }
 
@@ -329,12 +361,17 @@ export class RsVisitor {
       this.pushStr(sub);
       return;
     }
-    this.pushStr(sub.slice(0, nl));
-    if (nl + 1 === toI32(sub.length)) {
+    const n = toI32(sub.length);
+    if (nl >= n) {
+      fault();
+      return;
+    }
+    this.pushStr(sub.substring(0, nl));
+    if (nl + 1 === n) {
       return;
     }
     this.pushStr(this.indentStrNl());
-    const other = sub.slice(nl + 1, toI32(sub.length));
+    const other = sub.substring(nl + 1, n);
     const r = rsRewriteComment(other, shape, this.f.cfg);
     this.pushStr(r === null ? other : r);
   }
@@ -342,15 +379,21 @@ export class RsVisitor {
   /** process_comment; `abs` is the comment's absolute offset in the source. */
   processComment(snippet: string, abs: i32, offset: i32, sub: string): void {
     // The last non-space char before the comment, in the whole source.
-    let j = abs - 1;
+    const src = this.f.src;
+    let j = sub32(abs, 1);
+    let lastChar = -1;
     while (j >= 0) {
-      const c = toI32(this.f.src[j]);
+      if (j >= src.length) {
+        fault();
+        return;
+      }
+      const c = toI32(src[j]);
       if (c !== 32 && c !== 9) {
+        lastChar = c;
         break;
       }
       j--;
     }
-    const lastChar = j >= 0 ? toI32(this.f.src[j]) : -1;
     const fixIndent = lastChar < 0 || lastChar === 123 || lastChar === 10;
     let cbi = this.bi;
     let cal = this.al;
@@ -377,8 +420,12 @@ export class RsVisitor {
       const r = rsRewriteComment(sub, cs, this.f.cfg);
       this.pushStr(r === null ? sub : r);
     }
-    const ls = offset + toI32(sub.length);
+    const ls = add32(offset, toI32(sub.length));
     if (ls <= toI32(snippet.length)) {
+      if (ls < 0) {
+        fault();
+        return;
+      }
       let k = ls;
       const n = toI32(snippet.length);
       while (k < n && (snippet.charCodeAt(k) === 32 || snippet.charCodeAt(k) === 9)) {
@@ -416,22 +463,23 @@ export class RsVisitor {
     const ast = this.ast;
     this.formatMissingWithIndent(lo);
     let attrsEnd = 1;
-    for (let i = 0; i < ast.atn[n]; i++) {
-      const l = this.f.lineOf(ast.hi[ast.attr(n, i)]);
+    for (let i = 0; i < rsNAtn(ast, n); i++) {
+      const l = this.f.lineOf(rsNHi(ast, ast.attr(n, i)));
       if (i === 0 || l > attrsEnd) {
         attrsEnd = l;
       }
     }
     const firstLine = this.f.lineOf(mainLo);
-    const slo = attrsEnd + 1 < firstLine ? attrsEnd + 1 : firstLine;
+    const ae1 = add32(attrsEnd, 1);
+    const slo = ae1 < firstLine ? ae1 : firstLine;
     this.pushRewriteInner(lo, hi, null);
-    this.skipped.push(slo, this.lineNumber() + 1);
+    this.skipped.push(slo, add32(this.lineNumber(), 1));
   }
 
   /** visit_attrs over node `n`'s attributes of one style; answers true when they contain a skip. */
   visitAttrs(n: i32, inner: boolean): boolean {
     const ast = this.ast;
-    const k = ast.atn[n];
+    const k = rsNAtn(ast, n);
     if (k === 0) {
       return false;
     }
@@ -442,16 +490,17 @@ export class RsVisitor {
     const sel: i32[] = [];
     for (let i = 0; i < k; i++) {
       const a = ast.attr(n, i);
-      const isInner = (ast.fl[a] & AT_INNER) !== 0;
+      const isInner = (rsNFl(ast, a) & AT_INNER) !== 0;
       if (isInner === inner) {
         sel.push(a);
       }
     }
-    if (sel.length === 0) {
+    const ns = toI32(sel.length);
+    if (ns <= 0) {
       return false;
     }
-    const lo = ast.lo[sel[0]];
-    const hi = ast.hi[sel[sel.length - 1]];
+    const lo = sel.length > 0 ? rsNLo(ast, sel[0]) : 0;
+    const hi = ns > 0 ? rsNHi(ast, sel[ns - 1]) : 0;
     const rw = rsRewriteAttrs(this.ctx(), sel, this.shape());
     this.pushRewrite(lo, hi, rw);
     return false;
@@ -459,41 +508,41 @@ export class RsVisitor {
 
   fnBodySkip(item: i32): boolean {
     const ast = this.ast;
-    return ast.kind[item] === N_FN && ast.c[item] >= 0 && rsAttrsContainSkip(this.ctx(), ast.c[item]);
+    return rsNKind(ast, item) === N_FN && rsNC(ast, item) >= 0 && rsAttrsContainSkip(this.ctx(), rsNC(ast, item));
   }
 
   /** Spanned::span lo of item `n`: its first outer attribute, else its own lo. */
   spanLoWithAttrs(n: i32): i32 {
     const ast = this.ast;
-    for (let i = 0; i < ast.atn[n]; i++) {
+    for (let i = 0; i < rsNAtn(ast, n); i++) {
       const a = ast.attr(n, i);
-      if ((ast.fl[a] & AT_INNER) === 0) {
-        return ast.lo[a];
+      if ((rsNFl(ast, a) & AT_INNER) === 0) {
+        return rsNLo(ast, a);
       }
     }
-    return ast.lo[n];
+    return rsNLo(ast, n);
   }
 
   visitItem(item: i32): void {
     const ast = this.ast;
-    const k = ast.kind[item];
+    const k = rsNKind(ast, item);
     if (k === N_USE || k === N_EXTERN_CRATE) {
       if (rsAttrsContainSkip(this.ctx(), item)) {
-        this.pushSkippedWithSpan(item, this.spanLoWithAttrs(item), ast.hi[item], ast.lo[item]);
+        this.pushSkippedWithSpan(item, this.spanLoWithAttrs(item), rsNHi(ast, item), rsNLo(ast, item));
         return;
       }
-    } else if (k === N_MOD && (ast.fl[item] & IT_LOADED) === 0 && rsAttrsContainSkip(this.ctx(), item)) {
+    } else if (k === N_MOD && (rsNFl(ast, item) & IT_LOADED) === 0 && rsAttrsContainSkip(this.ctx(), item)) {
       // `mod foo;` with a skip attribute: nothing is pushed; the next missed span copies it.
       return;
     } else {
       // A fn body's inner attributes are the item's in rustc: `#![rustfmt::skip]` there skips the fn.
       if (this.fnBodySkip(item) || this.visitAttrs(item, false)) {
-        this.pushSkippedWithSpan(item, this.spanLoWithAttrs(item), ast.hi[item], ast.lo[item]);
+        this.pushSkippedWithSpan(item, this.spanLoWithAttrs(item), rsNHi(ast, item), rsNLo(ast, item));
         return;
       }
     }
-    const lo = ast.lo[item];
-    const hi = ast.hi[item];
+    const lo = rsNLo(ast, item);
+    const hi = rsNHi(ast, item);
     if (k === N_USE) {
       rsFormatImport(this, item);
     } else if (k === N_IMPL) {
@@ -519,7 +568,7 @@ export class RsVisitor {
       this.formatMissingWithIndent(lo);
       this.formatMod(item);
     } else if (k === N_MAC_ITEM) {
-      this.visitMac(ast.a[item], true, item);
+      this.visitMac(rsNA(ast, item), true, item);
     } else if (k === N_FOREIGN_MOD) {
       this.formatMissingWithIndent(lo);
       rsFormatForeignMod(this, item);
@@ -541,9 +590,12 @@ export class RsVisitor {
   visitAttrsOuterOnlyBefore(item: i32): void {
     const ast = this.ast;
     const sel: i32[] = [];
-    for (let i = 0; i < ast.atn[item]; i++) {
+    for (let i = 0; i < rsNAtn(ast, item); i++) {
       const a = ast.attr(item, i);
-      if ((ast.fl[a] & AT_INNER) === 0 && !(ast.lo[item] <= ast.lo[a] && ast.hi[a] <= ast.hi[item])) {
+      if (
+        (rsNFl(ast, a) & AT_INNER) === 0 &&
+        !(rsNLo(ast, item) <= rsNLo(ast, a) && rsNHi(ast, a) <= rsNHi(ast, item))
+      ) {
         sel.push(a);
       }
     }
@@ -551,17 +603,21 @@ export class RsVisitor {
       return;
     }
     const rw = rsRewriteAttrs(this.ctx(), sel, this.shape());
-    this.pushRewrite(ast.lo[sel[0]], ast.hi[sel[sel.length - 1]], rw);
+    if (sel.length > 0) {
+      this.pushRewrite(rsNLo(ast, sel[0]), rsNHi(ast, rsNLastI32(sel)), rw);
+    } else {
+      fault();
+    }
   }
 
   /** visit_assoc_item: trait or impl items. */
   visitAssocItem(item: i32): void {
     const ast = this.ast;
     if (this.fnBodySkip(item) || this.visitAttrs(item, false)) {
-      this.pushSkippedWithSpan(item, ast.lo[item], ast.hi[item], ast.lo[item]);
+      this.pushSkippedWithSpan(item, rsNLo(ast, item), rsNHi(ast, item), rsNLo(ast, item));
       return;
     }
-    const k = ast.kind[item];
+    const k = rsNKind(ast, item);
     if (k === N_CONST) {
       rsVisitStatic(this, item);
     } else if (k === N_FN) {
@@ -569,7 +625,7 @@ export class RsVisitor {
     } else if (k === N_TYPE_ALIAS) {
       rsVisitTypeAlias(this, item, this.assocKind);
     } else if (k === N_MAC_ITEM) {
-      this.visitMac(ast.a[item], true, item);
+      this.visitMac(rsNA(ast, item), true, item);
     } else {
       this.f.unsupported = true;
     }
@@ -582,18 +638,18 @@ export class RsVisitor {
     const ctx = this.ctx();
     const rw0 = rsRewriteMacro(ctx, mac, shape, isItem ? rsMacroPosItem() : rsMacroPosStatement());
     this.took(ctx);
-    let lo = ast.lo[mac];
-    let hi = ast.hi[mac];
+    let lo = rsNLo(ast, mac);
+    let hi = rsNHi(ast, mac);
     let rw = rw0;
     if (isItem && !rsMacroStyleIsBraces(ctx, mac)) {
       // Brackets and parentheses: the item ends at the `;` after the macro.
-      const h = ctx.spanBefore(ast.hi[mac], this.endPos, ";");
-      hi = h + 1;
+      const h = ctx.spanBefore(rsNHi(ast, mac), this.endPos, ";");
+      hi = add32(h, 1);
       if (rw !== null && !rw.endsWith(";")) {
         rw = rw + ";";
       }
     }
-    lo = ast.lo[mac];
+    lo = rsNLo(ast, mac);
     this.pushRewrite(lo, hi, rw);
     if (item < 0) {
       return;
@@ -605,18 +661,18 @@ export class RsVisitor {
   /** Spanned::span of statement `s`: [lo, hi). */
   stmtLo(s: i32): i32 {
     const ast = this.ast;
-    const k = ast.kind[s];
+    const k = rsNKind(ast, s);
     if (k === N_STMT_ITEM || k === N_STMT_EXPR || k === N_STMT_SEMI) {
-      return this.spanLoWithAttrs(ast.a[s]);
+      return this.spanLoWithAttrs(rsNA(ast, s));
     }
     return this.spanLoWithAttrs(s);
   }
 
   visitStmt(s: i32, isLast: boolean, includeEmptySemi: boolean): void {
     const ast = this.ast;
-    const k = ast.kind[s];
+    const k = rsNKind(ast, s);
     const slo = this.stmtLo(s);
-    const shi = ast.hi[s];
+    const shi = rsNHi(ast, s);
     if (k === N_STMT_EMPTY) {
       const snippet = this.snippet(this.lastPos, slo);
       let i = 0;
@@ -645,16 +701,16 @@ export class RsVisitor {
       return;
     }
     if (k === N_STMT_ITEM) {
-      this.visitItem(ast.a[s]);
+      this.visitItem(rsNA(ast, s));
       this.lastPos = shi;
       return;
     }
     if (k === N_LOCAL || k === N_STMT_EXPR || k === N_STMT_SEMI) {
-      const attrsOf = k === N_LOCAL ? s : ast.a[s];
+      const attrsOf = k === N_LOCAL ? s : rsNA(ast, s);
       const skip =
         k === N_LOCAL ? rsAttrsContainSkip(this.ctx(), attrsOf) : rsExprAttrsContainSkip(this.ctx(), attrsOf);
       if (skip) {
-        this.pushSkippedWithSpan(attrsOf, slo, shi, ast.lo[attrsOf]);
+        this.pushSkippedWithSpan(attrsOf, slo, shi, rsNLo(ast, attrsOf));
       } else {
         const c = this.ctx();
         const rw = rsFormatStmt(c, this.shape(), s, isLast);
@@ -665,9 +721,9 @@ export class RsVisitor {
     }
     if (k === N_STMT_MAC) {
       if (this.visitAttrs(s, false)) {
-        this.pushSkippedWithSpan(s, slo, shi, ast.lo[ast.a[s]]);
+        this.pushSkippedWithSpan(s, slo, shi, rsNLo(ast, rsNA(ast, s)));
       } else {
-        this.visitMac(ast.a[s], false, s);
+        this.visitMac(rsNA(ast, s), false, s);
       }
       this.formatMissing(shi);
       return;
@@ -677,28 +733,35 @@ export class RsVisitor {
 
   trimSpacesAfterOpeningBrace(b: i32, withAttrs: boolean): void {
     const ast = this.ast;
-    if (ast.ln[b] === 0) {
+    if (rsNLn(ast, b) === 0) {
       return;
     }
     let hi = this.stmtLo(ast.kid(b, 0));
     // The first inner attribute, if any (when they are visited).
-    for (let i = 0; withAttrs && i < ast.atn[b]; i++) {
+    for (let i = 0; withAttrs && i < rsNAtn(ast, b); i++) {
       const a = ast.attr(b, i);
-      if ((ast.fl[a] & AT_INNER) !== 0) {
-        hi = ast.lo[a];
+      if ((rsNFl(ast, a) & AT_INNER) !== 0) {
+        hi = rsNLo(ast, a);
         break;
       }
     }
     const snippet = this.snippet(this.lastPos, hi);
     const sl = rsCommentCodeSlices(snippet);
-    if (sl.n > 0 && sl.kind[0] === CK_NORMAL) {
-      const s0 = snippet.slice(sl.start[0], sl.end[0]);
+    const slKind = sl.kind;
+    const slStart = sl.start;
+    const slEnd = sl.end;
+    if (sl.n > 0 && !(slKind.length > 0 && slStart.length > 0 && slEnd.length > 0)) {
+      fault();
+      return;
+    }
+    if (sl.n > 0 && slKind.length > 0 && slStart.length > 0 && slEnd.length > 0 && slKind[0] === CK_NORMAL) {
+      const s0 = rsCut(snippet, slStart[0], slEnd[0]);
       let r = toI32(s0.length) - 1;
       while (r >= 0 && s0.charCodeAt(r) !== 10) {
         r--;
       }
       if (r >= 0) {
-        this.lastPos = this.lastPos + r;
+        this.lastPos = add32(this.lastPos, r);
       }
     }
   }
@@ -712,27 +775,27 @@ export class RsVisitor {
   visitBlockWith(b: i32, withAttrs: boolean, hasBraces: boolean): void {
     const ast = this.ast;
     const comp = hasBraces ? 1 : 0;
-    this.lastPos = this.lastPos + comp;
+    this.lastPos = hasBraces ? add32(this.lastPos, 1) : this.lastPos;
     this.blockIndent();
     this.pushStr("{");
     this.trimSpacesAfterOpeningBrace(b, withAttrs);
-    if (withAttrs && ast.atn[b] > 0) {
+    if (withAttrs && rsNAtn(ast, b) > 0) {
       this.visitAttrs(b, true);
     }
     this.walkStmts(b, 0, false);
-    const n = ast.ln[b];
+    const n = rsNLn(ast, b);
     if (n > 0) {
       // add_semi_on_last_block_stmt: trailing_semicolon is on.
       const last = ast.kid(b, n - 1);
-      if (ast.kind[last] === N_STMT_EXPR && !this.isMacroDef) {
-        const ek = ast.kind[ast.a[last]];
+      if (rsNKind(ast, last) === N_STMT_EXPR && !this.isMacroDef) {
+        const ek = rsNKind(ast, rsNA(ast, last));
         if (ek === N_EX_RET || ek === N_EX_CONTINUE || ek === N_EX_BREAK) {
           this.pushStr(";");
         }
       }
     }
-    this.closeBlock(this.lastPos, ast.hi[b] - comp, this.isIfElseBlock && n > 0);
-    this.lastPos = ast.hi[b];
+    this.closeBlock(this.lastPos, sub32(rsNHi(ast, b), comp), this.isIfElseBlock && n > 0);
+    this.lastPos = rsNHi(ast, b);
   }
 
   closeBlock(lo: i32, hi: i32, unindentComment: boolean): void {
@@ -745,20 +808,27 @@ export class RsVisitor {
     let alignToRight = false;
     if (unindentComment && rsContainsComment(cs)) {
       const slash = rsIndexOfByte(cs, 47, 0);
-      const firstLines = slash < 0 ? cs : cs.slice(0, slash);
+      const firstLines = slash < 0 ? cs : rsCut(cs, 0, slash);
       alignToRight = rsLastLineWidth(firstLines, cfg.tabSpaces) > rsLastLineWidth(cs, cfg.tabSpaces);
     }
     const sl = rsCommentCodeSlices(cs);
+    const slKind = sl.kind;
+    const slStart = sl.start;
+    const slEnd = sl.end;
     for (let si = 0; si < sl.n; si++) {
-      const kind = sl.kind[si];
-      const offset = sl.start[si];
-      const sub = cs.slice(sl.start[si], sl.end[si]);
+      if (si < 0 || si >= slKind.length || si >= slStart.length || si >= slEnd.length) {
+        fault();
+        return;
+      }
+      const kind = slKind[si];
+      const offset = slStart[si];
+      const sub = rsCut(cs, offset, slEnd[si]);
       if (kind === CK_COMMENT) {
         if (!unindented && unindentComment && !alignToRight) {
           unindented = true;
           this.blockUnindent();
         }
-        const between = this.snippet(lastHi, lo + offset);
+        const between = this.snippet(lastHi, add32(lo, offset));
         let sameLine = !rsHasByte(between, 10);
         let commentShape = rsShapeIndented(this.bi, this.al, cfg).comment(cfg);
         if (cfg.styleEdition >= 2024 && sameLine) {
@@ -768,15 +838,15 @@ export class RsVisitor {
           this.pushCommentFromSameLine(sub, commentShape);
           prevEndsWithNewline = sub.endsWith("\n");
           extraNewline = false;
-          lastHi = lo + offset + toI32(sub.length);
+          lastHi = add32(add32(lo, offset), toI32(sub.length));
           continue;
         }
         if (sameLine) {
-          let w = this.bufLastLineWidth() - (this.bi + this.al);
+          let w = sub32(this.bufLastLineWidth(), add32(this.bi, this.al));
           if (w < 0) {
             w = 0;
           }
-          const offsetLen = 1 + w;
+          const offsetLen = add32(1, w);
           const sh = commentShape.visualIndent(offsetLen).subWidth(offsetLen);
           if (sh !== null) {
             commentShape = sh;
@@ -812,7 +882,7 @@ export class RsVisitor {
       }
       prevEndsWithNewline = sub.endsWith("\n");
       extraNewline = false;
-      lastHi = lo + offset + toI32(sub.length);
+      lastHi = add32(add32(lo, offset), toI32(sub.length));
     }
     if (unindented) {
       this.blockIndent();
@@ -825,7 +895,7 @@ export class RsVisitor {
   /** walk_stmts over block `b`'s statements from index `from`. */
   walkStmts(b: i32, from0: i32, includeCurrentEmptySemi0: boolean): void {
     const ast = this.ast;
-    const n = ast.ln[b];
+    const n = rsNLn(ast, b);
     let from = from0;
     let includeEmpty = includeCurrentEmptySemi0;
     while (from < n) {
@@ -834,8 +904,8 @@ export class RsVisitor {
       let k = from;
       while (k < n) {
         const s = ast.kid(b, k);
-        if (ast.kind[s] === N_STMT_ITEM && ast.kind[ast.a[s]] === N_USE) {
-          items.push(ast.a[s]);
+        if (rsNKind(ast, s) === N_STMT_ITEM && rsNKind(ast, rsNA(ast, s)) === N_USE) {
+          items.push(rsNA(ast, s));
           k++;
         } else {
           break;
@@ -843,11 +913,11 @@ export class RsVisitor {
       }
       if (items.length === 0) {
         const s = ast.kid(b, from);
-        this.visitStmt(s, from === n - 1, includeEmpty);
+        this.visitStmt(s, from === sub32(n, 1), includeEmpty);
         let next = false;
         if (from + 1 < n) {
           const s1 = ast.kid(b, from + 1);
-          next = ast.kind[s] === N_STMT_ITEM && ast.kind[s1] === N_STMT_EMPTY;
+          next = rsNKind(ast, s) === N_STMT_ITEM && rsNKind(ast, s1) === N_STMT_EMPTY;
         }
         includeEmpty = next;
         from++;
@@ -862,16 +932,16 @@ export class RsVisitor {
   formatMod(item: i32): void {
     const ast = this.ast;
     const ctx = this.ctx();
-    this.pushStr(rsFormatVisibility(ctx, ast.e[item]));
-    if ((ast.fl[item] & IT_UNSAFE) !== 0) {
+    this.pushStr(rsFormatVisibility(ctx, rsNE(ast, item)));
+    if ((rsNFl(ast, item) & IT_UNSAFE) !== 0) {
       this.pushStr("unsafe ");
     }
     this.pushStr("mod ");
-    this.pushStr(rsIdentStr(ctx, ast.d[item]));
-    if ((ast.fl[item] & IT_LOADED) !== 0) {
+    this.pushStr(rsIdentStr(ctx, rsND(ast, item)));
+    if ((rsNFl(ast, item) & IT_LOADED) !== 0) {
       this.pushStr(" {");
-      const modLo = ctx.spanAfter(ast.lo[item], ast.hi[item], "{");
-      const body = rsTrim(this.snippet(modLo, ast.hi[item] - 1));
+      const modLo = ctx.spanAfter(rsNLo(ast, item), rsNHi(ast, item), "{");
+      const body = rsTrim(this.snippet(modLo, sub32(rsNHi(ast, item), 1)));
       if (body.length === 0) {
         this.pushStr("}");
       } else {
@@ -879,12 +949,12 @@ export class RsVisitor {
         this.blockIndent();
         this.visitInnerAttrsOf(item);
         this.walkModItems(item);
-        this.closeBlock(this.lastPos, ast.hi[item] - 1, false);
+        this.closeBlock(this.lastPos, sub32(rsNHi(ast, item), 1), false);
       }
-      this.lastPos = ast.hi[item];
+      this.lastPos = rsNHi(ast, item);
     } else {
       this.pushStr(";");
-      this.lastPos = ast.hi[item];
+      this.lastPos = rsNHi(ast, item);
     }
   }
 
@@ -897,7 +967,7 @@ export class RsVisitor {
   walkModItems(n: i32): void {
     const ast = this.ast;
     const items: i32[] = [];
-    for (let i = 0; i < ast.ln[n]; i++) {
+    for (let i = 0; i < rsNLn(ast, n); i++) {
       items.push(ast.kid(n, i));
     }
     rsVisitItemsWithReordering(this, items);
@@ -919,7 +989,13 @@ export class RsVisitor {
       if (k < 0) {
         return;
       }
-      const pos = this.lastPos + k + 1;
+      const pos64 = toI64(this.lastPos) + toI64(k) + toI64(1);
+      if (pos64 > toI64(2147483647)) {
+        fault();
+        return;
+      }
+      const pos = toI32(pos64);
+
       const s2 = this.snippet(this.lastPos, pos);
       if (!rsIsBlank(s2)) {
         return;
@@ -929,8 +1005,9 @@ export class RsVisitor {
   }
 }
 
-export const rsIsDocAttr = (ast: RsAst, a: i32): boolean => ast.kind[a] === N_ATTR && (ast.fl[a] & AT_DOC) !== 0;
-export const rsIsBlockNode = (ast: RsAst, b: i32): boolean => ast.kind[b] === N_BLOCK;
-export const rsBlockIsUnsafe = (ast: RsAst, b: i32): boolean => (ast.fl[b] & BLK_UNSAFE) !== 0;
+export const rsIsDocAttr = (ast: RsAst, a: i32): boolean =>
+  rsNKind(ast, a) === N_ATTR && (rsNFl(ast, a) & AT_DOC) !== 0;
+export const rsIsBlockNode = (ast: RsAst, b: i32): boolean => rsNKind(ast, b) === N_BLOCK;
+export const rsBlockIsUnsafe = (ast: RsAst, b: i32): boolean => (rsNFl(ast, b) & BLK_UNSAFE) !== 0;
 export const rsIsControlFlowExprKind = (k: i32): boolean =>
   k === N_EX_LOOP || k === N_EX_WHILE || k === N_EX_FOR || k === N_EX_LET || k === N_EX_IF || k === N_EX_MATCH;

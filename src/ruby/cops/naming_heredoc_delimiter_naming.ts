@@ -4,6 +4,7 @@
 // Ported from RuboCop 1.92.3 (MIT License, Copyright (c) 2012-24 Bozhidar
 // Batsov).
 
+import { rbByteAt } from "../util";
 import { F_HEREDOC_END, NT_DSTR, NT_STR, NT_XSTR } from "../ast";
 import { RbCop } from "../cop";
 import { rnHeredoc } from "../node";
@@ -36,14 +37,14 @@ const nhdnForbidden = (s: string): boolean => {
     }
     if (
       e < 0 &&
-      i + 2 < n &&
+      i < n - 2 &&
       nhdnUp(s.charCodeAt(i)) === 69 &&
       nhdnUp(s.charCodeAt(i + 1)) === 78 &&
       nhdnUp(s.charCodeAt(i + 2)) === 68
     ) {
       e = i + 3;
     }
-    if (e >= 0 && (e === n || nhdnSpace(s.charCodeAt(e)))) {
+    if (e >= 0 && (e === n || nhdnSpace(rbByteAt(s, e)))) {
       return true;
     }
   }

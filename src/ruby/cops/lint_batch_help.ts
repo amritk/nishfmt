@@ -6,6 +6,8 @@
 // Ported from RuboCop 1.92.3 and rubocop-ast 1.52.0 (MIT License, Copyright
 // (c) 2012-24 Bozhidar Batsov).
 
+import { rbNKid } from "../node";
+import { atI32 } from "../../core/arr";
 import {
   NT_AND,
   NT_ARRAY,
@@ -253,8 +255,8 @@ export const lbhDefinedModuleName = (src: RbSource, n: i32): string => {
   if (dm.length === 0) {
     return "";
   }
-  const ns = dm[0];
-  const short = src.a.text(dm[1]);
+  const ns = atI32(dm, 0);
+  const short = src.a.text(atI32(dm, 1));
   if (ns !== V_NIL && !ssxIs(src, ns, NT_CBASE)) {
     return `${lbhConstName(src, ns)}::${short}`;
   }
@@ -319,7 +321,7 @@ export const lbhParentModuleName = (src: RbSource, n: i32): string | null => {
     return "Object";
   }
   const out: string[] = [];
-  for (let i = toI32(parts.length) - 1; i >= 0; i--) {
+  for (let i = toI32(parts.length) - 1; i >= 0 && i < parts.length; i--) {
     out.push(parts[i]);
   }
   return out.join("::");
@@ -381,7 +383,7 @@ export const lbhValueUsed = (src: RbSource, n: i32): boolean => {
   }
   const idx = lbhSiblingIndex(src, n);
   if (t === NT_BEGIN || t === NT_KWBEGIN) {
-    return idx === src.a.nKid(p) - 1 ? lbhValueUsed(src, p) : false;
+    return idx === rbNKid(src, p) - 1 ? lbhValueUsed(src, p) : false;
   }
   if (t === NT_FOR) {
     return idx === 2 ? lbhValueUsed(src, p) : true;
@@ -441,14 +443,17 @@ const lbhSexpInto = (src: RbSource, h: i32, out: string[]): void => {
 export const lbhCommentsContainDisables = (src: RbSource, n: i32, cop: string): boolean => {
   const s = src.line(src.a.exS(n));
   const e = srdFindEndLine(src, n);
-  for (let i = 0; i < toI32(src.dirNames.length); i++) {
-    if (src.dirNames[i] !== cop) {
+  const dirNames = src.dirNames;
+  const dirFrom = src.dirFrom;
+  const dirTo = src.dirTo;
+  for (let i = 0; i < dirNames.length && i < dirFrom.length && i < dirTo.length; i++) {
+    if (dirNames[i] !== cop) {
       continue;
     }
-    const lo = src.dirFrom[i];
-    const hi = src.dirTo[i];
+    const lo = dirFrom[i];
+    const hi = dirTo[i];
     // (lo..hi).cover?(s...e) || (s...e).cover?(lo..hi)
-    if ((s < e && lo <= s && e - 1 <= hi) || (lo <= hi && s <= lo && hi < e)) {
+    if ((s < e && lo <= s && toI64(e) - toI64(1) <= toI64(hi)) || (lo <= hi && s <= lo && hi < e)) {
       return true;
     }
   }

@@ -10,6 +10,7 @@
 // Ported from RuboCop 1.92.3 (MIT License, Copyright (c) 2012-24 Bozhidar
 // Batsov).
 
+import { fault } from "../../core/fault";
 import { RbCop } from "../cop";
 import { rbSpaceBegin, rbSpaceEnd } from "../help";
 import { RbRewriter } from "../rewriter";
@@ -55,10 +56,16 @@ class LrcdOffenses {
         }
       }
     }
-    for (let i = 0; i < toI32(this.names.length); i++) {
-      const n = this.names[i];
+    const names = this.names;
+    const l1 = this.l1;
+    const l2 = this.l2;
+    // The three grow together.
+    for (let i = 0; i < names.length && i < l1.length && i < l2.length; i++) {
+      const n = names[i];
+      const first = l1[i];
+      const last = l2[i];
       const sel = cop.length === 0 || (prefix ? n.startsWith(cop) : n === cop);
-      if (sel && this.l1[i] <= e && this.l2[i] >= b) {
+      if (sel && first <= e && last >= b) {
         return false;
       }
     }
@@ -81,7 +88,8 @@ const lrcdRemoveAll = (s: string, needle: string): string => {
       break;
     }
     out.push(s.substring(i, j));
-    i = j + k;
+    // A match ends within `s`, so the u32 sum of the two is the true one.
+    i = toI32(toU32(j) + toU32(k));
   }
   return out.join("");
 };
@@ -92,7 +100,10 @@ const lrcdCommaOnly = (s: string): boolean => {
   for (let i = 0; i < toI32(s.length); i++) {
     const c = s.charCodeAt(i);
     if (c === 44) {
-      commas++;
+      // Only whether there is exactly one counts.
+      if (commas < 2) {
+        commas++;
+      }
     } else if (!(c === 32 || (c >= 9 && c <= 13))) {
       return false;
     }
@@ -139,10 +150,15 @@ export class CopLintRedundantCopDisableDirective {
     const off = new LrcdOffenses(complete);
     for (const c of cops) {
       off.known.add(c.name);
-      for (let i = 0; i < toI32(c.offS.length); i++) {
+      const offS = c.offS;
+      const offE = c.offE;
+      // The two grow together.
+      for (let i = 0; i < offS.length && i < offE.length; i++) {
+        const s = offS[i];
+        const e = offE[i];
         off.names.push(c.name);
-        off.l1.push(src.line(c.offS[i]));
-        off.l2.push(src.line(c.offE[i]));
+        off.l1.push(src.line(s));
+        off.l2.push(src.line(e));
       }
     }
     const reg = this.registry();
@@ -163,22 +179,41 @@ export class CopLintRedundantCopDisableDirective {
         continue;
       }
       const n = toI32(an.rb.length);
+      // an.rb, an.re and an.rd grow together, and every directive index is
+      // one of cfg.dirs': the guards that fault cannot fail.
       // each_already_disabled
       for (let i = 1; i < n; i++) {
-        if (this.ignore(self, an, i) || an.re[i - 1] !== an.rb[i]) {
+        if (this.ignore(self, an, i)) {
           continue;
         }
-        const ci = an.rd[i];
+        const rb = an.rb;
+        const re = an.re;
+        const rd = an.rd;
+        if (i >= rb.length || i >= re.length || i >= rd.length) {
+          fault();
+          return;
+        }
+        if (re[i - 1] !== rb[i]) {
+          continue;
+        }
+        const bi = rb[i];
+        const ei = re[i];
+        const ci = rd[i];
         if (ci < 0) {
           continue;
         }
-        const d = cfg.dirs[ci];
+        const dirs = cfg.dirs;
+        if (ci >= dirs.length) {
+          fault();
+          return;
+        }
+        const d = dirs[ci];
         if (this.skipDirective(d) || d.disabledAll()) {
           continue;
         }
         let red = cop;
         if (this.departmentDisabled(reg, cop, d)) {
-          red = this.redundantDepartment(reg, off, cop, an.rb[i], an.re[i]);
+          red = this.redundantDepartment(reg, off, cop, bi, ei);
         }
         if (red.length > 0) {
           this.add(rcDir, rcCops, ci, red);
@@ -189,36 +224,69 @@ export class CopLintRedundantCopDisableDirective {
         if (this.ignore(self, an, i)) {
           continue;
         }
+        const rb = an.rb;
+        const re = an.re;
+        const rd = an.rd;
+        if (i >= rb.length || i >= re.length || i >= rd.length) {
+          fault();
+          return;
+        }
+        const bi = rb[i];
+        const ei = re[i];
+        const ci = rd[i];
         // expected_final_disable?
-        if (reg.has(cop) && !reg.enabled(cop) && an.re[i] === LDH_INF) {
+        if (reg.has(cop) && !reg.enabled(cop) && ei === LDH_INF) {
           continue;
         }
-        const ci = an.rd[i];
         if (ci < 0) {
           continue;
         }
-        const d = cfg.dirs[ci];
+        const dirs = cfg.dirs;
+        if (ci >= dirs.length) {
+          fault();
+          return;
+        }
+        const d = dirs[ci];
         if (this.skipDirective(d)) {
           continue;
         }
         let red = "";
         if (d.disabledAll()) {
-          const noNext = i + 1 >= n || an.re[i] !== an.rb[i + 1];
-          if (noNext && off.noneIn(reg, an.rb[i], an.re[i], "", false)) {
+          let noNext = true;
+          if (i + 1 < n) {
+            const rb2 = an.rb;
+            if (i + 1 >= rb2.length) {
+              fault();
+              return;
+            }
+            noNext = ei !== rb2[i + 1];
+          }
+          if (noNext && off.noneIn(reg, bi, ei, "", false)) {
             red = "all";
           }
         } else {
           // line_range_through_repeated_disables
-          let last = i;
-          for (let j = i + 1; j < n; j++) {
-            if (an.re[last] !== an.rb[j] || !this.repeatedDisable(reg, cfg, cop, an.rd[j])) {
+          let el = ei;
+          for (let j = i + 1; j >= 0 && j < n; j++) {
+            const rb2 = an.rb;
+            const rd2 = an.rd;
+            if (j >= rb2.length || j >= rd2.length) {
+              fault();
+              return;
+            }
+            if (el !== rb2[j] || !this.repeatedDisable(reg, cfg, cop, rd2[j])) {
               break;
             }
-            last = j;
+            const re2 = an.re;
+            if (j >= re2.length) {
+              fault();
+              return;
+            }
+            el = re2[j];
           }
           if (this.departmentDisabled(reg, cop, d)) {
-            red = this.redundantDepartment(reg, off, cop, an.rb[i], an.re[last]);
-          } else if (off.noneIn(reg, an.rb[i], an.re[last], cop, false)) {
+            red = this.redundantDepartment(reg, off, cop, bi, el);
+          } else if (off.noneIn(reg, bi, el, cop, false)) {
             red = cop;
           }
         }
@@ -227,10 +295,16 @@ export class CopLintRedundantCopDisableDirective {
         }
       }
     }
-    // add_offenses
-    for (let i = 0; i < toI32(rcDir.length); i++) {
-      const d = cfg.dirs[rcDir[i]];
+    // add_offenses (rcDir and rcCops grow together)
+    for (let i = 0; i < rcDir.length && i < rcCops.length; i++) {
+      const di = rcDir[i];
       const cs = rcCops[i];
+      const dirs = cfg.dirs;
+      if (di < 0 || di >= dirs.length) {
+        fault();
+        return;
+      }
+      const d = dirs[di];
       if (d.disabledAll() || d.directiveCount() === toI32(cs.length)) {
         this.entireComment(src, reg, cfg, self, d, cs);
       } else {
@@ -240,14 +314,16 @@ export class CopLintRedundantCopDisableDirective {
   }
 
   private add(rcDir: i32[], rcCops: string[][], ci: i32, cop: string): void {
-    for (let i = 0; i < toI32(rcDir.length); i++) {
+    // The two grow together.
+    for (let i = 0; i < rcDir.length && i < rcCops.length; i++) {
       if (rcDir[i] === ci) {
-        for (const x of rcCops[i]) {
+        const cs = rcCops[i];
+        for (const x of cs) {
           if (x === cop) {
             return;
           }
         }
-        rcCops[i].push(cop);
+        cs.push(cop);
         return;
       }
     }
@@ -258,16 +334,27 @@ export class CopLintRedundantCopDisableDirective {
 
   /** ignore_offense?: a range from the configuration, or within this cop's own disabled ranges. */
   private ignore(self: LdhAnalysis | null, an: LdhAnalysis, i: i32): boolean {
-    const b = an.rb[i];
-    const e = an.re[i];
+    const rb = an.rb;
+    const re = an.re;
+    if (i < 0 || i >= rb.length || i >= re.length) {
+      fault();
+      return true;
+    }
+    const b = rb[i];
+    const e = re[i];
     if (b === LDH_NEG_INF) {
       return true;
     }
     if (self === null) {
       return b >= 0 && b <= 0 && e >= 0 && e <= 0;
     }
-    for (let j = 0; j < toI32(self.rb.length); j++) {
-      if (self.rb[j] <= b && b <= self.re[j] && self.rb[j] <= e && e <= self.re[j]) {
+    const srb = self.rb;
+    const sre = self.re;
+    // The two grow together.
+    for (let j = 0; j < srb.length && j < sre.length; j++) {
+      const sb = srb[j];
+      const se = sre[j];
+      if (sb <= b && b <= se && sb <= e && e <= se) {
         return true;
       }
     }
@@ -289,7 +376,12 @@ export class CopLintRedundantCopDisableDirective {
     if (ci < 0) {
       return false;
     }
-    const d = cfg.dirs[ci];
+    const dirs = cfg.dirs;
+    if (ci >= dirs.length) {
+      fault();
+      return false;
+    }
+    const d = dirs[ci];
     if (this.skipDirective(d)) {
       return false;
     }
@@ -316,8 +408,11 @@ export class CopLintRedundantCopDisableDirective {
     if (this.c.src === null || self === null) {
       return true;
     }
-    for (let j = 0; j < toI32(self.rb.length); j++) {
-      if (self.rb[j] <= l && l <= self.re[j]) {
+    const srb = self.rb;
+    const sre = self.re;
+    // The two grow together.
+    for (let j = 0; j < srb.length && j < sre.length; j++) {
+      if (srb[j] <= l && l <= sre[j]) {
         return false;
       }
     }
@@ -374,9 +469,10 @@ export class CopLintRedundantCopDisableDirective {
   /** previous_line_blank?: source_line(line - 1), which for line 1 is the buffer's last line. */
   private previousLineBlank(src: RbSource, line: i32): boolean {
     let text = "";
-    if (line - 1 >= 1) {
+    const n = src.n;
+    if (line >= 2) {
       text = src.lineText(line - 1);
-    } else if (src.n > 0 && src.at(src.n - 1) !== 10) {
+    } else if (n > 0 && src.at(n - 1) !== 10) {
       text = src.lineText(src.lineCount());
     }
     for (let i = 0; i < toI32(text.length); i++) {
@@ -404,7 +500,11 @@ export class CopLintRedundantCopDisableDirective {
             sl = j;
           }
         }
-        const short = sl >= 0 ? name.substring(sl + 1, toI32(name.length)) : name;
+        const nk = toI32(name.length);
+        let short = name;
+        if (sl >= 0 && sl < nk) {
+          short = name.substring(sl + 1, nk);
+        }
         p = lrceIndex(src, d.cs, d.ce, short);
         len = toI32(short.length);
       }
@@ -420,31 +520,51 @@ export class CopLintRedundantCopDisableDirective {
       rs.push(0);
       re.push(0);
       rc.push("");
-      for (let j = toI32(rs.length) - 1; j > at; j--) {
+      // The three grow together.
+      for (let j = toI32(rs.length) - 1; j > at && j > 0 && j < rs.length && j < re.length && j < rc.length; j--) {
         rs[j] = rs[j - 1];
         re[j] = re[j - 1];
         rc[j] = rc[j - 1];
       }
+      const pe = toI64(p) + toI64(len);
+      if (at < 0 || at >= rs.length || at >= re.length || at >= rc.length || pe > toI64(2147483647)) {
+        fault();
+        return;
+      }
       rs[at] = p;
-      re[at] = p + len;
+      re[at] = toI32(pe);
       rc[at] = c;
     }
     const m = toI32(rs.length);
-    for (let i = 0; i < m; i++) {
-      const k = this.offense(src, self, rs[i], re[i]);
-      if (k === null || this.unknown(reg, rc[i])) {
+    const ml = m - 1;
+    let lastEnd = 0;
+    if (ml >= 0) {
+      if (ml >= re.length) {
+        fault();
+        return;
+      }
+      lastEnd = re[ml];
+    }
+    for (let i = 0; i < rs.length && i < re.length && i < rc.length; i++) {
+      const ri = rs[i];
+      const ei = re[i];
+      const ci = rc[i];
+      const k = this.offense(src, self, ri, ei);
+      if (k === null || this.unknown(reg, ci)) {
         continue;
       }
       // directive_range_in_list
-      let s = rs[i];
-      let e = re[i];
-      if (this.endsItsLine(src, re[m - 1]) && this.trailing(src, rs, re, i)) {
+      let s = ri;
+      let e = ei;
+      if (this.endsItsLine(src, lastEnd) && this.trailing(src, rs, re, i)) {
         s = rbSpaceBegin(src, s, 1, true, false, false);
-        while (src.at(s - 1) === 44) {
+        // `src.at` answers -1 before the source.
+        while (s > 0 && src.at(s - 1) === 44) {
           s--;
         }
       }
-      while (src.at(e) === 44) {
+      // A comma is at a position below the source's length.
+      while (e < 2147483647 && src.at(e) === 44) {
         e++;
       }
       e = rbSpaceEnd(src, e, 2, false, false, false);
@@ -463,14 +583,24 @@ export class CopLintRedundantCopDisableDirective {
       }
     }
     // /\s*\z/ finds the first position of the trailing blank run; e must be that position.
-    const c0 = src.at(e - 1);
+    // `src.at` answers -1 before the source.
+    let c0 = -1;
+    if (e > 0) {
+      c0 = src.at(e - 1);
+    }
     return e === src.lineStart(src.line(e)) || !(c0 === 32 || (c0 >= 9 && c0 <= 13));
   }
 
   /** trailing_range?: from range i on, ranges are separated by commas only. */
   private trailing(src: RbSource, rs: i32[], re: i32[], i: i32): boolean {
-    for (let j = i; j + 1 < toI32(rs.length); j++) {
-      if (!lrcdCommaOnly(src.src(re[j], rs[j + 1]))) {
+    const lim = toI32(rs.length) - 1;
+    for (let j = i; j >= 0 && j < lim; j++) {
+      const nx = j + 1;
+      if (nx >= rs.length || j >= re.length) {
+        fault();
+        return false;
+      }
+      if (!lrcdCommaOnly(src.src(re[j], rs[nx]))) {
         return false;
       }
     }

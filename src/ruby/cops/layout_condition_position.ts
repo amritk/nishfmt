@@ -3,9 +3,10 @@
 // Ported from RuboCop 1.92.3 (MIT License, Copyright (c) 2012-24 Bozhidar
 // Batsov).
 
+import { sub32 } from "../../core/arr";
 import { F_END, F_KEYWORD, NT_IF, NT_UNTIL, NT_WHILE, V_NIL } from "../ast";
 import { RbCop } from "../cop";
-import { rnE, rnHas, rnS } from "../node";
+import { rbLineEnd, rnE, rnHas, rnS } from "../node";
 import { RbSource } from "../source";
 import { rmlTernary } from "./layout_multiline_help";
 
@@ -55,8 +56,8 @@ export class CopLayoutConditionPosition {
       if (body !== V_NIL && src.line(a.exS(body)) === src.line(ce)) {
         k.remove(cs, a.exS(body));
       } else {
-        const s = cs - src.column(cs);
-        let e = src.lineEnd(src.line(ce)) + 1;
+        const s = sub32(cs, src.column(cs));
+        let e = rbLineEnd(src, src.line(ce)) + 1;
         if (e > src.n) {
           e = src.n;
         }

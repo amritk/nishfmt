@@ -7,7 +7,8 @@
 // (Apache License 2.0, Copyright 2015, 2016 Google Inc.); tools/kotlin/NOTES.md
 // says why that credit holds for ktfmt's 1.23.0 and Java's 2.0.0.
 
-import { strUtf16Len } from "../core/arr";
+import { add32, strUtf16Len, sub32 } from "../core/arr";
+import { fault } from "../core/fault";
 
 const MAX_LINE_LENGTH: i32 = 100;
 
@@ -19,7 +20,7 @@ export const trimBoth = (s: string): string => {
   while (a < b && isWsc(s.charCodeAt(a))) {
     a++;
   }
-  while (b > a && isWsc(s.charCodeAt(b - 1))) {
+  while (b > a && b > 0 && isWsc(s.charCodeAt(b - 1))) {
     b--;
   }
   return s.substring(a, b);
@@ -40,7 +41,7 @@ const javaTrim = (s: string): string => {
   while (a < b && s.charCodeAt(a) <= 32) {
     a++;
   }
-  while (b > a && s.charCodeAt(b - 1) <= 32) {
+  while (b > a && b > 0 && s.charCodeAt(b - 1) <= 32) {
     b--;
   }
   return s.substring(a, b);
@@ -51,15 +52,18 @@ export const splitLines = (text: string): string[] => {
   const out: string[] = [];
   let a = 0;
   const n = toI32(text.length);
-  for (let i = 0; i < n; i++) {
+  let i = 0;
+  while (i >= 0 && i < n) {
     const c = text.charCodeAt(i);
+    let next = i + 1;
     if (c === 10 || c === 13) {
       out.push(text.substring(a, i));
-      if (c === 13 && i + 1 < n && text.charCodeAt(i + 1) === 10) {
-        i++;
+      if (c === 13 && next < n && text.charCodeAt(next) === 10) {
+        next = next + 1;
       }
-      a = i + 1;
+      a = next;
     }
+    i = next;
   }
   if (a < n || out.length === 0) {
     out.push(text.substring(a, n));
@@ -85,7 +89,16 @@ const unitToByte = (s: string, u: i32): i32 => {
       if (units >= u) {
         return i;
       }
-      units += c >= 0xf0 ? 2 : 1;
+      // At most two units a byte, so only a string past 2^30 bytes faults.
+      if (units > 2147483645) {
+        fault();
+        return n;
+      }
+      if (c >= 0xf0) {
+        units += 2;
+      } else {
+        units += 1;
+      }
     }
   }
   return n;
@@ -134,10 +147,19 @@ export const wrapLineComments = (lines: string[], column0: i32): string[] => {
       result.push(line);
       continue;
     }
-    while (strUtf16Len(line) + column0 > MAX_LINE_LENGTH) {
-      let idx = MAX_LINE_LENGTH - column0;
-      // Work in UTF-16 units, as Java does.
-      while (idx >= 2 && !isWsc(line.charCodeAt(unitToByte(line, idx)))) {
+    while (toI64(strUtf16Len(line)) + toI64(column0) > toI64(MAX_LINE_LENGTH)) {
+      let idx = sub32(MAX_LINE_LENGTH, column0);
+      // Work in UTF-16 units, as Java does. The line is longer than `idx`
+      // units here, so unit `idx` is inside it.
+      while (idx >= 2) {
+        const p = unitToByte(line, idx);
+        if (p < 0 || p >= line.length) {
+          fault();
+          return result;
+        }
+        if (isWsc(line.charCodeAt(p))) {
+          break;
+        }
         idx--;
       }
       if (idx <= 2) {
@@ -154,6 +176,10 @@ export const wrapLineComments = (lines: string[], column0: i32): string[] => {
 
 export const indentLineComments = (lines0: string[], column0: i32): string => {
   const lines = wrapLineComments(lines0, column0);
+  if (lines.length < 1) {
+    fault();
+    return "";
+  }
   let out = javaTrim(lines[0]);
   const ind = spacesOf(column0);
   for (let i = 1; i < toI32(lines.length); i++) {
@@ -177,6 +203,10 @@ export const preserveIndentation = (lines: string[], column0: i32): string => {
       startCol = idx;
     }
   }
+  if (lines.length < 1) {
+    fault();
+    return "";
+  }
   let out = lines[0];
   const ind = spacesOf(column0);
   for (let i = 1; i < toI32(lines.length); i++) {
@@ -195,8 +225,12 @@ export const preserveIndentation = (lines: string[], column0: i32): string => {
 };
 
 export const indentJavadoc = (lines: string[], column0: i32): string => {
+  if (lines.length < 1) {
+    fault();
+    return "";
+  }
   let out = javaTrim(lines[0]);
-  const ind = spacesOf(column0 + 1);
+  const ind = spacesOf(add32(column0, 1));
   for (let i = 1; i < toI32(lines.length); i++) {
     out = `${out}\n${ind}`;
     const line = javaTrim(lines[i]);
@@ -209,7 +243,7 @@ export const indentJavadoc = (lines: string[], column0: i32): string => {
 };
 
 export const javadocShaped = (lines: string[]): boolean => {
-  if (lines.length === 0) {
+  if (lines.length < 1) {
     return false;
   }
   const first = javaTrim(lines[0]);

@@ -5,6 +5,7 @@
 // Ported from RuboCop 1.92.3 (MIT License, Copyright (c) 2012-24 Bozhidar
 // Batsov).
 
+import { add32 } from "../../core/arr";
 import { RbCop } from "../cop";
 import { RbSource } from "../source";
 import { nmhAsciiDigit, nmhCps, nmhLower } from "./naming_help";
@@ -26,7 +27,7 @@ const nfnBaseStart = (path: string): i32 => {
 /** Whether a directory of the path starts with `.` (`**` does not enter it); `.` and `..` excepted. */
 const nfnHiddenDir = (path: string, baseStart: i32): boolean => {
   let a = 0;
-  for (let i = 0; i < baseStart; i++) {
+  for (let i = 0; i < baseStart && i < path.length; i++) {
     if (path.charCodeAt(i) !== 47) {
       continue;
     }
@@ -56,7 +57,7 @@ const nfnGood = (basename: string): boolean => {
   // sub('+', '_')
   const plus = b.indexOf("+");
   if (plus >= 0) {
-    b = `${b.substring(0, plus)}_${b.substring(plus + 1, toI32(b.length))}`;
+    b = `${b.substring(0, plus)}_${b.substring(add32(plus, 1), toI32(b.length))}`;
   }
   // /^[\d[[:lower:]]_.?!]+$/
   const cs = nmhCps(b);

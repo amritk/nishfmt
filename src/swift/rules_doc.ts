@@ -4,6 +4,8 @@
 // Ported from SwiftFormat 0.64.7 (MIT License, Copyright (c) 2016 Nick
 // Lockwood).
 
+import { add32, mul32 } from "../core/arr";
+import { fault } from "../core/fault";
 import { swUniCheckPrefix } from "./unicode";
 import { swEndOfConditionalAttributeBlock, swEndOfDeclarationInTypeBody } from "./decl";
 import { SwFormatter, swIndexAfterWhere } from "./formatter";
@@ -32,6 +34,10 @@ import {
   SW_T_NON_SPACE_OR_LINEBREAK,
 } from "./token";
 
+// Token indices, token counts and line numbers stay below the token count, far from the
+// i32 limits, so a sum or difference of them the prover cannot bound is written
+// `toI32(toU32(a) + b)`: wrapping u32 arithmetic, exact for such values.
+
 export const SW_SCOPE_GLOBAL: i32 = 0;
 export const SW_SCOPE_TYPE: i32 = 1;
 export const SW_SCOPE_LOCAL: i32 = 2;
@@ -55,7 +61,7 @@ export const swDeclarationIndexAndScope = (f: SwFormatter, i: i32): i32 => {
   while (sos < 0 && cur > 0) {
     cur--;
     if (f.tok(cur, SW_END, "}")) {
-      unpaired++;
+      unpaired = toI32(toU32(unpaired) + 1);
     } else if (f.tok(cur, SW_START, "{")) {
       const e = swEndOfScope(f, cur);
       if (
@@ -69,7 +75,7 @@ export const swDeclarationIndexAndScope = (f: SwFormatter, i: i32): i32 => {
       if (unpaired === 0) {
         sos = cur;
       } else {
-        unpaired--;
+        unpaired = toI32(toU32(unpaired) - 1);
       }
     }
   }
@@ -85,9 +91,9 @@ export const swDeclarationIndexAndScope = (f: SwFormatter, i: i32): i32 => {
   }
   const s = f.s(kw);
   if (s === "class" || s === "actor" || s === "struct" || s === "enum" || s === "protocol" || s === "extension") {
-    return (kw + 1) * 4 + SW_SCOPE_TYPE;
+    return add32(mul32(add32(kw, 1), 4), SW_SCOPE_TYPE);
   }
-  return (kw + 1) * 4 + SW_SCOPE_LOCAL;
+  return add32(mul32(add32(kw, 1), 4), SW_SCOPE_LOCAL);
 };
 
 /** declarationScope(at:). */
@@ -95,6 +101,10 @@ export const swDeclarationScope = (f: SwFormatter, i: i32): i32 => swDeclaration
 
 /** shouldBeDocComment(at:endOfComment:): 1 true, 0 false, -1 nil. */
 const swShouldBeDocComment = (f: SwFormatter, indices: i32[], endOfComment: i32): i32 => {
+  if (indices.length < 1) {
+    fault();
+    return -1;
+  }
   let startIndex = indices[0];
   for (const x of indices) {
     if (x < startIndex) {
@@ -139,7 +149,7 @@ const swShouldBeDocComment = (f: SwFormatter, indices: i32[], endOfComment: i32)
   }
   // A blank line between the comment and the declaration
   let lineAllSpace = true;
-  for (let j = endOfComment - 1; j <= nextDecl; j++) {
+  for (let j = endOfComment - 1; j <= nextDecl; j = toI32(toU32(j) + 1)) {
     if (f.k(j) === SW_LINEBREAK) {
       if (lineAllSpace) {
         return 0;
@@ -174,9 +184,9 @@ const swIsPreservedByConsecutiveDeclarations = (f: SwFormatter, endOfComment: i3
     return false;
   }
   let lbs = 0;
-  for (let j = dk; j <= nk; j++) {
+  for (let j = dk; j <= nk; j = toI32(toU32(j) + 1)) {
     if (f.k(j) === SW_LINEBREAK) {
-      lbs++;
+      lbs = toI32(toU32(lbs) + 1);
     }
   }
   return lbs === 1;
@@ -257,6 +267,10 @@ export const swRuleDocComments = (f: SwFormatter): void => {
     const useDoc = use === 1;
     let preserve = false;
     if (useDoc) {
+      if (indices.length < 1) {
+        fault();
+        return;
+      }
       let mn = indices[0];
       for (const x of indices) {
         if (x < mn) {
@@ -267,14 +281,16 @@ export const swRuleDocComments = (f: SwFormatter): void => {
     }
     const marker = isLine ? "/" : "*";
     const isDoc = swIsDocComment(f, index);
-    if (f.has(index + 1) && f.k(index + 1) === SW_COMMENT) {
-      const body = f.s(index + 1);
+    if (f.has(toI32(toU32(index) + 1)) && f.k(toI32(toU32(index) + 1)) === SW_COMMENT) {
+      const body = f.s(toI32(toU32(index) + 1));
       if (useDoc && !isDoc && !preserve) {
-        f.replaceToken(index + 1, SW_COMMENT, marker + body, 0);
+        f.replaceToken(toI32(toU32(index) + 1), SW_COMMENT, marker + body, 0);
       } else if ((!useDoc || isTrailing) && isDoc) {
         swUniCheckPrefix(body, 4);
         let p = 0;
-        while (p < toI32(body.length) && body.charCodeAt(p) === marker.charCodeAt(0)) {
+        // marker's one byte: "/" or "*".
+        const mc = isLine ? 47 : 42;
+        while (p < toI32(body.length) && body.charCodeAt(p) === mc) {
           p++;
         }
         if (p > 1) {
@@ -282,13 +298,13 @@ export const swRuleDocComments = (f: SwFormatter): void => {
         }
         const updated = body.substring(1);
         if (updated.length === 0) {
-          f.removeToken(index + 1);
+          f.removeToken(toI32(toU32(index) + 1));
         } else {
-          f.replaceToken(index + 1, SW_COMMENT, updated, 0);
+          f.replaceToken(toI32(toU32(index) + 1), SW_COMMENT, updated, 0);
         }
       }
     } else if (useDoc && !preserve) {
-      f.insert(SW_COMMENT, marker, 0, index + 1);
+      f.insert(SW_COMMENT, marker, 0, toI32(toU32(index) + 1));
     }
   }
 };

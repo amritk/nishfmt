@@ -4,6 +4,9 @@
 // Ported from RuboCop 1.92.3 (MIT License, Copyright (c) 2012-24 Bozhidar
 // Batsov).
 
+import { faulted } from "../../core/fault";
+import { rbAtOff } from "../help";
+import { add32, sub32 } from "../../core/arr";
 import { F_BEGIN, F_END, M_HEREDOC, NT_DSTR, NT_REGEXP, NT_STR, NT_YIELD, V_NIL } from "../ast";
 import { RbCop } from "../cop";
 import { RbSource } from "../source";
@@ -44,7 +47,7 @@ export class CopLintInterpolationCheck {
       return false;
     }
     const s = ssxFS(src, n, F_BEGIN);
-    return ssxFE(src, n, F_BEGIN) === s + 1 && src.at(s) === c;
+    return toI64(ssxFE(src, n, F_BEGIN)) === toI64(s) + toI64(1) && src.at(s) === c;
   }
 
   /** The node or an ancestor has a heredoc map. */
@@ -63,11 +66,11 @@ export class CopLintInterpolationCheck {
   private looksInterpolated(src: RbSource, n: i32): boolean {
     const s = src.a.exS(n);
     const e = src.a.exE(n);
-    for (let i = s; i + 1 < e; i++) {
-      if (src.at(i) !== 35 || src.at(i + 1) !== 123 || (i > s && src.at(i - 1) === 92)) {
+    for (let i = s; i < e && i + 1 < e; i++) {
+      if (src.at(i) !== 35 || src.at(i + 1) !== 123 || (i > s && rbAtOff(src, i, -1) === 92)) {
         continue;
       }
-      for (let j = i + 2; j < e && src.at(j) !== 10; j++) {
+      for (let j = add32(i, 2); j < e && src.at(j) !== 10; j++) {
         if (src.at(j) === 125) {
           return true;
         }
@@ -115,8 +118,8 @@ export class CopLintInterpolationCheck {
   /** interpolated_source. */
   private interpolated(src: RbSource, n: i32): i32[] {
     const a = src.a;
-    const s = a.exS(n) + 1;
-    const e = a.exE(n) - 1;
+    const s = add32(a.exS(n), 1);
+    const e = sub32(a.exE(n), 1);
     const out: i32[] = [];
     let hasQuote = false;
     for (let i = s; i < e; i++) {
@@ -151,7 +154,10 @@ export class CopLintInterpolationCheck {
       if (c === 92 && i + 1 < e && src.at(i + 1) !== 10) {
         out.push(c);
         out.push(src.at(i + 1));
-        i += 2;
+        i = add32(i, 2);
+        if (faulted()) {
+          return out;
+        }
         continue;
       }
       if (c === 34) {

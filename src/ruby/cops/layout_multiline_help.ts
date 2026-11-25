@@ -7,6 +7,7 @@
 // Ported from RuboCop 1.92.3 and rubocop-ast 1.52.0 (MIT License, Copyright
 // (c) 2012-24 Bozhidar Batsov).
 
+import { add32, sub32 } from "../../core/arr";
 import {
   F_BEGIN,
   F_END,
@@ -46,7 +47,7 @@ import {
   NT_XSTR,
   V_NIL,
 } from "../ast";
-import { rnHas, rnHeredoc, rnS, rnE, rnMethod } from "../node";
+import { rbNKid, rnE, rnHas, rnHeredoc, rnMethod, rnS } from "../node";
 import { RbRewriter } from "../rewriter";
 import { RbSource } from "../source";
 import { lspIsWs } from "./layout_space_help";
@@ -211,7 +212,7 @@ export const rmlFirstChildNode = (src: RbSource, n: i32): i32 => {
 
 /** The last child that is not nil (children.compact.last; V_NIL for none). */
 export const rmlLastNonNilChild = (src: RbSource, n: i32): i32 => {
-  for (let i = src.a.nKid(n) - 1; i >= 0; i--) {
+  for (let i = rbNKid(src, n) - 1; i >= 0; i--) {
     const c = src.a.kid(n, i);
     if (c !== V_NIL) {
       return c;
@@ -380,20 +381,21 @@ export const rmlLineIndentation = (src: RbSource, l: i32): i32 => {
   while (i < e && lspIsWs(src.at(i))) {
     i++;
   }
-  return i - s;
+  return sub32(i, s);
 };
 
 /** RangeHelp#effective_column: a column, one less after a byte order mark on line 1. */
 export const rmlEffCol = (src: RbSource, pos: i32): i32 => {
   const c = src.column(pos);
   if (src.line(pos) === 1 && src.at(0) === 0xfeff) {
-    return c - 1;
+    return sub32(c, 1);
   }
   return c;
 };
 
 /** RangeHelp#column_offset_between(base, range). */
-export const rmlColumnOffset = (src: RbSource, base: i32, pos: i32): i32 => rmlEffCol(src, base) - rmlEffCol(src, pos);
+export const rmlColumnOffset = (src: RbSource, base: i32, pos: i32): i32 =>
+  sub32(rmlEffCol(src, base), rmlEffCol(src, pos));
 
 /** A source range [s, e). */
 export class RmlRange {
@@ -416,7 +418,7 @@ export const rmlStartLineRange = (src: RbSource, n: i32): RmlRange => {
     s++;
   }
   let e = le;
-  while (e > ls && lspIsWs(src.at(e - 1))) {
+  while (e > ls && e > 0 && lspIsWs(src.at(e - 1))) {
     e--;
   }
   return new RmlRange(s, e);
@@ -446,7 +448,7 @@ export const rmlSpaces = (n: i32): string => {
 
 /** AlignmentCorrector.align_end: the `end` at [endS, ...) moved to `column`. */
 export const rmlAlignEnd = (src: RbSource, k: RbRewriter, endS: i32, column: i32): void => {
-  const ws = endS - src.column(endS);
+  const ws = sub32(endS, src.column(endS));
   const ind = rmlSpaces(column);
   if (rmlBlankRange(src, ws, endS)) {
     k.replace(ws, endS, ind);
@@ -491,19 +493,24 @@ export class RmlAlignCorr {
         this.tabE.push(rnS(src, n, F_END));
       }
     }
-    for (let i = 0; i < toI32(src.commS.length); i++) {
-      const s = src.commS[i];
+    const commS = src.commS;
+    const commE = src.commE;
+    for (let i = 0; i < commS.length && i < commE.length; i++) {
+      const s = commS[i];
+      const e = commE[i];
       if (src.at(s) === 61) {
         this.docS.push(s);
-        this.docE.push(src.commE[i]);
+        this.docE.push(e);
       }
     }
   }
 
   /** Whether [s, e) lies within a string's contents. */
   private taboo(s: i32, e: i32): boolean {
-    for (let i = 0; i < toI32(this.tabS.length); i++) {
-      if (s >= this.tabS[i] && e <= this.tabE[i]) {
+    const tabS = this.tabS;
+    const tabE = this.tabE;
+    for (let i = 0; i < tabS.length && i < tabE.length; i++) {
+      if (s >= tabS[i] && e <= tabE[i]) {
         return true;
       }
     }
@@ -517,8 +524,10 @@ export class RmlAlignCorr {
     if (s >= e) {
       return;
     }
-    for (let i = 0; i < toI32(this.docS.length); i++) {
-      if (this.docS[i] >= s && this.docE[i] <= e) {
+    const docS = this.docS;
+    const docE = this.docE;
+    for (let i = 0; i < docS.length && i < docE.length; i++) {
+      if (docS[i] >= s && docE[i] <= e) {
         return;
       }
     }
@@ -530,10 +539,15 @@ export class RmlAlignCorr {
       while (j < e && src.at(j) !== 10) {
         j++;
       }
-      if (j >= e - 1) {
+      // j >= e - 1
+      if (j >= e) {
         break;
       }
-      pos = j + 1;
+      const j1 = j + 1;
+      if (j1 >= e) {
+        break;
+      }
+      pos = j1;
     }
   }
 
@@ -543,11 +557,11 @@ export class RmlAlignCorr {
     let rs = lb;
     let re = lb;
     if (delta <= 0) {
-      const ad = -delta;
+      const ad = sub32(0, delta);
       if (src.at(lb) === 32) {
-        re = lb + ad;
+        re = add32(lb, ad);
       } else {
-        rs = lb - ad;
+        rs = sub32(lb, ad);
       }
     }
     if (this.taboo(rs, re)) {

@@ -4,6 +4,8 @@
 // Ported from RuboCop 1.92.3 (MIT License, Copyright (c) 2012-24 Bozhidar
 // Batsov).
 
+import { rbAtOff } from "../help";
+import { sub32 } from "../../core/arr";
 import { NT_ARRAY, NT_STR } from "../ast";
 import { RbCop } from "../cop";
 import { RbSource } from "../source";
@@ -16,7 +18,7 @@ const lpsaUnclosed = (cs: i32[]): i32 => {
   if (n === 0) {
     return -1;
   }
-  const q = cs[0];
+  const q = cs.length > 0 ? cs[0] : -1;
   if (q !== 39 && q !== 34) {
     return -1;
   }
@@ -26,23 +28,33 @@ const lpsaUnclosed = (cs: i32[]): i32 => {
 /** closing_quote?. */
 const lpsaClosing = (cs: i32[], q: i32): boolean => {
   const n = toI32(cs.length);
-  return n > 0 && cs[n - 1] === q && (n === 1 || cs[0] !== q);
+  return n > 0 && cs[n - 1] === q && (n === 1 || (cs.length > 0 && cs[0] !== q));
 };
 
 /** QUOTES_AND_COMMAS: /,$/, /^'.*'$/ or /^".*"$/ on some line of the value. */
 const lpsaQuotesOrCommas = (cs: i32[]): boolean => {
   const n = toI32(cs.length);
   let s = 0;
-  while (s <= n) {
+  while (s >= 0 && s <= n) {
     let e = s;
-    while (e < n && cs[e] !== 10) {
+    while (e < n && e < cs.length && cs[e] !== 10) {
       e++;
     }
-    if (e > s && cs[e - 1] === 44) {
+    if (e > s && e > 0 && e <= cs.length && cs[e - 1] === 44) {
       return true;
     }
-    if (e - s >= 2 && (cs[s] === 39 || cs[s] === 34) && cs[e - 1] === cs[s]) {
+    if (
+      e - s >= 2 &&
+      e > 0 &&
+      e <= cs.length &&
+      s < cs.length &&
+      (cs[s] === 39 || cs[s] === 34) &&
+      cs[e - 1] === cs[s]
+    ) {
       return true;
+    }
+    if (e >= n) {
+      break;
     }
     s = e + 1;
   }
@@ -82,8 +94,9 @@ export class CopLintPercentStringArray {
     for (let i = 0; i < a.nKid(n); i++) {
       const k = a.kid(n, i);
       let e = a.exE(k);
-      if (e > a.exS(k) && src.at(e - 1) === 44) {
-        e--;
+      const ks = a.exS(k);
+      if (e > ks && rbAtOff(src, e, -1) === 44) {
+        e = sub32(e, 1);
       }
       const cs: i32[] = [];
       for (let j = a.exS(k); j < e; j++) {

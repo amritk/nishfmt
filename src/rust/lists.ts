@@ -3,6 +3,8 @@
 // Ported from rustfmt 1.10.0 (MIT OR Apache-2.0, Copyright The Rust Project
 // Developers): lists.rs, config/lists.rs.
 
+import { add32, mul32, sub32 } from "../core/arr";
+import { fault } from "../core/fault";
 import { RsCtx } from "./context";
 import { rsFindCommentEnd, rsFindUncommented, rsFirstLineWidth, rsLastLineWidth, rsRewriteComment } from "./comment";
 import { RsConfig, RsShape, rsIndentStr, rsShapeLegacy } from "./shape";
@@ -19,6 +21,7 @@ import {
   rsWidth,
   rsWsLenAt,
 } from "./str";
+import { rsStrCut } from "./utils";
 
 // DefinitiveListTactic (SpecialMacro(n) is DLT_SPECIAL_MACRO + n).
 export const DLT_VERTICAL: i32 = 0;
@@ -141,12 +144,12 @@ const commentLen = (s: string | null): i32 => {
     return 0;
   }
   const t = toI32(rsTrim(s).length);
-  return t > 0 ? t + 6 : t;
+  return t > 0 ? add32(t, 6) : t;
 };
 
 export const rsTotalItemWidth = (it: RsListItem): i32 => {
   const item = it.item;
-  return commentLen(it.pre) + commentLen(it.post) + (item === null ? 0 : rsWidth(item));
+  return add32(add32(commentLen(it.pre), commentLen(it.post)), item === null ? 0 : rsWidth(item));
 };
 
 /** definitive_tactic. */
@@ -169,17 +172,16 @@ export const rsDefinitiveTactic = (items: RsListItem[], tactic: i32, sep: i32, w
     return DLT_VERTICAL;
   }
   if (tactic >= LT_LIMITED) {
-    const l = tactic - LT_LIMITED;
+    const l = sub32(tactic, LT_LIMITED);
     limit = width < l ? width : l;
   }
-  let count = 0;
+  const count = toI32(items.length);
   let total = 0;
   for (const it of items) {
-    count++;
-    total += rsTotalItemWidth(it);
+    total = add32(total, rsTotalItemWidth(it));
   }
   const sepCount = count > 0 ? count - 1 : 0;
-  const realTotal = total + sep * sepCount;
+  const realTotal = add32(total, mul32(sep, sepCount));
   let anyMultiline = false;
   for (const it of items) {
     if (it.isMultiline()) {
@@ -199,7 +201,7 @@ const maxWidthOfItemWithPostComment = (items: RsListItem[], i: i32, overhead: i3
   for (let k = i; k < toI32(items.length); k++) {
     const it = items[k];
     const w = rsWidth(it.inner());
-    if (!first && (it.isDifferentGroup() || it.post === null || w + overhead > maxBudget)) {
+    if (!first && (it.isDifferentGroup() || it.post === null || add32(w, overhead) > maxBudget)) {
       return maxWidth;
     }
     if (maxWidth < w) {
@@ -239,15 +241,15 @@ const rewritePostComment = (
   if (startsWithNewline(comment)) {
     overhead = 0;
   } else if (st.itemMaxWidth >= 0) {
-    overhead = st.itemMaxWidth + 2;
+    overhead = add32(st.itemMaxWidth, 2);
   } else {
-    overhead = itemLastLineWidth + 1;
+    overhead = add32(itemLastLineWidth, 1);
   }
-  let width = f.shape.width - overhead;
+  let width = sub32(f.shape.width, overhead);
   if (overhead > f.shape.width) {
     width = 1;
   }
-  const commentShape = rsShapeLegacy(width, f.shape.bi, f.shape.al + overhead);
+  const commentShape = rsShapeLegacy(width, f.shape.bi, add32(f.shape.al, overhead));
   return rsRewriteComment(rsTrimStart(comment), commentShape, f.cfg);
 };
 
@@ -267,7 +269,7 @@ export const rsWriteList = (items: RsListItem[], f: RsListFormatting): string | 
   let lineLen = 0;
   const indentStr = rsIndentStr(f.cfg, f.shape.bi, f.shape.al);
   const n = toI32(items.length);
-  for (let i = 0; i < n; i++) {
+  for (let i = 0; i < n && i < items.length; i++) {
     const item = items[i];
     const innerOpt = item.item;
     if (innerOpt === null) {
@@ -283,9 +285,9 @@ export const rsWriteList = (items: RsListItem[], f: RsListFormatting): string | 
       const ll = rsLastLineOpt(innerItem);
       itemLastLine = ll === null ? "" : ll;
     }
-    let itemLastLineWidth = rsWidth(itemLastLine) + itemSepLen;
+    let itemLastLineWidth = add32(rsWidth(itemLastLine), itemSepLen);
     if (itemLastLine.startsWith(indentStr)) {
-      itemLastLineWidth -= rsWidth(indentStr);
+      itemLastLineWidth = sub32(itemLastLineWidth, rsWidth(indentStr));
     }
     if (!item.isSubstantial()) {
       continue;
@@ -295,7 +297,7 @@ export const rsWriteList = (items: RsListItem[], f: RsListFormatting): string | 
         result.add(" ");
       }
     } else if (tactic >= DLT_SPECIAL_MACRO) {
-      const numArgsBefore = tactic - DLT_SPECIAL_MACRO;
+      const numArgsBefore = sub32(tactic, DLT_SPECIAL_MACRO);
       if (i === 0) {
         // Nothing.
       } else if (i < numArgsBefore) {
@@ -310,9 +312,9 @@ export const rsWriteList = (items: RsListItem[], f: RsListFormatting): string | 
         result.add("\n" + indentStr);
       }
     } else if (tactic === DLT_MIXED) {
-      const totalWidth = rsTotalItemWidth(item) + itemSepLen;
+      const totalWidth = add32(rsTotalItemWidth(item), itemSepLen);
       if (
-        (lineLen > 0 && lineLen + 1 + totalWidth > f.shape.width) ||
+        (lineLen > 0 && add32(add32(lineLen, 1), totalWidth) > f.shape.width) ||
         prevItemHadPostComment ||
         (f.nested && (prevItemIsNestedImport || (!first && innerItem.indexOf("::") >= 0)))
       ) {
@@ -323,12 +325,12 @@ export const rsWriteList = (items: RsListItem[], f: RsListFormatting): string | 
         }
       } else if (lineLen > 0) {
         result.add(" ");
-        lineLen += 1;
+        lineLen = add32(lineLen, 1);
       }
       if (last && f.endsWithNewline) {
         separate = f.trailingSeparator !== ST_NEVER;
       }
-      lineLen += totalWidth;
+      lineLen = add32(lineLen, totalWidth);
     }
     const pre = item.pre;
     if (pre !== null) {
@@ -344,7 +346,7 @@ export const rsWriteList = (items: RsListItem[], f: RsListFormatting): string | 
           if (item.preStyle === LCS_DIFFERENT_LINE) {
             keepComment = false;
           } else {
-            const totalWidth = rsTotalItemWidth(item) + itemSepLen + 1;
+            const totalWidth = add32(add32(rsTotalItemWidth(item), itemSepLen), 1);
             keepComment = totalWidth <= f.shape.width;
           }
           if (keepComment) {
@@ -377,7 +379,7 @@ export const rsWriteList = (items: RsListItem[], f: RsListFormatting): string | 
     }
     if (tactic !== DLT_HORIZONTAL && post !== null) {
       const comment = post;
-      const overhead = rsLastLineWidth(result.lastLine(), f.cfg.tabSpaces) + rsFirstLineWidth(rsTrim(comment));
+      const overhead = add32(rsLastLineWidth(result.lastLine(), f.cfg.tabSpaces), rsFirstLineWidth(rsTrim(comment)));
       const formatted0 = rewritePostComment(st, items, i, last, innerItem, comment, overhead, itemLastLineWidth, f);
       if (formatted0 === null) {
         return null;
@@ -387,8 +389,10 @@ export const rsWriteList = (items: RsListItem[], f: RsListFormatting): string | 
         if (f.alignComments) {
           let align = postCommentAlignment(st.itemMaxWidth, rsWidth(innerItem));
           if (
-            rsFirstLineWidth(formatted) + rsLastLineWidth(result.lastLine(), f.cfg.tabSpaces) + align + 1 >
-            f.cfg.maxWidth
+            add32(
+              add32(add32(rsFirstLineWidth(formatted), rsLastLineWidth(result.lastLine(), f.cfg.tabSpaces)), align),
+              1,
+            ) > f.cfg.maxWidth
           ) {
             st.itemMaxWidth = -1;
             const formatted1 = rewritePostComment(
@@ -408,7 +412,8 @@ export const rsWriteList = (items: RsListItem[], f: RsListFormatting): string | 
             formatted = formatted1;
             align = postCommentAlignment(st.itemMaxWidth, rsWidth(innerItem));
           }
-          for (let k = 0; k <= align; k++) {
+          // align + 1 spaces.
+          for (let k = align; k >= 0; k--) {
             result.add(" ");
           }
         }
@@ -437,7 +442,7 @@ export const rsWriteList = (items: RsListItem[], f: RsListFormatting): string | 
 
 const postCommentAlignment = (itemMaxWidth: i32, innerWidth: i32): i32 => {
   const m = itemMaxWidth < 0 ? 0 : itemMaxWidth;
-  const r = m - innerWidth;
+  const r = sub32(m, innerWidth);
   return r < 0 ? 0 : r;
 };
 
@@ -467,10 +472,11 @@ const trimSpTab = (s: string): string => {
     a++;
   }
   let b = n;
-  while (b > a && (s.charCodeAt(b - 1) === 32 || s.charCodeAt(b - 1) === 9)) {
+  while (b > a && b > 0 && b <= n && (s.charCodeAt(b - 1) === 32 || s.charCodeAt(b - 1) === 9)) {
     b--;
   }
-  return s.slice(a, b);
+  // 0 <= a <= b <= n.
+  return s.substring(a, b);
 };
 
 /** extract_post_comment. */
@@ -480,27 +486,28 @@ export const rsExtractPostComment = (
   separator: string,
   isLast: boolean,
 ): string | null => {
-  const ps = rsTrim(postSnippet.slice(0, commentEnd));
+  const ps = rsTrim(rsStrCut(postSnippet, 0, commentEnd));
   let lastInlineEndsWithSep = false;
   if (isLast) {
     const ls = rsLines(ps);
-    if (ls.length > 0) {
-      const line = ls[ls.length - 1];
+    const nl = toI32(ls.length);
+    if (nl > 0 && nl <= ls.length) {
+      const line = ls[nl - 1];
       lastInlineEndsWithSep = line.endsWith(separator) && rsTrim(line).startsWith("//");
     }
   }
   let pt = "";
   const n = toI32(ps.length);
   if (ps.startsWith(",") || ps.startsWith(":")) {
-    pt = trimSpTab(ps.slice(1, n));
+    pt = trimSpTab(rsStrCut(ps, 1, n));
   } else if (separator.length !== 0 && ps.startsWith(separator)) {
-    pt = trimSpTab(ps.slice(toI32(separator.length), n));
+    pt = trimSpTab(rsStrCut(ps, toI32(separator.length), n));
   } else if (separator.length === 0 && ps.startsWith(separator)) {
     pt = trimSpTab(ps);
   } else if (lastInlineEndsWithSep) {
     pt = trimSpTab(ps);
   } else if (ps.endsWith(separator) && (!rsTrim(ps).startsWith("//") || rsHasByte(rsTrim(ps), 10))) {
-    pt = trimSpTab(ps.slice(0, n - 1));
+    pt = trimSpTab(rsStrCut(ps, 0, n - 1));
   } else {
     pt = ps;
   }
@@ -523,7 +530,7 @@ export const rsGetCommentEnd = (ps: string, separator: string, terminator: strin
     const j = rsIndexOfByte(ps, 47, 0);
     if (j >= 0 && j < blockOpen) {
       blockOpen = -1;
-    } else if (ps.slice(0, blockOpen).endsWith("/")) {
+    } else if (rsStrCut(ps, 0, blockOpen).endsWith("/")) {
       blockOpen = -1;
     }
   }
@@ -532,24 +539,26 @@ export const rsGetCommentEnd = (ps: string, separator: string, terminator: strin
   if (sepIdx >= 0) {
     if (blockOpen >= 0 && nl < 0) {
       if (blockOpen > sepIdx) {
-        return sepIdx + 1;
+        return add32(sepIdx, 1);
       }
-      const ce = rsFindCommentEnd(ps.slice(blockOpen, n));
-      const a = (ce < 0 ? 0 : ce) + blockOpen;
-      return a > sepIdx + 1 ? a : sepIdx + 1;
+      const ce = rsFindCommentEnd(rsStrCut(ps, blockOpen, n));
+      const a = add32(ce < 0 ? 0 : ce, blockOpen);
+      const s1 = add32(sepIdx, 1);
+      return a > s1 ? a : s1;
     }
     if (blockOpen >= 0 && nl >= 0 && blockOpen < nl) {
-      const ce = rsFindCommentEnd(ps.slice(blockOpen, n));
-      const a = (ce < 0 ? 0 : ce) + blockOpen;
-      return a > sepIdx + 1 ? a : sepIdx + 1;
+      const ce = rsFindCommentEnd(rsStrCut(ps, blockOpen, n));
+      const a = add32(ce < 0 ? 0 : ce, blockOpen);
+      const s1 = add32(sepIdx, 1);
+      return a > s1 ? a : s1;
     }
     if (nl >= 0 && nl > sepIdx) {
-      return nl + 1;
+      return add32(nl, 1);
     }
     return n;
   }
   if (nl >= 0) {
-    return nl + 1;
+    return add32(nl, 1);
   }
   return 0;
 };
@@ -560,13 +569,18 @@ export const rsHasExtraNewline = (ps: string, commentEnd: i32): boolean => {
     return false;
   }
   // The last char before commentEnd.
-  let lastStart = commentEnd - 1;
-  while (lastStart > 0 && (ps.charCodeAt(lastStart) & 0xc0) === 0x80) {
+  let lastStart = sub32(commentEnd, 1);
+  // commentEnd is inside ps: past it, charCodeAt would have panicked.
+  if (lastStart > 0 && lastStart >= ps.length) {
+    fault();
+    return false;
+  }
+  while (lastStart > 0 && lastStart < ps.length && (ps.charCodeAt(lastStart) & 0xc0) === 0x80) {
     lastStart--;
   }
-  let t = ps.slice(lastStart, toI32(ps.length));
+  let t = rsStrCut(ps, lastStart, toI32(ps.length));
   const fn = rsIndexOfByte(t, 10, 0);
-  t = t.slice(fn < 0 ? toI32(t.length) : fn, toI32(t.length));
+  t = rsStrCut(t, fn < 0 ? toI32(t.length) : fn, toI32(t.length));
   let first = 0;
   const tn = toI32(t.length);
   while (first < tn) {
@@ -574,9 +588,10 @@ export const rsHasExtraNewline = (ps: string, commentEnd: i32): boolean => {
     if (w === 0) {
       break;
     }
-    first += w;
+    // w (1 to 3) bytes of whitespace at first, inside t: the u32 sum is exact.
+    first = toI32(toU32(first) + toU32(w));
   }
-  return rsCountNewlines(t.slice(0, first)) > 1;
+  return rsCountNewlines(rsStrCut(t, 0, first)) > 1;
 };
 
 /**
@@ -603,13 +618,13 @@ export const rsItemizeList = (
     const ihi = hi(i);
     const preSnippet = ctx.snippet(prevSpanEnd, ilo);
     rsExtractPreComment(preSnippet, it);
-    const isLast = i === n - 1;
+    const isLast = i + 1 === n;
     const nextStart = isLast ? nextSpanStart : lo(i + 1);
     const postSnippet = ctx.snippet(ihi, nextStart);
     const commentEnd = rsGetCommentEnd(postSnippet, separator, terminator, isLast);
     it.newLines = rsHasExtraNewline(postSnippet, commentEnd);
     it.post = rsExtractPostComment(postSnippet, commentEnd, separator, isLast);
-    prevSpanEnd = ihi + commentEnd;
+    prevSpanEnd = add32(ihi, commentEnd);
     if (isLast && leaveLast) {
       it.item = null;
     } else {
@@ -634,8 +649,9 @@ export const rsStructLitShape = (shape: RsShape, ctx: RsCtx, prefixWidth: i32, s
   const s = shape.blockIndent(ctx.cfg.tabSpaces);
   const v = s.withWidth(ctx.budget(s.iw()));
   let h: RsShape | null = null;
-  if (prefixWidth + suffixWidth <= shape.width) {
-    const w = shape.width - (prefixWidth + suffixWidth);
+  const fixed = add32(prefixWidth, suffixWidth);
+  if (fixed <= shape.width) {
+    const w = sub32(shape.width, fixed);
     h = rsShapeLegacy(w < ctx.cfg.structLitWidth ? w : ctx.cfg.structLitWidth, shape.bi, shape.al);
   }
   return new RsShapePair(h, v);

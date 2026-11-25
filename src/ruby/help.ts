@@ -3,6 +3,7 @@
 // Ported from RuboCop 1.92.3 (MIT License, Copyright (c) 2012-24 Bozhidar
 // Batsov).
 
+import { fault } from "../core/fault";
 import { RbSource } from "./source";
 
 const rbIsBlank = (c: i32): boolean => c === 32 || c === 9;
@@ -17,28 +18,58 @@ export const rbFinalPos = (
   newlines: boolean,
   whitespace: boolean,
 ): i32 => {
+  const n = src.n;
   let pos = pos0;
-  const off = step === -1 ? -1 : 0;
-  while (rbIsBlank(src.at(pos + off))) {
-    pos += step;
+  // src.at answers -1 outside [0, n), which no test below matches: from
+  // outside [0, n] nothing moves, and inside it every step stays in [0, n].
+  if (pos < 0 || pos > n) {
+    return pos < 0 ? 0 : pos;
+  }
+  // Sources stay below 2^30 code points (node.ts, "Bounded values").
+  if (n > 1073741823) {
+    fault();
+    return pos;
+  }
+  if (step === -1) {
+    while (pos > 0 && pos <= n && rbIsBlank(src.at(pos - 1))) {
+      pos--;
+    }
+    if (continuations) {
+      while (pos > 1 && pos <= n && src.at(pos - 2) === 92 && src.at(pos - 1) === 10) {
+        pos -= 2;
+      }
+    }
+    if (newlines) {
+      while (pos > 0 && pos <= n && src.at(pos - 1) === 10) {
+        pos--;
+      }
+    }
+    if (whitespace) {
+      while (pos > 0 && pos <= n && rbIsWs(src.at(pos - 1))) {
+        pos--;
+      }
+    }
+    return pos;
+  }
+  while (pos >= 0 && pos < n && rbIsBlank(src.at(pos))) {
+    pos++;
   }
   if (continuations) {
-    const o2 = step === -1 ? -2 : 0;
-    while (src.at(pos + o2) === 92 && src.at(pos + o2 + 1) === 10) {
-      pos += 2 * step;
+    while (pos >= 0 && pos < n && src.at(pos) === 92 && pos + 1 < n && src.at(pos + 1) === 10) {
+      pos += 2;
     }
   }
   if (newlines) {
-    while (src.at(pos + off) === 10) {
-      pos += step;
+    while (pos >= 0 && pos < n && src.at(pos) === 10) {
+      pos++;
     }
   }
   if (whitespace) {
-    while (rbIsWs(src.at(pos + off))) {
-      pos += step;
+    while (pos >= 0 && pos < n && rbIsWs(src.at(pos))) {
+      pos++;
     }
   }
-  return pos < 0 ? 0 : pos;
+  return pos;
 };
 
 /** range_with_surrounding_space: the new begin (side 0 both, 1 left, 2 right). */
@@ -60,3 +91,12 @@ export const rbSpaceEnd = (
   whitespace: boolean,
   continuations: boolean,
 ): i32 => (side === 1 ? e : rbFinalPos(src, e, 1, continuations, newlines, whitespace));
+
+/** src.at(x + k), without the sum overflowing: -1 outside the source. */
+export const rbAtOff = (src: RbSource, x: i32, k: i32): i32 => {
+  const i = toI64(x) + toI64(k);
+  if (i >= toI64(0) && i < toI64(src.n)) {
+    return src.at(toI32(i));
+  }
+  return -1;
+};

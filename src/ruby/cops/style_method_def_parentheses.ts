@@ -3,6 +3,7 @@
 // Ported from RuboCop 1.92.3 (MIT License, Copyright (c) 2012-24 Bozhidar
 // Batsov).
 
+import { sub32 } from "../../core/arr";
 import { F_END, F_NAME, NT_DEF, NT_DEFS } from "../ast";
 import { RbCop } from "../cop";
 import { RbSource } from "../source";
@@ -37,7 +38,8 @@ export class CopStyleMethodDefParentheses {
       // range_before_arguments: from the name to the arguments, cut at the last line break.
       const ns = ssxFE(src, n, F_NAME);
       let re = s;
-      for (let p = s - 1; p >= ns; p--) {
+      // src.at answers -1 before the source, so p stops at 0.
+      for (let p = sub32(s, 1); p >= ns && p >= 0; p--) {
         if (src.at(p) === 10) {
           re = p;
           break;

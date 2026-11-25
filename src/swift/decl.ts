@@ -5,6 +5,7 @@
 // Ported from SwiftFormat 0.64.7 (MIT License, Copyright (c) 2016 Nick
 // Lockwood).
 
+import { fault } from "../core/fault";
 import { swParsePropertyDeclaration, swParseExpressionEnd } from "./expr";
 import { SwDecl, SwFormatter, swIndexAfterWhere, swIndexBeforeWhere } from "./formatter";
 import { swIsFunctionDeclarationKeyword, swParseFunctionDeclaration } from "./funcdecl";
@@ -40,16 +41,41 @@ import {
   swStrIsMacro,
 } from "./token";
 
+// Token indices, token counts and line numbers stay below the token count, far from the
+// i32 limits, so a sum or difference of them the prover cannot bound is written
+// `toI32(toU32(a) + b)`: wrapping u32 arithmetic, exact for such values.
+
 export const SW_DECL_SIMPLE: i32 = 0;
 export const SW_DECL_TYPE: i32 = 1;
 export const SW_DECL_IFDEF: i32 = 2;
 
-export const swDeclLo = (f: SwFormatter, d: SwDecl): i32 => f.refLo[d.h];
-export const swDeclHi = (f: SwFormatter, d: SwDecl): i32 => f.refHi[d.h];
+/** The current lower index of auto-updating range h (f.ref); -1 after a fault for an unknown h. */
+export const swRefLo = (f: SwFormatter, h: i32): i32 => {
+  const los = f.refLo;
+  if (h >= 0 && h < los.length) {
+    return los[h];
+  }
+  fault();
+  return -1;
+};
+
+/** The current upper index of auto-updating range h (f.ref); -1 after a fault for an unknown h. */
+export const swRefHi = (f: SwFormatter, h: i32): i32 => {
+  const his = f.refHi;
+  if (h >= 0 && h < his.length) {
+    return his[h];
+  }
+  fault();
+  return -1;
+};
+
+export const swDeclLo = (f: SwFormatter, d: SwDecl): i32 => swRefLo(f, d.h);
+export const swDeclHi = (f: SwFormatter, d: SwDecl): i32 => swRefHi(f, d.h);
 
 /** Declaration._keywordIndex, or -1 when the declaration is no longer valid. */
 export const swDeclKeywordIndex = (f: SwFormatter, d: SwDecl): i32 => {
-  const lo = swDeclLo(f, d) - 1;
+  // A token index: the u32 difference is exact.
+  const lo = toI32(toU32(swDeclLo(f, d)) - 1);
   if (d.kind === SW_DECL_IFDEF) {
     return f.indexOfAfter(SW_START, "#if", 0, lo);
   }
@@ -142,20 +168,24 @@ export const swEndOfConditionalAttributeBlock = (f: SwFormatter, ifIndex: i32): 
   if (dirs === null) {
     return -1;
   }
+  const ds: i32[] = dirs;
   const bStart: i32[] = [];
   const bEnd: i32[] = [];
-  for (let q = 0; q + 1 < toI32(dirs.length); q++) {
-    const eod = f.endOfLine(dirs[q]);
-    if (!(eod < dirs[q + 1])) {
+  for (let q = 0; q < ds.length - 1; q++) {
+    const d0 = ds[q];
+    const d1 = ds[q + 1];
+    const eod = f.endOfLine(d0);
+    if (!(eod < d1)) {
       return -1;
     }
     bStart.push(eod);
-    bEnd.push(dirs[q + 1]);
+    bEnd.push(d1);
   }
-  if (bEnd.length === 0) {
+  const nb = toI32(bEnd.length);
+  if (nb < 1) {
     return -1;
   }
-  const endif = bEnd[toI32(bEnd.length) - 1];
+  const endif = bEnd[nb - 1];
   const nextIndex = f.indexAfter(SW_T_NON_SPACE_OR_COMMENT_OR_LINEBREAK, endif);
   if (nextIndex < 0) {
     return -1;
@@ -168,11 +198,12 @@ export const swEndOfConditionalAttributeBlock = (f: SwFormatter, ifIndex: i32): 
     return -1;
   }
   let contains = false;
-  for (let q = 0; q < toI32(bStart.length); q++) {
+  for (let q = 0; q < bStart.length && q < bEnd.length; q++) {
     let index = bStart[q];
+    const blockEnd = bEnd[q];
     while (true) {
       const ai = f.indexAfter(SW_T_NON_SPACE_OR_COMMENT_OR_LINEBREAK, index);
-      if (ai < 0 || ai >= bEnd[q]) {
+      if (ai < 0 || ai >= blockEnd) {
         break;
       }
       if (!swIsAttribute(f, ai)) {
@@ -277,23 +308,23 @@ export const swEndOfDeclarationInTypeBody = (f: SwFormatter, kwIndex: i32): i32 
       endOfDeclaration = last;
     }
   }
-  while (
-    endOfDeclaration >= 0 &&
-    f.has(endOfDeclaration + 1) &&
-    (f.k(endOfDeclaration + 1) === SW_SPACE || f.k(endOfDeclaration + 1) === SW_LINEBREAK)
-  ) {
-    if (f.k(endOfDeclaration + 1) === SW_SPACE) {
-      if (
-        !(
-          f.k(endOfDeclaration) === SW_LINEBREAK &&
-          f.has(endOfDeclaration + 2) &&
-          f.k(endOfDeclaration + 2) === SW_LINEBREAK
-        )
-      ) {
+  // f.has(endOfDeclaration + 1) needs endOfDeclaration < f.count(), which bounds the sum.
+  while (endOfDeclaration >= 0 && endOfDeclaration < f.count()) {
+    const next = endOfDeclaration + 1;
+    if (!f.has(next)) {
+      break;
+    }
+    const nk = f.k(next);
+    if (!(nk === SW_SPACE || nk === SW_LINEBREAK)) {
+      break;
+    }
+    if (nk === SW_SPACE) {
+      const after = toI32(toU32(next) + 1);
+      if (!(f.k(endOfDeclaration) === SW_LINEBREAK && f.has(after) && f.k(after) === SW_LINEBREAK)) {
         break;
       }
     }
-    endOfDeclaration = endOfDeclaration + 1;
+    endOfDeclaration = next;
   }
   return endOfDeclaration;
 };
@@ -337,22 +368,24 @@ export const swParseDeclarationsIn = (f: SwFormatter, lo: i32, hi0: i32, useForE
     const dt = swDeclarationType(f, index);
     const keyword = dt.length !== 0 ? dt : f.s(index);
     const eod = swEndOfDeclarationInTypeBody(f, index);
-    const end = eod < 0 ? hi - 1 : eod < hi - 1 ? eod : hi - 1;
+    const end = eod < 0 ? toI32(toU32(hi) - 1) : eod < toI32(toU32(hi) - 1) ? eod : toI32(toU32(hi) - 1);
     // A declaration where the current rule is disabled by a directive is left out.
     if (f.hasDirectives() && !(useForEachToken ? f.enabledInLoopAt(index, lo < 0 ? 0 : lo) : f.isEnabled())) {
-      startOfDeclaration = end + 1;
+      startOfDeclaration = toI32(toU32(end) + 1);
       continue;
     }
     kws.push(keyword);
     kwIdx.push(index);
     rlo.push(startOfDeclaration);
     rhi.push(end);
-    startOfDeclaration = end + 1;
+    startOfDeclaration = toI32(toU32(end) + 1);
   }
   const out: SwDecl[] = [];
-  for (let q = 0; q < toI32(kws.length); q++) {
+  for (let q = 0; q < kws.length && q < kwIdx.length && q < rlo.length && q < rhi.length; q++) {
     const keyword = kws[q];
     const ki = kwIdx[q];
+    const rangeLo = rlo[q];
+    const rangeHi = rhi[q];
     let made = false;
     if (swIsTypeKeywordStr(keyword)) {
       const ob = f.indexOfAfter(SW_START, "{", 0, ki);
@@ -362,11 +395,11 @@ export const swParseDeclarationsIn = (f: SwFormatter, lo: i32, hi0: i32, useForE
         const eob = f.indexBefore(SW_T_NON_SPACE, eos);
         let body: SwDecl[] = [];
         if (sob >= 0 && eob >= 0 && sob <= eob) {
-          body = swParseDeclarationsIn(f, sob, eob + 1);
+          body = swParseDeclarationsIn(f, sob, toI32(toU32(eob) + 1));
         } else {
-          body = swParseDeclarationsIn(f, ob + 1, eos);
+          body = swParseDeclarationsIn(f, toI32(toU32(ob) + 1), eos);
         }
-        const d = new SwDecl(keyword, SW_DECL_TYPE, f.ref(rlo[q], rhi[q]));
+        const d = new SwDecl(keyword, SW_DECL_TYPE, f.ref(rangeLo, rangeHi));
         d.body = body;
         for (const c of body) {
           c.parent = d;
@@ -382,11 +415,11 @@ export const swParseDeclarationsIn = (f: SwFormatter, lo: i32, hi0: i32, useForE
         const eob = f.indexBefore(SW_T_NON_SPACE, eos);
         let body: SwDecl[] = [];
         if (sob >= 0 && eob >= 0 && sob <= eob) {
-          body = swParseDeclarationsIn(f, sob, eob + 1);
+          body = swParseDeclarationsIn(f, sob, toI32(toU32(eob) + 1));
         } else {
-          body = swParseDeclarationsIn(f, eol + 1, eos);
+          body = swParseDeclarationsIn(f, toI32(toU32(eol) + 1), eos);
         }
-        const d = new SwDecl(keyword, SW_DECL_IFDEF, f.ref(rlo[q], rhi[q]));
+        const d = new SwDecl(keyword, SW_DECL_IFDEF, f.ref(rangeLo, rangeHi));
         d.body = body;
         for (const c of body) {
           c.parent = d;
@@ -396,7 +429,7 @@ export const swParseDeclarationsIn = (f: SwFormatter, lo: i32, hi0: i32, useForE
       }
     }
     if (!made) {
-      out.push(new SwDecl(keyword, SW_DECL_SIMPLE, f.ref(rlo[q], rhi[q])));
+      out.push(new SwDecl(keyword, SW_DECL_SIMPLE, f.ref(rangeLo, rangeHi)));
     }
   }
   const valid: SwDecl[] = [];
@@ -434,7 +467,7 @@ export const swParseEnclosingType = (f: SwFormatter, index: i32): SwDecl | null 
     const eos = ob >= 0 ? swEndOfScope(f, ob) : -1;
     if (ob >= 0 && eos >= 0) {
       const d = new SwDecl(f.s(tk), SW_DECL_TYPE, f.ref(swStartOfModifiers(f, tk, true), eos));
-      d.body = swParseDeclarationsIn(f, ob + 1, eos, false);
+      d.body = swParseDeclarationsIn(f, toI32(toU32(ob) + 1), eos, false);
       for (const c of d.body) {
         c.parent = d;
       }
@@ -484,7 +517,7 @@ export const swDeclarationName = (f: SwFormatter, keywordIndex: i32): string => 
     if (e < 0) {
       return "";
     }
-    return swStringExcludingLinebreaksAndComments(f, ni, e + 1);
+    return swStringExcludingLinebreaksAndComments(f, ni, toI32(toU32(e) + 1));
   }
   return f.s(ni);
 };
@@ -530,7 +563,11 @@ export const swDeclarationVisibility = (f: SwFormatter, keywordIndex: i32): stri
 /** Declaration.visibility(), or "". */
 export const swDeclVisibility = (f: SwFormatter, d: SwDecl): string => {
   if (d.kind === SW_DECL_IFDEF) {
-    return d.body.length === 0 ? "" : swDeclVisibility(f, d.body[0]);
+    const body = d.body;
+    if (body.length < 1) {
+      return "";
+    }
+    return swDeclVisibility(f, body[0]);
   }
   return swDeclarationVisibility(f, swDeclKeywordIndex(f, d));
 };
@@ -575,12 +612,13 @@ export const swStringExcludingLinebreaksAndComments = (f: SwFormatter, lo: i32, 
 
 /** trimmingCharacters(in: .whitespaces) for spaces and tabs. */
 export const swTrimSpaces = (s: string): string => {
+  const n = toI32(s.length);
   let a = 0;
-  let b = toI32(s.length);
+  let b = n;
   while (a < b && (s.charCodeAt(a) === 32 || s.charCodeAt(a) === 9)) {
     a++;
   }
-  while (b > a && (s.charCodeAt(b - 1) === 32 || s.charCodeAt(b - 1) === 9)) {
+  while (b > a && b > 0 && b <= n && (s.charCodeAt(b - 1) === 32 || s.charCodeAt(b - 1) === 9)) {
     b--;
   }
   return s.substring(a, b);

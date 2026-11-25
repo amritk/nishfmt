@@ -96,10 +96,11 @@ export class RbStaticEnv {
   }
 
   unextend(): void {
-    const k = toI32(this.stack.length);
-    if (k > 0) {
-      this.vars = this.stack[k - 1];
-      this.stack.pop();
+    const stack = this.stack;
+    const k = toI32(stack.length);
+    if (k > 0 && stack.length > 0) {
+      this.vars = stack[k - 1];
+      stack.pop();
     } else {
       this.vars = [];
     }

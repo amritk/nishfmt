@@ -9,7 +9,8 @@
 // one the Kotlin compiler 2.4.10 builds with) and the Kotlin compiler
 // 2.4.10's parser support (Apache License 2.0, Copyright JetBrains s.r.o.).
 
-import { growI32 } from "../core/arr";
+import { bytesText, growI32 } from "../core/arr";
+import { fault } from "../core/fault";
 import { KLexemes } from "./lexer";
 import {
   T_BLOCK_COMMENT,
@@ -27,6 +28,56 @@ import {
   T_WHITE_SPACE,
   N_CONSTRUCTOR_DELEGATION_CALL,
   N_CONSTRUCTOR_DELEGATION_REFERENCE,
+  T_ABSTRACT_KEYWORD,
+  T_ACTUAL_KEYWORD,
+  T_ALL_KEYWORD,
+  T_ANNOTATION_KEYWORD,
+  T_BY_KEYWORD,
+  T_CATCH_KEYWORD,
+  T_COMPANION_KEYWORD,
+  T_CONSTRUCTOR_KEYWORD,
+  T_CONST_KEYWORD,
+  T_CONTEXT_KEYWORD,
+  T_CONTRACT_KEYWORD,
+  T_CROSSINLINE_KEYWORD,
+  T_DATA_KEYWORD,
+  T_DELEGATE_KEYWORD,
+  T_DYNAMIC_KEYWORD,
+  T_ENUM_KEYWORD,
+  T_EXPECT_KEYWORD,
+  T_EXTERNAL_KEYWORD,
+  T_FIELD_KEYWORD,
+  T_FILE_KEYWORD,
+  T_FINALLY_KEYWORD,
+  T_FINAL_KEYWORD,
+  T_GET_KEYWORD,
+  T_IMPORT_KEYWORD,
+  T_INFIX_KEYWORD,
+  T_INIT_KEYWORD,
+  T_INLINE_KEYWORD,
+  T_INNER_KEYWORD,
+  T_INTERNAL_KEYWORD,
+  T_LATEINIT_KEYWORD,
+  T_NOINLINE_KEYWORD,
+  T_OPEN_KEYWORD,
+  T_OPERATOR_KEYWORD,
+  T_OUT_KEYWORD,
+  T_OVERRIDE_KEYWORD,
+  T_PARAM_KEYWORD,
+  T_PRIVATE_KEYWORD,
+  T_PROPERTY_KEYWORD,
+  T_PROTECTED_KEYWORD,
+  T_PUBLIC_KEYWORD,
+  T_RECEIVER_KEYWORD,
+  T_REIFIED_KEYWORD,
+  T_SEALED_KEYWORD,
+  T_SETPARAM_KEYWORD,
+  T_SET_KEYWORD,
+  T_SUSPEND_KEYWORD,
+  T_TAILREC_KEYWORD,
+  T_VALUE_KEYWORD,
+  T_VARARG_KEYWORD,
+  T_WHERE_KEYWORD,
 } from "./types";
 
 // Edge binders.
@@ -62,16 +113,15 @@ export class KTree {
   leaf: i32[]; // 1 for a leaf
 
   constructor() {
-    const c = 512;
-    this.type = new Array<i32>(c);
-    this.start = new Array<i32>(c);
-    this.end = new Array<i32>(c);
-    this.parent = new Array<i32>(c);
-    this.first = new Array<i32>(c);
-    this.last = new Array<i32>(c);
-    this.next = new Array<i32>(c);
-    this.prev = new Array<i32>(c);
-    this.leaf = new Array<i32>(c);
+    this.type = new Array<i32>(512);
+    this.start = new Array<i32>(512);
+    this.end = new Array<i32>(512);
+    this.parent = new Array<i32>(512);
+    this.first = new Array<i32>(512);
+    this.last = new Array<i32>(512);
+    this.next = new Array<i32>(512);
+    this.prev = new Array<i32>(512);
+    this.leaf = new Array<i32>(512);
   }
 
   reset(): void {
@@ -81,6 +131,10 @@ export class KTree {
   add(type: i32, start: i32, end: i32, parent: i32, isLeaf: boolean): i32 {
     const i = this.n;
     if (i >= toI32(this.type.length)) {
+      if (i < 0 || i > 1073741815) {
+        fault();
+        return -1;
+      }
       const c = i * 2 + 16;
       this.type = growI32(this.type, c);
       this.start = growI32(this.start, c);
@@ -92,29 +146,173 @@ export class KTree {
       this.prev = growI32(this.prev, c);
       this.leaf = growI32(this.leaf, c);
     }
-    this.type[i] = type;
-    this.start[i] = start;
-    this.end[i] = end;
-    this.parent[i] = parent;
-    this.first[i] = -1;
-    this.last[i] = -1;
-    this.next[i] = -1;
-    this.prev[i] = -1;
-    this.leaf[i] = isLeaf ? 1 : 0;
+    const ty = this.type;
+    const st = this.start;
+    const en = this.end;
+    const pa = this.parent;
+    const fi = this.first;
+    const la = this.last;
+    const nx = this.next;
+    const pr = this.prev;
+    const lf = this.leaf;
+    if (
+      i < 0 ||
+      i >= ty.length ||
+      i >= st.length ||
+      i >= en.length ||
+      i >= pa.length ||
+      i >= fi.length ||
+      i >= la.length ||
+      i >= nx.length ||
+      i >= pr.length ||
+      i >= lf.length
+    ) {
+      fault();
+      return -1;
+    }
+    ty[i] = type;
+    st[i] = start;
+    en[i] = end;
+    pa[i] = parent;
+    fi[i] = -1;
+    la[i] = -1;
+    nx[i] = -1;
+    pr[i] = -1;
+    lf[i] = isLeaf ? 1 : 0;
     if (parent >= 0) {
-      const l = this.last[parent];
-      if (l < 0) {
-        this.first[parent] = i;
-      } else {
-        this.next[l] = i;
-        this.prev[i] = l;
+      if (parent >= la.length || parent >= fi.length) {
+        fault();
+        return -1;
       }
-      this.last[parent] = i;
+      const l = la[parent];
+      if (l < 0) {
+        fi[parent] = i;
+      } else if (l < nx.length) {
+        nx[l] = i;
+        pr[i] = l;
+      } else {
+        fault();
+        return -1;
+      }
+      la[parent] = i;
     }
     this.n = i + 1;
     return i;
   }
+
+  // Guarded reads of a node's fields. A node index out of range is a broken
+  // tree (the old indexing panicked there): the file faults, and the read
+  // answers a value that ends any walk over the tree.
+
+  ty(i: i32): i32 {
+    const a = this.type;
+    if (i >= 0 && i < a.length) {
+      return a[i];
+    }
+    fault();
+    return -1;
+  }
+
+  st(i: i32): i32 {
+    const a = this.start;
+    if (i >= 0 && i < a.length) {
+      return a[i];
+    }
+    fault();
+    return 0;
+  }
+
+  en(i: i32): i32 {
+    const a = this.end;
+    if (i >= 0 && i < a.length) {
+      return a[i];
+    }
+    fault();
+    return 0;
+  }
+
+  par(i: i32): i32 {
+    const a = this.parent;
+    if (i >= 0 && i < a.length) {
+      return a[i];
+    }
+    fault();
+    return -1;
+  }
+
+  fst(i: i32): i32 {
+    const a = this.first;
+    if (i >= 0 && i < a.length) {
+      return a[i];
+    }
+    fault();
+    return -1;
+  }
+
+  lst(i: i32): i32 {
+    const a = this.last;
+    if (i >= 0 && i < a.length) {
+      return a[i];
+    }
+    fault();
+    return -1;
+  }
+
+  nxt(i: i32): i32 {
+    const a = this.next;
+    if (i >= 0 && i < a.length) {
+      return a[i];
+    }
+    fault();
+    return -1;
+  }
+
+  prv(i: i32): i32 {
+    const a = this.prev;
+    if (i >= 0 && i < a.length) {
+      return a[i];
+    }
+    fault();
+    return -1;
+  }
+
+  /** leaf[i]: 1 for a leaf (and after a fault, so no walk descends). */
+  lf(i: i32): i32 {
+    const a = this.leaf;
+    if (i >= 0 && i < a.length) {
+      return a[i];
+    }
+    fault();
+    return 1;
+  }
+
+  setEnd(i: i32, v: i32): void {
+    const a = this.end;
+    if (i >= 0 && i < a.length) {
+      a[i] = v;
+    } else {
+      fault();
+    }
+  }
 }
+
+/** xs[i] for a marker or lexeme index; one out of range faults and answers `none`. */
+const kbAt = (xs: i32[], i: i32, none: i32): i32 => {
+  if (i >= 0 && i < xs.length) {
+    return xs[i];
+  }
+  fault();
+  return none;
+};
+
+/** xs[i] = v for a marker index; one out of range faults. */
+const kbPut = (xs: i32[], i: i32, v: i32): void => {
+  if (i >= 0 && i < xs.length) {
+    xs[i] = v;
+  } else {
+    fault();
+  }
+};
 
 export class KBuilder {
   lx: KLexemes;
@@ -144,15 +342,14 @@ export class KBuilder {
 
   constructor(lx: KLexemes) {
     this.lx = lx;
-    const c = 512;
-    this.pKind = new Array<i32>(c);
-    this.pLex = new Array<i32>(c);
-    this.pType = new Array<i32>(c);
-    this.pBinder = new Array<i32>(c);
-    this.pOther = new Array<i32>(c);
-    this.pCollapse = new Array<i32>(c);
-    this.pNext = new Array<i32>(c);
-    this.pPrev = new Array<i32>(c);
+    this.pKind = new Array<i32>(512);
+    this.pLex = new Array<i32>(512);
+    this.pType = new Array<i32>(512);
+    this.pBinder = new Array<i32>(512);
+    this.pOther = new Array<i32>(512);
+    this.pCollapse = new Array<i32>(512);
+    this.pNext = new Array<i32>(512);
+    this.pPrev = new Array<i32>(512);
     this.newlines = new Array<i32>(64);
     this.joinComplex = new Array<i32>(64);
     this.tree = new KTree();
@@ -174,63 +371,139 @@ export class KBuilder {
 
   // ---- Lexer access ----------------------------------------------------------
 
+  // The lexer's arrays hold at least `lx.count` lexemes, so a lexeme index
+  // below the count is in range; one that is not faults.
+
+  /** lx.type[i] for a lexeme index; -1 after a fault. */
+  private lt(i: i32): i32 {
+    const a = this.lx.type;
+    if (i >= 0 && i < a.length) {
+      return a[i];
+    }
+    fault();
+    return -1;
+  }
+
+  /** lx.start[i] for a lexeme index. */
+  private ls(i: i32): i32 {
+    const a = this.lx.start;
+    if (i >= 0 && i < a.length) {
+      return a[i];
+    }
+    fault();
+    return 0;
+  }
+
+  /** lx.end[i] for a lexeme index. */
+  private le(i: i32): i32 {
+    const a = this.lx.end;
+    if (i >= 0 && i < a.length) {
+      return a[i];
+    }
+    fault();
+    return 0;
+  }
+
   private skipWs(): void {
     const lx = this.lx;
-    while (this.cur < lx.count && isWsOrComment(lx.type[this.cur])) {
-      this.cur = this.cur + 1;
+    const ty = lx.type;
+    const cnt = lx.count;
+    let c = this.cur;
+    while (c < cnt) {
+      if (c < 0 || c >= ty.length) {
+        fault();
+        break;
+      }
+      if (!isWsOrComment(ty[c])) {
+        break;
+      }
+      c++;
     }
+    this.cur = c;
   }
 
   /** A truncated builder's end (TruncatedSemanticWhitespaceAwarePsiBuilder), -1 for none. */
   eofLimit: i32 = -1;
 
   eof(): boolean {
-    if (this.cur >= this.lx.count) {
+    const c = this.cur;
+    if (c >= this.lx.count) {
       return true;
     }
-    return this.eofLimit >= 0 && this.lx.start[this.cur] >= this.eofLimit;
+    return this.eofLimit >= 0 && this.ls(c) >= this.eofLimit;
   }
 
   /** The raw type at the current lexeme (PsiBuilderImpl.getTokenType), or -1 at EOF. */
   rawTokenType(): i32 {
-    return this.cur < this.lx.count ? this.lx.type[this.cur] : -1;
+    const c = this.cur;
+    return c < this.lx.count ? this.lt(c) : -1;
   }
 
   /** The raw lexeme type `steps` from the current one (whitespace included), or -1. */
   rawLookup(steps: i32): i32 {
-    const i = this.cur + steps;
-    return i >= 0 && i < this.lx.count ? this.lx.type[i] : -1;
+    const i = toI64(this.cur) + toI64(steps);
+    if (i >= toI64(0) && i < toI64(this.lx.count)) {
+      return this.lt(toI32(i));
+    }
+    return -1;
   }
 
   /** The start offset of the lexeme `steps` from the current one. */
   rawTokenTypeStart(steps: i32): i32 {
-    const i = this.cur + steps;
-    if (i < 0) {
+    const i = toI64(this.cur) + toI64(steps);
+    if (i < toI64(0)) {
       return 0;
     }
-    if (i >= this.lx.count) {
+    if (i >= toI64(this.lx.count)) {
       return this.lx.n;
     }
-    return this.lx.start[i];
+    return this.ls(toI32(i));
   }
 
-  /** The type `steps` non-whitespace tokens ahead (PsiBuilderImpl.lookAhead), or -1. */
-  private rawLookAhead(steps: i32): i32 {
+  /**
+   * The lexeme `steps` non-whitespace tokens ahead (PsiBuilderImpl.lookAhead);
+   * one at or past `lx.count` is past the end, however far.
+   */
+  private aheadIndex(steps: i32): i32 {
     const lx = this.lx;
+    const ty = lx.type;
+    const cnt = lx.count;
     let i = this.cur;
     let k = steps;
     while (k > 0) {
+      if (i >= cnt) {
+        break;
+      }
       i++;
-      while (i < lx.count && isWsOrComment(lx.type[i])) {
+      while (i < cnt) {
+        if (i < 0 || i >= ty.length) {
+          fault();
+          return cnt;
+        }
+        if (!isWsOrComment(ty[i])) {
+          break;
+        }
         i++;
       }
       k--;
     }
-    return i < lx.count ? lx.type[i] : -1;
+    return i;
+  }
+
+  /** The type `steps` non-whitespace tokens ahead (PsiBuilderImpl.lookAhead), or -1. */
+  private rawLookAhead(steps: i32): i32 {
+    const i = this.aheadIndex(steps);
+    return i < this.lx.count ? this.lt(i) : -1;
   }
 
   private joining(): boolean {
-    return this.joinComplex[this.nJoin - 1] === 1;
+    const j = this.joinComplex;
+    const k = this.nJoin;
+    if (k > 0 && k <= j.length) {
+      return j[k - 1] === 1;
+    }
+    fault();
+    return false;
   }
 
   /** SemanticWhitespaceAwarePsiBuilderImpl.getTokenType: `?.`, `?:` and `!!` joined. */
@@ -240,10 +513,10 @@ export class KBuilder {
     if (c >= lx.count) {
       return -1;
     }
-    if (this.eofLimit >= 0 && lx.start[c] >= this.eofLimit) {
+    if (this.eofLimit >= 0 && this.ls(c) >= this.eofLimit) {
       return -1;
     }
-    const raw = lx.type[c];
+    const raw = this.lt(c);
     if ((raw !== T_QUEST && raw !== T_EXCL) || !this.joining()) {
       return raw;
     }
@@ -276,26 +549,22 @@ export class KBuilder {
         return -1;
       }
       const lx = this.lx;
-      let i = this.cur;
-      let k = steps;
-      while (k > 0) {
-        i++;
-        while (i < lx.count && isWsOrComment(lx.type[i])) {
-          i++;
-        }
-        k--;
-      }
-      const st = i < lx.count ? lx.start[i] : lx.n;
+      const i = this.aheadIndex(steps);
+      const st = i < lx.count ? this.ls(i) : lx.n;
       if (st >= this.eofLimit) {
         return -1;
       }
-      return i < lx.count ? lx.type[i] : -1;
+      return i < lx.count ? this.lt(i) : -1;
     }
     if (!this.joining()) {
       return this.rawLookAhead(steps);
     }
     const t = this.tt();
     if (t === T_SAFE_ACCESS || t === T_ELVIS || t === T_EXCLEXCL) {
+      if (steps >= 2147483647) {
+        fault();
+        return -1;
+      }
       return this.rawLookAhead(steps + 1);
     }
     // getJoinedTokenType(super.lookAhead(steps), 2): the raw lookup is relative to the current token.
@@ -324,50 +593,237 @@ export class KBuilder {
   }
 
   private rawAdvance(): void {
-    if (this.cur < this.lx.count) {
-      this.cur = this.cur + 1;
+    const c = this.cur;
+    if (c < this.lx.count) {
+      this.cur = c + 1;
     }
     this.skipWs();
   }
 
   remapCurrentToken(t: i32): void {
-    if (this.cur < this.lx.count) {
-      this.lx.type[this.cur] = t;
+    const c = this.cur;
+    if (c < this.lx.count) {
+      kbPut(this.lx.type, c, t);
     }
   }
 
   tokenStart(): i32 {
-    return this.cur < this.lx.count ? this.lx.start[this.cur] : this.lx.n;
+    const c = this.cur;
+    return c < this.lx.count ? this.ls(c) : this.lx.n;
   }
 
   tokenEnd(): i32 {
-    return this.cur < this.lx.count ? this.lx.end[this.cur] : this.lx.n;
+    const c = this.cur;
+    return c < this.lx.count ? this.le(c) : this.lx.n;
+  }
+
+  /**
+   * `ktSoftKeyword` of the current token's text, compared byte by byte so
+   * no string is made: the soft keyword token, or -1.
+   */
+  softKeyword(): i32 {
+    const c = this.cur;
+    if (c >= this.lx.count) {
+      return -1;
+    }
+    const len = toI64(this.le(c)) - toI64(this.ls(c));
+    if (len === toI64(2)) {
+      if (this.tokenIs("by")) {
+        return T_BY_KEYWORD;
+      }
+    } else if (len === toI64(3)) {
+      if (this.tokenIs("get")) {
+        return T_GET_KEYWORD;
+      }
+      if (this.tokenIs("set")) {
+        return T_SET_KEYWORD;
+      }
+      if (this.tokenIs("out")) {
+        return T_OUT_KEYWORD;
+      }
+      if (this.tokenIs("all")) {
+        return T_ALL_KEYWORD;
+      }
+    } else if (len === toI64(4)) {
+      if (this.tokenIs("file")) {
+        return T_FILE_KEYWORD;
+      }
+      if (this.tokenIs("init")) {
+        return T_INIT_KEYWORD;
+      }
+      if (this.tokenIs("enum")) {
+        return T_ENUM_KEYWORD;
+      }
+      if (this.tokenIs("open")) {
+        return T_OPEN_KEYWORD;
+      }
+      if (this.tokenIs("data")) {
+        return T_DATA_KEYWORD;
+      }
+    } else if (len === toI64(5)) {
+      if (this.tokenIs("field")) {
+        return T_FIELD_KEYWORD;
+      }
+      if (this.tokenIs("param")) {
+        return T_PARAM_KEYWORD;
+      }
+      if (this.tokenIs("where")) {
+        return T_WHERE_KEYWORD;
+      }
+      if (this.tokenIs("inner")) {
+        return T_INNER_KEYWORD;
+      }
+      if (this.tokenIs("catch")) {
+        return T_CATCH_KEYWORD;
+      }
+      if (this.tokenIs("final")) {
+        return T_FINAL_KEYWORD;
+      }
+      if (this.tokenIs("value")) {
+        return T_VALUE_KEYWORD;
+      }
+      if (this.tokenIs("infix")) {
+        return T_INFIX_KEYWORD;
+      }
+      if (this.tokenIs("const")) {
+        return T_CONST_KEYWORD;
+      }
+    } else if (len === toI64(6)) {
+      if (this.tokenIs("import")) {
+        return T_IMPORT_KEYWORD;
+      }
+      if (this.tokenIs("public")) {
+        return T_PUBLIC_KEYWORD;
+      }
+      if (this.tokenIs("vararg")) {
+        return T_VARARG_KEYWORD;
+      }
+      if (this.tokenIs("sealed")) {
+        return T_SEALED_KEYWORD;
+      }
+      if (this.tokenIs("inline")) {
+        return T_INLINE_KEYWORD;
+      }
+      if (this.tokenIs("expect")) {
+        return T_EXPECT_KEYWORD;
+      }
+      if (this.tokenIs("actual")) {
+        return T_ACTUAL_KEYWORD;
+      }
+    } else if (len === toI64(7)) {
+      if (this.tokenIs("context")) {
+        return T_CONTEXT_KEYWORD;
+      }
+      if (this.tokenIs("private")) {
+        return T_PRIVATE_KEYWORD;
+      }
+      if (this.tokenIs("reified")) {
+        return T_REIFIED_KEYWORD;
+      }
+      if (this.tokenIs("dynamic")) {
+        return T_DYNAMIC_KEYWORD;
+      }
+      if (this.tokenIs("finally")) {
+        return T_FINALLY_KEYWORD;
+      }
+      if (this.tokenIs("tailrec")) {
+        return T_TAILREC_KEYWORD;
+      }
+      if (this.tokenIs("suspend")) {
+        return T_SUSPEND_KEYWORD;
+      }
+    } else if (len === toI64(8)) {
+      if (this.tokenIs("property")) {
+        return T_PROPERTY_KEYWORD;
+      }
+      if (this.tokenIs("receiver")) {
+        return T_RECEIVER_KEYWORD;
+      }
+      if (this.tokenIs("setparam")) {
+        return T_SETPARAM_KEYWORD;
+      }
+      if (this.tokenIs("delegate")) {
+        return T_DELEGATE_KEYWORD;
+      }
+      if (this.tokenIs("abstract")) {
+        return T_ABSTRACT_KEYWORD;
+      }
+      if (this.tokenIs("contract")) {
+        return T_CONTRACT_KEYWORD;
+      }
+      if (this.tokenIs("override")) {
+        return T_OVERRIDE_KEYWORD;
+      }
+      if (this.tokenIs("internal")) {
+        return T_INTERNAL_KEYWORD;
+      }
+      if (this.tokenIs("lateinit")) {
+        return T_LATEINIT_KEYWORD;
+      }
+      if (this.tokenIs("noinline")) {
+        return T_NOINLINE_KEYWORD;
+      }
+      if (this.tokenIs("external")) {
+        return T_EXTERNAL_KEYWORD;
+      }
+      if (this.tokenIs("operator")) {
+        return T_OPERATOR_KEYWORD;
+      }
+    } else if (len === toI64(9)) {
+      if (this.tokenIs("protected")) {
+        return T_PROTECTED_KEYWORD;
+      }
+      if (this.tokenIs("companion")) {
+        return T_COMPANION_KEYWORD;
+      }
+    } else if (len === toI64(10)) {
+      if (this.tokenIs("annotation")) {
+        return T_ANNOTATION_KEYWORD;
+      }
+    } else if (len === toI64(11)) {
+      if (this.tokenIs("constructor")) {
+        return T_CONSTRUCTOR_KEYWORD;
+      }
+      if (this.tokenIs("crossinline")) {
+        return T_CROSSINLINE_KEYWORD;
+      }
+    }
+    return -1;
   }
 
   /** Whether the current token's text is `s`. */
   tokenIs(s: string): boolean {
-    if (this.cur >= this.lx.count) {
+    const c = this.cur;
+    if (c >= this.lx.count) {
       return false;
     }
-    const a = this.lx.start[this.cur];
-    const e = this.lx.end[this.cur];
+    const a = this.ls(c);
+    const e = this.le(c);
     const k = toI32(s.length);
-    if (e - a !== k) {
+    if (toI64(e) - toI64(a) !== toI64(k)) {
       return false;
     }
+    const src = this.lx.src;
+    let j = a;
     for (let i = 0; i < k; i++) {
-      if (toI32(this.lx.src[a + i]) !== s.charCodeAt(i)) {
+      if (j < 0 || j >= src.length) {
+        fault();
         return false;
       }
+      if (toI32(src[j]) !== s.charCodeAt(i)) {
+        return false;
+      }
+      j++;
     }
     return true;
   }
 
   tokenText(): string {
-    if (this.cur >= this.lx.count) {
+    const c = this.cur;
+    if (c >= this.lx.count) {
       return "";
     }
-    return String.fromBytes(this.lx.src, this.lx.start[this.cur], this.lx.end[this.cur]);
+    return bytesText(this.lx.src, this.ls(c), this.le(c));
   }
 
   /** The current offset (getCurrentOffset). */
@@ -377,23 +833,36 @@ export class KBuilder {
 
   /** newlineBeforeCurrentToken. */
   newlineBefore(): boolean {
-    if (this.newlines[this.nNewlines - 1] === 0) {
+    const nl = this.newlines;
+    const k = this.nNewlines;
+    if (k <= 0 || k > nl.length) {
+      fault();
+      return false;
+    }
+    if (nl[k - 1] === 0) {
       return false;
     }
     if (this.eof()) {
       return true;
     }
-    const lx = this.lx;
-    for (let i = this.cur - 1; i >= 0; i--) {
-      const t = lx.type[i];
+    const src = this.lx.src;
+    let i = this.cur;
+    while (i > 0) {
+      i--;
+      const t = this.lt(i);
       if (t === T_BLOCK_COMMENT || t === T_DOC_COMMENT || t === T_EOL_COMMENT || t === T_SHEBANG_COMMENT) {
         continue;
       }
       if (t !== T_WHITE_SPACE) {
         break;
       }
-      for (let j = lx.start[i]; j < lx.end[i]; j++) {
-        if (toI32(lx.src[j]) === 10) {
+      const e = this.le(i);
+      for (let j = this.ls(i); j < e; j++) {
+        if (j < 0 || j >= src.length) {
+          fault();
+          return false;
+        }
+        if (toI32(src[j]) === 10) {
           return true;
         }
       }
@@ -402,11 +871,21 @@ export class KBuilder {
   }
 
   private pushNewlines(v: i32): void {
-    if (this.nNewlines >= toI32(this.newlines.length)) {
-      this.newlines = growI32(this.newlines, this.nNewlines * 2 + 8);
+    const k = this.nNewlines;
+    if (k >= toI32(this.newlines.length)) {
+      if (k < 0 || k > 1073741819) {
+        fault();
+        return;
+      }
+      this.newlines = growI32(this.newlines, k * 2 + 8);
     }
-    this.newlines[this.nNewlines] = v;
-    this.nNewlines = this.nNewlines + 1;
+    const a = this.newlines;
+    if (k < 0 || k >= a.length) {
+      fault();
+      return;
+    }
+    a[k] = v;
+    this.nNewlines = k + 1;
   }
 
   disableNewlines(): void {
@@ -418,17 +897,28 @@ export class KBuilder {
   }
 
   restoreNewlinesState(): void {
-    if (this.nNewlines > 1) {
-      this.nNewlines = this.nNewlines - 1;
+    const k = this.nNewlines;
+    if (k > 1) {
+      this.nNewlines = k - 1;
     }
   }
 
   private pushJoin(v: i32): void {
-    if (this.nJoin >= toI32(this.joinComplex.length)) {
-      this.joinComplex = growI32(this.joinComplex, this.nJoin * 2 + 8);
+    const k = this.nJoin;
+    if (k >= toI32(this.joinComplex.length)) {
+      if (k < 0 || k > 1073741819) {
+        fault();
+        return;
+      }
+      this.joinComplex = growI32(this.joinComplex, k * 2 + 8);
     }
-    this.joinComplex[this.nJoin] = v;
-    this.nJoin = this.nJoin + 1;
+    const a = this.joinComplex;
+    if (k < 0 || k >= a.length) {
+      fault();
+      return;
+    }
+    a[k] = v;
+    this.nJoin = k + 1;
   }
 
   enableJoiningComplexTokens(): void {
@@ -440,8 +930,9 @@ export class KBuilder {
   }
 
   restoreJoiningComplexTokensState(): void {
-    if (this.nJoin > 1) {
-      this.nJoin = this.nJoin - 1;
+    const k = this.nJoin;
+    if (k > 1) {
+      this.nJoin = k - 1;
     }
   }
 
@@ -450,6 +941,10 @@ export class KBuilder {
   private newP(kind: i32, lex: i32): i32 {
     const i = this.nP;
     if (i >= toI32(this.pKind.length)) {
+      if (i < 0 || i > 1073741815) {
+        fault();
+        return -1;
+      }
       const c = i * 2 + 16;
       this.pKind = growI32(this.pKind, c);
       this.pLex = growI32(this.pLex, c);
@@ -460,23 +955,45 @@ export class KBuilder {
       this.pNext = growI32(this.pNext, c);
       this.pPrev = growI32(this.pPrev, c);
     }
-    this.pKind[i] = kind;
-    this.pLex[i] = lex;
-    this.pType[i] = 0;
-    this.pBinder[i] = B_DEFAULT;
-    this.pOther[i] = -1;
-    this.pCollapse[i] = 0;
-    this.pNext[i] = -1;
-    this.pPrev[i] = -1;
+    const pk = this.pKind;
+    const pl = this.pLex;
+    const pt = this.pType;
+    const pb = this.pBinder;
+    const po = this.pOther;
+    const pc = this.pCollapse;
+    const pn = this.pNext;
+    const pp = this.pPrev;
+    if (
+      i < 0 ||
+      i >= pk.length ||
+      i >= pl.length ||
+      i >= pt.length ||
+      i >= pb.length ||
+      i >= po.length ||
+      i >= pc.length ||
+      i >= pn.length ||
+      i >= pp.length
+    ) {
+      fault();
+      return -1;
+    }
+    pk[i] = kind;
+    pl[i] = lex;
+    pt[i] = 0;
+    pb[i] = B_DEFAULT;
+    po[i] = -1;
+    pc[i] = 0;
+    pn[i] = -1;
+    pp[i] = -1;
     this.nP = i + 1;
     return i;
   }
 
   private append(p: i32): void {
-    this.pPrev[p] = this.tail;
-    this.pNext[p] = -1;
+    kbPut(this.pPrev, p, this.tail);
+    kbPut(this.pNext, p, -1);
     if (this.tail >= 0) {
-      this.pNext[this.tail] = p;
+      kbPut(this.pNext, this.tail, p);
     } else {
       this.head = p;
     }
@@ -484,27 +1001,27 @@ export class KBuilder {
   }
 
   private insertBefore(p: i32, before: i32): void {
-    const pr = this.pPrev[before];
-    this.pPrev[p] = pr;
-    this.pNext[p] = before;
-    this.pPrev[before] = p;
+    const pr = kbAt(this.pPrev, before, -1);
+    kbPut(this.pPrev, p, pr);
+    kbPut(this.pNext, p, before);
+    kbPut(this.pPrev, before, p);
     if (pr >= 0) {
-      this.pNext[pr] = p;
+      kbPut(this.pNext, pr, p);
     } else {
       this.head = p;
     }
   }
 
   private unlink(p: i32): void {
-    const pr = this.pPrev[p];
-    const nx = this.pNext[p];
+    const pr = kbAt(this.pPrev, p, -1);
+    const nx = kbAt(this.pNext, p, -1);
     if (pr >= 0) {
-      this.pNext[pr] = nx;
+      kbPut(this.pNext, pr, nx);
     } else {
       this.head = nx;
     }
     if (nx >= 0) {
-      this.pPrev[nx] = pr;
+      kbPut(this.pPrev, nx, pr);
     } else {
       this.tail = pr;
     }
@@ -526,21 +1043,21 @@ export class KBuilder {
     // processDone: an empty element of a left-bound type sticks to what precedes it.
     if (
       (type === N_CONSTRUCTOR_DELEGATION_CALL || type === N_CONSTRUCTOR_DELEGATION_REFERENCE) &&
-      this.isEmptyRange(this.pLex[m], this.cur)
+      this.isEmptyRange(kbAt(this.pLex, m, 0), this.cur)
     ) {
-      this.pBinder[m] = B_DO_NOT_BIND;
+      kbPut(this.pBinder, m, B_DO_NOT_BIND);
     }
     const d = this.newP(P_DONE, this.cur);
-    this.pType[m] = type;
-    this.pType[d] = type;
-    this.pOther[m] = d;
-    this.pOther[d] = m;
+    kbPut(this.pType, m, type);
+    kbPut(this.pType, d, type);
+    kbPut(this.pOther, m, d);
+    kbPut(this.pOther, d, m);
     this.append(d);
   }
 
   private isEmptyRange(a: i32, b: i32): boolean {
     for (let i = a; i < b; i++) {
-      if (!isWsOrComment(this.lx.type[i])) {
+      if (!isWsOrComment(this.lt(i))) {
         return false;
       }
     }
@@ -549,7 +1066,7 @@ export class KBuilder {
 
   collapse(m: i32, type: i32): void {
     this.done(m, type);
-    this.pCollapse[m] = 1;
+    kbPut(this.pCollapse, m, 1);
   }
 
   /** marker.error(message): an error element; the file does not parse. */
@@ -568,11 +1085,11 @@ export class KBuilder {
   }
 
   rollbackTo(m: i32): void {
-    this.cur = this.pLex[m];
+    this.cur = kbAt(this.pLex, m, 0);
     // Remove m and everything after it.
-    const pr = this.pPrev[m];
+    const pr = kbAt(this.pPrev, m, -1);
     if (pr >= 0) {
-      this.pNext[pr] = -1;
+      kbPut(this.pNext, pr, -1);
     } else {
       this.head = -1;
     }
@@ -580,38 +1097,42 @@ export class KBuilder {
   }
 
   precede(m: i32): i32 {
-    const p = this.newP(P_START, this.pLex[m]);
+    const p = this.newP(P_START, kbAt(this.pLex, m, 0));
     this.insertBefore(p, m);
     return p;
   }
 
   doneBefore(m: i32, type: i32, before: i32): void {
-    const d = this.newP(P_DONE, this.pLex[before]);
-    this.pType[m] = type;
-    this.pType[d] = type;
-    this.pOther[m] = d;
-    this.pOther[d] = m;
+    const d = this.newP(P_DONE, kbAt(this.pLex, before, 0));
+    kbPut(this.pType, m, type);
+    kbPut(this.pType, d, type);
+    kbPut(this.pOther, m, d);
+    kbPut(this.pOther, d, m);
     this.insertBefore(d, before);
   }
 
   setBinders(m: i32, left: i32, right: i32): void {
-    this.pBinder[m] = left;
-    const d = this.pOther[m];
+    kbPut(this.pBinder, m, left);
+    const d = kbAt(this.pOther, m, -1);
     if (d >= 0) {
-      this.pBinder[d] = right;
+      kbPut(this.pBinder, d, right);
     }
   }
 
   /** The lexeme index of a marker (for "has anything been parsed since"). */
   lexOf(m: i32): i32 {
-    return this.pLex[m];
+    return kbAt(this.pLex, m, 0);
   }
 
   // ---- Whitespace balancing and the tree --------------------------------------
 
   /** WhitespacesAndCommentsBinder.getEdgePosition over lexemes [a, b). */
   private edge(binder: i32, a: i32, b: i32, isStart: boolean): i32 {
-    const lx = this.lx;
+    if (a < 0 || b < 0) {
+      // Lexeme indexes are never negative.
+      fault();
+      return 0;
+    }
     const size = b - a;
     if (binder === B_DEFAULT) {
       return isStart ? size : 0;
@@ -619,9 +1140,15 @@ export class KBuilder {
     if (size === 0) {
       return 0;
     }
+    // The last offset into [a, b), for the scans from the back.
+    let back = -1;
+    if (size > 0) {
+      back = size - 1;
+    }
     if (binder === B_PRECEDING_DOC_COMMENTS || binder === B_PRECEDING_COMMENTS) {
-      for (let i = size - 1; i >= 0; i--) {
-        if (lx.type[a + i] === T_DOC_COMMENT) {
+      // a + i < b for every i below size, so the u32 sums are exact.
+      for (let i = back; i >= 0; i--) {
+        if (this.lt(toI32(toU32(a) + toU32(i))) === T_DOC_COMMENT) {
           return i;
         }
       }
@@ -629,15 +1156,21 @@ export class KBuilder {
         return size;
       }
       let result = size;
-      for (let i = size - 1; i >= 0; i--) {
-        const t = lx.type[a + i];
+      for (let i = back; i >= 0; i--) {
+        const j = toI32(toU32(a) + toU32(i));
+        const t = this.lt(j);
         if (t === T_WHITE_SPACE) {
-          if (this.lineBreaks(a + i) > 1) {
+          if (this.lineBreaks(j) > 1) {
             break;
           }
         } else if (t === T_EOL_COMMENT || t === T_BLOCK_COMMENT || t === T_DOC_COMMENT || t === T_SHEBANG_COMMENT) {
-          if (i === 0 || (lx.type[a + i - 1] === T_WHITE_SPACE && this.lineBreaks(a + i - 1) > 0)) {
+          if (i === 0) {
             result = i;
+          } else {
+            const j1 = toI32(toU32(a) + toU32(i - 1));
+            if (this.lt(j1) === T_WHITE_SPACE && this.lineBreaks(j1) > 0) {
+              result = i;
+            }
           }
         } else {
           break;
@@ -648,9 +1181,10 @@ export class KBuilder {
     if (binder === B_TRAILING_COMMENTS) {
       let result = 0;
       for (let i = 0; i < size; i++) {
-        const t = lx.type[a + i];
+        const j = toI32(toU32(a) + toU32(i));
+        const t = this.lt(j);
         if (t === T_WHITE_SPACE) {
-          if (this.lineBreaks(a + i) > 0) {
+          if (this.lineBreaks(j) > 0) {
             break;
           }
         } else if (t === T_EOL_COMMENT || t === T_BLOCK_COMMENT) {
@@ -671,14 +1205,19 @@ export class KBuilder {
       return 0;
     }
     if (binder === B_PRECEDING_ALL_COMMENTS) {
-      return lx.type[a] === T_WHITE_SPACE ? 1 : 0;
+      return this.lt(a) === T_WHITE_SPACE ? 1 : 0;
     }
     if (binder === B_TRAILING_ALL_COMMENTS) {
-      return lx.type[b - 1] === T_WHITE_SPACE ? size - 1 : size;
+      if (this.lt(b - 1) === T_WHITE_SPACE) {
+        // b - a - 1, which with a and b non-negative fits.
+        return toI32(toI64(size) - toI64(1));
+      }
+      return size;
     }
     if (binder === B_SHEBANG) {
-      if (lx.type[a] === T_SHEBANG_COMMENT) {
-        return size > 1 && lx.type[a + 1] === T_WHITE_SPACE ? 2 : 1;
+      if (this.lt(a) === T_SHEBANG_COMMENT) {
+        // a + 1 < b, so the u32 sum is exact.
+        return size > 1 && this.lt(toI32(toU32(a) + toU32(1))) === T_WHITE_SPACE ? 2 : 1;
       }
       return 0;
     }
@@ -686,9 +1225,20 @@ export class KBuilder {
   }
 
   private lineBreaks(i: i32): i32 {
+    const src = this.lx.src;
+    const e = this.le(i);
     let n = 0;
-    for (let j = this.lx.start[i]; j < this.lx.end[i]; j++) {
-      if (toI32(this.lx.src[j]) === 10) {
+    for (let j = this.ls(i); j < e; j++) {
+      if (j < 0 || j >= src.length) {
+        fault();
+        return 0;
+      }
+      if (toI32(src[j]) === 10) {
+        // n counts bytes of src, so it is below its length.
+        if (n >= src.length) {
+          fault();
+          return 0;
+        }
         n++;
       }
     }
@@ -704,33 +1254,40 @@ export class KBuilder {
       return;
     }
     let prev = p;
-    p = this.pNext[p];
+    p = kbAt(this.pNext, p, -1);
     while (p >= 0 && p !== this.tail) {
-      const prevLex = this.pLex[prev];
-      let wsStart = this.pLex[p] > lastIndex ? this.pLex[p] : lastIndex;
-      while (wsStart > prevLex && isWsOrComment(lx.type[wsStart - 1])) {
+      const prevLex = kbAt(this.pLex, prev, 0);
+      const lexP = kbAt(this.pLex, p, 0);
+      let wsStart = lexP > lastIndex ? lexP : lastIndex;
+      while (wsStart > prevLex && wsStart > 0 && isWsOrComment(this.lt(wsStart - 1))) {
         wsStart--;
       }
-      let wsEnd = this.pLex[p];
-      while (wsEnd < lx.count && isWsOrComment(lx.type[wsEnd])) {
+      let wsEnd = lexP;
+      while (wsEnd < lx.count && isWsOrComment(this.lt(wsEnd))) {
         wsEnd++;
       }
       if (wsStart !== wsEnd) {
-        this.pLex[p] = wsStart + this.edge(this.pBinder[p], wsStart, wsEnd, this.pKind[p] === P_START);
-      } else if (this.pLex[p] < wsStart) {
-        this.pLex[p] = wsStart;
+        const r = this.edge(kbAt(this.pBinder, p, 0), wsStart, wsEnd, kbAt(this.pKind, p, 0) === P_START);
+        const at = toI64(wsStart) + toI64(r);
+        if (at < toI64(-2147483648) || at > toI64(2147483647)) {
+          fault();
+          return;
+        }
+        kbPut(this.pLex, p, toI32(at));
+      } else if (lexP < wsStart) {
+        kbPut(this.pLex, p, wsStart);
       }
-      lastIndex = this.pLex[p];
+      lastIndex = kbAt(this.pLex, p, 0);
       prev = p;
-      p = this.pNext[p];
+      p = kbAt(this.pNext, p, -1);
     }
   }
 
   /** Builds the tree from the productions; answers the root. */
   build(): i32 {
     // Any error element left means the file does not parse.
-    for (let q = this.head; q >= 0; q = this.pNext[q]) {
-      if (this.pType[q] === T_ERROR_ELEMENT) {
+    for (let q = this.head; q >= 0; q = kbAt(this.pNext, q, -1)) {
+      if (kbAt(this.pType, q, 0) === T_ERROR_ELEMENT) {
         this.failed = true;
         return 0;
       }
@@ -743,44 +1300,60 @@ export class KBuilder {
     const stack: i32[] = [];
     let p = this.head;
     while (p >= 0) {
-      const lex = this.pLex[p];
-      const top = stack.length > 0 ? stack[stack.length - 1] : -1;
+      const lex = kbAt(this.pLex, p, 0);
+      let top = -1;
+      const ns = stack.length;
+      if (ns > 0) {
+        top = stack[ns - 1];
+      }
       // Leaves up to this marker.
       while (lexI < lex && top >= 0) {
-        tr.add(lx.type[lexI], lx.start[lexI], lx.end[lexI], top, true);
+        tr.add(this.lt(lexI), this.ls(lexI), this.le(lexI), top, true);
         lexI++;
       }
-      if (this.pKind[p] === P_START) {
-        if (this.pCollapse[p] === 1) {
-          const d = this.pOther[p];
-          const e = this.pLex[d];
-          const a = lexI < lx.count ? lx.start[lexI] : lx.n;
-          const b = e > lexI ? lx.end[e - 1] : a;
-          tr.add(this.pType[p], a, b, top, true);
+      if (kbAt(this.pKind, p, 0) === P_START) {
+        if (kbAt(this.pCollapse, p, 0) === 1) {
+          const d = kbAt(this.pOther, p, -1);
+          const e = kbAt(this.pLex, d, 0);
+          const a = lexI < lx.count ? this.ls(lexI) : lx.n;
+          let b = a;
+          if (e > lexI && e > 0) {
+            b = this.le(e - 1);
+          }
+          tr.add(kbAt(this.pType, p, 0), a, b, top, true);
           lexI = e;
           // Skip to after the collapsed marker's done.
-          p = this.pNext[d];
+          p = kbAt(this.pNext, d, -1);
           continue;
         }
-        const a = lexI < lx.count ? lx.start[lexI] : lx.n;
-        const node = tr.add(this.pType[p], a, a, top, false);
+        const a = lexI < lx.count ? this.ls(lexI) : lx.n;
+        const node = tr.add(kbAt(this.pType, p, 0), a, a, top, false);
         stack.push(node);
       } else {
-        const node = stack.pop();
-        tr.end[node] = lexI > 0 ? lx.end[lexI - 1] : 0;
-        if (tr.end[node] < tr.start[node]) {
-          tr.end[node] = tr.start[node];
+        let node = -1;
+        if (stack.length > 0) {
+          node = stack.pop();
+        } else {
+          // A done marker with no start open: the old pop panicked here.
+          fault();
+          return 0;
         }
+        let end = 0;
+        if (lexI > 0) {
+          end = this.le(lexI - 1);
+        }
+        const st = tr.st(node);
+        tr.setEnd(node, end < st ? st : end);
         if (stack.length === 0) {
           // The root: take every remaining lexeme.
           while (lexI < lx.count) {
-            tr.add(lx.type[lexI], lx.start[lexI], lx.end[lexI], node, true);
+            tr.add(this.lt(lexI), this.ls(lexI), this.le(lexI), node, true);
             lexI++;
           }
-          tr.end[node] = lx.n;
+          tr.setEnd(node, lx.n);
         }
       }
-      p = this.pNext[p];
+      p = kbAt(this.pNext, p, -1);
     }
     return 0;
   }

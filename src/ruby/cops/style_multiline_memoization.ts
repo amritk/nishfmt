@@ -3,6 +3,7 @@
 // Ported from RuboCop 1.92.3 (MIT License, Copyright (c) 2012-24 Bozhidar
 // Batsov).
 
+import { add32 } from "../../core/arr";
 import { F_BEGIN, F_END, NT_BEGIN, NT_OR_ASGN } from "../ast";
 import { RbCop } from "../cop";
 import { RbSource } from "../source";
@@ -36,7 +37,7 @@ export class CopStyleMultilineMemoization {
         const col = src.column(a.exS(rhs));
         const bs = ssxFS(src, rhs, F_BEGIN);
         const be = ssxFE(src, rhs, F_BEGIN);
-        k.replace(bs, be, src.at(be) === 10 ? "begin" : `begin\n${rmlSpaces(col + 2)}`);
+        k.replace(bs, be, src.at(be) === 10 ? "begin" : `begin\n${rmlSpaces(add32(col, 2))}`);
         // /[^\s)]/ on the closing paren's line
         const es = ssxFS(src, rhs, F_END);
         const l = src.line(es);

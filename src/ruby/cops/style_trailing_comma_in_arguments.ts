@@ -3,6 +3,7 @@
 // Ported from RuboCop 1.92.3 (MIT License, Copyright (c) 2012-24 Bozhidar
 // Batsov).
 
+import { atI32 } from "../../core/arr";
 import { RbCop } from "../cop";
 import { RbSource } from "../source";
 import { ssxArgs, ssxIsCall, ssxMeth, ssxParenthesized, ssxTrailingCommaCheck } from "./style_syntax_help";
@@ -25,7 +26,7 @@ export class CopStyleTrailingCommaInArguments {
       if (args.length === 0 || !(ssxParenthesized(src, n) || ssxMeth(src, n) === "[]")) {
         continue;
       }
-      ssxTrailingCommaCheck(this.c, src, args, a.exE(args[args.length - 1]), a.exE(n));
+      ssxTrailingCommaCheck(this.c, src, args, a.exE(atI32(args, toI32(args.length) - 1)), a.exE(n));
     }
   }
 }

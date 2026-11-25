@@ -8,6 +8,7 @@
 // 2012-24 Bozhidar Batsov) and parser 3.3.13.0 (MIT License, Copyright (c)
 // 2013-2024 parser contributors).
 
+import { fault } from "../../core/fault";
 import {
   F_BEGIN,
   F_DOT,
@@ -96,7 +97,9 @@ export const scnIfKw = (src: RbSource, n: i32): boolean => ssxIs(src, n, NT_IF) 
 
 /** IfNode#unless? */
 export const scnUnless = (src: RbSource, n: i32): boolean =>
-  ssxIs(src, n, NT_IF) && !scnTernary(src, n) && ssxFE(src, n, F_KEYWORD) - ssxFS(src, n, F_KEYWORD) === 6;
+  ssxIs(src, n, NT_IF) &&
+  !scnTernary(src, n) &&
+  toI64(ssxFE(src, n, F_KEYWORD)) - toI64(ssxFS(src, n, F_KEYWORD)) === toI64(6);
 
 /** IfNode#elsif? */
 export const scnElsif = (src: RbSource, n: i32): boolean => ssxIs(src, n, NT_IF) && scnKeyword(src, n) === "elsif";
@@ -265,7 +268,7 @@ export const scnEndlessDef = (src: RbSource, n: i32): boolean =>
   (ssxIs(src, n, NT_DEF) || ssxIs(src, n, NT_DEFS)) && !ssxHas(src, n, F_END);
 
 /** Node#source_range.size == 0. */
-export const scnEmptySource = (src: RbSource, n: i32): boolean => src.a.exE(n) - src.a.exS(n) === 0;
+export const scnEmptySource = (src: RbSource, n: i32): boolean => src.a.exE(n) === src.a.exS(n);
 
 /** Node#nonempty_line_count: the lines of the source with a non-space character. */
 export const scnNonemptyLineCount = (src: RbSource, n: i32): i32 => {
@@ -275,6 +278,11 @@ export const scnNonemptyLineCount = (src: RbSource, n: i32): i32 => {
     const c = src.at(p);
     if (c === 10) {
       if (seen) {
+        // A count of lines, below the source's length.
+        if (k >= 2147483647) {
+          fault();
+          return 0;
+        }
         k++;
       }
       seen = false;
@@ -282,7 +290,14 @@ export const scnNonemptyLineCount = (src: RbSource, n: i32): i32 => {
       seen = true;
     }
   }
-  return seen ? k + 1 : k;
+  if (seen) {
+    if (k >= 2147483647) {
+      fault();
+      return 0;
+    }
+    return k + 1;
+  }
+  return k;
 };
 
 /** Node#left_siblings: the parent's children before n (handles; nodes and scalars). */
@@ -352,7 +367,8 @@ const scnMagicComment = (t: string): boolean => {
     i++;
   }
   let emacs = false;
-  if (t.substring(i, i + 3) === "-*-") {
+  // A shorter (clamped) substring cannot be "-*-".
+  if (i >= 0 && i <= k - 3 && t.substring(i, i + 3) === "-*-") {
     emacs = true;
     i += 3;
   }
@@ -375,13 +391,19 @@ const scnMagicComment = (t: string): boolean => {
 /** Buffer::ENCODING_RE: /[\s#](en)?coding\s*[:=]\s*([A-Za-z0-9_-]+)/ (the comment form). */
 const scnEncodingComment = (t: string): boolean => {
   const k = toI32(t.length);
+  // A comment of a source file is far shorter.
+  if (k > 1073741823) {
+    fault();
+    return false;
+  }
   let p = t.indexOf("coding", 0);
-  while (p >= 0) {
+  // indexOf answers a position below `k`.
+  while (p >= 0 && p < k) {
     let q = p;
     if (q >= 2 && t.substring(q - 2, q) === "en") {
       q -= 2;
     }
-    const before = q > 0 ? t.charCodeAt(q - 1) : -1;
+    const before = q > 0 && q - 1 < k ? t.charCodeAt(q - 1) : -1;
     if (before === 35 || ssxIsSpace(before)) {
       let i = p + 6;
       while (i < k && ssxIsSpace(t.charCodeAt(i))) {
@@ -419,17 +441,20 @@ export class ScnAssoc {
   build(src: RbSource): void {
     this.src = src;
     this.map = new Map<i32, i32[]>();
-    this.cur = 0;
-    const nc = toI32(src.commS.length);
-    if (this.cur < nc && src.src(src.commS[this.cur], src.commE[this.cur]).startsWith("#!")) {
-      this.cur = this.cur + 1;
+    const commS = src.commS;
+    const commE = src.commE;
+    // The two grow together, so `cur < commE.length` adds nothing.
+    let cur = 0;
+    if (cur < commS.length && cur < commE.length && src.src(commS[cur], commE[cur]).startsWith("#!")) {
+      cur = cur + 1;
     }
-    if (this.cur < nc && scnMagicComment(src.src(src.commS[this.cur], src.commE[this.cur]))) {
-      this.cur = this.cur + 1;
+    if (cur < commS.length && cur < commE.length && scnMagicComment(src.src(commS[cur], commE[cur]))) {
+      cur = cur + 1;
     }
-    if (this.cur < nc && scnEncodingComment(src.src(src.commS[this.cur], src.commE[this.cur]))) {
-      this.cur = this.cur + 1;
+    if (cur < commS.length && cur < commE.length && scnEncodingComment(src.src(commS[cur], commE[cur]))) {
+      cur = cur + 1;
     }
+    this.cur = cur;
     if (src.root !== V_NIL) {
       this.visit(src, src.root);
     }
@@ -453,31 +478,58 @@ export class ScnAssoc {
     } else {
       r.push(this.cur);
     }
-    this.cur = this.cur + 1;
+    const cur = this.cur;
+    if (cur >= 2147483647) {
+      fault();
+      return;
+    }
+    this.cur = cur + 1;
   }
 
   private more(src: RbSource): boolean {
     return this.cur < toI32(src.commS.length);
   }
 
+  /** The current comment's start; after `more`, which makes it one. */
+  private curS(src: RbSource): i32 {
+    const commS = src.commS;
+    const cur = this.cur;
+    if (cur >= 0 && cur < commS.length) {
+      return commS[cur];
+    }
+    fault();
+    return 2147483647;
+  }
+
+  /** The current comment's end; after `more`, which makes it one. */
+  private curE(src: RbSource): i32 {
+    const commE = src.commE;
+    const cur = this.cur;
+    if (cur >= 0 && cur < commE.length) {
+      return commE[cur];
+    }
+    fault();
+    return 2147483647;
+  }
+
   private visit(src: RbSource, n: i32): void {
     const a = src.a;
     if (a.type(n) !== NT_BEGIN) {
-      while (this.more(src) && src.commE[this.cur] <= a.exS(n)) {
+      while (this.more(src) && this.curE(src) <= a.exS(n)) {
         this.add(n);
       }
     }
     if (!this.more(src)) {
       return;
     }
-    if (src.line(src.commS[this.cur]) <= src.line(a.exE(n)) || a.mapKind(a.map(n)) === M_HEREDOC) {
+    if (src.line(this.curS(src)) <= src.line(a.exE(n)) || a.mapKind(a.map(n)) === M_HEREDOC) {
       for (const c of this.children(src, n)) {
         this.visit(src, c);
       }
-      while (this.more(src) && src.commE[this.cur] <= a.exE(n)) {
+      while (this.more(src) && this.curE(src) <= a.exE(n)) {
         this.add(n);
       }
-      while (this.more(src) && src.line(src.commS[this.cur]) === src.line(a.exE(n))) {
+      while (this.more(src) && src.line(this.curS(src)) === src.line(a.exE(n))) {
         this.add(n);
       }
     }
@@ -520,12 +572,20 @@ export class ScnAssoc {
 export const scnRangeWithComments = (src: RbSource, as: ScnAssoc, n: i32): i32[] => {
   let s = src.a.exS(n);
   let e = src.a.exE(n);
+  const commS = src.commS;
+  const commE = src.commE;
   for (const c of as.of(n)) {
-    if (src.commS[c] < s) {
-      s = src.commS[c];
+    if (c < 0 || c >= commS.length || c >= commE.length) {
+      fault();
+      break;
     }
-    if (src.commE[c] > e) {
-      e = src.commE[c];
+    const cs = commS[c];
+    const ce = commE[c];
+    if (cs < s) {
+      s = cs;
+    }
+    if (ce > e) {
+      e = ce;
     }
   }
   const r: i32[] = [s, e];
@@ -539,7 +599,14 @@ export const scnWholeS = (src: RbSource, s: i32): i32 => src.lineStart(src.line(
 
 /** range_by_whole_lines: the end (past the newline when asked), within the buffer. */
 export const scnWholeE = (src: RbSource, e: i32, nl: boolean): i32 => {
-  const le = src.lineEnd(src.line(e)) + (nl ? 1 : 0);
+  let le = src.lineEnd(src.line(e));
+  if (nl) {
+    if (le >= 2147483647) {
+      fault();
+      return 0;
+    }
+    le = le + 1;
+  }
   return le > src.n ? src.n : le;
 };
 
@@ -555,6 +622,11 @@ export const scnLen = (s: string): i32 => {
   for (let i = 0; i < toI32(s.length); i++) {
     const c = s.charCodeAt(i);
     if (c < 0x80 || c >= 0xc0) {
+      // At most one per byte.
+      if (k >= 2147483647) {
+        fault();
+        return 0;
+      }
       k++;
     }
   }
@@ -601,7 +673,7 @@ export const SCN_MAX: i32 = 120;
 
 /** LineLengthHelp#indentation_difference with a tab width of 2. */
 export const scnIndentDiff = (s: string): i32 => {
-  if (s.length === 0 || s.charCodeAt(0) !== 9) {
+  if (!(s.length > 0 && s.charCodeAt(0) === 9)) {
     return 0;
   }
   let i = 0;
@@ -612,7 +684,29 @@ export const scnIndentDiff = (s: string): i32 => {
 };
 
 /** LineLengthHelp#line_length. */
-export const scnLineLength = (s: string): i32 => scnLen(s) + scnIndentDiff(s);
+export const scnLineLength = (s: string): i32 => {
+  const r = toI64(scnLen(s)) + toI64(scnIndentDiff(s));
+  if (r > toI64(2147483647)) {
+    fault();
+    return 0;
+  }
+  return toI32(r);
+};
+
+/** Whether `s` holds `lit` at `p`, as `s.substring(p, p + lit.length) === lit`. */
+const scnHasAt = (s: string, p: i32, lit: string): boolean => {
+  const k = toI32(s.length);
+  const n = toI32(lit.length);
+  if (n === 0) {
+    return true;
+  }
+  // A shorter (clamped) substring cannot be `lit`.
+  if (p < 0 || p > k || n > k - p) {
+    return false;
+  }
+  // `p + n <= k`, so the u32 sum is the true one.
+  return s.substring(p, toI32(toU32(p) + toU32(n))) === lit;
+};
 
 const scnWordChar = (c: i32): boolean =>
   (c >= 48 && c <= 57) || (c >= 65 && c <= 90) || (c >= 97 && c <= 122) || c === 95 || c >= 0x80;
@@ -622,7 +716,12 @@ const SCN_MODES: string = "disable-next enable-next todo-next disable enable pus
 /** The byte offset of the first DirectiveComment::DIRECTIVE_COMMENT_REGEXP match in s (its header part), or -1; `end` gets the header's end. */
 const scnDirectiveAt = (s: string, from: i32, end: i32[]): i32 => {
   const k = toI32(s.length);
-  for (let i = from; i < k; i++) {
+  // A source line is far shorter.
+  if (k > 1073741823) {
+    fault();
+    return -1;
+  }
+  for (let i = from; i >= 0 && i < k; i++) {
     if (s.charCodeAt(i) !== 35) {
       continue;
     }
@@ -630,7 +729,8 @@ const scnDirectiveAt = (s: string, from: i32, end: i32[]): i32 => {
     while (p < k && ssxIsSpace(s.charCodeAt(p))) {
       p++;
     }
-    if (s.substring(p, p + 7) !== "rubocop") {
+    // A shorter (clamped) substring cannot be "rubocop".
+    if (p < 0 || p > k - 7 || s.substring(p, p + 7) !== "rubocop") {
       continue;
     }
     p += 7;
@@ -646,18 +746,29 @@ const scnDirectiveAt = (s: string, from: i32, end: i32[]): i32 => {
     }
     let q = 0;
     let found = false;
-    while (q < toI32(SCN_MODES.length)) {
+    const mk = toI32(SCN_MODES.length);
+    while (q < mk) {
       let sp = SCN_MODES.indexOf(" ", q);
-      if (sp < 0) {
-        sp = toI32(SCN_MODES.length);
+      // indexOf answers a position below `mk`.
+      if (sp < 0 || sp > mk) {
+        sp = mk;
       }
       const m = SCN_MODES.substring(q, sp);
-      q = sp + 1;
+      // The last mode ends at `mk`, which ends the loop as `mk + 1` did.
+      if (sp < mk) {
+        q = sp + 1;
+      } else {
+        q = mk;
+      }
       const ml = toI32(m.length);
-      if (s.substring(p, p + ml) === m && (p + ml >= k || !scnWordChar(s.charCodeAt(p + ml)))) {
-        end[0] = p + ml;
-        found = true;
-        break;
+      // A mode is a short word; a shorter (clamped) substring cannot be `m`.
+      if (p >= 0 && p <= k && ml >= 0 && ml <= 64) {
+        const pe = p + ml;
+        if (s.substring(p, pe) === m && (pe >= k || !scnWordChar(s.charCodeAt(pe)))) {
+          end[0] = pe;
+          found = true;
+          break;
+        }
       }
     }
     if (found) {
@@ -706,18 +817,18 @@ const scnExtendEnd = (s: string, e0: i32): i32 => {
   if (ob >= 0 && k > 0 && s.charCodeAt(k - 1) === 125 && k - 1 > ob) {
     // line[e..].match(/(\s|\S)*}/): up to the last `}`.
     let last = -1;
-    for (let i = e; i < k; i++) {
+    for (let i = e; i >= 0 && i < k; i++) {
       if (s.charCodeAt(i) === 125) {
         last = i;
       }
     }
-    if (last >= 0) {
+    if (last >= 0 && last < k) {
       e = last + 1;
     }
   }
   // /^\S+(?=\s|$)/
   let i = e;
-  while (i < k && !ssxIsSpace(s.charCodeAt(i))) {
+  while (i >= 0 && i < k && !ssxIsSpace(s.charCodeAt(i))) {
     i++;
   }
   if (i > e) {
@@ -729,14 +840,20 @@ const scnExtendEnd = (s: string, e0: i32): i32 => {
 /** LineLengthHelp#allowed_by_uri? with URISchemes http, https. */
 export const scnAllowedByUri = (s: string): boolean => {
   const k = toI32(s.length);
+  // A source line is far shorter.
+  if (k > 1073741823) {
+    fault();
+    return false;
+  }
   let lastB = -1;
   let lastE = -1;
   let i = 0;
-  while (i < k) {
+  while (i >= 0 && i < k) {
     let sl = 0;
-    if (s.substring(i, i + 5) === "http:") {
+    // A shorter (clamped) substring cannot be the scheme.
+    if (i <= k - 5 && s.substring(i, i + 5) === "http:") {
       sl = 5;
-    } else if (s.substring(i, i + 6) === "https:") {
+    } else if (i <= k - 6 && s.substring(i, i + 6) === "https:") {
       sl = 6;
     }
     if (sl === 0) {
@@ -744,20 +861,31 @@ export const scnAllowedByUri = (s: string): boolean => {
       continue;
     }
     let j = i + sl;
-    while (j < k && scnUriChar(s.charCodeAt(j))) {
+    while (j >= 0 && j < k && scnUriChar(s.charCodeAt(j))) {
       j++;
     }
     lastB = i;
     lastE = j;
-    i = j > i ? j : i + 1;
+    if (j > i) {
+      i = j;
+    } else {
+      i = i + 1;
+    }
   }
   if (lastB < 0) {
     return false;
   }
   const end = scnExtendEnd(s, lastE);
-  const d = scnIndentDiff(s);
-  const b = scnLen(s.substring(0, lastB)) + d;
-  const e = scnLen(s.substring(0, end)) + d;
+  const di = scnIndentDiff(s);
+  const lb = scnLen(s.substring(0, lastB));
+  const le = scnLen(s.substring(0, end));
+  // Character counts of the line, which is below 2^30 bytes.
+  if (lb < 0 || lb > 1073741823 || le < 0 || le > 1073741823 || di < 0 || di > 1073741823) {
+    fault();
+    return false;
+  }
+  const b = lb + di;
+  const e = le + di;
   if (b < SCN_MAX && e < SCN_MAX) {
     return false;
   }
@@ -773,11 +901,19 @@ export const scnAcceptableLineLength = (src: RbSource, s: string, l: i32): boole
     return true;
   }
   const c = scnCommentAt(src, l);
-  if (c >= 0 && scnIsDirective(src.src(src.commS[c], src.commE[c]))) {
-    const end: i32[] = [0];
-    const at = scnDirectiveAt(s, 0, end);
-    const before = at < 0 ? s : s.substring(0, at);
-    return scnLen(scnRstrip(before)) <= SCN_MAX;
+  const commS = src.commS;
+  const commE = src.commE;
+  if (c >= 0) {
+    if (c >= commS.length || c >= commE.length) {
+      fault();
+      return true;
+    }
+    if (scnIsDirective(src.src(commS[c], commE[c]))) {
+      const end: i32[] = [0];
+      const at = scnDirectiveAt(s, 0, end);
+      const before = at < 0 ? s : s.substring(0, at);
+      return scnLen(scnRstrip(before)) <= SCN_MAX;
+    }
   }
   return scnAllowedByUri(s);
 };
@@ -787,6 +923,11 @@ export const scnAcceptableLineLength = (src: RbSource, s: string, l: i32): boole
 /** StatementModifier#comment_disables_cop?: /#\s*rubocop\s*:\s*(disable|todo)\s*([^,],)*\s*(all|Cop)/. */
 export const scnCommentDisablesCop = (t: string, cop: string): boolean => {
   const k = toI32(t.length);
+  // A comment of a source file is far shorter.
+  if (k > 1073741823) {
+    fault();
+    return false;
+  }
   for (let i = 0; i < k; i++) {
     if (t.charCodeAt(i) !== 35) {
       continue;
@@ -795,7 +936,8 @@ export const scnCommentDisablesCop = (t: string, cop: string): boolean => {
     while (p < k && ssxIsSpace(t.charCodeAt(p))) {
       p++;
     }
-    if (t.substring(p, p + 7) !== "rubocop") {
+    // A shorter (clamped) substring cannot be the word.
+    if (p < 0 || p > k - 7 || t.substring(p, p + 7) !== "rubocop") {
       continue;
     }
     p += 7;
@@ -809,9 +951,9 @@ export const scnCommentDisablesCop = (t: string, cop: string): boolean => {
     while (p < k && ssxIsSpace(t.charCodeAt(p))) {
       p++;
     }
-    if (t.substring(p, p + 7) === "disable") {
+    if (p >= 0 && p <= k - 7 && t.substring(p, p + 7) === "disable") {
       p += 7;
-    } else if (t.substring(p, p + 4) === "todo") {
+    } else if (p >= 0 && p <= k - 4 && t.substring(p, p + 4) === "todo") {
       p += 4;
     } else {
       continue;
@@ -819,20 +961,20 @@ export const scnCommentDisablesCop = (t: string, cop: string): boolean => {
     // \s* ([^,],)* \s* (all|cop): try every number of `x,` pairs (backtracking).
     const starts: i32[] = [];
     let q = p;
-    while (q < k && ssxIsSpace(t.charCodeAt(q))) {
+    while (q >= 0 && q < k && ssxIsSpace(t.charCodeAt(q))) {
       q++;
     }
     starts.push(q);
-    while (q + 1 < k && t.charCodeAt(q) !== 44 && t.charCodeAt(q + 1) === 44) {
+    while (q >= 0 && q < k && q + 1 < k && t.charCodeAt(q) !== 44 && t.charCodeAt(q + 1) === 44) {
       q += 2;
       starts.push(q);
     }
     for (const s0 of starts) {
       let r = s0;
-      while (r < k && ssxIsSpace(t.charCodeAt(r))) {
+      while (r >= 0 && r < k && ssxIsSpace(t.charCodeAt(r))) {
         r++;
       }
-      if (t.substring(r, r + 3) === "all" || t.substring(r, r + toI32(cop.length)) === cop) {
+      if (scnHasAt(t, r, "all") || scnHasAt(t, r, cop)) {
         return true;
       }
     }
@@ -846,7 +988,13 @@ export const scnFirstLineComment = (src: RbSource, n: i32, cop: string): string 
   if (c < 0) {
     return "";
   }
-  const t = src.src(src.commS[c], src.commE[c]);
+  const commS = src.commS;
+  const commE = src.commE;
+  if (c >= commS.length || c >= commE.length) {
+    fault();
+    return "";
+  }
+  const t = src.src(commS[c], commE[c]);
   return scnCommentDisablesCop(t, cop) ? "" : t;
 };
 
@@ -921,7 +1069,9 @@ const scnOmittedValueCall = (src: RbSource, b: i32): boolean => {
     return false;
   }
   // PairNode#value_omission?: the pair's source ends with `:`.
-  return src.at(a.exE(lp) - 1) === 58;
+  // `src.at` answers -1 before the source.
+  const le = a.exE(lp);
+  return le > 0 && src.at(le - 1) === 58;
 };
 
 /** StatementModifier#to_modifier_form. */

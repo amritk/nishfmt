@@ -6,6 +6,9 @@
 // Ported from dart_style 3.1.14-wip at 5a9534fad9ff, the commit Dart SDK
 // 3.14.1 pins (BSD-3-Clause, Copyright the Dart project authors).
 
+import { add32 } from "../core/arr";
+import { fault } from "../core/fault";
+
 // Piece kinds.
 export const PK_ADJACENT: i32 = 1;
 export const PK_ASSIGN: i32 = 2;
@@ -181,8 +184,32 @@ export const CT_BLOCK_FORMAT: i32 = 3;
 // version is exactly 3.7, [1] whether it is 3.13 or later.
 export const DT_STYLE = new Int32Array(4);
 
-export const dtIs37 = (): boolean => DT_STYLE[0] !== 0;
-export const dtV313 = (): boolean => DT_STYLE[1] !== 0;
+/** Slot `i` of the style switches, read through a parameter the prover can see the length of. */
+const dtStyleOn = (style: Int32Array, i: i32): boolean => {
+  const ui = toU32(i);
+  if (ui < toU32(style.length)) {
+    return style[ui] !== 0;
+  }
+  fault();
+  return false;
+};
+
+const dtStyleFill = (style: Int32Array, is37: boolean, v313: boolean): void => {
+  if (style.length < 2) {
+    fault();
+    return;
+  }
+  style[0] = is37 ? 1 : 0;
+  style[1] = v313 ? 1 : 0;
+};
+
+export const dtIs37 = (): boolean => dtStyleOn(DT_STYLE, 0);
+export const dtV313 = (): boolean => dtStyleOn(DT_STYLE, 1);
+
+/** Sets the style switches for the file's language version. */
+export const dtSetStyle = (is37: boolean, v313: boolean): void => {
+  dtStyleFill(DT_STYLE, is37, v313);
+};
 
 /**
  * A piece. Fields by kind:
@@ -271,8 +298,14 @@ export class DtPieces {
   constructor() {}
 
   make(kind: i32): DtPiece {
-    const p = new DtPiece(this.n, kind);
-    this.n = this.n + 1;
+    const n = this.n;
+    const p = new DtPiece(n, kind);
+    // A piece per token or so: far below the bound.
+    if (n < 2147483647) {
+      this.n = n + 1;
+    } else {
+      fault();
+    }
     return p;
   }
 }
@@ -340,12 +373,19 @@ export const dtKidsNow = (p: DtPiece): DtPiece[] => {
       dtPush(out, p.e);
       dtPush(out, p.f);
       break;
-    case PK_CONTROL_FLOW:
-      for (let i = 0; i < p.list.length; i++) {
-        out.push(p.list[i]);
-        out.push(p.list2[i]);
+    case PK_CONTROL_FLOW: {
+      const heads = p.list;
+      const bodies = p.list2;
+      for (let i = 0; i < heads.length; i++) {
+        out.push(heads[i]);
+        if (i >= bodies.length) {
+          fault();
+          break;
+        }
+        out.push(bodies[i]);
       }
       break;
+    }
     case PK_GROUPING:
     case PK_PREFIX:
       dtPush(out, p.a);
@@ -632,7 +672,7 @@ export const dtTotalChars = (p: DtPiece): i32 => {
     case PK_ENABLE_FORMATTING:
       if (!p.soft) {
         for (const n of p.lens) {
-          t += n;
+          t = add32(t, n);
         }
       }
       break;
@@ -644,7 +684,7 @@ export const dtTotalChars = (p: DtPiece): i32 => {
       break;
     default:
       for (const k of dtKids(p)) {
-        t += dtTotalChars(k);
+        t = add32(t, dtTotalChars(k));
       }
       break;
   }
@@ -681,7 +721,13 @@ export const dtConstraints = (p: DtPiece, s: i32, outP: DtPiece[], outS: i32[]):
       break;
     case PK_LIST:
       if (p.i0 === CM_TRAILING && p.i2 !== -1) {
-        outP.push(p.list[p.i2]);
+        const els = p.list;
+        const i2 = p.i2;
+        if (i2 < 0 || i2 >= els.length) {
+          fault();
+          break;
+        }
+        outP.push(els[i2]);
         outS.push(s === S_SPLIT ? LIST_ELEMENT_APPEND_COMMA : S_UNSPLIT);
       }
       break;
@@ -710,9 +756,15 @@ export const dtConstraints = (p: DtPiece, s: i32, outP: DtPiece[], outS: i32[]):
     }
     case PK_CONTROL_FLOW:
       if (!p.b0) {
-        for (let i = 0; i < p.ints.length; i++) {
-          if (p.ints[i] === 1) {
-            outP.push(p.list2[i]);
+        const ints = p.ints;
+        const bodies = p.list2;
+        for (let i = 0; i < ints.length; i++) {
+          if (ints[i] === 1) {
+            if (i >= bodies.length) {
+              fault();
+              break;
+            }
+            outP.push(bodies[i]);
             outS.push(s);
           }
         }
@@ -743,6 +795,10 @@ export const dtPin = (p: DtPiece, s: i32): void => {
     const ss: i32[] = [];
     dtConstraints(p, s, ps, ss);
     for (let i = 0; i < ps.length; i++) {
+      if (i >= ss.length) {
+        fault();
+        return;
+      }
       dtPin(ps[i], ss[i]);
     }
   }
@@ -781,11 +837,22 @@ export const dtPreventSplit = (p: DtPiece): void => {
 /** Whether `x` is the (possibly null) `y`. */
 const dtIsP = (x: DtPiece, y: DtPiece | null): boolean => y !== null && x === y;
 
+/** A piece a kind always has; after a fault, a stand-in with no text and no children. */
 const dtReqP = (p: DtPiece | null): DtPiece => {
   if (p === null) {
-    panic("dart: missing piece");
+    fault();
+    return new DtPiece(-1, PK_NEWLINE);
   }
   return p;
+};
+
+/** Whether `child` is `xs[0]`; faults when `xs` is empty. */
+const dtFirstIs = (xs: DtPiece[], child: DtPiece): boolean => {
+  if (xs.length > 0) {
+    return xs[0] === child;
+  }
+  fault();
+  return false;
 };
 
 /** Piece.allowedChildShapes. */
@@ -842,20 +909,32 @@ export const dtAllowed = (p: DtPiece, s: i32, child: DtPiece): i32 => {
         return SH_INLINE;
       }
       if (s === CHAIN_SPLIT_AFTER_PROPERTIES) {
-        for (let i = 0; i < p.i0; i++) {
-          if (p.list[i] === child) {
+        const calls = p.list;
+        const props = p.i0;
+        for (let i = 0; i < props; i++) {
+          if (i >= calls.length) {
+            fault();
+            return SH_ALL;
+          }
+          if (calls[i] === child) {
             return SH_INLINE;
           }
         }
       } else if (s === CHAIN_BLOCK_TRAILING_CALL) {
-        return dtAnyIf(p.list[p.i1] === child);
+        const calls = p.list;
+        const i1 = p.i1;
+        if (i1 < 0 || i1 >= calls.length) {
+          fault();
+          return SH_ALL;
+        }
+        return dtAnyIf(calls[i1] === child);
       }
       return SH_ALL;
     case PK_CLAUSE:
       if (dtIsP(child, p.a)) {
         return dtAnyIf(s === S_SPLIT);
       }
-      if (p.b0 && child === p.list[0]) {
+      if (p.b0 && dtFirstIs(p.list, child)) {
         return dtAnyIf(s === S_SPLIT);
       }
       return dtAnyIf(s !== S_UNSPLIT);
@@ -1003,14 +1082,14 @@ export const dtFixedState = (p: DtPiece, pageWidth: i32): i32 => {
       if (dtHardNewline(left)) {
         return S_3_1;
       }
-      total += dtTotalChars(left);
+      total = add32(total, dtTotalChars(left));
     }
-    total += dtTotalChars(dtReqP(p.b));
+    total = add32(total, dtTotalChars(dtReqP(p.b)));
     if (!p.b1) {
       if (dtHardNewline(dtReqP(p.c))) {
         return S_3_1;
       }
-      total += dtTotalChars(dtReqP(p.c));
+      total = add32(total, dtTotalChars(dtReqP(p.c)));
     }
     if (total > pageWidth) {
       return S_3_1;
@@ -1023,7 +1102,7 @@ export const dtFixedState = (p: DtPiece, pageWidth: i32): i32 => {
       if (dtHardNewline(op)) {
         return S_SPLIT;
       }
-      total += dtTotalChars(op);
+      total = add32(total, dtTotalChars(op));
       if (total > pageWidth) {
         break;
       }
@@ -1040,11 +1119,11 @@ export const dtFixedState = (p: DtPiece, pageWidth: i32): i32 => {
       if (dtHardNewline(before)) {
         return S_SPLIT;
       }
-      surrounding += dtTotalChars(before);
+      surrounding = add32(surrounding, dtTotalChars(before));
     }
     const after = p.b;
     if (after !== null) {
-      surrounding += dtTotalChars(after);
+      surrounding = add32(surrounding, dtTotalChars(after));
     }
     let line = surrounding;
     let first = true;
@@ -1056,9 +1135,9 @@ export const dtFixedState = (p: DtPiece, pageWidth: i32): i32 => {
       if (dtHardNewline(el)) {
         return S_SPLIT;
       }
-      line += dtTotalChars(el);
+      line = add32(line, dtTotalChars(el));
       if (!first) {
-        line += 2;
+        line = add32(line, 2);
       }
       first = false;
       if (line > pageWidth) {

@@ -52,6 +52,9 @@ jobs:
       - name: Lint
         run: npm run lint
 
+      - name: Every module but src/main.ts is held to no panic
+        run: node scripts/no-panic-list.mjs
+
       - name: The pinned nish, and the LLVM toolchain it links with
         uses: amritk/workflows/actions/setup-nish@d0672b6994cc142bccf836ab1e185b9be990e832
 

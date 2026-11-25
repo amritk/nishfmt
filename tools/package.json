@@ -1,0 +1,5 @@
+{
+  "name": "@amritk/nishfmt-tools",
+  "private": true,
+  "description": "nishfmt's development drivers, generators and oracles. Its own package, so a build of one of them is not held to the root package's noPanic list, which names modules these programs do not compile."
+}

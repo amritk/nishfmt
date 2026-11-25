@@ -5,6 +5,7 @@
 // Foundation and Contributors), for CSharpier 1.4.0 (MIT License, Copyright
 // (c) 2021 Bela VanderVoort).
 
+import { add32, sub32 } from "../core/arr";
 import {
   K_AbstractKeyword,
   K_AccessorList,
@@ -493,8 +494,8 @@ export const cspTryAttributeDeclaration = (p: CsParser, inExpressionContext: boo
   if (cspIsAttributeTarget(p)) {
     const tm = p.sp();
     const id = p.eat();
-    if (p.lx.kind[id] === K_IdentifierToken && p.lx.ck[id] !== 0) {
-      p.convert(id, p.lx.ck[id]);
+    if (p.lx.tokKind(id) === K_IdentifierToken && p.lx.tokCk(id) !== 0) {
+      p.convert(id, p.lx.tokCk(id));
     }
     p.push(id);
     p.push(p.expect(K_ColonToken));
@@ -788,13 +789,13 @@ const cspCanStartMember = (k: i32): boolean => {
 
 /** A member of a type or namespace. */
 export const cspMemberDeclaration = (p: CsParser, parentKind: i32): i32 => {
-  p.depth = p.depth + 1;
+  p.depth = add32(p.depth, 1);
   if (p.depth > 400) {
     p.fail("too deep");
     return -1;
   }
   const r = cspMemberDeclarationCore(p, parentKind);
-  p.depth = p.depth - 1;
+  p.depth = sub32(p.depth, 1);
   return r;
 };
 
@@ -856,7 +857,7 @@ const cspMemberDeclarationCore = (p: CsParser, parentKind: i32): i32 => {
       p.fail("misplaced modifier");
       return -1;
     }
-    if (type >= 0 && p.t.kind[type] !== K_RefType) {
+    if (type >= 0 && p.t.nodeKind(type) !== K_RefType) {
       const op = cspIsOperatorStart(p);
       if (op !== -2) {
         return cspOperatorDeclaration(p, attrs, modsList, type, op);
@@ -879,21 +880,20 @@ const cspMemberDeclarationCore = (p: CsParser, parentKind: i32): i32 => {
     // ReconsideredTypeAsAsyncModifier
     if (
       type >= 0 &&
-      p.t.kind[type] === K_IdentifierName &&
+      p.t.nodeKind(type) === K_IdentifierName &&
       mn.ident >= 0 &&
-      p.lx.kind[mn.ident] === K_IdentifierToken &&
+      p.lx.tokKind(mn.ident) === K_IdentifierToken &&
       !(p.k() === K_OpenParenToken || p.k() === K_OpenBraceToken || p.k() === K_EqualsGreaterThanToken)
     ) {
       const id = p.t.s(type, 0);
-      if (p.lx.ck[id] === K_AsyncKeyword && !cspListHasKind(p, modsList, K_AsyncKeyword)) {
+      if (p.lx.tokCk(id) === K_AsyncKeyword && !cspListHasKind(p, modsList, K_AsyncKeyword)) {
         // the type was the `async` modifier
         p.reset(afterType);
         // rebuild the modifier list with `async` appended
         const mm = p.sp();
-        const off = p.t.lsOff[modsList];
-        const len = p.t.lsLen[modsList];
+        const len = p.t.lsLenOf(modsList);
         for (let i = 0; i < len; i++) {
-          p.push(p.t.pool[off + i]);
+          p.push(p.t.at(modsList, i));
         }
         p.convert(id, K_AsyncKeyword);
         p.push(id);
@@ -902,7 +902,7 @@ const cspMemberDeclarationCore = (p: CsParser, parentKind: i32): i32 => {
         continue;
       }
     }
-    if (mn.ident >= 0 && p.lx.kind[mn.ident] === K_ThisKeyword) {
+    if (mn.ident >= 0 && p.lx.tokKind(mn.ident) === K_ThisKeyword) {
       return cspIndexerDeclaration(p, attrs, modsList, type, mn.eis, mn.ident, mn.tpl);
     }
     if (cspIsStartOfPropertyBody(p, 0)) {
@@ -918,10 +918,9 @@ const cspMemberDeclarationCore = (p: CsParser, parentKind: i32): i32 => {
 };
 
 const cspListHasKind = (p: CsParser, l: i32, kind: i32): boolean => {
-  const off = p.t.lsOff[l];
-  const len = p.t.lsLen[l];
+  const len = p.t.lsLenOf(l);
   for (let i = 0; i < len; i++) {
-    if (p.lx.kind[p.t.pool[off + i]] === kind) {
+    if (p.lx.tokKind(p.t.at(l, i)) === kind) {
       return true;
     }
   }
@@ -935,10 +934,10 @@ const cspLooksLikeStartOfPropertyBody = (p: CsParser, type: i32, mods: i32): boo
     if (pt < 0) {
       return false;
     }
-    if (p.t.kind[pt] === K_RefType) {
+    if (p.t.nodeKind(pt) === K_RefType) {
       pt = p.t.s(pt, 2);
     }
-    if (p.t.kind[pt] === K_IdentifierName && p.lx.ck[p.t.s(pt, 0)] !== 0) {
+    if (p.t.nodeKind(pt) === K_IdentifierName && p.lx.tokCk(p.t.s(pt, 0)) !== 0) {
       return false;
     }
   }
@@ -1028,7 +1027,7 @@ const cspMemberName = (p: CsParser, isEvent: boolean): CsMemberName => {
     p.reset(m);
     if (isMemberName) {
       beforeIdent = p.mark();
-      if (sep >= 0 && p.lx.kind[sep] === K_ColonColonToken) {
+      if (sep >= 0 && p.lx.tokKind(sep) === K_ColonColonToken) {
         p.fail("alias qualifier as expression");
         break;
       }
@@ -1042,7 +1041,7 @@ const cspMemberName = (p: CsParser, isEvent: boolean): CsMemberName => {
   }
   let eis = -1;
   if (name >= 0) {
-    if (p.lx.kind[sep] !== K_DotToken) {
+    if (p.lx.tokKind(sep) !== K_DotToken) {
       p.fail("dot expected");
       return new CsMemberName(-1, -1, -1);
     }
@@ -1080,7 +1079,7 @@ const cspAccumulateExplicitInterfaceName = (p: CsParser, name: i32, sep: i32): C
   const right = cspSimpleName(p, NO_IN_TYPE_LIST);
   const m = p.sp();
   let n = -1;
-  if (p.lx.kind[sep] === K_DotToken) {
+  if (p.lx.tokKind(sep) === K_DotToken) {
     p.push(name);
     p.push(sep);
     p.push(right);
@@ -1088,7 +1087,7 @@ const cspAccumulateExplicitInterfaceName = (p: CsParser, name: i32, sep: i32): C
   } else {
     // alias qualified: global::X.
     const id = p.t.s(name, 0);
-    if (p.lx.kind[id] === K_IdentifierToken && p.lx.ck[id] === K_GlobalKeyword) {
+    if (p.lx.tokKind(id) === K_IdentifierToken && p.lx.tokCk(id) === K_GlobalKeyword) {
       p.convert(id, K_GlobalKeyword);
     }
     p.push(name);
@@ -1138,7 +1137,7 @@ const cspIsOperatorStart = (p: CsParser): i32 => {
     p.reset(before);
     return -2;
   }
-  if (p.lx.kind[sep] !== K_DotToken) {
+  if (p.lx.tokKind(sep) !== K_DotToken) {
     p.fail("dot expected");
     return -2;
   }
@@ -1213,7 +1212,7 @@ const cspConstructorInitializer = (p: CsParser): i32 => {
   const tok = p.eat();
   p.push(tok);
   p.push(cspArgumentList(p));
-  return p.node(p.lx.kind[tok] === K_BaseKeyword ? K_BaseConstructorInitializer : K_ThisConstructorInitializer, m);
+  return p.node(p.lx.tokKind(tok) === K_BaseKeyword ? K_BaseConstructorInitializer : K_ThisConstructorInitializer, m);
 };
 
 const cspDestructorDeclaration = (p: CsParser, attrs: i32, mods: i32): i32 => {
@@ -1483,8 +1482,8 @@ const cspAccessorModifiers = (p: CsParser): void => {
     (cspModifierKind(p.k(), p.ck()) !== 0 || (p.k() === K_IdentifierToken && p.ck() === K_ScopedKeyword))
   ) {
     const t = p.eat();
-    if (p.lx.kind[t] === K_IdentifierToken) {
-      p.convert(t, p.lx.ck[t]);
+    if (p.lx.tokKind(t) === K_IdentifierToken) {
+      p.convert(t, p.lx.tokCk(t));
     }
     p.push(t);
   }
@@ -1529,12 +1528,12 @@ const cspAccessorDeclaration = (p: CsParser, declaringKind: i32): i32 => {
     return -1;
   }
   const name = p.eat();
-  const kind = cspAccessorKind(p.lx.ck[name]);
+  const kind = cspAccessorKind(p.lx.tokCk(name));
   if (kind === 0) {
     p.fail("get or set expected");
     return -1;
   }
-  p.convert(name, p.lx.ck[name]);
+  p.convert(name, p.lx.tokCk(name));
   p.push(name);
   const k = p.k();
   if (k === K_OpenBraceToken || k === K_EqualsGreaterThanToken) {
@@ -1647,10 +1646,9 @@ const cspParameter = (p: CsParser, identifierIsOptional: boolean): i32 => {
 const cspFixedSizeBufferDeclaration = (p: CsParser, attrs: i32, mods: i32): i32 => {
   // the `fixed` token joins the modifiers
   const mm = p.sp();
-  const off = p.t.lsOff[mods];
-  const len = p.t.lsLen[mods];
+  const len = p.t.lsLenOf(mods);
   for (let i = 0; i < len; i++) {
-    p.push(p.t.pool[off + i]);
+    p.push(p.t.at(mods, i));
   }
   p.push(p.eat());
   const mods2 = p.list(mm);
@@ -1688,7 +1686,7 @@ const cspEventDeclaration = (p: CsParser, attrs: i32, mods: i32, parentKind: i32
   if (p.err) {
     return -1;
   }
-  if (mn.ident < 0 || p.lx.kind[mn.ident] !== K_IdentifierToken || mn.tpl >= 0) {
+  if (mn.ident < 0 || p.lx.tokKind(mn.ident) !== K_IdentifierToken || mn.tpl >= 0) {
     p.fail("event name expected");
     return -1;
   }
@@ -1717,13 +1715,13 @@ const cspNormalFieldDeclaration = (p: CsParser, attrs: i32, mods: i32, type: i32
   // a trailing `scoped` modifier makes a ScopedType
   let mods2 = mods;
   let type2 = type;
-  const len = p.t.lsLen[mods];
+  const len = p.t.lsLenOf(mods);
   if (len > 0) {
-    const last = p.t.pool[p.t.lsOff[mods] + len - 1];
-    if (p.lx.kind[last] === K_ScopedKeyword) {
+    const last = p.t.at(mods, len - 1);
+    if (p.lx.tokKind(last) === K_ScopedKeyword) {
       const mm = p.sp();
       for (let i = 0; i < len - 1; i++) {
-        p.push(p.t.pool[p.t.lsOff[mods] + i]);
+        p.push(p.t.at(mods, i));
       }
       mods2 = p.list(mm);
       const sm = p.sp();
@@ -1743,10 +1741,9 @@ const cspNormalFieldDeclaration = (p: CsParser, attrs: i32, mods: i32, type: i32
 
 const cspConstantFieldDeclaration = (p: CsParser, attrs: i32, mods: i32, parentKind: i32): i32 => {
   const mm = p.sp();
-  const off = p.t.lsOff[mods];
-  const len = p.t.lsLen[mods];
+  const len = p.t.lsLenOf(mods);
   for (let i = 0; i < len; i++) {
-    p.push(p.t.pool[off + i]);
+    p.push(p.t.at(mods, i));
   }
   p.push(p.expect(K_ConstKeyword));
   const mods2 = p.list(mm);
@@ -1785,7 +1782,7 @@ export const cspVariableDeclarators = (
   const lm = p.sp();
   const first = cspVariableDeclarator(p, type, flags, true, allowLocalFunctions);
   if (first === -3) {
-    return p.t.nn - 1; // a local function was parsed; it is the last node
+    return sub32(p.t.nn, 1); // a local function was parsed; it is the last node
   }
   p.push(first);
   while (p.k() !== K_SemicolonToken && !p.err) {
@@ -1942,11 +1939,11 @@ const cspMainTypeDeclaration = (p: CsParser, attrs: i32, mods: i32): i32 => {
     return -1;
   } else {
     keyword = p.eat();
-    if (p.lx.kind[keyword] === K_IdentifierToken) {
-      p.convert(keyword, p.lx.ck[keyword]);
+    if (p.lx.tokKind(keyword) === K_IdentifierToken) {
+      p.convert(keyword, p.lx.tokCk(keyword));
     }
   }
-  const kk = p.lx.kind[keyword];
+  const kk = p.lx.tokKind(keyword);
   const isExtension = kk === K_ExtensionKeyword;
   const isUnion = kk === K_UnionKeyword;
   const m = p.sp();
@@ -2016,7 +2013,7 @@ const cspMainTypeDeclaration = (p: CsParser, attrs: i32, mods: i32): i32 => {
       break;
     case K_RecordKeyword:
       kind =
-        recordMod >= 0 && p.lx.kind[recordMod] === K_StructKeyword ? K_RecordStructDeclaration : K_RecordDeclaration;
+        recordMod >= 0 && p.lx.tokKind(recordMod) === K_StructKeyword ? K_RecordStructDeclaration : K_RecordDeclaration;
       break;
     case K_ExtensionKeyword:
       kind = K_ExtensionBlockDeclaration;
@@ -2120,7 +2117,12 @@ const cspTypeParameterConstraintClause = (p: CsParser): i32 => {
     const haveComma = k === K_CommaToken;
     if (haveComma || cspIsPossibleTypeParameterConstraint(p)) {
       const sep = p.expect(K_CommaToken);
-      if (c >= 0 && p.t.kind[c] === K_AllowsConstraintClause && haveComma && !cspIsPossibleTypeParameterConstraint(p)) {
+      if (
+        c >= 0 &&
+        p.t.nodeKind(c) === K_AllowsConstraintClause &&
+        haveComma &&
+        !cspIsPossibleTypeParameterConstraint(p)
+      ) {
         p.fail("unexpected comma");
         break;
       }
@@ -2356,13 +2358,13 @@ const cspMemberDeclarationOrStatement = (p: CsParser): i32 => {
   const ms = cspMemberStart(p, true, attrs);
   const mods = ms.mods;
   const haveMods = p.t.count(mods) > 0;
-  const firstModKind = haveMods ? p.lx.kind[p.t.at(mods, 0)] : 0;
+  const firstModKind = haveMods ? p.lx.tokKind(p.t.at(mods, 0)) : 0;
   if (p.k() === K_IdentifierToken && p.kindAt(1) === K_OpenParenToken && (haveAttrs || haveMods)) {
     // a local function with attributes or modifiers
     p.reset(start);
     const a2 = cspAttributeDeclarations(p, false);
     const s = cspLocalDeclarationStatement(p, a2);
-    if (s >= 0 && p.t.kind[s] === K_LocalFunctionStatement) {
+    if (s >= 0 && p.t.nodeKind(s) === K_LocalFunctionStatement) {
       return cspGlobalStatement(p, s);
     }
     p.fail("bad top-level member");
@@ -2429,7 +2431,7 @@ const cspMemberDeclarationOrStatement = (p: CsParser): i32 => {
   if (s < 0) {
     return -1;
   }
-  if (p.t.kind[s] === K_ExpressionStatement && p.t.kind[p.t.s(s, 1)] === K_IdentifierName && p.t.s(s, 2) < 0) {
+  if (p.t.nodeKind(s) === K_ExpressionStatement && p.t.nodeKind(p.t.s(s, 1)) === K_IdentifierName && p.t.s(s, 2) < 0) {
     p.fail("bad statement");
     return -1;
   }

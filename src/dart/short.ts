@@ -10,6 +10,10 @@
 // Ported from dart_style 3.1.14-wip at 5a9534fad9ff, the commit Dart SDK
 // 3.14.1 pins (BSD-3-Clause, Copyright the Dart project authors).
 
+import { add32, sliceI32s, sub32 } from "../core/arr";
+import { dtUtf16Units } from "./scanner";
+import { fault } from "../core/fault";
+
 // Cost.
 export const DTS_COST_ARROW: i32 = 0;
 export const DTS_COST_NORMAL: i32 = 1;
@@ -45,32 +49,50 @@ export const DTS_NONE: i32 = -100;
 // [0] the next id, [1] a stamp for marks, [2] set when dart_style would throw.
 export const DTS_STATE = new Int32Array(4);
 
-export const dtsFail = (): void => {
-  DTS_STATE[2] = 1;
+const dtsSetIn = (st: Int32Array, k: i32, v: i32): void => {
+  if (k >= 0 && k < st.length) {
+    st[k] = v;
+  } else {
+    fault();
+  }
 };
 
-const dtsNextId = (): i32 => {
-  DTS_STATE[0] = DTS_STATE[0] + 1;
-  return DTS_STATE[0];
+const dtsGetIn = (st: Int32Array, k: i32): i32 => {
+  if (k >= 0 && k < st.length) {
+    return st[k];
+  }
+  fault();
+  return 1;
 };
 
-const dtsStamp = (): i32 => {
-  DTS_STATE[1] = DTS_STATE[1] + 1;
-  return DTS_STATE[1];
-};
-
-/** String length in UTF-16 code units, for a UTF-8 string. */
-export const dtsLen16 = (s: string): i32 => {
-  let n = 0;
-  const k = toI32(s.length);
-  for (let i = 0; i < k; i++) {
-    const c = s.charCodeAt(i);
-    if (c < 0x80 || c >= 0xc0) {
-      n += c >= 0xf0 ? 2 : 1;
+/** st[k] + 1, stored back; run.ts clears the counters for each file. */
+const dtsBumpIn = (st: Int32Array, k: i32): i32 => {
+  if (k >= 0 && k < st.length) {
+    const v = st[k];
+    if (v < 2147483647) {
+      st[k] = v + 1;
+      return v + 1;
     }
   }
-  return n;
+  fault();
+  return 0;
 };
+
+export const dtsFail = (): void => {
+  dtsSetIn(DTS_STATE, 2, 1);
+};
+
+/** Whether dtsFail was called since run.ts cleared DTS_STATE. */
+export const dtsFailed = (): boolean => dtsGetIn(DTS_STATE, 2) !== 0;
+
+const dtsBump = (k: i32): i32 => dtsBumpIn(DTS_STATE, k);
+
+const dtsNextId = (): i32 => dtsBump(0);
+
+const dtsStamp = (): i32 => dtsBump(1);
+
+/** String length in UTF-16 code units, for a UTF-8 string. */
+export const dtsLen16 = (s: string): i32 => dtUtf16Units(s);
 
 // ---------------------------------------------------------------------------
 // Rules.
@@ -131,14 +153,22 @@ export class DtsRule {
     switch (this.kind) {
       case DTS_RULE_POSITIONAL: {
         const n = toI32(this.args.length);
-        let r = n + 1;
+        // A chunk an argument: far below this.
+        if (n > 1073741823) {
+          fault();
+          return 2;
+        }
+        const blocks = this.leading > 0 || this.trailing > 0;
         if (n > 1) {
-          r++;
+          if (blocks) {
+            return n + 3;
+          }
+          return n + 2;
         }
-        if (this.leading > 0 || this.trailing > 0) {
-          r++;
+        if (blocks) {
+          return n + 2;
         }
-        return r;
+        return n + 1;
       }
       case DTS_RULE_NAMED:
         return 3;
@@ -146,7 +176,14 @@ export class DtsRule {
         return this.nSets === 2 ? 5 : 3;
       case DTS_RULE_TYPE_ARGUMENT: {
         const n = toI32(this.args.length);
-        return n === 1 ? 2 : n + 2;
+        if (n === 1) {
+          return 2;
+        }
+        if (n > 1073741823) {
+          fault();
+          return 2;
+        }
+        return n + 2;
       }
       default:
         return 2;
@@ -154,7 +191,13 @@ export class DtsRule {
   }
 
   fullySplitValue(): i32 {
-    return this.numValues() - 1;
+    // Every rule has two values at least.
+    const v = this.numValues();
+    if (v < 1) {
+      fault();
+      return 0;
+    }
+    return v - 1;
   }
 
   splitsOnInnerRules(): boolean {
@@ -173,15 +216,16 @@ export class DtsRule {
       if (value === DTS_UNSPLIT) {
         return false;
       }
-      if (value === this.numValues() - 1) {
+      if (value === this.fullySplitValue()) {
         return true;
       }
-      const i = toI32(this.args.length) - value;
-      if (i < 0 || i >= toI32(this.args.length)) {
+      const args = this.args;
+      const i = sub32(toI32(args.length), value);
+      if (i < 0 || i >= args.length) {
         dtsFail();
         return true;
       }
-      return chunk === this.args[i];
+      return chunk === args[i];
     }
     if (this.hard) {
       return true;
@@ -195,25 +239,46 @@ export class DtsRule {
   isSplitAtValue(value: i32, chunk: DtsChunk): boolean {
     switch (this.kind) {
       case DTS_RULE_POSITIONAL: {
-        const n = toI32(this.args.length);
-        if (n === 0) {
+        const args = this.args;
+        const n = toI32(args.length);
+        if (n === 0 || args.length < 1) {
           dtsFail();
           return true;
         }
         if (value === 1) {
-          return chunk === this.args[0];
+          return chunk === args[0];
         }
         if (value <= n) {
-          return chunk === this.args[n - value + 1];
+          // Values count from 1 here; a lower one is outside args.
+          if (value < 1) {
+            fault();
+            return true;
+          }
+          // n >= value > value - 1 >= 0: the u32 difference is exact.
+          const k = toI32(toU32(n) - toU32(value - 1));
+          if (k < 0 || k >= args.length) {
+            fault();
+            return true;
+          }
+          return chunk === args[k];
         }
-        if (value === n + 1) {
-          for (let i = 0; i < this.leading; i++) {
-            if (chunk === this.args[i]) {
+        if (n < 2147483647 && value === n + 1) {
+          const leading = this.leading;
+          for (let i = 0; i < leading; i++) {
+            if (i >= args.length) {
+              fault();
+              return true;
+            }
+            if (chunk === args[i]) {
               return false;
             }
           }
-          for (let i = n - this.trailing; i < n; i++) {
-            if (chunk === this.args[i]) {
+          for (let i = sub32(n, this.trailing); i < n; i++) {
+            if (i < 0 || i >= args.length) {
+              fault();
+              return true;
+            }
+            if (chunk === args[i]) {
               return false;
             }
           }
@@ -223,11 +288,12 @@ export class DtsRule {
       }
       case DTS_RULE_NAMED:
         if (value === 1) {
-          if (this.args.length === 0) {
+          const args = this.args;
+          if (args.length < 1) {
             dtsFail();
             return true;
           }
-          return chunk === this.args[0];
+          return chunk === args[0];
         }
         return true;
       case DTS_RULE_COMBINATOR:
@@ -253,8 +319,15 @@ export class DtsRule {
     if (this.combs.indexOf(chunk) >= 0) {
       return true;
     }
-    for (let i = 0; i < this.names.length; i++) {
-      if (this.nameSet[i] === set && this.names[i] === chunk) {
+    const names = this.names;
+    const nameSet = this.nameSet;
+    for (let i = 0; i < names.length; i++) {
+      // addName adds a name and its set together.
+      if (i >= nameSet.length) {
+        fault();
+        return true;
+      }
+      if (nameSet[i] === set && names[i] === chunk) {
         return true;
       }
     }
@@ -266,16 +339,26 @@ export class DtsRule {
     if (value === DTS_UNSPLIT) {
       return DTS_NONE;
     }
-    const n = toI32(this.cOther.length);
-    for (let i = 0; i < n; i++) {
-      if (this.cOther[i] !== other) {
+    const cOther = this.cOther;
+    const cMin = this.cMin;
+    const cMax = this.cMax;
+    const cVal = this.cVal;
+    const n = toI32(cOther.length);
+    // The four grow and shrink together.
+    if (cMin.length < n || cMax.length < n || cVal.length < n) {
+      fault();
+      return DTS_NONE;
+    }
+    for (let i = 0; i < n && i < cOther.length && i < cMin.length && i < cMax.length && i < cVal.length; i++) {
+      if (cOther[i] !== other) {
         continue;
       }
-      if (value >= this.cMin[i] && value <= this.cMax[i]) {
-        if (this.cVal[i] === DTS_FULL_SPLIT_CONSTRAINT) {
+      if (value >= cMin[i] && value <= cMax[i]) {
+        const v = cVal[i];
+        if (v === DTS_FULL_SPLIT_CONSTRAINT) {
           return other.fullySplitValue();
         }
-        return this.cVal[i];
+        return v;
       }
     }
     return DTS_NONE;
@@ -315,12 +398,25 @@ export class DtsRule {
       const mn: i32[] = [];
       const mx: i32[] = [];
       const v: i32[] = [];
-      for (let i = 0; i < this.cOther.length; i++) {
-        if (this.cOther[i].index >= 0) {
-          o.push(this.cOther[i]);
-          mn.push(this.cMin[i]);
-          mx.push(this.cMax[i]);
-          v.push(this.cVal[i]);
+      const cOther = this.cOther;
+      const cMin = this.cMin;
+      const cMax = this.cMax;
+      const cVal = this.cVal;
+      const n = cOther.length;
+      if (cMin.length < n || cMax.length < n || cVal.length < n) {
+        fault();
+        return;
+      }
+      for (let i = 0; i < cOther.length && i < cMin.length && i < cMax.length && i < cVal.length; i++) {
+        const other = cOther[i];
+        const lo = cMin[i];
+        const hi = cMax[i];
+        const val = cVal[i];
+        if (other.index >= 0) {
+          o.push(other);
+          mn.push(lo);
+          mx.push(hi);
+          v.push(val);
         }
       }
       this.cOther = o;
@@ -373,12 +469,22 @@ export class DtsRule {
     if (this.combs.indexOf(chunk) < 0) {
       this.combs.push(chunk);
     }
-    this.nSets = this.nSets + 1;
+    const k = this.nSets;
+    if (k < 2147483647) {
+      this.nSets = k + 1;
+    } else {
+      fault();
+    }
   }
 
   addName(chunk: DtsChunk): void {
     this.names.push(chunk);
-    this.nameSet.push(this.nSets - 1);
+    const k = this.nSets;
+    if (k >= -2147483647) {
+      this.nameSet.push(toI32(toI64(k) - toI64(1)));
+    } else {
+      fault();
+    }
   }
 }
 
@@ -416,13 +522,13 @@ export const dtsPositionalRule = (
       r.addConstraint(1, collectionRule, DTS_UNSPLIT);
     }
     if (leading > 0 || trailing > 0) {
-      r.addConstraint(argumentCount + 1, collectionRule, 1);
+      r.addConstraint(add32(argumentCount, 1), collectionRule, 1);
     }
     for (let a = 0; a < leading; a++) {
-      r.addConstraint(argumentCount - a + 1, collectionRule, DTS_UNSPLIT);
+      r.addConstraint(add32(sub32(argumentCount, a), 1), collectionRule, DTS_UNSPLIT);
     }
-    for (let a = argumentCount - trailing; a < argumentCount; a++) {
-      r.addConstraint(argumentCount - a + 1, collectionRule, DTS_UNSPLIT);
+    for (let a = sub32(argumentCount, trailing); a < argumentCount; a++) {
+      r.addConstraint(add32(sub32(argumentCount, a), 1), collectionRule, DTS_UNSPLIT);
     }
   } else if (leading > 0 || trailing > 0) {
     dtsFail();
@@ -485,10 +591,10 @@ export class DtsNest {
     const p = this.parent;
     if (p !== null) {
       p.refreshTotalUsedIndent();
-      t += p.total;
+      t = p.total;
     }
     if (this.marked) {
-      t += this.indent;
+      t = add32(t, this.indent);
     }
     this.total = t;
   }
@@ -532,12 +638,20 @@ export class DtsChunk {
   }
 
   length(): i32 {
-    return (this.space ? 1 : 0) + this.len16;
+    const n = this.len16;
+    if (!this.space) {
+      return n;
+    }
+    if (n < 2147483647) {
+      return n + 1;
+    }
+    fault();
+    return n;
   }
 
   appendText(s: string): void {
     this.text = this.text + s;
-    this.len16 = this.len16 + dtsLen16(s);
+    this.len16 = add32(this.len16, dtsLen16(s));
   }
 
   textEndsWith(s: string): boolean {
@@ -551,7 +665,7 @@ export class DtsChunk {
     }
     let n = 0;
     for (const c of this.children) {
-      n += c.length() + c.unsplitBlockLength();
+      n = add32(n, add32(c.length(), c.unsplitBlockLength()));
     }
     return n;
   }
@@ -592,7 +706,14 @@ class DtsNestBuilder {
   }
 
   indentation(): i32 {
-    return this.stack[this.stack.length - 1];
+    const st = this.stack;
+    const k = toI32(st.length);
+    if (k > 0 && k <= st.length) {
+      return st[k - 1];
+    }
+    // The stack starts with 0, and unindent follows indent.
+    fault();
+    return 0;
   }
 
   currentNesting(): DtsNest {
@@ -601,11 +722,16 @@ class DtsNestBuilder {
   }
 
   indent(spaces: i32): void {
-    this.stack.push(this.indentation() + spaces);
+    this.stack.push(add32(this.indentation(), spaces));
   }
 
   unindent(): void {
-    this.stack.pop();
+    const st = this.stack;
+    if (st.length > 0) {
+      st.pop();
+    } else {
+      fault();
+    }
   }
 
   nest(indent: i32): void {
@@ -703,15 +829,23 @@ export class DtsBuilder {
   }
 
   rule(): DtsRule {
-    if (this.rules.length === 0) {
+    const rules = this.rules;
+    const k = toI32(rules.length);
+    if (k < 1 || k > rules.length) {
       dtsFail();
       return this.cx.dummy;
     }
-    return this.rules[this.rules.length - 1];
+    return rules[k - 1];
   }
 
   last(): DtsChunk {
-    return this.chunks[this.chunks.length - 1];
+    const chunks = this.chunks;
+    const k = toI32(chunks.length);
+    if (k > 0 && k <= chunks.length) {
+      return chunks[k - 1];
+    }
+    fault();
+    return this.cx.nullChunk;
   }
 
   write(s: string, mergeEmptySplits: boolean): void {
@@ -759,11 +893,18 @@ export class DtsBuilder {
 
   writeComments(comments: DtsComment[], linesBeforeToken: i32, token: string): void {
     const n = toI32(comments.length);
-    if (this.pendingNewlines === 2 && comments[0].linesBefore < 2) {
+    // Called with a comment at least: the last one is read below whatever happens.
+    if (n < 1 || n > comments.length || comments.length < 1) {
+      fault();
+      return;
+    }
+    const first = comments[0];
+    const lastComment = comments[n - 1];
+    if (this.pendingNewlines === 2 && first.linesBefore < 2) {
       if (linesBeforeToken > 1) {
         this.writeNewline(false, false, false);
       } else {
-        for (let i = 1; i < n; i++) {
+        for (let i = 1; i < n && i < comments.length; i++) {
           if (comments[i].linesBefore > 1) {
             this.writeNewline(false, false, false);
             break;
@@ -771,7 +912,7 @@ export class DtsBuilder {
         }
       }
     }
-    if (linesBeforeToken === 0 && this.pendingNewlines > comments[0].linesBefore) {
+    if (linesBeforeToken === 0 && this.pendingNewlines > first.linesBefore) {
       let all = true;
       for (const c of comments) {
         if (c.type !== DTS_CT_INLINE_BLOCK) {
@@ -779,10 +920,10 @@ export class DtsBuilder {
         }
       }
       if (all) {
-        comments[0].linesBefore = this.pendingNewlines;
+        first.linesBefore = this.pendingNewlines;
       }
     }
-    for (let i = 0; i < n; i++) {
+    for (let i = 0; i < n && i < comments.length; i++) {
       const comment = comments[i];
       const chunk = this.chunkForComment(comment, token);
       if (chunk !== null) {
@@ -805,10 +946,15 @@ export class DtsBuilder {
       this.writeText(comment.text, chunk);
       let linesAfter = 0;
       if (i < n - 1) {
-        linesAfter = comments[i + 1].linesBefore;
+        const j = i + 1;
+        if (j >= comments.length) {
+          fault();
+          return;
+        }
+        linesAfter = comments[j].linesBefore;
       } else {
         linesAfter = linesBeforeToken;
-        if (linesAfter === 0 && comments[n - 1].text.indexOf("\n") >= 0) {
+        if (linesAfter === 0 && lastComment.text.indexOf("\n") >= 0) {
           linesAfter = 1;
         }
       }
@@ -816,7 +962,7 @@ export class DtsBuilder {
         this.writeNewline(this.pendingNewlines === 2 || linesAfter > 1, false, true);
       }
     }
-    this.pendingSpace = this.needsSpaceAfterComment(comments[n - 1], token);
+    this.pendingSpace = this.needsSpaceAfterComment(lastComment, token);
     this.afterComment = true;
   }
 
@@ -834,15 +980,32 @@ export class DtsBuilder {
   }
 
   endSpan(): void {
-    const start = this.spanStart.pop();
-    const cost = this.spanCost.pop();
-    const end = toI32(this.chunks.length);
+    const spanStart = this.spanStart;
+    const spanCost = this.spanCost;
+    // endSpan follows startSpan.
+    if (spanStart.length < 1) {
+      fault();
+      return;
+    }
+    const start = spanStart.pop();
+    if (spanCost.length < 1) {
+      fault();
+      return;
+    }
+    const cost = spanCost.pop();
+    const chunks = this.chunks;
+    const end = toI32(chunks.length);
     if (start === end) {
       return;
     }
     const span = new DtsSpan(cost);
-    for (let i = start; i < end; i++) {
-      const c = this.chunks[i];
+    // A span starts at a length the chunks had.
+    if (start < 0 && start < end) {
+      fault();
+      return;
+    }
+    for (let i = start; i >= 0 && i < end && i < chunks.length; i++) {
+      const c = chunks[i];
       if (!c.rule.hard) {
         c.spans.push(span);
       }
@@ -869,10 +1032,15 @@ export class DtsBuilder {
   }
 
   endRule(): void {
-    if (this.lazyRules.length > 0) {
-      this.lazyRules.pop();
+    const lazyRules = this.lazyRules;
+    const rules = this.rules;
+    if (lazyRules.length > 0) {
+      lazyRules.pop();
+    } else if (rules.length > 0) {
+      rules.pop();
     } else {
-      this.rules.pop();
+      // endRule follows startRule.
+      fault();
     }
   }
 
@@ -899,18 +1067,25 @@ export class DtsBuilder {
   }
 
   endBlockArgumentNesting(): void {
-    this.blockArgumentNesting.pop();
+    const ban = this.blockArgumentNesting;
+    if (ban.length > 0) {
+      ban.pop();
+    } else {
+      // The constructor starts one, and ends follow starts.
+      fault();
+    }
   }
 
   startBlock(argumentChunk: DtsChunk | null, indent: boolean, space: boolean): DtsBuilder {
-    const chunk = new DtsChunk(
-      this.rule(),
-      this.nesting.indentation(),
-      this.blockArgumentNesting[this.blockArgumentNesting.length - 1],
-      space,
-      this.pendingFlushLeft,
-      false,
-    );
+    const rule = this.rule();
+    const indentation = this.nesting.indentation();
+    const ban = this.blockArgumentNesting;
+    const k = toI32(ban.length);
+    if (k < 1 || k > ban.length) {
+      fault();
+      return this;
+    }
+    const chunk = new DtsChunk(rule, indentation, ban[k - 1], space, this.pendingFlushLeft, false);
     chunk.isBlock = true;
     chunk.argument = argumentChunk;
     this.chunks.push(chunk);
@@ -929,13 +1104,14 @@ export class DtsBuilder {
     let forceSplit = forceSplit0 || this.pendingNested;
     if (!forceSplit) {
       let length = 0;
+      const rules = this.rules;
       for (const c of this.chunks) {
-        length += c.length() + c.unsplitBlockLength();
+        length = add32(length, add32(c.length(), c.unsplitBlockLength()));
         if (length > this.cx.pageWidth) {
           forceSplit = true;
           break;
         }
-        if (c.rule.hard && (this.rules.length === 0 || c.rule !== this.rules[0])) {
+        if (c.rule.hard && (rules.length < 1 || c.rule !== rules[0])) {
           forceSplit = true;
           break;
         }
@@ -961,11 +1137,21 @@ export class DtsBuilder {
   }
 
   preventSplit(): void {
-    this.preventSplitNesting = this.preventSplitNesting + 1;
+    const k = this.preventSplitNesting;
+    if (k < 2147483647) {
+      this.preventSplitNesting = k + 1;
+    } else {
+      fault();
+    }
   }
 
   endPreventSplit(): void {
-    this.preventSplitNesting = this.preventSplitNesting - 1;
+    const k = this.preventSplitNesting;
+    if (k >= -2147483647) {
+      this.preventSplitNesting = toI32(toI64(k) - toI64(1));
+    } else {
+      fault();
+    }
   }
 
   emitPendingWhitespace(isDouble0: boolean, mergeEmptySplits: boolean): void {
@@ -987,9 +1173,18 @@ export class DtsBuilder {
     if (comment.type === DTS_CT_DOC || comment.type === DTS_CT_BLOCK) {
       return null;
     }
-    let chunk = this.chunks[n - 1];
+    const chunks = this.chunks;
+    if (n < 1 || n > chunks.length) {
+      fault();
+      return null;
+    }
+    let chunk = chunks[n - 1];
     if (chunk.text.length === 0 && n > 1 && (!dtsIsGenericMethodComment(comment) || token !== "(")) {
-      chunk = this.chunks[n - 2];
+      if (n > chunks.length) {
+        fault();
+        return null;
+      }
+      chunk = chunks[n - 2];
     }
     const text = chunk.text;
     if (text.endsWith(",") && comment.type === DTS_CT_INLINE_BLOCK) {
@@ -1110,10 +1305,12 @@ export class DtsBuilder {
   }
 
   handleHardSplit(): void {
-    if (this.rules.length === 0) {
+    const rules = this.rules;
+    const k = toI32(rules.length);
+    if (k < 1 || k > rules.length) {
       return;
     }
-    const r = this.rules[this.rules.length - 1];
+    const r = rules[k - 1];
     if (!r.splitsOnInnerRules()) {
       return;
     }
@@ -1217,16 +1414,17 @@ export class DtsLineWriter {
   writeLines(isCompilationUnit: boolean): DtsResult {
     let total = 0;
     let start = 0;
-    const n = toI32(this.chunks.length);
-    for (let i = 0; i < n; i++) {
-      if (!this.chunks[i].canDivide) {
+    const chunks = this.chunks;
+    const n = toI32(chunks.length);
+    for (let i = 0; i < n && i < chunks.length; i++) {
+      if (!chunks[i].canDivide) {
         continue;
       }
-      total += this.completeLine(start, i);
+      total = add32(total, this.completeLine(start, i));
       start = i;
     }
     if (start < n) {
-      total += this.completeLine(start, n);
+      total = add32(total, this.completeLine(start, n));
     }
     if (isCompilationUnit) {
       this.emit(this.lineEnding);
@@ -1236,20 +1434,26 @@ export class DtsLineWriter {
 
   completeLine(start: i32, end: i32): i32 {
     const chunks: DtsChunk[] = [];
-    for (let i = start; i < end; i++) {
-      chunks.push(this.chunks[i]);
+    const all = this.chunks;
+    // writeLines passes a range of its chunks.
+    if (start < end && (start < 0 || end > all.length)) {
+      fault();
+      return 0;
+    }
+    for (let i = start; i >= 0 && i < end && i < all.length; i++) {
+      chunks.push(all[i]);
     }
     const splitter = new DtsSplitter(this, chunks, this.blockIndentation);
     const splits = splitter.apply();
     const n = toI32(chunks.length);
-    for (let i = 0; i < n; i++) {
+    for (let i = 0; i < n && i < chunks.length; i++) {
       const chunk = chunks[i];
       if (chunk.isBlock) {
         if (!splits.shouldSplitAt(i)) {
           this.writeChunksUnsplit(chunk);
         } else {
           this.emit(this.lineEnding);
-          const block = this.formatBlock(chunk, splits.columns[i]);
+          const block = this.formatBlock(chunk, splits.column(i));
           this.emit(block.text);
         }
       }
@@ -1260,7 +1464,7 @@ export class DtsLineWriter {
             this.emit(this.lineEnding);
           }
         }
-        this.emit(dtsSpaces(splits.columns[i]));
+        this.emit(dtsSpaces(splits.column(i)));
       } else if (chunk.space) {
         this.emit(" ");
       }
@@ -1287,16 +1491,45 @@ export class DtsLineWriter {
 
 const DTS_MAX_ATTEMPTS: i32 = 5000;
 
+/** `n` copies of -1. */
+const dtsMinusOnes = (n: i32): i32[] => {
+  if (n >= 0 && n <= 65535) {
+    const xs = new Array<i32>(toU16(n));
+    xs.fill(-1);
+    return xs;
+  }
+  const xs: i32[] = [];
+  if (n < 0) {
+    fault();
+    return xs;
+  }
+  for (let i = 0; i < n; i++) {
+    xs.push(-1);
+  }
+  return xs;
+};
+
 export class DtsSplitSet {
   columns: i32[];
   cost: i32 = 0;
   constructor(n: i32) {
-    this.columns = new Array<i32>(n);
-    this.columns.fill(-1);
+    this.columns = dtsMinusOnes(n);
   }
 
   shouldSplitAt(i: i32): boolean {
-    return i < toI32(this.columns.length) && this.columns[i] !== -1;
+    const columns = this.columns;
+    return i >= 0 && i < columns.length && columns[i] !== -1;
+  }
+
+  /** The column chunk `i` starts at; it splits. */
+  column(i: i32): i32 {
+    const columns = this.columns;
+    const ui = toU32(i);
+    if (ui < toU32(columns.length)) {
+      return columns[ui];
+    }
+    fault();
+    return 0;
   }
 }
 
@@ -1304,8 +1537,7 @@ export class DtsRuleSet {
   values: i32[]; // -1 when unbound
 
   constructor(n: i32) {
-    this.values = new Array<i32>(n);
-    this.values.fill(-1);
+    this.values = dtsMinusOnes(n);
   }
 
   slot(rule: DtsRule): i32 {
@@ -1322,7 +1554,8 @@ export class DtsRuleSet {
       return true;
     }
     const i = this.slot(rule);
-    return i >= 0 && this.values[i] !== -1;
+    const values = this.values;
+    return i >= 0 && i < values.length && values[i] !== -1;
   }
 
   getValue(rule: DtsRule): i32 {
@@ -1330,36 +1563,49 @@ export class DtsRuleSet {
       return rule.fullySplitValue();
     }
     const i = this.slot(rule);
-    if (i < 0) {
+    const values = this.values;
+    if (i < 0 || i >= values.length) {
       return DTS_UNSPLIT;
     }
-    const v = this.values[i];
+    const v = values[i];
     return v !== -1 ? v : DTS_UNSPLIT;
   }
 
   clone(): DtsRuleSet {
     const r = new DtsRuleSet(0);
-    r.values = this.values.slice(0, this.values.length);
+    const src = this.values;
+    const n = toI32(src.length);
+    if (n <= 65535) {
+      const xs = new Array<i32>(toU16(n));
+      for (let i = 0; i < xs.length && i < src.length; i++) {
+        xs[i] = src[i];
+      }
+      r.values = xs;
+    } else {
+      r.values = sliceI32s(src, 0, n);
+    }
     return r;
   }
 
   /** tryBind; the rules that must split are added to `mustSplit`. */
   tryBind(rule: DtsRule, value: i32, mustSplit: DtsRule[]): boolean {
     const i = this.slot(rule);
-    if (i < 0) {
+    const values = this.values;
+    if (i < 0 || i >= values.length) {
       return false;
     }
-    this.values[i] = value;
+    values[i] = value;
     for (const other of rule.keys) {
       let otherValue = -1;
       if (other.hard) {
         otherValue = other.fullySplitValue();
       } else {
         const j = this.slot(other);
-        if (j < 0) {
+        const vals = this.values;
+        if (j < 0 || j >= vals.length) {
           return false;
         }
-        otherValue = this.values[j];
+        otherValue = vals[j];
       }
       let constraint = rule.constrain(value, other);
       if (otherValue === -1) {
@@ -1436,7 +1682,7 @@ export class DtsSplitter {
     this.queue.add(best);
     let attempts = 0;
     while (this.queue.len > 0) {
-      const state = this.queue.removeFirst();
+      const state = this.queue.removeFirst(best);
       if (state.isBetterThan(best)) {
         best = state;
         if (best.overflowChars === 0) {
@@ -1444,12 +1690,12 @@ export class DtsSplitter {
         }
       }
       const a = attempts;
-      attempts++;
-      if (a > DTS_MAX_ATTEMPTS) {
+      if (a > DTS_MAX_ATTEMPTS || a >= 2147483647) {
         break;
       }
+      attempts = a + 1;
       state.expand();
-      if (DTS_STATE[2] !== 0) {
+      if (dtsFailed()) {
         break;
       }
     }
@@ -1559,7 +1805,12 @@ export class DtsState {
             r.mark = stamp;
           }
         }
-        tried++;
+        // Only live rules carry the stamp, each once.
+        if (tried >= liveCount) {
+          fault();
+          break;
+        }
+        tried = tried + 1;
         if (tried === liveCount) {
           break;
         }
@@ -1625,7 +1876,7 @@ export class DtsState {
     const chunks = this.sp.chunks;
     const n = toI32(chunks.length);
     const used: DtsNest[] = [];
-    for (let i = 0; i < n; i++) {
+    for (let i = 0; i < n && i < chunks.length; i++) {
       const c = chunks[i];
       if (c.rule.isSplit(this.getValue(c.rule), c)) {
         const nest = c.nesting;
@@ -1642,18 +1893,23 @@ export class DtsState {
     for (const nest of used) {
       nest.marked = false;
     }
-    for (let i = 0; i < n; i++) {
+    for (let i = 0; i < n && i < chunks.length; i++) {
       const c = chunks[i];
       if (c.rule.isSplit(this.getValue(c.rule), c)) {
         let indent = 0;
         if (!c.flushLeft) {
-          indent = this.sp.blockIndentation + c.indent;
-          indent += c.nesting.total;
+          indent = add32(add32(this.sp.blockIndentation, c.indent), c.nesting.total);
           if (c.indentBlock(this.values, this.sp.writer.cx.dummy)) {
-            indent += DTS_INDENT_EXPRESSION;
+            indent = add32(indent, DTS_INDENT_EXPRESSION);
           }
         }
-        this.splits.columns[i] = indent;
+        // A split set has a column for each chunk.
+        const columns = this.splits.columns;
+        if (i >= columns.length) {
+          fault();
+          return;
+        }
+        columns[i] = indent;
       }
     }
   }
@@ -1668,14 +1924,20 @@ export class DtsState {
     let start = 0;
     const splitSpans: DtsSpan[] = [];
     let previousNesting: DtsNest | null = null;
-    for (let i = 0; i < n; i++) {
+    const columns = this.splits.columns;
+    for (let i = 0; i < n && i < chunks.length; i++) {
       const c = chunks[i];
-      if (this.splits.shouldSplitAt(i)) {
+      // shouldSplitAt(i), read once.
+      let column = -1;
+      if (i < columns.length) {
+        column = columns[i];
+      }
+      if (column !== -1) {
         // endLine(i)
         if (length > pageWidth) {
-          this.overflowChars += length - pageWidth;
+          this.overflowChars = add32(this.overflowChars, sub32(length, pageWidth));
           if (!foundOverflowRules) {
-            for (let j = start; j < i; j++) {
+            for (let j = start; j >= 0 && j < i && j < chunks.length; j++) {
               if (this.addLiveRules(chunks[j].rule)) {
                 foundOverflowRules = true;
               }
@@ -1687,7 +1949,7 @@ export class DtsState {
           if (!span.marked) {
             span.marked = true;
             splitSpans.push(span);
-            cost += span.cost;
+            cost = add32(cost, span.cost);
           }
         }
         const totalIndent = c.nesting.total;
@@ -1697,27 +1959,33 @@ export class DtsState {
           totalIndent === previousNesting.total &&
           c.nesting !== previousNesting
         ) {
-          this.overflowChars += 10000;
+          this.overflowChars = add32(this.overflowChars, 10000);
         }
         previousNesting = c.nesting;
-        length = this.splits.columns[i];
+        length = column;
       } else if (c.space) {
-        length++;
+        length = add32(length, 1);
       }
       if (c.isBlock) {
-        if (this.splits.shouldSplitAt(i)) {
-          cost += this.sp.writer.formatBlock(c, this.splits.columns[i]).cost;
+        if (column !== -1) {
+          cost = add32(cost, this.sp.writer.formatBlock(c, column).cost);
         } else {
-          length += c.cachedBlockLength();
+          length = add32(length, c.cachedBlockLength());
         }
       }
-      length += c.len16;
+      length = add32(length, c.len16);
     }
     const rules = this.sp.rules;
-    for (let i = 0; i < rules.length; i++) {
-      const v = this.values.values[i];
+    const values = this.values.values;
+    // A rule set has a value for each rule.
+    if (values.length < rules.length) {
+      fault();
+      return;
+    }
+    for (let i = 0; i < rules.length && i < values.length; i++) {
+      const v = values[i];
       if (v !== -1 && v !== DTS_UNSPLIT) {
-        cost += rules[i].cost();
+        cost = add32(cost, rules[i].cost());
       }
     }
     for (const span of splitSpans) {
@@ -1725,9 +1993,9 @@ export class DtsState {
     }
     // endLine(n)
     if (length > pageWidth) {
-      this.overflowChars += length - pageWidth;
+      this.overflowChars = add32(this.overflowChars, sub32(length, pageWidth));
       if (!foundOverflowRules) {
-        for (let j = start; j < n; j++) {
+        for (let j = start; j >= 0 && j < n && j < chunks.length; j++) {
           if (this.addLiveRules(chunks[j].rule)) {
             foundOverflowRules = true;
           }
@@ -1760,7 +2028,8 @@ export class DtsState {
     const n = toI32(chunks.length);
     let boundInLine: DtsRule[] = [];
     let hasUnbound = false;
-    for (let i = 0; i < n; i++) {
+    for (let i = 0; i < n && i < chunks.length; i++) {
+      const rule = chunks[i].rule;
       if (this.splits.shouldSplitAt(i)) {
         if (hasUnbound) {
           for (const r of boundInLine) {
@@ -1770,7 +2039,6 @@ export class DtsState {
         boundInLine = [];
         hasUnbound = false;
       }
-      const rule = chunks[i].rule;
       if (this.values.contains(rule)) {
         boundInLine.push(rule);
       } else {
@@ -1862,10 +2130,15 @@ class DtsQueue {
   }
 
   set(i: i32, s: DtsState): void {
-    if (i < toI32(this.q.length)) {
-      this.q[i] = s;
+    const q = this.q;
+    if (i < 0) {
+      fault();
+      return;
+    }
+    if (i < q.length) {
+      q[i] = s;
     } else {
-      this.q.push(s);
+      q.push(s);
     }
   }
 
@@ -1874,15 +2147,32 @@ class DtsQueue {
       return;
     }
     const i = this.len;
+    // len never passes the heap's length.
+    if (i < 0 || i > this.q.length || i >= 2147483647) {
+      fault();
+      return;
+    }
     this.len = i + 1;
     this.bubbleUp(state, i);
   }
 
-  removeFirst(): DtsState {
-    const result = this.q[0];
-    this.len = this.len - 1;
-    if (this.len > 0) {
-      const last = this.q[this.len];
+  /** The first state; the queue is not empty. */
+  removeFirst(first: DtsState): DtsState {
+    const q = this.q;
+    const len = this.len;
+    if (len < 1 || len > q.length || q.length < 1) {
+      fault();
+      return first;
+    }
+    const result = q[0];
+    const n = len - 1;
+    this.len = n;
+    if (n > 0) {
+      if (n >= q.length) {
+        fault();
+        return result;
+      }
+      const last = q[n];
       this.bubbleDown(last, 0);
     }
     return result;
@@ -1918,28 +2208,43 @@ class DtsQueue {
   }
 
   tryOverlap(state: DtsState): boolean {
-    if (this.len === 0) {
+    const len = this.len;
+    if (len === 0) {
       return false;
     }
+    const q = this.q;
     let position = 1;
     do {
+      // The walk stays on the heap: 1 <= position <= len <= its length.
+      if (position < 1 || position > len || position > q.length) {
+        fault();
+        return false;
+      }
       const index = position - 1;
-      const enqueued = this.q[index];
+      const enqueued = q[index];
       let comparison = this.compareScore(enqueued, state);
       if (comparison === 0) {
         const overlap = enqueued.compareOverlap(state);
         if (overlap < 0) {
           return true;
         } else if (overlap > 0) {
-          this.q[index] = state;
+          if (index >= q.length) {
+            fault();
+            return false;
+          }
+          q[index] = state;
           return true;
         } else {
           comparison = this.compareRules(enqueued, state);
         }
       }
       if (comparison < 0) {
+        if (position > 1073741823) {
+          fault();
+          return false;
+        }
         const left = position * 2;
-        if (left <= this.len) {
+        if (left <= len) {
           position = left;
           continue;
         }
@@ -1948,8 +2253,12 @@ class DtsQueue {
         while ((position & 1) === 1) {
           position = position >> 1;
         }
-        position += 1;
-      } while (position > this.len);
+        if (position >= 2147483647) {
+          fault();
+          return false;
+        }
+        position = position + 1;
+      } while (position > len);
     } while (position !== 1);
     return false;
   }
@@ -1958,7 +2267,12 @@ class DtsQueue {
     let index = index0;
     while (index > 0) {
       const parentIndex = (index - 1) >> 1;
-      const parent = this.q[parentIndex];
+      const q = this.q;
+      if (parentIndex < 0 || parentIndex >= q.length) {
+        fault();
+        return;
+      }
+      const parent = q[parentIndex];
       if (this.compare(element, parent) > 0) {
         break;
       }
@@ -1969,12 +2283,23 @@ class DtsQueue {
   }
 
   bubbleDown(element: DtsState, index0: i32): void {
+    const q = this.q;
     let index = index0;
+    // Below this, 2 * index + 2 fits.
+    if (index < 0 || index > 1073741822) {
+      fault();
+      return;
+    }
     let right = index * 2 + 2;
     while (right < this.len) {
+      // The children of a heap slot, inside the heap.
+      if (right <= 0 || right >= q.length) {
+        fault();
+        return;
+      }
       const leftIndex = right - 1;
-      const leftChild = this.q[leftIndex];
-      const rightChild = this.q[right];
+      const leftChild = q[leftIndex];
+      const rightChild = q[right];
       let comparison = this.compare(leftChild, rightChild);
       let minIndex = right;
       let minChild = rightChild;
@@ -1983,22 +2308,46 @@ class DtsQueue {
         minIndex = leftIndex;
       }
       comparison = this.compare(element, minChild);
-      if (comparison <= 0) {
-        this.q[index] = element;
+      if (index < 0 || index >= q.length) {
+        fault();
         return;
       }
-      this.q[index] = minChild;
+      if (comparison <= 0) {
+        q[index] = element;
+        return;
+      }
+      q[index] = minChild;
       index = minIndex;
+      if (index > 1073741822) {
+        fault();
+        return;
+      }
       right = index * 2 + 2;
+    }
+    if (right <= 0) {
+      fault();
+      return;
     }
     const leftIndex = right - 1;
     if (leftIndex < this.len) {
-      const child = this.q[leftIndex];
+      if (leftIndex >= q.length) {
+        fault();
+        return;
+      }
+      const child = q[leftIndex];
       if (this.compare(element, child) > 0) {
-        this.q[index] = child;
+        if (index < 0 || index >= q.length) {
+          fault();
+          return;
+        }
+        q[index] = child;
         index = leftIndex;
       }
     }
-    this.q[index] = element;
+    if (index < 0 || index >= q.length) {
+      fault();
+      return;
+    }
+    q[index] = element;
   }
 }

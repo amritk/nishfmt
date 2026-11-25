@@ -10,11 +10,16 @@
 // Ported from RuboCop 1.92.3 (MIT License, Copyright (c) 2012-24 Bozhidar
 // Batsov).
 
+import { add32, atI32, sub32 } from "../../core/arr";
+import { fault } from "../../core/fault";
+import { stableSort } from "../../core/sort";
 import { RbSource, TK_COMMENT } from "../source";
 
 /** A line number for -Float::INFINITY / Float::INFINITY. */
 export const LDH_NEG_INF: i32 = -1073741824;
 export const LDH_INF: i32 = 1073741824;
+/** LDH_NEG_INF - 1: a snapshot's mark for an analysis that was not open. */
+const LDH_CLOSED: i32 = -1073741825;
 
 const ldhIsSpace = (c: i32): boolean => c === 32 || (c >= 9 && c <= 13);
 
@@ -31,7 +36,11 @@ export const ldhStrip = (s: string): string => {
   while (i < j && (ldhIsSpace(s.charCodeAt(i)) || s.charCodeAt(i) === 0)) {
     i++;
   }
-  while (j > i && (ldhIsSpace(s.charCodeAt(j - 1)) || s.charCodeAt(j - 1) === 0)) {
+  while (j > i && j > 0 && j <= s.length) {
+    const c = s.charCodeAt(j - 1);
+    if (!(ldhIsSpace(c) || c === 0)) {
+      break;
+    }
     j--;
   }
   return s.substring(i, j);
@@ -52,19 +61,25 @@ export class LdhRegistry {
     const k = toI32(s.length);
     let i = 0;
     while (i < k) {
-      while (i < k && s.charCodeAt(i) === 32) {
+      while (i >= 0 && i < k && s.charCodeAt(i) === 32) {
         i++;
       }
       if (i >= k) {
         break;
       }
       let j = i;
-      while (j < k && s.charCodeAt(j) !== 32) {
+      while (j >= 0 && j < k && s.charCodeAt(j) !== 32) {
         j++;
       }
       const w = s.substring(i, j);
-      const name = w.substring(0, toI32(w.length) - 2);
-      const f = w.charCodeAt(toI32(w.length) - 1);
+      const wl = toI32(w.length);
+      // Every word of the registry text is `Name:f`.
+      if (wl <= 0) {
+        fault();
+        return;
+      }
+      const name = w.substring(0, wl - 2);
+      const f = w.charCodeAt(wl - 1);
       this.names.push(name);
       this.state.set(name, f === 101 ? 0 : f === 100 ? 1 : 2);
       i = j;
@@ -131,7 +146,7 @@ export class LdhRegistry {
       const q = `${d}/${name}`;
       if (this.has(q)) {
         found = q;
-        count++;
+        count = add32(count, 1);
       }
     }
     return count === 1 ? found : name;
@@ -157,14 +172,24 @@ export class LdhDirective {
 
   constructor(src: RbSource, ci: i32) {
     this.ci = ci;
-    this.cs = src.commS[ci];
-    this.ce = src.commE[ci];
+    const commS = src.commS;
+    const commE = src.commE;
+    // ci is a comment's index.
+    if (ci < 0 || ci >= commS.length || ci >= commE.length) {
+      fault();
+      this.cs = 0;
+      this.ce = 0;
+      this.line = 0;
+      return;
+    }
+    this.cs = commS[ci];
+    this.ce = commE[ci];
     this.line = src.line(this.cs);
     for (let i = this.cs; i < this.ce; i++) {
       if (src.at(i) === 35 && this.matchAt(src, i)) {
         // A pre_match of `#` and blanks (`# # rubocop:...`) rejects the directive.
         let rej = i > this.cs && src.at(this.cs) === 35;
-        for (let j = this.cs + 1; j < i && rej; j++) {
+        for (let j = add32(this.cs, 1); j < i && rej; j++) {
           if (!ldhIsSpace(src.at(j))) {
             rej = false;
           }
@@ -209,7 +234,7 @@ export class LdhDirective {
     if (p >= this.ce || !ldhIsAlpha(src.at(p)) || p + 1 >= this.ce || !ldhIsWord(src.at(p + 1))) {
       return -1;
     }
-    let q = p + 2;
+    let q = add32(p, 2);
     while (q < this.ce && ldhIsWord(src.at(q))) {
       q++;
     }
@@ -218,11 +243,12 @@ export class LdhDirective {
 
   /** DIRECTIVE_COMMENT_REGEXP at position i (a `#`). */
   matchAt(src: RbSource, i: i32): boolean {
-    let p = this.skipWs(src, i + 1);
-    if (src.src(p, p + 7) !== "rubocop" || p + 7 > this.ce) {
+    let p = this.skipWs(src, add32(i, 1));
+    const p7 = add32(p, 7);
+    if (src.src(p, p7) !== "rubocop" || p7 > this.ce) {
       return false;
     }
-    p = this.skipWs(src, p + 7);
+    p = this.skipWs(src, p7);
     if (p >= this.ce || src.at(p) !== 58) {
       return false;
     }
@@ -234,13 +260,19 @@ export class LdhDirective {
       const sp = LDH_MODES.indexOf(" ", k);
       const m = LDH_MODES.substring(k, sp);
       const mlen = toI32(m.length);
+      // LDH_MODES ends in a space, so sp lies in it.
+      if (sp < 0 || sp >= ml) {
+        fault();
+        return false;
+      }
       k = sp + 1;
-      if (p + mlen > this.ce || src.src(p, p + mlen) !== m) {
+      const pm = add32(p, mlen);
+      if (pm > this.ce || src.src(p, pm) !== m) {
         continue;
       }
       // \b: the next character is not a word character.
-      const nc = src.at(p + mlen);
-      if (p + mlen < this.ce && (ldhIsWord(nc) || nc >= 128)) {
+      const nc = src.at(pm);
+      if (pm < this.ce && (ldhIsWord(nc) || nc >= 128)) {
         continue;
       }
       mode = m;
@@ -252,17 +284,18 @@ export class LdhDirective {
     this.ok = true;
     this.ms = i;
     this.mode = mode;
-    p += toI32(mode.length);
+    p = add32(p, toI32(mode.length));
     this.me = p;
     const q = this.skipWs(src, p);
     if (q === p) {
       return true;
     }
     // \s+ (all | names)
-    if (src.src(q, q + 3) === "all" && q + 3 <= this.ce) {
+    const q3 = add32(q, 3);
+    if (src.src(q, q3) === "all" && q3 <= this.ce) {
       this.hasCops = true;
       this.cops = "all";
-      this.me = q + 3;
+      this.me = q3;
       return true;
     }
     let e = this.name(src, q);
@@ -289,8 +322,8 @@ export class LdhDirective {
     }
     // \s+ [+-]name (\s+ [+-]name)*
     const c = src.at(q);
-    if ((c === 43 || c === 45) && this.name(src, q + 1) >= 0) {
-      let e3 = this.name(src, q + 1);
+    if ((c === 43 || c === 45) && this.name(src, add32(q, 1)) >= 0) {
+      let e3 = this.name(src, add32(q, 1));
       while (true) {
         const r = this.skipWs(src, e3);
         if (r === e3 || r >= this.ce) {
@@ -374,8 +407,12 @@ export class LdhDirective {
     }
     out.push(s.substring(start, k));
     // split drops trailing empty strings
-    while (out.length > 0 && out[out.length - 1].length === 0) {
-      out.pop();
+    let n = toI32(out.length);
+    while (n > 0 && n <= out.length && out[n - 1].length === 0) {
+      if (out.length > 0) {
+        out.pop();
+      }
+      n = toI32(out.length);
     }
     return out;
   }
@@ -437,7 +474,7 @@ export class LdhDirective {
       let k = 0;
       for (const w of ldhWords(this.cops)) {
         if (w.startsWith("+") || w.startsWith("-")) {
-          k++;
+          k = add32(k, 1);
         }
       }
       return k;
@@ -452,7 +489,7 @@ export class LdhDirective {
     if (x.length !== y.length) {
       return false;
     }
-    for (let i = 0; i < toI32(x.length); i++) {
+    for (let i = 0; i < toI32(x.length) && i < y.length; i++) {
       if (x[i] !== y[i]) {
         return false;
       }
@@ -466,7 +503,8 @@ export class LdhDirective {
     while (p < this.ce && ldhIsSpace(src.at(p))) {
       p++;
     }
-    if (p + 1 < this.ce && src.at(p) === 45 && src.at(p + 1) === 45) {
+    const p1 = add32(p, 1);
+    if (p1 < this.ce && src.at(p) === 45 && src.at(p1) === 45) {
       return this.ce;
     }
     return this.me;
@@ -479,14 +517,14 @@ export const ldhWords = (s: string): string[] => {
   const k = toI32(s.length);
   let i = 0;
   while (i < k) {
-    while (i < k && ldhIsSpace(s.charCodeAt(i))) {
+    while (i >= 0 && i < k && ldhIsSpace(s.charCodeAt(i))) {
       i++;
     }
     if (i >= k) {
       break;
     }
     let j = i;
-    while (j < k && !ldhIsSpace(s.charCodeAt(j))) {
+    while (j >= 0 && j < k && !ldhIsSpace(s.charCodeAt(j))) {
       j++;
     }
     out.push(s.substring(i, j));
@@ -498,8 +536,8 @@ export const ldhWords = (s: string): string[] => {
 /** String#<=>: byte order, then length. */
 export const ldhCompare = (a: string, b: string): i32 => {
   const n = a.length < b.length ? toI32(a.length) : toI32(b.length);
-  for (let i = 0; i < n; i++) {
-    const d = a.charCodeAt(i) - b.charCodeAt(i);
+  for (let i = 0; i < n && i < a.length && i < b.length; i++) {
+    const d = (a.charCodeAt(i) & 0xff) - (b.charCodeAt(i) & 0xff);
     if (d !== 0) {
       return d;
     }
@@ -521,7 +559,7 @@ export const ldhUniqSorted = (names: string[]): string[] => {
       out.push(n);
     }
   }
-  out.sort((a: string, b: string): i32 => ldhCompare(a, b));
+  stableSort(out, (a: string, b: string): i32 => ldhCompare(a, b));
   return out;
 };
 
@@ -573,15 +611,26 @@ export class LdhConfig {
     this.cops = [];
     this.index = new Map<string, i32>();
     let has = false;
-    for (let i = 0; i + 7 <= src.n && !has; i++) {
-      if (src.at(i) === 114 && src.src(i, i + 7) === "rubocop") {
-        has = true;
+    const n = src.n;
+    // i + 7 <= n, which no i meets when n < 7.
+    if (n >= 7) {
+      const lim = n - 7;
+      for (let i = 0; i <= lim && !has; i++) {
+        if (src.at(i) === 114 && src.src(i, i + 7) === "rubocop") {
+          has = true;
+        }
       }
     }
     this.noDirectives = !has;
+    const tokS = src.tokS;
     for (let i = 0; i < toI32(src.tokT.length); i++) {
       if (src.tokT[i] !== TK_COMMENT) {
-        this.codeLines.add(src.line(src.tokS[i]));
+        // Every token has a start.
+        if (i >= tokS.length) {
+          fault();
+          break;
+        }
+        this.codeLines.add(src.line(tokS[i]));
       }
     }
     if (!this.noDirectives) {
@@ -599,7 +648,14 @@ export class LdhConfig {
   private analysis(name: string): LdhAnalysis {
     const k = this.index.get(name);
     if (k !== undefined) {
-      return this.cops[k];
+      const cops = this.cops;
+      const ki: i32 = k;
+      // index holds the position of each analysis in cops.
+      if (ki >= 0 && ki < cops.length) {
+        return cops[ki];
+      }
+      fault();
+      return new LdhAnalysis(name);
     }
     const an = new LdhAnalysis(name);
     this.index.set(name, toI32(this.cops.length));
@@ -628,8 +684,14 @@ export class LdhConfig {
     for (const o of order) {
       for (let i = 0; i < toI32(ops.length); i++) {
         if (ops[i] === o) {
+          // ops and names grow together.
+          if (i >= names.length) {
+            fault();
+            return;
+          }
+          const nm = names[i];
           outOps.push(o);
-          outAns.push(this.analysis(names[i]));
+          outAns.push(this.analysis(nm));
         }
       }
     }
@@ -669,7 +731,7 @@ export class LdhConfig {
         // restore point: open, start and directive of every analysis so far
         const snap: i32[] = [];
         for (const an of this.cops) {
-          snap.push(an.open ? an.start : LDH_NEG_INF - 1);
+          snap.push(an.open ? an.start : LDH_CLOSED);
           snap.push(an.startDir);
         }
         stack.push(snap);
@@ -677,6 +739,11 @@ export class LdhConfig {
         const ans: LdhAnalysis[] = [];
         this.signed(d, ops, ans);
         for (let i = 0; i < toI32(ops.length); i++) {
+          // signed pushes an op and an analysis together.
+          if (i >= ans.length) {
+            fault();
+            return;
+          }
           const an = ans[i];
           if (ops[i] === 45 && !an.open) {
             an.open = true;
@@ -690,17 +757,22 @@ export class LdhConfig {
         continue;
       }
       if (d.mode === "pop") {
-        if (stack.length > 0) {
-          const snap = stack[stack.length - 1];
-          stack.pop();
+        const sn = toI32(stack.length);
+        if (sn > 0) {
+          const snap = stack[sn - 1];
+          if (stack.length > 0) {
+            stack.pop();
+          }
           for (let i = 0; i < toI32(this.cops.length); i++) {
             const an = this.cops[i];
-            an.close(d.line - 1);
-            const had = 2 * i < toI32(snap.length) && snap[2 * i] !== LDH_NEG_INF - 1;
+            an.close(sub32(d.line, 1));
+            const j = add32(i, i);
+            const had = j >= 0 && j < snap.length && snap[j] !== LDH_CLOSED;
             an.open = had;
             if (had) {
               an.start = d.line;
-              an.startDir = snap[2 * i + 1];
+              // A snapshot holds two entries an analysis.
+              an.startDir = atI32(snap, add32(j, 1));
             }
           }
         }
@@ -711,6 +783,11 @@ export class LdhConfig {
         if (b.length === 0) {
           continue;
         }
+        // statementScopeAfter answers [] or [from, to].
+        if (b.length < 2) {
+          fault();
+          return;
+        }
         const from = b[0];
         const to = b[1];
         if (d.mode === "next") {
@@ -718,14 +795,18 @@ export class LdhConfig {
           const ans: LdhAnalysis[] = [];
           this.signed(d, ops, ans);
           for (let i = 0; i < toI32(ops.length); i++) {
+            if (i >= ans.length) {
+              fault();
+              return;
+            }
             const an = ans[i];
             if (ops[i] === 45) {
               an.rb.push(from);
               an.re.push(to);
               an.rd.push(d.ci);
             } else if (an.open) {
-              an.close(from - 1);
-              an.start = to + 1;
+              an.close(sub32(from, 1));
+              an.start = add32(to, 1);
             }
           }
         } else {
@@ -733,8 +814,8 @@ export class LdhConfig {
             const an = this.analysis(this.reg.qualified(n));
             if (d.mode === "enable-next") {
               if (an.open) {
-                an.close(from - 1);
-                an.start = to + 1;
+                an.close(sub32(from, 1));
+                an.start = add32(to, 1);
               }
             } else {
               an.rb.push(from);

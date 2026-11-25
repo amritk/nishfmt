@@ -5,6 +5,8 @@
 // Ported from RuboCop 1.92.3 (MIT License, Copyright (c) 2012-24 Bozhidar
 // Batsov).
 
+import { fault } from "../../core/fault";
+import { atI32 } from "../../core/arr";
 import { RbCop } from "../cop";
 import { RbSource } from "../source";
 import { LDH_INF, LDH_NEG_INF, LdhConfig, LdhRegistry } from "./lint_directive_help";
@@ -28,33 +30,45 @@ export class CopLintMissingCopEnableDirective {
     }
     cfg.analyze();
     for (const an of cfg.cops) {
-      for (let i = 0; i < toI32(an.rb.length); i++) {
-        const d = an.rd[i];
+      const rb = an.rb;
+      const rd = an.rd;
+      const re = an.re;
+      const dirs = cfg.dirs;
+      for (let i = 0; i < rb.length && i < rd.length && i < re.length; i++) {
+        const d = rd[i];
         if (d >= 0) {
-          const dir = cfg.dirs[d];
+          if (d >= dirs.length) {
+            fault();
+            return;
+          }
+          const dir = dirs[d];
           if (dir.disableNext() || dir.mode === "next") {
             continue;
           }
         }
         // acceptable_range?: a finite range always is (MaxRangeSize .inf).
-        if (an.re[i] !== LDH_INF && an.rb[i] !== LDH_NEG_INF) {
+        const rbi = rb[i];
+        const rei = re[i];
+        if (rei !== LDH_INF && rbi !== LDH_NEG_INF) {
           continue;
         }
         if (!this.reg.has(an.name)) {
           continue;
         }
         // expected_open_range?
-        if (an.rb[i] === LDH_NEG_INF || (!this.reg.enabled(an.name) && an.re[i] === LDH_INF)) {
+        if (rbi === LDH_NEG_INF || (!this.reg.enabled(an.name) && rei === LDH_INF)) {
           continue;
         }
         if (d >= 0) {
-          this.c.offense(src.commS[d], src.commE[d]);
+          this.c.offense(atI32(src.commS, d), atI32(src.commE, d));
           continue;
         }
         // processed_source.comment_at_line(line_range.begin)
-        for (let ci = 0; ci < toI32(src.commS.length); ci++) {
-          if (src.line(src.commS[ci]) === an.rb[i]) {
-            this.c.offense(src.commS[ci], src.commE[ci]);
+        const commS = src.commS;
+        const commE = src.commE;
+        for (let ci = 0; ci < commS.length && ci < commE.length; ci++) {
+          if (src.line(commS[ci]) === rbi) {
+            this.c.offense(commS[ci], commE[ci]);
             break;
           }
         }

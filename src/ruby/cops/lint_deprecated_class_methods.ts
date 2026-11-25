@@ -3,6 +3,7 @@
 // Ported from RuboCop 1.92.3 (MIT License, Copyright (c) 2012-24 Bozhidar
 // Batsov).
 
+import { rbNKid } from "../node";
 import { F_SELECTOR, NT_CONST, NT_FALSE, NT_SEND, NT_TRUE, V_NIL } from "../ast";
 import { RbCop } from "../cop";
 import { RbSource } from "../source";
@@ -84,7 +85,7 @@ export class CopLintDeprecatedClassMethods {
     const a = src.a;
     const r = a.kid(n, 0);
     const m = ssxMeth(src, n);
-    const argc = a.nKid(n) - 2;
+    const argc = rbNKid(src, n) - 2;
     if (ssxGlobalConst(src, r, "ENV")) {
       return argc === 0 && (m === "clone" || m === "dup" || m === "freeze");
     }

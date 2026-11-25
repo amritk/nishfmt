@@ -12,6 +12,7 @@ import {
   N_MACRO_ARGS,
   N_MACRO_KW,
   RsAst,
+  rsAstPut,
   rsIsExprKind,
   rsIsItemKind,
   rsIsPatKind,
@@ -55,6 +56,8 @@ import { rsFormatCodeBlock, rsFormatSnippet } from "./format";
 import { rsRewriteTy } from "./types";
 import { rsFormatVisibility, rsIdentStr } from "./utils";
 import { RsVisitor } from "./visitor";
+import { add32, atI32, sub32 } from "../core/arr";
+import { fault } from "../core/fault";
 
 export const MP_ITEM: i32 = 0;
 export const MP_STATEMENT: i32 = 1;
@@ -82,7 +85,7 @@ const MA_TRAILING_COMMA: i32 = 4;
  * that delimiter.
  */
 const macroStyle = (ctx: RsCtx, mac: i32): i32 => {
-  const k = ctx.ast.x[ctx.ast.b[mac]];
+  const k = atI32(ctx.ast.x, atI32(ctx.ast.b, mac));
   if (k === T_LPAREN) {
     return DS_PAREN;
   }
@@ -94,27 +97,27 @@ export const rsMacroStyleIsBraces = (ctx: RsCtx, mac: i32): boolean => macroStyl
 const macroName = (ctx: RsCtx, path: i32): string => {
   const ast = ctx.ast;
   let s = "";
-  if ((ast.fl[path] & 1) !== 0 && ast.ln[path] > 1) {
+  if ((atI32(ast.fl, path) & 1) !== 0 && atI32(ast.ln, path) > 1) {
     s = "::";
   }
-  for (let i = 0; i < ast.ln[path]; i++) {
+  for (let i = 0; i < atI32(ast.ln, path); i++) {
     if (i > 0) {
       s = s + "::";
     }
-    s = s + rsIdentStr(ctx, ast.d[ast.kid(path, i)]);
+    s = s + rsIdentStr(ctx, atI32(ast.d, ast.kid(path, i)));
   }
   return s + "!";
 };
 
 /** Whether MacroArg node `n` is a keyword. */
-export const rsIsMacroKeywordArg = (ast: RsAst, n: i32): boolean => ast.kind[n] === N_MACRO_KW;
+export const rsIsMacroKeywordArg = (ast: RsAst, n: i32): boolean => atI32(ast.kind, n) === N_MACRO_KW;
 
 /** Rewrite for MacroArg. */
 export const rsMacroArgRewrite = (ctx: RsCtx, n: i32, shape: RsShape): string | null => {
   const ast = ctx.ast;
-  const k = ast.kind[n];
+  const k = atI32(ast.kind, n);
   if (k === N_MACRO_KW) {
-    return ctx.tokStr(ast.d[n]);
+    return ctx.tokStr(atI32(ast.d, n));
   }
   if (rsIsItemKind(k)) {
     return rewriteItemAsArg(ctx, n, shape);
@@ -130,10 +133,11 @@ const rewriteItemAsArg = (ctx: RsCtx, item: i32, shape: RsShape): string | null 
   v.lastPos = rsItemSpanLo(ctx.ast, item);
   v.visitItem(item);
   v.giveTo(ctx);
-  return String.fromBytes(v.buf.buf, 0, v.buf.n);
+  return v.text();
 };
 
-const rsItemSpanLo = (ast: RsAst, item: i32): i32 => (ast.atn[item] > 0 ? ast.lo[ast.attr(item, 0)] : ast.lo[item]);
+const rsItemSpanLo = (ast: RsAst, item: i32): i32 =>
+  atI32(ast.atn, item) > 0 ? atI32(ast.lo, ast.attr(item, 0)) : atI32(ast.lo, item);
 
 const isDocTok = (k: i32): boolean =>
   k === T_DOC_LINE_OUTER || k === T_DOC_LINE_INNER || k === T_DOC_BLOCK_OUTER || k === T_DOC_BLOCK_INNER;
@@ -141,20 +145,20 @@ const isDocTok = (k: i32): boolean =>
 /** parse_macro_args over the tokens of N_TTS `tts`: an N_MACRO_ARGS node (cached on the mac's `c`). */
 const parseMacroArgs = (ctx: RsCtx, mac: i32, style: i32, forcedBracket: boolean): i32 => {
   const ast = ctx.ast;
-  const cached = ast.c[mac];
-  if (cached >= 0 && ast.x[cached] === style) {
+  const cached = atI32(ast.c, mac);
+  if (cached >= 0 && atI32(ast.x, cached) === style) {
     return cached;
   }
-  const tts = ast.b[mac];
-  const open = ast.a[tts];
-  const close = ast.b[tts];
+  const tts = atI32(ast.b, mac);
+  const open = atI32(ast.a, tts);
+  const close = atI32(ast.b, tts);
   const args: i32[] = [];
   let flags = 0;
   if (style !== DS_BRACE) {
     const p = new RsParser(ctx.f.t, ast);
-    p.p = open + 1;
+    p.p = add32(open, 1);
     p.end = close;
-    p.ph = ctx.f.t.hi[open];
+    p.ph = atI32(ctx.f.t.hi, open);
     for (;;) {
       const a = parseOneArg(ctx, p);
       if (a < 0) {
@@ -192,7 +196,7 @@ const parseMacroArgs = (ctx: RsCtx, mac: i32, style: i32, forcedBracket: boolean
         flags = MA_FAILED;
         break;
       }
-      if (rsIsItemKind(ast.kind[a])) {
+      if (rsIsItemKind(atI32(ast.kind, a))) {
         continue;
       }
       flags = MA_FAILED;
@@ -200,12 +204,12 @@ const parseMacroArgs = (ctx: RsCtx, mac: i32, style: i32, forcedBracket: boolean
     }
     p.finishInnerAttrs();
   }
-  const n = ast.add(N_MACRO_ARGS, ast.lo[tts]);
-  ast.x[n] = style;
-  ast.fl[n] = flags;
-  ast.ls[n] = ast.addKids(args, 0, toI32(args.length));
-  ast.ln[n] = toI32(args.length);
-  ast.c[mac] = n;
+  const n = ast.add(N_MACRO_ARGS, atI32(ast.lo, tts));
+  rsAstPut(ast.x, n, style);
+  rsAstPut(ast.fl, n, flags);
+  rsAstPut(ast.ls, n, ast.addKids(args, 0, toI32(args.length)));
+  rsAstPut(ast.ln, n, toI32(args.length));
+  rsAstPut(ast.c, mac, n);
   return n;
 };
 
@@ -217,9 +221,9 @@ const parseOneArg = (ctx: RsCtx, p: RsParser): i32 => {
   if (p.tk() === T_IDENT && p.off < 0 && rsIsReserved(p.kw())) {
     const k1 = p.la(1);
     if (k1 === T_EOF || k1 === T_COMMA) {
-      const n = ast.add(N_MACRO_KW, t.lo[p.p]);
-      ast.hi[n] = t.hi[p.p];
-      ast.d[n] = p.p;
+      const n = ast.add(N_MACRO_KW, atI32(t.lo, p.p));
+      rsAstPut(ast.hi, n, atI32(t.hi, p.p));
+      rsAstPut(ast.d, n, p.p);
       p.bump();
       return n;
     }
@@ -270,8 +274,9 @@ const parseFailureFallback = (ctx: RsCtx, shape: RsShape, pos: i32, lo: i32, hi:
   const snippet = ctx.snippet(lo, hi);
   const ls = rsLines(snippet);
   let likeBlock = false;
-  if (ls.length > 0) {
-    const t = rsTrim(ls[ls.length - 1]);
+  const nls = toI32(ls.length);
+  if (nls > 0 && nls <= ls.length) {
+    const t = rsTrim(ls[nls - 1]);
     likeBlock = true;
     for (let i = 0; i < toI32(t.length); i++) {
       const c = t.charCodeAt(i);
@@ -303,13 +308,13 @@ const rewriteMacroInner = (ctx: RsCtx, mac: i32, shape: RsShape, pos: i32, isNes
   const ast = ctx.ast;
   const cfg = ctx.cfg;
   const originalStyle = macroStyle(ctx, mac);
-  const name = macroName(ctx, ast.a[mac]);
+  const name = macroName(ctx, atI32(ast.a, mac));
   const isForcedBracket = name === "vec!";
   const style = isForcedBracket && !isNested ? DS_BRACKET : originalStyle;
-  const tts = ast.b[mac];
-  const lo = ast.lo[mac];
-  const hi = ast.hi[mac];
-  const tsEmpty = ast.b[tts] === ast.a[tts] + 1;
+  const tts = atI32(ast.b, mac);
+  const lo = atI32(ast.lo, mac);
+  const hi = atI32(ast.hi, mac);
+  const tsEmpty = atI32(ast.b, tts) === add32(atI32(ast.a, tts), 1);
   const hasComment = rsContainsComment(ctx.snippet(lo, hi));
   if (tsEmpty && !hasComment) {
     if (style === DS_PAREN) {
@@ -332,19 +337,19 @@ const rewriteMacroInner = (ctx: RsCtx, mac: i32, shape: RsShape, pos: i32, isNes
     }
   }
   const pa = parseMacroArgs(ctx, mac, style, isForcedBracket);
-  if ((ast.fl[pa] & MA_FAILED) !== 0) {
+  if ((atI32(ast.fl, pa) & MA_FAILED) !== 0) {
     return parseFailureFallback(ctx, shape, pos, lo, hi);
   }
   const args: i32[] = [];
-  for (let i = 0; i < ast.ln[pa]; i++) {
+  for (let i = 0; i < atI32(ast.ln, pa); i++) {
     args.push(ast.kid(pa, i));
   }
-  const vecWithSemi = (ast.fl[pa] & MA_VEC_WITH_SEMI) !== 0;
-  const trailingComma = (ast.fl[pa] & MA_TRAILING_COMMA) !== 0;
+  const vecWithSemi = (atI32(ast.fl, pa) & MA_VEC_WITH_SEMI) !== 0;
+  const trailingComma = (atI32(ast.fl, pa) & MA_TRAILING_COMMA) !== 0;
   if (args.length > 0) {
     let allItems = true;
     for (const a of args) {
-      if (!rsIsItemKind(ast.kind[a])) {
+      if (!rsIsItemKind(atI32(ast.kind, a))) {
         allItems = false;
       }
     }
@@ -391,7 +396,7 @@ const rewriteMacroInner = (ctx: RsCtx, mac: i32, shape: RsShape, pos: i32, isNes
   // Braces: re-indented, not formatted.
   const sn = ctx.snippet(lo, hi);
   const bp = sn.indexOf("{");
-  const snippet = bp < 0 ? "" : sn.slice(bp, toI32(sn.length));
+  const snippet = bp < 0 ? "" : sn.substring(bp, toI32(sn.length));
   const body = rsTrimLeftPreserveLayout(snippet, shape.bi, shape.al, cfg);
   return body !== null ? `${name} ${body}` : `${name} ${snippet}`;
 };
@@ -413,18 +418,18 @@ const handleVecSemi = (
     return null;
   }
   const nested = macShape.blockIndent(cfg.tabSpaces);
-  const l = rsMacroArgRewrite(ctx, args[0], nested);
+  const l = rsMacroArgRewrite(ctx, atI32(args, 0), nested);
   if (l === null) {
     return null;
   }
-  const r = rsMacroArgRewrite(ctx, args[1], nested);
+  const r = rsMacroArgRewrite(ctx, atI32(args, 1), nested);
   if (r === null) {
     return null;
   }
   if (lo > hi) {
     return null;
   }
-  if (!rsHasByte(l, 10) && !rsHasByte(r, 10) && toI32(l.length) + toI32(r.length) + 8 <= shape.width) {
+  if (!rsHasByte(l, 10) && !rsHasByte(r, 10) && add32(add32(toI32(l.length), toI32(r.length)), 8) <= shape.width) {
     return `${name}${left}${l}; ${r}${right}`;
   }
   const ni = rsIndentStrNl(cfg, nested.bi, nested.al);
@@ -448,14 +453,14 @@ const rewriteMacroWithItems = (
   const origOpener = originalStyle === DS_PAREN ? "(" : originalStyle === DS_BRACKET ? "[" : "{";
   const semi = (style === DS_PAREN || style === DS_BRACKET) && pos === MP_ITEM ? ";" : "";
   const v = new RsVisitor(ctx.f);
-  v.bi = shape.bi + cfg.tabSpaces;
+  v.bi = add32(shape.bi, cfg.tabSpaces);
   v.al = shape.al;
   v.lastPos = ctx.spanAfter(lo, hi, origOpener);
   for (const it of items) {
     v.visitItem(it);
   }
   v.giveTo(ctx);
-  const buf = rsTrim(String.fromBytes(v.buf.buf, 0, v.buf.n));
+  const buf = rsTrim(v.text());
   return name + opener + rsIndentStrNl(cfg, v.bi, v.al) + buf + rsIndentStrNl(cfg, shape.bi, shape.al) + closer + semi;
 };
 
@@ -463,11 +468,11 @@ const rewriteMacroWithItems = (
 const formatLazyStatic = (ctx: RsCtx, shape: RsShape, mac: i32, name: string): string | null => {
   const ast = ctx.ast;
   const cfg = ctx.cfg;
-  const tts = ast.b[mac];
+  const tts = atI32(ast.b, mac);
   const p = new RsParser(ctx.f.t, ast);
-  p.p = ast.a[tts] + 1;
-  p.end = ast.b[tts];
-  p.ph = ctx.f.t.hi[ast.a[tts]];
+  p.p = add32(atI32(ast.a, tts), 1);
+  p.end = atI32(ast.b, tts);
+  p.ph = atI32(ctx.f.t.hi, atI32(ast.a, tts));
   const nested = shape.blockIndent(cfg.tabSpaces).withMaxWidth(cfg);
   const elems: i32[] = [];
   while (p.tk() !== T_EOF) {
@@ -501,17 +506,23 @@ const formatLazyStatic = (ctx: RsCtx, shape: RsShape, mac: i32, name: string): s
   let result = name + " {" + rsIndentStrNl(cfg, nested.bi, nested.al);
   const n = toI32(elems.length) / 4;
   for (let i = 0; i < n; i++) {
-    const vis = rsFormatVisibility(ctx, elems[i * 4]);
-    const ts = rsRewriteTy(ctx, elems[i * 4 + 2], nested);
+    // Four elements a static: `n` is a quarter of the length.
+    const e0 = i * 4;
+    if (e0 < 0 || e0 > toI32(elems.length) - 4) {
+      fault();
+      return null;
+    }
+    const vis = rsFormatVisibility(ctx, atI32(elems, e0));
+    const ts = rsRewriteTy(ctx, atI32(elems, e0 + 2), nested);
     if (ts === null) {
       return ""; // parsed, but did not format
     }
-    const stmt = `${vis}static ref ${ctx.tokStr(elems[i * 4 + 1])}: ${ts} =`;
+    const stmt = `${vis}static ref ${ctx.tokStr(atI32(elems, e0 + 1))}: ${ts} =`;
     const sh = nested.subWidth(1);
     if (sh === null) {
       return ""; // parsed, but did not format
     }
-    const r = rsRewriteAssignRhs(ctx, stmt, elems[i * 4 + 3], RHS_EXPR, sh);
+    const r = rsRewriteAssignRhs(ctx, stmt, atI32(elems, e0 + 3), RHS_EXPR, sh);
     if (r === null) {
       return ""; // parsed, but did not format
     }
@@ -530,12 +541,18 @@ const removeTrailingWhiteSpaces = (text: string): string => {
   const r = rsCharClasses(text);
   const buf = new RsStrBuf();
   let space = -1; // where the pending whitespace starts
-  for (let ci = 0; ci < r.nc; ci++) {
-    const i = r.starts[ci];
-    const j = ci + 1 < r.nc ? r.starts[ci + 1] : toI32(text.length);
+  const nc = r.nc;
+  for (let ci = 0; ci < nc; ci++) {
+    const i = atI32(r.starts, ci);
+    const j = ci + 1 < nc ? atI32(r.starts, ci + 1) : toI32(text.length);
+    // A char start is in the text.
+    if (i < 0 || i >= toI32(text.length)) {
+      fault();
+      return "";
+    }
     const c = text.charCodeAt(i);
     if (c === 10) {
-      if (r.kinds[i] === K_IN_STRING && space >= 0) {
+      if (atI32(r.kinds, i) === K_IN_STRING && space >= 0) {
         buf.addSlice(text, space, i);
       }
       space = -1;
@@ -578,14 +595,25 @@ const replaceNames = (input: string, olds: string[], news: string[]): string | n
   const result = new RsStrBuf();
   let dollarCount = 0;
   let curName = "";
-  for (let ci = 0; ci < r.nc; ci++) {
-    const i = r.starts[ci];
-    const j = ci + 1 < r.nc ? r.starts[ci + 1] : toI32(input.length);
+  const nc = r.nc;
+  for (let ci = 0; ci < nc; ci++) {
+    const i = atI32(r.starts, ci);
+    const j = ci + 1 < nc ? atI32(r.starts, ci + 1) : toI32(input.length);
+    // A char start is in the text.
+    if (i < 0 || i >= toI32(input.length)) {
+      fault();
+      return null;
+    }
     const c = input.charCodeAt(i);
     const alnum = (c >= 48 && c <= 57) || (c >= 65 && c <= 90) || (c >= 97 && c <= 122) || c >= 0x80;
-    if (r.kinds[i] !== K_NORMAL) {
+    if (atI32(r.kinds, i) !== K_NORMAL) {
       result.addSlice(input, i, j);
     } else if (c === 36) {
+      // At most one `$` a char of the input.
+      if (dollarCount >= ci + 1) {
+        fault();
+        return null;
+      }
       dollarCount++;
     } else if (dollarCount === 0) {
       result.addSlice(input, i, j);
@@ -597,7 +625,7 @@ const replaceNames = (input: string, olds: string[], news: string[]): string | n
     } else if (c === 40 && curName.length === 0) {
       return null;
     } else if (alnum || c === 95) {
-      curName = curName + input.slice(i, j);
+      curName = curName + input.substring(i, j);
     }
   }
   if (curName.length !== 0) {
@@ -608,7 +636,7 @@ const replaceNames = (input: string, olds: string[], news: string[]): string | n
 
 const registerMetavariable = (olds: string[], news: string[], name: string, dollarCount: i32): string => {
   let nw = "";
-  for (let i = 0; i < dollarCount - 1; i++) {
+  for (let i = 1; i < dollarCount; i++) {
     nw = nw + "$";
   }
   nw = nw + "z" + name;
@@ -620,6 +648,11 @@ const registerMetavariable = (olds: string[], news: string[], name: string, doll
   // A HashMap insert: a repeated name replaces its entry.
   for (let i = 0; i < olds.length; i++) {
     if (olds[i] === old) {
+      // `olds` and `news` grow together.
+      if (i >= news.length) {
+        fault();
+        return nw;
+      }
       news[i] = nw;
       return nw;
     }
@@ -642,7 +675,7 @@ const replaceAll = (s: string, from: string, to: string): string => {
     }
     out.addSlice(s, i, k);
     out.add(to);
-    i = k + toI32(from.length);
+    i = add32(k, toI32(from.length));
   }
   if (i === 0) {
     return s;
@@ -660,14 +693,14 @@ const rewriteBranch = (ctx: RsCtx, br: Branch, shape: RsShape, multi: boolean): 
   if (br.argsKind !== T_LPAREN) {
     return null;
   }
-  const oldBody = rsTrim(ctx.snippet(t.hi[br.bodyOpen], t.lo[br.bodyClose]));
+  const oldBody = rsTrim(ctx.snippet(atI32(t.hi, br.bodyOpen), atI32(t.lo, br.bodyClose)));
   const hasBlockBody = oldBody.startsWith("{");
   // 5 = " => {", and at style edition 2024 6 = " => {{" for a block body.
   const prefixWidth = cfg.styleEdition >= 2024 && hasBlockBody ? 6 : 5;
   if (shape.subWidth(prefixWidth) === null) {
     return null;
   }
-  let result = ctx.snippet(t.lo[br.argsOpen], t.hi[t.match[br.argsOpen]]);
+  let result = ctx.snippet(atI32(t.lo, br.argsOpen), atI32(t.hi, atI32(t.match, br.argsOpen)));
   if (multi) {
     result = result + " =>";
   }
@@ -678,16 +711,16 @@ const rewriteBranch = (ctx: RsCtx, br: Branch, shape: RsShape, multi: boolean): 
     return null;
   }
   result = result + " {";
-  const bbi = hasBlockBody ? shape.bi : shape.bi + cfg.tabSpaces;
+  const bbi = hasBlockBody ? shape.bi : add32(shape.bi, cfg.tabSpaces);
   const bal = shape.al;
-  const newWidth = cfg.maxWidth - (bbi + bal);
+  const newWidth = sub32(cfg.maxWidth, add32(bbi, bal));
   let bodyCfg = rsConfigWithMaxWidthOf(cfg, newWidth);
   let fm0 = rsFormatSnippet(ctx, bodyStr, bodyCfg, true);
   if (fm0 === null) {
     if (ctx.f.unsupported) {
       return null;
     }
-    bodyCfg = rsConfigWithMaxWidthOf(cfg, newWidth + cfg.tabSpaces);
+    bodyCfg = rsConfigWithMaxWidthOf(cfg, add32(newWidth, cfg.tabSpaces));
     fm0 = rsFormatCodeBlock(ctx, bodyStr, bodyCfg, true);
   }
   const fm = fm0;
@@ -701,18 +734,29 @@ const rewriteBranch = (ctx: RsCtx, br: Branch, shape: RsShape, multi: boolean): 
   const nb = new RsStrBuf();
   let needIndent = true;
   const lc = rsLineClasses(rsTrimEnd(fm.text));
-  for (let i = 0; i < lc.n; i++) {
+  const nl = lc.n;
+  for (let i = 0; i < nl; i++) {
+    // `n` counts the lines.
+    if (i >= lc.lines.length) {
+      fault();
+      return null;
+    }
     const l = lc.lines[i];
     if (!isEmptyLine(l) && needIndent && !fm.skipped.contains(i + 1)) {
       nb.add(indentStr);
     }
     nb.add(l);
     nb.add("\n");
-    const k = lc.kinds[i];
+    const k = atI32(lc.kinds, i);
     needIndent = rsIndentNextLine(k, bodyCfg);
   }
   let newBody = nb.str();
   for (let i = 0; i < olds.length; i++) {
+    // `olds` and `news` grow together.
+    if (i >= news.length) {
+      fault();
+      return null;
+    }
     if (oldBody.indexOf(news[i]) >= 0) {
       return null;
     }
@@ -745,40 +789,40 @@ export const rsRewriteMacroDef = (ctx: RsCtx, shape: RsShape, bi: i32, al: i32, 
   const ast = ctx.ast;
   const cfg = ctx.cfg;
   const t = ctx.f.t;
-  const lo = ast.lo[item];
-  const hi = ast.hi[item];
+  const lo = atI32(ast.lo, item);
+  const hi = atI32(ast.hi, item);
   const snippet = removeTrailingWhiteSpaces(ctx.snippet(lo, hi));
   if (snippet.endsWith(";")) {
     return snippet;
   }
-  const isRules = (ast.fl[item] & IT_MACRO_RULES) !== 0;
-  const body = ast.a[item];
+  const isRules = (atI32(ast.fl, item) & IT_MACRO_RULES) !== 0;
+  const body = atI32(ast.a, item);
   // MacroParser::parse over def.body's tokens: the braces' contents, or for
   // `macro m(params) { body }` the tokens `(params) => { body }` rustc makes of it
   // (parse_item_decl_macro). Every token tree must be part of a branch.
-  let first = ast.a[body] + 1;
-  let end = ast.b[body];
-  const params = ast.b[item];
+  let first = add32(atI32(ast.a, body), 1);
+  let end = atI32(ast.b, body);
+  const params = atI32(ast.b, item);
   if (params >= 0) {
-    first = ast.a[params];
-    end = ast.b[body] + 1;
+    first = atI32(ast.a, params);
+    end = add32(atI32(ast.b, body), 1);
   }
   const branches: Branch[] = [];
   let i = first;
   while (i < end) {
-    const k = t.kind[i];
+    const k = atI32(t.kind, i);
     if (!(k === T_LPAREN || k === T_LBRACKET || k === T_LBRACE)) {
       return snippet;
     }
-    const argsClose = t.match[i];
-    const blo = t.lo[i];
+    const argsClose = atI32(t.match, i);
+    const blo = atI32(t.lo, i);
     const argsKind = k;
     const argsOpen = i;
-    i = argsClose + 1;
+    i = add32(argsClose, 1);
     // In `macro m(params) { body }` the params are followed by the body directly; rustc
     // puts the `=>` between them.
-    if (!(params >= 0 && i === ast.a[body])) {
-      if (i >= end || t.kind[i] !== T_FATARROW) {
+    if (!(params >= 0 && i === atI32(ast.a, body))) {
+      if (i >= end || atI32(t.kind, i) !== T_FATARROW) {
         return snippet;
       }
       i++;
@@ -787,45 +831,45 @@ export const rsRewriteMacroDef = (ctx: RsCtx, shape: RsShape, bi: i32, al: i32, 
     if (i >= end) {
       return snippet;
     }
-    const k2 = t.kind[i];
+    const k2 = atI32(t.kind, i);
     if (!(k2 === T_LPAREN || k2 === T_LBRACKET || k2 === T_LBRACE)) {
       return snippet;
     }
-    const bc = t.match[i];
-    let bhi = t.hi[bc];
-    i = bc + 1;
-    if (i < end && t.kind[i] === T_SEMI) {
-      bhi = t.hi[i];
+    const bc = atI32(t.match, i);
+    let bhi = atI32(t.hi, bc);
+    i = add32(bc, 1);
+    if (i < end && atI32(t.kind, i) === T_SEMI) {
+      bhi = atI32(t.hi, i);
       i++;
     }
     branches.push(new Branch(blo, bhi, argsOpen, argsKind, bo, bc));
   }
   // The header (header.rs format_header): `macro_rules!`, or the visibility and
   // `macro`, then the name.
-  const identTok = ast.d[item];
+  const identTok = atI32(ast.d, item);
   let result = "";
   let prevHi = lo;
   if (isRules) {
     result = "macro_rules!";
     prevHi = ctx.spanAfter(lo, hi, "!");
   } else {
-    const vis = ast.e[item];
+    const vis = atI32(ast.e, item);
     if (vis >= 0) {
       result = rsTrimEnd(rsFormatVisibility(ctx, vis));
-      prevHi = ast.hi[vis];
+      prevHi = atI32(ast.hi, vis);
     }
     const macroLo = ctx.spanBefore(lo, hi, "macro");
     result = joinHeaderPart(ctx, result, prevHi, macroLo, "macro");
-    prevHi = macroLo + 5;
+    prevHi = add32(macroLo, 5);
   }
-  result = joinHeaderPart(ctx, result, prevHi, t.lo[identTok], rsIdentStr(ctx, identTok));
+  result = joinHeaderPart(ctx, result, prevHi, atI32(t.lo, identTok), rsIdentStr(ctx, identTok));
   const multi = isRules || branches.length !== 1;
   const armShape = multi ? shape.blockIndent(cfg.tabSpaces).withMaxWidth(cfg) : shape;
   if (branches.length === 0) {
     const blo = ctx.spanBefore(lo, hi, "{");
     // rewrite_empty_macro_def_body: an empty block over [blo, hi).
     const b = ast.add(150, blo);
-    ast.hi[b] = hi;
+    rsAstPut(ast.hi, b, hi);
     const r = rsRewriteBlockNode(ctx, b, shape);
     if (r === null) {
       return null;
@@ -837,13 +881,29 @@ export const rsRewriteMacroDef = (ctx: RsCtx, shape: RsShape, bi: i32, al: i32, 
     toI32(branches.length),
     "}",
     ";",
-    (k: i32): i32 => branches[k].lo,
-    (k: i32): i32 => branches[k].hi,
+    (k: i32): i32 => {
+      if (k >= 0 && k < branches.length) {
+        return branches[k].lo;
+      }
+      fault();
+      return 0;
+    },
+    (k: i32): i32 => {
+      if (k >= 0 && k < branches.length) {
+        return branches[k].hi;
+      }
+      fault();
+      return 0;
+    },
     (k: i32): string | null => {
-      const r = rewriteBranch(ctx, branches[k], armShape, multi);
+      if (k < 0 || k >= branches.length) {
+        fault();
+        return null;
+      }
+      const br = branches[k];
+      const r = rewriteBranch(ctx, br, armShape, multi);
       if (r === null && ctx.macroRewriteFailure) {
-        const br = branches[k];
-        return rsTrim(ctx.snippet(t.hi[br.bodyOpen], t.lo[br.bodyClose]));
+        return rsTrim(ctx.snippet(atI32(t.hi, br.bodyOpen), atI32(t.lo, br.bodyClose)));
       }
       return r;
     },
@@ -869,8 +929,8 @@ export const rsRewriteMacroDef = (ctx: RsCtx, shape: RsShape, bi: i32, al: i32, 
   return result;
 };
 
-export const rsMacroIsExprArg = (ast: RsAst, n: i32): boolean => rsIsExprKind(ast.kind[n]);
-export const rsMacroIsTyArg = (ast: RsAst, n: i32): boolean => rsIsTyKind(ast.kind[n]);
-export const rsMacroIsPatArg = (ast: RsAst, n: i32): boolean => rsIsPatKind(ast.kind[n]);
+export const rsMacroIsExprArg = (ast: RsAst, n: i32): boolean => rsIsExprKind(atI32(ast.kind, n));
+export const rsMacroIsTyArg = (ast: RsAst, n: i32): boolean => rsIsTyKind(atI32(ast.kind, n));
+export const rsMacroIsPatArg = (ast: RsAst, n: i32): boolean => rsIsPatKind(atI32(ast.kind, n));
 export const rsMacroIndent = (ctx: RsCtx, bi: i32, al: i32): string => rsIndentStr(ctx.cfg, bi, al);
 export const rsMacroTrimEnd = (s: string): string => rsTrimEnd(s);

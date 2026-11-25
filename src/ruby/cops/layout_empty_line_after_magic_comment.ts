@@ -5,6 +5,8 @@
 // Batsov).
 
 import { V_NIL } from "../ast";
+import { add32, atI32 } from "../../core/arr";
+import { fault } from "../../core/fault";
 import { RbCop } from "../cop";
 import { RbSource } from "../source";
 import { RbLayLines, rbLayHasAt, rbLayRxSpace } from "./layout_empty_help";
@@ -21,12 +23,19 @@ const rbMagicTokenChar = (c: i32): boolean =>
  */
 const rbMagicKey = (text: string, p: i32, key: string, ci: boolean): i32 => {
   const k = toI32(key.length);
-  if (p + k > toI32(text.length)) {
+  if (p > toI32(text.length) - k) {
     return -1;
   }
+  let j = p;
   for (let i = 0; i < k; i++) {
+    // p + i, below text's length after the test above.
+    if (j < 0 || j >= text.length) {
+      fault();
+      return -1;
+    }
     const want = key.charCodeAt(i);
-    const c = text.charCodeAt(p + i);
+    const c = text.charCodeAt(j);
+    j++;
     if (want === 63) {
       if (c !== 95 && c !== 45) {
         return -1;
@@ -40,7 +49,12 @@ const rbMagicKey = (text: string, p: i32, key: string, ci: boolean): i32 => {
 
 const rbMagicSkipSpace = (text: string, p0: i32): i32 => {
   let p = p0;
-  while (p < toI32(text.length) && rbLayRxSpace(text.charCodeAt(p))) {
+  // Every caller passes a position in the text.
+  if (p < 0) {
+    fault();
+    return p;
+  }
+  while (p >= 0 && p < toI32(text.length) && rbLayRxSpace(text.charCodeAt(p))) {
     p++;
   }
   return p;
@@ -48,7 +62,12 @@ const rbMagicSkipSpace = (text: string, p0: i32): i32 => {
 
 const rbMagicSkipToken = (text: string, p0: i32): i32 => {
   let p = p0;
-  while (p < toI32(text.length) && rbMagicTokenChar(text.charCodeAt(p))) {
+  // Every caller passes a position in the text.
+  if (p < 0) {
+    fault();
+    return p;
+  }
+  while (p >= 0 && p < toI32(text.length) && rbMagicTokenChar(text.charCodeAt(p))) {
     p++;
   }
   return p;
@@ -57,8 +76,9 @@ const rbMagicSkipToken = (text: string, p0: i32): i32 => {
 /** SimpleComment's /\A\s*#\s*KEY:\s*TOKEN\s*\z/io: the token, or null. */
 const rbMagicSimple = (text: string, key: string): string | null => {
   const k = toI32(text.length);
+  // rbMagicSkipSpace answers a position no less than the one it was given.
   let p = rbMagicSkipSpace(text, 0);
-  if (p >= k || text.charCodeAt(p) !== 35) {
+  if (p < 0 || p >= k || text.charCodeAt(p) !== 35) {
     return null;
   }
   p = rbMagicSkipSpace(text, p + 1);
@@ -66,8 +86,8 @@ const rbMagicSimple = (text: string, key: string): string | null => {
   if (m < 0) {
     return null;
   }
-  p += m;
-  if (p >= k || text.charCodeAt(p) !== 58) {
+  p = add32(p, m);
+  if (p < 0 || p >= k || text.charCodeAt(p) !== 58) {
     return null;
   }
   p = rbMagicSkipSpace(text, p + 1);
@@ -82,25 +102,26 @@ const rbMagicSimple = (text: string, key: string): string | null => {
 const rbMagicSimpleEncoding = (text: string): boolean => {
   const k = toI32(text.length);
   let p = rbMagicSkipSpace(text, 0);
-  if (p >= k || text.charCodeAt(p) !== 35) {
+  if (p < 0 || p >= k || text.charCodeAt(p) !== 35) {
     return false;
   }
   p = rbMagicSkipSpace(text, p + 1);
   const starts: i32[] = [p];
   const f = rbMagicKey(text, p, "frozen_string_literal:", true);
   if (f >= 0) {
-    const q = rbMagicSkipSpace(text, p + f);
+    const q = rbMagicSkipSpace(text, add32(p, f));
     const tf = rbMagicKey(text, q, "true", true) >= 0 ? 4 : rbMagicKey(text, q, "false", true) >= 0 ? 5 : -1;
     if (tf > 0) {
-      starts.push(q + tf);
+      starts.push(add32(q, tf));
     }
   }
   for (const s0 of starts) {
     let s = rbMagicSkipSpace(text, s0);
-    if (rbMagicKey(text, s, "en", true) >= 0 && rbMagicKey(text, s + 2, "coding: ", true) >= 0) {
-      s += 2;
+    if (rbMagicKey(text, s, "en", true) >= 0 && rbMagicKey(text, add32(s, 2), "coding: ", true) >= 0) {
+      s = add32(s, 2);
     }
-    if (rbMagicKey(text, s, "coding: ", true) >= 0 && rbMagicTokenChar(s + 8 < k ? text.charCodeAt(s + 8) : -1)) {
+    const s8 = add32(s, 8);
+    if (rbMagicKey(text, s, "coding: ", true) >= 0 && rbMagicTokenChar(s8 >= 0 && s8 < k ? text.charCodeAt(s8) : -1)) {
       return true;
     }
   }
@@ -115,7 +136,7 @@ const rbMagicEditorToken = (tok: string, key: string, op: i32): boolean => {
     return false;
   }
   let p = rbMagicSkipSpace(tok, m);
-  if (p >= k || tok.charCodeAt(p) !== op) {
+  if (p < 0 || p >= k || tok.charCodeAt(p) !== op) {
     return false;
   }
   p = rbMagicSkipSpace(tok, p + 1);
@@ -130,7 +151,11 @@ const rbMagicStrip = (s: string): string => {
   while (b < e && (s.charCodeAt(b) === 0 || rbLayRxSpace(s.charCodeAt(b)))) {
     b++;
   }
-  while (e > b && (s.charCodeAt(e - 1) === 0 || rbLayRxSpace(s.charCodeAt(e - 1)))) {
+  while (e > b && e > 0 && e <= s.length) {
+    const c = s.charCodeAt(e - 1);
+    if (!(c === 0 || rbLayRxSpace(c))) {
+      break;
+    }
     e--;
   }
   return s.substring(b, e);
@@ -143,18 +168,33 @@ const rbMagicSplit = (s: string, sep: string): string[] => {
   const w = toI32(sep.length);
   let from = 0;
   let i = 0;
-  while (i + w <= k) {
+  while (i <= k - w) {
     if (rbLayHasAt(s, i, sep)) {
       out.push(s.substring(from, i));
-      i += w;
+      // A separator is never empty, so i moves on.
+      const ni = add32(i, w);
+      if (ni <= i) {
+        fault();
+        break;
+      }
+      i = ni;
       from = i;
     } else {
+      // Every separator is a non-empty string, so i < k here.
+      if (i >= k) {
+        fault();
+        break;
+      }
       i++;
     }
   }
   out.push(s.substring(from, k));
-  while (out.length > 0 && out[out.length - 1].length === 0) {
-    out.pop();
+  let n = toI32(out.length);
+  while (n > 0 && n <= out.length && out[n - 1].length === 0) {
+    if (out.length > 0) {
+      out.pop();
+    }
+    n = toI32(out.length);
   }
   const r: string[] = [];
   for (const f of out) {
@@ -166,12 +206,12 @@ const rbMagicSplit = (s: string, sep: string): string[] => {
 /** EmacsComment::REGEXP /-\*-(?<token>.+)-\*-/: the token, or null. */
 const rbMagicEmacs = (text: string): string | null => {
   const k = toI32(text.length);
-  for (let i = 0; i + 3 <= k; i++) {
+  for (let i = 0; i <= k - 3; i++) {
     if (!rbLayHasAt(text, i, "-*-")) {
       continue;
     }
     let best = -1;
-    for (let j = i + 4; j + 3 <= k; j++) {
+    for (let j = add32(i, 4); j >= 1 && j <= k - 3; j++) {
       if (text.charCodeAt(j - 1) === 10) {
         break;
       }
@@ -179,8 +219,15 @@ const rbMagicEmacs = (text: string): string | null => {
         best = j;
       }
     }
-    if (best >= 0 && text.charCodeAt(i + 3) !== 10) {
-      return text.substring(i + 3, best);
+    if (best >= 0) {
+      // A match at best lies past i + 3.
+      if (i < 0 || i + 3 >= k) {
+        fault();
+        return null;
+      }
+      if (text.charCodeAt(i + 3) !== 10) {
+        return text.substring(i + 3, best);
+      }
     }
   }
   return null;
@@ -197,9 +244,13 @@ const rbMagicVim = (text: string): string | null => {
     if (!rbLayHasAt(text, p, "vim:")) {
       continue;
     }
-    const q = rbMagicSkipSpace(text, p + 4);
+    const q = rbMagicSkipSpace(text, add32(p, 4));
+    if (q < 0) {
+      fault();
+      return null;
+    }
     let e = q;
-    while (e < k && text.charCodeAt(e) !== 10) {
+    while (e >= 0 && e < k && text.charCodeAt(e) !== 10) {
       e++;
     }
     if (e > q) {
@@ -263,18 +314,20 @@ export class CopLayoutEmptyLineAfterMagicComment {
   run(src: RbSource): void {
     this.c.begin(src);
     // comments_before_code, last to first.
-    const nc = toI32(src.commS.length);
+    const commS = src.commS;
+    const commE = src.commE;
+    const nc = toI32(commS.length);
     let upto = nc;
     if (src.root !== V_NIL) {
       const astLine = src.line(src.a.exS(src.root));
       upto = 0;
-      while (upto < nc && src.line(src.commS[upto]) < astLine) {
+      while (upto < nc && upto < commS.length && src.line(commS[upto]) < astLine) {
         upto++;
       }
     }
     let last = -1;
     for (let i = upto - 1; i >= 0; i--) {
-      if (rbMagicAny(src.src(src.commS[i], src.commE[i]))) {
+      if (rbMagicAny(src.src(atI32(commS, i), atI32(commE, i)))) {
         last = i;
         break;
       }
@@ -283,18 +336,24 @@ export class CopLayoutEmptyLineAfterMagicComment {
       return;
     }
     const L = new RbLayLines(src);
-    const line = src.line(src.commS[last]);
+    const line = src.line(atI32(commS, last));
     let actual = 0;
-    while (L.has(line + actual) && L.blank(line + actual)) {
+    while (L.has(add32(line, actual)) && L.blank(add32(line, actual))) {
+      // Each step passes a line of the source.
+      if (actual >= 2147483646) {
+        fault();
+        return;
+      }
       actual++;
     }
-    if (!L.has(line + actual) || actual >= 1) {
+    if (!L.has(add32(line, actual)) || actual >= 1) {
       return;
     }
-    const s = L.start(line + 1);
-    const k = this.c.offense(s, s + 1);
+    const s = L.start(add32(line, 1));
+    const s1 = add32(s, 1);
+    const k = this.c.offense(s, s1);
     if (k !== null) {
-      k.insertBefore(s, s + 1, "\n");
+      k.insertBefore(s, s1, "\n");
       this.c.commit(k);
     }
   }

@@ -9,7 +9,9 @@
 // Platforms, Inc. and affiliates; originally from the kdoc-formatter
 // project, Copyright 2022 Google LLC).
 
-import { strUtf16Len } from "../core/arr";
+import { add32, atI32, mul32, sliceStrs, strUtf16Len, sub32 } from "../core/arr";
+import { fault } from "../core/fault";
+import { stableSort } from "../core/sort";
 import { K_MAX_WIDTH } from "./options";
 
 const HANGING_INDENT: i32 = 2;
@@ -54,9 +56,13 @@ class KdParagraph {
 
   /** Paragraph.reflow, with the first line as wide as the rest. */
   reflow(maxLineWidth: i32): string[] {
-    const lineWidth = maxLineWidth - kdIndentSize(this.indent);
-    const hangingIndentSize = kdIndentSize(this.hangingIndent) - (this.quoted > 0 ? 2 * this.quoted : 0);
-    if (kdLen(this.content) < maxLineWidth - hangingIndentSize) {
+    const lineWidth = sub32(maxLineWidth, kdIndentSize(this.indent));
+    let quoteSize = 0;
+    if (this.quoted > 0) {
+      quoteSize = mul32(2, this.quoted);
+    }
+    const hangingIndentSize = sub32(kdIndentSize(this.hangingIndent), quoteSize);
+    if (kdLen(this.content) < sub32(maxLineWidth, hangingIndentSize)) {
       return [kdCollapseSpaces(this.content)];
     }
     const words = this.computeWords();
@@ -69,7 +75,7 @@ class KdParagraph {
   reflowGreedy(lineWidth: i32, words: string[]): string[] {
     let width = lineWidth;
     if (this.hanging && this.continuation) {
-      width -= kdIndentSize(this.hangingIndent);
+      width = sub32(width, kdIndentSize(this.hangingIndent));
     }
     const lines: string[] = [];
     let column = 0;
@@ -79,14 +85,14 @@ class KdParagraph {
       const wl = kdLen(word);
       if (sb.length === 0) {
         sb = word;
-        column += wl;
-      } else if (column + wl + 1 <= width) {
+        column = add32(column, wl);
+      } else if (add32(add32(column, wl), 1) <= width) {
         sb = `${sb} ${word}`;
-        column += wl + 1;
+        column = add32(column, add32(wl, 1));
       } else {
         width = lineWidth;
         if (this.hanging) {
-          width -= kdIndentSize(this.hangingIndent);
+          width = sub32(width, kdIndentSize(this.hangingIndent));
         }
         lines.push(sb);
         sb = word;
@@ -109,39 +115,44 @@ class KdParagraph {
     let from = 0;
     const end = toI32(words.length);
     while (from < end) {
-      const start = from === 0 && (this.quoted > 0 || (this.hanging && !kdIsKDocTag(text))) ? from + 2 : from + 1;
+      let start = from + 1;
+      if (from === 0 && (this.quoted > 0 || (this.hanging && !kdIsKDocTag(text)))) {
+        start = 2;
+      }
       let to = end;
       for (let i = start; i < end; i++) {
-        const next = words[i];
+        const next = kdStrAt(words, i);
         if (next.startsWith("[") && !next.startsWith("[[")) {
           let j = -1;
+          let afterJ = 0;
           for (let k = i; k < end; k++) {
-            if (words[k].indexOf("]") >= 0) {
+            if (kdStrAt(words, k).indexOf("]") >= 0) {
               j = k;
+              afterJ = k + 1;
               break;
             }
           }
           if (j !== -1) {
-            if (start === from + 1 && kdCanBreakAt(words[start - 1], words[start])) {
-              combined.push(words[from]);
+            if (start === add32(from, 1) && kdCanBreakAt(kdStrAt(words, sub32(start, 1)), kdStrAt(words, start))) {
+              combined.push(kdStrAt(words, from));
               from = start;
             }
-            to = j + 1;
-            if (to === end || kdCanBreakAt(words[to - 1], words[to])) {
+            to = afterJ;
+            if (to === end || kdCanBreakAt(kdStrAt(words, sub32(to, 1)), kdStrAt(words, to))) {
               break;
             }
           }
-        } else if (kdCanBreakAt(words[i - 1], next)) {
+        } else if (kdCanBreakAt(kdStrAt(words, sub32(i, 1)), next)) {
           to = i;
           break;
         }
       }
-      if (to === from + 1) {
-        combined.push(words[from]);
+      if (to === add32(from, 1)) {
+        combined.push(kdStrAt(words, from));
       } else if (to > from) {
-        let s = words[from];
+        let s = kdStrAt(words, from);
         for (let k = from + 1; k < to; k++) {
-          s = `${s} ${words[k]}`;
+          s = `${s} ${kdStrAt(words, k)}`;
         }
         combined.push(s);
       }
@@ -150,6 +161,55 @@ class KdParagraph {
     return combined;
   }
 }
+
+/** `xs[i]`, or "" after a fault when `i` is outside `xs`. */
+const kdStrAt = (xs: string[], i: i32): string => {
+  if (i >= 0 && i < xs.length) {
+    return xs[i];
+  }
+  fault();
+  return "";
+};
+
+/** The order of two doc-tag units (by their first paragraphs), as sortDocTags' comparator. */
+const kdCompareUnits = (ps: KdParagraph[], unitItems: i32[][], fnp: i32, a: i32, b: i32): i32 => {
+  if (a < 0 || a >= unitItems.length || b < 0 || b >= unitItems.length) {
+    fault();
+    return 0;
+  }
+  const ua = unitItems[a];
+  const ub = unitItems[b];
+  if (ua.length <= 0 || ub.length <= 0) {
+    fault();
+    return 0;
+  }
+  const o1 = ua[0];
+  const o2 = ub[0];
+  if (o1 < 0 || o1 >= ps.length || o2 < 0 || o2 >= ps.length) {
+    fault();
+    return 0;
+  }
+  const p1 = ps[o1];
+  const p2 = ps[o2];
+  const isPriority1 = p1.doc && p1.content.startsWith("@sample") && o1 < fnp;
+  const isPriority2 = p2.doc && p2.content.startsWith("@sample") && o2 < fnp;
+  const t1 = kdIsTodo(p1.content);
+  const t2 = kdIsTodo(p2.content);
+  if (t1 !== t2) {
+    return t1 ? 1 : -1;
+  }
+  if (p1.doc === p2.doc) {
+    if (p1.doc) {
+      const r1 = kdDocTagRank(p1.content, isPriority1);
+      const r2 = kdDocTagRank(p2.content, isPriority2);
+      if (r1 !== r2) {
+        return r1 < r2 ? -1 : 1;
+      }
+    }
+    return o1 < o2 ? -1 : o1 > o2 ? 1 : 0;
+  }
+  return p1.doc ? 1 : -1;
+};
 
 /** Paragraph.canBreakAt. */
 const kdCanBreakAt = (prev: string, word: string): boolean => {
@@ -258,8 +318,13 @@ class KdBuilder {
   }
 
   stripTrailingBlankLines(): void {
-    while (this.paragraphs.length > 0 && this.paragraphs[this.paragraphs.length - 1].isEmpty()) {
-      this.paragraphs.pop();
+    const ps = this.paragraphs;
+    let k = toI32(ps.length) - 1;
+    while (k >= 0 && k < ps.length && ps[k].isEmpty()) {
+      if (ps.length > 0) {
+        ps.pop();
+      }
+      k = toI32(ps.length) - 1;
     }
   }
 
@@ -269,7 +334,7 @@ class KdBuilder {
     }
     if (mode === UNTIL_LIST_ITEM) {
       const n = toI32(this.lines.length);
-      if (kdIsBlank(s) && j < n - 1 && this.lineContent(this.lines[j + 1]).startsWith(" ")) {
+      if (kdIsBlank(s) && j < n - 1 && this.lineContent(kdStrAt(this.lines, j + 1)).startsWith(" ")) {
         return false;
       }
       return (
@@ -286,7 +351,7 @@ class KdBuilder {
         (kdLen(s) > 2 &&
           (kdWsAt(s, 0) === 0 || kdWsAt(s, 1) === 0) &&
           j < n - 1 &&
-          kdIsBlank(this.lineContent(this.lines[j - 1])))
+          kdIsBlank(this.lineContent(kdStrAt(this.lines, sub32(j, 1)))))
       );
     }
     return true;
@@ -297,7 +362,7 @@ class KdBuilder {
     let j = i;
     const n = toI32(this.lines.length);
     while (j < n) {
-      const l = this.lines[j];
+      const l = kdStrAt(this.lines, j);
       const withIndent = this.lineContent(l);
       const without = kdTrim(withIndent);
       if (!includeEnd) {
@@ -327,7 +392,7 @@ class KdBuilder {
       if (mode === UNTIL_HTML_LIST) {
         this.paragraph.block = true;
       } else if (mode === UNTIL_LIST_ITEM) {
-        if (kdIsBlank(this.lineContent(this.lines[j])) && j >= start) {
+        if (kdIsBlank(this.lineContent(kdStrAt(this.lines, j))) && j >= start) {
           this.paragraph.setHanging(true);
           this.paragraph.continuation = true;
         }
@@ -361,7 +426,7 @@ class KdBuilder {
     let foundClose = false;
     const n = toI32(this.lines.length);
     while (j < n) {
-      const withIndent = this.lineContent(this.lines[j]);
+      const withIndent = this.lineContent(kdStrAt(this.lines, j));
       const done = (includeStart || j > i) && this.preUntil(mode, withIndent);
       if (!includeEnd && done) {
         foundClose = true;
@@ -377,7 +442,7 @@ class KdBuilder {
       j = n;
     }
     for (let index = i; index < j; index++) {
-      this.appendText(this.lineContent(this.lines[index]));
+      this.appendText(this.lineContent(kdStrAt(this.lines, index)));
       this.paragraph.preformatted = true;
       this.paragraph.allowEmpty = true;
       this.newParagraph();
@@ -391,7 +456,12 @@ class KdBuilder {
     let i = 0;
     const n = toI32(this.lines.length);
     while (i < n) {
-      const l = this.lines[i];
+      // Every step answers a line index, not negative.
+      if (i < 0) {
+        fault();
+        break;
+      }
+      const l = kdStrAt(this.lines, i);
       i++;
       const withIndent = this.lineContent(l);
       const without = kdTrim(withIndent);
@@ -399,8 +469,8 @@ class KdBuilder {
       const prevP = this.paragraph.prev;
       if (
         withIndent.startsWith("    ") &&
-        (i === 1 || kdIsBlank(this.lineContent(this.lines[i - 2]))) &&
-        (prevP === null || indentOf >= prevP.originalIndent + 4)
+        (i === 1 || kdIsBlank(this.lineContent(kdStrAt(this.lines, sub32(i, 2))))) &&
+        (prevP === null || indentOf >= add32(prevP.originalIndent, 4))
       ) {
         i = this.addPreformatted(i - 1, false, false, false, PRE_UNINDENTED);
       } else if (without.startsWith("-") && kdContainsOnly(without, "-| ")) {
@@ -409,8 +479,8 @@ class KdBuilder {
         this.newParagraphAt(i, l, withIndent, without).block = true;
         if (
           kdIsLine(withIndent, 3) &&
-          (i < 2 || kdIsBlank(this.lineContent(this.lines[i - 2]))) &&
-          (i > n - 1 || kdIsBlank(this.lineContent(this.lines[i])))
+          (i < 2 || kdIsBlank(this.lineContent(kdStrAt(this.lines, sub32(i, 2))))) &&
+          (i > n - 1 || kdIsBlank(this.lineContent(kdStrAt(this.lines, i))))
         ) {
           p.separator = true;
         }
@@ -436,7 +506,7 @@ class KdBuilder {
         let prevDepth = 0;
         let isFirst = true;
         while (i < n) {
-          const qTrimmed = kdTrim(this.lineContent(this.lines[i]));
+          const qTrimmed = kdTrim(this.lineContent(kdStrAt(this.lines, i)));
           if (
             kdIsBlank(qTrimmed) ||
             kdIsKDocTag(qTrimmed) ||
@@ -455,7 +525,7 @@ class KdBuilder {
             let d = 0;
             let s = qTrimmed;
             while (s.startsWith("> ")) {
-              d++;
+              d = add32(d, 1);
               s = kdTrimStart(s.substring(2, toI32(s.length)));
             }
             depth = d;
@@ -492,16 +562,16 @@ class KdBuilder {
         }
         const start = i;
         i = this.addLines(i, false, UNTIL_LIST_ITEM, start);
-        while (i < n && kdTrim(this.lineContent(this.lines[i])).startsWith("```")) {
+        while (i < n && kdTrim(this.lineContent(kdStrAt(this.lines, i))).startsWith("```")) {
           i = this.addPreformatted(i, false, true, true, PRE_FENCE);
           if (i >= n) {
             break;
           }
-          const nextLine = this.lineContent(this.lines[i]);
+          const nextLine = this.lineContent(kdStrAt(this.lines, i));
           const nextTrimmed = kdTrim(nextLine);
           let isContinuation = false;
           if (kdIsBlank(nextTrimmed)) {
-            isContinuation = i + 1 < n && this.lineContent(this.lines[i + 1]).startsWith(" ");
+            isContinuation = i + 1 < n && this.lineContent(kdStrAt(this.lines, i + 1)).startsWith(" ");
           } else {
             isContinuation =
               nextLine.startsWith(" ") &&
@@ -529,11 +599,15 @@ class KdBuilder {
         this.appendText(without);
         this.newParagraphAt(i, l, withIndent, without).block = true;
       } else {
-        if (without.indexOf("|") >= 0 && this.paragraph.isEmpty() && (i < 2 || this.lines[i - 2].indexOf("---") < 0)) {
+        if (
+          without.indexOf("|") >= 0 &&
+          this.paragraph.isEmpty() &&
+          (i < 2 || kdStrAt(this.lines, sub32(i, 2)).indexOf("---") < 0)
+        ) {
           const t = new KdTable();
           const nextRow = t.read(this, i - 1);
           if (nextRow >= 0) {
-            const content = t.format(K_MAX_WIDTH - indentSize - 3);
+            const content = t.format(sub32(sub32(K_MAX_WIDTH, indentSize), 3));
             for (let index = 0; index < toI32(content.length); index++) {
               this.appendText(content[index]);
               this.paragraph.separate = index === 0;
@@ -578,7 +652,7 @@ class KdBuilder {
     const n = toI32(this.lines.length);
     if (braceBalance > 0) {
       if (s.indexOf("}") < 0 && i < n) {
-        const next = kdTrim(this.lineContent(this.lines[i]));
+        const next = kdTrim(this.lineContent(kdStrAt(this.lines, i)));
         if (kdIsBlank(next) || next.startsWith("```")) {
           return i;
         }
@@ -588,7 +662,7 @@ class KdBuilder {
     const index = s.indexOf("{@");
     if (index >= 0) {
       if (kdIndexOfFrom(s, "}", index) < 0 && i < n) {
-        const next = kdTrim(this.lineContent(this.lines[i]));
+        const next = kdTrim(this.lineContent(kdStrAt(this.lines, i)));
         if (kdIsBlank(next) || next.startsWith("```")) {
           return i;
         }
@@ -629,7 +703,7 @@ class KdBuilder {
     const unitStart: i32[] = [];
     const unitItems: i32[][] = [];
     let tagUnit = -1;
-    for (let k = 0; k < np; k++) {
+    for (let k = 0; k < ps.length; k++) {
       const p = ps[k];
       if (p.doc) {
         unitItems.push([]);
@@ -637,6 +711,10 @@ class KdBuilder {
         tagUnit = toI32(unitItems.length) - 1;
       }
       if (tagUnit >= 0 && !kdIsTodo(p.content)) {
+        if (tagUnit >= unitItems.length) {
+          fault();
+          return;
+        }
         unitItems[tagUnit].push(k);
       } else {
         unitItems.push([k]);
@@ -648,35 +726,22 @@ class KdBuilder {
       order.push(u);
     }
     const fnp = firstNonPriority;
-    order.sort((a: i32, b: i32): i32 => {
-      const o1 = unitItems[a][0];
-      const o2 = unitItems[b][0];
-      const p1 = ps[o1];
-      const p2 = ps[o2];
-      const isPriority1 = p1.doc && p1.content.startsWith("@sample") && o1 < fnp;
-      const isPriority2 = p2.doc && p2.content.startsWith("@sample") && o2 < fnp;
-      const t1 = kdIsTodo(p1.content);
-      const t2 = kdIsTodo(p2.content);
-      if (t1 !== t2) {
-        return t1 ? 1 : -1;
-      }
-      if (p1.doc === p2.doc) {
-        if (p1.doc) {
-          const r1 = kdDocTagRank(p1.content, isPriority1);
-          const r2 = kdDocTagRank(p2.content, isPriority2);
-          if (r1 !== r2) {
-            return r1 - r2;
-          }
-        }
-        return o1 - o2;
-      }
-      return p1.doc ? 1 : -1;
-    });
+    stableSort(order, (a: i32, b: i32): i32 => kdCompareUnits(ps, unitItems, fnp, a, b));
     const sorted: KdParagraph[] = [];
     for (let q = 0; q < toI32(order.length); q++) {
-      const items = unitItems[order[q]];
+      const u = order[q];
+      if (u < 0 || u >= unitItems.length) {
+        fault();
+        return;
+      }
+      const items = unitItems[u];
       for (let k = 0; k < toI32(items.length); k++) {
-        sorted.push(ps[items[k]]);
+        const it = items[k];
+        if (it < 0 || it >= ps.length) {
+          fault();
+          return;
+        }
+        sorted.push(ps[it]);
       }
     }
     let prev: KdParagraph | null = null;
@@ -750,7 +815,7 @@ class KdBuilder {
           }
           p.content = kdTrimStart(p.content);
         } else {
-          p.hangingIndent = kdSpaces(kdLen(kdBeforeSpace(text)) + 1);
+          p.hangingIndent = kdSpaces(add32(kdLen(kdBeforeSpace(text)), 1));
         }
       }
       prev = p;
@@ -760,7 +825,13 @@ class KdBuilder {
   adjustIndentation(): void {
     const ps = this.paragraphs;
     const np = toI32(ps.length);
-    const firstIndent = ps[0].originalIndent;
+    // arrange() runs on a list that is not empty.
+    if (ps.length <= 0) {
+      fault();
+      return;
+    }
+    const p0 = ps[0];
+    const firstIndent = p0.originalIndent;
     if (firstIndent > 0) {
       for (let k = 0; k < np; k++) {
         if (ps[k].originalIndent <= firstIndent) {
@@ -768,10 +839,10 @@ class KdBuilder {
         }
       }
     }
-    let inList = ps[0].hanging;
+    let inList = p0.hanging;
     let startIndent = 0;
     const levels: i32[] = [];
-    for (let k = 1; k < np; k++) {
+    for (let k = 1; k < ps.length; k++) {
       const p = ps[k];
       if (!inList) {
         if (p.hanging) {
@@ -789,15 +860,15 @@ class KdBuilder {
     if (levels.length === 0) {
       return;
     }
-    levels.sort((a: i32, b: i32): i32 => a - b);
-    for (let k = 0; k < np; k++) {
+    stableSort(levels, (a: i32, b: i32): i32 => (a < b ? -1 : a > b ? 1 : 0));
+    for (let k = 0; k < ps.length; k++) {
       const p = ps[k];
       if (p.originalIndent > 0) {
         const idx = levels.indexOf(p.originalIndent);
         if (idx < 0) {
           continue;
         }
-        p.originalIndent = (idx + 1) * NESTED_LIST_INDENT;
+        p.originalIndent = mul32(add32(idx, 1), NESTED_LIST_INDENT);
         p.indent = kdSpaces(p.originalIndent);
       }
     }
@@ -806,6 +877,11 @@ class KdBuilder {
   removeBlankParagraphs(): void {
     for (let k = toI32(this.paragraphs.length) - 2; k >= 0; k--) {
       const ps = this.paragraphs;
+      // One paragraph goes per step down, so k stays inside.
+      if (k >= ps.length) {
+        fault();
+        return;
+      }
       const p = ps[k];
       if (p.isEmpty() && (!p.preformatted || k === toI32(ps.length) - 1)) {
         if (p.separate && k + 1 < toI32(ps.length)) {
@@ -819,7 +895,12 @@ class KdBuilder {
         }
         this.paragraphs = rest;
         if (k > 0) {
-          rest[k - 1].next = null;
+          const q = k - 1;
+          if (q >= rest.length) {
+            fault();
+            return;
+          }
+          rest[q].next = null;
         }
       }
     }
@@ -906,6 +987,10 @@ class KdTable {
     if (start > n - 2) {
       return -1;
     }
+    if (start < 0) {
+      fault();
+      return -1;
+    }
     const headerLine = b.lineContent(lines[start]);
     const separatorLine = b.lineContent(lines[start + 1]);
     const barCount = kdCountSeparators(headerLine);
@@ -915,8 +1000,8 @@ class KdTable {
     const header = kdGetRow(headerLine);
     const dividerRow = kdGetRow(separatorLine);
     this.rows.push(header);
-    let i = start + 2;
-    while (i < n) {
+    let i = add32(start, 2);
+    while (i >= 0 && i < lines.length) {
       const line = b.lineContent(lines[i]);
       if (line.indexOf("|") < 0) {
         break;
@@ -926,19 +1011,28 @@ class KdTable {
     }
     // A leading empty cell in every row (a line starting with `|`) goes.
     let allBlank = true;
-    for (let r = 0; r <= toI32(this.rows.length); r++) {
-      const row = r < toI32(this.rows.length) ? this.rows[r] : dividerRow;
-      if (row.length === 0 || !kdIsBlank(row[0])) {
+    const rows = this.rows;
+    for (let r = 0; r < rows.length; r++) {
+      const row = rows[r];
+      if (row.length <= 0 || !kdIsBlank(row[0])) {
         allBlank = false;
         break;
       }
     }
+    if (allBlank && (dividerRow.length <= 0 || !kdIsBlank(dividerRow[0]))) {
+      allBlank = false;
+    }
     let divider = dividerRow;
     if (allBlank) {
-      for (let r = 0; r < toI32(this.rows.length); r++) {
-        this.rows[r] = this.rows[r].slice(1, toI32(this.rows[r].length));
+      for (let r = 0; r < toI32(rows.length); r++) {
+        const row = sliceStrs(rows[r], 1, toI32(rows[r].length));
+        if (r >= rows.length) {
+          fault();
+          return -1;
+        }
+        rows[r] = row;
       }
-      divider = dividerRow.slice(1, toI32(dividerRow.length));
+      divider = sliceStrs(dividerRow, 1, toI32(dividerRow.length));
     }
     const columns = toI32(divider.length);
     let maxColumns = 0;
@@ -950,12 +1044,18 @@ class KdTable {
     for (let c = 0; c < maxColumns; c++) {
       this.widths.push(3);
     }
+    const widths = this.widths;
     for (let r = 0; r < toI32(this.rows.length); r++) {
       const row = this.rows[r];
       for (let c = 0; c < toI32(row.length); c++) {
         const w = kdLen(row[c]);
-        if (w > this.widths[c]) {
-          this.widths[c] = w;
+        // widths holds a column for each cell of the longest row.
+        if (c >= widths.length) {
+          fault();
+          return -1;
+        }
+        if (w > widths[c]) {
+          widths[c] = w;
         }
       }
       for (let c = toI32(row.length); c < columns; c++) {
@@ -974,8 +1074,9 @@ class KdTable {
 
   format(maxWidth: i32): string[] {
     let tableMaxWidth = 2;
-    for (let c = 0; c < toI32(this.widths.length); c++) {
-      tableMaxWidth += this.widths[c] + 2;
+    const widths = this.widths;
+    for (let c = 0; c < toI32(widths.length); c++) {
+      tableMaxWidth = add32(tableMaxWidth, add32(widths[c], 2));
     }
     const pad = tableMaxWidth <= maxWidth;
     const lines: string[] = [];
@@ -988,16 +1089,17 @@ class KdTable {
           sb = `${sb} `;
         }
         const cell = row[c];
-        const width = this.widths[c];
+        const width = atI32(this.widths, c);
         const cl = kdLen(cell);
+        const al = atI32(this.align, c);
         let s = "";
-        if (this.align[c] === AL_CENTER && r > 0) {
-          const inner = kdSpaces(cl + kdIntDiv(width - cl, 2) - cl) + cell;
-          s = inner + kdSpaces(width - kdLen(inner));
-        } else if (this.align[c] === AL_RIGHT && r > 0) {
-          s = kdSpaces(width - cl) + cell;
+        if (al === AL_CENTER && r > 0) {
+          const inner = kdSpaces(sub32(add32(cl, kdIntDiv(sub32(width, cl), 2)), cl)) + cell;
+          s = inner + kdSpaces(sub32(width, kdLen(inner)));
+        } else if (al === AL_RIGHT && r > 0) {
+          s = kdSpaces(sub32(width, cl)) + cell;
         } else {
-          s = cell + kdSpaces(width - cl);
+          s = cell + kdSpaces(sub32(width, cl));
         }
         sb = sb + s;
         if (pad) {
@@ -1009,12 +1111,13 @@ class KdTable {
         let d = "";
         for (let c = 0; c < toI32(row.length); c++) {
           d = `${d}|`;
-          let width = this.widths[c];
-          if (this.align[c] !== AL_LEFT) {
-            width--;
-            if (this.align[c] === AL_CENTER) {
+          let width = atI32(this.widths, c);
+          const al = atI32(this.align, c);
+          if (al !== AL_LEFT) {
+            width = sub32(width, 1);
+            if (al === AL_CENTER) {
               d = `${d}:`;
-              width--;
+              width = sub32(width, 1);
             }
           }
           if (pad) {
@@ -1026,7 +1129,7 @@ class KdTable {
           if (pad) {
             d = `${d}-`;
           }
-          if (this.align[c] !== AL_LEFT) {
+          if (al !== AL_LEFT) {
             d = `${d}:`;
           }
         }
@@ -1037,8 +1140,16 @@ class KdTable {
   }
 }
 
-/** Kotlin's Int division (truncating toward zero). */
-const kdIntDiv = (a: i32, b: i32): i32 => (a >= 0 ? (a - (a % b)) / b : -((-a - (-a % b)) / b));
+/** Kotlin's Int division by a positive divisor (truncating toward zero). */
+const kdIntDiv = (a: i32, b: i32): i32 => {
+  // The original negates a negative a, which overflows at the least i32.
+  if (b <= 0 || a < -2147483647) {
+    fault();
+    return 0;
+  }
+  // i32 division truncates toward zero, as Kotlin's does.
+  return a / b;
+};
 
 const kdIsHeaderDivider = (barCount: i32, s: string): boolean => {
   let i = 0;
@@ -1048,9 +1159,12 @@ const kdIsHeaderDivider = (barCount: i32, s: string): boolean => {
     const c = s.charCodeAt(i);
     i++;
     if (c === 92) {
-      i++;
+      // Past the end leaves the loop just as n does.
+      if (i < n) {
+        i++;
+      }
     } else if (c === 124) {
-      count++;
+      count = add32(count, 1);
     } else if (kdWsAt(s, i - 1) > 0 || c === 58) {
       continue;
     } else if (
@@ -1075,17 +1189,25 @@ const kdGetRow = (s: string): string[] => {
   let i = 0;
   let end = 0;
   const n = toI32(s.length);
+  // A line of a comment of a source the lexer took, so below 2^30 bytes.
+  if (n > 1073741823) {
+    fault();
+    return cells;
+  }
   while (end < n) {
     const c = s.charCodeAt(end);
     if (c === 92) {
-      end++;
-    } else if (c === 124) {
-      if (end > 0) {
-        cells.push(kdTrim(s.substring(i, end)));
+      // The escaped character too.
+      end += 2;
+    } else {
+      if (c === 124) {
+        if (end > 0) {
+          cells.push(kdTrim(s.substring(i, end)));
+        }
+        i = end + 1;
       }
-      i = end + 1;
+      end++;
     }
-    end++;
   }
   if (end > i) {
     const cell = kdTrim(s.substring(i, n < end ? n : end));
@@ -1100,14 +1222,22 @@ const kdCountSeparators = (s: string): i32 => {
   let i = 0;
   let count = 0;
   const n = toI32(s.length);
+  // A line of a comment of a source the lexer took, so below 2^30 bytes.
+  if (n > 1073741823) {
+    fault();
+    return 0;
+  }
   while (i < n) {
     const c = s.charCodeAt(i);
-    if (c === 124) {
-      count++;
-    } else if (c === 92) {
+    if (c === 92) {
+      // The escaped character too.
+      i += 2;
+    } else {
+      if (c === 124) {
+        count = add32(count, 1);
+      }
       i++;
     }
-    i++;
   }
   return count;
 };
@@ -1123,7 +1253,7 @@ export const formatKDoc = (comment: string, column0: i32, maxWidth: i32): string
   const lineSeparator = `\n${indent}${LINE_PREFIX}`;
   if (paragraphs.length <= 1) {
     const trimmed = paragraphs.length > 0 ? kdTrim(paragraphs[0].content) : "";
-    let width = maxWidth - column0 - 7;
+    let width = sub32(sub32(maxWidth, column0), 7);
     if (width > maxWidth) {
       width = maxWidth;
     }
@@ -1142,13 +1272,16 @@ export const formatKDoc = (comment: string, column0: i32, maxWidth: i32): string
       sb = kdStripTrailingSpace(sb + p.content) + lineSeparator;
       continue;
     }
-    const lineWithoutIndent = maxWidth - toI32(LINE_PREFIX.length);
-    const quoteAdjustment = p.quoted > 0 ? 2 * p.quoted : 0;
-    let mlw = lineWithoutIndent - indentSize;
+    const lineWithoutIndent = sub32(maxWidth, toI32(LINE_PREFIX.length));
+    let quoteAdjustment = 0;
+    if (p.quoted > 0) {
+      quoteAdjustment = mul32(2, p.quoted);
+    }
+    let mlw = sub32(lineWithoutIndent, indentSize);
     if (maxWidth < mlw) {
       mlw = maxWidth;
     }
-    mlw -= quoteAdjustment;
+    mlw = sub32(mlw, quoteAdjustment);
     const lines = p.reflow(mlw);
     let first = true;
     for (let q = 0; q < toI32(lines.length); q++) {
@@ -1195,7 +1328,11 @@ const kdSpaces = (k: i32): string => {
 const kdIndentSize = (s: string): i32 => {
   let n = 0;
   for (let i = 0; i < toI32(s.length); i++) {
-    n += s.charCodeAt(i) === 9 ? 8 : 1;
+    if (s.charCodeAt(i) === 9) {
+      n = add32(n, 8);
+    } else {
+      n = add32(n, 1);
+    }
   }
   return n;
 };
@@ -1206,6 +1343,10 @@ const kdWsAt = (s: string, i: i32): i32 => {
   if (i >= n) {
     return 0;
   }
+  if (i < 0) {
+    fault();
+    return 0;
+  }
   const c = s.charCodeAt(i);
   if (c === 32 || (c >= 9 && c <= 13) || (c >= 0x1c && c <= 0x1f)) {
     return 1;
@@ -1214,10 +1355,10 @@ const kdWsAt = (s: string, i: i32): i32 => {
     const d = s.charCodeAt(i + 1);
     return d === 0xa0 || d === 0x85 ? 2 : 0;
   }
-  if (c === 0xe1 && i + 2 < n && s.charCodeAt(i + 1) === 0x9a && s.charCodeAt(i + 2) === 0x80) {
+  if (c === 0xe1 && i < n - 2 && s.charCodeAt(i + 1) === 0x9a && s.charCodeAt(i + 2) === 0x80) {
     return 3;
   }
-  if (c === 0xe2 && i + 2 < n) {
+  if (c === 0xe2 && i < n - 2) {
     const d = s.charCodeAt(i + 1);
     const f = s.charCodeAt(i + 2);
     if (d === 0x80 && ((f >= 0x80 && f <= 0x8a) || f === 0xa8 || f === 0xa9 || f === 0xaf)) {
@@ -1227,7 +1368,7 @@ const kdWsAt = (s: string, i: i32): i32 => {
       return 3;
     }
   }
-  if (c === 0xe3 && i + 2 < n && s.charCodeAt(i + 1) === 0x80 && s.charCodeAt(i + 2) === 0x80) {
+  if (c === 0xe3 && i < n - 2 && s.charCodeAt(i + 1) === 0x80 && s.charCodeAt(i + 2) === 0x80) {
     return 3;
   }
   return 0;
@@ -1245,11 +1386,26 @@ const kdWsEndingAt = (s: string, e: i32): i32 => {
 };
 
 const kdTrimStart = (s: string): string => {
-  let a = 0;
-  while (a < toI32(s.length) && kdWsAt(s, a) > 0) {
-    a += kdWsAt(s, a);
+  const n = toI32(s.length);
+  // Text of a source the lexer took, so below 2^30 bytes.
+  if (n > 1073741823) {
+    fault();
+    return s;
   }
-  return a === 0 ? s : s.substring(a, toI32(s.length));
+  let a = 0;
+  while (a < n) {
+    const w = kdWsAt(s, a);
+    if (w <= 0) {
+      break;
+    }
+    // A character is at most three bytes here.
+    if (w > 3) {
+      fault();
+      break;
+    }
+    a += w;
+  }
+  return a === 0 ? s : s.substring(a, n);
 };
 
 const kdTrimEnd = (s: string): string => {
@@ -1259,7 +1415,7 @@ const kdTrimEnd = (s: string): string => {
     if (w === 0) {
       break;
     }
-    b -= w;
+    b = sub32(b, w);
   }
   return b === toI32(s.length) ? s : s.substring(0, b);
 };
@@ -1286,6 +1442,11 @@ const kdSplitWords = (s: string): string[] => {
   const out: string[] = [];
   let a = 0;
   const n = toI32(s.length);
+  // A comment of a source the lexer took, so below 2^30 bytes.
+  if (n > 1073741823) {
+    fault();
+    return out;
+  }
   let i = 0;
   while (i <= n) {
     const c = i < n ? s.charCodeAt(i) : 32;
@@ -1305,13 +1466,20 @@ const kdSplitWords = (s: string): string[] => {
 
 const kdStartsWithAt = (s: string, p: string, i: i32): boolean => {
   const k = toI32(p.length);
-  if (i < 0 || i + k > toI32(s.length)) {
+  const n = toI32(s.length);
+  if (i < 0 || k > n - i) {
     return false;
   }
+  let q = i;
   for (let j = 0; j < k; j++) {
-    if (s.charCodeAt(i + j) !== p.charCodeAt(j)) {
+    if (q >= n) {
+      fault();
       return false;
     }
+    if (s.charCodeAt(q) !== p.charCodeAt(j)) {
+      return false;
+    }
+    q++;
   }
   return true;
 };
@@ -1320,13 +1488,20 @@ const kdLower = (c: i32): i32 => (c >= 65 && c <= 90 ? c + 32 : c);
 
 const kdStartsWithIgnoreCaseAt = (s: string, p: string, i: i32): boolean => {
   const k = toI32(p.length);
-  if (i < 0 || i + k > toI32(s.length)) {
+  const n = toI32(s.length);
+  if (i < 0 || k > n - i) {
     return false;
   }
+  let q = i;
   for (let j = 0; j < k; j++) {
-    if (kdLower(s.charCodeAt(i + j)) !== kdLower(p.charCodeAt(j))) {
+    if (q >= n) {
+      fault();
       return false;
     }
+    if (kdLower(s.charCodeAt(q)) !== kdLower(p.charCodeAt(j))) {
+      return false;
+    }
+    q++;
   }
   return true;
 };
@@ -1340,18 +1515,26 @@ const kdEqualsIgnoreCase = (s: string, p: string): boolean =>
   s.length === p.length && kdStartsWithIgnoreCaseAt(s, p, 0);
 
 const kdIndexOfIgnoreCase = (s: string, p: string): i32 => {
-  for (let i = 0; i + toI32(p.length) <= toI32(s.length); i++) {
+  const last = toI32(s.length) - toI32(p.length);
+  for (let i = 0; i <= last; i++) {
     if (kdStartsWithIgnoreCaseAt(s, p, i)) {
       return i;
+    }
+    if (i >= last) {
+      break;
     }
   }
   return -1;
 };
 
 const kdIndexOfFrom = (s: string, p: string, from: i32): i32 => {
-  for (let i = from; i + toI32(p.length) <= toI32(s.length); i++) {
+  const last = toI32(s.length) - toI32(p.length);
+  for (let i = from; i <= last; i++) {
     if (kdStartsWithAt(s, p, i)) {
       return i;
+    }
+    if (i >= last) {
+      break;
     }
   }
   return -1;
@@ -1427,7 +1610,7 @@ const kdIsListItem = (s: string): boolean => {
     i++;
   }
   return (
-    i > 0 && i + 1 < toI32(s.length) && (s.charCodeAt(i) === 46 || s.charCodeAt(i) === 41) && s.charCodeAt(i + 1) === 32
+    i > 0 && i < toI32(s.length) - 1 && (s.charCodeAt(i) === 46 || s.charCodeAt(i) === 41) && s.charCodeAt(i + 1) === 32
   );
 };
 
@@ -1439,10 +1622,11 @@ const kdIsDirectiveMarker = (s: string): boolean => s.startsWith("<!--") || s.st
 
 const kdIsExpectingMore = (s: string): boolean => {
   const t = kdTrimEnd(s);
-  if (t.length === 0) {
+  const n = toI32(t.length);
+  if (n <= 0) {
     return false;
   }
-  const c = t.charCodeAt(toI32(t.length) - 1);
+  const c = t.charCodeAt(n - 1);
   return c === 58 || c === 44;
 };
 
@@ -1461,7 +1645,7 @@ const kdCount = (s: string, c: i32): i32 => {
   let k = 0;
   for (let i = 0; i < toI32(s.length); i++) {
     if (s.charCodeAt(i) === c) {
-      k++;
+      k = add32(k, 1);
     }
   }
   return k;

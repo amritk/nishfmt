@@ -3,6 +3,7 @@
 // Ported from RuboCop 1.92.3 (MIT License, Copyright (c) 2012-24 Bozhidar
 // Batsov).
 
+import { add32 } from "../../core/arr";
 import { F_OPERATOR, V_NIL } from "../ast";
 import { RbCop } from "../cop";
 import { rnHas, rnS } from "../node";
@@ -41,7 +42,7 @@ export class CopLayoutAssignmentIndentation {
       }
       const base = this.al.dispCol(src, a.exS(left));
       const items: i32[] = [rhs];
-      this.al.check(this.c, src, items, base + 2, true);
+      this.al.check(this.c, src, items, add32(base, 2), true);
     }
   }
 }

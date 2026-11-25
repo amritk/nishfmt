@@ -3,6 +3,7 @@
 // Ported from RuboCop 1.92.3 (MIT License, Copyright (c) 2012-24 Bozhidar
 // Batsov).
 
+import { sub32 } from "../../core/arr";
 import {
   F_BEGIN,
   F_END,
@@ -121,11 +122,14 @@ const lpgeNotSingle = (src: RbSource, n: i32): boolean => {
     return true;
   }
   // processed_source.tokens_within(node): a `;` outside the expression.
-  for (let i = 0; i < toI32(src.tokT.length); i++) {
-    if (src.tokT[i] !== TK_tSEMI || src.tokS[i] < a.exS(n) || src.tokE[i] > a.exE(n)) {
+  const tokT = src.tokT;
+  const tokS = src.tokS;
+  const tokE = src.tokE;
+  for (let i = 0; i < tokT.length && i < tokS.length && i < tokE.length; i++) {
+    if (tokT[i] !== TK_tSEMI || tokS[i] < a.exS(n) || tokE[i] > a.exE(n)) {
       continue;
     }
-    if (src.tokS[i] < a.exS(e) || src.tokE[i] > a.exE(e)) {
+    if (tokS[i] < a.exS(e) || tokE[i] > a.exE(e)) {
       return true;
     }
   }
@@ -198,13 +202,15 @@ export class CopLintParenthesesAsGroupedExpression {
       if (ssxParenthesized(src, n) || !src.nodeSrc(arg).startsWith("(") || !ssxHas(src, n, F_SELECTOR)) {
         continue;
       }
-      const len = a.exS(arg) - ssxFE(src, n, F_SELECTOR);
+      // exS(arg) - len is the selector's end.
+      const fe = ssxFE(src, n, F_SELECTOR);
+      const len = sub32(a.exS(arg), fe);
       if (len <= 0) {
         continue;
       }
-      const k = this.c.offense(a.exS(arg) - len, a.exS(arg));
+      const k = this.c.offense(fe, a.exS(arg));
       if (k !== null) {
-        k.remove(a.exS(arg) - len, a.exS(arg));
+        k.remove(fe, a.exS(arg));
         this.c.commit(k);
       }
     }

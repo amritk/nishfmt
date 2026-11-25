@@ -1,7 +1,8 @@
 // A Kotlin-only driver for quick builds while porting:
-//   nish tools/dev/kotlin.ts --link /tmp/kotlindev && /tmp/kotlindev <file>
+//   nish tools/dev/kotlin.ts --allow-panics --link /tmp/kotlindev && /tmp/kotlindev <file>
 // prints the formatted file, or exits 1 when it cannot be formatted.
 
+import { faultReset, faulted } from "../../src/core/fault";
 import { Out } from "../../src/core/out";
 import { KotlinEngine, formatKotlin } from "../../src/kotlin/run";
 
@@ -18,7 +19,8 @@ export const main = (): i32 => {
   const e = new KotlinEngine();
   e.debug = getenv("FFDEBUG") !== null;
   e.dump = getenv("FFKTDUMP") !== null;
-  if (!formatKotlin(e, path, src, n, out)) {
+  faultReset();
+  if (!formatKotlin(e, path, src, n, out) || faulted()) {
     return 1;
   }
   writeBytes(out.buf, 0, out.n);

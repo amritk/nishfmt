@@ -3,6 +3,7 @@
 // Ported from RuboCop 1.92.3 (MIT License, Copyright (c) 2012-24 Bozhidar
 // Batsov).
 
+import { atI32 } from "../../core/arr";
 import {
   F_END,
   F_KEYWORD,
@@ -169,8 +170,8 @@ export class CopStyleSoleNestedConditional {
     const icl = src.line(a.exS(ic));
     const texts: string[] = [];
     for (const c of this.as.of(ib)) {
-      if (src.line(src.commS[c]) < icl) {
-        texts.push(src.src(src.commS[c], src.commE[c]));
+      if (src.line(atI32(src.commS, c)) < icl) {
+        texts.push(src.src(atI32(src.commS, c), atI32(src.commE, c)));
       }
     }
     if (texts.length > 0) {

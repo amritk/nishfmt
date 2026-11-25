@@ -3,6 +3,7 @@
 // Ported from RuboCop 1.92.3 (MIT License, Copyright (c) 2012-24 Bozhidar
 // Batsov).
 
+import { add32, sub32 } from "../../core/arr";
 import { F_DOT, F_SELECTOR, NT_CBASE, NT_CONST, NT_SEND, NT_STR, V_NIL } from "../ast";
 import { RbCop } from "../cop";
 import { rnE, rnHas, rnS } from "../node";
@@ -29,13 +30,18 @@ const rbEpaSplit = (s: string): string[] => {
   const out: string[] = [];
   let from = 0;
   const n = toI32(s.length);
-  for (let i = 0; i <= n; i++) {
-    if (i === n || s.charCodeAt(i) === 47) {
+  for (let i = 0; i < n; i++) {
+    if (s.charCodeAt(i) === 47) {
       out.push(s.substring(from, i));
       from = i + 1;
     }
   }
-  while (out.length > 0 && out[out.length - 1].length === 0) {
+  out.push(s.substring(from, n));
+  while (out.length > 0) {
+    const ol = toI32(out.length);
+    if (ol < 1 || out[ol - 1].length !== 0) {
+      break;
+    }
     out.pop();
   }
   return out;
@@ -46,7 +52,7 @@ const rbEpaDepth = (s: string): i32 => {
   let k = 0;
   for (const p of rbEpaSplit(s)) {
     if (p !== ".") {
-      k++;
+      k = add32(k, 1);
     }
   }
   return k;
@@ -97,7 +103,7 @@ export class CopStyleExpandPathArguments {
         if (k === null) {
           continue;
         }
-        const stripped = src.src(a.exS(cur) + 1, a.exE(cur) - 1);
+        const stripped = src.src(add32(a.exS(cur), 1), sub32(a.exE(cur), 1));
         const d = rbEpaDepth(stripped);
         if (d === 0 || d === 1) {
           k.replace(a.exS(cur), a.exE(dir), d === 0 ? "__FILE__" : "__dir__");

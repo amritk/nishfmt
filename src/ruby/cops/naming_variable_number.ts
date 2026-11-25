@@ -5,6 +5,7 @@
 // Ported from RuboCop 1.92.3 (MIT License, Copyright (c) 2012-24 Bozhidar
 // Batsov).
 
+import { atI32, sub32 } from "../../core/arr";
 import { F_NAME, NT_ARG, NT_CVASGN, NT_DEF, NT_DEFS, NT_GVASGN, NT_IVASGN, NT_LVASGN, NT_SYM, V_NIL } from "../ast";
 import { RbCop } from "../cop";
 import { RbSource } from "../source";
@@ -34,10 +35,10 @@ const nvnNormalcase = (name: string): boolean => {
     return true;
   }
   let k = n - 1;
-  while (k > 0 && nmhAsciiDigit(cs[k - 1])) {
+  while (k > 0 && nmhAsciiDigit(atI32(cs, k - 1))) {
     k--;
   }
-  if (k === 0 || cs[k - 1] !== 95) {
+  if (k === 0 || atI32(cs, sub32(k, 1)) !== 95) {
     return true;
   }
   return k === 1;

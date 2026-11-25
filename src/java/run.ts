@@ -2,6 +2,7 @@
 // (Formatter.formatSource as the CLI calls it): the cleanup passes, the
 // formatter, then StringWrapper.
 
+import { sliceU8s } from "../core/arr";
 import { guessSep } from "../core/files";
 import { Out } from "../core/out";
 import { GEngine } from "../gdoc/engine";
@@ -17,6 +18,7 @@ import { StringWrapper, needWrapping, replacementRanges } from "./strings";
 import { partialFormat } from "./partial";
 import { reorderModifiers } from "./modifiers";
 import { JavaCleanups, cleanupComments } from "./cleanups";
+import { fault } from "../core/fault";
 
 /** One worker's reusable Java state. */
 export class JavaEngine {
@@ -73,7 +75,7 @@ export const formatJava = (e: JavaEngine, path: string, src0: u8[], n0: i32, out
   let changed = false;
   // REMOVE_UNUSED_IMPORTS.
   if (e.imports.removeUnused(e.inp, e.tree, e.root, e.buf1)) {
-    src = e.buf1.buf.slice(0, e.buf1.n);
+    src = sliceU8s(e.buf1.buf, 0, e.buf1.n);
     n = e.buf1.n;
     if (!lexJava(e.inp, src, n) || !parseJava(e, path)) {
       return false;
@@ -82,7 +84,7 @@ export const formatJava = (e: JavaEngine, path: string, src0: u8[], n0: i32, out
   // AST_CLEANUPS.
   if (e.cleanups.run(e.inp, e.tree, e.root, e.buf1)) {
     const comments = cleanupComments(e.inp);
-    src = e.buf1.buf.slice(0, e.buf1.n);
+    src = sliceU8s(e.buf1.buf, 0, e.buf1.n);
     n = e.buf1.n;
     changed = true;
     if (!lexJava(e.inp, src, n)) {
@@ -98,7 +100,7 @@ export const formatJava = (e: JavaEngine, path: string, src0: u8[], n0: i32, out
   }
   // REORDER_MODIFIERS, on the tokens.
   if (reorderModifiers(e.inp, e.buf1)) {
-    src = e.buf1.buf.slice(0, e.buf1.n);
+    src = sliceU8s(e.buf1.buf, 0, e.buf1.n);
     n = e.buf1.n;
     changed = true;
     if (!lexJava(e.inp, src, n)) {
@@ -107,7 +109,7 @@ export const formatJava = (e: JavaEngine, path: string, src0: u8[], n0: i32, out
   }
   // SORT_IMPORTS, on the text.
   if (e.imports.reorder(e.inp, e.buf1)) {
-    src = e.buf1.buf.slice(0, e.buf1.n);
+    src = sliceU8s(e.buf1.buf, 0, e.buf1.n);
     n = e.buf1.n;
     changed = true;
     if (!lexJava(e.inp, src, n)) {
@@ -139,7 +141,7 @@ export const formatJava = (e: JavaEngine, path: string, src0: u8[], n0: i32, out
   // StringWrapper, on the formatted text.
   let res = g.out;
   if (needWrapping(g.out.buf, g.out.n)) {
-    let fmt = g.out.buf.slice(0, g.out.n);
+    let fmt = sliceU8s(g.out.buf, 0, g.out.n);
     if (lexJava(e.inp, fmt, toI32(fmt.length))) {
       const root2 = e.parser.parse();
       if (!e.parser.err) {
@@ -169,7 +171,7 @@ export const formatJava = (e: JavaEngine, path: string, src0: u8[], n0: i32, out
             return false;
           }
           if (partialChanged === 1) {
-            fmt = e.buf2.buf.slice(0, e.buf2.n);
+            fmt = sliceU8s(e.buf2.buf, 0, e.buf2.n);
             if (!lexJava(e.inp, fmt, toI32(fmt.length))) {
               return false;
             }
@@ -191,8 +193,14 @@ export const formatJava = (e: JavaEngine, path: string, src0: u8[], n0: i32, out
   if (sep === "\n") {
     out.range(res.buf, 0, res.n);
   } else {
-    for (let i = 0; i < res.n; i++) {
-      const c = toI32(res.buf[i]);
+    const rb = res.buf;
+    const rn = res.n;
+    if (rn > rb.length) {
+      fault();
+      return false;
+    }
+    for (let i = 0; i < rn && i < rb.length; i++) {
+      const c = toI32(rb[i]);
       if (c === 10) {
         out.str(sep);
       } else {
@@ -208,8 +216,15 @@ const parseJava = (e: JavaEngine, path: string): boolean => {
   e.root = e.parser.parse();
   if (e.parser.err) {
     if (e.debug) {
-      const t = e.inp.kTok[e.parser.errAt];
-      console.error(`${path}: parse error at byte ${e.inp.tPos[t]} '${e.inp.text(t)}'`);
+      const kTok = e.inp.kTok;
+      const at = e.parser.errAt;
+      const tPos = e.inp.tPos;
+      if (at >= 0 && at < kTok.length) {
+        const t = kTok[at];
+        if (t >= 0 && t < tPos.length) {
+          console.error(`${path}: parse error at byte ${tPos[t]} '${e.inp.text(t)}'`);
+        }
+      }
     }
     return false;
   }

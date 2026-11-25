@@ -5,6 +5,7 @@
 // Ported from RuboCop 1.92.3 (MIT License, Copyright (c) 2012-24 Bozhidar
 // Batsov).
 
+import { add32 } from "../../core/arr";
 import {
   F_ASSIGNMENT,
   F_ASSOC,
@@ -42,7 +43,7 @@ import {
   V_NIL,
 } from "../ast";
 import { RbCop } from "../cop";
-import { rbSpaceBegin, rbSpaceEnd } from "../help";
+import { rbAtOff, rbSpaceBegin, rbSpaceEnd } from "../help";
 import { rnE, rnFieldSrc, rnHas, rnMethod, rnS } from "../node";
 import { RbSource } from "../source";
 import { LSP_AL_NONE, LSP_AL_YES, LspAlign } from "./layout_space_align";
@@ -198,10 +199,10 @@ export class CopLayoutSpaceAroundOperators {
       offense = !(ws === os && we === oe);
     } else {
       const startWs = lspIsWs(src.at(ws));
-      const endWs = lspIsWs(src.at(we - 1));
+      const endWs = lspIsWs(rbAtOff(src, we, -1));
       let missing = false;
-      if (!(startWs && endWs && we - ws >= 2)) {
-        missing = !startWs || !(src.at(we) === 92 && src.at(we + 1) === 10);
+      if (!(startWs && endWs && toI64(we) - toI64(ws) >= toI64(2))) {
+        missing = !startWs || !(src.at(we) === 92 && rbAtOff(src, we, 1) === 10);
       }
       offense = missing || this.excessLeading(src, type, os, oe, ws, right) || this.excessTrailing(src, ws, we, right);
     }
@@ -216,7 +217,7 @@ export class CopLayoutSpaceAroundOperators {
       k.replace(ws, we, "**");
     } else if (op === "/" && rational) {
       k.replace(ws, we, "/");
-    } else if (src.at(we - 1) === 10) {
+    } else if (rbAtOff(src, we, -1) === 10) {
       k.replace(ws, we, ` ${op}\n`);
     } else {
       k.replace(ws, we, ` ${op} `);
@@ -229,7 +230,7 @@ export class CopLayoutSpaceAroundOperators {
     if (al === null) {
       return false;
     }
-    if (!(src.at(ws) === 32 && src.at(ws + 1) === 32)) {
+    if (!(src.at(ws) === 32 && rbAtOff(src, ws, 1) === 32)) {
       return false;
     }
     if (type !== LSP_OP_ASSIGNMENT) {
@@ -253,7 +254,7 @@ export class CopLayoutSpaceAroundOperators {
     if (al === null) {
       return false;
     }
-    if (!(we - ws >= 2 && src.at(we - 1) === 32 && src.at(we - 2) === 32)) {
+    if (!(toI64(we) - toI64(ws) >= toI64(2) && rbAtOff(src, we, -1) === 32 && rbAtOff(src, we, -2) === 32)) {
       return false;
     }
     return !al.withSomething(src.a.exS(right), src.a.exE(right));
@@ -276,7 +277,7 @@ export class CopLayoutSpaceAroundOperators {
         rnFieldSrc(src, p, F_OPERATOR) === "=>" &&
         src.column(rnS(src, p, F_OPERATOR)) === col
       ) {
-        count++;
+        count = add32(count, 1);
       }
     }
     return count > 1;
@@ -308,7 +309,7 @@ export class CopLayoutSpaceBeforeFirstArg {
       const arg = a.kid(n, 2);
       const fs = a.exS(arg);
       const wb = rbSpaceBegin(src, fs, 1, true, false, false);
-      if (fs - wb === 1) {
+      if (toI64(fs) - toI64(wb) === toI64(1)) {
         continue;
       }
       // expect_params_after_method_name?

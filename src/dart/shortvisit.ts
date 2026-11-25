@@ -175,6 +175,8 @@ import { C_LINE, DtTokens } from "./scanner";
 import { K_NONE, T_BANG, T_BOF, T_COMMA, T_DEC, T_DOT, T_EQ, T_MINUS, T_QUESTION, T_SCRIPT, T_SEMI } from "./tokens";
 import { dtPrecedence } from "./parser";
 import { dtTrimmed } from "./comments";
+import { add32, newBools, newI32s, sliceI32s, sub32 } from "../core/arr";
+import { fault } from "../core/fault";
 import {
   DTS_COST_ARROW,
   DTS_COST_ASSIGN,
@@ -194,13 +196,13 @@ import {
   DTS_INDENT_CASCADE,
   DTS_INDENT_CONSTRUCTOR_INITIALIZER,
   DTS_INDENT_EXPRESSION,
-  DTS_STATE,
   DtsBuilder,
   DtsChunk,
   DtsComment,
   DtsContext,
   DtsRule,
   dtsCombinatorRule,
+  dtsFailed,
   dtsHardRule,
   dtsNamedRule,
   dtsPositionalRule,
@@ -224,6 +226,63 @@ const FB_NONE: i32 = 0;
 const FB_UNNEST_UNLESS_EXPRESSION: i32 = 1;
 const FB_CONSTRUCTOR: i32 = 2;
 
+/**
+ * SingleStringLiteral.isMultiline for the string token `src[s, e)`: its
+ * quote, after any `r`, is tripled.
+ */
+const dtsTripleQuoted = (src: u8[], s: i32, e: i32): boolean => {
+  let i = s;
+  if (i < 0 || i >= src.length) {
+    fault();
+    return false;
+  }
+  if (src[i] === 114) {
+    i++;
+    if (i >= src.length) {
+      fault();
+      return false;
+    }
+  }
+  const q = src[i];
+  if (toI64(i) + toI64(2) >= toI64(e)) {
+    return false;
+  }
+  const i1 = i + 1;
+  if (i1 >= src.length) {
+    fault();
+    return false;
+  }
+  if (src[i1] !== q) {
+    return false;
+  }
+  const i2 = i1 + 1;
+  if (i2 >= src.length) {
+    fault();
+    return false;
+  }
+  return src[i2] === q;
+};
+
+/** The last of `xs`, or -1 after a fault when it is empty. */
+const dtsLastOf = (xs: i32[]): i32 => {
+  const k = toI32(xs.length);
+  if (k > 0 && k <= xs.length) {
+    return xs[k - 1];
+  }
+  fault();
+  return -1;
+};
+
+/** `xs[i]`, or -1 after a fault when `i` is outside `xs`. */
+const dtsAt = (xs: i32[], i: i32): i32 => {
+  const ui = toU32(i);
+  if (ui < toU32(xs.length)) {
+    return xs[ui];
+  }
+  fault();
+  return -1;
+};
+
 export class DtsVisitor {
   t: DtTokens;
   a: DtAst;
@@ -246,9 +305,9 @@ export class DtsVisitor {
     this.cx = new DtsContext(pageWidth);
     const top: DtsChunk[] = [];
     this.builder = new DtsBuilder(this.cx, null, top);
-    this.parent = new Array<i32>(a.n + 1);
+    this.parent = newI32s(add32(a.n, 1));
     this.parent.fill(-1);
-    this.suppressed = new Array<boolean>(t.count + 1);
+    this.suppressed = newBools(add32(t.count, 1));
     this.collectionSplits = [];
     this.blockRules = new Map<i32, DtsRule>();
     this.blockPrev = new Map<i32, DtsChunk>();
@@ -266,8 +325,8 @@ export class DtsVisitor {
     this.setParents(unit);
     this.visit(unit, SA_NONE, SA_NONE);
     // The unit ends at EOF, whose `next` is itself.
-    this.writePrecedingCommentsAndNewlines(this.t.count - 1);
-    if (this.failed || DTS_STATE[2] !== 0) {
+    this.writePrecedingCommentsAndNewlines(sub32(this.t.count, 1));
+    if (this.failed || dtsFailed()) {
       return "";
     }
     return this.builder.end(lineEnding);
@@ -283,28 +342,47 @@ export class DtsVisitor {
       }
       if (c === 78) {
         // N
-        this.parent[v] = n;
+        this.setParent(v, n);
         this.setParents(v);
       } else if (c === 76) {
         // L
         for (let j = 0; j < this.a.len(v); j++) {
           const x = this.a.at(v, j);
-          this.parent[x] = n;
+          this.setParent(x, n);
           this.setParents(x);
         }
       }
     }
   }
 
+  // The parent array holds a slot for every node.
+  setParent(x: i32, n: i32): void {
+    const parent = this.parent;
+    if (x >= 0 && x < parent.length) {
+      parent[x] = n;
+    } else {
+      fault();
+    }
+  }
+
+  par(x: i32): i32 {
+    const parent = this.parent;
+    if (x >= 0 && x < parent.length) {
+      return parent[x];
+    }
+    fault();
+    return -1;
+  }
+
   // -------------------------------------------------------------------------
   // AST access.
 
   f(n: i32, i: i32): i32 {
-    return this.a.fld[this.a.fs[n] + i];
+    return this.a.f(n, i);
   }
 
   kind(n: i32): i32 {
-    return n < 0 ? -1 : this.a.kind[n];
+    return n < 0 ? -1 : this.a.kindOf(n);
   }
 
   len(l: i32): i32 {
@@ -324,26 +402,26 @@ export class DtsVisitor {
   }
 
   lex(tok: i32): string {
-    return String.fromBytes(this.src, this.t.start[tok], this.t.end[tok]);
+    return this.t.text(tok);
   }
 
   tk(tok: i32): i32 {
-    return tok < 0 ? -1 : this.t.kind[tok];
+    return tok < 0 ? -1 : this.t.kindAt(tok);
   }
 
   hasComments(tok: i32): boolean {
-    return this.t.cCount[tok] > 0;
+    return this.t.cCountAt(tok) > 0;
   }
 
   // ast_extensions.
 
   commaAfter(n: i32): i32 {
-    const next = this.a.end[n] + 1;
-    if (this.t.kind[next] === T_COMMA) {
+    const next = add32(this.a.endOf(n), 1);
+    if (this.t.kindAt(next) === T_COMMA) {
       return next;
     }
-    if (this.t.kind[next] === T_QUESTION && this.t.kind[next + 1] === T_COMMA) {
-      return next + 1;
+    if (this.t.kindAt(next) === T_QUESTION && this.t.kindAt(add32(next, 1)) === T_COMMA) {
+      return add32(next, 1);
     }
     return -1;
   }
@@ -353,7 +431,11 @@ export class DtsVisitor {
   }
 
   listHasCommaAfter(xs: i32[]): boolean {
-    return xs.length > 0 && this.hasCommaAfter(xs[xs.length - 1]);
+    const k = xs.length;
+    if (k > 0) {
+      return this.hasCommaAfter(xs[k - 1]);
+    }
+    return false;
   }
 
   canSplit(xs: i32[], right: i32): boolean {
@@ -362,9 +444,10 @@ export class DtsVisitor {
 
   hasLineCommentBefore(tok: i32): boolean {
     const t = this.t;
-    const first = t.cFirst[tok];
-    for (let k = 0; k < t.cCount[tok]; k++) {
-      if (t.cKind[first + k] === C_LINE) {
+    const first = t.cFirstAt(tok);
+    const count = t.cCountAt(tok);
+    for (let k = 0; k < count; k++) {
+      if (t.cKindAt(add32(first, k)) === C_LINE) {
         return true;
       }
     }
@@ -373,7 +456,7 @@ export class DtsVisitor {
 
   containsLineComments(xs: i32[], right: i32): boolean {
     for (const x of xs) {
-      if (this.hasLineCommentBefore(this.a.beg[x])) {
+      if (this.hasLineCommentBefore(this.a.begOf(x))) {
         return true;
       }
     }
@@ -391,8 +474,8 @@ export class DtsVisitor {
   }
 
   isFunctionExpressionBody(n: i32): boolean {
-    const p = this.parent[n];
-    return p >= 0 && this.kind(p) === N_FUNCTION_EXPRESSION && this.kind(this.parent[p]) !== N_FUNCTION_DECLARATION;
+    const p = this.par(n);
+    return p >= 0 && this.kind(p) === N_FUNCTION_EXPRESSION && this.kind(this.par(p)) !== N_FUNCTION_DECLARATION;
   }
 
   spreadCollectionBracket(n: i32): i32 {
@@ -427,9 +510,9 @@ export class DtsVisitor {
   }
 
   isTrailingCommaArgument(n: i32): boolean {
-    let p = this.parent[n];
+    let p = this.par(n);
     if (this.kind(p) === N_NAMED_ARGUMENT) {
-      p = this.parent[p];
+      p = this.par(p);
     }
     return this.kind(p) === N_ARGUMENT_LIST && this.listHasCommaAfter(this.items(this.f(p, 1)));
   }
@@ -453,26 +536,39 @@ export class DtsVisitor {
 
   looksLikeClassName(tok: i32): boolean {
     const t = this.t;
-    const s = t.start[tok];
-    const e = t.end[tok];
+    const s = t.startAt(tok);
+    const e = t.endAt(tok);
     if (t.is(tok, "bool") || t.is(tok, "double") || t.is(tok, "int") || t.is(tok, "num")) {
       return true;
     }
+    const src = this.src;
     let i = s;
-    let c = toI32(this.src[i]);
+    if (i < 0 || i >= src.length) {
+      fault();
+      return false;
+    }
+    let c = toI32(src[i]);
     i++;
     if (c === 95) {
-      if (e - s === 1) {
+      if (e === i) {
         return false;
       }
-      c = toI32(this.src[i]);
+      if (i >= src.length) {
+        fault();
+        return false;
+      }
+      c = toI32(src[i]);
       i++;
     }
     if (c < 65 || c > 90) {
       return false;
     }
     for (let j = i; j < e; j++) {
-      const d = toI32(this.src[j]);
+      if (j < 0 || j >= src.length) {
+        fault();
+        return false;
+      }
+      const d = toI32(src[j]);
       if (d >= 97 && d <= 122) {
         return true;
       }
@@ -506,16 +602,11 @@ export class DtsVisitor {
     if (k === N_SIMPLE_STRING_LITERAL) {
       tok = this.f(n, 0);
     } else if (k === N_STRING_INTERPOLATION) {
-      tok = this.a.beg[n];
+      tok = this.a.begOf(n);
     } else {
       return false;
     }
-    let i = this.t.start[tok];
-    if (this.src[i] === 114) {
-      i++;
-    }
-    const q = this.src[i];
-    return i + 2 < this.t.end[tok] && this.src[i + 1] === q && this.src[i + 2] === q;
+    return dtsTripleQuoted(this.src, this.t.startAt(tok), this.t.endAt(tok));
   }
 
   /** A formal parameter's kind: 0 required positional, 1 optional positional, 2 named. */
@@ -575,27 +666,29 @@ export class DtsVisitor {
   }
 
   visitNodes(xs: i32[], before: i32, between: i32, after: i32): void {
-    if (xs.length === 0) {
+    if (xs.length < 1) {
       return;
     }
+    const x0 = xs[0];
     this.act(before);
-    this.v(xs[0]);
+    this.v(x0);
     for (let i = 1; i < xs.length; i++) {
+      const x = xs[i];
       this.act(between);
-      this.v(xs[i]);
+      this.v(x);
     }
     this.act(after);
   }
 
   visitCommaSeparatedNodes(xs: i32[], between: i32): void {
     for (let i = 0; i < xs.length; i++) {
+      const n = xs[i];
       if (i > 0) {
         this.act(between);
       }
-      const n = xs[i];
       this.v(n);
-      const next = this.a.end[n] + 1;
-      if (this.t.kind[next] === T_COMMA) {
+      const next = add32(this.a.endOf(n), 1);
+      if (this.t.kindAt(next) === T_COMMA) {
         this.token(next, SA_NONE, SA_NONE);
       }
     }
@@ -657,12 +750,12 @@ export class DtsVisitor {
       this.fail("no previous token");
       return 0;
     }
-    const next = prev + 1;
-    let line = this.t.lineS[next];
-    if (this.t.cCount[next] > 0) {
-      line = this.t.cLineS[this.t.cFirst[next]];
+    const next = add32(prev, 1);
+    let line = this.t.lineSAt(next);
+    if (this.t.cCountAt(next) > 0) {
+      line = this.t.cLineSAt(this.t.cFirstAt(next));
     }
-    return line - this.t.lineE[prev];
+    return sub32(line, this.t.lineEAt(prev));
   }
 
   split(): DtsChunk {
@@ -722,29 +815,30 @@ export class DtsVisitor {
 
   writePrecedingCommentsAndNewlines(tok: i32): boolean {
     const t = this.t;
-    const n = t.cCount[tok];
+    const n = t.cCountAt(tok);
     if (n === 0) {
       return false;
     }
-    if (this.suppressed[tok]) {
+    if (this.isSuppressed(tok)) {
       return false;
     }
-    let previousLine = t.lineE[tok - 1];
-    const tokenLine = t.lineS[tok];
-    if (t.kind[tok - 1] === T_SCRIPT) {
+    const before = sub32(tok, 1);
+    let previousLine = t.lineEAt(before);
+    const tokenLine = t.lineSAt(tok);
+    if (t.kindAt(before) === T_SCRIPT) {
       previousLine = tokenLine;
     }
     const comments: DtsComment[] = [];
-    const first = t.cFirst[tok];
+    const first = t.cFirstAt(tok);
     for (let k = 0; k < n; k++) {
-      const c = first + k;
-      const commentLine = t.cLineS[c];
-      if (k === 0 && t.kind[tok - 1] === T_BOF) {
+      const c = add32(first, k);
+      const commentLine = t.cLineSAt(c);
+      if (k === 0 && t.kindAt(before) === T_BOF) {
         previousLine = commentLine;
       }
-      const text = dtTrimmed(t.src, t.cStart[c], t.cEnd[c]);
-      let linesBefore = commentLine - previousLine;
-      let flushLeft = t.cCol1[c];
+      const text = dtTrimmed(t, t.cStartAt(c), t.cEndAt(c));
+      let linesBefore = sub32(commentLine, previousLine);
+      let flushLeft = t.cCol1At(c);
       const isDocLine = text.startsWith("///") && !text.startsWith("////");
       if (isDocLine) {
         flushLeft = false;
@@ -755,43 +849,87 @@ export class DtsVisitor {
       let type = DTS_CT_BLOCK;
       if (isDocLine || (text.startsWith("/**") && text !== "/**/")) {
         type = DTS_CT_DOC;
-      } else if (t.cKind[c] === C_LINE) {
+      } else if (t.cKindAt(c) === C_LINE) {
         type = DTS_CT_LINE;
       } else if (commentLine === previousLine || commentLine === tokenLine) {
         type = DTS_CT_INLINE_BLOCK;
       }
       comments.push(new DtsComment(text, type, linesBefore, flushLeft));
-      previousLine = t.cLineE[c];
+      previousLine = t.cLineEAt(c);
     }
-    this.builder.writeComments(comments, tokenLine - previousLine, this.lex(tok));
+    this.builder.writeComments(comments, sub32(tokenLine, previousLine), this.lex(tok));
+    // A token's comment count is not negative: one comment at least.
+    if (comments.length < 1) {
+      fault();
+      return false;
+    }
     return comments[0].linesBefore > 0;
+  }
+
+  isSuppressed(tok: i32): boolean {
+    const suppressed = this.suppressed;
+    if (tok >= 0 && tok < suppressed.length) {
+      return suppressed[tok];
+    }
+    fault();
+    return false;
+  }
+
+  /** Marks token `tok`'s comments as written already; the array has a slot for every token. */
+  suppress(tok: i32): void {
+    const suppressed = this.suppressed;
+    if (tok >= 0 && tok < suppressed.length) {
+      suppressed[tok] = true;
+    } else {
+      fault();
+    }
   }
 
   writeStringLiteral(tok: i32): void {
     this.writePrecedingCommentsAndNewlines(tok);
     const lines = dtsSplitLines(this.lex(tok));
+    // dtsSplitLines answers a line at least.
+    if (lines.length < 1) {
+      fault();
+      return;
+    }
+    const line0 = lines[0];
     if (lines.length > 1) {
-      this.writeStringFirstLine(lines[0], tok);
+      this.writeStringFirstLine(line0, tok);
     } else {
-      this.writeText(lines[0], tok, true);
+      this.writeText(line0, tok, true);
     }
     for (let i = 1; i < lines.length; i++) {
+      const line = lines[i];
       this.builder.writeNewline(false, true, true);
-      this.writeText(lines[i], tok, false);
+      this.writeText(line, tok, false);
     }
   }
 
   writeStringFirstLine(line: string, tok: i32): void {
     const n = toI32(line.length);
-    const quoteStart = line.startsWith("r") ? 1 : 0;
+    let quoteStart = 0;
+    if (line.startsWith("r")) {
+      quoteStart = 1;
+    }
     const quoteEnd = quoteStart + 3;
     let backslashCount = 0;
     if (n > quoteEnd && (dtsStartsAt(line, "'''", quoteStart) || dtsStartsAt(line, '"""', quoteStart))) {
       let cursor = quoteEnd;
       while (true) {
+        // The loop leaves once cursor reaches n.
+        if (cursor < 0 || cursor >= n) {
+          fault();
+          return;
+        }
         let c = line.charCodeAt(cursor);
         if (c === 92) {
           cursor++;
+          // A backslash a character at most.
+          if (backslashCount >= n) {
+            fault();
+            return;
+          }
           backslashCount++;
           if (cursor >= n) {
             break;
@@ -898,8 +1036,8 @@ export class DtsVisitor {
       case N_BINARY_EXPRESSION:
         this.visitBinary(
           n,
-          dtPrecedence(this.t.kind[this.f(n, 1)], K_NONE),
-          this.kind(this.parent[n]) !== N_EXPRESSION_FUNCTION_BODY,
+          dtPrecedence(this.t.kindAt(this.f(n, 1)), K_NONE),
+          this.kind(this.par(n)) !== N_EXPRESSION_FUNCTION_BODY,
         );
         return;
       case N_BLOCK: {
@@ -1132,7 +1270,7 @@ export class DtsVisitor {
       case N_FORMAL_PARAMETER_DEFAULT_CLAUSE:
         this.startSpan();
         this.nest();
-        if (this.t.kind[this.f(n, 0)] === T_EQ) {
+        if (this.t.kindAt(this.f(n, 0)) === T_EQ) {
           this.space();
         }
         this.tok(this.f(n, 0));
@@ -1542,7 +1680,7 @@ export class DtsVisitor {
         this.tok(this.f(n, 0));
         const operand = this.f(n, 1);
         if (this.kind(operand) === N_PREFIX_EXPRESSION) {
-          const op = this.t.kind[this.f(operand, 0)];
+          const op = this.t.kindAt(this.f(operand, 0));
           if (op === T_MINUS || op === T_DEC) {
             this.space();
           }
@@ -1634,7 +1772,7 @@ export class DtsVisitor {
         return;
       case N_SCRIPT_TAG: {
         const tok = this.f(n, 0);
-        this.writeText(dtTrimmed(this.src, this.t.start[tok], this.t.end[tok]), tok, true);
+        this.writeText(dtTrimmed(this.t, this.t.startAt(tok), this.t.endAt(tok)), tok, true);
         this.twoNewlines();
         return;
       }
@@ -1659,8 +1797,8 @@ export class DtsVisitor {
         const l = this.f(n, 1);
         for (let i = 0; i < this.len(l); i++) {
           const c = this.at(l, i);
-          if (this.t.kind[c - 1] === T_DOT) {
-            this.tok(c - 1);
+          if (this.t.kindAt(sub32(c, 1)) === T_DOT) {
+            this.tok(sub32(c, 1));
           }
           this.tok(c);
         }
@@ -1705,7 +1843,7 @@ export class DtsVisitor {
         if (this.f(n, 2) < 0) {
           return;
         }
-        const multiple = this.len(this.f(this.parent[n], 4)) > 1;
+        const multiple = this.len(this.f(this.par(n), 4)) > 1;
         this.visitAssignment(this.f(n, 1), this.f(n, 2), multiple);
         return;
       }
@@ -1746,7 +1884,7 @@ export class DtsVisitor {
 
   visitAdjacentStrings(n: i32): void {
     let shouldNest = true;
-    const p = this.parent[n];
+    const p = this.par(n);
     const pk = this.kind(p);
     if (pk === N_ARGUMENT_LIST) {
       shouldNest = false;
@@ -1773,7 +1911,7 @@ export class DtsVisitor {
       }
     } else if (
       pk === N_VARIABLE_DECLARATION ||
-      (pk === N_ASSIGNMENT_EXPRESSION && this.f(p, 2) === n && this.kind(this.parent[p]) === N_EXPRESSION_STATEMENT)
+      (pk === N_ASSIGNMENT_EXPRESSION && this.f(p, 2) === n && this.kind(this.par(p)) === N_EXPRESSION_STATEMENT)
     ) {
       shouldNest = false;
     } else if (pk === N_NAMED_ARGUMENT || pk === N_EXPRESSION_FUNCTION_BODY) {
@@ -1851,17 +1989,17 @@ export class DtsVisitor {
       this.fail("enum without constants");
       return;
     }
-    const lastConst = constants[constants.length - 1];
+    const lastConst = dtsLastOf(constants);
     const trailingComma = this.commaAfter(lastConst);
     if (trailingComma >= 0) {
       this.builder.forceRules();
     }
-    const afterConstants = this.a.end[lastConst] + 1;
+    const afterConstants = add32(this.a.endOf(lastConst), 1);
     let semicolon = -1;
-    if (this.t.kind[afterConstants] === T_SEMI) {
+    if (this.t.kindAt(afterConstants) === T_SEMI) {
       semicolon = afterConstants;
-    } else if (trailingComma >= 0 && this.t.kind[trailingComma + 1] === T_SEMI) {
-      semicolon = afterConstants + 1;
+    } else if (trailingComma >= 0 && this.t.kindAt(add32(trailingComma, 1)) === T_SEMI) {
+      semicolon = add32(afterConstants, 1);
     }
     const members = this.items(this.f(n, 3));
     if (semicolon >= 0) {
@@ -1925,19 +2063,19 @@ export class DtsVisitor {
     this.v(this.f(n, 0));
     this.builder.nestExpression(DTS_INDENT_CASCADE, true);
     this.builder.startBlockArgumentNesting();
-    const firstTok = this.a.beg[sections[0]];
+    const firstTok = this.a.begOf(dtsAt(sections, 0));
     this.writePrecedingCommentsAndNewlines(firstTok);
-    this.suppressed[firstTok] = true;
+    this.suppress(firstTok);
     this.builder = this.builder.startBlock(null, false, false);
     for (let i = 0; i < sections.length - 1; i++) {
       this.newline();
-      this.v(sections[i]);
+      this.v(dtsAt(sections, i));
     }
-    const lastTok = this.a.beg[sections[sections.length - 1]];
+    const lastTok = this.a.begOf(dtsLastOf(sections));
     this.writePrecedingCommentsAndNewlines(lastTok);
-    this.suppressed[lastTok] = true;
+    this.suppress(lastTok);
     this.builder = this.builder.endBlock(true);
-    this.v(sections[sections.length - 1]);
+    this.v(dtsLastOf(sections));
     this.endRule();
     this.builder.endBlockArgumentNesting();
     this.unnest();
@@ -2006,9 +2144,9 @@ export class DtsVisitor {
     this.v(this.f(n, 0));
     let directives = this.items(this.f(n, 1));
     if (directives.length > 0 && this.kind(directives[0]) === N_LIBRARY_DIRECTIVE) {
-      this.v(directives[0]);
+      this.v(dtsAt(directives, 0));
       this.twoNewlines();
-      directives = directives.slice(1, directives.length);
+      directives = sliceI32s(directives, 1, toI32(directives.length));
     }
     this.visitNodes(directives, SA_NONE, SA_ONE_OR_TWO, SA_NONE);
     let needsDouble = true;
@@ -2055,7 +2193,7 @@ export class DtsVisitor {
     this.tok(this.f(n, 3));
     this.space();
     this.v(this.f(n, 4));
-    if (this.kind(this.parent[n]) === N_CONDITIONAL_EXPRESSION) {
+    if (this.kind(this.par(n)) === N_CONDITIONAL_EXPRESSION) {
       this.builder.forceRules();
     }
     this.endRule();
@@ -2105,7 +2243,7 @@ export class DtsVisitor {
       this.space();
       if (inits.length > 1) {
         let padding = "  ";
-        if (this.isOptionalParam(params[params.length - 1])) {
+        if (this.isOptionalParam(dtsLastOf(params))) {
           padding = " ";
         }
         this.writeText(padding, this.f(n, 9), true);
@@ -2122,10 +2260,10 @@ export class DtsVisitor {
     }
     for (let i = 0; i < inits.length; i++) {
       if (i > 0) {
-        this.tok(this.a.beg[inits[i]] - 1);
+        this.tok(sub32(this.a.begOf(dtsAt(inits, i)), 1));
         this.newline();
       }
-      this.v(inits[i]);
+      this.v(dtsAt(inits, i));
     }
     this.builder.unindent();
     if (!hasTrailingComma) {
@@ -2155,7 +2293,7 @@ export class DtsVisitor {
       this.endSpan();
     }
     let isArgWithTrailingComma = false;
-    const p = this.parent[n];
+    const p = this.par(n);
     if (this.kind(p) === N_FUNCTION_EXPRESSION) {
       isArgWithTrailingComma = this.isTrailingCommaArgument(p);
     }
@@ -2332,14 +2470,18 @@ export class DtsVisitor {
     this.tok(this.f(n, 0));
     let lastRequired = -1;
     for (let i = 0; i < params.length; i++) {
+      let prev = -1;
+      if (i > 0) {
+        prev = params[i - 1];
+      }
       if (this.isOptionalParam(params[i])) {
         if (i > 0) {
-          lastRequired = params[i - 1];
+          lastRequired = prev;
         }
         break;
       }
     }
-    if (this.isOptionalParam(params[0])) {
+    if (this.isOptionalParam(dtsAt(params, 0))) {
       this.tok(this.f(n, 2));
     }
     this.builder = this.builder.startBlock(null, true, false);
@@ -2450,7 +2592,7 @@ export class DtsVisitor {
         this.beforeBlock(bracket, spreadRule, null);
       }
     }
-    const lastIf = ifElements[ifElements.length - 1];
+    const lastIf = dtsLastOf(ifElements);
     const lastElse = this.f(lastIf, 7);
     if (lastElse >= 0) {
       const bracket = this.spreadCollectionBracket(lastElse);
@@ -2652,8 +2794,8 @@ export class DtsVisitor {
     this.builder = this.builder.startBlock(null, true, false);
     for (let i = 0; i < positional.length; i++) {
       this.builder.split(false, i > 0);
-      this.v(positional[i]);
-      this.writeCommaAfter(positional[i]);
+      this.v(dtsAt(positional, i));
+      this.writeCommaAfter(dtsAt(positional, i));
     }
     let firstClosing = rp;
     let namedFields: i32[] = [];
@@ -2665,8 +2807,8 @@ export class DtsVisitor {
       namedFields = this.items(this.f(named, 1));
       for (let i = 0; i < namedFields.length; i++) {
         this.builder.split(false, i > 0);
-        this.v(namedFields[i]);
-        this.writeCommaAfter(namedFields[i]);
+        this.v(dtsAt(namedFields, i));
+        this.writeCommaAfter(dtsAt(namedFields, i));
       }
       firstClosing = this.f(named, 2);
     }
@@ -2676,9 +2818,9 @@ export class DtsVisitor {
     }
     let force = false;
     if (named < 0) {
-      force = positional.length > 1 && this.hasCommaAfter(positional[positional.length - 1]);
+      force = positional.length > 1 && this.hasCommaAfter(dtsLastOf(positional));
     } else {
-      force = namedFields.length > 0 && this.hasCommaAfter(namedFields[namedFields.length - 1]);
+      force = namedFields.length > 0 && this.hasCommaAfter(dtsLastOf(namedFields));
     }
     this.builder = this.builder.endBlock(force);
     this.endRule();
@@ -2703,7 +2845,7 @@ export class DtsVisitor {
     this.tok(this.f(n, 4));
     this.builder = this.builder.startBlock(null, true, cases.length > 0);
     this.visitCommaSeparatedNodes(cases, SA_SPLIT);
-    const hasTrailingComma = cases.length > 0 && this.commaAfter(cases[cases.length - 1]) >= 0;
+    const hasTrailingComma = cases.length > 0 && this.commaAfter(dtsLastOf(cases)) >= 0;
     const forceSplit = this.containsLineComments(cases, rb);
     this.endBody(rb, hasTrailingComma || forceSplit);
   }
@@ -2715,9 +2857,9 @@ export class DtsVisitor {
     this.flattenOr(this.f(gp, 0), orBranches, orTokens);
     this.startLazyRule();
     for (let i = 0; i < orBranches.length - 1; i++) {
-      this.v(orBranches[i]);
+      this.v(dtsAt(orBranches, i));
       this.space();
-      this.tok(orTokens[i]);
+      this.tok(dtsAt(orTokens, i));
       this.split();
     }
     this.builder.nestExpression(DTS_INDENT_BLOCK, false);
@@ -2726,7 +2868,7 @@ export class DtsVisitor {
       this.startLazyRule();
       this.builder.nestExpression(DTS_INDENT_BLOCK, false);
     }
-    this.v(orBranches[orBranches.length - 1]);
+    this.v(dtsLastOf(orBranches));
     if (when >= 0) {
       this.split();
       this.builder.startBlockArgumentNesting();
@@ -2849,7 +2991,7 @@ export class DtsVisitor {
   }
 
   visitDirectiveMetadata(n: i32): void {
-    const unit = this.parent[n];
+    const unit = this.par(n);
     const isFirst = this.at(this.f(unit, 1), 0) === n;
     this.visitNodes(this.items(this.f(n, 0)), SA_NONE, SA_NEWLINE, isFirst ? SA_ONE_OR_TWO : SA_NEWLINE);
   }
@@ -2930,7 +3072,7 @@ export class DtsVisitor {
       return;
     }
     const op = this.f(e, 1);
-    if (precedence !== -1 && dtPrecedence(this.t.kind[op], K_NONE) !== precedence) {
+    if (precedence !== -1 && dtPrecedence(this.t.kindAt(op), K_NONE) !== precedence) {
       this.v(e);
       return;
     }
@@ -2957,11 +3099,11 @@ export class DtsVisitor {
     rule.beforeArgument(this.zeroSplit());
     this.builder.startBlockArgumentNesting();
     for (let i = 0; i < nodes.length; i++) {
-      this.v(nodes[i]);
+      this.v(dtsAt(nodes, i));
       if (i < nodes.length - 1) {
-        let comma = this.a.end[nodes[i]] + 1;
-        if (this.t.kind[comma] === T_QUESTION) {
-          comma = comma + 1;
+        let comma = add32(this.a.endOf(dtsAt(nodes, i)), 1);
+        if (this.t.kindAt(comma) === T_QUESTION) {
+          comma = add32(comma, 1);
         }
         this.tok(comma);
         rule.beforeArgument(this.split());
@@ -3079,11 +3221,11 @@ export class DtsVisitor {
       this.builder.startRule(dtsRule(DTS_COST_TYPE_ARGUMENT));
       const targs = this.items(this.f(typeArguments, 1));
       for (let i = 0; i < targs.length; i++) {
-        this.v(targs[i]);
+        this.v(dtsAt(targs, i));
         if (i < targs.length - 1) {
-          let comma = this.a.end[targs[i]] + 1;
-          if (this.t.kind[comma] === T_QUESTION) {
-            comma = comma + 1;
+          let comma = add32(this.a.endOf(dtsAt(targs, i)), 1);
+          if (this.t.kindAt(comma) === T_QUESTION) {
+            comma = add32(comma, 1);
           }
           this.tok(comma);
           this.split();
@@ -3109,8 +3251,8 @@ export class DtsVisitor {
       let lineRule = dtsTypeArgumentRule();
       this.builder.startLazyRule(lineRule);
       for (const element of elements) {
-        const b = this.a.beg[element];
-        if (this.t.lineE[b - 1] !== this.t.lineS[b]) {
+        const b = this.a.begOf(element);
+        if (this.t.lineEAt(sub32(b, 1)) !== this.t.lineSAt(b)) {
           this.oneOrTwoNewlines();
           this.endRule();
           lineRule = dtsTypeArgumentRule();
@@ -3125,13 +3267,19 @@ export class DtsVisitor {
     } else {
       for (let i = 0; i < elements.length; i++) {
         this.builder.split(false, i > 0);
-        this.v(elements[i]);
-        this.writeCommaAfter(elements[i]);
+        this.v(dtsAt(elements, i));
+        this.writeCommaAfter(dtsAt(elements, i));
       }
     }
     let force = false;
     if (splitOuterCollection) {
-      force = this.collectionSplits.pop();
+      const splits = this.collectionSplits;
+      // Pushed above when splitOuterCollection.
+      if (splits.length < 1) {
+        fault();
+        return;
+      }
+      force = splits.pop();
     }
     const isSingleElementRecord = isRecord && elements.length === 1;
     if (this.listHasCommaAfter(elements) && !isSingleElementRecord) {
@@ -3190,7 +3338,7 @@ export class DtsVisitor {
     const k = this.kind(type);
     if (k === N_GENERIC_FUNCTION_TYPE) {
       const params = this.items(this.f(this.f(type, 3), 1));
-      isBlockType = params.length > 0 && this.hasCommaAfter(params[params.length - 1]);
+      isBlockType = params.length > 0 && this.hasCommaAfter(dtsLastOf(params));
     } else if (k === N_RECORD_TYPE_ANNOTATION) {
       isBlockType = true;
     }
@@ -3204,15 +3352,15 @@ export class DtsVisitor {
   }
 
   splitEmptyBlock(n: i32): boolean {
-    const p = this.parent[n];
+    const p = this.par(n);
     const pk = this.kind(p);
     if (pk === N_IF_STATEMENT) {
       return this.f(p, 7) >= 0 && this.f(p, 5) === n;
     }
-    if (pk === N_CATCH_CLAUSE && this.kind(this.parent[p]) === N_TRY_STATEMENT) {
-      const tr = this.parent[p];
+    if (pk === N_CATCH_CLAUSE && this.kind(this.par(p)) === N_TRY_STATEMENT) {
+      const tr = this.par(p);
       const catches = this.f(tr, 2);
-      return this.f(tr, 4) >= 0 || n !== this.f(this.at(catches, this.len(catches) - 1), 8);
+      return this.f(tr, 4) >= 0 || n !== this.f(this.at(catches, sub32(this.len(catches), 1)), 8);
     }
     return false;
   }
@@ -3262,10 +3410,10 @@ export class DtsVisitor {
       if (i > 0) {
         rule.addName(this.split());
       }
-      const n = nodes[i];
+      const n = dtsAt(nodes, i);
       this.v(n);
-      const next = this.a.end[n] + 1;
-      if (this.t.kind[next] === T_COMMA) {
+      const next = add32(this.a.endOf(n), 1);
+      if (this.t.kindAt(next) === T_COMMA) {
         this.tok(next);
       }
     }
@@ -3286,13 +3434,19 @@ export class DtsVisitor {
 
 const dtsStartsAt = (s: string, p: string, at: i32): boolean => {
   const n = toI32(p.length);
-  if (at + n > toI32(s.length)) {
+  if (toI64(at) + toI64(n) > toI64(toI32(s.length))) {
     return false;
   }
-  for (let i = 0; i < n; i++) {
-    if (s.charCodeAt(at + i) !== p.charCodeAt(i)) {
+  let j = at;
+  for (let i = 0; i < n && i < p.length; i++) {
+    if (j < 0 || j >= s.length) {
+      fault();
       return false;
     }
+    if (s.charCodeAt(j) !== p.charCodeAt(i)) {
+      return false;
+    }
+    j = j + 1;
   }
   return true;
 };
@@ -3303,14 +3457,19 @@ const dtsSplitLines = (s: string): string[] => {
   const n = toI32(s.length);
   let start = 0;
   let i = 0;
-  while (i < n) {
+  while (i >= 0 && i < n) {
     const c = s.charCodeAt(i);
     if (c === 10 || c === 13) {
       out.push(s.substring(start, i));
-      if (c === 13 && i + 1 < n && s.charCodeAt(i + 1) === 10) {
-        i++;
+      const j = i + 1;
+      if (c === 13 && j < n && s.charCodeAt(j) === 10) {
+        i = j;
       }
-      i++;
+      if (i >= n) {
+        fault();
+        break;
+      }
+      i = i + 1;
       start = i;
     } else {
       i++;
@@ -3345,9 +3504,11 @@ class DtsArgList {
       this.after = this.args;
     } else {
       this.hasFunctions = true;
-      this.args = new DtsSublist(v, all, all.slice(0, range[0]));
-      this.functions = all.slice(range[0], range[1]);
-      this.after = new DtsSublist(v, all, all.slice(range[1], all.length));
+      const from = dtsAt(range, 0);
+      const to = dtsAt(range, 1);
+      this.args = new DtsSublist(v, all, sliceI32s(all, 0, from));
+      this.functions = sliceI32s(all, from, to);
+      this.after = new DtsSublist(v, all, sliceI32s(all, to, toI32(all.length)));
     }
   }
 
@@ -3371,7 +3532,7 @@ class DtsArgList {
     v.endSpan();
     if (this.hasFunctions) {
       const fns = this.functions;
-      if (fns[0] === this.all[0]) {
+      if (dtsAt(fns, 0) === dtsAt(this.all, 0)) {
         v.soloZeroSplit();
       } else {
         v.soloSplit(DTS_COST_NORMAL);
@@ -3383,7 +3544,7 @@ class DtsArgList {
         }
         v.v(a);
         if (v.hasCommaAfter(a)) {
-          v.tok(v.a.end[a] + 1);
+          v.tok(add32(v.a.endOf(a), 1));
         }
       }
       v.startSpan();
@@ -3435,14 +3596,14 @@ const dtsContiguousFunctions = (v: DtsVisitor, args: i32[]): i32[] => {
   if (dtsIsAllNamed(v, args) && (start > 0 || end < toI32(args.length))) {
     return [];
   }
-  if (dtsIsAllNamed(v, args.slice(start, end))) {
+  if (dtsIsAllNamed(v, sliceI32s(args, start, end))) {
     for (let i = 0; i < start; i++) {
-      if (dtsIsNamedArrow(v, args[i])) {
+      if (dtsIsNamedArrow(v, dtsAt(args, i))) {
         return [];
       }
     }
     for (let i = end; i < args.length; i++) {
-      if (dtsIsNamedArrow(v, args[i])) {
+      if (dtsIsNamedArrow(v, dtsAt(args, i))) {
         return [];
       }
     }
@@ -3558,19 +3719,21 @@ class DtsSublist {
       }
     }
     let leading = 0;
-    for (const a of args) {
-      if (this.blocks.indexOf(a) < 0) {
+    for (let i = 0; i < args.length; i++) {
+      if (this.blocks.indexOf(args[i]) < 0) {
         break;
       }
-      leading++;
+      leading = i + 1;
     }
     let trailing = 0;
     if (leading !== toI32(args.length)) {
-      for (let i = toI32(args.length) - 1; i >= 0; i--) {
+      const k = toI32(args.length);
+      for (let i = k - 1; i >= 0 && i < args.length; i--) {
         if (this.blocks.indexOf(args[i]) < 0) {
           break;
         }
-        trailing++;
+        // k - i arguments at the end are blocks.
+        trailing = k - i;
       }
     }
     if (leading !== toI32(this.blocks.length)) {
@@ -3598,7 +3761,7 @@ class DtsSublist {
       return v.f(e, 1);
     }
     if ((k === N_SIMPLE_STRING_LITERAL || k === N_STRING_INTERPOLATION) && v.isMultilineString(e)) {
-      return v.a.beg[e];
+      return v.a.begOf(e);
     }
     return -1;
   }
@@ -3617,7 +3780,7 @@ class DtsSublist {
     }
     const np = toI32(this.positional.length);
     const leading = this.leadingBlocks < np ? this.leadingBlocks : np;
-    const t = this.trailingBlocks - toI32(this.named.length);
+    const t = sub32(this.trailingBlocks, toI32(this.named.length));
     const trailing = t > 0 ? t : 0;
     const rule = dtsPositionalRule(this.blockRule, np, leading, trailing);
     this.visitArguments(this.positional, rule, true);
@@ -3628,7 +3791,7 @@ class DtsSublist {
     if (this.named.length === 0) {
       return;
     }
-    const l = this.leadingBlocks - toI32(this.positional.length);
+    const l = sub32(this.leadingBlocks, toI32(this.positional.length));
     const leading = l > 0 ? l : 0;
     const nn = toI32(this.named.length);
     const trailing = this.trailingBlocks < nn ? this.trailingBlocks : nn;
@@ -3642,7 +3805,7 @@ class DtsSublist {
   visitArguments(args: i32[], rule: DtsRule, isPositional: boolean): void {
     const v = this.v;
     v.builder.startRule(rule);
-    let ps = v.builder.split(true, args[0] !== this.all[0]);
+    let ps = v.builder.split(true, dtsAt(args, 0) !== dtsAt(this.all, 0));
     this.previousSplit = ps;
     rule.beforeArgument(ps);
     if (isPositional) {
@@ -3666,12 +3829,12 @@ class DtsSublist {
     const v = this.v;
     const bi = this.blocks.indexOf(arg);
     const isNamed = v.kind(arg) === N_NAMED_ARGUMENT;
-    const nestBlocks = this.all.length > 1 || v.kind(this.all[0]) === N_RECORD_LITERAL;
+    const nestBlocks = this.all.length > 1 || v.kind(dtsAt(this.all, 0)) === N_RECORD_LITERAL;
     if (bi >= 0) {
       rule.disableSplitOnInnerRules();
       const br = this.blockRule;
       if (br !== null) {
-        v.beforeBlock(this.blockToks[bi], br, this.previousSplit);
+        v.beforeBlock(dtsAt(this.blockToks, bi), br, this.previousSplit);
       }
     } else if (nestBlocks) {
       v.builder.startBlockArgumentNesting();
@@ -3691,7 +3854,7 @@ class DtsSublist {
       rule.enableSplitOnInnerRules();
     }
     if (v.hasCommaAfter(arg)) {
-      v.tok(v.a.end[arg] + 1);
+      v.tok(add32(v.a.endOf(arg), 1));
     }
   }
 }
@@ -3743,7 +3906,7 @@ class DtsCallChain {
         this.properties.push(c);
       }
     }
-    let rest = calls.slice(this.properties.length, calls.length);
+    let rest = dtsSliceSel(calls, toI32(this.properties.length), toI32(calls.length));
     this.blockCalls = [];
     let inBlockCalls = false;
     for (let i = 0; i < rest.length; i++) {
@@ -3804,7 +3967,12 @@ class DtsCallChain {
     v.v(this.target);
     if (this.properties.length === 1) {
       v.soloZeroSplit();
-      this.write(this.properties[0]);
+      const props = this.properties;
+      if (props.length < 1) {
+        fault();
+        return;
+      }
+      this.write(props[0]);
     } else if (this.properties.length > 1) {
       if (!splitOnTarget) {
         const r = dtsPositionalRule(null, toI32(this.properties.length), 0, 0);
@@ -3879,7 +4047,7 @@ class DtsCallChain {
     if (v.len(args) === 0) {
       return true;
     }
-    const last = v.at(args, v.len(args) - 1);
+    const last = v.at(args, sub32(v.len(args), 1));
     if (v.hasCommaAfter(last)) {
       return false;
     }
@@ -3887,7 +4055,9 @@ class DtsCallChain {
   }
 
   beforeMethodArguments(selector: DtsSelector): void {
-    if (!this.hasBlockCalls && this.calls.length > 0 && selector === this.calls[this.calls.length - 1]) {
+    const calls = this.calls;
+    const k = toI32(calls.length);
+    if (!this.hasBlockCalls && k > 0 && k <= calls.length && selector === calls[k - 1]) {
       this.disableRule();
     }
     if (
@@ -3988,7 +4158,7 @@ const dtsUnwrapTarget = (v: DtsVisitor, node: i32, calls: DtsSelector[]): i32 =>
   if (k === N_FUNCTION_EXPRESSION_INVOCATION) {
     return dtsUnwrapPostfix(v, node, v.f(node, 0), calls);
   }
-  if (k === N_POSTFIX_EXPRESSION && v.t.kind[v.f(node, 1)] === T_BANG) {
+  if (k === N_POSTFIX_EXPRESSION && v.t.kindAt(v.f(node, 1)) === T_BANG) {
     return dtsUnwrapPostfix(v, node, v.f(node, 0), calls);
   }
   return node;
@@ -3996,10 +4166,11 @@ const dtsUnwrapTarget = (v: DtsVisitor, node: i32, calls: DtsSelector[]): i32 =>
 
 const dtsUnwrapPostfix = (v: DtsVisitor, node: i32, target0: i32, calls: DtsSelector[]): i32 => {
   const target = dtsUnwrapTarget(v, target0, calls);
-  if (calls.length === 0) {
+  const k = toI32(calls.length);
+  if (k < 1 || k > calls.length) {
     return node;
   }
-  calls[calls.length - 1].postfixes.push(node);
+  calls[k - 1].postfixes.push(node);
   return target;
 };
 
@@ -4010,8 +4181,21 @@ const dtsUnwrapSelector = (v: DtsVisitor, target0: i32, selector: DtsSelector, c
 };
 
 const dtsUnwrapNullAssertion = (v: DtsVisitor, e: i32): i32 => {
-  if (v.kind(e) === N_POSTFIX_EXPRESSION && v.t.kind[v.f(e, 1)] === T_BANG) {
+  if (v.kind(e) === N_POSTFIX_EXPRESSION && v.t.kindAt(v.f(e, 1)) === T_BANG) {
     return v.f(e, 0);
   }
   return e;
+};
+
+/** A new array of `xs[a, e)`; a range outside `xs` faults and answers []. */
+const dtsSliceSel = (xs: DtsSelector[], a: i32, e: i32): DtsSelector[] => {
+  const out: DtsSelector[] = [];
+  if (a < 0 || e < a || e > xs.length) {
+    fault();
+    return out;
+  }
+  for (let i = a; i >= 0 && i < e && i < xs.length; i++) {
+    out.push(xs[i]);
+  }
+  return out;
 };

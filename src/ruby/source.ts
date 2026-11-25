@@ -9,6 +9,8 @@ import { F_HEREDOC_END, M_HEREDOC, NT_BEGIN, RbAst, V_NIL, rbSplitComma, vIdx } 
 import { rbText } from "./lexer";
 import { RB_COP_NAMES } from "./registry";
 import { RbParser } from "./parser";
+import { fault } from "../core/fault";
+import { stableSort } from "../core/sort";
 
 /** The token type RuboCop gives comments (:tCOMMENT). */
 export const TK_COMMENT: i32 = -2;
@@ -92,63 +94,46 @@ export class RbSource {
       return;
     }
     this.sortDone = true;
-    const n = toI32(this.tokT.length);
-    let idx: i32[] = [];
+    const tokT = this.tokT;
+    const tokV = this.tokV;
+    const tokS = this.tokS;
+    const tokE = this.tokE;
+    const n = toI32(tokT.length);
+    const idx: i32[] = [];
     for (let i = 0; i < n; i++) {
       idx.push(i);
     }
-    // Bottom-up merge sort (stable).
-    let tmp: i32[] = [];
-    for (let i = 0; i < n; i++) {
-      tmp.push(0);
-    }
-    let w = 1;
-    while (w < n) {
-      let lo = 0;
-      while (lo < n) {
-        const mid = lo + w < n ? lo + w : n;
-        const hi = lo + 2 * w < n ? lo + 2 * w : n;
-        let i = lo;
-        let j = mid;
-        let k = lo;
-        while (i < mid && j < hi) {
-          if (this.tokS[idx[j]] < this.tokS[idx[i]]) {
-            tmp[k] = idx[j];
-            j++;
-          } else {
-            tmp[k] = idx[i];
-            i++;
-          }
-          k++;
-        }
-        while (i < mid) {
-          tmp[k] = idx[i];
-          i++;
-          k++;
-        }
-        while (j < hi) {
-          tmp[k] = idx[j];
-          j++;
-          k++;
-        }
-        lo = hi;
+    // Stable by start: a later token goes first only when it starts earlier.
+    stableSort(idx, (a: i32, b: i32): i32 => {
+      if (a >= 0 && a < tokS.length && b >= 0 && b < tokS.length) {
+        return tokS[b] < tokS[a] ? 1 : 0;
       }
-      const sw = idx;
-      idx = tmp;
-      tmp = sw;
-      w = w * 2;
-    }
-    this.sortT = [];
-    this.sortV = [];
-    this.sortS = [];
-    this.sortE = [];
-    for (let i = 0; i < n; i++) {
+      fault();
+      return 0;
+    });
+    const sT: i32[] = [];
+    const sV: string[] = [];
+    const sS: i32[] = [];
+    const sE: i32[] = [];
+    for (let i = 0; i < idx.length; i++) {
       const o = idx[i];
-      this.sortT.push(this.tokT[o]);
-      this.sortV.push(this.tokV[o]);
-      this.sortS.push(this.tokS[o]);
-      this.sortE.push(this.tokE[o]);
+      if (o < 0 || o >= tokT.length || o >= tokV.length || o >= tokS.length || o >= tokE.length) {
+        fault();
+        break;
+      }
+      const t = tokT[o];
+      const v = tokV[o];
+      const ts = tokS[o];
+      const te = tokE[o];
+      sT.push(t);
+      sV.push(v);
+      sS.push(ts);
+      sE.push(te);
     }
+    this.sortT = sT;
+    this.sortV = sV;
+    this.sortS = sS;
+    this.sortE = sE;
   }
 
   layLines(): void {
@@ -156,27 +141,37 @@ export class RbSource {
       return;
     }
     this.layDone = true;
-    this.layS = [];
-    this.layE = [];
-    this.layPhys = 0;
-    this.layN = 0;
+    const pts = this.pts;
+    const layS: i32[] = [];
+    const layE: i32[] = [];
     const k = this.n;
     if (k > 0) {
-      this.layS.push(0);
-      for (let i = 0; i < k; i++) {
-        if (this.pts[i] === 10) {
-          this.layE.push(i);
-          this.layS.push(i + 1);
+      layS.push(0);
+      // `n` is `pts.length` (the constructor), so the bound only proves it.
+      for (let i = 0; i < k && i < pts.length; i++) {
+        if (pts[i] === 10) {
+          layE.push(i);
+          layS.push(i + 1);
         }
       }
-      this.layE.push(k);
+      layE.push(k);
     }
-    this.layPhys = toI32(this.layS.length);
-    this.layN = this.layPhys;
-    const nt = toI32(this.tokS.length);
-    const lastTokLine = nt > 0 ? this.line(this.tokS[nt - 1]) : this.layPhys;
-    for (let ix = lastTokLine; ix < this.layPhys; ix++) {
-      if (this.layE[ix] - this.layS[ix] === 7 && this.src(this.layS[ix], this.layE[ix]) === "__END__") {
+    this.layS = layS;
+    this.layE = layE;
+    const layPhys = toI32(layS.length);
+    this.layPhys = layPhys;
+    this.layN = layPhys;
+    const tokS = this.tokS;
+    const lt = toI32(tokS.length) - 1;
+    const lastTokLine = lt >= 0 && lt < tokS.length ? this.line(tokS[lt]) : layPhys;
+    for (let ix = lastTokLine; ix < layPhys; ix++) {
+      if (ix < 0 || ix >= layS.length || ix >= layE.length) {
+        fault();
+        break;
+      }
+      const ls = layS[ix];
+      const le = layE[ix];
+      if (toI64(le) - toI64(ls) === toI64(7) && this.src(ls, le) === "__END__") {
         this.layN = ix;
         break;
       }
@@ -186,16 +181,29 @@ export class RbSource {
   /** Parent links and the pre-order node list (an explicit stack: deep trees). */
   private index(root: i32): void {
     const stack: i32[] = [root];
-    while (stack.length > 0) {
-      const n = stack[stack.length - 1];
-      stack.pop();
+    const parentOf = this.parentOf;
+    while (true) {
+      const top = toI32(stack.length) - 1;
+      if (top < 0 || top >= stack.length) {
+        break;
+      }
+      const n = stack[top];
+      if (stack.length > 0) {
+        stack.pop();
+      }
       this.pre.push(n);
       const k = this.a.kids(n);
-      const m = this.a.len(k);
-      for (let i = m - 1; i >= 0; i--) {
+      let i = this.a.len(k);
+      while (i > 0) {
+        i--;
         const c = this.a.at(k, i);
         if (this.a.isNode(c)) {
-          this.parentOf[vIdx(c)] = n;
+          const ci = vIdx(c);
+          if (ci < 0 || ci >= parentOf.length) {
+            fault();
+            return;
+          }
+          parentOf[ci] = n;
           stack.push(c);
         }
       }
@@ -203,7 +211,13 @@ export class RbSource {
   }
 
   parent(n: i32): i32 {
-    return this.parentOf[vIdx(n)];
+    const parentOf = this.parentOf;
+    const i = vIdx(n);
+    if (i >= 0 && i < parentOf.length) {
+      return parentOf[i];
+    }
+    fault();
+    return V_NIL;
   }
 
   // ---- Text --------------------------------------------------------------------
@@ -217,7 +231,9 @@ export class RbSource {
   }
 
   at(i: i32): i32 {
-    return i >= 0 && i < this.n ? this.pts[i] : -1;
+    const pts = this.pts;
+    // `n` is `pts.length` (the constructor), so the second bound only proves it.
+    return i >= 0 && i < this.n && i < pts.length ? pts[i] : -1;
   }
 
   /** 1-based line of a position. */
@@ -227,7 +243,19 @@ export class RbSource {
 
   /** 0-based column (in characters) of a position. */
   column(pos: i32): i32 {
-    return pos - this.lineStarts[this.line(pos) - 1];
+    const l = this.line(pos);
+    const ls = this.lineStarts;
+    if (l > 0) {
+      const li = l - 1;
+      if (li < ls.length) {
+        const r = toI64(pos) - toI64(ls[li]);
+        if (r >= toI64(-2147483648) && r <= toI64(2147483647)) {
+          return toI32(r);
+        }
+      }
+    }
+    fault();
+    return 0;
   }
 
   lineCount(): i32 {
@@ -236,13 +264,30 @@ export class RbSource {
 
   /** The start of 1-based line `l`. */
   lineStart(l: i32): i32 {
-    return this.lineStarts[l - 1];
+    const ls = this.lineStarts;
+    if (l > 0) {
+      const li = l - 1;
+      if (li >= 0 && li < ls.length) {
+        return ls[li];
+      }
+    }
+    fault();
+    return 0;
   }
 
   /** The end of 1-based line `l`, before its newline. */
   lineEnd(l: i32): i32 {
-    if (l < toI32(this.lineStarts.length)) {
-      return this.lineStarts[l] - 1;
+    const ls = this.lineStarts;
+    if (l < toI32(ls.length)) {
+      if (l >= 0) {
+        // A line start is a position, never negative.
+        const v = ls[l];
+        if (v >= 0) {
+          return v - 1;
+        }
+      }
+      fault();
+      return 0;
     }
     return this.n;
   }
@@ -259,9 +304,17 @@ export class RbSource {
 
   /** Whether line `l` holds only comments (CommentConfig#comment_only_line?). */
   commentOnlyLine(l: i32): boolean {
-    for (let i = 0; i < toI32(this.tokT.length); i++) {
-      if (this.tokT[i] !== TK_COMMENT && this.line(this.tokS[i]) === l) {
-        return false;
+    const tokT = this.tokT;
+    const tokS = this.tokS;
+    for (let i = 0; i < tokT.length; i++) {
+      if (tokT[i] !== TK_COMMENT) {
+        if (i >= tokS.length) {
+          fault();
+          return true;
+        }
+        if (this.line(tokS[i]) === l) {
+          return false;
+        }
       }
     }
     return true;
@@ -282,14 +335,22 @@ export class RbSource {
     }
     const nc = toI32(all.length);
     // CopAnalysis per cop: open start line (-1 nil); closed ranges go to dir*.
+    // `start` and `all` both hold `nc` entries, and every index below is one
+    // of `index`'s values, so the guards that fault cannot fail.
     const start: i32[] = [];
     for (let i = 0; i < nc; i++) {
       start.push(-1);
     }
     const stack: i32[][] = [];
-    for (let ci = 0; ci < toI32(this.commS.length); ci++) {
-      const cs = this.commS[ci];
-      const text = this.src(cs, this.commE[ci]);
+    const commS = this.commS;
+    const commE = this.commE;
+    for (let ci = 0; ci < commS.length; ci++) {
+      const cs = commS[ci];
+      if (ci >= commE.length) {
+        fault();
+        return;
+      }
+      const text = this.src(cs, commE[ci]);
       if (text.indexOf("rubocop") < 0) {
         continue;
       }
@@ -298,60 +359,108 @@ export class RbSource {
         continue;
       }
       const line = this.line(cs);
+      // A line number is at least 1 and below the file's length.
+      if (line < 1 || line > 1073741823) {
+        fault();
+        return;
+      }
       const m = d.mode;
       if (m === "push") {
         const snap: i32[] = [];
-        for (let i = 0; i < nc; i++) {
+        for (let i = 0; i < start.length; i++) {
           snap.push(start[i]);
         }
         stack.push(snap);
         const sg = this.signed(d, all, index);
-        for (let j = 0; j + 1 < toI32(sg.length); j += 2) {
-          const op = sg[j];
-          const ix = sg[j + 1];
-          if (op === 45 && start[ix] < 0) {
+        // The pairs (op, cop index): j runs over the odd slots.
+        for (let j = 1; j < sg.length; j++) {
+          if ((j & 1) === 0) {
+            continue;
+          }
+          const op = sg[j - 1];
+          const ix = sg[j];
+          if (ix < 0 || ix >= start.length || ix >= all.length) {
+            fault();
+            return;
+          }
+          const st = start[ix];
+          if (op === 45 && st < 0) {
             start[ix] = line;
-          } else if (op === 43 && start[ix] >= 0) {
-            this.closeAt(all[ix], start[ix], line);
+          } else if (op === 43 && st >= 0) {
             start[ix] = -1;
+            this.closeAt(all[ix], st, line);
           }
         }
       } else if (m === "pop") {
-        if (stack.length > 0) {
-          const restored = stack[stack.length - 1];
-          stack.pop();
-          for (let i = 0; i < nc; i++) {
-            if (start[i] >= 0) {
-              this.closeAt(all[i], start[i], line - 1);
+        const top = toI32(stack.length) - 1;
+        if (top >= 0 && top < stack.length) {
+          const restored = stack[top];
+          if (stack.length > 0) {
+            stack.pop();
+          }
+          for (let i = 0; i < start.length; i++) {
+            if (i >= all.length || i >= restored.length) {
+              fault();
+              return;
             }
+            const st = start[i];
+            const name = all[i];
             start[i] = restored[i] >= 0 ? line : -1;
+            if (st >= 0) {
+              this.closeAt(name, st, line - 1);
+            }
           }
         }
       } else if (m === "disable-next" || m === "todo-next" || m === "next" || m === "enable-next") {
         const bounds = this.statementScopeAfter(line);
-        if (bounds.length === 0) {
+        if (bounds.length < 2) {
+          if (bounds.length !== 0) {
+            fault();
+            return;
+          }
           continue;
         }
         const from = bounds[0];
         const to = bounds[1];
+        // Both are line numbers, like `line`.
+        if (from < 1 || from > 1073741823 || to < 1 || to > 1073741823) {
+          fault();
+          return;
+        }
         if (m === "next") {
           const sg = this.signed(d, all, index);
-          for (let j = 0; j + 1 < toI32(sg.length); j += 2) {
-            const ix = sg[j + 1];
-            if (sg[j] === 45) {
-              this.addRange(all[ix], from, to);
-            } else if (start[ix] >= 0) {
-              this.closeAt(all[ix], start[ix], from - 1);
+          for (let j = 1; j < sg.length; j++) {
+            if ((j & 1) === 0) {
+              continue;
+            }
+            const ix = sg[j];
+            if (ix < 0 || ix >= start.length || ix >= all.length) {
+              fault();
+              return;
+            }
+            const name = all[ix];
+            const st = start[ix];
+            if (sg[j - 1] === 45) {
+              this.addRange(name, from, to);
+            } else if (st >= 0) {
               start[ix] = to + 1;
+              this.closeAt(name, st, from - 1);
             }
           }
         } else {
           for (const name of this.copNames(d, all, index)) {
             const ix = index.get(name) ?? -1;
             if (m === "enable-next") {
-              if (ix >= 0 && start[ix] >= 0) {
-                this.closeAt(name, start[ix], from - 1);
-                start[ix] = to + 1;
+              if (ix >= 0) {
+                if (ix >= start.length) {
+                  fault();
+                  return;
+                }
+                const st = start[ix];
+                if (st >= 0) {
+                  start[ix] = to + 1;
+                  this.closeAt(name, st, from - 1);
+                }
               }
             } else {
               this.addRange(name, from, to);
@@ -372,16 +481,26 @@ export class RbSource {
           if (ix < 0) {
             continue; // a cop this port does not run
           }
-          if (start[ix] >= 0) {
-            this.closeAt(name, start[ix], line);
+          if (ix >= start.length) {
+            fault();
+            return;
           }
+          const st = start[ix];
           start[ix] = disabled ? line : -1;
+          if (st >= 0) {
+            this.closeAt(name, st, line);
+          }
         }
       }
     }
-    for (let i = 0; i < nc; i++) {
-      if (start[i] >= 0) {
-        this.addRange(all[i], start[i], 1 << 30);
+    for (let i = 0; i < start.length; i++) {
+      const st = start[i];
+      if (st >= 0) {
+        if (i >= all.length) {
+          fault();
+          return;
+        }
+        this.addRange(all[i], st, 1 << 30);
       }
     }
   }
@@ -440,15 +559,15 @@ export class RbSource {
     const k = toI32(t.length);
     // `+` operations first, then `-` (the Hash keeps first-seen order).
     let firstOp = 0;
-    while (p < k) {
-      while (p < k && rbIsWsByte(t.charCodeAt(p))) {
+    while (p >= 0 && p < k) {
+      while (p >= 0 && p < k && rbIsWsByte(t.charCodeAt(p))) {
         p++;
       }
       let q = p;
-      while (q < k && !rbIsWsByte(t.charCodeAt(q))) {
+      while (q >= 0 && q < k && !rbIsWsByte(t.charCodeAt(q))) {
         q++;
       }
-      if (q > p) {
+      if (q > p && p >= 0 && p < k) {
         const op = t.charCodeAt(p);
         if (op === 43 || op === 45) {
           if (firstOp === 0) {
@@ -478,10 +597,12 @@ export class RbSource {
     // resolved_cops.each: the first-seen operation's cops, then the other's.
     const order: i32[] = firstOp === 45 ? [45, 43] : [43, 45];
     for (const o of order) {
-      for (let i = 0; i < toI32(ops.length); i++) {
+      // `ops` and `idx` grow together.
+      for (let i = 0; i < ops.length && i < idx.length; i++) {
         if (ops[i] === o) {
+          const v = idx[i];
           res.push(o);
-          res.push(idx[i]);
+          res.push(v);
         }
       }
     }
@@ -497,12 +618,15 @@ export class RbSource {
     // attached_code_line
     let code = -1;
     const nl = this.lineCount();
-    for (let l = line + 1; l <= nl; l++) {
+    let l = line;
+    while (l < nl) {
+      const prev = l;
+      l++;
       if (!this.commentOnlyLine(l)) {
         code = l;
         break;
       }
-      if (rbBlankText(this.lineText(l - 1))) {
+      if (rbBlankText(this.lineText(prev))) {
         return none;
       }
     }
@@ -527,9 +651,15 @@ export class RbSource {
     // statement_end_line: the last line of any node in it, heredoc bodies included.
     let end = bestLast;
     const stack: i32[] = [best];
-    while (stack.length > 0) {
-      const n = stack[stack.length - 1];
-      stack.pop();
+    while (true) {
+      const top = toI32(stack.length) - 1;
+      if (top < 0 || top >= stack.length) {
+        break;
+      }
+      const n = stack[top];
+      if (stack.length > 0) {
+        stack.pop();
+      }
       const m = this.a.map(n);
       const e = this.a.mapKind(m) === M_HEREDOC ? this.line(this.a.fS(m, F_HEREDOC_END)) : this.line(this.a.exE(n));
       if (e > end) {
@@ -547,9 +677,12 @@ export class RbSource {
 
   /** cop_enabled_at_lines? for a cop name such as "Style/StringLiterals". */
   copEnabledAt(cop: string, first: i32, last: i32): boolean {
-    const k = toI32(this.dirNames.length);
-    for (let i = 0; i < k; i++) {
-      if (this.dirNames[i] === cop && this.dirTo[i] >= first && this.dirFrom[i] <= last) {
+    const names = this.dirNames;
+    const dirTo = this.dirTo;
+    const dirFrom = this.dirFrom;
+    // The three grow together (addRange).
+    for (let i = 0; i < names.length && i < dirTo.length && i < dirFrom.length; i++) {
+      if (names[i] === cop && dirTo[i] >= first && dirFrom[i] <= last) {
         return false;
       }
     }
@@ -590,7 +723,7 @@ const rbStrip = (s: string): string => {
   while (a < b && rbIsWsByte(s.charCodeAt(a))) {
     a++;
   }
-  while (b > a && rbIsWsByte(s.charCodeAt(b - 1))) {
+  while (b > a && b > 0 && rbIsWsByte(s.charCodeAt(b - 1))) {
     b--;
   }
   return s.substring(a, b);
@@ -598,7 +731,7 @@ const rbStrip = (s: string): string => {
 
 const rbHasRubocop = (pts: i32[]): boolean => {
   const n = toI32(pts.length);
-  for (let i = 0; i + 7 <= n; i++) {
+  for (let i = 0; i < n - 6; i++) {
     if (
       pts[i] === 114 &&
       pts[i + 1] === 117 &&
@@ -635,7 +768,10 @@ const rbQualify = (name: string, all: string[], index: Map<string, i32>): string
   for (const n of all) {
     if (n.endsWith(`/${name}`)) {
       found = n;
-      count++;
+      // Only whether exactly one matches counts.
+      if (count < 2) {
+        count++;
+      }
     }
   }
   return count === 1 ? found : name;
@@ -670,16 +806,16 @@ const rbMatchCopName = (t: string, p: i32): i32 => {
   const k = toI32(t.length);
   let q = p;
   let lastEnd = -1;
-  while (q < k && rbIsAlpha(t.charCodeAt(q))) {
+  while (q >= 0 && q < k && rbIsAlpha(t.charCodeAt(q))) {
     let r = q + 1;
-    while (r < k && rbIsWordByte(t.charCodeAt(r))) {
+    while (r >= 0 && r < k && rbIsWordByte(t.charCodeAt(r))) {
       r++;
     }
     if (r - q < 2) {
       break;
     }
     lastEnd = r;
-    if (r < k && t.charCodeAt(r) === 47) {
+    if (r >= 0 && r < k && t.charCodeAt(r) === 47) {
       q = r + 1;
       continue;
     }
@@ -690,24 +826,25 @@ const rbMatchCopName = (t: string, p: i32): i32 => {
 
 /** COPS_PATTERN at p: `all`, or names separated by \s*,\s*; the end, or -1. */
 const rbMatchCops = (t: string, p: i32): i32 => {
-  if (t.substring(p, p + 3) === "all") {
+  const k = toI32(t.length);
+  // A shorter (clamped) substring cannot be "all".
+  if (p >= 0 && p <= k - 3 && t.substring(p, p + 3) === "all") {
     return p + 3;
   }
   let e = rbMatchCopName(t, p);
   if (e < 0) {
     return -1;
   }
-  const k = toI32(t.length);
   while (true) {
     let q = e;
-    while (q < k && rbIsWsByte(t.charCodeAt(q))) {
+    while (q >= 0 && q < k && rbIsWsByte(t.charCodeAt(q))) {
       q++;
     }
-    if (q >= k || t.charCodeAt(q) !== 44) {
+    if (q < 0 || q >= k || t.charCodeAt(q) !== 44) {
       return e;
     }
     q++;
-    while (q < k && rbIsWsByte(t.charCodeAt(q))) {
+    while (q >= 0 && q < k && rbIsWsByte(t.charCodeAt(q))) {
       q++;
     }
     const e2 = rbMatchCopName(t, q);
@@ -721,7 +858,10 @@ const rbMatchCops = (t: string, p: i32): i32 => {
 /** PUSH_POP_ARGS_PATTERN at p: [+-]name(\s+[+-]name)*; the end, or -1. */
 const rbMatchSigned = (t: string, p: i32): i32 => {
   const k = toI32(t.length);
-  const c = p < k ? t.charCodeAt(p) : 0;
+  if (p < 0 || p >= k) {
+    return -1;
+  }
+  const c = t.charCodeAt(p);
   if (c !== 43 && c !== 45) {
     return -1;
   }
@@ -731,10 +871,10 @@ const rbMatchSigned = (t: string, p: i32): i32 => {
   }
   while (true) {
     let q = e;
-    while (q < k && rbIsWsByte(t.charCodeAt(q))) {
+    while (q >= 0 && q < k && rbIsWsByte(t.charCodeAt(q))) {
       q++;
     }
-    if (q === e || q >= k) {
+    if (q === e || q < 0 || q >= k) {
       return e;
     }
     const d = t.charCodeAt(q);
@@ -754,6 +894,11 @@ const RB_DIRECTIVE_MODES: string = "disable-next,enable-next,todo-next,disable,e
 /** DIRECTIVE_COMMENT_REGEXP matched at the first `#` where it matches (null: none, or `##` prefix). */
 const rbParseDirective = (text: string): RbDirective | null => {
   const k = toI32(text.length);
+  // A comment of a source file is far shorter.
+  if (k > 1073741823) {
+    fault();
+    return null;
+  }
   const modes = rbSplitComma(RB_DIRECTIVE_MODES);
   for (let h = 0; h < k; h++) {
     if (text.charCodeAt(h) !== 35) {
@@ -763,7 +908,8 @@ const rbParseDirective = (text: string): RbDirective | null => {
     while (p < k && rbIsWsByte(text.charCodeAt(p))) {
       p++;
     }
-    if (text.substring(p, p + 7) !== "rubocop") {
+    // A shorter (clamped) substring cannot be "rubocop".
+    if (p < 0 || p > k - 7 || text.substring(p, p + 7) !== "rubocop") {
       continue;
     }
     p += 7;
@@ -778,11 +924,17 @@ const rbParseDirective = (text: string): RbDirective | null => {
       p++;
     }
     let mode = "";
+    let modeEnd = p;
     for (const m of modes) {
       const mk = toI32(m.length);
-      if (text.substring(p, p + mk) === m && !(p + mk < k && rbIsWordByte(text.charCodeAt(p + mk)))) {
-        mode = m;
-        break;
+      // A shorter (clamped) substring cannot be `m`.
+      if (p >= 0 && p <= k && mk >= 0 && mk <= 64 && mk <= k - p) {
+        const pe = p + mk;
+        if (text.substring(p, pe) === m && !(pe < k && rbIsWordByte(text.charCodeAt(pe)))) {
+          mode = m;
+          modeEnd = pe;
+          break;
+        }
       }
     }
     if (mode.length === 0) {
@@ -793,13 +945,13 @@ const rbParseDirective = (text: string): RbDirective | null => {
     while (pre >= 0 && rbIsWsByte(text.charCodeAt(pre))) {
       pre--;
     }
-    if (h > 0 && text.charCodeAt(0) === 35 && pre === 0) {
+    if (h > 0 && text.length > 0 && text.charCodeAt(0) === 35 && pre === 0) {
       return null;
     }
-    p += toI32(mode.length);
+    p = modeEnd;
     let cops = "";
     let q = p;
-    while (q < k && rbIsWsByte(text.charCodeAt(q))) {
+    while (q >= 0 && q < k && rbIsWsByte(text.charCodeAt(q))) {
       q++;
     }
     if (q > p) {

@@ -4,6 +4,7 @@
 // Ported from RuboCop 1.92.3 (MIT License, Copyright (c) 2012-24 Bozhidar
 // Batsov).
 
+import { add32, atI32, sub32 } from "../../core/arr";
 import { F_BEGIN, F_END, NT_HASH, NT_HASH_PATTERN } from "../ast";
 import { RbCop } from "../cop";
 import { rnE, rnHas, rnS } from "../node";
@@ -29,52 +30,53 @@ export class CopLayoutSpaceInsideHashLiteralBraces {
       }
       const from = tk.withinFrom(a.exS(n));
       const to = tk.withinTo(a.exE(n));
-      if (to < from || tk.t[from] !== TK_tLBRACE || tk.t[to] !== TK_tRCURLY) {
+      if (to < from || atI32(tk.t, from) !== TK_tLBRACE || atI32(tk.t, to) !== TK_tRCURLY) {
         continue;
       }
-      this.check(src, tk, from, from + 1);
-      if (to - from + 1 > 2) {
-        this.check(src, tk, to - 1, to);
+      this.check(src, tk, from, add32(from, 1));
+      if (toI64(to) - toI64(from) + toI64(1) > toI64(2)) {
+        this.check(src, tk, sub32(to, 1), to);
       }
       this.checkWhitespaceOnly(src, n);
     }
   }
 
   private check(src: RbSource, tk: LspToks, i1: i32, i2: i32): void {
-    if (src.line(tk.s[i1]) < src.line(tk.s[i2])) {
+    if (src.line(atI32(tk.s, i1)) < src.line(atI32(tk.s, i2))) {
       return;
     }
-    if (tk.t[i2] === TK_COMMENT) {
+    if (atI32(tk.t, i2) === TK_COMMENT) {
       return;
     }
-    const left1 = tk.t[i1] === TK_tLBRACE;
-    const empty = left1 && tk.t[i2] === TK_tRCURLY;
+    const left1 = atI32(tk.t, i1) === TK_tLBRACE;
+    const empty = left1 && atI32(tk.t, i2) === TK_tRCURLY;
     const expect = !empty;
-    const has = lspSpaceAfter(src, tk.e[i1]);
+    const has = lspSpaceAfter(src, atI32(tk.e, i1));
     if (expect === has) {
       return;
     }
     const bi = left1 ? i1 : i2;
-    const bs = tk.s[bi];
-    const be = tk.e[bi];
+    const bs = atI32(tk.s, bi);
+    const be = atI32(tk.e, bi);
     const isOpen = src.src(bs, be) === "{";
     let rs = bs;
     let re = be;
     if (!expect) {
       if (isOpen) {
         let e = be;
-        while (lspIsBlank(src.at(e))) {
+        // src.at answers -1 past the source, which is not blank.
+        while (e < src.n && lspIsBlank(src.at(e))) {
           e++;
         }
-        rs = bs + 1;
+        rs = add32(bs, 1);
         re = e;
       } else {
         let b = bs;
-        while (lspIsBlank(src.at(b - 1))) {
+        while (b > 0 && lspIsBlank(src.at(b - 1))) {
           b--;
         }
         rs = b;
-        re = be - 1;
+        re = sub32(be, 1);
       }
     }
     const k = this.c.offense(rs, re);

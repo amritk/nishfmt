@@ -62,13 +62,17 @@ const swSgLower = (c: i32): i32 => (c >= 65 && c <= 90 ? c + 32 : c);
 /** Whether `s` (ASCII), from byte `at`, is `lit` ignoring ASCII case. */
 const swSgAt = (s: string, at: i32, lit: string): boolean => {
   const m = toI32(lit.length);
-  if (at < 0 || at + m > toI32(s.length)) {
+  const n = toI32(s.length);
+  if (at < 0 || at > n - m) {
     return false;
   }
-  for (let i = 0; i < m; i++) {
-    if (swSgLower(s.charCodeAt(at + i)) !== lit.charCodeAt(i)) {
+  // at + m <= n, so j stays below n.
+  let j = at;
+  for (let i = 0; i < m && j >= 0 && j < n; i++) {
+    if (swSgLower(s.charCodeAt(j)) !== lit.charCodeAt(i)) {
       return false;
     }
+    j++;
   }
   return true;
 };
@@ -98,14 +102,15 @@ const swSgRule = (s: string, kind: string, altsField: string, suffix: string, re
     let from = 0;
     let found = false;
     let i = 0;
-    while (i + m <= n) {
+    // i + m <= n, and altsField is a prefix of lit: the u32 sums are exact.
+    while (i <= n - m) {
       if (swSgAt(s, i, lit)) {
-        out = out + s.substring(from, i) + swSgReplace(s, i, i + toI32(altsField.length), repl);
-        i = i + m;
+        out = out + s.substring(from, i) + swSgReplace(s, i, toI32(toU32(i) + toU32(altsField.length)), repl);
+        i = toI32(toU32(i) + toU32(m));
         from = i;
         found = true;
       } else {
-        i++;
+        i = toI32(toU32(i) + 1);
       }
     }
     if (!found) {
@@ -113,17 +118,18 @@ const swSgRule = (s: string, kind: string, altsField: string, suffix: string, re
     }
     return out + s.substring(from);
   }
-  if (!swSgAt(s, n - sl, suffix)) {
+  const end = n - sl;
+  if (end < 0 || !swSgAt(s, end, suffix)) {
     return null;
   }
-  const end = n - sl;
   if (kind === "N") {
     // ([^aeiouy]|qu)ies$: "qu" starts further left, so it is tried first.
     if (swSgAt(s, end - 2, "qu")) {
       return s.substring(0, end - 2) + swSgReplace(s, end - 2, end, repl);
     }
-    if (end >= 1) {
-      const c = swSgLower(s.charCodeAt(end - 1));
+    const last = end - 1;
+    if (last >= 0 && last < n) {
+      const c = swSgLower(s.charCodeAt(last));
       if (c !== 97 && c !== 101 && c !== 105 && c !== 111 && c !== 117 && c !== 121) {
         return s.substring(0, end - 1) + swSgReplace(s, end - 1, end, repl);
       }
@@ -135,8 +141,9 @@ const swSgRule = (s: string, kind: string, altsField: string, suffix: string, re
   let a = 0;
   const alts = swSgField(altsField);
   const na = toI32(alts.length);
-  for (let i = 0; i <= na; i++) {
-    if (i === na || alts.charCodeAt(i) === 124) {
+  // na is a string length, so i < 2147483647 changes nothing.
+  for (let i = 0; i <= na && i < 2147483647; i++) {
+    if (i === na || (i < na && alts.charCodeAt(i) === 124)) {
       const alt = alts.substring(a, i);
       const al = toI32(alt.length);
       a = i + 1;
@@ -156,24 +163,28 @@ const swSgApply = (s: string): string | null => {
   const t = SW_SINGULAR_TABLE;
   const n = toI32(t.length);
   // Start of each line, so they can be visited from the last.
+  // and the newline that ends each but the last.
   const starts: i32[] = [0];
+  const ends: i32[] = [];
   for (let i = 0; i < n; i++) {
     if (t.charCodeAt(i) === 10) {
+      ends.push(i);
       starts.push(i + 1);
     }
   }
-  for (let q = toI32(starts.length) - 1; q >= 0; q--) {
+  for (let q = toI32(starts.length) - 1; q >= 0 && q < starts.length; q--) {
     const a = starts[q];
-    const b = q + 1 < toI32(starts.length) ? starts[q + 1] - 1 : n;
+    const b = q < ends.length ? ends[q] : n;
+    // indexOf answers below n, so each u32 sum is exact.
     const t1 = t.indexOf("\t", a);
-    const t2 = t.indexOf("\t", t1 + 1);
-    const t3 = t.indexOf("\t", t2 + 1);
+    const t2 = t.indexOf("\t", toI32(toU32(t1) + 1));
+    const t3 = t.indexOf("\t", toI32(toU32(t2) + 1));
     const r = swSgRule(
       s,
       t.substring(a, t1),
-      t.substring(t1 + 1, t2),
-      swSgField(t.substring(t2 + 1, t3)),
-      swSgField(t.substring(t3 + 1, b)),
+      t.substring(toI32(toU32(t1) + 1), t2),
+      swSgField(t.substring(toI32(toU32(t2) + 1), t3)),
+      swSgField(t.substring(toI32(toU32(t3) + 1), b)),
     );
     if (r !== null) {
       return r;
@@ -191,7 +202,7 @@ export const swSingularized = (s: string): string | null => {
   // removingPrefix("all")
   if (result.startsWith("all") || result.startsWith("All")) {
     const rest = result.substring(3);
-    if (rest.length === 0) {
+    if (rest.length < 1) {
       return null;
     }
     const c = rest.charCodeAt(0);

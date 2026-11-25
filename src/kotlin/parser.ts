@@ -8,6 +8,8 @@
 // Ported from the Kotlin compiler 2.4.10 (Apache License 2.0, Copyright
 // JetBrains s.r.o. and Kotlin Programming Language contributors).
 
+import { add32, sub32 } from "../core/arr";
+import { fault } from "../core/fault";
 import {
   B_PRECEDING_ALL,
   B_PRECEDING_ALL_COMMENTS,
@@ -286,15 +288,18 @@ import {
   T_WHITE_SPACE,
   ktIsSoft,
   ktKeywordText,
-  ktSoftKeyword,
 } from "./types";
 
-/** A token set: a bitset over type ids. */
+/** A token set: a bitset over type ids, every one below 12 * 32. */
 const tsNew = (xs: i32[]): i32[] => {
   const s = new Array<i32>(12);
   for (let i = 0; i < toI32(xs.length); i++) {
     const x = xs[i];
     const w = x >> 5;
+    if (w < 0 || w >= s.length) {
+      fault();
+      return s;
+    }
     s[w] = s[w] | (1 << (x & 31));
   }
   return s;
@@ -305,12 +310,20 @@ const tsHas = (s: i32[], t: i32): boolean => {
     return false;
   }
   const w = t >> 5;
-  return (s[w] & (1 << (t & 31))) !== 0;
+  if (w < s.length) {
+    return (s[w] & (1 << (t & 31))) !== 0;
+  }
+  fault();
+  return false;
 };
 
 const tsOr = (a: i32[], b: i32[]): i32[] => {
   const s = new Array<i32>(12);
   for (let i = 0; i < 12; i++) {
+    if (i >= a.length || i >= b.length) {
+      fault();
+      return s;
+    }
     s[i] = a[i] | b[i];
   }
   return s;
@@ -319,6 +332,10 @@ const tsOr = (a: i32[], b: i32[]): i32[] => {
 const tsAnd = (a: i32[], b: i32[]): i32[] => {
   const s = new Array<i32>(12);
   for (let i = 0; i < 12; i++) {
+    if (i >= a.length || i >= b.length) {
+      fault();
+      return s;
+    }
     s[i] = a[i] & b[i];
   }
   return s;
@@ -327,6 +344,10 @@ const tsAnd = (a: i32[], b: i32[]): i32[] => {
 const tsAndNot = (a: i32[], b: i32[]): i32[] => {
   const s = new Array<i32>(12);
   for (let i = 0; i < 12; i++) {
+    if (i >= a.length || i >= b.length) {
+      fault();
+      return s;
+    }
     s[i] = a[i] & ~b[i];
   }
   return s;
@@ -928,7 +949,7 @@ export class KParser {
     }
     const token = this.tt();
     if (token === T_IDENTIFIER) {
-      const kw = ktSoftKeyword(this.b.tokenText());
+      const kw = this.b.softKeyword();
       if (kw >= 0 && tsHas(set, kw)) {
         this.b.remapCurrentToken(kw);
         return true;
@@ -1030,8 +1051,14 @@ export class KParser {
   }
 
   getLastToken(): i32 {
+    const cur = this.b.cur;
+    // A lexeme index, below the source's length.
+    if (cur > 1073741823) {
+      fault();
+      return -1;
+    }
     let i = 1;
-    while (i <= this.b.cur && isWsOrComment(this.b.rawLookup(-i))) {
+    while (i <= cur && isWsOrComment(this.b.rawLookup(-i))) {
       i++;
     }
     return this.b.rawLookup(-i);
@@ -1048,22 +1075,31 @@ export class KParser {
 
   disableNewlines(): void {
     this.b.disableNewlines();
-    if (this.byDepth >= 0) {
-      this.byDepth = this.byDepth + 1;
-    }
+    this.byDepthUp();
   }
 
   enableNewlines(): void {
     this.b.enableNewlines();
-    if (this.byDepth >= 0) {
-      this.byDepth = this.byDepth + 1;
+    this.byDepthUp();
+  }
+
+  private byDepthUp(): void {
+    const d = this.byDepth;
+    if (d >= 0) {
+      // One level a token at most.
+      if (d >= 1073741823) {
+        fault();
+        return;
+      }
+      this.byDepth = d + 1;
     }
   }
 
   restoreNewlinesState(): void {
     this.b.restoreNewlinesState();
-    if (this.byDepth >= 0) {
-      this.byDepth = this.byDepth - 1;
+    const d = this.byDepth;
+    if (d >= 0) {
+      this.byDepth = d - 1;
     }
   }
 
@@ -1085,7 +1121,12 @@ export class KParser {
       const a = this.b.rawTokenTypeStart(-1);
       const e = this.b.rawTokenTypeStart(0);
       const src = this.b.lx.src;
-      if (!(e - a > 2 && toI32(src[e - 2]) === 42 && toI32(src[e - 1]) === 47)) {
+      // The last lexeme's range lies in the source.
+      if (a < 0 || e < 0 || e > src.length) {
+        fault();
+        return;
+      }
+      if (!(e - a > 2 && e >= 2 && toI32(src[e - 2]) === 42 && toI32(src[e - 1]) === 47)) {
         // The file does not parse; the marker's binders do not matter.
         this.error();
       }
@@ -1958,6 +1999,10 @@ export class KParser {
         const collected: boolean[] = [false, false, false];
         let kind = this.parsePropertyComponent(collected);
         while (kind >= 0) {
+          if (kind >= collected.length) {
+            fault();
+            break;
+          }
           collected[kind] = true;
           kind = this.parsePropertyComponent(collected);
         }
@@ -2056,6 +2101,11 @@ export class KParser {
     } else if (this.at(T_FIELD_KEYWORD)) {
       kind = PC_FIELD;
     } else {
+      this.b.rollbackTo(component);
+      return -1;
+    }
+    if (kind < 0 || kind >= notAllowed.length) {
+      fault();
       this.b.rollbackTo(component);
       return -1;
     }
@@ -2248,29 +2298,31 @@ export class KParser {
         previousLookForResult = lookForResult;
       }
       const t = this.tt();
+      // Each count moves by one a token, far from either end of i32.
       if (t === T_LPAR) {
-        openParens++;
+        openParens = add32(openParens, 1);
         opens.push(T_LPAR);
       } else if (t === T_LT) {
-        openAngle++;
+        openAngle = add32(openAngle, 1);
         opens.push(T_LT);
       } else if (t === T_LBRACE) {
-        openBraces++;
+        openBraces = add32(openBraces, 1);
         opens.push(T_LBRACE);
       } else if (t === T_LBRACKET) {
-        openBrackets++;
+        openBrackets = add32(openBrackets, 1);
         opens.push(T_LBRACKET);
       } else if (t === T_RPAR) {
-        openParens--;
-        if (opens.length === 0 || opens.pop() !== T_LPAR) {
-          // handleUnmatchedClosing: false
+        openParens = sub32(openParens, 1);
+        // handleUnmatchedClosing: false, whatever the popped opener.
+        if (opens.length > 0) {
+          opens.pop();
         }
       } else if (t === T_GT) {
-        openAngle--;
+        openAngle = sub32(openAngle, 1);
       } else if (t === T_RBRACE) {
-        openBraces--;
+        openBraces = sub32(openBraces, 1);
       } else if (t === T_RBRACKET) {
-        openBrackets--;
+        openBrackets = sub32(openBrackets, 1);
       }
       this.advance();
     }
@@ -2959,8 +3011,14 @@ export class KParser {
     if (this.at(T_QUEST)) {
       let k = 1;
       while (this.lookahead(k) === T_QUEST) {
+        // One a token, so below 2^30.
+        if (k >= 1073741823) {
+          fault();
+          return;
+        }
         k++;
       }
+
       if (this.lookahead(k) === T_COLONCOLON) {
         while (k > 0) {
           this.advance();

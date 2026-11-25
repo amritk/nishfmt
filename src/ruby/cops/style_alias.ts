@@ -3,6 +3,7 @@
 // Ported from RuboCop 1.92.3 (MIT License, Copyright (c) 2012-24 Bozhidar
 // Batsov).
 
+import { atI32 } from "../../core/arr";
 import {
   F_KEYWORD,
   F_SELECTOR,
@@ -118,7 +119,11 @@ export class CopStyleAlias {
     }
     const k = this.c.offense(ssxFS(src, n, F_SELECTOR), ssxFE(src, n, F_SELECTOR));
     if (k !== null) {
-      k.replace(a.exS(n), a.exE(n), `alias ${ssxAliasIdentifier(src, args[0])} ${ssxAliasIdentifier(src, args[1])}`);
+      k.replace(
+        a.exS(n),
+        a.exE(n),
+        `alias ${ssxAliasIdentifier(src, atI32(args, 0))} ${ssxAliasIdentifier(src, atI32(args, 1))}`,
+      );
       this.c.commit(k);
     }
   }

@@ -8,6 +8,8 @@
 // Project Developers): src/tables.rs, without the cjk feature.
 
 import { RS_UWIDTH_NRUNS, RS_UWIDTH_RUNS } from "./uwidth_table";
+import { add32 } from "../core/arr";
+import { fault } from "../core/fault";
 
 // WidthInfo.
 const WI_DEFAULT: i32 = 0;
@@ -52,58 +54,98 @@ const UF_EMOJI_PRESENTATION_SEQ: i32 = 4;
 const UF_TEXT_PRESENTATION_SEQ: i32 = 8;
 const UF_EMOJI_MODIFIER_BASE: i32 = 16;
 
-/** The `k`-th six-hex-digit number of the runs. */
-const rsUwEntry = (k: i32): i32 => {
-  let v = 0;
-  for (let i = k * 6; i < k * 6 + 6; i++) {
-    const c = RS_UWIDTH_RUNS.charCodeAt(i);
-    v = v * 16 + (c <= 57 ? c - 48 : c - 87);
-  }
-  return v;
-};
-
 // The runs decoded on first use: first code points and packed values.
 const rsUwStarts = new Int32Array(RS_UWIDTH_NRUNS);
 const rsUwValues = new Int32Array(RS_UWIDTH_NRUNS);
 const rsUwDecoded = new Int32Array(1);
 
-/** The packed value of `cp` (width | info << 2 | flags << 18), by binary search over the runs. */
-const rsUwSearch = (cp: i32): i32 => {
-  if (rsUwDecoded[0] === 0) {
-    for (let k = 0; k < RS_UWIDTH_NRUNS; k++) {
-      rsUwStarts[k] = rsUwEntry(k * 2);
-      rsUwValues[k] = rsUwEntry(k * 2 + 1);
+/** The next six-hex-digit number of the runs from `at[0]`, which it moves past the number. */
+const rsUwEntry = (runs: string, at: Int32Array): i32 => {
+  if (at.length < 1) {
+    fault();
+    return 0;
+  }
+  let m = at[0];
+  let v = 0;
+  for (let j = 0; j < 6; j++) {
+    // The table holds twelve digits for each run.
+    if (m < 0 || m >= runs.length) {
+      fault();
+      return 0;
     }
-    rsUwDecoded[0] = 1;
+    const c = runs.charCodeAt(m) & 0xff;
+    v = (v << 4) | (c <= 57 ? c - 48 : c - 87);
+    m++;
+  }
+  at[0] = m;
+  return v;
+};
+
+/** The packed value of `cp` (width | info << 2 | flags << 18), by binary search over the runs. */
+const rsUwSearchIn = (starts: Int32Array, values: Int32Array, decoded: Int32Array, cp: i32): i32 => {
+  if (decoded.length > 0 && decoded[0] === 0) {
+    const at = new Int32Array(1);
+    for (let k = 0; k < starts.length && k < values.length; k++) {
+      starts[k] = rsUwEntry(RS_UWIDTH_RUNS, at);
+      values[k] = rsUwEntry(RS_UWIDTH_RUNS, at);
+    }
+    decoded[0] = 1;
   }
   let lo = 0;
-  let hi = RS_UWIDTH_NRUNS - 1;
-  while (lo < hi) {
-    const mid = (lo + hi + 1) >> 1;
-    if (rsUwStarts[mid] <= cp) {
+  let hi = starts.length - 1;
+  while (lo >= 0 && lo < hi && hi < starts.length) {
+    // Both ends are below the table's length, so the sum is exact in u32.
+    const mid = toI32((toU32(lo) + toU32(hi) + 1) >> 1);
+    if (mid < 0 || mid >= starts.length) {
+      fault();
+      return 0;
+    }
+    if (starts[mid] <= cp) {
       lo = mid;
     } else {
       hi = mid - 1;
     }
   }
-  return rsUwValues[lo];
+  if (lo >= 0 && lo < values.length) {
+    return values[lo];
+  }
+  fault();
+  return 0;
 };
+
+const rsUwSearch = (cp: i32): i32 => rsUwSearchIn(rsUwStarts, rsUwValues, rsUwDecoded, cp);
 
 // The packed value + 1 of the BMP code points looked up so far (0: not yet).
 const rsUwCache = new Int32Array(65536);
 
-const rsUwLookup = (cp: i32): i32 => {
+const rsUwLookupIn = (cache: Int32Array, cp: i32): i32 => {
   if (cp >= 65536) {
     return rsUwSearch(cp);
   }
-  const c = rsUwCache[cp];
-  if (c !== 0) {
+  // A code point is never negative.
+  if (cp < 0 || cp >= cache.length) {
+    fault();
+    return 0;
+  }
+  // 0, or a packed value (below 2^23) plus one.
+  const c = cache[cp];
+  if (c > 0) {
     return c - 1;
   }
+  if (c < 0) {
+    fault();
+    return 0;
+  }
   const v = rsUwSearch(cp);
-  rsUwCache[cp] = v + 1;
+  if (v < 0 || v > 1073741823 || cp >= cache.length) {
+    fault();
+    return 0;
+  }
+  cache[cp] = v + 1;
   return v;
 };
+
+const rsUwLookup = (cp: i32): i32 => rsUwLookupIn(rsUwCache, cp);
 
 const uwWidth = (v: i32): i32 => v & 3;
 const uwInfo = (v: i32): i32 => (v >> 2) & 0xffff;
@@ -320,30 +362,39 @@ class RsUwState {
 export const rsUnicodeStrWidth = (s: string): i32 => {
   const st = new RsUwState();
   let sum = 0;
-  let j = toI32(s.length);
+  const n = toI32(s.length);
+  let j = n;
   // rfold over the chars.
-  while (j > 0) {
+  while (j > 0 && j <= n) {
     let i = j - 1;
-    while (i > 0 && (s.charCodeAt(i) & 0xc0) === 0x80) {
+    while (i > 0 && i < n && (s.charCodeAt(i) & 0xc0) === 0x80) {
       i--;
+    }
+    if (i < 0 || i >= n) {
+      fault();
+      return 0;
     }
     const b = s.charCodeAt(i);
     let cp = b;
-    let k = 1;
+    // The continuation bytes after the lead byte.
+    let more = 0;
     if (b >= 0xf0) {
       cp = b & 7;
-      k = 4;
+      more = 3;
     } else if (b >= 0xe0) {
       cp = b & 15;
-      k = 3;
+      more = 2;
     } else if (b >= 0xc0) {
       cp = b & 31;
-      k = 2;
+      more = 1;
     }
-    for (let m = 1; m < k && i + m < j; m++) {
-      cp = (cp << 6) | (s.charCodeAt(i + m) & 63);
+    let p = i + 1;
+    while (more > 0 && p < j && p < n) {
+      cp = (cp << 6) | (s.charCodeAt(p) & 63);
+      p++;
+      more--;
     }
-    sum += st.step(cp);
+    sum = add32(sum, st.step(cp));
     j = i;
   }
   return sum;

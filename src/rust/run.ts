@@ -10,6 +10,8 @@ import { rsFormatSource, rsHasTrailingWhitespaceError } from "./format";
 import { RsTokens, rsLex } from "./lexer";
 import { RsParser } from "./parser";
 import { rsConfigWithMaxWidth } from "./shape";
+import { add32, newU8s } from "../core/arr";
+import { fault } from "../core/fault";
 
 /** One file's Rust state; a fresh one formats each file, in a region of its own. */
 export class RustEngine {
@@ -20,34 +22,66 @@ export class RustEngine {
   edition: i32 = 2024;
   styleEdition: i32 = 2024;
   maxWidth: i32 = 120;
+  // The file's text, `String.fromBytes(src, 0, n)`: the caller sets it.
+  text: string = "";
   constructor() {}
 }
 
 /** Formats `src[0, n)` into `out` as rustfmt does; answers false when the file cannot be formatted. */
 export const formatRust = (e: RustEngine, path: string, src0: u8[], n0: i32, out: Out): boolean => {
   out.n = 0;
+  // The file is `src0[0, n0)`.
+  if (n0 < 0 || n0 > src0.length) {
+    fault();
+    return false;
+  }
   // rustc drops a byte order mark and normalizes CRLF line endings to LF
   // when it loads a file; the newline style (Auto) then sees only LF.
   let src = src0;
   let n = n0;
-  const bom = n0 >= 3 && toI32(src0[0]) === 0xef && toI32(src0[1]) === 0xbb && toI32(src0[2]) === 0xbf ? 3 : 0;
+  let text = e.text;
+  // The caller gives the file's text with its bytes.
+  if (toI32(text.length) !== n0) {
+    fault();
+    return false;
+  }
+  const bom =
+    n0 >= 3 && src0.length >= 3 && toI32(src0[0]) === 0xef && toI32(src0[1]) === 0xbb && toI32(src0[2]) === 0xbf
+      ? 3
+      : 0;
   let hasCr = false;
-  for (let i = 0; i + 1 < n0; i++) {
+  for (let i = 0; i < n0 && i + 1 < n0; i++) {
     if (toI32(src0[i]) === 13 && toI32(src0[i + 1]) === 10) {
       hasCr = true;
       break;
     }
   }
   if (hasCr || bom > 0) {
-    src = new Array<u8>(n0 + 1);
+    src = newU8s(add32(n0, 1));
+    if (n0 > src0.length) {
+      fault();
+      return false;
+    }
+    // The text, normalized the same way: the runs between dropped bytes.
+    const parts: string[] = [];
+    let from = bom;
     let k = 0;
-    for (let i = bom; i < n0; i++) {
-      if (toI32(src0[i]) === 13 && i + 1 < n0 && toI32(src0[i + 1]) === 10) {
+    for (let i = bom; i >= 0 && i < n0 && i < src0.length; i++) {
+      if (toI32(src0[i]) === 13 && i + 1 < n0 && i + 1 < src0.length && toI32(src0[i + 1]) === 10) {
+        parts.push(text.substring(from, i));
+        from = i + 1;
         continue;
+      }
+      // At most one byte kept a byte read.
+      if (k < 0 || k >= src.length || k > i) {
+        fault();
+        return false;
       }
       src[k] = src0[i];
       k++;
     }
+    parts.push(text.substring(from, n0));
+    text = parts.join("");
     n = k;
   }
   if (e.dump || e.parseOnly) {
@@ -71,13 +105,13 @@ export const formatRust = (e: RustEngine, path: string, src0: u8[], n0: i32, out
   const cfg = rsConfigWithMaxWidth(e.maxWidth);
   cfg.edition = e.edition;
   cfg.styleEdition = e.styleEdition;
-  const r = rsFormatSource(src, n, cfg, false);
+  const r = rsFormatSource(src, n, text, cfg, false);
   if (r.parseFailed || r.unsupported || r.broken) {
     if (e.debug) {
       let line = 1;
-      for (let i = 0; i < r.failAt && i < n; i++) {
+      for (let i = 0; i < r.failAt && i < n && i < src.length; i++) {
         if (toI32(src[i]) === 10) {
-          line++;
+          line = add32(line, 1);
         }
       }
       const where = r.parseFailed ? `:${line}` : "";
@@ -87,14 +121,34 @@ export const formatRust = (e: RustEngine, path: string, src0: u8[], n0: i32, out
     return false;
   }
   // format_lines: trailing whitespace rustfmt could not remove is an error.
-  if (rsHasTrailingWhitespaceError(r.text, r.skipped, false)) {
+  if (rsHasTrailingWhitespaceError(r, false)) {
     if (e.debug) {
       console.error(`${path}: trailing whitespace left`);
     }
     return false;
   }
-  out.str(r.text);
+  // The text's bytes become the buffer, which holds them and nothing more.
+  const b = rsTextBytes(r.text);
+  out.buf = b;
+  out.n = toI32(b.length);
   return true;
+};
+
+/** The bytes of `s`: one zeroed allocation up to 65,535, else one `push` a byte. */
+const rsTextBytes = (s: string): u8[] => {
+  const k = toI32(s.length);
+  if (k <= 65535) {
+    const b = new Array<u8>(toU16(k));
+    for (let i = 0; i < k && i < b.length; i++) {
+      b[i] = toU8(s.charCodeAt(i));
+    }
+    return b;
+  }
+  const b: u8[] = [];
+  for (let i = 0; i < k; i++) {
+    b.push(toU8(s.charCodeAt(i)));
+  }
+  return b;
 };
 
 export const isRustName = (name: string): boolean => name.endsWith(".rs");

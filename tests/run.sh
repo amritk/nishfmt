@@ -196,12 +196,10 @@ fi
 # A file a formatter panics on takes down only the worker formatting it: the
 # rest of its chunk is still formatted, the file is left untouched and counted
 # as skipped (and crashed), and the run prints its summary with the exit
-# status it would have had. The trigger is a C# property whose accessor list
-# opens on `{=` before an interpolated string, which C# rejects: the parser
-# builds an EqualsValueClause (CsTree's shape `tn`, two slots) with four, and
-# CsTree.finish panics. It panics on v0.1.0's release binary too. The other
-# files are Rust. If it stops panicking, these fail with "no crash": use
-# another input that panics.
+# status it would have had. No formatter panics on any input (every module but
+# src/main.ts is held to no panic), so the worker is taken down on purpose:
+# NISHFMT_TEST_CRASH=.cs makes it panic on each file whose path ends in .cs,
+# before formatting it. The other files are Rust.
 crash_src='class S { string e {= $"x"; }\n'
 good_src='fn  main( ) { let x=1; }\n'
 good_out='fn main() {\n    let x = 1;\n}\n'
@@ -243,7 +241,7 @@ for run in "8 -i" "70 -i -j 1" "70 -i -j 3" "8 --check" "70 --check -j 2"; do
   shift
   d=$work/crash
   crash_tree "$d" "$n"
-  msg=$("$bin" "$@" "$d" 2>&1)
+  msg=$(NISHFMT_TEST_CRASH=.cs "$bin" "$@" "$d" 2>&1)
   st=$?
   want=0 verb=reformatted
   [ "$1" = --check ] && want=1 verb="would reformat"
@@ -252,7 +250,7 @@ for run in "8 -i" "70 -i -j 1" "70 -i -j 3" "8 --check" "70 --check -j 2"; do
 done
 # One file to stdout: printed as it is.
 printf "$crash_src" > "$work/crash1.cs"
-out=$("$bin" "$work/crash1.cs" 2> "$work/err")
+out=$(NISHFMT_TEST_CRASH=.cs "$bin" "$work/crash1.cs" 2> "$work/err")
 st=$?
 if [ "$st" -eq 0 ] && [ "$out" = "$(printf "$crash_src")" ] && grep -qF "skipped $work/crash1.cs (formatter crashed)" "$work/err"; then
   pass=$((pass + 1))

@@ -26,6 +26,10 @@ import {
   SW_T_NON_SPACE_OR_COMMENT_OR_LINEBREAK,
 } from "./token";
 
+// Token indices, token counts and line numbers stay below the token count, far from the
+// i32 limits, so a sum or difference of them the prover cannot bound is written
+// `toI32(toU32(a) + b)`: wrapping u32 arithmetic, exact for such values.
+
 const swOutsideParenRequiresSpacing = (f: SwFormatter, i: i32): boolean => {
   if (!f.has(i)) {
     return false;
@@ -48,23 +52,25 @@ const swInsideParenRequiresSpacing = (f: SwFormatter, i: i32): boolean => {
 /** removeParen(at:). */
 export const swRemoveParen = (f: SwFormatter, index: i32): void => {
   const isStartOfScope = f.k(index) === SW_START;
-  const spaceBefore = f.has(index - 1) && f.k(index - 1) === SW_SPACE;
-  const spaceAfter = f.has(index + 1) && (f.k(index + 1) === SW_SPACE || f.k(index + 1) === SW_LINEBREAK);
+  const spaceBefore = f.has(toI32(toU32(index) - 1)) && f.k(toI32(toU32(index) - 1)) === SW_SPACE;
+  const spaceAfter =
+    f.has(toI32(toU32(index) + 1)) &&
+    (f.k(toI32(toU32(index) + 1)) === SW_SPACE || f.k(toI32(toU32(index) + 1)) === SW_LINEBREAK);
   f.removeToken(index);
   if (isStartOfScope) {
-    if (swOutsideParenRequiresSpacing(f, index - 1) && swInsideParenRequiresSpacing(f, index)) {
+    if (swOutsideParenRequiresSpacing(f, toI32(toU32(index) - 1)) && swInsideParenRequiresSpacing(f, index)) {
       if (!spaceBefore && !spaceAfter) {
         f.insert(SW_SPACE, " ", 0, index);
       }
     } else if (spaceAfter && spaceBefore) {
-      f.removeToken(index - 1);
+      f.removeToken(toI32(toU32(index) - 1));
     }
-  } else if (swInsideParenRequiresSpacing(f, index - 1) && swOutsideParenRequiresSpacing(f, index)) {
+  } else if (swInsideParenRequiresSpacing(f, toI32(toU32(index) - 1)) && swOutsideParenRequiresSpacing(f, index)) {
     if (!spaceBefore && !spaceAfter) {
       f.insert(SW_SPACE, " ", 0, index);
     }
   } else if (spaceBefore) {
-    f.removeToken(index - 1);
+    f.removeToken(toI32(toU32(index) - 1));
   }
 };
 
@@ -171,10 +177,10 @@ const swParensDefault = (
     }
   }
   if (
-    f.k(closingIndex - 1) === SW_OP &&
-    f.has(closingIndex + 1) &&
-    f.k(closingIndex + 1) === SW_OP &&
-    f.a(closingIndex + 1) === SW_OP_INFIX
+    f.k(toI32(toU32(closingIndex) - 1)) === SW_OP &&
+    f.has(toI32(toU32(closingIndex) + 1)) &&
+    f.k(toI32(toU32(closingIndex) + 1)) === SW_OP &&
+    f.a(toI32(toU32(closingIndex) + 1)) === SW_OP_INFIX
   ) {
     return;
   }
@@ -186,7 +192,9 @@ const swParensDefault = (
   if (x >= 0 && f.k(x) === SW_OP) {
     if (
       (c.nk === SW_OP && c.ns === ".") ||
-      (x === i + 1 && f.has(i - 1) && !(f.k(i - 1) === SW_SPACE || f.k(i - 1) === SW_LINEBREAK || f.isComment(i - 1)))
+      (x === toI32(toU32(i) + 1) &&
+        f.has(i - 1) &&
+        !(f.k(i - 1) === SW_SPACE || f.k(i - 1) === SW_LINEBREAK || f.isComment(i - 1)))
     ) {
       return;
     }
@@ -197,12 +205,12 @@ const swParensDefault = (
   if (x === closingIndex) {
     return;
   }
-  if (swIndexInWhere(f, i + 1, closingIndex, (g, j) => swParenBlocks(g, c, j)) >= 0) {
+  if (swIndexInWhere(f, toI32(toU32(i) + 1), closingIndex, (g, j) => swParenBlocks(g, c, j)) >= 0) {
     return;
   }
-  const u = swIndexInWhere(f, i + 1, closingIndex, (g, j) => swIsUnwrap(g, j));
+  const u = swIndexInWhere(f, toI32(toU32(i) + 1), closingIndex, (g, j) => swIsUnwrap(g, j));
   const ns = f.indexBefore(SW_T_NON_SPACE, closingIndex);
-  if (!((u >= 0 ? u : closingIndex) >= (ns >= 0 ? ns : closingIndex - 1))) {
+  if (!((u >= 0 ? u : closingIndex) >= (ns >= 0 ? ns : toI32(toU32(closingIndex) - 1)))) {
     return;
   }
   if (f.kw(x, "#file")) {
@@ -321,13 +329,13 @@ export const swRuleRedundantParens = (f: SwFormatter): void => {
     if (isClosure) {
       if (
         f.indexAfter(SW_T_NON_SPACE_OR_COMMENT_OR_LINEBREAK, i) === closingIndex ||
-        f.indexOfIn(SW_DELIM, ":", 0, i + 1, closingIndex) >= 0
+        f.indexOfIn(SW_DELIM, ":", 0, toI32(toU32(i) + 1), closingIndex) >= 0
       ) {
         continue;
       }
       let hasSelf = false;
       let underscore = -1;
-      for (let j = i + 1; j < closingIndex; j++) {
+      for (let j = toI32(toU32(i) + 1); j < closingIndex; j++) {
         if (f.tok(j, SW_IDENT, "self")) {
           hasSelf = true;
         }
@@ -353,7 +361,7 @@ export const swRuleRedundantParens = (f: SwFormatter): void => {
     let stage = 0; // 0: not matched yet, 6: the `,`/end/keyword body, 7: the infix body, 8: default
     if (pk === SW_END && (ps === "}" || ps === ")" || ps === "]" || ps === ">")) {
       let lb = false;
-      for (let j = previousIndex + 1; j < i; j++) {
+      for (let j = toI32(toU32(previousIndex) + 1); j < i; j++) {
         if (f.k(j) === SW_LINEBREAK) {
           lb = true;
           break;
@@ -400,8 +408,8 @@ export const swRuleRedundantParens = (f: SwFormatter): void => {
         stage = 7;
       } else {
         if (
-          f.indexInType(SW_T_NON_SPACE_OR_COMMENT_OR_LINEBREAK, i + 1, closingIndex) < 0 ||
-          f.indexOfIn(SW_DELIM, ",", 0, i + 1, closingIndex) >= 0
+          f.indexInType(SW_T_NON_SPACE_OR_COMMENT_OR_LINEBREAK, toI32(toU32(i) + 1), closingIndex) < 0 ||
+          f.indexOfIn(SW_DELIM, ",", 0, toI32(toU32(i) + 1), closingIndex) >= 0
         ) {
           continue;
         }

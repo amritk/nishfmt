@@ -4,6 +4,9 @@
 // Ported from RuboCop 1.92.3 (MIT License, Copyright (c) 2012-24 Bozhidar
 // Batsov).
 
+import { rbByteAt } from "../util";
+import { fault } from "../../core/fault";
+import { atI32 } from "../../core/arr";
 import {
   M_HEREDOC,
   NT_ARRAY,
@@ -33,7 +36,7 @@ const rbMcoKeyword = (cs: i32[], i0: i32, ci: boolean): i32 => {
   let i = i0;
   for (let p = 0; p < 3; p++) {
     if (p > 0) {
-      if (i >= toI32(cs.length) || (cs[i] !== 95 && cs[i] !== 45)) {
+      if (i >= toI32(cs.length) || (atI32(cs, i) !== 95 && atI32(cs, i) !== 45)) {
         return -1;
       }
       i++;
@@ -43,7 +46,7 @@ const rbMcoKeyword = (cs: i32[], i0: i32, ci: boolean): i32 => {
       if (i >= toI32(cs.length)) {
         return -1;
       }
-      let c = cs[i];
+      let c = atI32(cs, i);
       if (ci && c >= 65 && c <= 90) {
         c += 32;
       }
@@ -59,7 +62,7 @@ const rbMcoKeyword = (cs: i32[], i0: i32, ci: boolean): i32 => {
 /** The index after `\s*` from i. */
 const rbMcoWs = (cs: i32[], i0: i32): i32 => {
   let i = i0;
-  while (i < toI32(cs.length) && ssxIsSpace(cs[i])) {
+  while (i >= 0 && i < cs.length && ssxIsSpace(cs[i])) {
     i++;
   }
   return i;
@@ -68,7 +71,7 @@ const rbMcoWs = (cs: i32[], i0: i32): i32 => {
 /** TOKEN ([[:alnum:]\-_]+) at i: its end, or -1. */
 const rbMcoToken = (cs: i32[], i0: i32): i32 => {
   let i = i0;
-  while (i < toI32(cs.length) && (rbLitUAlnum(cs[i]) || cs[i] === 45 || cs[i] === 95)) {
+  while (i >= 0 && i < cs.length && (rbLitUAlnum(cs[i]) || cs[i] === 45 || cs[i] === 95)) {
     i++;
   }
   return i > i0 ? i : -1;
@@ -78,7 +81,8 @@ const rbMcoToken = (cs: i32[], i0: i32): i32 => {
 const rbMcoStr = (cs: i32[], s: i32, e: i32): string => {
   const out: string[] = [];
   for (let i = s; i < e; i++) {
-    out.push(cs[i] < 128 ? String.fromCharCode(cs[i]) : "?");
+    const c = atI32(cs, i);
+    out.push(c < 128 ? String.fromCharCode(c) : "?");
   }
   return out.join("");
 };
@@ -99,7 +103,7 @@ export const rbShareableConstantValue = (line: string): string => {
         continue;
       }
       i = rbMcoWs(cs, i);
-      if (i >= toI32(cs.length) || cs[i] !== 58) {
+      if (i >= toI32(cs.length) || atI32(cs, i) !== 58) {
         continue;
       }
       i = rbMcoWs(cs, i + 1);
@@ -109,7 +113,8 @@ export const rbShareableConstantValue = (line: string): string => {
       }
       const v: i32[] = [];
       for (let j = i; j < e; j++) {
-        v.push(cs[j] >= 65 && cs[j] <= 90 ? cs[j] + 32 : cs[j]);
+        const c = atI32(cs, j);
+        v.push(c >= 65 && c <= 90 ? c + 32 : c);
       }
       return rbMcoStr(v, 0, toI32(v.length));
     }
@@ -118,7 +123,7 @@ export const rbShareableConstantValue = (line: string): string => {
   // SimpleComment: /\A\s*#\s*KW:\s*TOKEN\s*\z/io
   const cs = mc.cs;
   let i = rbMcoWs(cs, 0);
-  if (i >= toI32(cs.length) || cs[i] !== 35) {
+  if (i >= toI32(cs.length) || atI32(cs, i) !== 35) {
     return "";
   }
   i = rbMcoKeyword(cs, rbMcoWs(cs, i + 1), true);
@@ -161,14 +166,14 @@ export const rbFrozenStringLiteral = (src: RbSource, n: i32): boolean => {
 const rbMcoMentions = (line: string): boolean => {
   const k = toI32(line.length);
   const w = "shareable";
-  for (let i = 0; i + 9 <= k; i++) {
+  for (let i = 0; i <= k - 9; i++) {
     let ok = true;
     for (let j = 0; j < 9; j++) {
-      let c = line.charCodeAt(i + j);
+      let c = rbByteAt(line, i + j);
       if (c >= 65 && c <= 90) {
         c += 32;
       }
-      if (c !== w.charCodeAt(j)) {
+      if (c !== rbByteAt(w, j)) {
         ok = false;
         break;
       }
@@ -195,9 +200,15 @@ export class CopStyleMutableConstant {
   /** ShareableConstantValue#recent_shareable_value?: the last valid setting up to the node's last line. */
   private shareable(src: RbSource, n: i32): boolean {
     const last = src.line(src.a.exE(n));
-    for (let i = toI32(this.scLines.length) - 1; i >= 0; i--) {
-      if (this.scLines[i] <= last) {
-        return this.scValues[i] !== "none";
+    const scLines = this.scLines;
+    const scValues = this.scValues;
+    for (let i = toI32(scLines.length) - 1; i >= 0 && i < scLines.length; i--) {
+      if (scLines[i] <= last) {
+        if (i >= scValues.length) {
+          fault();
+          return false;
+        }
+        return scValues[i] !== "none";
       }
     }
     return false;
@@ -210,7 +221,7 @@ export class CopStyleMutableConstant {
     const a = src.a;
     this.scLines = [];
     this.scValues = [];
-    for (let l = 1; l <= src.lineCount(); l++) {
+    for (let l = 1; l <= src.lineCount() && l < 2147483647; l++) {
       const text = src.lineText(l);
       if (!rbMcoMentions(text)) {
         continue;

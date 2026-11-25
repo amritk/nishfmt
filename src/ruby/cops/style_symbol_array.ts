@@ -3,11 +3,12 @@
 // Ported from RuboCop 1.92.3 (MIT License, Copyright (c) 2012-24 Bozhidar
 // Batsov).
 
+import { fault } from "../../core/fault";
 import { F_BEGIN, NT_ARRAY, NT_DSYM, NT_SYM } from "../ast";
 import { RbCop } from "../cop";
 import { rnE, rnHas, rnS } from "../node";
 import { RbSource } from "../source";
-import { rbToStringLiteral } from "../util";
+import { rbByteAt, rbToStringLiteral } from "../util";
 import {
   rbLitAllowedBracketArray,
   rbLitBracketed,
@@ -24,19 +25,19 @@ const rbSaWithoutPairs = (s: string): string => {
   const n = toI32(s.length);
   let i = 0;
   let from = 0;
-  while (i < n) {
+  while (i >= 0 && i < n) {
     const c = s.charCodeAt(i);
     if (c === 91 || c === 40) {
       const close = c === 91 ? 93 : 41;
       let j = i + 1;
-      while (j < n) {
+      while (j >= 0 && j < n) {
         const d = s.charCodeAt(j);
         if (rbLitSpaceC(d) || d === c || d === close) {
           break;
         }
         j++;
       }
-      if (j < n && s.charCodeAt(j) === close) {
+      if (j >= 0 && j < n && s.charCodeAt(j) === close) {
         parts.push(s.substring(from, i));
         from = j + 1;
         i = j + 1;
@@ -84,7 +85,11 @@ const rbSaAlpha = (c: i32): boolean => (c >= 65 && c <= 90) || (c >= 97 && c <= 
 
 /** `\A` then `from` ... `\w*` to the end. */
 const rbSaWordsFrom = (s: string, from: i32, end: i32): boolean => {
-  for (let i = from; i < end; i++) {
+  if (from < end && (from < 0 || end > s.length)) {
+    fault();
+    return false;
+  }
+  for (let i = from; i >= 0 && i < end && i < s.length; i++) {
     if (!rbLitWordC(s.charCodeAt(i))) {
       return false;
     }
@@ -95,22 +100,25 @@ const rbSaWordsFrom = (s: string, from: i32, end: i32): boolean => {
 /** SymbolArray#symbol_without_quote? */
 const rbSaWithoutQuote = (s: string): boolean => {
   const n = toI32(s.length);
-  if (n > 0 && rbSaAlpha(s.charCodeAt(0))) {
+  if (n > 0 && rbSaAlpha(rbByteAt(s, 0))) {
     // /\A[a-zA-Z_]\w*[!?]?\z/
     const l = s.charCodeAt(n - 1);
     if (rbSaWordsFrom(s, 1, n) || ((l === 33 || l === 63) && rbSaWordsFrom(s, 1, n - 1))) {
       return true;
     }
   }
-  if (n > 0 && s.charCodeAt(0) === 64) {
+  if (n > 0 && rbByteAt(s, 0) === 64) {
     // /\A@@?[a-zA-Z_]\w*\z/
-    const st = n > 1 && s.charCodeAt(1) === 64 ? 2 : 1;
-    if (st < n && rbSaAlpha(s.charCodeAt(st)) && rbSaWordsFrom(s, st + 1, n)) {
+    let st = 1;
+    if (n > 1 && rbByteAt(s, 1) === 64) {
+      st = 2;
+    }
+    if (st < n && rbSaAlpha(rbByteAt(s, st)) && rbSaWordsFrom(s, st + 1, n)) {
       return true;
     }
   }
-  if (n > 1 && s.charCodeAt(0) === 36) {
-    const c1 = s.charCodeAt(1);
+  if (n > 1 && rbByteAt(s, 0) === 36) {
+    const c1 = rbByteAt(s, 1);
     if (c1 >= 49 && c1 <= 57) {
       let all = true;
       for (let i = 2; i < n; i++) {

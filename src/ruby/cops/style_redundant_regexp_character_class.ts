@@ -3,6 +3,7 @@
 // Ported from RuboCop 1.92.3 (MIT License, Copyright (c) 2012-24 Bozhidar
 // Batsov).
 
+import { add32, atI32, sub32 } from "../../core/arr";
 import { F_BEGIN, NT_REGEXP } from "../ast";
 import { RbCop } from "../cop";
 import { rnE } from "../node";
@@ -36,7 +37,7 @@ export class CopStyleRedundantRegexpCharacterClass {
         if (st.count !== 1 || st.negative || st.first < 0) {
           continue;
         }
-        const ft = tree.tt[st.first];
+        const ft = atI32(tree.tt, st.first);
         if (ft === RX_POSIX || ft === RX_NONPOSIX || rbRxMultipleCodepoints(tree, st.first)) {
           continue;
         }
@@ -60,15 +61,15 @@ export class CopStyleRedundantRegexpCharacterClass {
         if (elem.length === 1 && ".*+?{}()|$".indexOf(elem) >= 0) {
           continue;
         }
-        const s = be + st.s;
-        const e = be + st.bodyE;
+        const s = add32(be, st.s);
+        const e = add32(be, st.bodyE);
         const k = this.c.offense(s, e);
         if (k === null) {
           continue;
         }
         // without_character_class
         const source = src.src(s, e);
-        const inner = src.src(s + 1, e - 1);
+        const inner = src.src(add32(s, 1), sub32(e, 1));
         k.replace(s, e, source === "[#]" ? `\\${inner}` : inner);
         this.c.commit(k);
       }

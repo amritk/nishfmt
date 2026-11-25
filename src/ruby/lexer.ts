@@ -7,6 +7,8 @@
 // parser contributors). The action bodies were translated mechanically from
 // the generated lib/parser/lexer-F1.rb and lexer-strings.rb, then by hand.
 
+import { add32, mul32, sub32 } from "../core/arr";
+import { fault } from "../core/fault";
 import { RbContext, RbStaticEnv } from "./env";
 import {
   RL_LEX_EN_EXPR_ARG,
@@ -227,6 +229,122 @@ const XF_imaginary_float: i32 = 9;
 const XF_float_if: i32 = 10;
 const XF_float_rescue: i32 = 11;
 
+// The machines' positions are code point offsets in [-1, pe], pe the source
+// length plus 2. The machines take at most 10^9 code points (a longer source
+// faults), so a position and its small offsets stay far inside i32, and a
+// position read back from a field passes through rbPos, whose range the
+// compiler then knows.
+
+/** A position the machines read back: ts, te, tm and the like. */
+type RbPos = integer<0, 1073741823>;
+
+/** A fault, and a position past the end of every source, where the machine loops stop. */
+const rbPastEnd = (): RbPos => {
+  fault();
+  return 1073741823;
+};
+
+/**
+ * `x`, a position a machine reads back, which its actions have set from a
+ * position at least 0. Anything else faults and answers 2^30 - 1, past the end
+ * of every source, where the machine loops stop.
+ */
+const rbPos = (x: i32): RbPos => {
+  if (x >= 0 && x <= 1073741823) {
+    return x;
+  }
+  return rbPastEnd();
+};
+
+/**
+ * A machine's position between transitions, [0, pe]. The compiler forgets
+ * what it knows of a local at a switch, but not a range type's bounds, so each
+ * action case starts with `p = pc`.
+ */
+type RbAt = integer<0, 1000000002>;
+
+/** `t[i]` of a machine table, or -1 after a fault when `i` is outside it (every entry is at least 0). */
+const rbTab = (t: Int32Array, i: i32): i32 => {
+  if (i >= 0 && i < t.length) {
+    return t[i];
+  }
+  fault();
+  return -1;
+};
+
+// Every entry of the machine tables is in [0, 131071] (tables.ts), so the
+// masks below keep each entry as it is: they bound the sums for the compiler.
+
+/**
+ * The transition a Ragel machine takes from state `cs` on code point `wide`
+ * (_trans), or -1 after a fault when an index leaves its table.
+ */
+const rbTransOf = (
+  keys: Int32Array,
+  spans: Int32Array,
+  offsets: Int32Array,
+  indicies: Int32Array,
+  cs: i32,
+  wide: i32,
+): i32 => {
+  if (cs < 0 || cs > 1000000 || cs >= spans.length || cs >= offsets.length) {
+    fault();
+    return -1;
+  }
+  const slen = spans[cs] & 0x1ffff;
+  const inds = offsets[cs] & 0x1ffff;
+  let at = inds + slen;
+  if (slen > 0) {
+    const k = cs + cs;
+    if (k >= keys.length) {
+      fault();
+      return -1;
+    }
+    const lo = keys[k] & 0x1ffff;
+    const k1 = k + 1;
+    if (k1 >= keys.length) {
+      fault();
+      return -1;
+    }
+    // A code point between two keys is in [0, 131071] too.
+    if (wide >= 0 && wide <= 131071) {
+      if (lo <= wide && wide <= keys[k1]) {
+        at = inds + wide - lo;
+      }
+    }
+  }
+  if (at >= 0 && at < indicies.length) {
+    return indicies[at];
+  }
+  fault();
+  return -1;
+};
+
+/** Whether the action list a state table gives state `cs` holds `action`. */
+const rbStateAction = (actions: Int32Array, t: Int32Array, cs: i32, action: i32): boolean => {
+  if (cs < 0 || cs >= t.length) {
+    fault();
+    return false;
+  }
+  const a = t[cs] & 0x1ffff;
+  if (a >= actions.length) {
+    fault();
+    return false;
+  }
+  const n = actions[a] & 0x1ffff;
+  for (let j = 1; j <= n; j++) {
+    const i = a + j;
+    if (i >= actions.length) {
+      fault();
+      return false;
+    }
+    if (actions[i] === action) {
+      return true;
+    }
+  }
+  return false;
+};
+
 /** Lexer::StackState: a stack of bits. */
 export class RbStackState {
   bits: i32[];
@@ -241,50 +359,90 @@ export class RbStackState {
   }
 
   push(bit: boolean): boolean {
-    if (this.n < toI32(this.bits.length)) {
-      this.bits[this.n] = bit ? 1 : 0;
+    const bits = this.bits;
+    const n = this.n;
+    if (n >= 0 && n < bits.length) {
+      bits[n] = bit ? 1 : 0;
+      this.n = n + 1;
+    } else if (n === bits.length) {
+      bits.push(bit ? 1 : 0);
+      this.n = toI32(bits.length);
     } else {
-      this.bits.push(bit ? 1 : 0);
+      fault();
     }
-    this.n = this.n + 1;
     return bit;
   }
 
   pop(): boolean {
-    if (this.n === 0) {
+    const bits = this.bits;
+    const n = this.n;
+    if (n <= 0) {
+      if (n < 0) {
+        fault();
+      }
       return false;
     }
-    this.n = this.n - 1;
-    return this.bits[this.n] === 1;
+    const i = n - 1;
+    if (i >= bits.length) {
+      fault();
+      return false;
+    }
+    this.n = i;
+    return bits[i] === 1;
   }
 
   /** (stack >> 1) | (stack & 1): the popped bit is or-ed into the new top. */
   lexpop(): boolean {
-    if (this.n === 0) {
+    const bits = this.bits;
+    const n = this.n;
+    if (n <= 0) {
+      if (n < 0) {
+        fault();
+      }
       return false;
     }
-    const low = this.bits[this.n - 1];
-    this.n = this.n - 1;
-    if (this.n === 0) {
+    const i = n - 1;
+    if (i >= bits.length) {
+      fault();
+      return false;
+    }
+    const low = bits[i];
+    this.n = i;
+    if (i === 0) {
       if (low === 1) {
         this.push(true);
         return true;
       }
       return false;
     }
-    this.bits[this.n - 1] = this.bits[this.n - 1] | low;
-    return this.bits[this.n - 1] === 1;
+    const top = i - 1;
+    bits[top] = bits[top] | low;
+    return bits[top] === 1;
   }
 
   active(): boolean {
-    return this.n > 0 && this.bits[this.n - 1] === 1;
+    const bits = this.bits;
+    const n = this.n;
+    if (n > 0) {
+      const i = n - 1;
+      if (i < bits.length) {
+        return bits[i] === 1;
+      }
+      fault();
+    }
+    return false;
   }
 
   empty(): boolean {
-    for (let i = 0; i < this.n; i++) {
-      if (this.bits[i] === 1) {
+    const bits = this.bits;
+    const n = this.n;
+    for (let i = 0; i < n && i < bits.length; i++) {
+      if (bits[i] === 1) {
         return false;
       }
+    }
+    if (n > bits.length) {
+      fault();
     }
     return true;
   }
@@ -292,63 +450,42 @@ export class RbStackState {
 
 /** UTF-8 of the code points pts[s, e). */
 export const rbText = (pts: i32[], s: i32, e: i32): string => {
-  let out = "";
+  const parts: string[] = [];
   const a = s < 0 ? 0 : s;
   const b = e > toI32(pts.length) ? toI32(pts.length) : e;
-  let i = a;
-  while (i < b) {
-    // A run of ASCII at once.
-    let j = i;
-    while (j < b && pts[j] < 0x80) {
-      j++;
-    }
-    if (j > i) {
-      const bytes = new Array<u8>(j - i);
-      for (let k = i; k < j; k++) {
-        bytes[k - i] = toU8(pts[k]);
-      }
-      out = out + String.fromBytes(bytes, 0, j - i);
-      i = j;
-      continue;
-    }
-    out = out + rbChr(pts[i]);
-    i++;
+  for (let i = a; i >= 0 && i < b && i < pts.length; i++) {
+    const c = pts[i];
+    // An ASCII code point is its own byte (`& 0xff` as toU8 truncates).
+    parts.push(c < 0x80 ? String.fromCharCode(c & 0xff) : rbChr(c));
   }
-  return out;
+  return parts.join("");
 };
 
-/** The UTF-8 encoding of one code point. */
+/** The UTF-8 encoding of one code point; each byte as toU8 truncates it. */
 export const rbChr = (c: i32): string => {
   if (c < 0x80) {
     return String.fromCharCode(c);
   }
-  const b = new Array<u8>(4);
-  let n = 0;
   if (c < 0x800) {
-    b[0] = toU8(0xc0 | (c >> 6));
-    b[1] = toU8(0x80 | (c & 0x3f));
-    n = 2;
-  } else if (c < 0x10000) {
-    b[0] = toU8(0xe0 | (c >> 12));
-    b[1] = toU8(0x80 | ((c >> 6) & 0x3f));
-    b[2] = toU8(0x80 | (c & 0x3f));
-    n = 3;
-  } else {
-    b[0] = toU8(0xf0 | (c >> 18));
-    b[1] = toU8(0x80 | ((c >> 12) & 0x3f));
-    b[2] = toU8(0x80 | ((c >> 6) & 0x3f));
-    b[3] = toU8(0x80 | (c & 0x3f));
-    n = 4;
+    return String.fromCharCode((0xc0 | (c >> 6)) & 0xff) + String.fromCharCode(0x80 | (c & 0x3f));
   }
-  return String.fromBytes(b, 0, n);
+  if (c < 0x10000) {
+    return (
+      String.fromCharCode((0xe0 | (c >> 12)) & 0xff) +
+      String.fromCharCode(0x80 | ((c >> 6) & 0x3f)) +
+      String.fromCharCode(0x80 | (c & 0x3f))
+    );
+  }
+  return (
+    String.fromCharCode((0xf0 | (c >> 18)) & 0xff) +
+    String.fromCharCode(0x80 | ((c >> 12) & 0x3f)) +
+    String.fromCharCode(0x80 | ((c >> 6) & 0x3f)) +
+    String.fromCharCode(0x80 | (c & 0x3f))
+  );
 };
 
 /** One byte as a (possibly invalid UTF-8) string: Integer#chr. */
-const rbByteChr = (c: i32): string => {
-  const b = new Array<u8>(1);
-  b[0] = toU8(c & 0xff);
-  return String.fromBytes(b, 0, 1);
-};
+const rbByteChr = (c: i32): string => String.fromCharCode(c & 0xff);
 
 /** Lexer::Literal: one string, symbol, regexp, word list or heredoc being lexed. */
 export class RbLiteral {
@@ -462,9 +599,9 @@ export class RbLiteral {
   /** Answers the type of the token emitted, or -1. */
   nest_and_try_closing(delimiter: string, ts: i32, te: i32, lookahead: string = ""): i32 {
     if (this.hasStartDelim && this.start_delim === delimiter) {
-      this.nesting = this.nesting + 1;
+      this.nesting = add32(this.nesting, 1);
     } else if (this.isDelimiter(delimiter)) {
-      this.nesting = this.nesting - 1;
+      this.nesting = sub32(this.nesting, 1);
     }
     if (this.nesting === 0) {
       if (this.words()) {
@@ -478,7 +615,7 @@ export class RbLiteral {
         this.start_tok === TK_tSTRING_BEG
       ) {
         this.flush_string();
-        this.lexer.emit4(TK_tLABEL_END, this.end_delim, ts, te + 1);
+        this.lexer.emit4(TK_tLABEL_END, this.end_delim, ts, add32(te, 1));
         return TK_tLABEL_END;
       } else if (this.monolithic) {
         this.lexer.emit4(TK_tSTRING, this.buffer, this.str_s, te);
@@ -500,6 +637,11 @@ export class RbLiteral {
     }
     let level = 0;
     for (let i = 0; i < toI32(line.length); i++) {
+      // At most 8 columns a byte: a line this long faults (a level past 2^30).
+      if (level < 0 || level > 1073741823) {
+        fault();
+        return;
+      }
       const c = line.charCodeAt(i);
       if (c === 32) {
         level++;
@@ -515,11 +657,11 @@ export class RbLiteral {
   }
 
   start_interp_brace(): void {
-    this.interp_braces = this.interp_braces + 1;
+    this.interp_braces = add32(this.interp_braces, 1);
   }
 
   end_interp_brace_and_try_closing(): boolean {
-    this.interp_braces = this.interp_braces - 1;
+    this.interp_braces = sub32(this.interp_braces, 1);
     return this.interp_braces === 0;
   }
 
@@ -569,7 +711,8 @@ export class RbLiteral {
       if (k > 0 && !this.indent) {
         return false;
       }
-      for (let i = 0; i < k; i++) {
+      // k <= d.length, so the second test never ends the loop early.
+      for (let i = 0; i < k && i < d.length; i++) {
         const c = d.charCodeAt(i);
         if (c !== 32 && c !== 9) {
           return false;
@@ -590,7 +733,7 @@ export class RbLiteral {
   }
 
   private emitStartTok(): void {
-    const strE = this.heredoc_e >= 0 ? this.heredoc_e : this.str_s + rbLen(this.str_type);
+    const strE = this.heredoc_e >= 0 ? this.heredoc_e : add32(this.str_s, rbLen(this.str_type));
     this.lexer.emit4(this.start_tok, this.str_type, this.str_s, strE);
   }
 }
@@ -600,7 +743,8 @@ const rbLen = (s: string): i32 => {
   let n = 0;
   for (let i = 0; i < toI32(s.length); i++) {
     const c = s.charCodeAt(i);
-    if (c < 0x80 || c >= 0xc0) {
+    // n <= i < s.length, so the second test always holds.
+    if ((c < 0x80 || c >= 0xc0) && n < s.length) {
       n++;
     }
   }
@@ -697,7 +841,7 @@ export class RbStrings {
     this.cs = RS_LEX_EN_UNKNOWN;
   }
 
-  readCharacterConstant(p: i32): i32 {
+  readCharacterConstant(p: i32): RbPos {
     this.cs = RS_LEX_EN_CHARACTER;
     return this.advance(p);
   }
@@ -744,7 +888,13 @@ export class RbStrings {
 
   /** The current literal (the machines only run inside one). */
   lit(): RbLiteral {
-    return this.literals[toI32(this.literals.length) - 1];
+    const lits = this.literals;
+    const n = toI32(lits.length);
+    if (n > 0) {
+      return lits[n - 1];
+    }
+    fault();
+    return new RbLiteral(this.lexer, "'", "'", 0, -1, false, false, false);
   }
 
   /** pop_literal: answers the next state of this machine, or -1 for none. */
@@ -753,7 +903,10 @@ export class RbStrings {
       return -1;
     }
     const old = this.lit();
-    this.literals.pop();
+    const lits = this.literals;
+    if (lits.length > 0) {
+      lits.pop();
+    }
     this.dedent_level_ = old.dedent_level;
     if (old.type() === TK_tREGEXP_BEG) {
       this.rootState = RL_LEX_EN_INSIDE_STRING;
@@ -766,7 +919,7 @@ export class RbStrings {
   closeInterp(p: i32): boolean {
     const l = this.literal();
     if (l !== null && l.end_interp_brace_and_try_closing()) {
-      this.lexer.emit4(TK_tSTRING_DEND, "}", p - 1, p);
+      this.lexer.emit4(TK_tSTRING_DEND, "}", sub32(p, 1), p);
       if (l.saved_herebody_s >= 0) {
         this.herebody_s = l.saved_herebody_s;
       }
@@ -782,13 +935,13 @@ export class RbStrings {
     return d;
   }
 
-  on_newline(p: i32): i32 {
-    if (this.herebody_s >= 0) {
-      const q = this.herebody_s;
+  on_newline(p: i32): RbPos {
+    const hs = this.herebody_s;
+    if (hs >= 0) {
       this.herebody_s = -1;
-      return q;
+      return rbPos(hs);
     }
-    return p;
+    return rbPos(p);
   }
 
   eof_codepoint(point: i32): boolean {
@@ -806,7 +959,7 @@ export class RbStrings {
 
   extend_string_escaped(): void {
     const l = this.lit();
-    const escaped = this.tok2(this.escape_s, this.escape_s + 1);
+    const escaped = this.tok2(this.escape_s, rbPos(this.escape_s) + 1);
     if (l.munge_escape(escaped)) {
       if (l.regexp() && rbIsRegexpMeta(escaped)) {
         l.extend_string(this.tok2(this.ts, this.te), this.ts, this.te);
@@ -865,17 +1018,22 @@ export class RbStrings {
     return line;
   }
 
-  extend_string_eol_heredoc_intertwined(p: i32): i32 {
-    if (this.herebody_s >= 0) {
-      const q = this.herebody_s - 1;
+  extend_string_eol_heredoc_intertwined(p: i32): RbPos {
+    const hs = this.herebody_s;
+    if (hs >= 0) {
       this.herebody_s = -1;
-      return q;
+      return rbPos(hs - 1);
     }
-    return p;
+    return rbPos(p);
   }
 
   extend_string_eol_words(l: RbLiteral, p: i32): void {
-    const c = p < toI32(this.pts.length) ? this.pts[p] : 0;
+    const pts = this.pts;
+    if (p < 0) {
+      fault();
+      return;
+    }
+    const c = p < pts.length ? pts[p] : 0;
     if (l.words() && !this.eof_codepoint(c)) {
       l.extend_space(this.ts, this.te);
     } else {
@@ -886,7 +1044,7 @@ export class RbStrings {
 
   extend_string_slice_end(lookahead: string): string {
     if (!this.lexer.cond.active()) {
-      return this.tok2(this.te, this.te + 2);
+      return this.tok2(this.te, rbPos(this.te) + 2);
     }
     return lookahead;
   }
@@ -896,7 +1054,12 @@ export class RbStrings {
   }
 
   unescape_char(p: i32): void {
-    const cp = this.pts[p - 1];
+    const pts = this.pts;
+    if (p < 1 || p > pts.length) {
+      fault();
+      return;
+    }
+    const cp = pts[p - 1];
     if (cp === 117 || cp === 85) {
       this.lexer.diagError();
       this.lexer.fatal = true;
@@ -914,25 +1077,40 @@ export class RbStrings {
     this.escape = "";
     this.hasEscape = true;
     // ([0-9a-fA-F]+)|([ \t]+) over the code points between the braces.
-    let i = this.escape_s + 2;
-    const e = p - 1;
-    while (i < e) {
-      const c = this.pts[i];
+    const pts = this.pts;
+    let i = rbPos(this.escape_s) + 2;
+    const e = rbPos(p) - 1;
+    if (e > pts.length) {
+      fault();
+      return;
+    }
+    while (i >= 0 && i < e && i < pts.length) {
+      const c = pts[i];
       if (c === 32 || c === 9) {
         i++;
         continue;
       }
       let v = 0;
       const s = i;
-      while (i < e && rbHexDigit(this.pts[i]) >= 0) {
-        v = v * 16 + rbHexDigit(this.pts[i]);
-        if (v > 0x10ffff) {
+      while (i >= 0 && i < e && i < pts.length) {
+        const d = rbHexDigit(pts[i]);
+        if (d < 0) {
+          break;
+        }
+        // v is never negative: past 0x10ffff it stays 0x110000.
+        if (v >= 0 && v <= 0x10ffff) {
+          // v < 2^21 and d < 16: v * 16 + d.
+          v = (v << 4) | d;
+          if (v > 0x10ffff) {
+            v = 0x110000;
+          }
+        } else {
           v = 0x110000;
         }
         i++;
       }
       if (i === s) {
-        i++;
+        i = s + 1;
         continue;
       }
       if (v >= 0x110000 || (v & -2048) === 0xd800) {
@@ -944,9 +1122,14 @@ export class RbStrings {
   }
 
   read_post_meta_or_ctrl_char(p: i32): void {
+    const pts = this.pts;
+    if (p < 1 || p > pts.length) {
+      fault();
+      return;
+    }
+    const o = pts[p - 1];
     this.escape = this.tok2(p - 1, p);
     this.hasEscape = true;
-    const o = this.pts[p - 1];
     if ((o >= 0 && o <= 8) || (o >= 14 && o <= 31)) {
       this.lexer.diagError();
       this.lexer.fatal = true;
@@ -956,37 +1139,47 @@ export class RbStrings {
   extend_interp_var(l: RbLiteral): i32 {
     l.flush_string();
     l.extend_content();
-    this.lexer.emit4(TK_tSTRING_DVAR, "", this.ts, this.ts + 1);
+    this.lexer.emit4(TK_tSTRING_DVAR, "", this.ts, rbPos(this.ts) + 1);
     return this.ts;
   }
 
   emit_interp_var(kind: i32): void {
     if (kind === 1) {
-      this.lexer.emit_class_var(this.ts + 1, this.te);
+      this.lexer.emit_class_var(rbPos(this.ts) + 1, this.te);
     } else if (kind === 2) {
-      this.lexer.emit_instance_var(this.ts + 1, this.te);
+      this.lexer.emit_instance_var(rbPos(this.ts) + 1, this.te);
     } else if (kind === 3) {
-      this.lexer.emit_global_var(this.ts + 1, this.te);
+      this.lexer.emit_global_var(rbPos(this.ts) + 1, this.te);
     }
   }
 
   encode_escaped_char(p: i32): void {
-    this.escape = rbByteChr(rbParseInt(this.tok2(p - 2, p), 16));
+    this.escape = rbByteChr(rbParseInt(this.tok2(sub32(p, 2), p), 16));
     this.hasEscape = true;
   }
 
   slash_c_char(): void {
-    this.escape = rbByteChr(this.escape.charCodeAt(0) & 0x9f);
-    this.hasEscape = true;
+    const e = this.escape;
+    if (e.length > 0) {
+      this.escape = rbByteChr(e.charCodeAt(0) & 0x9f);
+      this.hasEscape = true;
+    } else {
+      fault();
+    }
   }
 
   slash_m_char(): void {
-    this.escape = rbByteChr(this.escape.charCodeAt(0) | 0x80);
-    this.hasEscape = true;
+    const e = this.escape;
+    if (e.length > 0) {
+      this.escape = rbByteChr(e.charCodeAt(0) | 0x80);
+      this.hasEscape = true;
+    } else {
+      fault();
+    }
   }
 
   emit_character_constant(): void {
-    const v = this.hasEscape ? this.escape : this.tok2(this.ts + 1, this.te);
+    const v = this.hasEscape ? this.escape : this.tok2(rbPos(this.ts) + 1, this.te);
     this.lexer.emit4(TK_tCHARACTER, v, this.ts, this.te);
   }
 
@@ -1001,11 +1194,16 @@ export class RbStrings {
   }
 
   /** The machine; answers the new position, with rootState the lexer's next state. */
-  advance(p0: i32): i32 {
+  advance(p0: i32): RbPos {
     let p = p0;
-    const pe = toI32(this.pts.length) + 2;
-    const eof = pe;
     const pts = this.pts;
+    const n = toI32(pts.length);
+    if (n > 1000000000) {
+      return rbPastEnd();
+    }
+    const pe = n + 2;
+    const eof = pe;
+    let q: RbPos = 0;
     let current_literal: RbLiteral =
       this.literals.length > 0 ? this.lit() : new RbLiteral(this.lexer, "'", "'", 0, -1, false, false, false);
     let string = "";
@@ -1016,12 +1214,7 @@ export class RbStrings {
     let unknown_options = false;
     let state = -1;
     let _trans = 0;
-    let _keys = 0;
-    let _inds = 0;
-    let _slen = 0;
     let _wide = 0;
-    let _acts = 0;
-    let _nacts = 0;
     let _trigger_goto = false;
     let _goto_level = 0;
     const _resume = 10;
@@ -1031,6 +1224,9 @@ export class RbStrings {
     const _out = 40;
     while (true) {
       _trigger_goto = false;
+      if (_goto_level >= _out) {
+        break;
+      }
       if (_goto_level <= 0) {
         if (p === pe) {
           _goto_level = _test_eof;
@@ -1042,45 +1238,58 @@ export class RbStrings {
         }
       }
       if (_goto_level <= _resume) {
-        _acts = RS_LEX_FROM_STATE_ACTIONS_D[this.cs];
-        _nacts = RS_LEX_ACTIONS_D[_acts];
-        _acts += 1;
-        while (_nacts > 0) {
-          _nacts -= 1;
-          _acts += 1;
-          if (RS_LEX_ACTIONS_D[_acts - 1] === 24) {
-            this.ts = p;
-          }
+        // A transition starts at p in [0, pe]: an action leaves p at least -1, and _again adds 1.
+        if (p < 0 || p > pe) {
+          return rbPastEnd();
         }
-        _keys = this.cs << 1;
-        _inds = RS_LEX_INDEX_OFFSETS_D[this.cs];
-        _slen = RS_LEX_KEY_SPANS_D[this.cs];
-        _wide = p < toI32(pts.length) ? pts[p] : 0;
-        if (_slen > 0 && RS_LEX_TRANS_KEYS_D[_keys] <= _wide && _wide <= RS_LEX_TRANS_KEYS_D[_keys + 1]) {
-          _trans = RS_LEX_INDICIES_D[_inds + _wide - RS_LEX_TRANS_KEYS_D[_keys]];
-        } else {
-          _trans = RS_LEX_INDICIES_D[_inds + _slen];
+        if (rbStateAction(RS_LEX_ACTIONS_D, RS_LEX_FROM_STATE_ACTIONS_D, this.cs, 24)) {
+          this.ts = p;
         }
+        _wide = 0;
+        if (p < pts.length) {
+          _wide = pts[p];
+        }
+        _trans = rbTransOf(
+          RS_LEX_TRANS_KEYS_D,
+          RS_LEX_KEY_SPANS_D,
+          RS_LEX_INDEX_OFFSETS_D,
+          RS_LEX_INDICIES_D,
+          this.cs,
+          _wide,
+        );
       }
       if (_goto_level <= _eof_trans) {
-        this.cs = RS_LEX_TRANS_TARGS_D[_trans];
-        if (RS_LEX_TRANS_ACTIONS_D[_trans] !== 0) {
-          _acts = RS_LEX_TRANS_ACTIONS_D[_trans];
-          _nacts = RS_LEX_ACTIONS_D[_acts];
-          _acts += 1;
-          actsLoop: while (_nacts > 0) {
-            _nacts -= 1;
-            _acts += 1;
-            switch (RS_LEX_ACTIONS_D[_acts - 1]) {
+        const target = rbTab(RS_LEX_TRANS_TARGS_D, _trans);
+        const actsAt = rbTab(RS_LEX_TRANS_ACTIONS_D, _trans);
+        if (target < 0 || actsAt < 0) {
+          return rbPastEnd();
+        }
+        this.cs = target;
+        if (actsAt !== 0) {
+          const acts = actsAt & 0x1ffff;
+          const nactsAt = rbTab(RS_LEX_ACTIONS_D, acts);
+          if (nactsAt < 0) {
+            return rbPastEnd();
+          }
+          const nacts = nactsAt & 0x1ffff;
+          actsLoop: for (let j = 0; j < nacts; j++) {
+            if (p < 0 || p > pe) {
+              return rbPastEnd();
+            }
+            const pc: RbAt = p;
+            switch (rbTab(RS_LEX_ACTIONS_D, acts + 1 + j)) {
               case 0: {
+                p = pc;
                 this.newline_s = p;
                 break;
               }
               case 1: {
+                p = pc;
                 this.unicode_points(p);
                 break;
               }
               case 2: {
+                p = pc;
                 this.unescape_char(p);
                 break;
               }
@@ -1089,6 +1298,7 @@ export class RbStrings {
                 break;
               }
               case 4: {
+                p = pc;
                 this.read_post_meta_or_ctrl_char(p);
                 break;
               }
@@ -1101,6 +1311,7 @@ export class RbStrings {
                 break;
               }
               case 7: {
+                p = pc;
                 this.encode_escaped_char(p);
                 break;
               }
@@ -1110,16 +1321,19 @@ export class RbStrings {
                 break;
               }
               case 9: {
+                p = pc;
                 this.encode_escaped_char(p);
                 break;
               }
               case 10: {
+                p = pc;
                 this.escape = rbByteChr(rbParseInt(this.tok2(this.escape_s, p), 8) % 256);
                 this.hasEscape = true;
                 break;
               }
               case 11: {
-                this.escape = rbByteChr(rbParseInt(this.tok2(this.escape_s + 1, p), 16));
+                p = pc;
+                this.escape = rbByteChr(rbParseInt(this.tok2(rbPos(this.escape_s) + 1, p), 16));
                 this.hasEscape = true;
                 break;
               }
@@ -1128,15 +1342,18 @@ export class RbStrings {
                 break;
               }
               case 13: {
-                this.escape = rbChr(rbParseInt(this.tok2(this.escape_s + 1, p), 16));
+                p = pc;
+                this.escape = rbChr(rbParseInt(this.tok2(rbPos(this.escape_s) + 1, p), 16));
                 this.hasEscape = true;
                 break;
               }
               case 14: {
+                p = pc;
                 this.check_invalid_escapes(p);
                 break;
               }
               case 15: {
+                p = pc;
                 this.check_invalid_escapes(p);
                 break;
               }
@@ -1149,6 +1366,7 @@ export class RbStrings {
                 break;
               }
               case 18: {
+                p = pc;
                 this.escape_s = p;
                 this.hasEscape = false;
                 break;
@@ -1170,10 +1388,12 @@ export class RbStrings {
                 break;
               }
               case 25: {
+                p = pc;
                 this.te = p + 1;
                 break;
               }
               case 26: {
+                p = pc;
                 this.te = p + 1;
                 current_literal = this.lit();
                 this.extend_interp_code(current_literal);
@@ -1184,6 +1404,7 @@ export class RbStrings {
                 break actsLoop;
               }
               case 27: {
+                p = pc;
                 this.te = p + 1;
                 current_literal = this.lit();
                 this.extend_string_eol_check_eof(current_literal, pe);
@@ -1191,7 +1412,8 @@ export class RbStrings {
                   line = this.extend_string_eol_heredoc_line();
                   if (current_literal.nest_and_try_closing(line, this.herebody_s, this.ts) >= 0) {
                     this.herebody_s = this.te;
-                    p = current_literal.heredoc_e - 1;
+                    q = rbPos(current_literal.heredoc_e);
+                    p = q - 1;
                     this.cs = this.pop_literal();
                     p += 1;
                     _trigger_goto = true;
@@ -1209,12 +1431,14 @@ export class RbStrings {
                     _goto_level = _out;
                     break actsLoop;
                   }
-                  p = this.extend_string_eol_heredoc_intertwined(p);
+                  q = this.extend_string_eol_heredoc_intertwined(p);
+                  p = q;
                 }
                 this.extend_string_eol_words(current_literal, p);
                 break;
               }
               case 28: {
+                p = pc;
                 this.te = p + 1;
                 string = this.tok2(this.ts, this.te);
                 lookahead = this.extend_string_slice_end(lookahead);
@@ -1225,16 +1449,17 @@ export class RbStrings {
                 }
                 if (token >= 0) {
                   if (token === TK_tLABEL_END) {
-                    p += 1;
+                    // The p += 1 past the colon, and the p += 1 of every fbreak.
+                    p += 2;
                     this.pop_literal();
                     this.rootState = RL_LEX_EN_EXPR_LABELARG;
                   } else {
+                    p += 1;
                     state = this.pop_literal();
                     if (state >= 0) {
                       this.cs = state;
                     }
                   }
-                  p += 1;
                   _trigger_goto = true;
                   _goto_level = _out;
                   break actsLoop;
@@ -1244,12 +1469,14 @@ export class RbStrings {
                 break;
               }
               case 29: {
+                p = pc;
                 this.te = p;
                 p = p - 1;
                 this.extend_interp_digit_var();
                 break;
               }
               case 30: {
+                p = pc;
                 this.te = p;
                 p = p - 1;
                 current_literal = this.lit();
@@ -1258,18 +1485,21 @@ export class RbStrings {
                 break;
               }
               case 31: {
+                p = pc;
                 this.te = p;
                 p = p - 1;
                 this.extend_string_escaped();
                 break;
               }
               case 32: {
+                p = pc;
                 this.te = p;
                 p = p - 1;
                 this.lit().extend_space(this.ts, this.te);
                 break;
               }
               case 33: {
+                p = pc;
                 this.te = p;
                 p = p - 1;
                 string = this.tok2(this.ts, this.te);
@@ -1281,16 +1511,17 @@ export class RbStrings {
                 }
                 if (token >= 0) {
                   if (token === TK_tLABEL_END) {
-                    p += 1;
+                    // The p += 1 past the colon, and the p += 1 of every fbreak.
+                    p += 2;
                     this.pop_literal();
                     this.rootState = RL_LEX_EN_EXPR_LABELARG;
                   } else {
+                    p += 1;
                     state = this.pop_literal();
                     if (state >= 0) {
                       this.cs = state;
                     }
                   }
-                  p += 1;
                   _trigger_goto = true;
                   _goto_level = _out;
                   break actsLoop;
@@ -1300,12 +1531,14 @@ export class RbStrings {
                 break;
               }
               case 34: {
-                p = this.te - 1;
+                q = rbPos(this.te);
+                p = q - 1;
                 this.extend_string_escaped();
                 break;
               }
               case 35: {
-                p = this.te - 1;
+                q = rbPos(this.te);
+                p = q - 1;
                 string = this.tok2(this.ts, this.te);
                 lookahead = this.extend_string_slice_end(lookahead);
                 current_literal = this.lit();
@@ -1315,16 +1548,17 @@ export class RbStrings {
                 }
                 if (token >= 0) {
                   if (token === TK_tLABEL_END) {
-                    p += 1;
+                    // The p += 1 past the colon, and the p += 1 of every fbreak.
+                    p += 2;
                     this.pop_literal();
                     this.rootState = RL_LEX_EN_EXPR_LABELARG;
                   } else {
+                    p += 1;
                     state = this.pop_literal();
                     if (state >= 0) {
                       this.cs = state;
                     }
                   }
-                  p += 1;
                   _trigger_goto = true;
                   _goto_level = _out;
                   break actsLoop;
@@ -1334,6 +1568,7 @@ export class RbStrings {
                 break;
               }
               case 36: {
+                p = pc;
                 this.te = p + 1;
                 current_literal = this.lit();
                 this.extend_interp_code(current_literal);
@@ -1344,6 +1579,7 @@ export class RbStrings {
                 break actsLoop;
               }
               case 37: {
+                p = pc;
                 this.te = p + 1;
                 current_literal = this.lit();
                 this.extend_string_eol_check_eof(current_literal, pe);
@@ -1351,7 +1587,8 @@ export class RbStrings {
                   line = this.extend_string_eol_heredoc_line();
                   if (current_literal.nest_and_try_closing(line, this.herebody_s, this.ts) >= 0) {
                     this.herebody_s = this.te;
-                    p = current_literal.heredoc_e - 1;
+                    q = rbPos(current_literal.heredoc_e);
+                    p = q - 1;
                     this.cs = this.pop_literal();
                     p += 1;
                     _trigger_goto = true;
@@ -1369,12 +1606,14 @@ export class RbStrings {
                     _goto_level = _out;
                     break actsLoop;
                   }
-                  p = this.extend_string_eol_heredoc_intertwined(p);
+                  q = this.extend_string_eol_heredoc_intertwined(p);
+                  p = q;
                 }
                 this.extend_string_eol_words(current_literal, p);
                 break;
               }
               case 38: {
+                p = pc;
                 this.te = p + 1;
                 string = this.tok2(this.ts, this.te);
                 lookahead = this.extend_string_slice_end(lookahead);
@@ -1385,16 +1624,17 @@ export class RbStrings {
                 }
                 if (token >= 0) {
                   if (token === TK_tLABEL_END) {
-                    p += 1;
+                    // The p += 1 past the colon, and the p += 1 of every fbreak.
+                    p += 2;
                     this.pop_literal();
                     this.rootState = RL_LEX_EN_EXPR_LABELARG;
                   } else {
+                    p += 1;
                     state = this.pop_literal();
                     if (state >= 0) {
                       this.cs = state;
                     }
                   }
-                  p += 1;
                   _trigger_goto = true;
                   _goto_level = _out;
                   break actsLoop;
@@ -1404,12 +1644,14 @@ export class RbStrings {
                 break;
               }
               case 39: {
+                p = pc;
                 this.te = p;
                 p = p - 1;
                 this.extend_interp_digit_var();
                 break;
               }
               case 40: {
+                p = pc;
                 this.te = p;
                 p = p - 1;
                 current_literal = this.lit();
@@ -1418,12 +1660,14 @@ export class RbStrings {
                 break;
               }
               case 41: {
+                p = pc;
                 this.te = p;
                 p = p - 1;
                 this.extend_string_escaped();
                 break;
               }
               case 42: {
+                p = pc;
                 this.te = p;
                 p = p - 1;
                 string = this.tok2(this.ts, this.te);
@@ -1435,16 +1679,17 @@ export class RbStrings {
                 }
                 if (token >= 0) {
                   if (token === TK_tLABEL_END) {
-                    p += 1;
+                    // The p += 1 past the colon, and the p += 1 of every fbreak.
+                    p += 2;
                     this.pop_literal();
                     this.rootState = RL_LEX_EN_EXPR_LABELARG;
                   } else {
+                    p += 1;
                     state = this.pop_literal();
                     if (state >= 0) {
                       this.cs = state;
                     }
                   }
-                  p += 1;
                   _trigger_goto = true;
                   _goto_level = _out;
                   break actsLoop;
@@ -1454,12 +1699,14 @@ export class RbStrings {
                 break;
               }
               case 43: {
-                p = this.te - 1;
+                q = rbPos(this.te);
+                p = q - 1;
                 this.extend_string_escaped();
                 break;
               }
               case 44: {
-                p = this.te - 1;
+                q = rbPos(this.te);
+                p = q - 1;
                 string = this.tok2(this.ts, this.te);
                 lookahead = this.extend_string_slice_end(lookahead);
                 current_literal = this.lit();
@@ -1469,16 +1716,17 @@ export class RbStrings {
                 }
                 if (token >= 0) {
                   if (token === TK_tLABEL_END) {
-                    p += 1;
+                    // The p += 1 past the colon, and the p += 1 of every fbreak.
+                    p += 2;
                     this.pop_literal();
                     this.rootState = RL_LEX_EN_EXPR_LABELARG;
                   } else {
+                    p += 1;
                     state = this.pop_literal();
                     if (state >= 0) {
                       this.cs = state;
                     }
                   }
-                  p += 1;
                   _trigger_goto = true;
                   _goto_level = _out;
                   break actsLoop;
@@ -1488,11 +1736,13 @@ export class RbStrings {
                 break;
               }
               case 45: {
+                p = pc;
                 this.te = p + 1;
                 this.extend_string_escaped();
                 break;
               }
               case 46: {
+                p = pc;
                 this.te = p + 1;
                 current_literal = this.lit();
                 this.extend_string_eol_check_eof(current_literal, pe);
@@ -1500,7 +1750,8 @@ export class RbStrings {
                   line = this.extend_string_eol_heredoc_line();
                   if (current_literal.nest_and_try_closing(line, this.herebody_s, this.ts) >= 0) {
                     this.herebody_s = this.te;
-                    p = current_literal.heredoc_e - 1;
+                    q = rbPos(current_literal.heredoc_e);
+                    p = q - 1;
                     this.cs = this.pop_literal();
                     p += 1;
                     _trigger_goto = true;
@@ -1518,12 +1769,14 @@ export class RbStrings {
                     _goto_level = _out;
                     break actsLoop;
                   }
-                  p = this.extend_string_eol_heredoc_intertwined(p);
+                  q = this.extend_string_eol_heredoc_intertwined(p);
+                  p = q;
                 }
                 this.extend_string_eol_words(current_literal, p);
                 break;
               }
               case 47: {
+                p = pc;
                 this.te = p + 1;
                 string = this.tok2(this.ts, this.te);
                 lookahead = this.extend_string_slice_end(lookahead);
@@ -1534,16 +1787,17 @@ export class RbStrings {
                 }
                 if (token >= 0) {
                   if (token === TK_tLABEL_END) {
-                    p += 1;
+                    // The p += 1 past the colon, and the p += 1 of every fbreak.
+                    p += 2;
                     this.pop_literal();
                     this.rootState = RL_LEX_EN_EXPR_LABELARG;
                   } else {
+                    p += 1;
                     state = this.pop_literal();
                     if (state >= 0) {
                       this.cs = state;
                     }
                   }
-                  p += 1;
                   _trigger_goto = true;
                   _goto_level = _out;
                   break actsLoop;
@@ -1553,12 +1807,14 @@ export class RbStrings {
                 break;
               }
               case 48: {
+                p = pc;
                 this.te = p;
                 p = p - 1;
                 this.lit().extend_space(this.ts, this.te);
                 break;
               }
               case 49: {
+                p = pc;
                 this.te = p;
                 p = p - 1;
                 string = this.tok2(this.ts, this.te);
@@ -1570,16 +1826,17 @@ export class RbStrings {
                 }
                 if (token >= 0) {
                   if (token === TK_tLABEL_END) {
-                    p += 1;
+                    // The p += 1 past the colon, and the p += 1 of every fbreak.
+                    p += 2;
                     this.pop_literal();
                     this.rootState = RL_LEX_EN_EXPR_LABELARG;
                   } else {
+                    p += 1;
                     state = this.pop_literal();
                     if (state >= 0) {
                       this.cs = state;
                     }
                   }
-                  p += 1;
                   _trigger_goto = true;
                   _goto_level = _out;
                   break actsLoop;
@@ -1589,6 +1846,7 @@ export class RbStrings {
                 break;
               }
               case 50: {
+                p = pc;
                 this.te = p + 1;
                 current_literal = this.lit();
                 this.extend_string_eol_check_eof(current_literal, pe);
@@ -1596,7 +1854,8 @@ export class RbStrings {
                   line = this.extend_string_eol_heredoc_line();
                   if (current_literal.nest_and_try_closing(line, this.herebody_s, this.ts) >= 0) {
                     this.herebody_s = this.te;
-                    p = current_literal.heredoc_e - 1;
+                    q = rbPos(current_literal.heredoc_e);
+                    p = q - 1;
                     this.cs = this.pop_literal();
                     p += 1;
                     _trigger_goto = true;
@@ -1614,17 +1873,20 @@ export class RbStrings {
                     _goto_level = _out;
                     break actsLoop;
                   }
-                  p = this.extend_string_eol_heredoc_intertwined(p);
+                  q = this.extend_string_eol_heredoc_intertwined(p);
+                  p = q;
                 }
                 this.extend_string_eol_words(current_literal, p);
                 break;
               }
               case 51: {
+                p = pc;
                 this.te = p + 1;
                 this.extend_string_escaped();
                 break;
               }
               case 52: {
+                p = pc;
                 this.te = p + 1;
                 current_literal = this.lit();
                 this.extend_string_eol_check_eof(current_literal, pe);
@@ -1632,7 +1894,8 @@ export class RbStrings {
                   line = this.extend_string_eol_heredoc_line();
                   if (current_literal.nest_and_try_closing(line, this.herebody_s, this.ts) >= 0) {
                     this.herebody_s = this.te;
-                    p = current_literal.heredoc_e - 1;
+                    q = rbPos(current_literal.heredoc_e);
+                    p = q - 1;
                     this.cs = this.pop_literal();
                     p += 1;
                     _trigger_goto = true;
@@ -1650,12 +1913,14 @@ export class RbStrings {
                     _goto_level = _out;
                     break actsLoop;
                   }
-                  p = this.extend_string_eol_heredoc_intertwined(p);
+                  q = this.extend_string_eol_heredoc_intertwined(p);
+                  p = q;
                 }
                 this.extend_string_eol_words(current_literal, p);
                 break;
               }
               case 53: {
+                p = pc;
                 this.te = p + 1;
                 string = this.tok2(this.ts, this.te);
                 lookahead = this.extend_string_slice_end(lookahead);
@@ -1666,16 +1931,17 @@ export class RbStrings {
                 }
                 if (token >= 0) {
                   if (token === TK_tLABEL_END) {
-                    p += 1;
+                    // The p += 1 past the colon, and the p += 1 of every fbreak.
+                    p += 2;
                     this.pop_literal();
                     this.rootState = RL_LEX_EN_EXPR_LABELARG;
                   } else {
+                    p += 1;
                     state = this.pop_literal();
                     if (state >= 0) {
                       this.cs = state;
                     }
                   }
-                  p += 1;
                   _trigger_goto = true;
                   _goto_level = _out;
                   break actsLoop;
@@ -1685,6 +1951,7 @@ export class RbStrings {
                 break;
               }
               case 54: {
+                p = pc;
                 this.te = p;
                 p = p - 1;
                 string = this.tok2(this.ts, this.te);
@@ -1696,16 +1963,17 @@ export class RbStrings {
                 }
                 if (token >= 0) {
                   if (token === TK_tLABEL_END) {
-                    p += 1;
+                    // The p += 1 past the colon, and the p += 1 of every fbreak.
+                    p += 2;
                     this.pop_literal();
                     this.rootState = RL_LEX_EN_EXPR_LABELARG;
                   } else {
+                    p += 1;
                     state = this.pop_literal();
                     if (state >= 0) {
                       this.cs = state;
                     }
                   }
-                  p += 1;
                   _trigger_goto = true;
                   _goto_level = _out;
                   break actsLoop;
@@ -1715,6 +1983,7 @@ export class RbStrings {
                 break;
               }
               case 55: {
+                p = pc;
                 this.te = p + 1;
                 current_literal = this.lit();
                 this.extend_interp_code(current_literal);
@@ -1725,6 +1994,7 @@ export class RbStrings {
                 break actsLoop;
               }
               case 56: {
+                p = pc;
                 this.te = p + 1;
                 current_literal = this.lit();
                 this.extend_string_eol_check_eof(current_literal, pe);
@@ -1732,7 +2002,8 @@ export class RbStrings {
                   line = this.extend_string_eol_heredoc_line();
                   if (current_literal.nest_and_try_closing(line, this.herebody_s, this.ts) >= 0) {
                     this.herebody_s = this.te;
-                    p = current_literal.heredoc_e - 1;
+                    q = rbPos(current_literal.heredoc_e);
+                    p = q - 1;
                     this.cs = this.pop_literal();
                     p += 1;
                     _trigger_goto = true;
@@ -1750,12 +2021,14 @@ export class RbStrings {
                     _goto_level = _out;
                     break actsLoop;
                   }
-                  p = this.extend_string_eol_heredoc_intertwined(p);
+                  q = this.extend_string_eol_heredoc_intertwined(p);
+                  p = q;
                 }
                 this.extend_string_eol_words(current_literal, p);
                 break;
               }
               case 57: {
+                p = pc;
                 this.te = p + 1;
                 string = this.tok2(this.ts, this.te);
                 lookahead = this.extend_string_slice_end(lookahead);
@@ -1766,16 +2039,17 @@ export class RbStrings {
                 }
                 if (token >= 0) {
                   if (token === TK_tLABEL_END) {
-                    p += 1;
+                    // The p += 1 past the colon, and the p += 1 of every fbreak.
+                    p += 2;
                     this.pop_literal();
                     this.rootState = RL_LEX_EN_EXPR_LABELARG;
                   } else {
+                    p += 1;
                     state = this.pop_literal();
                     if (state >= 0) {
                       this.cs = state;
                     }
                   }
-                  p += 1;
                   _trigger_goto = true;
                   _goto_level = _out;
                   break actsLoop;
@@ -1785,12 +2059,14 @@ export class RbStrings {
                 break;
               }
               case 58: {
+                p = pc;
                 this.te = p;
                 p = p - 1;
                 this.extend_interp_digit_var();
                 break;
               }
               case 59: {
+                p = pc;
                 this.te = p;
                 p = p - 1;
                 current_literal = this.lit();
@@ -1799,6 +2075,7 @@ export class RbStrings {
                 break;
               }
               case 60: {
+                p = pc;
                 this.te = p;
                 p = p - 1;
                 string = this.tok2(this.ts, this.te);
@@ -1810,16 +2087,17 @@ export class RbStrings {
                 }
                 if (token >= 0) {
                   if (token === TK_tLABEL_END) {
-                    p += 1;
+                    // The p += 1 past the colon, and the p += 1 of every fbreak.
+                    p += 2;
                     this.pop_literal();
                     this.rootState = RL_LEX_EN_EXPR_LABELARG;
                   } else {
+                    p += 1;
                     state = this.pop_literal();
                     if (state >= 0) {
                       this.cs = state;
                     }
                   }
-                  p += 1;
                   _trigger_goto = true;
                   _goto_level = _out;
                   break actsLoop;
@@ -1829,7 +2107,8 @@ export class RbStrings {
                 break;
               }
               case 61: {
-                p = this.te - 1;
+                q = rbPos(this.te);
+                p = q - 1;
                 string = this.tok2(this.ts, this.te);
                 lookahead = this.extend_string_slice_end(lookahead);
                 current_literal = this.lit();
@@ -1839,16 +2118,17 @@ export class RbStrings {
                 }
                 if (token >= 0) {
                   if (token === TK_tLABEL_END) {
-                    p += 1;
+                    // The p += 1 past the colon, and the p += 1 of every fbreak.
+                    p += 2;
                     this.pop_literal();
                     this.rootState = RL_LEX_EN_EXPR_LABELARG;
                   } else {
+                    p += 1;
                     state = this.pop_literal();
                     if (state >= 0) {
                       this.cs = state;
                     }
                   }
-                  p += 1;
                   _trigger_goto = true;
                   _goto_level = _out;
                   break actsLoop;
@@ -1858,6 +2138,7 @@ export class RbStrings {
                 break;
               }
               case 62: {
+                p = pc;
                 this.te = p + 1;
                 current_literal = this.lit();
                 this.extend_string_eol_check_eof(current_literal, pe);
@@ -1865,7 +2146,8 @@ export class RbStrings {
                   line = this.extend_string_eol_heredoc_line();
                   if (current_literal.nest_and_try_closing(line, this.herebody_s, this.ts) >= 0) {
                     this.herebody_s = this.te;
-                    p = current_literal.heredoc_e - 1;
+                    q = rbPos(current_literal.heredoc_e);
+                    p = q - 1;
                     this.cs = this.pop_literal();
                     p += 1;
                     _trigger_goto = true;
@@ -1883,12 +2165,14 @@ export class RbStrings {
                     _goto_level = _out;
                     break actsLoop;
                   }
-                  p = this.extend_string_eol_heredoc_intertwined(p);
+                  q = this.extend_string_eol_heredoc_intertwined(p);
+                  p = q;
                 }
                 this.extend_string_eol_words(current_literal, p);
                 break;
               }
               case 63: {
+                p = pc;
                 this.te = p + 1;
                 string = this.tok2(this.ts, this.te);
                 lookahead = this.extend_string_slice_end(lookahead);
@@ -1899,16 +2183,17 @@ export class RbStrings {
                 }
                 if (token >= 0) {
                   if (token === TK_tLABEL_END) {
-                    p += 1;
+                    // The p += 1 past the colon, and the p += 1 of every fbreak.
+                    p += 2;
                     this.pop_literal();
                     this.rootState = RL_LEX_EN_EXPR_LABELARG;
                   } else {
+                    p += 1;
                     state = this.pop_literal();
                     if (state >= 0) {
                       this.cs = state;
                     }
                   }
-                  p += 1;
                   _trigger_goto = true;
                   _goto_level = _out;
                   break actsLoop;
@@ -1918,6 +2203,7 @@ export class RbStrings {
                 break;
               }
               case 64: {
+                p = pc;
                 this.te = p + 1;
                 current_literal = this.lit();
                 this.extend_interp_code(current_literal);
@@ -1928,6 +2214,7 @@ export class RbStrings {
                 break actsLoop;
               }
               case 65: {
+                p = pc;
                 this.te = p + 1;
                 current_literal = this.lit();
                 this.extend_string_eol_check_eof(current_literal, pe);
@@ -1935,7 +2222,8 @@ export class RbStrings {
                   line = this.extend_string_eol_heredoc_line();
                   if (current_literal.nest_and_try_closing(line, this.herebody_s, this.ts) >= 0) {
                     this.herebody_s = this.te;
-                    p = current_literal.heredoc_e - 1;
+                    q = rbPos(current_literal.heredoc_e);
+                    p = q - 1;
                     this.cs = this.pop_literal();
                     p += 1;
                     _trigger_goto = true;
@@ -1953,12 +2241,14 @@ export class RbStrings {
                     _goto_level = _out;
                     break actsLoop;
                   }
-                  p = this.extend_string_eol_heredoc_intertwined(p);
+                  q = this.extend_string_eol_heredoc_intertwined(p);
+                  p = q;
                 }
                 this.extend_string_eol_words(current_literal, p);
                 break;
               }
               case 66: {
+                p = pc;
                 this.te = p + 1;
                 string = this.tok2(this.ts, this.te);
                 lookahead = this.extend_string_slice_end(lookahead);
@@ -1969,16 +2259,17 @@ export class RbStrings {
                 }
                 if (token >= 0) {
                   if (token === TK_tLABEL_END) {
-                    p += 1;
+                    // The p += 1 past the colon, and the p += 1 of every fbreak.
+                    p += 2;
                     this.pop_literal();
                     this.rootState = RL_LEX_EN_EXPR_LABELARG;
                   } else {
+                    p += 1;
                     state = this.pop_literal();
                     if (state >= 0) {
                       this.cs = state;
                     }
                   }
-                  p += 1;
                   _trigger_goto = true;
                   _goto_level = _out;
                   break actsLoop;
@@ -1988,12 +2279,14 @@ export class RbStrings {
                 break;
               }
               case 67: {
+                p = pc;
                 this.te = p;
                 p = p - 1;
                 this.extend_interp_digit_var();
                 break;
               }
               case 68: {
+                p = pc;
                 this.te = p;
                 p = p - 1;
                 current_literal = this.lit();
@@ -2002,12 +2295,14 @@ export class RbStrings {
                 break;
               }
               case 69: {
+                p = pc;
                 this.te = p;
                 p = p - 1;
                 this.lit().extend_space(this.ts, this.te);
                 break;
               }
               case 70: {
+                p = pc;
                 this.te = p;
                 p = p - 1;
                 string = this.tok2(this.ts, this.te);
@@ -2019,16 +2314,17 @@ export class RbStrings {
                 }
                 if (token >= 0) {
                   if (token === TK_tLABEL_END) {
-                    p += 1;
+                    // The p += 1 past the colon, and the p += 1 of every fbreak.
+                    p += 2;
                     this.pop_literal();
                     this.rootState = RL_LEX_EN_EXPR_LABELARG;
                   } else {
+                    p += 1;
                     state = this.pop_literal();
                     if (state >= 0) {
                       this.cs = state;
                     }
                   }
-                  p += 1;
                   _trigger_goto = true;
                   _goto_level = _out;
                   break actsLoop;
@@ -2038,7 +2334,8 @@ export class RbStrings {
                 break;
               }
               case 71: {
-                p = this.te - 1;
+                q = rbPos(this.te);
+                p = q - 1;
                 string = this.tok2(this.ts, this.te);
                 lookahead = this.extend_string_slice_end(lookahead);
                 current_literal = this.lit();
@@ -2048,16 +2345,17 @@ export class RbStrings {
                 }
                 if (token >= 0) {
                   if (token === TK_tLABEL_END) {
-                    p += 1;
+                    // The p += 1 past the colon, and the p += 1 of every fbreak.
+                    p += 2;
                     this.pop_literal();
                     this.rootState = RL_LEX_EN_EXPR_LABELARG;
                   } else {
+                    p += 1;
                     state = this.pop_literal();
                     if (state >= 0) {
                       this.cs = state;
                     }
                   }
-                  p += 1;
                   _trigger_goto = true;
                   _goto_level = _out;
                   break actsLoop;
@@ -2067,6 +2365,7 @@ export class RbStrings {
                 break;
               }
               case 72: {
+                p = pc;
                 this.te = p + 1;
                 current_literal = this.lit();
                 this.extend_string_eol_check_eof(current_literal, pe);
@@ -2074,7 +2373,8 @@ export class RbStrings {
                   line = this.extend_string_eol_heredoc_line();
                   if (current_literal.nest_and_try_closing(line, this.herebody_s, this.ts) >= 0) {
                     this.herebody_s = this.te;
-                    p = current_literal.heredoc_e - 1;
+                    q = rbPos(current_literal.heredoc_e);
+                    p = q - 1;
                     this.cs = this.pop_literal();
                     p += 1;
                     _trigger_goto = true;
@@ -2092,12 +2392,14 @@ export class RbStrings {
                     _goto_level = _out;
                     break actsLoop;
                   }
-                  p = this.extend_string_eol_heredoc_intertwined(p);
+                  q = this.extend_string_eol_heredoc_intertwined(p);
+                  p = q;
                 }
                 this.extend_string_eol_words(current_literal, p);
                 break;
               }
               case 73: {
+                p = pc;
                 this.te = p + 1;
                 string = this.tok2(this.ts, this.te);
                 lookahead = this.extend_string_slice_end(lookahead);
@@ -2108,16 +2410,17 @@ export class RbStrings {
                 }
                 if (token >= 0) {
                   if (token === TK_tLABEL_END) {
-                    p += 1;
+                    // The p += 1 past the colon, and the p += 1 of every fbreak.
+                    p += 2;
                     this.pop_literal();
                     this.rootState = RL_LEX_EN_EXPR_LABELARG;
                   } else {
+                    p += 1;
                     state = this.pop_literal();
                     if (state >= 0) {
                       this.cs = state;
                     }
                   }
-                  p += 1;
                   _trigger_goto = true;
                   _goto_level = _out;
                   break actsLoop;
@@ -2127,14 +2430,16 @@ export class RbStrings {
                 break;
               }
               case 74: {
+                p = pc;
                 this.te = p;
                 p = p - 1;
                 this.lit().extend_space(this.ts, this.te);
                 break;
               }
               case 75: {
+                p = pc;
                 this.te = p + 1;
-                this.lexer.emit4(TK_tREGEXP_OPT, this.tok2(this.ts, this.te - 1), this.ts, this.te - 1);
+                this.lexer.emit4(TK_tREGEXP_OPT, this.tok2(this.ts, rbPos(this.te) - 1), this.ts, rbPos(this.te) - 1);
                 p = p - 1;
                 this.rootState = RL_LEX_EN_EXPR_END;
                 p += 1;
@@ -2143,6 +2448,7 @@ export class RbStrings {
                 break actsLoop;
               }
               case 76: {
+                p = pc;
                 this.te = p;
                 p = p - 1;
                 unknown_options = rbUnknownRegexpOptions(this.tok2(this.ts, this.te));
@@ -2157,9 +2463,11 @@ export class RbStrings {
                 break actsLoop;
               }
               case 77: {
+                p = pc;
                 this.te = p + 1;
                 /* warning */
-                p = this.ts - 1;
+                q = rbPos(this.ts);
+                p = q - 1;
                 this.rootState = RL_LEX_EN_EXPR_END;
                 p += 1;
                 _trigger_goto = true;
@@ -2167,6 +2475,7 @@ export class RbStrings {
                 break actsLoop;
               }
               case 78: {
+                p = pc;
                 this.te = p;
                 p = p - 1;
                 this.emit_character_constant();
@@ -2177,9 +2486,11 @@ export class RbStrings {
                 break actsLoop;
               }
               case 79: {
+                p = pc;
                 this.te = p;
                 p = p - 1;
-                p = this.ts - 1;
+                q = rbPos(this.ts);
+                p = q - 1;
                 this.rootState = RL_LEX_EN_EXPR_END;
                 p += 1;
                 _trigger_goto = true;
@@ -2187,7 +2498,8 @@ export class RbStrings {
                 break actsLoop;
               }
               case 80: {
-                p = this.te - 1;
+                q = rbPos(this.te);
+                p = q - 1;
                 this.emit_character_constant();
                 this.rootState = RL_LEX_EN_EXPR_END;
                 p += 1;
@@ -2196,6 +2508,7 @@ export class RbStrings {
                 break actsLoop;
               }
               case 81: {
+                p = pc;
                 this.te = p + 1;
                 this.lexer.diagError();
                 break;
@@ -2206,7 +2519,7 @@ export class RbStrings {
             }
           }
           if (this.lexer.fatal) {
-            return p;
+            return rbPos(p);
           }
           if (_trigger_goto) {
             continue;
@@ -2214,19 +2527,16 @@ export class RbStrings {
         }
       }
       if (_goto_level <= _again) {
-        _acts = RS_LEX_TO_STATE_ACTIONS_D[this.cs];
-        _nacts = RS_LEX_ACTIONS_D[_acts];
-        _acts += 1;
-        while (_nacts > 0) {
-          _nacts -= 1;
-          _acts += 1;
-          if (RS_LEX_ACTIONS_D[_acts - 1] === 23) {
-            this.ts = -1;
-          }
+        if (rbStateAction(RS_LEX_ACTIONS_D, RS_LEX_TO_STATE_ACTIONS_D, this.cs, 23)) {
+          this.ts = -1;
         }
         if (this.cs === 0) {
           _goto_level = _out;
           continue;
+        }
+        // Only a fault's past-the-end position reaches the bound.
+        if (p >= 1073741823) {
+          return rbPastEnd();
         }
         p += 1;
         if (p !== pe) {
@@ -2236,8 +2546,9 @@ export class RbStrings {
       }
       if (_goto_level <= _test_eof) {
         if (p === eof) {
-          if (RS_LEX_EOF_TRANS_D[this.cs] > 0) {
-            _trans = RS_LEX_EOF_TRANS_D[this.cs] - 1;
+          const eofTrans = rbTab(RS_LEX_EOF_TRANS_D, this.cs);
+          if (eofTrans > 0) {
+            _trans = eofTrans - 1;
             _goto_level = _eof_trans;
             continue;
           }
@@ -2247,19 +2558,23 @@ export class RbStrings {
         break;
       }
     }
-    return p;
+    return rbPos(p);
   }
 }
 
-const rbHexDigit = (c: i32): i32 => {
+/** A hex digit's value, or -1 (each mask keeps the value as it is and bounds it). */
+const rbHexDigit = (c: i32): integer<-1, 15> => {
   if (c >= 48 && c <= 57) {
-    return c - 48;
+    const d = (c - 48) & 15;
+    return d;
   }
   if (c >= 97 && c <= 102) {
-    return c - 87;
+    const d = (c - 87) & 15;
+    return d;
   }
   if (c >= 65 && c <= 70) {
-    return c - 55;
+    const d = (c - 55) & 15;
+    return d;
   }
   return -1;
 };
@@ -2272,7 +2587,7 @@ const rbParseInt = (s: string, base: i32): i32 => {
     if (d < 0 || d >= base) {
       break;
     }
-    v = v * base + d;
+    v = add32(mul32(v, base), d);
   }
   return v;
 };
@@ -2312,11 +2627,12 @@ const rbRemoveBackslashNewlines = (s: string): string => {
   let out = "";
   let a = 0;
   const n = toI32(s.length);
-  for (let i = 0; i + 1 < n; i++) {
-    if (s.charCodeAt(i) === 92 && s.charCodeAt(i + 1) === 10) {
+  for (let i = 0; i >= 0 && i < s.length; i++) {
+    const j = i + 1;
+    if (j < s.length && s.charCodeAt(i) === 92 && s.charCodeAt(j) === 10) {
       out = out + s.substring(a, i);
-      a = i + 2;
-      i++;
+      a = j + 1;
+      i = j;
     }
   }
   return a === 0 ? s : out + s.substring(a, n);
@@ -2325,9 +2641,12 @@ const rbRemoveBackslashNewlines = (s: string): string => {
 /** Parser::Lexer. */
 export class RbLexer {
   source_pts: i32[];
-  // The source as UTF-8 and the byte offset of every code point (n + 1 of them).
-  bytes: u8[];
+  // The source as UTF-8 and the byte offset of every code point (n + 1 of
+  // them), which an ASCII source (ascii) leaves empty: its offsets are the
+  // code point offsets.
+  text: string;
   boff: i32[];
+  ascii: boolean = true;
   cs: i32 = 0;
   p: i32 = 0;
   ts: i32 = -1;
@@ -2378,38 +2697,48 @@ export class RbLexer {
 
   constructor(pts: i32[], env: RbStaticEnv, ctx: RbContext) {
     rbTablesInit();
-    this.boff = [];
+    const boff: i32[] = [];
+    const parts: string[] = [];
+    let ascii = true;
     let nb = 0;
-    for (let i = 0; i < toI32(pts.length); i++) {
-      this.boff.push(nb);
+    for (let i = 0; i >= 0 && i < pts.length; i++) {
       const c = pts[i];
-      nb += c < 0x80 ? 1 : c < 0x800 ? 2 : c < 0x10000 ? 3 : 4;
-    }
-    this.boff.push(nb);
-    this.bytes = new Array<u8>(nb);
-    let w = 0;
-    for (let i = 0; i < toI32(pts.length); i++) {
-      const c = pts[i];
+      // A source past 2^30 bytes faults (the machines take at most 10^9 code points).
+      if (nb < 0 || nb > 1073741823) {
+        fault();
+        break;
+      }
       if (c < 0x80) {
-        this.bytes[w] = toU8(c);
-        w++;
-      } else if (c < 0x800) {
-        this.bytes[w] = toU8(0xc0 | (c >> 6));
-        this.bytes[w + 1] = toU8(0x80 | (c & 0x3f));
-        w += 2;
-      } else if (c < 0x10000) {
-        this.bytes[w] = toU8(0xe0 | (c >> 12));
-        this.bytes[w + 1] = toU8(0x80 | ((c >> 6) & 0x3f));
-        this.bytes[w + 2] = toU8(0x80 | (c & 0x3f));
-        w += 3;
+        if (!ascii) {
+          boff.push(nb);
+        }
+        parts.push(String.fromCharCode(c & 0xff));
+        nb = nb + 1;
       } else {
-        this.bytes[w] = toU8(0xf0 | (c >> 18));
-        this.bytes[w + 1] = toU8(0x80 | ((c >> 12) & 0x3f));
-        this.bytes[w + 2] = toU8(0x80 | ((c >> 6) & 0x3f));
-        this.bytes[w + 3] = toU8(0x80 | (c & 0x3f));
-        w += 4;
+        if (ascii) {
+          // The offsets so far, each code point one byte.
+          ascii = false;
+          for (let k = 0; k < i; k++) {
+            boff.push(k);
+          }
+        }
+        boff.push(nb);
+        parts.push(rbChr(c));
+        if (c < 0x800) {
+          nb = nb + 2;
+        } else if (c < 0x10000) {
+          nb = nb + 3;
+        } else {
+          nb = nb + 4;
+        }
       }
     }
+    if (!ascii) {
+      boff.push(nb);
+    }
+    this.boff = boff;
+    this.ascii = ascii;
+    this.text = parts.join("");
     this.source_pts = pts;
     this.static_env = env;
     this.ctx = ctx;
@@ -2462,6 +2791,12 @@ export class RbLexer {
     return 0;
   }
 
+  /** After a fault: end of input. */
+  faultToken(): i32 {
+    fault();
+    return this.fatalToken();
+  }
+
   setState(s: i32): void {
     this.cs = s;
   }
@@ -2472,10 +2807,14 @@ export class RbLexer {
   }
 
   pop_cmdarg(): void {
-    const k = toI32(this.cmdarg_stack.length);
-    this.cmdarg = k > 0 ? this.cmdarg_stack[k - 1] : new RbStackState();
-    if (k > 0) {
-      this.cmdarg_stack.pop();
+    const st = this.cmdarg_stack;
+    const k = toI32(st.length);
+    if (k > 0 && st.length > 0) {
+      const top = st[k - 1];
+      st.pop();
+      this.cmdarg = top;
+    } else {
+      this.cmdarg = new RbStackState();
     }
   }
 
@@ -2485,10 +2824,14 @@ export class RbLexer {
   }
 
   pop_cond(): void {
-    const k = toI32(this.cond_stack.length);
-    this.cond = k > 0 ? this.cond_stack[k - 1] : new RbStackState();
-    if (k > 0) {
-      this.cond_stack.pop();
+    const st = this.cond_stack;
+    const k = toI32(st.length);
+    if (k > 0 && st.length > 0) {
+      const top = st[k - 1];
+      st.pop();
+      this.cond = top;
+    } else {
+      this.cond = new RbStackState();
     }
   }
 
@@ -2501,30 +2844,58 @@ export class RbLexer {
   }
 
   lambdaLast(): i32 {
-    return this.nLambda > 0 ? this.lambdaArr[this.nLambda - 1] : -1;
+    const arr = this.lambdaArr;
+    const n = this.nLambda;
+    if (n <= 0) {
+      return -1;
+    }
+    const i = n - 1;
+    if (i < arr.length) {
+      return arr[i];
+    }
+    fault();
+    return -1;
   }
 
   lambdaPush(v: i32): void {
-    if (this.nLambda < toI32(this.lambdaArr.length)) {
-      this.lambdaArr[this.nLambda] = v;
+    const arr = this.lambdaArr;
+    const n = this.nLambda;
+    if (n >= 0 && n < arr.length) {
+      arr[n] = v;
+      this.nLambda = n + 1;
+    } else if (n === arr.length) {
+      arr.push(v);
+      this.nLambda = toI32(arr.length);
     } else {
-      this.lambdaArr.push(v);
+      fault();
     }
-    this.nLambda = this.nLambda + 1;
   }
 
+  /** fret: the state on top of the call stack (0, the error state, after a fault). */
   stack_pop(): i32 {
-    this.top = this.top - 1;
-    return this.stack[this.top];
+    const st = this.stack;
+    const top = this.top;
+    if (top > 0 && top <= st.length) {
+      const i = top - 1;
+      this.top = i;
+      return st[i];
+    }
+    fault();
+    return 0;
   }
 
   stackPush(v: i32): void {
-    if (this.top < toI32(this.stack.length)) {
-      this.stack[this.top] = v;
+    const st = this.stack;
+    const top = this.top;
+    if (top >= 0 && top < st.length) {
+      st[top] = v;
+      this.top = top + 1;
+    } else if (top === st.length) {
+      st.push(v);
+      this.top = toI32(st.length);
     } else {
-      this.stack.push(v);
+      fault();
     }
-    this.top = this.top + 1;
   }
 
   tok2(s: i32, e: i32): string {
@@ -2534,20 +2905,48 @@ export class RbLexer {
   /** The source text of the code points [s, e), clamped to the source. */
   textOf(s0: i32, e0: i32): string {
     const n = toI32(this.source_pts.length);
-    const s = s0 < 0 ? 0 : s0 > n ? n : s0;
-    const e = e0 > n ? n : e0 < s ? s : e0;
-    return String.fromBytes(this.bytes, this.boff[s], this.boff[e]);
+    let s = s0;
+    if (s < 0) {
+      s = 0;
+    } else if (s > n) {
+      s = n;
+    }
+    let e = e0;
+    if (e > n) {
+      e = n;
+    } else if (e < s) {
+      e = s;
+    }
+    if (this.ascii) {
+      return this.text.substring(s, e);
+    }
+    const boff = this.boff;
+    // boff holds n + 1 offsets, and 0 <= s <= e <= n.
+    if (s >= 0 && e >= 0 && s < boff.length && e < boff.length) {
+      return this.text.substring(boff[s], boff[e]);
+    }
+    fault();
+    return "";
   }
 
   /** Whether the code points [s, e) are the ASCII string `t`. */
   tokIs(s: i32, e: i32, t: string): boolean {
-    if (e - s !== toI32(t.length)) {
+    const len = toI32(t.length);
+    if (sub32(e, s) !== len) {
       return false;
     }
-    for (let i = 0; i < e - s; i++) {
-      if (this.source_pts[s + i] !== t.charCodeAt(i)) {
+    const pts = this.source_pts;
+    let k = s;
+    for (let i = 0; i < t.length; i++) {
+      if (k < 0 || k >= pts.length) {
+        // [s, e) leaves the source: the code point read outside it.
+        fault();
         return false;
       }
+      if (pts[k] !== t.charCodeAt(i)) {
+        return false;
+      }
+      k++;
     }
     return true;
   }
@@ -2561,7 +2960,8 @@ export class RbLexer {
     this.qVal.push(value);
     this.qS.push(s);
     this.qE.push(e);
-    this.qTail = this.qTail + 1;
+    // qTail counts the pushes, as the queue's length.
+    this.qTail = toI32(this.qType.length);
     this.allType.push(type);
     this.allVal.push(value);
     this.allS.push(s);
@@ -2613,7 +3013,7 @@ export class RbLexer {
   }
 
   emit_comment_from_range(p: i32, pe: i32): void {
-    this.emit_comment(this.sharp_s, p === pe ? p - 2 : p);
+    this.emit_comment(this.sharp_s, p === pe ? sub32(p, 2) : p);
   }
 
   e_lbrace(): void {
@@ -2637,7 +3037,7 @@ export class RbLexer {
     return digits;
   }
 
-  on_newline(p: i32): i32 {
+  on_newline(p: i32): RbPos {
     return this.st().on_newline(p);
   }
 
@@ -2692,8 +3092,8 @@ export class RbLexer {
   }
 
   emit_singleton_class(): void {
-    this.emit4(TK_kCLASS, "class", this.ts, this.ts + 5);
-    this.emit4(TK_tLSHFT, "<<", this.te - 2, this.te);
+    this.emit4(TK_kCLASS, "class", this.ts, rbPos(this.ts) + 5);
+    this.emit4(TK_tLSHFT, "<<", rbPos(this.te) - 2, this.te);
   }
 
   /** The value of an integer literal's digits in `base`, in decimal. */
@@ -2702,49 +3102,49 @@ export class RbLexer {
   }
 
   /** @num_xfrm.call(value, p). */
-  numXfrm(value: string, p: i32): i32 {
+  numXfrm(value: string, p: i32): RbPos {
     const x = this.num_xfrm;
     if (x === XF_integer) {
       this.emit2(TK_tINTEGER, value);
-      return p;
+      return rbPos(p);
     }
     if (x === XF_rational) {
       this.emit2(TK_tRATIONAL, `r:${value}`);
-      return p;
+      return rbPos(p);
     }
     if (x === XF_imaginary) {
       this.emit2(TK_tIMAGINARY, `i:${value}`);
-      return p;
+      return rbPos(p);
     }
     if (x === XF_imaginary_rational) {
       this.emit2(TK_tIMAGINARY, `ir:${value}`);
-      return p;
+      return rbPos(p);
     }
     if (x === XF_integer_re || x === XF_integer_if) {
-      this.emit4(TK_tINTEGER, value, this.ts, this.te - 2);
-      return p - 2;
+      this.emit4(TK_tINTEGER, value, this.ts, rbPos(this.te) - 2);
+      return rbPos(sub32(p, 2));
     }
     if (x === XF_integer_rescue) {
-      this.emit4(TK_tINTEGER, value, this.ts, this.te - 6);
-      return p - 6;
+      this.emit4(TK_tINTEGER, value, this.ts, rbPos(this.te) - 6);
+      return rbPos(sub32(p, 6));
     }
     if (x === XF_float) {
       this.emit2(TK_tFLOAT, value);
-      return p;
+      return rbPos(p);
     }
     if (x === XF_imaginary_float) {
       this.emit2(TK_tIMAGINARY, `if:${value}`);
-      return p;
+      return rbPos(p);
     }
     if (x === XF_float_if) {
-      this.emit4(TK_tFLOAT, value, this.ts, this.te - 2);
-      return p - 2;
+      this.emit4(TK_tFLOAT, value, this.ts, rbPos(this.te) - 2);
+      return rbPos(sub32(p, 2));
     }
     if (x === XF_float_rescue) {
-      this.emit4(TK_tFLOAT, value, this.ts, this.te - 6);
-      return p - 6;
+      this.emit4(TK_tFLOAT, value, this.ts, rbPos(this.te) - 6);
+      return rbPos(sub32(p, 6));
     }
-    return p;
+    return rbPos(p);
   }
 
   /** Lexer#advance: the next token's type (0 at the end), its value and range in tokVal, tokS, tokE. */
@@ -2753,8 +3153,13 @@ export class RbLexer {
       return this.shift();
     }
     const pts = this.source_pts;
-    const pe = toI32(pts.length) + 2;
+    const n = toI32(pts.length);
+    if (n > 1000000000) {
+      return this.faultToken();
+    }
+    const pe = n + 2;
     let p = this.p;
+    let q: RbPos = 0;
     let eof = pe;
     let cmd_state = this.command_start;
     this.command_start = false;
@@ -2776,9 +3181,6 @@ export class RbLexer {
     let indent = false;
     let dedent_body = false;
     let _trans = 0;
-    let _keys = 0;
-    let _inds = 0;
-    let _slen = 0;
     let _wide = 0;
     let _goto_level = 0;
     const _resume = 10;
@@ -2787,6 +3189,9 @@ export class RbLexer {
     const _test_eof = 30;
     const _out = 40;
     while (true) {
+      if (_goto_level >= _out) {
+        break;
+      }
       if (_goto_level <= 0) {
         if (p === pe) {
           _goto_level = _test_eof;
@@ -2798,68 +3203,97 @@ export class RbLexer {
         }
       }
       if (_goto_level <= _resume) {
-        if (RL_LEX_FROM_STATE_ACTIONS_D[this.cs] === 85) {
+        // A transition starts at p in [0, pe]: an action leaves p at least -1, and _again adds 1.
+        if (p < 0 || p > pe) {
+          return this.faultToken();
+        }
+        if (rbTab(RL_LEX_FROM_STATE_ACTIONS_D, this.cs) === 85) {
           this.ts = p;
         }
-        _keys = this.cs << 1;
-        _inds = RL_LEX_INDEX_OFFSETS_D[this.cs];
-        _slen = RL_LEX_KEY_SPANS_D[this.cs];
-        _wide = p < toI32(pts.length) ? pts[p] : 0;
-        if (_slen > 0 && RL_LEX_TRANS_KEYS_D[_keys] <= _wide && _wide <= RL_LEX_TRANS_KEYS_D[_keys + 1]) {
-          _trans = RL_LEX_INDICIES_D[_inds + _wide - RL_LEX_TRANS_KEYS_D[_keys]];
-        } else {
-          _trans = RL_LEX_INDICIES_D[_inds + _slen];
+        _wide = 0;
+        if (p < pts.length) {
+          _wide = pts[p];
         }
+        _trans = rbTransOf(
+          RL_LEX_TRANS_KEYS_D,
+          RL_LEX_KEY_SPANS_D,
+          RL_LEX_INDEX_OFFSETS_D,
+          RL_LEX_INDICIES_D,
+          this.cs,
+          _wide,
+        );
       }
       if (_goto_level <= _eof_trans) {
-        this.cs = RL_LEX_TRANS_TARGS_D[_trans];
-        if (RL_LEX_TRANS_ACTIONS_D[_trans] !== 0) {
-          switch (RL_LEX_TRANS_ACTIONS_D[_trans]) {
+        const target = rbTab(RL_LEX_TRANS_TARGS_D, _trans);
+        const action = rbTab(RL_LEX_TRANS_ACTIONS_D, _trans);
+        if (target < 0 || action < 0) {
+          return this.faultToken();
+        }
+        this.cs = target;
+        if (action !== 0) {
+          if (p < 0 || p > pe) {
+            return this.faultToken();
+          }
+          const pc: RbAt = p;
+          switch (action) {
             case 14: {
+              p = pc;
               this.newline_s = p;
               break;
             }
             case 15: {
-              p = this.on_newline(p);
+              p = pc;
+              q = this.on_newline(p);
+              p = q;
               break;
             }
             case 45: {
+              p = pc;
               this.sharp_s = p - 1;
               break;
             }
             case 49: {
+              p = pc;
               this.emit_comment_from_range(p, pe);
               break;
             }
             case 190: {
+              p = pc;
               tm = p;
               break;
             }
             case 22: {
+              p = pc;
               tm = p;
               break;
             }
             case 24: {
+              p = pc;
               tm = p;
               break;
             }
             case 26: {
+              p = pc;
               tm = p;
               break;
             }
             case 56: {
+              p = pc;
               heredoc_e = p;
               break;
             }
             case 229: {
+              p = pc;
               tm = p - 1;
               break;
             }
             case 232: {
+              p = pc;
               tm = p - 2;
               break;
             }
             case 244: {
+              p = pc;
               tm = p;
               break;
             }
@@ -2870,21 +3304,25 @@ export class RbLexer {
               break;
             }
             case 331: {
+              p = pc;
               this.num_base = 16;
               this.num_digits_s = p;
               break;
             }
             case 325: {
+              p = pc;
               this.num_base = 10;
               this.num_digits_s = p;
               break;
             }
             case 328: {
+              p = pc;
               this.num_base = 8;
               this.num_digits_s = p;
               break;
             }
             case 322: {
+              p = pc;
               this.num_base = 2;
               this.num_digits_s = p;
               break;
@@ -2900,26 +3338,32 @@ export class RbLexer {
               break;
             }
             case 314: {
+              p = pc;
               this.num_suffix_s = p;
               break;
             }
             case 307: {
+              p = pc;
               this.num_suffix_s = p;
               break;
             }
             case 304: {
+              p = pc;
               this.num_suffix_s = p;
               break;
             }
             case 74: {
+              p = pc;
               tm = p;
               break;
             }
             case 65: {
+              p = pc;
               this.te = p + 1;
               break;
             }
             case 1: {
+              p = pc;
               this.te = p + 1;
               this.emitGlobalVarHere();
               this.cs = this.stack_pop();
@@ -2928,6 +3372,7 @@ export class RbLexer {
               continue;
             }
             case 87: {
+              p = pc;
               this.te = p;
               p = p - 1;
               this.emitGlobalVarHere();
@@ -2937,6 +3382,7 @@ export class RbLexer {
               continue;
             }
             case 89: {
+              p = pc;
               this.te = p;
               p = p - 1;
               this.emit_class_var(this.ts, this.te);
@@ -2946,6 +3392,7 @@ export class RbLexer {
               continue;
             }
             case 88: {
+              p = pc;
               this.te = p;
               p = p - 1;
               this.emit_instance_var(this.ts, this.te);
@@ -2955,6 +3402,7 @@ export class RbLexer {
               continue;
             }
             case 110: {
+              p = pc;
               this.te = p + 1;
               this.emit_table(4);
               this.cs = 247;
@@ -2963,6 +3411,7 @@ export class RbLexer {
               continue;
             }
             case 96: {
+              p = pc;
               this.te = p + 1;
               this.emit1(TK_tIDENTIFIER);
               this.cs = 247;
@@ -2971,8 +3420,10 @@ export class RbLexer {
               continue;
             }
             case 3: {
+              p = pc;
               this.te = p + 1;
-              p = this.ts - 1;
+              q = rbPos(this.ts);
+              p = q - 1;
               this.cs = 516;
               this.stackPush(this.cs);
 
@@ -2981,6 +3432,7 @@ export class RbLexer {
               continue;
             }
             case 93: {
+              p = pc;
               this.te = p + 1;
               this.emit_table(1);
               this.cs = 247;
@@ -2989,30 +3441,33 @@ export class RbLexer {
               continue;
             }
             case 105: {
+              p = pc;
               this.te = p + 1;
-              p = p - 1;
-              p = p - 1;
+              p = p - 2;
               this.cs = 516;
               _goto_level = _again;
               continue;
             }
             case 5: {
+              p = pc;
               this.te = p + 1;
               if (false) {
-                type = this.tok2(this.ts, this.te - 1);
-                delimiter = this.tok2(this.te - 1, this.te);
+                type = this.tok2(this.ts, rbPos(this.te) - 1);
+                delimiter = this.tok2(rbPos(this.te) - 1, this.te);
                 this.st().pushLiteral(type, delimiter, this.ts);
                 this.cs = 128;
                 _goto_level = _again;
                 continue;
               } else {
-                p = this.ts - 1;
+                q = rbPos(this.ts);
+                p = q - 1;
                 this.cs = 516;
                 _goto_level = _again;
                 continue;
               }
             }
             case 92: {
+              p = pc;
               this.te = p + 1;
               p = p - 1;
               this.cs = 516;
@@ -3020,6 +3475,7 @@ export class RbLexer {
               continue;
             }
             case 91: {
+              p = pc;
               this.te = p + 1;
               p = p - 1;
               p += 1;
@@ -3027,6 +3483,7 @@ export class RbLexer {
               continue;
             }
             case 109: {
+              p = pc;
               this.te = p;
               p = p - 1;
               this.emit_table(4);
@@ -3036,6 +3493,7 @@ export class RbLexer {
               continue;
             }
             case 106: {
+              p = pc;
               this.te = p;
               p = p - 1;
               this.emit1(TK_tCONSTANT);
@@ -3045,6 +3503,7 @@ export class RbLexer {
               continue;
             }
             case 108: {
+              p = pc;
               this.te = p;
               p = p - 1;
               this.emit1(TK_tIDENTIFIER);
@@ -3054,9 +3513,11 @@ export class RbLexer {
               continue;
             }
             case 103: {
+              p = pc;
               this.te = p;
               p = p - 1;
-              p = this.ts - 1;
+              q = rbPos(this.ts);
+              p = q - 1;
               this.cs = 516;
               this.stackPush(this.cs);
 
@@ -3065,6 +3526,7 @@ export class RbLexer {
               continue;
             }
             case 99: {
+              p = pc;
               this.te = p;
               p = p - 1;
               this.emit_table(1);
@@ -3074,28 +3536,30 @@ export class RbLexer {
               continue;
             }
             case 104: {
+              p = pc;
               this.te = p;
-              p = p - 1;
-              p = p - 1;
+              p = p - 2;
               this.cs = 345;
               _goto_level = _again;
               continue;
             }
             case 97: {
+              p = pc;
               this.te = p;
               p = p - 1;
               break;
             }
             case 102: {
+              p = pc;
               this.te = p;
-              p = p - 1;
-              p = p - 1;
+              p = p - 2;
               this.cs = 516;
               _goto_level = _again;
               continue;
             }
             case 4: {
-              p = this.te - 1;
+              q = rbPos(this.te);
+              p = q - 1;
               this.emit_table(1);
               this.cs = 247;
               p += 1;
@@ -3103,8 +3567,9 @@ export class RbLexer {
               continue;
             }
             case 2: {
-              p = this.te - 1;
-              p = p - 1;
+              q = rbPos(this.te);
+              p = q - 1;
+              p = q - 2;
               this.cs = 516;
               _goto_level = _again;
               continue;
@@ -3112,7 +3577,8 @@ export class RbLexer {
             case 95: {
               switch (this.act) {
                 case 4: {
-                  p = this.te - 1;
+                  q = rbPos(this.te);
+                  p = q - 1;
                   this.emit_table(4);
                   this.cs = 247;
                   p += 1;
@@ -3120,7 +3586,8 @@ export class RbLexer {
                   continue;
                 }
                 case 5: {
-                  p = this.te - 1;
+                  q = rbPos(this.te);
+                  p = q - 1;
                   this.emit1(TK_tCONSTANT);
                   this.cs = 247;
                   p += 1;
@@ -3128,7 +3595,8 @@ export class RbLexer {
                   continue;
                 }
                 case 6: {
-                  p = this.te - 1;
+                  q = rbPos(this.te);
+                  p = q - 1;
                   this.emit1(TK_tIDENTIFIER);
                   this.cs = 247;
                   p += 1;
@@ -3139,8 +3607,9 @@ export class RbLexer {
               break;
             }
             case 7: {
+              p = pc;
               this.te = p + 1;
-              this.emit4(TK_tLABEL, this.tok2(this.ts, this.te - 2), this.ts, this.te - 1);
+              this.emit4(TK_tLABEL, this.tok2(this.ts, rbPos(this.te) - 2), this.ts, rbPos(this.te) - 1);
               p = p - 1;
               this.cs = 501;
               p += 1;
@@ -3148,6 +3617,7 @@ export class RbLexer {
               continue;
             }
             case 8: {
+              p = pc;
               this.te = p + 1;
               if (true && this.ctx.in_argdef) {
                 this.emit2(TK_tBDOT3, "...");
@@ -3163,6 +3633,7 @@ export class RbLexer {
               }
             }
             case 112: {
+              p = pc;
               this.te = p + 1;
               p = p - 1;
               this.cs = 516;
@@ -3170,6 +3641,7 @@ export class RbLexer {
               continue;
             }
             case 111: {
+              p = pc;
               this.te = p + 1;
               p = p - 1;
               p += 1;
@@ -3177,26 +3649,29 @@ export class RbLexer {
               continue;
             }
             case 114: {
+              p = pc;
               this.te = p;
               p = p - 1;
               break;
             }
             case 113: {
+              p = pc;
               this.te = p;
-              p = p - 1;
-              p = p - 1;
+              p = p - 2;
               this.cs = 516;
               _goto_level = _again;
               continue;
             }
             case 6: {
-              p = this.te - 1;
-              p = p - 1;
+              q = rbPos(this.te);
+              p = q - 1;
+              p = q - 2;
               this.cs = 516;
               _goto_level = _again;
               continue;
             }
             case 120: {
+              p = pc;
               this.te = p + 1;
               this.emit_table(1);
               this.cs = 276;
@@ -3205,6 +3680,7 @@ export class RbLexer {
               continue;
             }
             case 119: {
+              p = pc;
               this.te = p + 1;
               p = p - 1;
               this.cs = 516;
@@ -3212,6 +3688,7 @@ export class RbLexer {
               continue;
             }
             case 118: {
+              p = pc;
               this.te = p + 1;
               p = p - 1;
               p += 1;
@@ -3219,6 +3696,7 @@ export class RbLexer {
               continue;
             }
             case 130: {
+              p = pc;
               this.te = p;
               p = p - 1;
               this.emit1(TK_tCONSTANT);
@@ -3228,6 +3706,7 @@ export class RbLexer {
               continue;
             }
             case 121: {
+              p = pc;
               this.te = p;
               p = p - 1;
               this.emit1(TK_tIDENTIFIER);
@@ -3237,6 +3716,7 @@ export class RbLexer {
               continue;
             }
             case 126: {
+              p = pc;
               this.te = p;
               p = p - 1;
               this.emit_table(1);
@@ -3246,63 +3726,75 @@ export class RbLexer {
               continue;
             }
             case 124: {
+              p = pc;
               this.te = p;
               p = p - 1;
               break;
             }
             case 129: {
+              p = pc;
               this.te = p;
-              p = p - 1;
-              p = p - 1;
+              p = p - 2;
               this.cs = 516;
               _goto_level = _again;
               continue;
             }
             case 153: {
+              p = pc;
               this.te = p + 1;
-              p = this.ts - 1;
+              q = rbPos(this.ts);
+              p = q - 1;
               this.cs = 516;
               _goto_level = _again;
               continue;
             }
             case 136: {
+              p = pc;
               this.te = p + 1;
               this.check_ambiguous_slash(tm);
-              p = tm - 1;
+              q = rbPos(tm);
+              p = q - 1;
               this.cs = 345;
               _goto_level = _again;
               continue;
             }
             case 142: {
+              p = pc;
               this.te = p + 1;
-              p = p - 1;
-              p = p - 1;
+              p = p - 2;
               this.cs = 345;
               _goto_level = _again;
               continue;
             }
             case 10: {
+              p = pc;
               this.te = p + 1;
-              p = this.ts - 1;
+              q = rbPos(this.ts);
+              p = q - 1;
               this.cs = 345;
               _goto_level = _again;
               continue;
             }
             case 144: {
+              p = pc;
               this.te = p + 1;
-              p = tm - 1;
+              q = rbPos(tm);
+              p = q - 1;
               this.cs = 516;
               _goto_level = _again;
               continue;
             }
             case 25: {
+              p = pc;
               this.te = p + 1;
-              p = this.ts - 1;
+              q = rbPos(this.ts);
+              p = q - 1;
               this.cs = 516;
               _goto_level = _again;
               continue;
             }
             case 131: {
+              p = pc;
               this.te = p + 1;
               p = p - 1;
               this.cs = 345;
@@ -3310,6 +3802,7 @@ export class RbLexer {
               continue;
             }
             case 132: {
+              p = pc;
               this.te = p + 1;
               p = p - 1;
               p += 1;
@@ -3317,58 +3810,65 @@ export class RbLexer {
               continue;
             }
             case 143: {
+              p = pc;
               this.te = p;
-              p = p - 1;
-              p = p - 1;
+              p = p - 2;
               this.cs = 345;
               _goto_level = _again;
               continue;
             }
             case 139: {
+              p = pc;
               this.te = p;
               p = p - 1;
               /* warning */
-              p = tm - 1;
+              q = rbPos(tm);
+              p = q - 1;
               this.cs = 345;
               _goto_level = _again;
               continue;
             }
             case 141: {
+              p = pc;
               this.te = p;
-              p = p - 1;
-              p = p - 1;
+              p = p - 2;
               this.cs = 345;
               _goto_level = _again;
               continue;
             }
             case 135: {
+              p = pc;
               this.te = p;
               p = p - 1;
-              p = this.ts - 1;
+              q = rbPos(this.ts);
+              p = q - 1;
               this.cs = 516;
               _goto_level = _again;
               continue;
             }
             case 134: {
+              p = pc;
               this.te = p;
               p = p - 1;
               break;
             }
             case 152: {
+              p = pc;
               this.te = p;
-              p = p - 1;
-              p = p - 1;
+              p = p - 2;
               this.cs = 345;
               _goto_level = _again;
               continue;
             }
             case 11: {
-              p = this.te - 1;
+              q = rbPos(this.te);
+              p = q - 1;
               break;
             }
             case 27: {
-              p = this.te - 1;
-              p = p - 1;
+              q = rbPos(this.te);
+              p = q - 1;
+              p = q - 2;
               this.cs = 345;
               _goto_level = _again;
               continue;
@@ -3376,43 +3876,53 @@ export class RbLexer {
             case 9: {
               switch (this.act) {
                 case 33: {
-                  p = this.te - 1;
+                  q = rbPos(this.te);
+                  p = q - 1;
                   this.check_ambiguous_slash(tm);
-                  p = tm - 1;
+                  q = rbPos(tm);
+                  p = q - 1;
                   this.cs = 345;
                   _goto_level = _again;
                   continue;
                 }
                 case 34: {
-                  p = this.te - 1;
+                  q = rbPos(this.te);
+                  p = q - 1;
                   /* warning */
-                  p = tm - 1;
+                  q = rbPos(tm);
+                  p = q - 1;
                   this.cs = 345;
                   _goto_level = _again;
                   continue;
                 }
                 case 39: {
-                  p = this.te - 1;
-                  p = this.ts - 1;
+                  q = rbPos(this.te);
+                  p = q - 1;
+                  q = rbPos(this.ts);
+                  p = q - 1;
                   this.cs = 516;
                   _goto_level = _again;
                   continue;
                 }
                 default: {
-                  p = this.te - 1;
+                  q = rbPos(this.te);
+                  p = q - 1;
                   break;
                 }
               }
               break;
             }
             case 29: {
+              p = pc;
               this.te = p + 1;
-              p = this.ts - 1;
+              q = rbPos(this.ts);
+              p = q - 1;
               this.cs = 276;
               _goto_level = _again;
               continue;
             }
             case 157: {
+              p = pc;
               this.te = p + 1;
               p = p - 1;
               p += 1;
@@ -3420,16 +3930,20 @@ export class RbLexer {
               continue;
             }
             case 158: {
+              p = pc;
               this.te = p;
               p = p - 1;
-              p = this.ts - 1;
+              q = rbPos(this.ts);
+              p = q - 1;
               this.cs = 276;
               _goto_level = _again;
               continue;
             }
             case 30: {
-              p = this.te - 1;
-              p = this.ts - 1;
+              q = rbPos(this.te);
+              p = q - 1;
+              q = rbPos(this.ts);
+              p = q - 1;
               this.cs = 276;
               _goto_level = _again;
               continue;
@@ -3437,11 +3951,12 @@ export class RbLexer {
             case 28: {
               switch (this.act) {
                 case 46: {
-                  p = this.te - 1;
+                  q = rbPos(this.te);
+                  p = q - 1;
                   if (this.cond.active()) {
-                    this.emit4(TK_kDO_COND, "do", this.te - 2, this.te);
+                    this.emit4(TK_kDO_COND, "do", rbPos(this.te) - 2, this.te);
                   } else {
-                    this.emit4(TK_kDO, "do", this.te - 2, this.te);
+                    this.emit4(TK_kDO, "do", rbPos(this.te) - 2, this.te);
                   }
                   this.cs = 508;
                   p += 1;
@@ -3449,8 +3964,10 @@ export class RbLexer {
                   continue;
                 }
                 case 47: {
-                  p = this.te - 1;
-                  p = this.ts - 1;
+                  q = rbPos(this.te);
+                  p = q - 1;
+                  q = rbPos(this.ts);
+                  p = q - 1;
                   this.cs = 276;
                   _goto_level = _again;
                   continue;
@@ -3459,6 +3976,7 @@ export class RbLexer {
               break;
             }
             case 168: {
+              p = pc;
               this.te = p + 1;
               this.emit_do(true);
               this.cs = 508;
@@ -3467,6 +3985,7 @@ export class RbLexer {
               continue;
             }
             case 161: {
+              p = pc;
               this.te = p + 1;
               p = p - 1;
               this.cs = 516;
@@ -3474,6 +3993,7 @@ export class RbLexer {
               continue;
             }
             case 162: {
+              p = pc;
               this.te = p + 1;
               p = p - 1;
               p += 1;
@@ -3481,19 +4001,21 @@ export class RbLexer {
               continue;
             }
             case 163: {
+              p = pc;
               this.te = p;
               p = p - 1;
               break;
             }
             case 166: {
+              p = pc;
               this.te = p;
-              p = p - 1;
-              p = p - 1;
+              p = p - 2;
               this.cs = 516;
               _goto_level = _again;
               continue;
             }
             case 172: {
+              p = pc;
               this.te = p + 1;
               p = p - 1;
               this.cs = 345;
@@ -3501,6 +4023,7 @@ export class RbLexer {
               continue;
             }
             case 171: {
+              p = pc;
               this.te = p + 1;
               p = p - 1;
               p += 1;
@@ -3508,22 +4031,25 @@ export class RbLexer {
               continue;
             }
             case 180: {
+              p = pc;
               this.te = p;
               p = p - 1;
-              p = this.ts - 1;
+              q = rbPos(this.ts);
+              p = q - 1;
               this.cs = 345;
               _goto_level = _again;
               continue;
             }
             case 174: {
+              p = pc;
               this.te = p;
               p = p - 1;
               break;
             }
             case 178: {
+              p = pc;
               this.te = p;
-              p = p - 1;
-              p = p - 1;
+              p = p - 2;
               this.cs = 345;
               _goto_level = _again;
               continue;
@@ -3531,7 +4057,8 @@ export class RbLexer {
             case 173: {
               switch (this.act) {
                 case 54: {
-                  p = this.te - 1;
+                  q = rbPos(this.te);
+                  p = q - 1;
                   this.emit_table(3);
                   this.cs = 345;
                   p += 1;
@@ -3539,8 +4066,10 @@ export class RbLexer {
                   continue;
                 }
                 case 55: {
-                  p = this.te - 1;
-                  p = this.ts - 1;
+                  q = rbPos(this.te);
+                  p = q - 1;
+                  q = rbPos(this.ts);
+                  p = q - 1;
                   this.cs = 345;
                   _goto_level = _again;
                   continue;
@@ -3549,8 +4078,9 @@ export class RbLexer {
               break;
             }
             case 42: {
+              p = pc;
               this.te = p + 1;
-              this.emit4(TK_tUNARY_NUM, this.tok2(this.ts, this.ts + 1), this.ts, this.ts + 1);
+              this.emit4(TK_tUNARY_NUM, this.tok2(this.ts, rbPos(this.ts) + 1), this.ts, rbPos(this.ts) + 1);
               p = p - 1;
               this.cs = 516;
               p += 1;
@@ -3558,8 +4088,9 @@ export class RbLexer {
               continue;
             }
             case 214: {
+              p = pc;
               this.te = p + 1;
-              type = this.tok2(this.ts, this.ts + 1);
+              type = this.tok2(this.ts, rbPos(this.ts) + 1);
               delimiter = type;
               this.st().pushLiteral(type, delimiter, this.ts);
               p = p - 1;
@@ -3568,52 +4099,57 @@ export class RbLexer {
               continue;
             }
             case 206: {
+              p = pc;
               this.te = p + 1;
-              type = this.tok2(this.ts, this.ts + 1);
-              delimiter = this.tok2(this.te - 1, this.te);
+              type = this.tok2(this.ts, rbPos(this.ts) + 1);
+              delimiter = this.tok2(rbPos(this.te) - 1, this.te);
               this.st().pushLiteral(type, delimiter, this.ts);
               this.cs = 128;
               _goto_level = _again;
               continue;
             }
             case 40: {
+              p = pc;
               this.te = p + 1;
-              type = this.tok2(this.ts, this.te - 1);
-              delimiter = this.tok2(this.te - 1, this.te);
+              type = this.tok2(this.ts, rbPos(this.te) - 1);
+              delimiter = this.tok2(rbPos(this.te) - 1, this.te);
               this.st().pushLiteral(type, delimiter, this.ts);
               this.cs = 128;
               _goto_level = _again;
               continue;
             }
             case 227: {
+              p = pc;
               this.te = p + 1;
-              p = p - 1;
-              p = p - 1;
-              this.emit4(TK_tSYMBEG, this.tok2(this.ts, this.ts + 1), this.ts, this.ts + 1);
+              p = p - 2;
+              this.emit4(TK_tSYMBEG, this.tok2(this.ts, rbPos(this.ts) + 1), this.ts, rbPos(this.ts) + 1);
               this.cs = 134;
               _goto_level = _again;
               continue;
             }
             case 215: {
+              p = pc;
               this.te = p + 1;
               type = this.tok2(this.ts, this.te);
-              delimiter = this.tok2(this.te - 1, this.te);
+              delimiter = this.tok2(rbPos(this.te) - 1, this.te);
               this.st().pushLiteral(type, delimiter, this.ts);
               this.cs = 128;
               _goto_level = _again;
               continue;
             }
             case 226: {
+              p = pc;
               this.te = p + 1;
-              this.emit2(TK_tSYMBOL, this.tok2(this.ts + 1, this.ts + 2));
+              this.emit2(TK_tSYMBOL, this.tok2(rbPos(this.ts) + 1, rbPos(this.ts) + 2));
               this.cs = 516;
               p += 1;
               _goto_level = _out;
               continue;
             }
             case 54: {
+              p = pc;
               this.te = p + 1;
-              gvar_name = this.tok2(this.ts + 1, this.te);
+              gvar_name = this.tok2(rbPos(this.ts) + 1, this.te);
               if (true && gvar_name.startsWith("$0") && gvar_name.length > 2) {
                 this.diagError();
               }
@@ -3624,8 +4160,10 @@ export class RbLexer {
               continue;
             }
             case 236: {
+              p = pc;
               this.te = p + 1;
-              p = this.st().readCharacterConstant(this.ts);
+              q = this.st().readCharacterConstant(this.ts);
+              p = q;
               next_state = this.st().rootState;
               p = p - 1;
               if (this.qHead === this.qTail) {
@@ -3640,11 +4178,13 @@ export class RbLexer {
               }
             }
             case 237: {
+              p = pc;
               this.te = p + 1;
               this.diagFatal();
               break;
             }
             case 216: {
+              p = pc;
               this.te = p + 1;
               this.emit_table(2);
               p += 1;
@@ -3652,24 +4192,25 @@ export class RbLexer {
               continue;
             }
             case 37: {
+              p = pc;
               this.te = p + 1;
               p = p - 1;
               if (false) {
-                ident = this.tok2(this.ts, this.te - 2);
+                ident = this.tok2(this.ts, rbPos(this.te) - 2);
                 this.emit4(
                   this.at(this.ts) >= 65 && this.at(this.ts) <= 90 ? TK_tCONSTANT : TK_tIDENTIFIER,
                   ident,
                   this.ts,
-                  this.te - 2,
+                  rbPos(this.te) - 2,
                 );
-                p = p - 1;
+                p = pc - 2;
                 if (this.declared(ident)) {
                   this.cs = 516;
                 } else {
                   this.cs = this.arg_or_cmdarg(cmd_state);
                 }
               } else {
-                this.emit4(TK_tLABEL, this.tok2(this.ts, this.te - 2), this.ts, this.te - 1);
+                this.emit4(TK_tLABEL, this.tok2(this.ts, rbPos(this.te) - 2), this.ts, rbPos(this.te) - 1);
                 this.cs = 501;
               }
               p += 1;
@@ -3677,9 +4218,11 @@ export class RbLexer {
               continue;
             }
             case 34: {
+              p = pc;
               this.te = p + 1;
               this.emit4(TK_tIDENTIFIER, ident_tok, ident_ts, ident_te);
-              p = ident_te - 1;
+              q = rbPos(ident_te);
+              p = q - 1;
               if (this.declared(ident_tok) && false) {
                 this.cs = 247;
               } else {
@@ -3690,21 +4233,26 @@ export class RbLexer {
               continue;
             }
             case 200: {
+              p = pc;
               this.te = p + 1;
-              p = this.ts - 1;
+              q = rbPos(this.ts);
+              p = q - 1;
               this.cs_before_block_comment = this.cs;
               this.cs = 710;
               _goto_level = _again;
               continue;
             }
             case 41: {
+              p = pc;
               this.te = p + 1;
-              p = this.ts - 1;
+              q = rbPos(this.ts);
+              p = q - 1;
               this.cs = 516;
               _goto_level = _again;
               continue;
             }
             case 183: {
+              p = pc;
               this.te = p + 1;
               p = p - 1;
               p += 1;
@@ -3712,16 +4260,18 @@ export class RbLexer {
               continue;
             }
             case 210: {
+              p = pc;
               this.te = p;
               p = p - 1;
-              this.emit4(TK_tUNARY_NUM, this.tok2(this.ts, this.ts + 1), this.ts, this.ts + 1);
-              p = p - 1;
+              this.emit4(TK_tUNARY_NUM, this.tok2(this.ts, rbPos(this.ts) + 1), this.ts, rbPos(this.ts) + 1);
+              p = pc - 2;
               this.cs = 516;
               p += 1;
               _goto_level = _out;
               continue;
             }
             case 209: {
+              p = pc;
               this.te = p;
               p = p - 1;
               this.emit2(TK_tSTAR, "*");
@@ -3730,21 +4280,24 @@ export class RbLexer {
               continue;
             }
             case 205: {
+              p = pc;
               this.te = p;
               p = p - 1;
               this.diagFatal();
               break;
             }
             case 234: {
+              p = pc;
               this.te = p;
               p = p - 1;
               this.diagError();
               break;
             }
             case 217: {
+              p = pc;
               this.te = p;
               p = p - 1;
-              gvar_name = this.tok2(this.ts + 1, this.te);
+              gvar_name = this.tok2(rbPos(this.ts) + 1, this.te);
               if (true && gvar_name.startsWith("$0") && gvar_name.length > 2) {
                 this.diagError();
               }
@@ -3755,6 +4308,7 @@ export class RbLexer {
               continue;
             }
             case 230: {
+              p = pc;
               this.te = p;
               p = p - 1;
               this.emit_colon_with_digits(p, tm);
@@ -3764,12 +4318,14 @@ export class RbLexer {
               continue;
             }
             case 235: {
+              p = pc;
               this.te = p;
               p = p - 1;
               this.diagFatal();
               break;
             }
             case 207: {
+              p = pc;
               this.te = p;
               p = p - 1;
               this.emit_table(2);
@@ -3778,6 +4334,7 @@ export class RbLexer {
               continue;
             }
             case 211: {
+              p = pc;
               this.te = p;
               p = p - 1;
               if (true) {
@@ -3791,13 +4348,14 @@ export class RbLexer {
               continue;
             }
             case 212: {
+              p = pc;
               this.te = p;
               p = p - 1;
-              followed_by_nl = this.te - 1 === this.newline_s;
+              followed_by_nl = rbPos(this.te) - 1 === this.newline_s;
               nl_emitted = false;
-              dots_te = followed_by_nl ? this.te - 1 : this.te;
+              dots_te = followed_by_nl ? rbPos(this.te) - 1 : this.te;
               if (true) {
-                if (this.nLambda > 0 && this.lambdaLast() + 1 === this.paren_nest) {
+                if (this.nLambda > 0 && add32(this.lambdaLast(), 1) === this.paren_nest) {
                   this.emit4(TK_tDOT3, "...", this.ts, dots_te);
                 } else {
                   this.emit4(TK_tBDOT3, "...", this.ts, dots_te);
@@ -3812,7 +4370,7 @@ export class RbLexer {
                 this.emit4(TK_tDOT3, "...", this.ts, dots_te);
               }
               if (followed_by_nl && !nl_emitted) {
-                p = p - 1;
+                p = pc - 2;
               }
               this.cs = 345;
               p += 1;
@@ -3820,6 +4378,7 @@ export class RbLexer {
               continue;
             }
             case 187: {
+              p = pc;
               this.te = p;
               p = p - 1;
               this.emit1(TK_tIDENTIFIER);
@@ -3841,39 +4400,47 @@ export class RbLexer {
               }
             }
             case 197: {
+              p = pc;
               this.te = p;
               p = p - 1;
               break;
             }
             case 199: {
+              p = pc;
               this.te = p;
               p = p - 1;
-              p = this.ts - 1;
+              q = rbPos(this.ts);
+              p = q - 1;
               this.cs_before_block_comment = this.cs;
               this.cs = 710;
               _goto_level = _again;
               continue;
             }
             case 202: {
+              p = pc;
               this.te = p;
               p = p - 1;
-              p = this.ts - 1;
+              q = rbPos(this.ts);
+              p = q - 1;
               this.cs = 516;
               _goto_level = _again;
               continue;
             }
             case 39: {
-              p = this.te - 1;
+              q = rbPos(this.te);
+              p = q - 1;
               this.diagFatal();
               break;
             }
             case 58: {
-              p = this.te - 1;
+              q = rbPos(this.te);
+              p = q - 1;
               this.diagError();
               break;
             }
             case 33: {
-              p = this.te - 1;
+              q = rbPos(this.te);
+              p = q - 1;
               this.emit1(TK_tIDENTIFIER);
               if (this.declared(this.tok2(this.ts, this.te))) {
                 this.cs = 247;
@@ -3893,12 +4460,15 @@ export class RbLexer {
               }
             }
             case 38: {
-              p = this.te - 1;
+              q = rbPos(this.te);
+              p = q - 1;
               break;
             }
             case 53: {
-              p = this.te - 1;
-              p = this.ts - 1;
+              q = rbPos(this.te);
+              p = q - 1;
+              q = rbPos(this.ts);
+              p = q - 1;
               this.cs = 516;
               _goto_level = _again;
               continue;
@@ -3906,53 +4476,60 @@ export class RbLexer {
             case 36: {
               switch (this.act) {
                 case 60: {
-                  p = this.te - 1;
-                  this.emit4(TK_tUNARY_NUM, this.tok2(this.ts, this.ts + 1), this.ts, this.ts + 1);
-                  p = p - 1;
+                  q = rbPos(this.te);
+                  p = q - 1;
+                  this.emit4(TK_tUNARY_NUM, this.tok2(this.ts, rbPos(this.ts) + 1), this.ts, rbPos(this.ts) + 1);
+                  p = q - 2;
                   this.cs = 516;
                   p += 1;
                   _goto_level = _out;
                   continue;
                 }
                 case 67: {
-                  p = this.te - 1;
+                  q = rbPos(this.te);
+                  p = q - 1;
                   this.diagError();
                   break;
                 }
                 case 76: {
-                  p = this.te - 1;
+                  q = rbPos(this.te);
+                  p = q - 1;
                   if (true) {
-                    this.emit4(TK_tPIPE, this.tok2(this.ts, this.ts + 1), this.ts, this.ts + 1);
-                    p = p - 1;
+                    this.emit4(TK_tPIPE, this.tok2(this.ts, rbPos(this.ts) + 1), this.ts, rbPos(this.ts) + 1);
+                    p = q - 2;
                     this.cs = 345;
                     p += 1;
                     _goto_level = _out;
                     continue;
                   } else {
-                    p -= 2;
+                    p = q - 3;
                     this.cs = 516;
                     _goto_level = _again;
                     continue;
                   }
                 }
                 case 80: {
-                  p = this.te - 1;
+                  q = rbPos(this.te);
+                  p = q - 1;
                   this.emit_table(2);
                   p += 1;
                   _goto_level = _out;
                   continue;
                 }
                 case 81: {
-                  p = this.te - 1;
+                  q = rbPos(this.te);
+                  p = q - 1;
                   this.emit4(TK_kRESCUE, "rescue", this.ts, tm);
-                  p = tm - 1;
+                  q = rbPos(tm);
+                  p = q - 1;
                   this.cs = 321;
                   p += 1;
                   _goto_level = _out;
                   continue;
                 }
                 case 82: {
-                  p = this.te - 1;
+                  q = rbPos(this.te);
+                  p = q - 1;
                   this.emit_table(4);
                   this.command_start = true;
                   this.cs = 508;
@@ -3961,14 +4538,17 @@ export class RbLexer {
                   continue;
                 }
                 case 86: {
-                  p = this.te - 1;
-                  p = this.ts - 1;
+                  q = rbPos(this.te);
+                  p = q - 1;
+                  q = rbPos(this.ts);
+                  p = q - 1;
                   this.cs = 516;
                   _goto_level = _again;
                   continue;
                 }
                 case 87: {
-                  p = this.te - 1;
+                  q = rbPos(this.te);
+                  p = q - 1;
                   this.emit1(TK_tIDENTIFIER);
                   if (this.declared(this.tok2(this.ts, this.te))) {
                     this.cs = 247;
@@ -3988,8 +4568,10 @@ export class RbLexer {
                   }
                 }
                 case 91: {
-                  p = this.te - 1;
-                  p = this.ts - 1;
+                  q = rbPos(this.te);
+                  p = q - 1;
+                  q = rbPos(this.ts);
+                  p = q - 1;
                   this.cs = 516;
                   _goto_level = _again;
                   continue;
@@ -3998,6 +4580,7 @@ export class RbLexer {
               break;
             }
             case 247: {
+              p = pc;
               this.te = p + 1;
               p = p - 1;
               this.cs = 345;
@@ -4005,6 +4588,7 @@ export class RbLexer {
               continue;
             }
             case 248: {
+              p = pc;
               this.te = p + 1;
               p = p - 1;
               p += 1;
@@ -4012,26 +4596,30 @@ export class RbLexer {
               continue;
             }
             case 249: {
+              p = pc;
               this.te = p;
               p = p - 1;
               break;
             }
             case 253: {
+              p = pc;
               this.te = p;
-              p = p - 1;
-              p = p - 1;
+              p = p - 2;
               this.cs = 345;
               _goto_level = _again;
               continue;
             }
             case 61: {
+              p = pc;
               this.te = p + 1;
-              p = this.ts - 1;
+              q = rbPos(this.ts);
+              p = q - 1;
               this.cs = 516;
               _goto_level = _again;
               continue;
             }
             case 257: {
+              p = pc;
               this.te = p + 1;
               this.st().pushLiteral(this.tok2(this.ts, this.te), this.tok2(this.ts, this.te), this.ts);
               this.cs = 128;
@@ -4039,6 +4627,7 @@ export class RbLexer {
               continue;
             }
             case 256: {
+              p = pc;
               this.te = p + 1;
               p = p - 1;
               this.cs = 345;
@@ -4046,6 +4635,7 @@ export class RbLexer {
               continue;
             }
             case 255: {
+              p = pc;
               this.te = p + 1;
               p = p - 1;
               p += 1;
@@ -4053,28 +4643,31 @@ export class RbLexer {
               continue;
             }
             case 259: {
+              p = pc;
               this.te = p;
               p = p - 1;
               break;
             }
             case 258: {
+              p = pc;
               this.te = p;
-              p = p - 1;
-              p = p - 1;
+              p = p - 2;
               this.cs = 345;
               _goto_level = _again;
               continue;
             }
             case 60: {
-              p = this.te - 1;
-              p = p - 1;
+              q = rbPos(this.te);
+              p = q - 1;
+              p = q - 2;
               this.cs = 345;
               _goto_level = _again;
               continue;
             }
             case 292: {
+              p = pc;
               this.te = p + 1;
-              this.emit4(TK_tLAMBDA, "->", this.ts, this.ts + 2);
+              this.emit4(TK_tLAMBDA, "->", this.ts, rbPos(this.ts) + 2);
               this.lambdaPush(this.paren_nest);
               this.cs = 247;
               p += 1;
@@ -4082,6 +4675,7 @@ export class RbLexer {
               continue;
             }
             case 71: {
+              p = pc;
               this.te = p + 1;
               this.emit_singleton_class();
               this.cs = 508;
@@ -4090,17 +4684,20 @@ export class RbLexer {
               continue;
             }
             case 267: {
+              p = pc;
               this.te = p + 1;
               type = this.tok2(this.ts, this.te);
-              delimiter = this.tok2(this.te - 1, this.te);
+              delimiter = this.tok2(rbPos(this.te) - 1, this.te);
               this.st().pushLiteralFull(type, delimiter, this.ts, -1, false, false, true);
               this.cs = 128;
               _goto_level = _again;
               continue;
             }
             case 63: {
+              p = pc;
               this.te = p + 1;
-              p = this.ts - 1;
+              q = rbPos(this.ts);
+              p = q - 1;
               this.stackPush(this.cs);
 
               this.cs = 129;
@@ -4108,6 +4705,7 @@ export class RbLexer {
               continue;
             }
             case 288: {
+              p = pc;
               this.te = p + 1;
               this.emit_table(1);
               this.cs = 255;
@@ -4116,6 +4714,7 @@ export class RbLexer {
               continue;
             }
             case 341: {
+              p = pc;
               this.te = p + 1;
               this.emit_table(1);
               this.cs = 508;
@@ -4124,6 +4723,7 @@ export class RbLexer {
               continue;
             }
             case 281: {
+              p = pc;
               this.te = p + 1;
               this.emit_table(1);
               this.cs = 508;
@@ -4132,14 +4732,16 @@ export class RbLexer {
               continue;
             }
             case 286: {
+              p = pc;
               this.te = p + 1;
-              this.emit2(TK_tOP_ASGN, this.tok2(this.ts, this.te - 1));
+              this.emit2(TK_tOP_ASGN, this.tok2(this.ts, rbPos(this.te) - 1));
               this.cs = 345;
               p += 1;
               _goto_level = _out;
               continue;
             }
             case 272: {
+              p = pc;
               this.te = p + 1;
               this.emit2(TK_tEH, "?");
               this.cs = 508;
@@ -4148,6 +4750,7 @@ export class RbLexer {
               continue;
             }
             case 269: {
+              p = pc;
               this.te = p + 1;
               this.emit_table(1);
               this.cs = 345;
@@ -4156,6 +4759,7 @@ export class RbLexer {
               continue;
             }
             case 271: {
+              p = pc;
               this.te = p + 1;
               this.emit2(TK_tSEMI, ";");
               this.command_start = true;
@@ -4165,17 +4769,20 @@ export class RbLexer {
               continue;
             }
             case 346: {
+              p = pc;
               this.te = p + 1;
               this.diagError();
               p = p - 1;
               break;
             }
             case 266: {
+              p = pc;
               this.te = p + 1;
               this.diagFatal();
               break;
             }
             case 265: {
+              p = pc;
               this.te = p + 1;
               p = p - 1;
               p += 1;
@@ -4183,6 +4790,7 @@ export class RbLexer {
               continue;
             }
             case 357: {
+              p = pc;
               this.te = p;
               p = p - 1;
               this.emit_table(3);
@@ -4192,6 +4800,7 @@ export class RbLexer {
               continue;
             }
             case 355: {
+              p = pc;
               this.te = p;
               p = p - 1;
               this.emit_singleton_class();
@@ -4201,6 +4810,7 @@ export class RbLexer {
               continue;
             }
             case 354: {
+              p = pc;
               this.te = p;
               p = p - 1;
               this.emit_table(3);
@@ -4211,12 +4821,14 @@ export class RbLexer {
               continue;
             }
             case 296: {
+              p = pc;
               this.te = p;
               p = p - 1;
               this.diagError();
               break;
             }
             case 343: {
+              p = pc;
               this.te = p;
               p = p - 1;
               this.emit1(TK_tCONSTANT);
@@ -4226,9 +4838,11 @@ export class RbLexer {
               continue;
             }
             case 285: {
+              p = pc;
               this.te = p;
               p = p - 1;
-              p = this.ts - 1;
+              q = rbPos(this.ts);
+              p = q - 1;
               this.stackPush(this.cs);
 
               this.cs = 129;
@@ -4236,6 +4850,7 @@ export class RbLexer {
               continue;
             }
             case 293: {
+              p = pc;
               this.te = p;
               p = p - 1;
               this.emit_table(1);
@@ -4245,6 +4860,7 @@ export class RbLexer {
               continue;
             }
             case 349: {
+              p = pc;
               this.te = p;
               p = p - 1;
               this.emit1(TK_tIDENTIFIER);
@@ -4266,6 +4882,7 @@ export class RbLexer {
               }
             }
             case 291: {
+              p = pc;
               this.te = p;
               p = p - 1;
               this.emit_table(1);
@@ -4275,6 +4892,7 @@ export class RbLexer {
               continue;
             }
             case 287: {
+              p = pc;
               this.te = p;
               p = p - 1;
               this.emit_table(1);
@@ -4284,6 +4902,7 @@ export class RbLexer {
               continue;
             }
             case 280: {
+              p = pc;
               this.te = p;
               p = p - 1;
               this.emit_table(1);
@@ -4293,6 +4912,7 @@ export class RbLexer {
               continue;
             }
             case 294: {
+              p = pc;
               this.te = p;
               p = p - 1;
               this.emit_table(1);
@@ -4302,58 +4922,69 @@ export class RbLexer {
               continue;
             }
             case 278: {
+              p = pc;
               this.te = p;
               p = p - 1;
               break;
             }
             case 284: {
+              p = pc;
               this.te = p;
               p = p - 1;
               this.diagFatal();
               break;
             }
             case 69: {
-              p = this.te - 1;
+              q = rbPos(this.te);
+              p = q - 1;
               digits = this.numeric_literal_int();
               if (false) {
                 this.emit4(TK_tINTEGER, this.intValue(digits, this.num_base), this.ts, this.num_suffix_s);
-                p = this.num_suffix_s - 1;
+                q = rbPos(this.num_suffix_s);
+                p = q - 1;
               } else {
-                p = this.numXfrm(this.intValue(digits, this.num_base), p);
+                q = this.numXfrm(this.intValue(digits, this.num_base), p);
+                p = q;
               }
               p += 1;
               _goto_level = _out;
               continue;
             }
             case 64: {
-              p = this.te - 1;
+              q = rbPos(this.te);
+              p = q - 1;
               this.diagError();
               break;
             }
             case 68: {
-              p = this.te - 1;
+              q = rbPos(this.te);
+              p = q - 1;
               digits = this.tok2(this.ts, this.num_suffix_s);
               if (false) {
                 this.emit4(TK_tFLOAT, digits, this.ts, this.num_suffix_s);
-                p = this.num_suffix_s - 1;
+                q = rbPos(this.num_suffix_s);
+                p = q - 1;
               } else {
-                p = this.numXfrm(digits, p);
+                q = this.numXfrm(digits, p);
+                p = q;
               }
               p += 1;
               _goto_level = _out;
               continue;
             }
             case 62: {
-              p = this.te - 1;
+              q = rbPos(this.te);
+              p = q - 1;
               this.diagFatal();
               break;
             }
             case 66: {
               switch (this.act) {
                 case 104: {
-                  p = this.te - 1;
+                  q = rbPos(this.te);
+                  p = q - 1;
                   if (this.lambdaLast() === this.paren_nest) {
-                    this.nLambda = this.nLambda - 1;
+                    this.nLambda = sub32(this.nLambda, 1);
                     if (this.tokIs(this.ts, this.te, "{")) {
                       this.emit2(TK_tLAMBEG, "{");
                     } else {
@@ -4367,7 +4998,7 @@ export class RbLexer {
                     }
                   }
                   if (this.tokIs(this.ts, this.te, "{")) {
-                    this.paren_nest += 1;
+                    this.paren_nest = add32(this.paren_nest, 1);
                   }
                   this.command_start = true;
                   this.cs = 508;
@@ -4376,7 +5007,8 @@ export class RbLexer {
                   continue;
                 }
                 case 105: {
-                  p = this.te - 1;
+                  q = rbPos(this.te);
+                  p = q - 1;
                   this.emit_table(3);
                   this.cs = 134;
                   p += 1;
@@ -4384,7 +5016,8 @@ export class RbLexer {
                   continue;
                 }
                 case 106: {
-                  p = this.te - 1;
+                  q = rbPos(this.te);
+                  p = q - 1;
                   this.emit_singleton_class();
                   this.cs = 508;
                   p += 1;
@@ -4392,7 +5025,8 @@ export class RbLexer {
                   continue;
                 }
                 case 107: {
-                  p = this.te - 1;
+                  q = rbPos(this.te);
+                  p = q - 1;
                   this.emit_table(3);
                   this.cs = 345;
                   p += 1;
@@ -4400,7 +5034,8 @@ export class RbLexer {
                   continue;
                 }
                 case 108: {
-                  p = this.te - 1;
+                  q = rbPos(this.te);
+                  p = q - 1;
                   this.emit_table(3);
                   this.command_start = true;
                   this.cs = 508;
@@ -4409,7 +5044,8 @@ export class RbLexer {
                   continue;
                 }
                 case 109: {
-                  p = this.te - 1;
+                  q = rbPos(this.te);
+                  p = q - 1;
                   this.emit_table(3);
                   this.cs = 321;
                   p += 1;
@@ -4417,7 +5053,8 @@ export class RbLexer {
                   continue;
                 }
                 case 110: {
-                  p = this.te - 1;
+                  q = rbPos(this.te);
+                  p = q - 1;
                   this.emit_table(3);
                   if (false && this.tokIs(this.ts, this.te, "!")) {
                     this.cs = 345;
@@ -4432,7 +5069,8 @@ export class RbLexer {
                   }
                 }
                 case 111: {
-                  p = this.te - 1;
+                  q = rbPos(this.te);
+                  p = q - 1;
                   if (false) {
                     this.emit1(TK_tIDENTIFIER);
                     if (!this.declared(this.tok2(this.ts, this.te))) {
@@ -4446,32 +5084,42 @@ export class RbLexer {
                   continue;
                 }
                 case 112: {
-                  p = this.te - 1;
+                  q = rbPos(this.te);
+                  p = q - 1;
                   this.emit_table(3);
                   p += 1;
                   _goto_level = _out;
                   continue;
                 }
                 case 113: {
-                  p = this.te - 1;
+                  q = rbPos(this.te);
+                  p = q - 1;
                   digits = this.numeric_literal_int();
                   if (false) {
                     this.emit4(TK_tINTEGER, this.intValue(digits, this.num_base), this.ts, this.num_suffix_s);
-                    p = this.num_suffix_s - 1;
+                    q = rbPos(this.num_suffix_s);
+                    p = q - 1;
                   } else {
-                    p = this.numXfrm(this.intValue(digits, this.num_base), p);
+                    q = this.numXfrm(this.intValue(digits, this.num_base), p);
+                    p = q;
                   }
                   p += 1;
                   _goto_level = _out;
                   continue;
                 }
                 case 115: {
-                  p = this.te - 1;
+                  q = rbPos(this.te);
+                  p = q - 1;
                   if (false) {
                     this.diagError();
                   } else {
-                    this.emit4(TK_tINTEGER, this.intValue(this.tok2(this.ts, this.te - 1), 10), this.ts, this.te - 1);
-                    p = p - 1;
+                    this.emit4(
+                      TK_tINTEGER,
+                      this.intValue(this.tok2(this.ts, rbPos(this.te) - 1), 10),
+                      this.ts,
+                      rbPos(this.te) - 1,
+                    );
+                    p = q - 2;
                     p += 1;
                     _goto_level = _out;
                     continue;
@@ -4479,12 +5127,13 @@ export class RbLexer {
                   break;
                 }
                 case 116: {
-                  p = this.te - 1;
+                  q = rbPos(this.te);
+                  p = q - 1;
                   if (false) {
                     this.diagError();
                   } else {
-                    this.emit4(TK_tFLOAT, this.tok2(this.ts, this.te - 1), this.ts, this.te - 1);
-                    p = p - 1;
+                    this.emit4(TK_tFLOAT, this.tok2(this.ts, rbPos(this.te) - 1), this.ts, rbPos(this.te) - 1);
+                    p = q - 2;
                     p += 1;
                     _goto_level = _out;
                     continue;
@@ -4492,20 +5141,24 @@ export class RbLexer {
                   break;
                 }
                 case 117: {
-                  p = this.te - 1;
+                  q = rbPos(this.te);
+                  p = q - 1;
                   digits = this.tok2(this.ts, this.num_suffix_s);
                   if (false) {
                     this.emit4(TK_tFLOAT, digits, this.ts, this.num_suffix_s);
-                    p = this.num_suffix_s - 1;
+                    q = rbPos(this.num_suffix_s);
+                    p = q - 1;
                   } else {
-                    p = this.numXfrm(digits, p);
+                    q = this.numXfrm(digits, p);
+                    p = q;
                   }
                   p += 1;
                   _goto_level = _out;
                   continue;
                 }
                 case 119: {
-                  p = this.te - 1;
+                  q = rbPos(this.te);
+                  p = q - 1;
                   this.emit1(TK_tCONSTANT);
                   this.cs = this.arg_or_cmdarg(cmd_state);
                   p += 1;
@@ -4513,7 +5166,8 @@ export class RbLexer {
                   continue;
                 }
                 case 123: {
-                  p = this.te - 1;
+                  q = rbPos(this.te);
+                  p = q - 1;
                   this.emit1(TK_tIDENTIFIER);
                   if (this.declared(this.tok2(this.ts, this.te))) {
                     this.cs = 247;
@@ -4533,12 +5187,14 @@ export class RbLexer {
                   }
                 }
                 case 124: {
-                  p = this.te - 1;
+                  q = rbPos(this.te);
+                  p = q - 1;
                   if (tm === this.te) {
                     this.emit1(TK_tFID);
                   } else {
                     this.emit4(TK_tIDENTIFIER, this.tok2(this.ts, tm), this.ts, tm);
-                    p = tm - 1;
+                    q = rbPos(tm);
+                    p = q - 1;
                   }
                   this.cs = 276;
                   p += 1;
@@ -4546,7 +5202,8 @@ export class RbLexer {
                   continue;
                 }
                 case 126: {
-                  p = this.te - 1;
+                  q = rbPos(this.te);
+                  p = q - 1;
                   this.emit_table(1);
                   this.cs = 508;
                   p += 1;
@@ -4554,7 +5211,8 @@ export class RbLexer {
                   continue;
                 }
                 case 127: {
-                  p = this.te - 1;
+                  q = rbPos(this.te);
+                  p = q - 1;
                   this.emit_table(1);
                   this.cs = 345;
                   p += 1;
@@ -4565,8 +5223,9 @@ export class RbLexer {
               break;
             }
             case 368: {
+              p = pc;
               this.te = p + 1;
-              this.emit4(TK_tNL, "", this.newline_s, this.newline_s + 1);
+              this.emit4(TK_tNL, "", this.newline_s, rbPos(this.newline_s) + 1);
               if (false) {
                 p = p - 1;
                 this.cs = 710;
@@ -4582,15 +5241,18 @@ export class RbLexer {
               }
             }
             case 80: {
+              p = pc;
               this.te = p + 1;
-              p = tm - 1;
+              q = rbPos(tm);
+              p = q - 1;
               this.cs = 516;
               _goto_level = _again;
               continue;
             }
             case 362: {
+              p = pc;
               this.te = p + 1;
-              this.emit4(TK_tNL, "", this.newline_s, this.newline_s + 1);
+              this.emit4(TK_tNL, "", this.newline_s, rbPos(this.newline_s) + 1);
               p = p - 1;
               this.cs = 710;
               p += 1;
@@ -4598,11 +5260,12 @@ export class RbLexer {
               continue;
             }
             case 365: {
+              p = pc;
               this.te = p;
               p = p - 1;
               if (false) {
-                this.emit4(TK_tNL, "", this.newline_s, this.newline_s + 1);
-                p = p - 1;
+                this.emit4(TK_tNL, "", this.newline_s, rbPos(this.newline_s) + 1);
+                p = pc - 2;
                 this.cs = 710;
                 p += 1;
                 _goto_level = _out;
@@ -4611,11 +5274,12 @@ export class RbLexer {
               break;
             }
             case 367: {
+              p = pc;
               this.te = p;
               p = p - 1;
-              this.emit4(TK_tNL, "", this.newline_s, this.newline_s + 1);
+              this.emit4(TK_tNL, "", this.newline_s, rbPos(this.newline_s) + 1);
               if (false) {
-                p = p - 1;
+                p = pc - 2;
                 this.cs = 710;
                 p += 1;
                 _goto_level = _out;
@@ -4629,28 +5293,32 @@ export class RbLexer {
               }
             }
             case 366: {
+              p = pc;
               this.te = p;
               p = p - 1;
-              p = tm - 1;
+              q = rbPos(tm);
+              p = q - 1;
               this.cs = 516;
               _goto_level = _again;
               continue;
             }
             case 364: {
+              p = pc;
               this.te = p;
               p = p - 1;
-              this.emit4(TK_tNL, "", this.newline_s, this.newline_s + 1);
-              p = p - 1;
+              this.emit4(TK_tNL, "", this.newline_s, rbPos(this.newline_s) + 1);
+              p = pc - 2;
               this.cs = 710;
               p += 1;
               _goto_level = _out;
               continue;
             }
             case 75: {
-              p = this.te - 1;
+              q = rbPos(this.te);
+              p = q - 1;
               if (false) {
-                this.emit4(TK_tNL, "", this.newline_s, this.newline_s + 1);
-                p = p - 1;
+                this.emit4(TK_tNL, "", this.newline_s, rbPos(this.newline_s) + 1);
+                p = q - 2;
                 this.cs = 710;
                 p += 1;
                 _goto_level = _out;
@@ -4659,9 +5327,10 @@ export class RbLexer {
               break;
             }
             case 72: {
-              p = this.te - 1;
-              this.emit4(TK_tNL, "", this.newline_s, this.newline_s + 1);
-              p = p - 1;
+              q = rbPos(this.te);
+              p = q - 1;
+              this.emit4(TK_tNL, "", this.newline_s, rbPos(this.newline_s) + 1);
+              p = q - 2;
               this.cs = 710;
               p += 1;
               _goto_level = _out;
@@ -4670,10 +5339,11 @@ export class RbLexer {
             case 76: {
               switch (this.act) {
                 case 140: {
-                  p = this.te - 1;
+                  q = rbPos(this.te);
+                  p = q - 1;
                   if (false) {
-                    this.emit4(TK_tNL, "", this.newline_s, this.newline_s + 1);
-                    p = p - 1;
+                    this.emit4(TK_tNL, "", this.newline_s, rbPos(this.newline_s) + 1);
+                    p = q - 2;
                     this.cs = 710;
                     p += 1;
                     _goto_level = _out;
@@ -4682,9 +5352,10 @@ export class RbLexer {
                   break;
                 }
                 case 144: {
-                  p = this.te - 1;
-                  this.emit4(TK_tNL, "", this.newline_s, this.newline_s + 1);
-                  p = p - 1;
+                  q = rbPos(this.te);
+                  p = q - 1;
+                  this.emit4(TK_tNL, "", this.newline_s, rbPos(this.newline_s) + 1);
+                  p = q - 2;
                   this.cs = 710;
                   p += 1;
                   _goto_level = _out;
@@ -4694,6 +5365,7 @@ export class RbLexer {
               break;
             }
             case 371: {
+              p = pc;
               this.te = p;
               p = p - 1;
               this.emit_comment(this.eq_begin_s, this.te);
@@ -4702,12 +5374,14 @@ export class RbLexer {
               continue;
             }
             case 370: {
+              p = pc;
               this.te = p;
               p = p - 1;
               this.diagFatal();
               break;
             }
             case 381: {
+              p = pc;
               this.te = p + 1;
               this.eq_begin_s = this.ts;
               this.cs = 704;
@@ -4715,11 +5389,13 @@ export class RbLexer {
               continue;
             }
             case 82: {
+              p = pc;
               this.te = p + 1;
               p = pe - 3;
               break;
             }
             case 373: {
+              p = pc;
               this.te = p + 1;
               cmd_state = true;
               p = p - 1;
@@ -4728,6 +5404,7 @@ export class RbLexer {
               continue;
             }
             case 374: {
+              p = pc;
               this.te = p + 1;
               p = p - 1;
               p += 1;
@@ -4735,11 +5412,13 @@ export class RbLexer {
               continue;
             }
             case 375: {
+              p = pc;
               this.te = p;
               p = p - 1;
               break;
             }
             case 380: {
+              p = pc;
               this.te = p;
               p = p - 1;
               this.eq_begin_s = this.ts;
@@ -4748,25 +5427,29 @@ export class RbLexer {
               continue;
             }
             case 379: {
+              p = pc;
               this.te = p;
               p = p - 1;
               cmd_state = true;
-              p = p - 1;
+              p = pc - 2;
               this.cs = 508;
               _goto_level = _again;
               continue;
             }
             case 81: {
-              p = this.te - 1;
+              q = rbPos(this.te);
+              p = q - 1;
               cmd_state = true;
-              p = p - 1;
+              p = q - 2;
               this.cs = 508;
               _goto_level = _again;
               continue;
             }
             case 86: {
+              p = pc;
               this.te = p + 1;
-              p = this.st().advance(p);
+              q = this.st().advance(p);
+              p = q;
               next_state = this.st().rootState;
               p = p - 1;
               this.cs = next_state;
@@ -4775,42 +5458,50 @@ export class RbLexer {
               continue;
             }
             case 52: {
+              p = pc;
               this.newline_s = p;
               this.emit_comment_from_range(p, pe);
               break;
             }
             case 154: {
+              p = pc;
               this.newline_s = p;
               this.te = p + 1;
-              p = this.ts - 1;
+              q = rbPos(this.ts);
+              p = q - 1;
               this.cs = 516;
               _goto_level = _again;
               continue;
             }
             case 145: {
+              p = pc;
               this.newline_s = p;
               this.te = p + 1;
-              p = tm - 1;
+              q = rbPos(tm);
+              p = q - 1;
               this.cs = 516;
               _goto_level = _again;
               continue;
             }
             case 137: {
+              p = pc;
               this.newline_s = p;
               this.te = p + 1;
-              p = this.ts - 1;
+              q = rbPos(this.ts);
+              p = q - 1;
               this.cs = 516;
               _goto_level = _again;
               continue;
             }
             case 213: {
+              p = pc;
               this.newline_s = p;
               this.te = p + 1;
-              followed_by_nl = this.te - 1 === this.newline_s;
+              followed_by_nl = rbPos(this.te) - 1 === this.newline_s;
               nl_emitted = false;
-              dots_te = followed_by_nl ? this.te - 1 : this.te;
+              dots_te = followed_by_nl ? rbPos(this.te) - 1 : this.te;
               if (true) {
-                if (this.nLambda > 0 && this.lambdaLast() + 1 === this.paren_nest) {
+                if (this.nLambda > 0 && add32(this.lambdaLast(), 1) === this.paren_nest) {
                   this.emit4(TK_tDOT3, "...", this.ts, dots_te);
                 } else {
                   this.emit4(TK_tBDOT3, "...", this.ts, dots_te);
@@ -4833,21 +5524,24 @@ export class RbLexer {
               continue;
             }
             case 201: {
+              p = pc;
               this.newline_s = p;
               this.te = p + 1;
-              p = this.ts - 1;
+              q = rbPos(this.ts);
+              p = q - 1;
               this.cs_before_block_comment = this.cs;
               this.cs = 710;
               _goto_level = _again;
               continue;
             }
             case 295: {
+              p = pc;
               this.newline_s = p;
               this.te = p + 1;
               if (this.paren_nest === 0) {
                 /* warning */
               }
-              this.emit4(TK_tDOT3, "...", this.ts, this.te - 1);
+              this.emit4(TK_tDOT3, "...", this.ts, rbPos(this.te) - 1);
               p = p - 1;
               this.cs = 345;
               p += 1;
@@ -4855,6 +5549,7 @@ export class RbLexer {
               continue;
             }
             case 372: {
+              p = pc;
               this.newline_s = p;
               this.te = p + 1;
               this.emit_comment(this.eq_begin_s, this.te);
@@ -4863,11 +5558,13 @@ export class RbLexer {
               continue;
             }
             case 369: {
+              p = pc;
               this.newline_s = p;
               this.te = p + 1;
               break;
             }
             case 382: {
+              p = pc;
               this.newline_s = p;
               this.te = p + 1;
               this.eq_begin_s = this.ts;
@@ -4876,204 +5573,240 @@ export class RbLexer {
               continue;
             }
             case 83: {
+              p = pc;
               this.newline_s = p;
               this.te = p + 1;
               p = pe - 3;
               break;
             }
             case 317: {
+              p = pc;
               this.num_xfrm = XF_rational;
               this.te = p;
               p = p - 1;
               digits = this.numeric_literal_int();
               if (false) {
                 this.emit4(TK_tINTEGER, this.intValue(digits, this.num_base), this.ts, this.num_suffix_s);
-                p = this.num_suffix_s - 1;
+                q = rbPos(this.num_suffix_s);
+                p = q - 1;
               } else {
-                p = this.numXfrm(this.intValue(digits, this.num_base), p);
+                q = this.numXfrm(this.intValue(digits, this.num_base), p);
+                p = q;
               }
               p += 1;
               _goto_level = _out;
               continue;
             }
             case 315: {
+              p = pc;
               this.num_xfrm = XF_imaginary;
               this.te = p;
               p = p - 1;
               digits = this.numeric_literal_int();
               if (false) {
                 this.emit4(TK_tINTEGER, this.intValue(digits, this.num_base), this.ts, this.num_suffix_s);
-                p = this.num_suffix_s - 1;
+                q = rbPos(this.num_suffix_s);
+                p = q - 1;
               } else {
-                p = this.numXfrm(this.intValue(digits, this.num_base), p);
+                q = this.numXfrm(this.intValue(digits, this.num_base), p);
+                p = q;
               }
               p += 1;
               _goto_level = _out;
               continue;
             }
             case 320: {
+              p = pc;
               this.num_xfrm = XF_imaginary_rational;
               this.te = p;
               p = p - 1;
               digits = this.numeric_literal_int();
               if (false) {
                 this.emit4(TK_tINTEGER, this.intValue(digits, this.num_base), this.ts, this.num_suffix_s);
-                p = this.num_suffix_s - 1;
+                q = rbPos(this.num_suffix_s);
+                p = q - 1;
               } else {
-                p = this.numXfrm(this.intValue(digits, this.num_base), p);
+                q = this.numXfrm(this.intValue(digits, this.num_base), p);
+                p = q;
               }
               p += 1;
               _goto_level = _out;
               continue;
             }
             case 318: {
+              p = pc;
               this.num_xfrm = XF_integer_re;
               this.te = p;
               p = p - 1;
               digits = this.numeric_literal_int();
               if (false) {
                 this.emit4(TK_tINTEGER, this.intValue(digits, this.num_base), this.ts, this.num_suffix_s);
-                p = this.num_suffix_s - 1;
+                q = rbPos(this.num_suffix_s);
+                p = q - 1;
               } else {
-                p = this.numXfrm(this.intValue(digits, this.num_base), p);
+                q = this.numXfrm(this.intValue(digits, this.num_base), p);
+                p = q;
               }
               p += 1;
               _goto_level = _out;
               continue;
             }
             case 316: {
+              p = pc;
               this.num_xfrm = XF_integer_if;
               this.te = p;
               p = p - 1;
               digits = this.numeric_literal_int();
               if (false) {
                 this.emit4(TK_tINTEGER, this.intValue(digits, this.num_base), this.ts, this.num_suffix_s);
-                p = this.num_suffix_s - 1;
+                q = rbPos(this.num_suffix_s);
+                p = q - 1;
               } else {
-                p = this.numXfrm(this.intValue(digits, this.num_base), p);
+                q = this.numXfrm(this.intValue(digits, this.num_base), p);
+                p = q;
               }
               p += 1;
               _goto_level = _out;
               continue;
             }
             case 319: {
+              p = pc;
               this.num_xfrm = XF_integer_rescue;
               this.te = p;
               p = p - 1;
               digits = this.numeric_literal_int();
               if (false) {
                 this.emit4(TK_tINTEGER, this.intValue(digits, this.num_base), this.ts, this.num_suffix_s);
-                p = this.num_suffix_s - 1;
+                q = rbPos(this.num_suffix_s);
+                p = q - 1;
               } else {
-                p = this.numXfrm(this.intValue(digits, this.num_base), p);
+                q = this.numXfrm(this.intValue(digits, this.num_base), p);
+                p = q;
               }
               p += 1;
               _goto_level = _out;
               continue;
             }
             case 308: {
+              p = pc;
               this.num_xfrm = XF_imaginary_float;
               this.te = p;
               p = p - 1;
               digits = this.tok2(this.ts, this.num_suffix_s);
               if (false) {
                 this.emit4(TK_tFLOAT, digits, this.ts, this.num_suffix_s);
-                p = this.num_suffix_s - 1;
+                q = rbPos(this.num_suffix_s);
+                p = q - 1;
               } else {
-                p = this.numXfrm(digits, p);
+                q = this.numXfrm(digits, p);
+                p = q;
               }
               p += 1;
               _goto_level = _out;
               continue;
             }
             case 309: {
+              p = pc;
               this.num_xfrm = XF_float_if;
               this.te = p;
               p = p - 1;
               digits = this.tok2(this.ts, this.num_suffix_s);
               if (false) {
                 this.emit4(TK_tFLOAT, digits, this.ts, this.num_suffix_s);
-                p = this.num_suffix_s - 1;
+                q = rbPos(this.num_suffix_s);
+                p = q - 1;
               } else {
-                p = this.numXfrm(digits, p);
+                q = this.numXfrm(digits, p);
+                p = q;
               }
               p += 1;
               _goto_level = _out;
               continue;
             }
             case 310: {
+              p = pc;
               this.num_xfrm = XF_rational;
               this.te = p;
               p = p - 1;
               digits = this.tok2(this.ts, this.num_suffix_s);
               if (false) {
                 this.emit4(TK_tFLOAT, digits, this.ts, this.num_suffix_s);
-                p = this.num_suffix_s - 1;
+                q = rbPos(this.num_suffix_s);
+                p = q - 1;
               } else {
-                p = this.numXfrm(digits, p);
+                q = this.numXfrm(digits, p);
+                p = q;
               }
               p += 1;
               _goto_level = _out;
               continue;
             }
             case 312: {
+              p = pc;
               this.num_xfrm = XF_imaginary_rational;
               this.te = p;
               p = p - 1;
               digits = this.tok2(this.ts, this.num_suffix_s);
               if (false) {
                 this.emit4(TK_tFLOAT, digits, this.ts, this.num_suffix_s);
-                p = this.num_suffix_s - 1;
+                q = rbPos(this.num_suffix_s);
+                p = q - 1;
               } else {
-                p = this.numXfrm(digits, p);
+                q = this.numXfrm(digits, p);
+                p = q;
               }
               p += 1;
               _goto_level = _out;
               continue;
             }
             case 311: {
+              p = pc;
               this.num_xfrm = XF_float_rescue;
               this.te = p;
               p = p - 1;
               digits = this.tok2(this.ts, this.num_suffix_s);
               if (false) {
                 this.emit4(TK_tFLOAT, digits, this.ts, this.num_suffix_s);
-                p = this.num_suffix_s - 1;
+                q = rbPos(this.num_suffix_s);
+                p = q - 1;
               } else {
-                p = this.numXfrm(digits, p);
+                q = this.numXfrm(digits, p);
+                p = q;
               }
               p += 1;
               _goto_level = _out;
               continue;
             }
             case 147: {
+              p = pc;
               this.e_lbrace();
               this.te = p;
               p = p - 1;
               if (this.lambdaLast() === this.paren_nest) {
-                this.nLambda = this.nLambda - 1;
-                this.emit4(TK_tLAMBEG, "{", this.te - 1, this.te);
+                this.nLambda = sub32(this.nLambda, 1);
+                this.emit4(TK_tLAMBEG, "{", rbPos(this.te) - 1, this.te);
               } else {
-                this.emit4(TK_tLCURLY, "{", this.te - 1, this.te);
+                this.emit4(TK_tLCURLY, "{", rbPos(this.te) - 1, this.te);
               }
               this.command_start = true;
-              this.paren_nest += 1;
+              this.paren_nest = add32(this.paren_nest, 1);
               this.cs = 508;
               p += 1;
               _goto_level = _out;
               continue;
             }
             case 169: {
+              p = pc;
               this.e_lbrace();
               this.te = p;
               p = p - 1;
               if (this.lambdaLast() === this.paren_nest) {
-                this.nLambda = this.nLambda - 1;
+                this.nLambda = sub32(this.nLambda, 1);
                 this.emit2(TK_tLAMBEG, "{");
               } else {
                 this.emit2(TK_tLBRACE_ARG, "{");
               }
-              this.paren_nest += 1;
+              this.paren_nest = add32(this.paren_nest, 1);
               this.command_start = true;
               this.cs = 508;
               p += 1;
@@ -5081,27 +5814,29 @@ export class RbLexer {
               continue;
             }
             case 245: {
+              p = pc;
               this.e_lbrace();
               this.te = p;
               p = p - 1;
               if (this.lambdaLast() === this.paren_nest) {
-                this.nLambda = this.nLambda - 1;
+                this.nLambda = sub32(this.nLambda, 1);
                 this.command_start = true;
                 this.emit2(TK_tLAMBEG, "{");
               } else {
                 this.emit2(TK_tLBRACE, "{");
               }
-              this.paren_nest += 1;
+              this.paren_nest = add32(this.paren_nest, 1);
               p += 1;
               _goto_level = _out;
               continue;
             }
             case 360: {
+              p = pc;
               this.e_lbrace();
               this.te = p;
               p = p - 1;
               if (this.lambdaLast() === this.paren_nest) {
-                this.nLambda = this.nLambda - 1;
+                this.nLambda = sub32(this.nLambda, 1);
                 if (this.tokIs(this.ts, this.te, "{")) {
                   this.emit2(TK_tLAMBEG, "{");
                 } else {
@@ -5115,7 +5850,7 @@ export class RbLexer {
                 }
               }
               if (this.tokIs(this.ts, this.te, "{")) {
-                this.paren_nest += 1;
+                this.paren_nest = add32(this.paren_nest, 1);
               }
               this.command_start = true;
               this.cs = 508;
@@ -5124,6 +5859,7 @@ export class RbLexer {
               continue;
             }
             case 361: {
+              p = pc;
               if (this.st().closeInterp(p)) {
                 p = p - 1;
                 this.cs = 128;
@@ -5131,7 +5867,7 @@ export class RbLexer {
                 _goto_level = _out;
                 continue;
               }
-              this.paren_nest -= 1;
+              this.paren_nest = sub32(this.paren_nest, 1);
               this.te = p;
               p = p - 1;
               this.emit_rbrace_rparen_rbrack();
@@ -5148,91 +5884,118 @@ export class RbLexer {
               continue;
             }
             case 43: {
-              p = this.on_newline(p);
+              p = pc;
+              q = this.on_newline(p);
+              p = q;
               this.newline_s = p;
               break;
             }
             case 16: {
-              p = this.on_newline(p);
+              p = pc;
+              q = this.on_newline(p);
+              p = q;
               tm = p;
               break;
             }
             case 18: {
-              p = this.on_newline(p);
+              p = pc;
+              q = this.on_newline(p);
+              p = q;
               tm = p;
               break;
             }
             case 20: {
-              p = this.on_newline(p);
+              p = pc;
+              q = this.on_newline(p);
+              p = q;
               tm = p;
               break;
             }
             case 98: {
-              p = this.on_newline(p);
+              p = pc;
+              q = this.on_newline(p);
+              p = q;
               this.te = p;
               p = p - 1;
               break;
             }
             case 117: {
-              p = this.on_newline(p);
+              p = pc;
+              q = this.on_newline(p);
+              p = q;
               this.te = p;
               p = p - 1;
               break;
             }
             case 125: {
-              p = this.on_newline(p);
+              p = pc;
+              q = this.on_newline(p);
+              p = q;
               this.te = p;
               p = p - 1;
               break;
             }
             case 19: {
-              p = this.on_newline(p);
+              p = pc;
+              q = this.on_newline(p);
+              p = q;
               this.te = p + 1;
-              p = this.ts - 1;
+              q = rbPos(this.ts);
+              p = q - 1;
               this.cs = 516;
               _goto_level = _again;
               continue;
             }
             case 156: {
-              p = this.on_newline(p);
+              p = pc;
+              q = this.on_newline(p);
+              p = q;
               this.te = p;
               p = p - 1;
               break;
             }
             case 148: {
-              p = this.on_newline(p);
+              p = pc;
+              q = this.on_newline(p);
+              p = q;
               this.te = p;
-              p = p - 1;
-              p = p - 1;
+              p = p - 2;
               this.cs = 516;
               _goto_level = _again;
               continue;
             }
             case 167: {
-              p = this.on_newline(p);
+              p = pc;
+              q = this.on_newline(p);
+              p = q;
               this.te = p;
               p = p - 1;
               break;
             }
             case 179: {
-              p = this.on_newline(p);
+              p = pc;
+              q = this.on_newline(p);
+              p = q;
               this.te = p;
               p = p - 1;
               break;
             }
             case 175: {
-              p = this.on_newline(p);
+              p = pc;
+              q = this.on_newline(p);
+              p = q;
               this.te = p;
-              p = p - 1;
-              p = p - 1;
+              p = p - 2;
               this.cs = 516;
               _goto_level = _again;
               continue;
             }
             case 44: {
-              p = this.on_newline(p);
+              p = pc;
+              q = this.on_newline(p);
+              p = q;
               this.te = p + 1;
-              this.emit4(TK_tUNARY_NUM, this.tok2(this.ts, this.ts + 1), this.ts, this.ts + 1);
+              this.emit4(TK_tUNARY_NUM, this.tok2(this.ts, rbPos(this.ts) + 1), this.ts, rbPos(this.ts) + 1);
               p = p - 1;
               this.cs = 516;
               p += 1;
@@ -5240,10 +6003,13 @@ export class RbLexer {
               continue;
             }
             case 35: {
-              p = this.on_newline(p);
+              p = pc;
+              q = this.on_newline(p);
+              p = q;
               this.te = p + 1;
               this.emit4(TK_tIDENTIFIER, ident_tok, ident_ts, ident_te);
-              p = ident_te - 1;
+              q = rbPos(ident_te);
+              p = q - 1;
               if (this.declared(ident_tok) && false) {
                 this.cs = 247;
               } else {
@@ -5254,23 +6020,29 @@ export class RbLexer {
               continue;
             }
             case 198: {
-              p = this.on_newline(p);
+              p = pc;
+              q = this.on_newline(p);
+              p = q;
               this.te = p;
               p = p - 1;
               break;
             }
             case 254: {
-              p = this.on_newline(p);
+              p = pc;
+              q = this.on_newline(p);
+              p = q;
               this.te = p;
               p = p - 1;
               break;
             }
             case 250: {
-              p = this.on_newline(p);
+              p = pc;
+              q = this.on_newline(p);
+              p = q;
               this.te = p;
               p = p - 1;
               if (this.ctx.in_kwarg) {
-                p = p - 1;
+                p = q - 2;
                 this.cs = 516;
                 _goto_level = _again;
                 continue;
@@ -5281,13 +6053,17 @@ export class RbLexer {
               }
             }
             case 263: {
-              p = this.on_newline(p);
+              p = pc;
+              q = this.on_newline(p);
+              p = q;
               this.te = p;
               p = p - 1;
               break;
             }
             case 260: {
-              p = this.on_newline(p);
+              p = pc;
+              q = this.on_newline(p);
+              p = q;
               this.te = p;
               p = p - 1;
               this.cs = 710;
@@ -5295,13 +6071,17 @@ export class RbLexer {
               continue;
             }
             case 347: {
-              p = this.on_newline(p);
+              p = pc;
+              q = this.on_newline(p);
+              p = q;
               this.te = p;
               p = p - 1;
               break;
             }
             case 279: {
-              p = this.on_newline(p);
+              p = pc;
+              q = this.on_newline(p);
+              p = q;
               this.te = p;
               p = p - 1;
               this.cs = 696;
@@ -5309,40 +6089,48 @@ export class RbLexer {
               continue;
             }
             case 376: {
-              p = this.on_newline(p);
+              p = pc;
+              q = this.on_newline(p);
+              p = q;
               this.te = p;
               p = p - 1;
               break;
             }
             case 46: {
+              p = pc;
               this.sharp_s = p - 1;
               this.emit_comment_from_range(p, pe);
               break;
             }
             case 50: {
+              p = pc;
               this.emit_comment_from_range(p, pe);
               this.newline_s = p;
               break;
             }
             case 101: {
+              p = pc;
               this.emit_comment_from_range(p, pe);
               this.te = p;
               p = p - 1;
               break;
             }
             case 116: {
+              p = pc;
               this.emit_comment_from_range(p, pe);
               this.te = p;
               p = p - 1;
               break;
             }
             case 128: {
+              p = pc;
               this.emit_comment_from_range(p, pe);
               this.te = p;
               p = p - 1;
               break;
             }
             case 150: {
+              p = pc;
               this.emit_comment_from_range(p, pe);
               this.te = p;
               p = p - 1;
@@ -5351,85 +6139,100 @@ export class RbLexer {
               continue;
             }
             case 165: {
+              p = pc;
               this.emit_comment_from_range(p, pe);
               this.te = p;
               p = p - 1;
               break;
             }
             case 177: {
+              p = pc;
               this.emit_comment_from_range(p, pe);
               this.te = p;
               p = p - 1;
               break;
             }
             case 204: {
+              p = pc;
               this.emit_comment_from_range(p, pe);
               this.te = p;
               p = p - 1;
               break;
             }
             case 252: {
+              p = pc;
               this.emit_comment_from_range(p, pe);
               this.te = p;
               p = p - 1;
               break;
             }
             case 262: {
+              p = pc;
               this.emit_comment_from_range(p, pe);
               this.te = p;
               p = p - 1;
               break;
             }
             case 283: {
+              p = pc;
               this.emit_comment_from_range(p, pe);
               this.te = p;
               p = p - 1;
               break;
             }
             case 378: {
+              p = pc;
               this.emit_comment_from_range(p, pe);
               this.te = p;
               p = p - 1;
               break;
             }
             case 122: {
+              p = pc;
               tm = p;
               this.te = p;
               p = p - 1;
               this.emit4(TK_tFID, this.tok2(this.ts, tm), this.ts, tm);
               this.cs = this.arg_or_cmdarg(cmd_state);
-              p = tm - 1;
+              q = rbPos(tm);
+              p = q - 1;
               p += 1;
               _goto_level = _out;
               continue;
             }
             case 218: {
+              p = pc;
               tm = p;
               this.te = p;
               p = p - 1;
-              this.emit4(TK_tSYMBOL, this.tok2(this.ts + 1, tm), this.ts, tm);
-              p = tm - 1;
+              this.emit4(TK_tSYMBOL, this.tok2(rbPos(this.ts) + 1, tm), this.ts, tm);
+              q = rbPos(tm);
+              p = q - 1;
               this.cs = 516;
               p += 1;
               _goto_level = _out;
               continue;
             }
             case 189: {
+              p = pc;
               tm = p;
               this.te = p;
               p = p - 1;
-              p = this.ts - 1;
+              q = rbPos(this.ts);
+              p = q - 1;
               this.cs = 516;
               _goto_level = _again;
               continue;
             }
             case 276: {
+              p = pc;
               tm = p;
               switch (this.act) {
                 case 104: {
-                  p = this.te - 1;
+                  q = rbPos(this.te);
+                  p = q - 1;
                   if (this.lambdaLast() === this.paren_nest) {
-                    this.nLambda = this.nLambda - 1;
+                    this.nLambda = sub32(this.nLambda, 1);
                     if (this.tokIs(this.ts, this.te, "{")) {
                       this.emit2(TK_tLAMBEG, "{");
                     } else {
@@ -5443,7 +6246,7 @@ export class RbLexer {
                     }
                   }
                   if (this.tokIs(this.ts, this.te, "{")) {
-                    this.paren_nest += 1;
+                    this.paren_nest = add32(this.paren_nest, 1);
                   }
                   this.command_start = true;
                   this.cs = 508;
@@ -5452,7 +6255,8 @@ export class RbLexer {
                   continue;
                 }
                 case 105: {
-                  p = this.te - 1;
+                  q = rbPos(this.te);
+                  p = q - 1;
                   this.emit_table(3);
                   this.cs = 134;
                   p += 1;
@@ -5460,7 +6264,8 @@ export class RbLexer {
                   continue;
                 }
                 case 106: {
-                  p = this.te - 1;
+                  q = rbPos(this.te);
+                  p = q - 1;
                   this.emit_singleton_class();
                   this.cs = 508;
                   p += 1;
@@ -5468,7 +6273,8 @@ export class RbLexer {
                   continue;
                 }
                 case 107: {
-                  p = this.te - 1;
+                  q = rbPos(this.te);
+                  p = q - 1;
                   this.emit_table(3);
                   this.cs = 345;
                   p += 1;
@@ -5476,7 +6282,8 @@ export class RbLexer {
                   continue;
                 }
                 case 108: {
-                  p = this.te - 1;
+                  q = rbPos(this.te);
+                  p = q - 1;
                   this.emit_table(3);
                   this.command_start = true;
                   this.cs = 508;
@@ -5485,7 +6292,8 @@ export class RbLexer {
                   continue;
                 }
                 case 109: {
-                  p = this.te - 1;
+                  q = rbPos(this.te);
+                  p = q - 1;
                   this.emit_table(3);
                   this.cs = 321;
                   p += 1;
@@ -5493,7 +6301,8 @@ export class RbLexer {
                   continue;
                 }
                 case 110: {
-                  p = this.te - 1;
+                  q = rbPos(this.te);
+                  p = q - 1;
                   this.emit_table(3);
                   if (false && this.tokIs(this.ts, this.te, "!")) {
                     this.cs = 345;
@@ -5508,7 +6317,8 @@ export class RbLexer {
                   }
                 }
                 case 111: {
-                  p = this.te - 1;
+                  q = rbPos(this.te);
+                  p = q - 1;
                   if (false) {
                     this.emit1(TK_tIDENTIFIER);
                     if (!this.declared(this.tok2(this.ts, this.te))) {
@@ -5522,32 +6332,42 @@ export class RbLexer {
                   continue;
                 }
                 case 112: {
-                  p = this.te - 1;
+                  q = rbPos(this.te);
+                  p = q - 1;
                   this.emit_table(3);
                   p += 1;
                   _goto_level = _out;
                   continue;
                 }
                 case 113: {
-                  p = this.te - 1;
+                  q = rbPos(this.te);
+                  p = q - 1;
                   digits = this.numeric_literal_int();
                   if (false) {
                     this.emit4(TK_tINTEGER, this.intValue(digits, this.num_base), this.ts, this.num_suffix_s);
-                    p = this.num_suffix_s - 1;
+                    q = rbPos(this.num_suffix_s);
+                    p = q - 1;
                   } else {
-                    p = this.numXfrm(this.intValue(digits, this.num_base), p);
+                    q = this.numXfrm(this.intValue(digits, this.num_base), p);
+                    p = q;
                   }
                   p += 1;
                   _goto_level = _out;
                   continue;
                 }
                 case 115: {
-                  p = this.te - 1;
+                  q = rbPos(this.te);
+                  p = q - 1;
                   if (false) {
                     this.diagError();
                   } else {
-                    this.emit4(TK_tINTEGER, this.intValue(this.tok2(this.ts, this.te - 1), 10), this.ts, this.te - 1);
-                    p = p - 1;
+                    this.emit4(
+                      TK_tINTEGER,
+                      this.intValue(this.tok2(this.ts, rbPos(this.te) - 1), 10),
+                      this.ts,
+                      rbPos(this.te) - 1,
+                    );
+                    p = q - 2;
                     p += 1;
                     _goto_level = _out;
                     continue;
@@ -5555,12 +6375,13 @@ export class RbLexer {
                   break;
                 }
                 case 116: {
-                  p = this.te - 1;
+                  q = rbPos(this.te);
+                  p = q - 1;
                   if (false) {
                     this.diagError();
                   } else {
-                    this.emit4(TK_tFLOAT, this.tok2(this.ts, this.te - 1), this.ts, this.te - 1);
-                    p = p - 1;
+                    this.emit4(TK_tFLOAT, this.tok2(this.ts, rbPos(this.te) - 1), this.ts, rbPos(this.te) - 1);
+                    p = q - 2;
                     p += 1;
                     _goto_level = _out;
                     continue;
@@ -5568,20 +6389,24 @@ export class RbLexer {
                   break;
                 }
                 case 117: {
-                  p = this.te - 1;
+                  q = rbPos(this.te);
+                  p = q - 1;
                   digits = this.tok2(this.ts, this.num_suffix_s);
                   if (false) {
                     this.emit4(TK_tFLOAT, digits, this.ts, this.num_suffix_s);
-                    p = this.num_suffix_s - 1;
+                    q = rbPos(this.num_suffix_s);
+                    p = q - 1;
                   } else {
-                    p = this.numXfrm(digits, p);
+                    q = this.numXfrm(digits, p);
+                    p = q;
                   }
                   p += 1;
                   _goto_level = _out;
                   continue;
                 }
                 case 119: {
-                  p = this.te - 1;
+                  q = rbPos(this.te);
+                  p = q - 1;
                   this.emit1(TK_tCONSTANT);
                   this.cs = this.arg_or_cmdarg(cmd_state);
                   p += 1;
@@ -5589,7 +6414,8 @@ export class RbLexer {
                   continue;
                 }
                 case 123: {
-                  p = this.te - 1;
+                  q = rbPos(this.te);
+                  p = q - 1;
                   this.emit1(TK_tIDENTIFIER);
                   if (this.declared(this.tok2(this.ts, this.te))) {
                     this.cs = 247;
@@ -5609,12 +6435,14 @@ export class RbLexer {
                   }
                 }
                 case 124: {
-                  p = this.te - 1;
+                  q = rbPos(this.te);
+                  p = q - 1;
                   if (tm === this.te) {
                     this.emit1(TK_tFID);
                   } else {
                     this.emit4(TK_tIDENTIFIER, this.tok2(this.ts, tm), this.ts, tm);
-                    p = tm - 1;
+                    q = rbPos(tm);
+                    p = q - 1;
                   }
                   this.cs = 276;
                   p += 1;
@@ -5622,7 +6450,8 @@ export class RbLexer {
                   continue;
                 }
                 case 126: {
-                  p = this.te - 1;
+                  q = rbPos(this.te);
+                  p = q - 1;
                   this.emit_table(1);
                   this.cs = 508;
                   p += 1;
@@ -5630,7 +6459,8 @@ export class RbLexer {
                   continue;
                 }
                 case 127: {
-                  p = this.te - 1;
+                  q = rbPos(this.te);
+                  p = q - 1;
                   this.emit_table(1);
                   this.cs = 345;
                   p += 1;
@@ -5641,37 +6471,44 @@ export class RbLexer {
               break;
             }
             case 123: {
+              p = pc;
               tm = p - 2;
               this.te = p;
               p = p - 1;
               this.emit4(TK_tFID, this.tok2(this.ts, tm), this.ts, tm);
               this.cs = this.arg_or_cmdarg(cmd_state);
-              p = tm - 1;
+              q = rbPos(tm);
+              p = q - 1;
               p += 1;
               _goto_level = _out;
               continue;
             }
             case 219: {
+              p = pc;
               tm = p - 2;
               this.te = p;
               p = p - 1;
-              this.emit4(TK_tSYMBOL, this.tok2(this.ts + 1, tm), this.ts, tm);
-              p = tm - 1;
+              this.emit4(TK_tSYMBOL, this.tok2(rbPos(this.ts) + 1, tm), this.ts, tm);
+              q = rbPos(tm);
+              p = q - 1;
               this.cs = 516;
               p += 1;
               _goto_level = _out;
               continue;
             }
             case 191: {
+              p = pc;
               tm = p - 2;
               this.te = p;
               p = p - 1;
-              p = this.ts - 1;
+              q = rbPos(this.ts);
+              p = q - 1;
               this.cs = 516;
               _goto_level = _again;
               continue;
             }
             case 277: {
+              p = pc;
               tm = p - 2;
               this.te = p;
               p = p - 1;
@@ -5679,7 +6516,8 @@ export class RbLexer {
                 this.emit1(TK_tFID);
               } else {
                 this.emit4(TK_tIDENTIFIER, this.tok2(this.ts, tm), this.ts, tm);
-                p = tm - 1;
+                q = rbPos(tm);
+                p = q - 1;
               }
               this.cs = 276;
               p += 1;
@@ -5687,127 +6525,149 @@ export class RbLexer {
               continue;
             }
             case 220: {
+              p = pc;
               tm = p;
               this.te = p;
               p = p - 1;
-              this.emit4(TK_tSYMBOL, this.tok2(this.ts + 1, tm), this.ts, tm);
-              p = tm - 1;
+              this.emit4(TK_tSYMBOL, this.tok2(rbPos(this.ts) + 1, tm), this.ts, tm);
+              q = rbPos(tm);
+              p = q - 1;
               this.cs = 516;
               p += 1;
               _goto_level = _out;
               continue;
             }
             case 192: {
+              p = pc;
               tm = p;
               this.te = p;
               p = p - 1;
-              p = this.ts - 1;
+              q = rbPos(this.ts);
+              p = q - 1;
               this.cs = 516;
               _goto_level = _again;
               continue;
             }
             case 221: {
+              p = pc;
               tm = p - 2;
               this.te = p;
               p = p - 1;
-              this.emit4(TK_tSYMBOL, this.tok2(this.ts + 1, tm), this.ts, tm);
-              p = tm - 1;
+              this.emit4(TK_tSYMBOL, this.tok2(rbPos(this.ts) + 1, tm), this.ts, tm);
+              q = rbPos(tm);
+              p = q - 1;
               this.cs = 516;
               p += 1;
               _goto_level = _out;
               continue;
             }
             case 193: {
+              p = pc;
               tm = p - 2;
               this.te = p;
               p = p - 1;
-              p = this.ts - 1;
+              q = rbPos(this.ts);
+              p = q - 1;
               this.cs = 516;
               _goto_level = _again;
               continue;
             }
             case 225: {
+              p = pc;
               tm = p - 2;
               this.te = p;
               p = p - 1;
-              this.emit4(TK_tSYMBOL, this.tok2(this.ts + 1, tm), this.ts, tm);
-              p = tm - 1;
+              this.emit4(TK_tSYMBOL, this.tok2(rbPos(this.ts) + 1, tm), this.ts, tm);
+              q = rbPos(tm);
+              p = q - 1;
               this.cs = 516;
               p += 1;
               _goto_level = _out;
               continue;
             }
             case 196: {
+              p = pc;
               tm = p - 2;
               this.te = p;
               p = p - 1;
-              p = this.ts - 1;
+              q = rbPos(this.ts);
+              p = q - 1;
               this.cs = 516;
               _goto_level = _again;
               continue;
             }
             case 224: {
+              p = pc;
               tm = p - 2;
               this.te = p;
               p = p - 1;
-              this.emit4(TK_tSYMBOL, this.tok2(this.ts + 1, tm), this.ts, tm);
-              p = tm - 1;
+              this.emit4(TK_tSYMBOL, this.tok2(rbPos(this.ts) + 1, tm), this.ts, tm);
+              q = rbPos(tm);
+              p = q - 1;
               this.cs = 516;
               p += 1;
               _goto_level = _out;
               continue;
             }
             case 195: {
+              p = pc;
               tm = p - 2;
               switch (this.act) {
                 case 60: {
-                  p = this.te - 1;
-                  this.emit4(TK_tUNARY_NUM, this.tok2(this.ts, this.ts + 1), this.ts, this.ts + 1);
-                  p = p - 1;
+                  q = rbPos(this.te);
+                  p = q - 1;
+                  this.emit4(TK_tUNARY_NUM, this.tok2(this.ts, rbPos(this.ts) + 1), this.ts, rbPos(this.ts) + 1);
+                  p = q - 2;
                   this.cs = 516;
                   p += 1;
                   _goto_level = _out;
                   continue;
                 }
                 case 67: {
-                  p = this.te - 1;
+                  q = rbPos(this.te);
+                  p = q - 1;
                   this.diagError();
                   break;
                 }
                 case 76: {
-                  p = this.te - 1;
+                  q = rbPos(this.te);
+                  p = q - 1;
                   if (true) {
-                    this.emit4(TK_tPIPE, this.tok2(this.ts, this.ts + 1), this.ts, this.ts + 1);
-                    p = p - 1;
+                    this.emit4(TK_tPIPE, this.tok2(this.ts, rbPos(this.ts) + 1), this.ts, rbPos(this.ts) + 1);
+                    p = q - 2;
                     this.cs = 345;
                     p += 1;
                     _goto_level = _out;
                     continue;
                   } else {
-                    p -= 2;
+                    p = q - 3;
                     this.cs = 516;
                     _goto_level = _again;
                     continue;
                   }
                 }
                 case 80: {
-                  p = this.te - 1;
+                  q = rbPos(this.te);
+                  p = q - 1;
                   this.emit_table(2);
                   p += 1;
                   _goto_level = _out;
                   continue;
                 }
                 case 81: {
-                  p = this.te - 1;
+                  q = rbPos(this.te);
+                  p = q - 1;
                   this.emit4(TK_kRESCUE, "rescue", this.ts, tm);
-                  p = tm - 1;
+                  q = rbPos(tm);
+                  p = q - 1;
                   this.cs = 321;
                   p += 1;
                   _goto_level = _out;
                   continue;
                 }
                 case 82: {
-                  p = this.te - 1;
+                  q = rbPos(this.te);
+                  p = q - 1;
                   this.emit_table(4);
                   this.command_start = true;
                   this.cs = 508;
@@ -5816,14 +6676,17 @@ export class RbLexer {
                   continue;
                 }
                 case 86: {
-                  p = this.te - 1;
-                  p = this.ts - 1;
+                  q = rbPos(this.te);
+                  p = q - 1;
+                  q = rbPos(this.ts);
+                  p = q - 1;
                   this.cs = 516;
                   _goto_level = _again;
                   continue;
                 }
                 case 87: {
-                  p = this.te - 1;
+                  q = rbPos(this.te);
+                  p = q - 1;
                   this.emit1(TK_tIDENTIFIER);
                   if (this.declared(this.tok2(this.ts, this.te))) {
                     this.cs = 247;
@@ -5843,8 +6706,10 @@ export class RbLexer {
                   }
                 }
                 case 91: {
-                  p = this.te - 1;
-                  p = this.ts - 1;
+                  q = rbPos(this.te);
+                  p = q - 1;
+                  q = rbPos(this.ts);
+                  p = q - 1;
                   this.cs = 516;
                   _goto_level = _again;
                   continue;
@@ -5853,62 +6718,72 @@ export class RbLexer {
               break;
             }
             case 222: {
+              p = pc;
               tm = p - 3;
               this.te = p;
               p = p - 1;
-              this.emit4(TK_tSYMBOL, this.tok2(this.ts + 1, tm), this.ts, tm);
-              p = tm - 1;
+              this.emit4(TK_tSYMBOL, this.tok2(rbPos(this.ts) + 1, tm), this.ts, tm);
+              q = rbPos(tm);
+              p = q - 1;
               this.cs = 516;
               p += 1;
               _goto_level = _out;
               continue;
             }
             case 194: {
+              p = pc;
               tm = p - 3;
               this.te = p;
               p = p - 1;
-              p = this.ts - 1;
+              q = rbPos(this.ts);
+              p = q - 1;
               this.cs = 516;
               _goto_level = _again;
               continue;
             }
             case 223: {
+              p = pc;
               tm = p - 2;
               this.te = p;
               p = p - 1;
-              this.emit4(TK_tSYMBOL, this.tok2(this.ts + 1, tm), this.ts, tm);
-              p = tm - 1;
+              this.emit4(TK_tSYMBOL, this.tok2(rbPos(this.ts) + 1, tm), this.ts, tm);
+              q = rbPos(tm);
+              p = q - 1;
               this.cs = 516;
               p += 1;
               _goto_level = _out;
               continue;
             }
             case 342: {
+              p = pc;
               tm = p - 2;
               this.te = p;
               p = p - 1;
               this.emit4(TK_tCONSTANT, this.tok2(this.ts, tm), this.ts, tm);
-              p = tm - 1;
+              q = rbPos(tm);
+              p = q - 1;
               p += 1;
               _goto_level = _out;
               continue;
             }
             case 146: {
+              p = pc;
               this.cond.push(false);
               this.cmdarg.push(false);
-              this.paren_nest += 1;
+              this.paren_nest = add32(this.paren_nest, 1);
               this.te = p;
               p = p - 1;
-              this.emit4(TK_tLBRACK, "[", this.te - 1, this.te);
+              this.emit4(TK_tLBRACK, "[", rbPos(this.te) - 1, this.te);
               this.cs = 345;
               p += 1;
               _goto_level = _out;
               continue;
             }
             case 238: {
+              p = pc;
               this.cond.push(false);
               this.cmdarg.push(false);
-              this.paren_nest += 1;
+              this.paren_nest = add32(this.paren_nest, 1);
               this.te = p;
               p = p - 1;
               this.emit2(TK_tLBRACK, "[");
@@ -5917,9 +6792,10 @@ export class RbLexer {
               continue;
             }
             case 345: {
+              p = pc;
               this.cond.push(false);
               this.cmdarg.push(false);
-              this.paren_nest += 1;
+              this.paren_nest = add32(this.paren_nest, 1);
               this.te = p;
               p = p - 1;
               this.emit2(TK_tLBRACK2, "[");
@@ -5929,7 +6805,8 @@ export class RbLexer {
               continue;
             }
             case 348: {
-              this.paren_nest -= 1;
+              p = pc;
+              this.paren_nest = sub32(this.paren_nest, 1);
               this.te = p;
               p = p - 1;
               this.emit_rbrace_rparen_rbrack();
@@ -5946,22 +6823,23 @@ export class RbLexer {
               continue;
             }
             case 138: {
+              p = pc;
               this.cond.push(false);
               this.cmdarg.push(false);
-              this.paren_nest += 1;
+              this.paren_nest = add32(this.paren_nest, 1);
               if (false) {
                 this.command_start = true;
               }
               this.te = p;
               p = p - 1;
               if (false) {
-                this.emit4(TK_tLPAREN2, "(", this.te - 1, this.te);
+                this.emit4(TK_tLPAREN2, "(", rbPos(this.te) - 1, this.te);
                 this.cs = 508;
                 p += 1;
                 _goto_level = _out;
                 continue;
               } else {
-                this.emit4(TK_tLPAREN_ARG, "(", this.te - 1, this.te);
+                this.emit4(TK_tLPAREN_ARG, "(", rbPos(this.te) - 1, this.te);
                 this.cs = 345;
                 p += 1;
                 _goto_level = _out;
@@ -5969,9 +6847,10 @@ export class RbLexer {
               }
             }
             case 151: {
+              p = pc;
               this.cond.push(false);
               this.cmdarg.push(false);
-              this.paren_nest += 1;
+              this.paren_nest = add32(this.paren_nest, 1);
               if (false) {
                 this.command_start = true;
               }
@@ -5984,15 +6863,16 @@ export class RbLexer {
               continue;
             }
             case 159: {
+              p = pc;
               this.cond.push(false);
               this.cmdarg.push(false);
-              this.paren_nest += 1;
+              this.paren_nest = add32(this.paren_nest, 1);
               if (false) {
                 this.command_start = true;
               }
               this.te = p;
               p = p - 1;
-              this.emit4(TK_tLPAREN_ARG, "(", this.te - 1, this.te);
+              this.emit4(TK_tLPAREN_ARG, "(", rbPos(this.te) - 1, this.te);
               if (false) {
                 this.cs = 508;
                 p += 1;
@@ -6006,9 +6886,10 @@ export class RbLexer {
               }
             }
             case 208: {
+              p = pc;
               this.cond.push(false);
               this.cmdarg.push(false);
-              this.paren_nest += 1;
+              this.paren_nest = add32(this.paren_nest, 1);
               if (false) {
                 this.command_start = true;
               }
@@ -6020,9 +6901,10 @@ export class RbLexer {
               continue;
             }
             case 289: {
+              p = pc;
               this.cond.push(false);
               this.cmdarg.push(false);
-              this.paren_nest += 1;
+              this.paren_nest = add32(this.paren_nest, 1);
               if (false) {
                 this.command_start = true;
               }
@@ -6035,7 +6917,8 @@ export class RbLexer {
               continue;
             }
             case 290: {
-              this.paren_nest -= 1;
+              p = pc;
+              this.paren_nest = sub32(this.paren_nest, 1);
               this.te = p;
               p = p - 1;
               this.emit_rbrace_rparen_rbrack();
@@ -6052,11 +6935,13 @@ export class RbLexer {
               continue;
             }
             case 57: {
+              p = pc;
               heredoc_e = p;
               this.newline_s = p;
               break;
             }
             case 233: {
+              p = pc;
               new_herebody_s = p;
               this.te = p;
               p = p - 1;
@@ -6083,8 +6968,9 @@ export class RbLexer {
                 }
               }
               if (dedent_body && false) {
-                this.emit4(TK_tLSHFT, "<<", this.ts, this.ts + 2);
-                p = this.ts + 1;
+                this.emit4(TK_tLSHFT, "<<", this.ts, rbPos(this.ts) + 2);
+                q = rbPos(this.ts);
+                p = q + 1;
                 this.cs = 345;
                 p += 1;
                 _goto_level = _out;
@@ -6094,12 +6980,14 @@ export class RbLexer {
                 if (this.st().herebody_s < 0) {
                   this.st().herebody_s = new_herebody_s;
                 }
-                p = this.st().herebody_s - 1;
+                q = rbPos(this.st().herebody_s);
+                p = q - 1;
                 this.cs = 128;
               }
               break;
             }
             case 228: {
+              p = pc;
               tm = p - 1;
               this.te = p;
               p = p - 1;
@@ -6110,6 +6998,7 @@ export class RbLexer {
               continue;
             }
             case 231: {
+              p = pc;
               tm = p - 2;
               this.te = p;
               p = p - 1;
@@ -6120,259 +7009,309 @@ export class RbLexer {
               continue;
             }
             case 241: {
+              p = pc;
               tm = p;
               this.te = p;
               p = p - 1;
               this.emit4(TK_kRESCUE, "rescue", this.ts, tm);
-              p = tm - 1;
+              q = rbPos(tm);
+              p = q - 1;
               this.cs = 321;
               p += 1;
               _goto_level = _out;
               continue;
             }
             case 332: {
+              p = pc;
               this.num_base = 16;
               this.num_digits_s = p;
               this.num_suffix_s = p;
               break;
             }
             case 326: {
+              p = pc;
               this.num_base = 10;
               this.num_digits_s = p;
               this.num_suffix_s = p;
               break;
             }
             case 329: {
+              p = pc;
               this.num_base = 8;
               this.num_digits_s = p;
               this.num_suffix_s = p;
               break;
             }
             case 323: {
+              p = pc;
               this.num_base = 2;
               this.num_digits_s = p;
               this.num_suffix_s = p;
               break;
             }
             case 338: {
+              p = pc;
               this.num_base = 10;
               this.num_digits_s = this.ts;
               this.num_suffix_s = p;
               break;
             }
             case 301: {
+              p = pc;
               this.num_base = 8;
               this.num_digits_s = this.ts;
               this.num_suffix_s = p;
               break;
             }
             case 339: {
+              p = pc;
               this.num_suffix_s = p;
               this.num_xfrm = XF_integer;
               break;
             }
             case 184: {
+              p = pc;
               this.te = p + 1;
               this.newline_s = p;
               break;
             }
             case 305: {
+              p = pc;
               this.te = p + 1;
               this.num_suffix_s = p;
               break;
             }
             case 107: {
+              p = pc;
               this.te = p + 1;
               this.act = 4;
               break;
             }
             case 94: {
+              p = pc;
               this.te = p + 1;
               this.act = 5;
               break;
             }
             case 90: {
+              p = pc;
               this.te = p + 1;
               this.act = 6;
               break;
             }
             case 12: {
+              p = pc;
               this.te = p + 1;
               this.act = 33;
               break;
             }
             case 140: {
+              p = pc;
               this.te = p + 1;
               this.act = 34;
               break;
             }
             case 13: {
+              p = pc;
               this.te = p + 1;
               this.act = 39;
               break;
             }
             case 133: {
+              p = pc;
               this.te = p + 1;
               this.act = 40;
               break;
             }
             case 160: {
+              p = pc;
               this.te = p + 1;
               this.act = 46;
               break;
             }
             case 31: {
+              p = pc;
               this.te = p + 1;
               this.act = 47;
               break;
             }
             case 181: {
+              p = pc;
               this.te = p + 1;
               this.act = 54;
               break;
             }
             case 170: {
+              p = pc;
               this.te = p + 1;
               this.act = 55;
               break;
             }
             case 55: {
+              p = pc;
               this.te = p + 1;
               this.act = 67;
               break;
             }
             case 246: {
+              p = pc;
               this.te = p + 1;
               this.act = 76;
               break;
             }
             case 185: {
+              p = pc;
               this.te = p + 1;
               this.act = 80;
               break;
             }
             case 240: {
+              p = pc;
               this.te = p + 1;
               this.act = 81;
               break;
             }
             case 239: {
+              p = pc;
               this.te = p + 1;
               this.act = 82;
               break;
             }
             case 59: {
+              p = pc;
               this.te = p + 1;
               this.act = 86;
               break;
             }
             case 182: {
+              p = pc;
               this.te = p + 1;
               this.act = 87;
               break;
             }
             case 186: {
+              p = pc;
               this.te = p + 1;
               this.act = 91;
               break;
             }
             case 356: {
+              p = pc;
               this.te = p + 1;
               this.act = 104;
               break;
             }
             case 351: {
+              p = pc;
               this.te = p + 1;
               this.act = 105;
               break;
             }
             case 359: {
+              p = pc;
               this.te = p + 1;
               this.act = 107;
               break;
             }
             case 352: {
+              p = pc;
               this.te = p + 1;
               this.act = 108;
               break;
             }
             case 353: {
+              p = pc;
               this.te = p + 1;
               this.act = 109;
               break;
             }
             case 358: {
+              p = pc;
               this.te = p + 1;
               this.act = 110;
               break;
             }
             case 350: {
+              p = pc;
               this.te = p + 1;
               this.act = 111;
               break;
             }
             case 344: {
+              p = pc;
               this.te = p + 1;
               this.act = 112;
               break;
             }
             case 270: {
+              p = pc;
               this.te = p + 1;
               this.act = 113;
               break;
             }
             case 303: {
+              p = pc;
               this.te = p + 1;
               this.act = 116;
               break;
             }
             case 67: {
+              p = pc;
               this.te = p + 1;
               this.act = 117;
               break;
             }
             case 273: {
+              p = pc;
               this.te = p + 1;
               this.act = 119;
               break;
             }
             case 264: {
+              p = pc;
               this.te = p + 1;
               this.act = 123;
               break;
             }
             case 275: {
+              p = pc;
               this.te = p + 1;
               this.act = 124;
               break;
             }
             case 268: {
+              p = pc;
               this.te = p + 1;
               this.act = 126;
               break;
             }
             case 274: {
+              p = pc;
               this.te = p + 1;
               this.act = 127;
               break;
             }
             case 73: {
+              p = pc;
               this.te = p + 1;
               this.act = 140;
               break;
             }
             case 363: {
+              p = pc;
               this.te = p + 1;
               this.act = 144;
               break;
             }
             case 47: {
+              p = pc;
               this.sharp_s = p - 1;
               this.emit_comment_from_range(p, pe);
               this.newline_s = p;
               break;
             }
             case 100: {
+              p = pc;
               this.sharp_s = p - 1;
               this.emit_comment_from_range(p, pe);
               this.te = p;
@@ -6380,6 +7319,7 @@ export class RbLexer {
               break;
             }
             case 115: {
+              p = pc;
               this.sharp_s = p - 1;
               this.emit_comment_from_range(p, pe);
               this.te = p;
@@ -6387,6 +7327,7 @@ export class RbLexer {
               break;
             }
             case 127: {
+              p = pc;
               this.sharp_s = p - 1;
               this.emit_comment_from_range(p, pe);
               this.te = p;
@@ -6394,6 +7335,7 @@ export class RbLexer {
               break;
             }
             case 149: {
+              p = pc;
               this.sharp_s = p - 1;
               this.emit_comment_from_range(p, pe);
               this.te = p;
@@ -6403,6 +7345,7 @@ export class RbLexer {
               continue;
             }
             case 164: {
+              p = pc;
               this.sharp_s = p - 1;
               this.emit_comment_from_range(p, pe);
               this.te = p;
@@ -6410,6 +7353,7 @@ export class RbLexer {
               break;
             }
             case 176: {
+              p = pc;
               this.sharp_s = p - 1;
               this.emit_comment_from_range(p, pe);
               this.te = p;
@@ -6417,6 +7361,7 @@ export class RbLexer {
               break;
             }
             case 203: {
+              p = pc;
               this.sharp_s = p - 1;
               this.emit_comment_from_range(p, pe);
               this.te = p;
@@ -6424,6 +7369,7 @@ export class RbLexer {
               break;
             }
             case 251: {
+              p = pc;
               this.sharp_s = p - 1;
               this.emit_comment_from_range(p, pe);
               this.te = p;
@@ -6431,6 +7377,7 @@ export class RbLexer {
               break;
             }
             case 261: {
+              p = pc;
               this.sharp_s = p - 1;
               this.emit_comment_from_range(p, pe);
               this.te = p;
@@ -6438,6 +7385,7 @@ export class RbLexer {
               break;
             }
             case 282: {
+              p = pc;
               this.sharp_s = p - 1;
               this.emit_comment_from_range(p, pe);
               this.te = p;
@@ -6445,6 +7393,7 @@ export class RbLexer {
               break;
             }
             case 377: {
+              p = pc;
               this.sharp_s = p - 1;
               this.emit_comment_from_range(p, pe);
               this.te = p;
@@ -6452,6 +7401,7 @@ export class RbLexer {
               break;
             }
             case 334: {
+              p = pc;
               this.num_base = 10;
               this.num_digits_s = this.ts;
               this.num_suffix_s = p;
@@ -6459,6 +7409,7 @@ export class RbLexer {
               break;
             }
             case 298: {
+              p = pc;
               this.num_base = 8;
               this.num_digits_s = this.ts;
               this.num_suffix_s = p;
@@ -6466,6 +7417,7 @@ export class RbLexer {
               break;
             }
             case 313: {
+              p = pc;
               this.num_suffix_s = p;
               this.num_xfrm = XF_integer;
               this.te = p;
@@ -6473,15 +7425,18 @@ export class RbLexer {
               digits = this.numeric_literal_int();
               if (false) {
                 this.emit4(TK_tINTEGER, this.intValue(digits, this.num_base), this.ts, this.num_suffix_s);
-                p = this.num_suffix_s - 1;
+                q = rbPos(this.num_suffix_s);
+                p = q - 1;
               } else {
-                p = this.numXfrm(this.intValue(digits, this.num_base), p);
+                q = this.numXfrm(this.intValue(digits, this.num_base), p);
+                p = q;
               }
               p += 1;
               _goto_level = _out;
               continue;
             }
             case 306: {
+              p = pc;
               this.num_suffix_s = p;
               this.num_xfrm = XF_float;
               this.te = p;
@@ -6489,15 +7444,18 @@ export class RbLexer {
               digits = this.tok2(this.ts, this.num_suffix_s);
               if (false) {
                 this.emit4(TK_tFLOAT, digits, this.ts, this.num_suffix_s);
-                p = this.num_suffix_s - 1;
+                q = rbPos(this.num_suffix_s);
+                p = q - 1;
               } else {
-                p = this.numXfrm(digits, p);
+                q = this.numXfrm(digits, p);
+                p = q;
               }
               p += 1;
               _goto_level = _out;
               continue;
             }
             case 302: {
+              p = pc;
               this.num_suffix_s = p;
               this.num_xfrm = XF_float;
               this.te = p;
@@ -6505,75 +7463,91 @@ export class RbLexer {
               digits = this.tok2(this.ts, this.num_suffix_s);
               if (false) {
                 this.emit4(TK_tFLOAT, digits, this.ts, this.num_suffix_s);
-                p = this.num_suffix_s - 1;
+                q = rbPos(this.num_suffix_s);
+                p = q - 1;
               } else {
-                p = this.numXfrm(digits, p);
+                q = this.numXfrm(digits, p);
+                p = q;
               }
               p += 1;
               _goto_level = _out;
               continue;
             }
             case 155: {
+              p = pc;
               this.te = p + 1;
               this.newline_s = p;
               this.act = 40;
               break;
             }
             case 21: {
+              p = pc;
               this.te = p + 1;
-              p = this.on_newline(p);
+              q = this.on_newline(p);
+              p = q;
               this.act = 39;
               break;
             }
             case 32: {
+              p = pc;
               this.te = p + 1;
-              p = this.on_newline(p);
+              q = this.on_newline(p);
+              p = q;
               this.act = 47;
               break;
             }
             case 79: {
+              p = pc;
               this.te = p + 1;
-              p = this.on_newline(p);
+              q = this.on_newline(p);
+              p = q;
               this.act = 140;
               break;
             }
             case 51: {
+              p = pc;
               this.te = p + 1;
               this.emit_comment_from_range(p, pe);
               this.act = 60;
               break;
             }
             case 70: {
+              p = pc;
               this.te = p + 1;
               this.emit_comment_from_range(p, pe);
               this.act = 106;
               break;
             }
             case 78: {
+              p = pc;
               this.te = p + 1;
               this.emit_comment_from_range(p, pe);
               this.act = 140;
               break;
             }
             case 23: {
+              p = pc;
               this.te = p + 1;
               tm = p;
               this.act = 34;
               break;
             }
             case 243: {
+              p = pc;
               this.te = p + 1;
               tm = p;
               this.act = 86;
               break;
             }
             case 242: {
+              p = pc;
               this.te = p + 1;
               tm = p;
               this.act = 87;
               break;
             }
             case 335: {
+              p = pc;
               this.te = p + 1;
               this.num_base = 10;
               this.num_digits_s = this.ts;
@@ -6581,6 +7555,7 @@ export class RbLexer {
               break;
             }
             case 330: {
+              p = pc;
               this.num_base = 16;
               this.num_digits_s = p;
               this.num_suffix_s = p;
@@ -6590,15 +7565,18 @@ export class RbLexer {
               digits = this.numeric_literal_int();
               if (false) {
                 this.emit4(TK_tINTEGER, this.intValue(digits, this.num_base), this.ts, this.num_suffix_s);
-                p = this.num_suffix_s - 1;
+                q = rbPos(this.num_suffix_s);
+                p = q - 1;
               } else {
-                p = this.numXfrm(this.intValue(digits, this.num_base), p);
+                q = this.numXfrm(this.intValue(digits, this.num_base), p);
+                p = q;
               }
               p += 1;
               _goto_level = _out;
               continue;
             }
             case 324: {
+              p = pc;
               this.num_base = 10;
               this.num_digits_s = p;
               this.num_suffix_s = p;
@@ -6608,15 +7586,18 @@ export class RbLexer {
               digits = this.numeric_literal_int();
               if (false) {
                 this.emit4(TK_tINTEGER, this.intValue(digits, this.num_base), this.ts, this.num_suffix_s);
-                p = this.num_suffix_s - 1;
+                q = rbPos(this.num_suffix_s);
+                p = q - 1;
               } else {
-                p = this.numXfrm(this.intValue(digits, this.num_base), p);
+                q = this.numXfrm(this.intValue(digits, this.num_base), p);
+                p = q;
               }
               p += 1;
               _goto_level = _out;
               continue;
             }
             case 327: {
+              p = pc;
               this.num_base = 8;
               this.num_digits_s = p;
               this.num_suffix_s = p;
@@ -6626,15 +7607,18 @@ export class RbLexer {
               digits = this.numeric_literal_int();
               if (false) {
                 this.emit4(TK_tINTEGER, this.intValue(digits, this.num_base), this.ts, this.num_suffix_s);
-                p = this.num_suffix_s - 1;
+                q = rbPos(this.num_suffix_s);
+                p = q - 1;
               } else {
-                p = this.numXfrm(this.intValue(digits, this.num_base), p);
+                q = this.numXfrm(this.intValue(digits, this.num_base), p);
+                p = q;
               }
               p += 1;
               _goto_level = _out;
               continue;
             }
             case 321: {
+              p = pc;
               this.num_base = 2;
               this.num_digits_s = p;
               this.num_suffix_s = p;
@@ -6644,15 +7628,18 @@ export class RbLexer {
               digits = this.numeric_literal_int();
               if (false) {
                 this.emit4(TK_tINTEGER, this.intValue(digits, this.num_base), this.ts, this.num_suffix_s);
-                p = this.num_suffix_s - 1;
+                q = rbPos(this.num_suffix_s);
+                p = q - 1;
               } else {
-                p = this.numXfrm(this.intValue(digits, this.num_base), p);
+                q = this.numXfrm(this.intValue(digits, this.num_base), p);
+                p = q;
               }
               p += 1;
               _goto_level = _out;
               continue;
             }
             case 333: {
+              p = pc;
               this.num_base = 10;
               this.num_digits_s = this.ts;
               this.num_suffix_s = p;
@@ -6662,15 +7649,18 @@ export class RbLexer {
               digits = this.numeric_literal_int();
               if (false) {
                 this.emit4(TK_tINTEGER, this.intValue(digits, this.num_base), this.ts, this.num_suffix_s);
-                p = this.num_suffix_s - 1;
+                q = rbPos(this.num_suffix_s);
+                p = q - 1;
               } else {
-                p = this.numXfrm(this.intValue(digits, this.num_base), p);
+                q = this.numXfrm(this.intValue(digits, this.num_base), p);
+                p = q;
               }
               p += 1;
               _goto_level = _out;
               continue;
             }
             case 297: {
+              p = pc;
               this.num_base = 8;
               this.num_digits_s = this.ts;
               this.num_suffix_s = p;
@@ -6680,22 +7670,27 @@ export class RbLexer {
               digits = this.numeric_literal_int();
               if (false) {
                 this.emit4(TK_tINTEGER, this.intValue(digits, this.num_base), this.ts, this.num_suffix_s);
-                p = this.num_suffix_s - 1;
+                q = rbPos(this.num_suffix_s);
+                p = q - 1;
               } else {
-                p = this.numXfrm(this.intValue(digits, this.num_base), p);
+                q = this.numXfrm(this.intValue(digits, this.num_base), p);
+                p = q;
               }
               p += 1;
               _goto_level = _out;
               continue;
             }
             case 17: {
+              p = pc;
               this.te = p + 1;
-              p = this.on_newline(p);
+              q = this.on_newline(p);
+              p = q;
               tm = p;
               this.act = 34;
               break;
             }
             case 48: {
+              p = pc;
               this.te = p + 1;
               this.sharp_s = p - 1;
               this.emit_comment_from_range(p, pe);
@@ -6703,6 +7698,7 @@ export class RbLexer {
               break;
             }
             case 77: {
+              p = pc;
               this.te = p + 1;
               this.sharp_s = p - 1;
               this.emit_comment_from_range(p, pe);
@@ -6710,6 +7706,7 @@ export class RbLexer {
               break;
             }
             case 340: {
+              p = pc;
               this.te = p + 1;
               this.num_suffix_s = p;
               this.num_xfrm = XF_integer;
@@ -6717,6 +7714,7 @@ export class RbLexer {
               break;
             }
             case 336: {
+              p = pc;
               this.te = p + 1;
               this.num_base = 10;
               this.num_digits_s = this.ts;
@@ -6726,6 +7724,7 @@ export class RbLexer {
               break;
             }
             case 300: {
+              p = pc;
               this.te = p + 1;
               this.num_base = 8;
               this.num_digits_s = this.ts;
@@ -6741,12 +7740,16 @@ export class RbLexer {
         }
       }
       if (_goto_level <= _again) {
-        if (RL_LEX_TO_STATE_ACTIONS_D[this.cs] === 84) {
+        if (rbTab(RL_LEX_TO_STATE_ACTIONS_D, this.cs) === 84) {
           this.ts = -1;
         }
         if (this.cs === 0) {
           _goto_level = _out;
           continue;
+        }
+        // Only a fault's past-the-end position reaches the bound.
+        if (p >= 1073741823) {
+          return this.faultToken();
         }
         p += 1;
         if (p !== pe) {
@@ -6756,8 +7759,9 @@ export class RbLexer {
       }
       if (_goto_level <= _test_eof) {
         if (p === eof) {
-          if (RL_LEX_EOF_TRANS_D[this.cs] > 0) {
-            _trans = RL_LEX_EOF_TRANS_D[this.cs] - 1;
+          const eofTrans = rbTab(RL_LEX_EOF_TRANS_D, this.cs);
+          if (eofTrans > 0) {
+            _trans = eofTrans - 1;
             _goto_level = _eof_trans;
             continue;
           }
@@ -6774,7 +7778,7 @@ export class RbLexer {
     if (this.cs === RL_LEX_ERROR) {
       this.failed = true;
       this.tokVal = "$error";
-      this.tokS = p - 1;
+      this.tokS = sub32(p, 1);
       this.tokE = p;
       return 0;
     }
@@ -6787,11 +7791,19 @@ export class RbLexer {
 
   private shift(): i32 {
     const i = this.qHead;
+    const qType = this.qType;
+    const qVal = this.qVal;
+    const qS = this.qS;
+    const qE = this.qE;
+    if (i < 0 || i >= qType.length || i >= qVal.length || i >= qS.length || i >= qE.length) {
+      fault();
+      return 0;
+    }
     this.qHead = i + 1;
-    this.tokVal = this.qVal[i];
-    this.tokS = this.qS[i];
-    this.tokE = this.qE[i];
-    return this.qType[i];
+    this.tokVal = qVal[i];
+    this.tokS = qS[i];
+    this.tokE = qE[i];
+    return qType[i];
   }
 }
 
@@ -6944,7 +7956,7 @@ const rbHeredocOpener = (t: string): RbHeredoc => {
       q = t.substring(i, i + 1);
     }
   }
-  if (q.length > 0 && t.length > i + 1 && t.endsWith(q)) {
+  if (q.length > 0 && i < toI32(t.length) - 1 && t.endsWith(q)) {
     h.delimiter = t.substring(i + 1, toI32(t.length) - 1);
   } else {
     q = "";
@@ -7010,17 +8022,29 @@ const rbToDecimal = (s: string, base: i32): string => {
     }
     let carry = d;
     for (let k = 0; k < toI32(limbs.length); k++) {
-      const v = limbs[k] * base + carry;
+      // A limb is below 10^4, base at most 16 and carry at most 16.
+      const l = limbs[k];
+      if (l < 0 || l > 9999 || base < 0 || base > 16 || carry < 0 || carry > 65535) {
+        fault();
+        return "";
+      }
+      const v = l * base + carry;
       limbs[k] = v % 10000;
       carry = (v - (v % 10000)) / 10000;
     }
     while (carry > 0) {
-      limbs.push(carry % 10000);
-      carry = (carry - (carry % 10000)) / 10000;
+      const c = carry;
+      limbs.push(c % 10000);
+      carry = (c - (c % 10000)) / 10000;
     }
   }
-  let out = `${limbs[limbs.length - 1]}`;
-  for (let k = toI32(limbs.length) - 2; k >= 0; k--) {
+  const nl = toI32(limbs.length);
+  if (nl === 0) {
+    fault();
+    return "";
+  }
+  let out = `${limbs[nl - 1]}`;
+  for (let k = nl - 2; k >= 0 && k < limbs.length; k--) {
     const v = limbs[k];
     out = out + (v < 10 ? "000" : v < 100 ? "00" : v < 1000 ? "0" : "") + `${v}`;
   }

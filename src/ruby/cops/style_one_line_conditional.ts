@@ -3,6 +3,7 @@
 // Ported from RuboCop 1.92.3 (MIT License, Copyright (c) 2012-24 Bozhidar
 // Batsov).
 
+import { add32 } from "../../core/arr";
 import {
   F_BEGIN,
   NT_AND,
@@ -108,7 +109,7 @@ export class CopStyleOneLineConditional {
         let k = 0;
         for (let i = 0; i < a.nKid(eb); i++) {
           if (a.kid(eb, i) !== V_NIL) {
-            k++;
+            k = add32(k, 1);
           }
         }
         multiline = k >= 2;

@@ -1,7 +1,8 @@
 // A Java-only driver for quick builds while porting:
-//   nish tools/dev/java.ts --link /tmp/javadev && /tmp/javadev <file>
+//   nish tools/dev/java.ts --allow-panics --link /tmp/javadev && /tmp/javadev <file>
 // prints the formatted file, or exits 1 when it cannot be formatted.
 
+import { faultReset, faulted } from "../../src/core/fault";
 import { Out } from "../../src/core/out";
 import { JavaEngine, formatJava } from "../../src/java/run";
 
@@ -17,7 +18,8 @@ export const main = (): i32 => {
   const out = new Out(n + 1024);
   const e = new JavaEngine();
   e.debug = getenv("FFDEBUG") !== null;
-  if (!formatJava(e, path, src, n, out)) {
+  faultReset();
+  if (!formatJava(e, path, src, n, out) || faulted()) {
     return 1;
   }
   writeBytes(out.buf, 0, out.n);

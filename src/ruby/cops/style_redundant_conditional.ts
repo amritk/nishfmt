@@ -3,6 +3,7 @@
 // Ported from RuboCop 1.92.3 (MIT License, Copyright (c) 2012-24 Bozhidar
 // Batsov).
 
+import { add32 } from "../../core/arr";
 import { NT_FALSE, NT_IF, NT_SEND, NT_TRUE } from "../ast";
 import { RbCop } from "../cop";
 import { RbSource } from "../source";
@@ -44,7 +45,7 @@ export class CopStyleRedundantConditional {
       }
       const cs = src.nodeSrc(cond);
       const expr = inverted ? `!(${cs})` : cs;
-      const repl = scnElsif(src, n) ? `else\n${scnSpaces(src.column(a.exS(n)) + 2)}${expr}` : expr;
+      const repl = scnElsif(src, n) ? `else\n${scnSpaces(add32(src.column(a.exS(n)), 2))}${expr}` : expr;
       k.replace(a.exS(n), a.exE(n), repl);
       this.c.commit(k);
     }

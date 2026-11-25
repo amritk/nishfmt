@@ -4,6 +4,8 @@
 // Ported from RuboCop 1.92.3 (MIT License, Copyright (c) 2012-24 Bozhidar
 // Batsov).
 
+import { rbLine } from "../node";
+import { add32, sub32 } from "../../core/arr";
 import {
   F_BEGIN,
   F_END,
@@ -116,7 +118,7 @@ export class CopStyleNext {
     if (scnModifier(src, n)) {
       return false;
     }
-    if (src.line(ssxFS(src, n, F_END)) - src.line(ssxFS(src, n, F_KEYWORD)) <= 3) {
+    if (rbLine(src, ssxFS(src, n, F_END)) - rbLine(src, ssxFS(src, n, F_KEYWORD)) <= 3) {
       return false;
     }
     const ib = scnIfBranch(src, n);
@@ -135,7 +137,7 @@ export class CopStyleNext {
     // end_range
     const es = ssxFS(src, n, F_END);
     const ee = ssxFE(src, n, F_END);
-    let bs = es - src.column(es);
+    let bs = sub32(es, src.column(es));
     const le = src.lineEnd(src.line(ee));
     let ws = true;
     for (let p = ee; p < le; p++) {
@@ -144,7 +146,7 @@ export class CopStyleNext {
       }
     }
     if (ws) {
-      bs -= 1;
+      bs = sub32(bs, 1);
     }
     k.remove(bs, ee);
     // reindentable_lines
@@ -162,7 +164,7 @@ export class CopStyleNext {
       if (rs < 0) {
         continue;
       }
-      for (let l = src.line(rs); l <= src.line(re); l++) {
+      for (let l = src.line(rs); l <= src.line(re) && l < 2147483647; l++) {
         const ls = src.lineStart(l);
         if (rs <= ls && ls < re) {
           skip.add(l);
@@ -170,7 +172,7 @@ export class CopStyleNext {
       }
     }
     const lines: i32[] = [];
-    for (let l = src.line(a.exS(n)) + 1; l < src.line(es); l++) {
+    for (let l = rbLine(src, a.exS(n)) + 1; l < src.line(es); l++) {
       if (skip.has(l)) {
         continue;
       }
@@ -195,14 +197,14 @@ export class CopStyleNext {
         actual = c;
       }
     }
-    const delta = actual - target;
+    const delta = sub32(actual, target);
     for (const l of lines) {
       const prev = this.reindented.get(l) ?? 0;
-      const adj = delta + prev;
+      const adj = add32(delta, prev);
       this.reindented.set(l, adj);
       if (adj > 0) {
         const ls = src.lineStart(l);
-        k.remove(ls, ls + adj);
+        k.remove(ls, add32(ls, adj));
       }
     }
   }
@@ -213,6 +215,6 @@ export class CopStyleNext {
     while (p < src.lineEnd(l) && ssxIsSpace(src.at(p))) {
       p++;
     }
-    return p - ls;
+    return sub32(p, ls);
   }
 }

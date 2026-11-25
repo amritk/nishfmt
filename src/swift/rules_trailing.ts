@@ -4,6 +4,8 @@
 // Ported from SwiftFormat 0.64.7 (MIT License, Copyright (c) 2016 Nick
 // Lockwood).
 
+import { fault } from "../core/fault";
+import { swRefHi, swRefLo } from "./decl";
 import { SwFormatter } from "./formatter";
 import { swEndOfScope, swIsConditionalStatement, swIsTrailingClosureLabel, swStartOfAttribute } from "./parsing";
 import { swUnwrapLine } from "./rules_blank2";
@@ -25,6 +27,10 @@ import {
   SwTok,
   swStrIsMacro,
 } from "./token";
+
+// Token indices, token counts and line numbers stay below the token count, far from the
+// i32 limits, so a sum or difference of them the prover cannot bound is written
+// `toI32(toU32(a) + b)`: wrapping u32 arithmetic, exact for such values.
 
 /** A FunctionCallArgument: label "" for nil, labelIndex -1 for nil. */
 export class SwCallArg {
@@ -102,13 +108,13 @@ export const swParseFunctionCallArguments = (f: SwFormatter, startOfScope: i32):
       const colon = f.indexOfIn(SW_DELIM, ":", 0, prevEnd + 1, curEnd);
       const li = colon >= 0 ? f.indexBefore(SW_T_NON_SPACE_OR_COMMENT_OR_LINEBREAK, colon) : -1;
       const labeled = li >= 0 && f.k(li) === SW_IDENT;
-      let vs = labeled ? colon + 1 : prevEnd + 1;
-      let ve = curEnd - 1;
+      let vs = labeled ? toI32(toU32(colon) + 1) : prevEnd + 1;
+      let ve = toI32(toU32(curEnd) - 1);
       while (vs <= ve && swIsSpaceOrLinebreak(f, vs)) {
-        vs++;
+        vs = toI32(toU32(vs) + 1);
       }
       while (ve >= vs && swIsSpaceOrLinebreak(f, ve)) {
-        ve--;
+        ve = toI32(toU32(ve) - 1);
       }
       if (vs > ve) {
         currentIndex = curEnd;
@@ -160,14 +166,14 @@ export const swParseFunctionIdentifier = (f: SwFormatter, startOfScope: i32): i3
 export const swWrapLine = (f: SwFormatter, tokenIndex: i32): void => {
   f.insertSpace(f.currentIndentForLine(tokenIndex), tokenIndex);
   f.insertLinebreak(tokenIndex);
-  if (f.k(tokenIndex - 1) === SW_SPACE) {
-    f.removeToken(tokenIndex - 1);
+  if (f.k(toI32(toU32(tokenIndex) - 1)) === SW_SPACE) {
+    f.removeToken(toI32(toU32(tokenIndex) - 1));
   }
 };
 
 const swIsSingleClosureValue = (f: SwFormatter, a: SwCallArg): boolean => {
-  const first = f.indexInType(SW_T_NON_SPACE_OR_COMMENT_OR_LINEBREAK, a.lo, a.hi + 1);
-  const last = f.indexBefore(SW_T_NON_SPACE_OR_COMMENT_OR_LINEBREAK, a.hi + 1);
+  const first = f.indexInType(SW_T_NON_SPACE_OR_COMMENT_OR_LINEBREAK, a.lo, toI32(toU32(a.hi) + 1));
+  const last = f.indexBefore(SW_T_NON_SPACE_OR_COMMENT_OR_LINEBREAK, toI32(toU32(a.hi) + 1));
   if (first < 0 || last < 0 || !f.tok(first, SW_START, "{") || !f.tok(last, SW_END, "}")) {
     return false;
   }
@@ -176,7 +182,7 @@ const swIsSingleClosureValue = (f: SwFormatter, a: SwCallArg): boolean => {
 
 const swTrimmedIsCloseParen = (f: SwFormatter, lo: i32, hi: i32): boolean => {
   let seen = false;
-  for (let j = lo; j <= hi; j++) {
+  for (let j = lo; j <= hi; j = toI32(toU32(j) + 1)) {
     const k = f.k(j);
     if (k === SW_SPACE || k === SW_LINEBREAK) {
       continue;
@@ -220,15 +226,24 @@ export const swRuleTrailingClosures = (f: SwFormatter): void => {
     }
     const args = swParseFunctionCallArguments(f, open);
     let firstTrailing = toI32(args.length);
-    while (firstTrailing > 0 && swIsSingleClosureValue(f, args[firstTrailing - 1])) {
-      firstTrailing--;
+    while (firstTrailing > 0) {
+      const prev = firstTrailing - 1;
+      if (prev >= args.length || !swIsSingleClosureValue(f, args[prev])) {
+        break;
+      }
+      firstTrailing = prev;
     }
-    const count = toI32(args.length) - firstTrailing;
+    const count = toI32(toU32(toI32(args.length)) - toU32(firstTrailing));
     const closingParen = swEndOfScope(f, open);
     if (closingParen < 0 || f.nextIs(SW_T_NON_SPACE_OR_COMMENT_OR_LINEBREAK, closingParen, SW_START, "{")) {
       continue;
     }
     if (count === 1) {
+      // count = args.length - firstTrailing.
+      if (firstTrailing < 0 || firstTrailing >= args.length) {
+        fault();
+        return;
+      }
       const c = args[firstTrailing];
       const useTrailing = name === "async" || name === "asyncAfter" || name === "sync" || name === "autoreleasepool";
       if (c.labelIndex >= 0 && !useTrailing) {
@@ -272,6 +287,10 @@ export const swRuleTrailingClosures = (f: SwFormatter): void => {
     if (count < 2) {
       continue;
     }
+    if (firstTrailing < 0 || firstTrailing >= args.length) {
+      fault();
+      return;
+    }
     if (args[firstTrailing].labelIndex >= 0) {
       continue;
     }
@@ -288,17 +307,17 @@ export const swRuleTrailingClosures = (f: SwFormatter): void => {
     const lineHi = f.endOfLine(closingParen);
     const tbcp = f.indexBefore(SW_T_NON_SPACE_OR_COMMENT_OR_LINEBREAK, closingParen);
     if (swTrimmedIsCloseParen(f, lineLo, lineHi)) {
-      f.removeTokens(lineLo, lineHi + 1);
+      f.removeTokens(lineLo, toI32(toU32(lineHi) + 1));
     } else {
       f.removeToken(closingParen);
     }
     if (tbcp >= 0 && f.tok(tbcp, SW_DELIM, ",")) {
       f.removeToken(tbcp);
     }
-    for (let q = toI32(args.length) - 1; q >= firstTrailing; q--) {
+    for (let q = toI32(args.length) - 1; q >= firstTrailing && q >= 0 && q < args.length; q--) {
       const c = args[q];
       const cr = f.ref(c.lo, c.hi);
-      const oneLine = f.onSameLine(f.refLo[cr], f.refHi[cr]);
+      const oneLine = f.onSameLine(swRefLo(f, cr), swRefHi(f, cr));
       const ib = q === firstTrailing ? f.indexBefore(SW_T_NON_SPACE_OR_COMMENT_OR_LINEBREAK, c.lo) : -1;
       if (q === firstTrailing && ib >= 0) {
         if (f.tok(ib, SW_START, "(")) {
@@ -307,23 +326,24 @@ export const swRuleTrailingClosures = (f: SwFormatter): void => {
           f.replaceToken(ib, SW_END, ")", 0);
         }
         if (!f.onSameLine(ib, c.lo)) {
-          swUnwrapLine(f, f.refLo[cr]);
+          swUnwrapLine(f, swRefLo(f, cr));
         }
       } else if (q !== firstTrailing && c.labelIndex >= 0) {
         const lr = f.ref(c.labelIndex, c.labelIndex);
-        const ci = f.indexBefore(SW_T_NON_SPACE_OR_COMMENT_OR_LINEBREAK, f.refLo[lr]);
+        const ci = f.indexBefore(SW_T_NON_SPACE_OR_COMMENT_OR_LINEBREAK, swRefLo(f, lr));
         if (ci >= 0 && f.tok(ci, SW_DELIM, ",")) {
-          const wasPrev = !f.onSameLine(ci, f.refLo[lr]);
+          const wasPrev = !f.onSameLine(ci, swRefLo(f, lr));
           f.removeToken(ci);
           if (wasPrev) {
-            swUnwrapLine(f, f.refLo[lr]);
+            swUnwrapLine(f, swRefLo(f, lr));
           }
         }
         f.unref(lr);
       }
       if (oneLine) {
-        swWrapLine(f, f.refHi[cr]);
-        swWrapLine(f, f.refLo[cr] + 1);
+        swWrapLine(f, swRefHi(f, cr));
+        // A token index: the u32 sum is exact.
+        swWrapLine(f, toI32(toU32(swRefLo(f, cr)) + 1));
       }
       f.unref(cr);
     }

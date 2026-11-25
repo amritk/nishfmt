@@ -93,8 +93,10 @@ export class CopStyleFloatDivision {
       const s = a.exE(a.kid(arg, 0));
       const e = ssxFS(src, arg, F_SELECTOR);
       let comment = false;
-      for (let i = 0; i < toI32(src.commS.length); i++) {
-        if (src.commS[i] >= s && src.commE[i] <= e) {
+      const commS = src.commS;
+      const commE = src.commE;
+      for (let i = 0; i < commS.length && i < commE.length; i++) {
+        if (commS[i] >= s && commE[i] <= e) {
           comment = true;
         }
       }

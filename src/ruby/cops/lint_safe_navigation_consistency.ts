@@ -6,6 +6,8 @@
 // Ported from RuboCop 1.92.3 (MIT License, Copyright (c) 2012-24 Bozhidar
 // Batsov).
 
+import { fault } from "../../core/fault";
+import { add32, atI32 } from "../../core/arr";
 import { F_DOT, NT_AND, NT_BEGIN, NT_CSEND, NT_OR, V_NIL } from "../ast";
 import { RbCop } from "../cop";
 import { RbSource } from "../source";
@@ -55,7 +57,12 @@ export class CopLintSafeNavigationConsistency {
           groups.push(g);
           gi = toI32(groups.length) - 1;
         }
-        groups[gi].push(o);
+        if (gi >= 0 && gi < groups.length) {
+          groups[gi].push(o);
+        } else {
+          fault();
+          return;
+        }
       }
       for (const g of groups) {
         this.group(src, g);
@@ -122,20 +129,20 @@ export class CopLintSafeNavigationConsistency {
     let safe = false;
     let from = -1;
     if (csAnd >= 0) {
-      from = (sAnd >= 0 && sAnd < csAnd ? sAnd : csAnd) + 1;
+      from = add32(sAnd >= 0 && sAnd < csAnd ? sAnd : csAnd, 1);
     } else if (sOr >= 0 && csOr >= 0) {
       if (sOr < csOr) {
-        from = sOr + 1;
+        from = add32(sOr, 1);
       } else {
         safe = true;
-        from = csOr + 1;
+        from = add32(csOr, 1);
       }
     } else if (sAnd >= 0 && csOr >= 0 && sAnd < csOr) {
       from = csOr;
     } else {
       return;
     }
-    for (let i = from; i < toI32(g.length); i++) {
+    for (let i = from; i >= 0 && i < g.length; i++) {
       const o = g[i];
       // already_appropriate_call?
       const operator = ssxOperatorName(ssxMeth(src, o));
@@ -158,8 +165,9 @@ export class CopLintSafeNavigationConsistency {
 
   /** receiver_guaranteed?: an operand before g[i] guarantees its receiver. */
   private receiverGuaranteed(src: RbSource, g: i32[], i: i32): boolean {
-    for (let j = 0; j < i; j++) {
-      if (this.guaranteedBy(src, g[j], g[i])) {
+    const gi = atI32(g, i);
+    for (let j = 0; j < i && j < g.length; j++) {
+      if (this.guaranteedBy(src, g[j], gi)) {
         return true;
       }
     }
@@ -194,11 +202,11 @@ export class CopLintSafeNavigationConsistency {
       return false;
     }
     const k = toI32(pn.length);
-    let truth = a.type(pn[k - 1]) === NT_AND ? LSNC_TRUTHY : LSNC_FALSEY;
-    for (let j = k - 2; j >= 0; j--) {
+    let truth = a.type(k > 0 ? pn[k - 1] : V_NIL) === NT_AND ? LSNC_TRUTHY : LSNC_FALSEY;
+    for (let j = k - 2; j >= 0 && j < pn.length; j--) {
       const nd = pn[j];
       const deciding = a.type(nd) === NT_AND ? LSNC_TRUTHY : LSNC_FALSEY;
-      if (a.kid(nd, 0) === pc[j]) {
+      if (a.kid(nd, 0) === atI32(pc, j)) {
         truth = truth === deciding ? deciding : LSNC_UNKNOWN;
       } else {
         truth = truth === deciding ? deciding : LSNC_NONE;

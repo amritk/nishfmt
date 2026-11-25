@@ -6,6 +6,8 @@
 // Ported from RuboCop 1.92.3 (MIT License, Copyright (c) 2012-24 Bozhidar
 // Batsov).
 
+import { fault } from "../../core/fault";
+import { atI32 } from "../../core/arr";
 import { NT_RESCUE } from "../ast";
 import { RbCop } from "../cop";
 import { RbSource } from "../source";
@@ -15,16 +17,27 @@ import { sbhResbodies, sbhResbodyExceptions } from "./style_body_help";
 // Module#<=> results, with LSE_NIL for nil.
 const LSE_NIL: i32 = -2;
 
+/** Field `i` of a table row (every row has its fields). */
+const lseField = (f: string[], i: i32): string => {
+  if (i >= 0 && i < f.length) {
+    return f[i];
+  }
+  fault();
+  return "";
+};
+
 /** `s` split at byte `sep`. */
 const lseSplit = (s: string, sep: i32): string[] => {
   const out: string[] = [];
   let b = 0;
-  for (let i = 0; i <= toI32(s.length); i++) {
-    if (i === toI32(s.length) || s.charCodeAt(i) === sep) {
+  const k = toI32(s.length);
+  for (let i = 0; i < k; i++) {
+    if (s.charCodeAt(i) === sep) {
       out.push(s.substring(b, i));
       b = i + 1;
     }
   }
+  out.push(s.substring(b, k));
   return out;
 };
 
@@ -43,12 +56,12 @@ class LseTable {
     this.paths = new Map<string, i32>();
     for (const row of lseSplit(LEX_CLASSES, 59)) {
       const f = lseSplit(row, 32);
-      this.sup.push(parseInt(f[0]));
-      this.errno.push(parseInt(f[1]));
+      this.sup.push(parseInt(lseField(f, 0)));
+      this.errno.push(parseInt(lseField(f, 1)));
     }
     for (const row of lseSplit(LEX_PATHS, 59)) {
       const f = lseSplit(row, 32);
-      this.paths.set(f[0], parseInt(f[1]));
+      this.paths.set(lseField(f, 0), parseInt(lseField(f, 1)));
     }
     this.exception = this.find("Exception");
     this.standardError = this.find("StandardError");
@@ -63,12 +76,17 @@ class LseTable {
 
   /** Whether x is y or inherits from it. */
   private kindOf(x: i32, y: i32): boolean {
+    const sup = this.sup;
     let c = x;
     while (c >= 0) {
       if (c === y) {
         return true;
       }
-      c = this.sup[c];
+      if (c >= sup.length) {
+        fault();
+        return false;
+      }
+      c = sup[c];
     }
     return false;
   }
@@ -93,7 +111,7 @@ class LseTable {
 
   /** system_call_err?: ancestors[1] == SystemCallError. */
   systemCallErr(x: i32): boolean {
-    return x >= 0 && this.sup[x] === this.systemCallError;
+    return x >= 0 && atI32(this.sup, x) === this.systemCallError;
   }
 }
 
@@ -136,13 +154,13 @@ export class CopLintShadowedException {
           shadow = i;
         }
       }
-      for (let i = 0; i + 1 < toI32(groups.length) && shadow < 0; i++) {
-        if (!this.sorted(tab, groups[i], groups[i + 1])) {
-          shadow = i;
+      for (let j = 1; j < groups.length && shadow < 0; j++) {
+        if (!this.sorted(tab, groups[j - 1], groups[j])) {
+          shadow = j - 1;
         }
       }
       if (shadow >= 0) {
-        const r = rescues[shadow];
+        const r = atI32(rescues, shadow);
         this.c.offense(a.exS(r), a.exE(r));
       }
     }
@@ -189,7 +207,7 @@ export class CopLintShadowedException {
   /** compare_exceptions: truthy. */
   private compare(tab: LseTable, x: i32, y: i32): boolean {
     if (tab.systemCallErr(x) && tab.systemCallErr(y)) {
-      return tab.errno[x] !== tab.errno[y] && tab.cmp(x, y) !== LSE_NIL;
+      return atI32(tab.errno, x) !== atI32(tab.errno, y) && tab.cmp(x, y) !== LSE_NIL;
     }
     return x >= 0 && y >= 0 && tab.cmp(x, y) !== LSE_NIL;
   }
@@ -229,7 +247,7 @@ export class CopLintShadowedException {
     }
     // (x <=> y || 0) <= 0 with Array#<=>
     const k = x.length < y.length ? toI32(x.length) : toI32(y.length);
-    for (let i = 0; i < k; i++) {
+    for (let i = 0; i < k && i < x.length && i < y.length; i++) {
       const c = tab.cmp(x[i], y[i]);
       if (c === LSE_NIL) {
         return true;
@@ -242,8 +260,8 @@ export class CopLintShadowedException {
   }
 
   private sortedAll(tab: LseTable, gs: i32[][]): boolean {
-    for (let i = 0; i + 1 < toI32(gs.length); i++) {
-      if (!this.sorted(tab, gs[i], gs[i + 1])) {
+    for (let j = 1; j < gs.length; j++) {
+      if (!this.sorted(tab, gs[j - 1], gs[j])) {
         return false;
       }
     }

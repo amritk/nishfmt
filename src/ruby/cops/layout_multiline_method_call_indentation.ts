@@ -3,6 +3,8 @@
 // Ported from RuboCop 1.92.3 (MIT License, Copyright (c) 2012-24 Bozhidar
 // Batsov).
 
+import { rbAtOff } from "../help";
+import { add32, sub32 } from "../../core/arr";
 import {
   F_BEGIN,
   F_DOT,
@@ -126,8 +128,8 @@ export class CopLayoutMultilineMethodCallIndentation {
     }
     // check_regular_indentation
     const base = this.alignmentBase(src, n, rhs);
-    const col = base >= 0 ? src.column(base) : rmxIndentation(src, lhs) + rmxCorrectIndentation(src, n);
-    return col - src.column(rhs.s);
+    const col = base >= 0 ? src.column(base) : add32(rmxIndentation(src, lhs), rmxCorrectIndentation(src, n));
+    return sub32(col, src.column(rhs.s));
   }
 
   /** find_pair_ancestor (V_NIL for none). */
@@ -205,7 +207,7 @@ export class CopLayoutMultilineMethodCallIndentation {
   /** Whether the rhs source starts with `.` or `&.`. */
   private dotRhs(src: RbSource, rhs: RmlRange): boolean {
     const c = src.at(rhs.s);
-    return c === 46 || (c === 38 && src.at(rhs.s + 1) === 46);
+    return c === 46 || (c === 38 && rbAtOff(src, rhs.s, 1) === 46);
   }
 
   /** check_hash_pair_indentation: the delta, or 0. */
@@ -236,7 +238,7 @@ export class CopLayoutMultilineMethodCallIndentation {
         }
       }
     }
-    return src.column(base) - src.column(rhs.s);
+    return sub32(src.column(base), src.column(rhs.s));
   }
 
   /** first_dot_alignment_base (-1 for none). */
@@ -342,7 +344,7 @@ export class CopLayoutMultilineMethodCallIndentation {
     while (p !== V_NIL) {
       if (rnHas(src, p, F_DOT)) {
         const d = rnS(src, p, F_DOT);
-        if (src.line(d) === src.line(nd) - 1 && src.column(d) === src.column(nd)) {
+        if (toI64(src.line(d)) === toI64(src.line(nd)) - toI64(1) && src.column(d) === src.column(nd)) {
           return p;
         }
       }
@@ -463,7 +465,7 @@ export class CopLayoutMultilineMethodCallIndentation {
     const lines: i32[] = [];
     const body = src.a.kid(bn, 2);
     if (body !== V_NIL) {
-      for (let l = src.line(src.a.exS(body)); l <= src.line(src.a.exE(body)); l++) {
+      for (let l = src.line(src.a.exS(body)); l <= src.line(src.a.exE(body)) && l < 1073741823; l++) {
         lines.push(l);
       }
     }

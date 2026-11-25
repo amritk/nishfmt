@@ -4,9 +4,10 @@
 // Ported from CSharpier 1.4.0 (MIT License, Copyright (c) 2021 Bela
 // VanderVoort): DocTypes/*.cs, DocPrinter/*.cs, DocTypes/DocUtilities.cs.
 
-import { growI32 } from "../core/arr";
+import { add32, copyU8s, mul32, sub32 } from "../core/arr";
+import { fault } from "../core/fault";
 import { Out } from "../core/out";
-import { uncheckedGet, uncheckedSet } from "nish:unsafe";
+import { csZeroI32s, csZeroU8s } from "./lexer";
 
 // Doc kinds.
 export const D_NULL: i32 = 0;
@@ -82,6 +83,11 @@ export const csPrintedWidth = (s: u8[], a: i32, b: i32): i32 => {
   let w = 0;
   let i = a;
   while (i < b) {
+    // a width past 10^9 needs a line no file holds
+    if (i < 0 || i >= s.length || i > 2000000000 || w > 1000000000) {
+      fault();
+      return 0;
+    }
     const c = toI32(s[i]);
     if (c < 0x80) {
       w++;
@@ -98,10 +104,30 @@ export const csPrintedWidth = (s: u8[], a: i32, b: i32): i32 => {
       continue;
     }
     if (c < 0xf0) {
-      const c1 = i + 1 < b ? (toI32(s[i + 1]) & 0x3f) << 6 : 0;
-      const c2 = i + 2 < b ? toI32(s[i + 2]) & 0x3f : 0;
+      const i1 = i + 1;
+      const i2 = i + 2;
+      let c1 = 0;
+      if (i1 < b) {
+        if (i1 >= s.length) {
+          fault();
+          return 0;
+        }
+        c1 = (toI32(s[i1]) & 0x3f) << 6;
+      }
+      let c2 = 0;
+      if (i2 < b) {
+        if (i2 >= s.length) {
+          fault();
+          return 0;
+        }
+        c2 = toI32(s[i2]) & 0x3f;
+      }
       const cp = ((c & 0x0f) << 12) | c1 | c2;
-      w += csIsWideChar(cp) ? 2 : 1;
+      if (csIsWideChar(cp)) {
+        w += 2;
+      } else {
+        w += 1;
+      }
       i += 3;
       continue;
     }
@@ -115,21 +141,29 @@ export const csPrintedWidth = (s: u8[], a: i32, b: i32): i32 => {
 /** The number of spaces and tabs ending s[a, b). */
 const csTrailingWs = (s: u8[], a: i32, b: i32): i32 => {
   let e = b;
-  while (e > a && (toI32(s[e - 1]) === 32 || toI32(s[e - 1]) === 9)) {
+  while (e > a) {
+    if (e <= 0 || e > s.length) {
+      fault();
+      return 0;
+    }
+    const c = toI32(s[e - 1]);
+    if (c !== 32 && c !== 9) {
+      break;
+    }
     e--;
   }
-  return b - e;
+  return sub32(b, e);
 };
+
+// A doc d's fields are its record rec[6 * d, 6 * d + 6): kind, a, b, c, d,
+// e, at offsets 0 to 5. Every doc id is at most 350,000,000 (a guard faults
+// past it), so 6 * d fits i32; the offsets are literals the prover reads.
 
 export class CsDocs {
   src: u8[];
   n: i32 = 0;
-  kind: i32[];
-  a: i32[];
-  b: i32[];
-  c: i32[];
-  d: i32[];
-  e: i32[];
+  // the docs, one record of 6 fields each: kind, a, b, c, d, e
+  rec: i32[];
   pool: i32[];
   np: i32 = 0;
   sb: u8[]; // the text of strings that are not in the source
@@ -138,15 +172,14 @@ export class CsDocs {
 
   constructor(src: u8[], cap: i32) {
     this.src = src;
-    const c = cap < 64 ? 64 : cap;
-    this.kind = new Array<i32>(c);
-    this.a = new Array<i32>(c);
-    this.b = new Array<i32>(c);
-    this.c = new Array<i32>(c);
-    this.d = new Array<i32>(c);
-    this.e = new Array<i32>(c);
-    this.pool = new Array<i32>(c + c / 6);
-    this.sb = new Array<u8>(c / 4 + 64);
+    // Capacities only: a record past the capacity is pushed.
+    let c = 64;
+    if (cap > 64 && cap <= 100000000) {
+      c = cap;
+    }
+    this.rec = csZeroI32s(c * 6);
+    this.pool = csZeroI32s(c + c / 6);
+    this.sb = csZeroU8s(c / 4 + 64);
     this.add(D_NULL, 0, 0, 0, 0);
     this.add(D_BREAKPARENT, 0, 0, 0, 0);
     this.add(D_HARDLINE, 0, 0, 0, 0);
@@ -163,41 +196,172 @@ export class CsDocs {
   }
 
   add(k: i32, a: i32, b: i32, c: i32, d: i32): i32 {
+    return this.add6(k, a, b, c, d, 0);
+  }
+
+  /** Adds a doc with all six fields. */
+  add6(k: i32, a: i32, b: i32, c: i32, d: i32, e: i32): i32 {
     const i = this.n;
-    if (i >= toI32(this.kind.length)) {
-      const cap = i * 2;
-      this.kind = growI32(this.kind, cap);
-      this.a = growI32(this.a, cap);
-      this.b = growI32(this.b, cap);
-      this.c = growI32(this.c, cap);
-      this.d = growI32(this.d, cap);
-      this.e = growI32(this.e, cap);
+    const rec = this.rec;
+    if (i < 0 || i > 350000000) {
+      fault();
+      return DOC_NULL;
     }
-    this.kind[i] = k;
-    this.a[i] = a;
-    this.b[i] = b;
-    this.c[i] = c;
-    this.d[i] = d;
-    this.e[i] = 0;
+    const o = i * 6;
+    if (o > rec.length - 6) {
+      // past the capacity: the records end at o, so this pushes one record
+      while (rec.length < o + 6) {
+        rec.push(0);
+      }
+    }
+    if (o > rec.length - 6) {
+      fault();
+      return DOC_NULL;
+    }
+    rec[o] = k;
+    rec[o + 1] = a;
+    rec[o + 2] = b;
+    rec[o + 3] = c;
+    rec[o + 4] = d;
+    rec[o + 5] = e;
     this.n = i + 1;
     return i;
+  }
+
+  // ---- fields ----
+  // A doc that is no doc reads as 0 (a Null doc) after a fault.
+
+  kindOf(d: i32): i32 {
+    const rec = this.rec;
+    if (d >= 0 && d <= 350000000) {
+      const o = d * 6;
+      if (o <= rec.length - 6) {
+        return rec[o];
+      }
+    }
+    fault();
+    return 0;
+  }
+
+  aOf(d: i32): i32 {
+    const rec = this.rec;
+    if (d >= 0 && d <= 350000000) {
+      const o = d * 6;
+      if (o <= rec.length - 6) {
+        return rec[o + 1];
+      }
+    }
+    fault();
+    return 0;
+  }
+
+  bOf(d: i32): i32 {
+    const rec = this.rec;
+    if (d >= 0 && d <= 350000000) {
+      const o = d * 6;
+      if (o <= rec.length - 6) {
+        return rec[o + 2];
+      }
+    }
+    fault();
+    return 0;
+  }
+
+  cOf(d: i32): i32 {
+    const rec = this.rec;
+    if (d >= 0 && d <= 350000000) {
+      const o = d * 6;
+      if (o <= rec.length - 6) {
+        return rec[o + 3];
+      }
+    }
+    fault();
+    return 0;
+  }
+
+  dOf(d: i32): i32 {
+    const rec = this.rec;
+    if (d >= 0 && d <= 350000000) {
+      const o = d * 6;
+      if (o <= rec.length - 6) {
+        return rec[o + 4];
+      }
+    }
+    fault();
+    return 0;
+  }
+
+  eOf(d: i32): i32 {
+    const rec = this.rec;
+    if (d >= 0 && d <= 350000000) {
+      const o = d * 6;
+      if (o <= rec.length - 6) {
+        return rec[o + 5];
+      }
+    }
+    fault();
+    return 0;
+  }
+
+  setA(d: i32, v: i32): void {
+    const rec = this.rec;
+    if (d >= 0 && d <= 350000000) {
+      const o = d * 6;
+      if (o <= rec.length - 6) {
+        rec[o + 1] = v;
+        return;
+      }
+    }
+    fault();
+  }
+
+  setB(d: i32, v: i32): void {
+    const rec = this.rec;
+    if (d >= 0 && d <= 350000000) {
+      const o = d * 6;
+      if (o <= rec.length - 6) {
+        rec[o + 2] = v;
+        return;
+      }
+    }
+    fault();
+  }
+
+  setD(d: i32, v: i32): void {
+    const rec = this.rec;
+    if (d >= 0 && d <= 350000000) {
+      const o = d * 6;
+      if (o <= rec.length - 6) {
+        rec[o + 4] = v;
+        return;
+      }
+    }
+    fault();
+  }
+
+  setE(d: i32, v: i32): void {
+    const rec = this.rec;
+    if (d >= 0 && d <= 350000000) {
+      const o = d * 6;
+      if (o <= rec.length - 6) {
+        rec[o + 5] = v;
+        return;
+      }
+    }
+    fault();
   }
 
   // ---- text ----
 
   /** A StringDoc over src[a, b). */
   strSrc(a: i32, b: i32): i32 {
-    const d = this.add(D_STRING, a, b, csPrintedWidth(this.src, a, b), SF_SRC);
-    this.e[d] = csTrailingWs(this.src, a, b);
-    return d;
+    return this.add6(D_STRING, a, b, csPrintedWidth(this.src, a, b), SF_SRC, csTrailingWs(this.src, a, b));
   }
 
   /** A StringDoc over `s`, put in the arena. */
   strArena(s: string): i32 {
     const a = this.appendStr(s);
-    const d = this.add(D_STRING, a, this.ns, csPrintedWidth(this.sb, a, this.ns), 0);
-    this.e[d] = csTrailingWs(this.sb, a, this.ns);
-    return d;
+    return this.add6(D_STRING, a, this.ns, csPrintedWidth(this.sb, a, this.ns), 0, csTrailingWs(this.sb, a, this.ns));
   }
 
   /** A StringDoc for a constant: the singletons for " " and "". */
@@ -213,60 +377,104 @@ export class CsDocs {
 
   /** A StringDoc over arena[a, b) (text appended with appendStr / appendBytes). */
   strAt(a: i32, b: i32, directive: boolean): i32 {
-    const d = this.add(D_STRING, a, b, csPrintedWidth(this.sb, a, b), directive ? SF_DIRECTIVE : 0);
-    this.e[d] = csTrailingWs(this.sb, a, b);
-    return d;
+    return this.add6(
+      D_STRING,
+      a,
+      b,
+      csPrintedWidth(this.sb, a, b),
+      directive ? SF_DIRECTIVE : 0,
+      csTrailingWs(this.sb, a, b),
+    );
   }
 
   appendStr(s: string): i32 {
     const a = this.ns;
-    const k = toI32(s.length);
-    this.reserveSb(k);
-    for (let i = 0; i < k; i++) {
-      this.sb[a + i] = toU8(s.charCodeAt(i));
+    this.reserveSb(toI32(s.length));
+    const sb = this.sb;
+    let p = a;
+    for (let i = 0; i < s.length; i++) {
+      if (p < 0 || p >= sb.length) {
+        fault();
+        return a;
+      }
+      sb[p] = toU8(s.charCodeAt(i));
+      p = p + 1;
     }
-    this.ns = a + k;
+    this.ns = p;
     return a;
   }
 
   appendBytes(buf: u8[], a: i32, b: i32): i32 {
     const o = this.ns;
-    const k = b - a;
-    this.reserveSb(k);
-    for (let i = 0; i < k; i++) {
-      this.sb[o + i] = buf[a + i];
+    if (b === a) {
+      return o;
     }
+    if (a < 0 || b < a || b > buf.length || o < 0 || o > 1000000000) {
+      fault();
+      return o;
+    }
+    // b >= a >= 0, so the u32 difference is exact
+    const k = toI32(toU32(b) - toU32(a));
+    if (k > 1000000000) {
+      fault();
+      return o;
+    }
+    this.reserveSb(k);
+    copyU8s(this.sb, o, buf, a, k);
     this.ns = o + k;
     return o;
   }
 
   appendByte(c: i32): void {
     this.reserveSb(1);
-    this.sb[this.ns] = toU8(c);
-    this.ns = this.ns + 1;
+    const sb = this.sb;
+    const ns = this.ns;
+    if (ns >= 0 && ns < sb.length) {
+      sb[ns] = toU8(c);
+      this.ns = ns + 1;
+    } else {
+      fault();
+    }
   }
 
+  /** Makes room for k more bytes after ns; the arena never nears 10^9 bytes. */
   reserveSb(k: i32): void {
-    if (this.ns + k > toI32(this.sb.length)) {
-      let cap = toI32(this.sb.length) * 2;
-      if (cap < this.ns + k) {
-        cap = this.ns + k + 64;
+    const ns = this.ns;
+    const sb = this.sb;
+    if (ns < 0 || k < 0 || ns > 1000000000 || k > 1000000000) {
+      fault();
+      return;
+    }
+    const need = ns + k;
+    const len = toI32(sb.length);
+    if (need > len) {
+      let cap = need + 64;
+      if (len <= 1000000000 && len * 2 >= need) {
+        cap = len * 2;
       }
-      const nb = new Array<u8>(cap);
-      for (let i = 0; i < this.ns; i++) {
-        nb[i] = this.sb[i];
-      }
+      const nb = csZeroU8s(cap);
+      copyU8s(nb, 0, sb, 0, ns);
       this.sb = nb;
     }
   }
 
   textLen(d: i32): i32 {
-    return this.b[d] - this.a[d];
+    return sub32(this.bOf(d), this.aOf(d));
   }
 
   /** Byte i of the text of doc d (a string, comment or region). */
   textAt(d: i32, i: i32): i32 {
-    return (this.d[d] & SF_SRC) !== 0 ? toI32(this.src[this.a[d] + i]) : toI32(this.sb[this.a[d] + i]);
+    const a = this.aOf(d);
+    const buf = (this.dOf(d) & SF_SRC) !== 0 ? this.src : this.sb;
+    if (a >= 0 && i >= 0) {
+      // both non-negative i32s, so the u32 sum is exact
+      const k = toI32(toU32(a) + toU32(i));
+      if (k >= 0 && k < buf.length) {
+        return toI32(buf[k]);
+      }
+    }
+    fault();
+    return -1;
   }
 
   textIs(d: i32, s: string): boolean {
@@ -274,7 +482,7 @@ export class CsDocs {
     if (n !== toI32(s.length)) {
       return false;
     }
-    for (let i = 0; i < n; i++) {
+    for (let i = 0; i < n && i < s.length; i++) {
       if (this.textAt(d, i) !== s.charCodeAt(i)) {
         return false;
       }
@@ -290,28 +498,42 @@ export class CsDocs {
     if (n === 0) {
       return DOC_NULL;
     }
-    if (n === 1) {
+    if (n === 1 && docs.length > 0) {
       return docs[0];
     }
     return this.concatList(docs);
   }
 
-  /** new Concat(list) (always a Concat). */
-  concatList(docs: i32[]): i32 {
+  /** Appends docs to the pool; answers their offset, or -1 after a fault. */
+  poolAppend(docs: i32[]): i32 {
     const n = toI32(docs.length);
     const off = this.np;
-    this.reservePool(n);
-    for (let i = 0; i < n; i++) {
-      this.pool[off + i] = docs[i];
+    if (off < 0 || off > 1000000000 || n > 1000000000) {
+      fault();
+      return -1;
     }
-    this.np = off + n;
-    return this.add(D_CONCAT, off, n, 0, 0);
+    const pool = this.pool;
+    const end = off + n;
+    if (end > pool.length) {
+      csdGrowTo(pool, end);
+    }
+    let p = off;
+    for (let i = 0; i < docs.length && p >= 0 && p < pool.length; i++) {
+      pool[p] = docs[i];
+      p = p + 1;
+    }
+    if (p !== end) {
+      fault();
+      return -1;
+    }
+    this.np = p;
+    return off;
   }
 
-  reservePool(n: i32): void {
-    if (this.np + n > toI32(this.pool.length)) {
-      this.pool = growI32(this.pool, (this.np + n) * 2);
-    }
+  /** new Concat(list) (always a Concat). */
+  concatList(docs: i32[]): i32 {
+    const off = this.poolAppend(docs);
+    return this.add(D_CONCAT, off, toI32(docs.length), 0, 0);
   }
 
   /** Doc.Group(params): one element is the contents itself. */
@@ -329,6 +551,10 @@ export class CsDocs {
 
   newGroupId(): i32 {
     const id = this.ngroup;
+    if (id < 0 || id > 1000000000) {
+      fault();
+      return 0;
+    }
     this.ngroup = id + 1;
     return id;
   }
@@ -362,16 +588,15 @@ export class CsDocs {
   }
 
   conditionalGroup(options: i32[]): i32 {
-    const n = toI32(options.length);
-    const off = this.np;
-    this.reservePool(n);
-    for (let i = 0; i < n; i++) {
-      this.pool[off + i] = options[i];
+    let first = DOC_NULL;
+    if (options.length > 0) {
+      first = options[0];
+    } else {
+      fault();
+      return DOC_NULL;
     }
-    this.np = off + n;
-    const g = this.add(D_CONDGROUP, options[0], 0, -1, off);
-    this.e[g] = n;
-    return g;
+    const off = this.poolAppend(options);
+    return this.add6(D_CONDGROUP, first, 0, -1, off, toI32(options.length));
   }
 
   /** A comment over arena[a, b). */
@@ -385,30 +610,54 @@ export class CsDocs {
 
   // ---- reading ----
 
+  /** Pool entry off + i; a Null doc after a fault when there is none. */
+  poolAt(off: i32, i: i32): i32 {
+    const pool = this.pool;
+    if (off >= 0 && i >= 0) {
+      // both non-negative i32s, so the u32 sum is exact
+      const k = toI32(toU32(off) + toU32(i));
+      if (k >= 0 && k < pool.length) {
+        return pool[k];
+      }
+    }
+    fault();
+    return DOC_NULL;
+  }
+
   /** Child i of a Concat. */
   at(d: i32, i: i32): i32 {
-    return uncheckedGet(this.pool, uncheckedGet(this.a, d) + i);
+    return this.poolAt(this.aOf(d), i);
   }
 
   count(d: i32): i32 {
-    return this.b[d];
+    return this.bOf(d);
   }
 
   setAt(d: i32, i: i32, v: i32): void {
-    this.pool[this.a[d] + i] = v;
+    const off = this.aOf(d);
+    const pool = this.pool;
+    if (off >= 0 && i >= 0) {
+      // both non-negative i32s, so the u32 sum is exact
+      const k = toI32(toU32(off) + toU32(i));
+      if (k >= 0 && k < pool.length) {
+        pool[k] = v;
+        return;
+      }
+    }
+    fault();
   }
 
   isHardLine(d: i32): boolean {
-    return this.kind[d] === D_HARDLINE;
+    return this.kindOf(d) === D_HARDLINE;
   }
 }
 
 // ---- DocUtilities ----
 
 export const csdContainsBreak = (D: CsDocs, d: i32): boolean => {
-  const k = uncheckedGet(D.kind, d);
+  const k = D.kindOf(d);
   if (k === D_GROUP || k === D_CONDGROUP) {
-    if (uncheckedGet(D.b, d) !== 0) {
+    if (D.bOf(d) !== 0) {
       return true;
     }
   } else if (k === D_HARDLINE || k === D_LITERALLINE || k === D_BREAKPARENT) {
@@ -419,18 +668,19 @@ export const csdContainsBreak = (D: CsDocs, d: i32): boolean => {
     case D_CONDGROUP:
     case D_INDENT:
     case D_FORCEFLAT:
-      return csdContainsBreak(D, uncheckedGet(D.a, d));
+      return csdContainsBreak(D, D.aOf(d));
     case D_CONCAT: {
-      const n = uncheckedGet(D.b, d);
+      const n = D.bOf(d);
+      const off = D.aOf(d);
       for (let i = 0; i < n; i++) {
-        if (csdContainsBreak(D, D.at(d, i))) {
+        if (csdContainsBreak(D, D.poolAt(off, i))) {
           return true;
         }
       }
       return false;
     }
     case D_IFBREAK:
-      return csdContainsBreak(D, uncheckedGet(D.b, d));
+      return csdContainsBreak(D, D.bOf(d));
     default:
       return false;
   }
@@ -448,10 +698,9 @@ class CsRemoveState {
 }
 
 const csdRemoveList = (D: CsDocs, docs: i32[], st: CsRemoveState): void => {
-  let x = 0;
-  while (x < toI32(docs.length)) {
+  for (let x = 0; x < docs.length; x++) {
     const doc = docs[x];
-    if (uncheckedGet(D.kind, doc) === D_HARDLINE) {
+    if (D.kindOf(doc) === D_HARDLINE) {
       if (st.removeNext) {
         docs[x] = DOC_NULL;
         return;
@@ -461,16 +710,14 @@ const csdRemoveList = (D: CsDocs, docs: i32[], st: CsRemoveState): void => {
       csdRemoveDoc(D, doc, st);
       return;
     }
-    x++;
   }
 };
 
 const csdRemoveConcat = (D: CsDocs, c: i32, st: CsRemoveState): void => {
-  let x = 0;
-  const n = uncheckedGet(D.b, c);
-  while (x < n) {
+  const n = D.bOf(c);
+  for (let x = 0; x < n; x++) {
     const doc = D.at(c, x);
-    if (uncheckedGet(D.kind, doc) === D_HARDLINE) {
+    if (D.kindOf(doc) === D_HARDLINE) {
       if (st.removeNext) {
         D.setAt(c, x, DOC_NULL);
         return;
@@ -480,7 +727,6 @@ const csdRemoveConcat = (D: CsDocs, c: i32, st: CsRemoveState): void => {
       csdRemoveDoc(D, doc, st);
       return;
     }
-    x++;
   }
 };
 
@@ -491,16 +737,16 @@ export const csdRemoveInitialDoubleHardLine = (D: CsDocs, doc: i32): i32 => {
 };
 
 const csdRemoveDoc = (D: CsDocs, doc: i32, st: CsRemoveState): void => {
-  switch (uncheckedGet(D.kind, doc)) {
+  switch (D.kindOf(doc)) {
     case D_STRING:
       return;
     case D_INDENT:
     case D_GROUP:
     case D_CONDGROUP: {
-      const c = uncheckedGet(D.a, doc);
-      if (uncheckedGet(D.kind, c) === D_HARDLINE) {
+      const c = D.aOf(doc);
+      if (D.kindOf(c) === D_HARDLINE) {
         if (st.removeNext) {
-          D.a[doc] = DOC_NULL;
+          D.setA(doc, DOC_NULL);
           return;
         }
         st.removeNext = true;
@@ -519,102 +765,245 @@ const csdRemoveDoc = (D: CsDocs, doc: i32, st: CsRemoveState): void => {
 
 // ---- PropagateBreaks ----
 
+/** Grows xs with zeroes to at least `need` entries. */
+const csdGrowTo = (xs: i32[], need: i32): void => {
+  while (xs.length < need) {
+    xs.push(0);
+  }
+};
+
 export const csdPropagateBreaks = (D: CsDocs, root: i32): void => {
-  const visited = new Array<u8>(D.n);
+  const visited = csZeroU8s(D.n);
+  // The records are only written in place below (no doc is added).
+  const rec = D.rec;
+  const pool = D.pool;
   const groupStack: i32[] = [];
   let forceFlat = 0;
   let canSkipBreak = false;
   let stringCount = 0;
   let stringCountAtLastHardLine = 0;
   const MARKER = -1;
-  const stack: i32[] = [root];
-  while (toI32(stack.length) > 0) {
-    const doc = stack[toI32(stack.length) - 1];
+  const stack = new Array<i32>(256);
+  stack[0] = root;
+  let sp = 1;
+  while (sp > 0) {
+    if (sp > stack.length || sp > 1000000000) {
+      fault();
+      return;
+    }
+    const top = sp - 1;
+    const doc = stack[top];
     if (doc === MARKER) {
-      stack.pop();
-      const ex = stack.pop();
+      if (top < 1) {
+        fault();
+        return;
+      }
+      const ex = stack[top - 1];
+      sp = top - 1;
       // OnExit
-      if (uncheckedGet(D.kind, ex) === D_FORCEFLAT) {
-        forceFlat--;
+      if (D.kindOf(ex) === D_FORCEFLAT) {
+        forceFlat = sub32(forceFlat, 1);
       } else {
         canSkipBreak = false;
-        const g = groupStack.pop();
-        if (uncheckedGet(D.b, g) !== 0) {
+        let g = 0;
+        if (groupStack.length > 0) {
+          g = groupStack.pop();
+        } else {
+          fault();
+          return;
+        }
+        if (D.bOf(g) !== 0) {
           csdBreakParentGroup(D, groupStack);
         }
       }
       continue;
     }
-    const k = uncheckedGet(D.kind, doc);
-    // OnEnter
-    let enter = true;
-    if (k === D_STRING && (uncheckedGet(D.d, doc) & SF_DIRECTIVE) === 0) {
-      canSkipBreak = false;
-      if (uncheckedGet(D.b, doc) > uncheckedGet(D.a, doc)) {
-        stringCount++;
-      }
-    } else if (k === D_GROUP || k === D_CONDGROUP) {
-      canSkipBreak = true;
-      groupStack.push(doc);
-      if (visited[doc] !== 0) {
-        enter = false;
-      }
-      visited[doc] = 1;
-    } else if (
-      (k === D_HARDLINE || k === D_LITERALLINE || k === D_BREAKPARENT) &&
-      (forceFlat === 0 || k === D_LITERALLINE)
-    ) {
-      const isAtStartOfLine = stringCount === stringCountAtLastHardLine;
-      if (k === D_HARDLINE && (uncheckedGet(D.b, doc) & HL_FOR_TRIVIA) !== 0 && (isAtStartOfLine || canSkipBreak)) {
-        const gs = toI32(groupStack.length);
-        if (!isAtStartOfLine && gs > 1) {
-          D.b[groupStack[gs - 2]] = 1;
-        }
-      } else {
-        csdBreakParentGroup(D, groupStack);
-      }
-      if (k === D_HARDLINE) {
-        stringCountAtLastHardLine = stringCount;
-      }
-    } else if (k === D_FORCEFLAT) {
-      forceFlat++;
+    if (doc < 0 || doc > 350000000) {
+      fault();
+      return;
     }
-    if (!enter) {
-      // OnExit for the group
-      stack.pop();
-      canSkipBreak = false;
-      const g = groupStack.pop();
-      if (uncheckedGet(D.b, g) !== 0) {
-        csdBreakParentGroup(D, groupStack);
+    const o = doc * 6;
+    if (o > rec.length - 6) {
+      fault();
+      return;
+    }
+    const k = rec[o];
+    // OnEnter writes only to groups' b, and a group's own fields are read before it
+    const va = rec[o + 1];
+    const vb = rec[o + 2];
+    const vd = rec[o + 4];
+    const ve = rec[o + 5];
+    // what to push after OnEnter, last first: a Concat's children pool[off, off + cnt)
+    let off = 0;
+    let cnt = 0;
+    switch (k) {
+      case D_STRING:
+        if ((vd & SF_DIRECTIVE) === 0) {
+          canSkipBreak = false;
+          if (vb > va) {
+            stringCount = add32(stringCount, 1);
+          }
+        }
+        sp = top;
+        continue;
+      case D_CONCAT:
+        sp = top;
+        off = va;
+        cnt = vb;
+        break;
+      case D_GROUP:
+      case D_CONDGROUP: {
+        canSkipBreak = true;
+        groupStack.push(doc);
+        if (doc >= visited.length) {
+          fault();
+          return;
+        }
+        const seen = visited[doc] !== 0;
+        visited[doc] = 1;
+        if (seen) {
+          // OnExit for the group
+          sp = top;
+          canSkipBreak = false;
+          let g = 0;
+          if (groupStack.length > 0) {
+            g = groupStack.pop();
+          } else {
+            fault();
+            return;
+          }
+          if (D.bOf(g) !== 0) {
+            csdBreakParentGroup(D, groupStack);
+          }
+          continue;
+        }
+        // the marker goes above the doc, which stays for OnExit; then a
+        // Group's contents, or a ConditionalGroup's options (the last on top)
+        if (k === D_GROUP) {
+          if (top + 3 > stack.length) {
+            csdGrowTo(stack, top + 3);
+          }
+          if (top < 0 || top + 2 >= stack.length) {
+            fault();
+            return;
+          }
+          stack[top + 1] = MARKER;
+          stack[top + 2] = va;
+          sp = top + 3;
+          continue;
+        }
+        if (vd < 0 || ve < 0 || vd > pool.length - ve || ve > 1000000000) {
+          fault();
+          return;
+        }
+        if (top + 2 + ve > stack.length) {
+          csdGrowTo(stack, top + 2 + ve);
+        }
+        if (top < 0 || top + 1 >= stack.length) {
+          fault();
+          return;
+        }
+        stack[top + 1] = MARKER;
+        sp = top + 2;
+        let q = vd;
+        for (let i = 0; i < ve; i++) {
+          if (q < 0 || q >= pool.length || sp < 0 || sp >= stack.length) {
+            fault();
+            return;
+          }
+          stack[sp] = pool[q];
+          sp = sp + 1;
+          q = q + 1;
+        }
+        continue;
       }
+      case D_HARDLINE:
+      case D_LITERALLINE:
+      case D_BREAKPARENT:
+        if (forceFlat === 0 || k === D_LITERALLINE) {
+          const isAtStartOfLine = stringCount === stringCountAtLastHardLine;
+          if (k === D_HARDLINE && (vb & HL_FOR_TRIVIA) !== 0 && (isAtStartOfLine || canSkipBreak)) {
+            const gs = toI32(groupStack.length);
+            if (!isAtStartOfLine && gs > 1) {
+              D.setB(groupStack[gs - 2], 1);
+            }
+          } else {
+            csdBreakParentGroup(D, groupStack);
+          }
+          if (k === D_HARDLINE) {
+            stringCountAtLastHardLine = stringCount;
+          }
+        }
+        sp = top;
+        continue;
+      case D_FORCEFLAT:
+        forceFlat = add32(forceFlat, 1);
+        // the marker above the doc, then its contents
+        if (top + 3 > stack.length) {
+          csdGrowTo(stack, top + 3);
+        }
+        if (top < 0 || top + 2 >= stack.length) {
+          fault();
+          return;
+        }
+        stack[top + 1] = MARKER;
+        stack[top + 2] = va;
+        sp = top + 3;
+        continue;
+      case D_IFBREAK:
+        // b below a
+        if (top + 2 > stack.length) {
+          csdGrowTo(stack, top + 2);
+        }
+        if (top < 0 || top + 1 >= stack.length) {
+          fault();
+          return;
+        }
+        stack[top] = vb;
+        stack[top + 1] = va;
+        sp = top + 2;
+        continue;
+      case D_INDENT:
+        // the contents in the Indent's place
+        if (top < 0 || top >= stack.length) {
+          fault();
+          return;
+        }
+        stack[top] = va;
+        continue;
+      default:
+        sp = top;
+        continue;
+    }
+    // a Concat's children, pushed last first so the first is on top
+    if (off < 0 || cnt < 0 || off > pool.length - cnt || cnt > 1000000000 || sp < 0 || sp > 1000000000) {
+      fault();
+      return;
+    }
+    if (cnt === 0) {
       continue;
     }
-    if (k === D_FORCEFLAT || k === D_GROUP || k === D_CONDGROUP) {
-      stack.push(MARKER);
-    } else {
-      stack.pop();
+    if (sp + cnt > stack.length) {
+      csdGrowTo(stack, sp + cnt);
     }
-    if (k === D_CONCAT) {
-      const n = uncheckedGet(D.b, doc);
-      for (let x = n - 1; x >= 0; x--) {
-        const ch = D.at(doc, x);
-        const ck = uncheckedGet(D.kind, ch);
-        if (forceFlat > 0 && (ck === D_LINE || ck === D_SOFTLINE || ck === D_HARDLINE)) {
-          D.setAt(doc, x, ck === D_SOFTLINE ? DOC_EMPTY : DOC_SPACE);
+    // off + cnt is at most the pool's length, so the u32 sum is exact
+    let x = toI32(toU32(off) + toU32(cnt - 1));
+    while (x >= off && x >= 0 && x < pool.length && sp >= 0 && sp < stack.length) {
+      let ch = pool[x];
+      if (forceFlat > 0) {
+        const ck = D.kindOf(ch);
+        if (ck === D_LINE || ck === D_SOFTLINE || ck === D_HARDLINE) {
+          ch = ck === D_SOFTLINE ? DOC_EMPTY : DOC_SPACE;
+          pool[x] = ch;
         }
-        stack.push(D.at(doc, x));
       }
-    } else if (k === D_IFBREAK) {
-      stack.push(uncheckedGet(D.b, doc));
-      stack.push(uncheckedGet(D.a, doc));
-    } else if (k === D_CONDGROUP) {
-      const off = uncheckedGet(D.d, doc);
-      const n = uncheckedGet(D.e, doc);
-      for (let i = 0; i < n; i++) {
-        stack.push(uncheckedGet(D.pool, off + i));
-      }
-    } else if (k === D_GROUP || k === D_INDENT || k === D_FORCEFLAT) {
-      stack.push(uncheckedGet(D.a, doc));
+      stack[sp] = ch;
+      sp = sp + 1;
+      x = x - 1;
+    }
+    if (x >= off) {
+      fault();
+      return;
     }
   }
 };
@@ -623,13 +1012,30 @@ const csdBreakParentGroup = (D: CsDocs, groupStack: i32[]): void => {
   const n = toI32(groupStack.length);
   if (n > 0) {
     const g = groupStack[n - 1];
-    if (uncheckedGet(D.kind, g) !== D_CONDGROUP) {
-      D.b[g] = 1;
+    if (D.kindOf(g) !== D_CONDGROUP) {
+      D.setB(g, 1);
     }
   }
 };
 
 // ---- DocPrinter ----
+
+/** out.range(src, a, b), writing in place when the buffer has room (it is sized for the file up front). */
+const csAppendRange = (out: Out, src: u8[], a: i32, b: i32): void => {
+  const buf = out.buf;
+  const n0 = out.n;
+  // b > a >= 0, so the u32 difference is exact
+  if (a >= 0 && b > a && b <= src.length && n0 >= 0 && toI32(toU32(b) - toU32(a)) <= buf.length - n0) {
+    let n = n0;
+    for (let i = a; i < b && i < src.length && n >= 0 && n < buf.length; i++) {
+      buf[n] = src[i];
+      n = n + 1;
+    }
+    out.n = n;
+    return;
+  }
+  out.range(src, a, b);
+};
 
 export class CsPrinter {
   D: CsDocs;
@@ -663,26 +1069,54 @@ export class CsPrinter {
     this.cDoc = new Array<i32>(256);
     this.sMI = new Array<i32>(256);
     this.sDoc = new Array<i32>(256);
-    this.groupMode = new Array<i32>(D.ngroup + 1);
-    for (let i = 0; i < D.ngroup + 1; i++) {
-      this.groupMode[i] = -1;
+    const groupMode: i32[] = [];
+    const ng = D.ngroup;
+    if (ng >= 0 && ng <= 1000000000) {
+      for (let i = 0; i <= ng; i++) {
+        groupMode.push(-1);
+      }
+    } else {
+      fault();
     }
+    this.groupMode = groupMode;
     this.regionIndents = [];
+  }
+
+  /** Gives up on the file and empties the command stack, which ends the print loop. */
+  stop(): void {
+    fault();
+    this.nc = 0;
   }
 
   push(doc: i32, mode: i32, ind: i32): void {
     const i = this.nc;
-    if (i >= toI32(this.cDoc.length)) {
-      this.cMI = growI32(this.cMI, i * 2);
-      this.cDoc = growI32(this.cDoc, i * 2);
+    const cMI = this.cMI;
+    const cDoc = this.cDoc;
+    if (i >= 0 && i < cMI.length && i < cDoc.length) {
+      cMI[i] = (ind << 2) | mode;
+      cDoc[i] = doc;
+      this.nc = i + 1;
+      return;
     }
-    uncheckedSet(this.cMI, i, (ind << 2) | mode);
-    uncheckedSet(this.cDoc, i, doc);
-    this.nc = i + 1;
+    this.pushPast(doc, mode, ind);
+  }
+
+  /** push past the end of the command stack's columns. */
+  pushPast(doc: i32, mode: i32, ind: i32): void {
+    const i = this.nc;
+    const cMI = this.cMI;
+    const cDoc = this.cDoc;
+    if (i === cDoc.length && i === cMI.length && i < 2000000000) {
+      cMI.push((ind << 2) | mode);
+      cDoc.push(doc);
+      this.nc = i + 1;
+    } else {
+      this.stop();
+    }
   }
 
   indentLength(ind: i32): i32 {
-    return ind * this.indentSize;
+    return mul32(ind, this.indentSize);
   }
 
   appendIndent(ind: i32): void {
@@ -691,7 +1125,7 @@ export class CsPrinter {
         this.out.byte(9);
       }
     } else {
-      this.out.spaces(ind * this.indentSize);
+      this.out.spaces(mul32(ind, this.indentSize));
     }
   }
 
@@ -710,41 +1144,73 @@ export class CsPrinter {
     }
     // EnsureOutputEndsWithSingleNewLine
     const out = this.out;
-    while (out.n > 0 && (toI32(out.buf[out.n - 1]) === 10 || toI32(out.buf[out.n - 1]) === 13)) {
-      out.n = out.n - 1;
+    const buf = out.buf;
+    let n = out.n;
+    if (n > buf.length) {
+      fault();
+      return;
     }
+    while (n > 0 && n <= buf.length && (toI32(buf[n - 1]) === 10 || toI32(buf[n - 1]) === 13)) {
+      n = n - 1;
+    }
+    out.n = n;
     this.appendEol();
     // TrimStart('\n', '\r')
+    const b2 = out.buf;
+    const n2 = out.n;
+    if (n2 < 0 || n2 > b2.length) {
+      fault();
+      return;
+    }
     let s = 0;
-    while (s < out.n && (toI32(out.buf[s]) === 10 || toI32(out.buf[s]) === 13)) {
+    while (s < n2 && s < b2.length && (toI32(b2[s]) === 10 || toI32(b2[s]) === 13)) {
       s++;
     }
     if (s > 0) {
-      for (let i = s; i < out.n; i++) {
-        out.buf[i - s] = out.buf[i];
+      let d = 0;
+      for (let i = s; i < n2 && i < b2.length; i++) {
+        if (d < 0 || d >= b2.length) {
+          fault();
+          return;
+        }
+        b2[d] = b2[i];
+        d = d + 1;
       }
-      out.n = out.n - s;
+      out.n = d;
     }
   }
 
   trimTrailingWhitespace(): i32 {
     const out = this.out;
-    let t = 0;
-    while (out.n > 0) {
-      const c = toI32(out.buf[out.n - 1]);
+    const buf = out.buf;
+    const n0 = out.n;
+    if (n0 > buf.length) {
+      fault();
+      return 0;
+    }
+    let n = n0;
+    while (n > 0 && n <= buf.length) {
+      const c = toI32(buf[n - 1]);
       if (c !== 32 && c !== 9) {
         break;
       }
-      out.n = out.n - 1;
-      t++;
+      n = n - 1;
     }
-    return t;
+    out.n = n;
+    return sub32(n0, n);
   }
 
   endsWithNewLineAndWhitespace(): boolean {
     const out = this.out;
-    for (let i = out.n - 1; i >= 0; i--) {
-      const c = toI32(out.buf[i]);
+    const buf = out.buf;
+    let i = out.n;
+    while (i > 0) {
+      i = i - 1;
+      if (i >= buf.length) {
+        fault();
+        return false;
+      }
+      const c = toI32(buf[i]);
       if (c === 32 || c === 9) {
         continue;
       }
@@ -753,34 +1219,97 @@ export class CsPrinter {
     return false;
   }
 
+  /** Whether the output is not empty and its last byte is not a line feed. */
+  outEndsMidLine(): boolean {
+    const out = this.out;
+    const buf = out.buf;
+    const n = out.n;
+    if (n === 0) {
+      return false;
+    }
+    if (n > 0 && n <= buf.length) {
+      return toI32(buf[n - 1]) !== 10;
+    }
+    fault();
+    return false;
+  }
+
   appendText(d: i32): void {
     const D = this.D;
-    const n = D.textLen(d);
-    if ((uncheckedGet(D.d, d) & SF_SRC) !== 0) {
-      this.out.range(D.src, uncheckedGet(D.a, d), uncheckedGet(D.b, d));
+    // a + textLen is b
+    if ((D.dOf(d) & SF_SRC) !== 0) {
+      csAppendRange(this.out, D.src, D.aOf(d), D.bOf(d));
     } else {
-      this.out.range(D.sb, uncheckedGet(D.a, d), uncheckedGet(D.a, d) + n);
+      csAppendRange(this.out, D.sb, D.aOf(d), D.bOf(d));
     }
   }
 
   processNext(): void {
-    this.nc = this.nc - 1;
-    const mi = uncheckedGet(this.cMI, this.nc);
+    const nc = this.nc;
+    const cMI = this.cMI;
+    const cDoc = this.cDoc;
+    if (nc <= 0 || nc > cMI.length || nc > cDoc.length) {
+      this.stop();
+      return;
+    }
+    const top = nc - 1;
+    this.nc = top;
+    const mi = cMI[top];
     const ind = mi >> 2;
     const mode = mi & 3;
-    const doc = uncheckedGet(this.cDoc, this.nc);
+    const doc = cDoc[top];
     const D = this.D;
-    const k = uncheckedGet(D.kind, doc);
+    const rec = D.rec;
+    if (doc < 0 || doc > 350000000) {
+      this.stop();
+      return;
+    }
+    const o = doc * 6;
+    if (o > rec.length - 6) {
+      this.stop();
+      return;
+    }
+    const k = rec[o];
+    const fa = rec[o + 1];
+    const fb = rec[o + 2];
+    const fc = rec[o + 3];
+    const fd = rec[o + 4];
     switch (k) {
       case D_NULL:
         return;
       case D_STRING:
-        this.processString(doc, ind);
+        this.processString(doc, ind, fa, fb, fc, fd);
         return;
       case D_CONCAT: {
-        const n = uncheckedGet(D.b, doc);
-        for (let x = n - 1; x >= 0; x--) {
-          this.push(D.at(doc, x), mode, ind);
+        // push's fast path, inline: the children, last first, in one copy
+        const pool = D.pool;
+        const off = fa;
+        const cnt = fb;
+        if (off < 0 || cnt < 0 || off > pool.length - cnt || top > 1000000000 || cnt > 1000000000) {
+          this.stop();
+          return;
+        }
+        if (cnt === 0) {
+          return;
+        }
+        const need = top + cnt;
+        if (need > cMI.length || need > cDoc.length) {
+          csdGrowTo(cMI, need);
+          csdGrowTo(cDoc, need);
+        }
+        const mi2 = (ind << 2) | mode;
+        // off + cnt is at most the pool's length, so the u32 sum is exact
+        let x = toI32(toU32(off) + toU32(cnt - 1));
+        let i = top;
+        while (x >= off && x >= 0 && x < pool.length && i >= 0 && i < cMI.length && i < cDoc.length) {
+          cMI[i] = mi2;
+          cDoc[i] = pool[x];
+          i = i + 1;
+          x = x - 1;
+        }
+        this.nc = i;
+        if (x >= off) {
+          this.stop();
         }
         return;
       }
@@ -795,30 +1324,36 @@ export class CsPrinter {
         this.processGroup(doc, mode, ind);
         return;
       case D_INDENT:
-        this.push(uncheckedGet(D.a, doc), mode, ind + 1);
+        this.push(D.aOf(doc), mode, ind + 1);
         return;
       case D_TRIM:
-        this.currentWidth -= this.trimTrailingWhitespace();
+        this.currentWidth = sub32(this.currentWidth, this.trimTrailingWhitespace());
         this.newLineNextStringValue = false;
         return;
       case D_IFBREAK: {
         let gm = mode;
-        const id = uncheckedGet(D.c, doc);
+        const id = D.cOf(doc);
         if (id >= 0) {
-          gm = this.groupMode[id];
+          const groupMode = this.groupMode;
+          if (id >= groupMode.length) {
+            this.stop();
+            return;
+          }
+          gm = groupMode[id];
           if (gm < 0) {
-            panic("an ifBreak before the group it targets");
+            // an ifBreak before the group it targets
+            this.stop();
+            return;
           }
         }
-        this.push(gm === PM_BREAK ? uncheckedGet(D.a, doc) : uncheckedGet(D.b, doc), mode, ind);
+        this.push(gm === PM_BREAK ? D.aOf(doc) : D.bOf(doc), mode, ind);
         return;
       }
       case D_BREAKPARENT:
         return;
       case D_LEADING_COMMENT: {
         this.trimTrailingWhitespace();
-        const out = this.out;
-        if ((out.n !== 0 && toI32(out.buf[out.n - 1]) !== 10) || this.newLineNextStringValue) {
+        if (this.outEndsMidLine() || this.newLineNextStringValue) {
           this.appendEol();
         }
         this.appendComment(doc, ind);
@@ -838,13 +1373,13 @@ export class CsPrinter {
         }
         return;
       case D_FORCEFLAT:
-        this.push(uncheckedGet(D.a, doc), PM_FORCE_FLAT, ind);
+        this.push(D.aOf(doc), PM_FORCE_FLAT, ind);
         return;
       case D_REGION:
-        if (uncheckedGet(D.c, doc) !== 0) {
-          const n = toI32(this.regionIndents.length);
-          if (n > 0) {
-            this.appendIndent(this.regionIndents.pop());
+        if (D.cOf(doc) !== 0) {
+          const regionIndents = this.regionIndents;
+          if (regionIndents.length > 0) {
+            this.appendIndent(regionIndents.pop());
           } else {
             this.appendIndent(ind);
           }
@@ -855,10 +1390,11 @@ export class CsPrinter {
         this.appendText(doc);
         return;
       case D_ALWAYSFITS:
-        this.push(uncheckedGet(D.a, doc), mode, ind);
+        this.push(D.aOf(doc), mode, ind);
         return;
       default:
-        panic(`unknown doc ${k}`);
+        // an unknown doc
+        this.stop();
     }
   }
 
@@ -866,11 +1402,15 @@ export class CsPrinter {
   leadingIndentation(buf: u8[], a: i32, b: i32): i32 {
     let r = 0;
     for (let i = a; i < b; i++) {
+      if (i < 0 || i >= buf.length) {
+        fault();
+        return 0;
+      }
       const c = toI32(buf[i]);
       if (c === 32) {
-        r++;
+        r = add32(r, 1);
       } else if (c === 9) {
-        r += this.indentSize;
+        r = add32(r, this.indentSize);
       } else {
         break;
       }
@@ -880,10 +1420,10 @@ export class CsPrinter {
 
   appendComment(doc: i32, ind: i32): void {
     const D = this.D;
-    const buf = (uncheckedGet(D.d, doc) & SF_SRC) !== 0 ? D.src : D.sb;
-    const a = uncheckedGet(D.a, doc);
-    const b = uncheckedGet(D.b, doc);
-    const isMulti = uncheckedGet(D.c, doc) === CT_MULTI;
+    const buf = (D.dOf(doc) & SF_SRC) !== 0 ? D.src : D.sb;
+    const a = D.aOf(doc);
+    const b = D.bOf(doc);
+    const isMulti = D.cOf(doc) === CT_MULTI;
     // StringReader.ReadLine: lines split on \r\n, \r, \n
     let pos = a;
     let first = true;
@@ -893,7 +1433,15 @@ export class CsPrinter {
         return;
       }
       let e = pos;
-      while (e < b && toI32(buf[e]) !== 10 && toI32(buf[e]) !== 13) {
+      while (e < b) {
+        if (e < 0 || e >= buf.length) {
+          fault();
+          return;
+        }
+        const c = toI32(buf[e]);
+        if (c === 10 || c === 13) {
+          break;
+        }
         e++;
       }
       if (pos === b && first) {
@@ -901,22 +1449,22 @@ export class CsPrinter {
         return;
       }
       if (first && isMulti) {
-        delta = this.indentLength(ind) - this.leadingIndentation(buf, pos, e);
+        delta = sub32(this.indentLength(ind), this.leadingIndentation(buf, pos, e));
       }
       first = false;
       if (!isMulti) {
         this.appendIndent(ind);
       } else {
-        let spaces = this.leadingIndentation(buf, pos, e) + delta;
+        let spaces = add32(this.leadingIndentation(buf, pos, e), delta);
         if (this.useTabs) {
           const il = this.indentLength(ind);
           if (spaces >= il) {
             this.appendIndent(ind);
-            spaces -= il;
+            spaces = sub32(spaces, il);
           }
           while (spaces > 0 && spaces >= this.indentSize) {
             this.out.byte(9);
-            spaces -= this.indentSize;
+            spaces = sub32(spaces, this.indentSize);
           }
         }
         if (spaces > 0) {
@@ -926,21 +1474,42 @@ export class CsPrinter {
       // line.Trim()
       let ta = pos;
       let tb = e;
+      // csTrimLen and csTrimLenEnd answer 1 to 4
       while (ta < tb && csIsTrimByte(buf, ta, tb)) {
-        ta += csTrimLen(buf, ta);
+        if (ta > 2000000000) {
+          fault();
+          return;
+        }
+        ta = ta + (csTrimLen(buf, ta) & 7);
       }
       while (tb > ta && csIsTrimByteEnd(buf, ta, tb)) {
-        tb -= csTrimLenEnd(buf, tb);
+        // csIsTrimByteEnd read buf[tb - 1], so tb > 0
+        if (tb > 0) {
+          tb = tb - (csTrimLenEnd(buf, tb) & 7);
+        } else {
+          fault();
+          return;
+        }
       }
       this.out.range(buf, ta, tb);
       // next line
       if (e >= b) {
         return;
       }
-      if (toI32(buf[e]) === 13 && e + 1 < b && toI32(buf[e + 1]) === 10) {
-        pos = e + 2;
-      } else {
-        pos = e + 1;
+      if (e < 0 || e >= buf.length) {
+        fault();
+        return;
+      }
+      const e1 = e + 1;
+      pos = e1;
+      if (toI32(buf[e]) === 13 && e1 < b) {
+        if (e1 >= buf.length) {
+          fault();
+          return;
+        }
+        if (toI32(buf[e1]) === 10) {
+          pos = e1 + 1;
+        }
       }
       if (pos >= b) {
         // ReadLine answers null after a final line break
@@ -950,9 +1519,10 @@ export class CsPrinter {
     }
   }
 
-  processString(doc: i32, ind: i32): void {
+  /** Prints string doc `doc`, whose fields a, b, c (its width) and d (its flags) are given. */
+  processString(doc: i32, ind: i32, a: i32, b: i32, w: i32, flags: i32): void {
     const D = this.D;
-    const n = D.textLen(doc);
+    const n = sub32(b, a);
     if (n === 0) {
       return;
     }
@@ -966,25 +1536,25 @@ export class CsPrinter {
       this.currentWidth = this.indentLength(ind);
       this.newLineNextStringValue = false;
     }
-    this.appendText(doc);
-    this.currentWidth += uncheckedGet(D.c, doc);
+    csAppendRange(this.out, (flags & SF_SRC) !== 0 ? D.src : D.sb, a, b);
+    this.currentWidth = add32(this.currentWidth, w);
   }
 
   processLine(doc: i32, mode: i32, ind: i32): void {
     const D = this.D;
-    const k = uncheckedGet(D.kind, doc);
+    const k = D.kindOf(doc);
     if (mode === PM_FLAT || mode === PM_FORCE_FLAT) {
       if (k === D_SOFTLINE) {
         return;
       }
       if (k === D_LINE) {
         this.out.byte(32);
-        this.currentWidth += 1;
+        this.currentWidth = add32(this.currentWidth, 1);
         return;
       }
       this.shouldRemeasure = true;
     }
-    const squash = k === D_HARDLINE && (uncheckedGet(D.b, doc) & HL_SQUASH) !== 0;
+    const squash = k === D_HARDLINE && (D.bOf(doc) & HL_SQUASH) !== 0;
     if (squash && this.out.n > 0 && this.endsWithNewLineAndWhitespace()) {
       return;
     }
@@ -996,7 +1566,7 @@ export class CsPrinter {
       return;
     }
     if (!this.skipNextNewLine || !this.newLineNextStringValue) {
-      const noTrim = k === D_HARDLINE && (uncheckedGet(D.b, doc) & HL_NO_TRIM) !== 0;
+      const noTrim = k === D_HARDLINE && (D.bOf(doc) & HL_NO_TRIM) !== 0;
       if (!noTrim) {
         this.trimTrailingWhitespace();
       }
@@ -1011,24 +1581,24 @@ export class CsPrinter {
 
   processGroup(doc: i32, mode: i32, ind: i32): void {
     const D = this.D;
-    const brk = uncheckedGet(D.b, doc) !== 0;
+    const brk = D.bOf(doc) !== 0;
     if ((mode === PM_FLAT || mode === PM_FORCE_FLAT) && !this.shouldRemeasure) {
-      this.push(uncheckedGet(D.a, doc), brk ? PM_BREAK : mode, ind);
+      this.push(D.aOf(doc), brk ? PM_BREAK : mode, ind);
     } else {
       this.shouldRemeasure = false;
-      if (!brk && this.fits(uncheckedGet(D.a, doc), PM_FLAT)) {
-        this.push(uncheckedGet(D.a, doc), PM_FLAT, ind);
-      } else if (uncheckedGet(D.kind, doc) === D_CONDGROUP) {
-        const off = uncheckedGet(D.d, doc);
-        const n = uncheckedGet(D.e, doc);
+      if (!brk && this.fits(D.aOf(doc), PM_FLAT)) {
+        this.push(D.aOf(doc), PM_FLAT, ind);
+      } else if (D.kindOf(doc) === D_CONDGROUP) {
+        const off = D.dOf(doc);
+        const n = D.eOf(doc);
         if (brk) {
-          this.push(uncheckedGet(D.pool, off + n - 1), PM_BREAK, ind);
+          this.push(D.poolAt(off, sub32(n, 1)), PM_BREAK, ind);
         } else {
           let found = false;
-          let lastDoc = uncheckedGet(D.a, doc);
+          let lastDoc = D.aOf(doc);
           let lastMode = PM_FLAT;
           for (let i = 1; i < n; i++) {
-            const opt = uncheckedGet(D.pool, off + i);
+            const opt = D.poolAt(off, i);
             lastDoc = opt;
             lastMode = mode;
             if (!this.fits(opt, mode)) {
@@ -1043,73 +1613,173 @@ export class CsPrinter {
           }
         }
       } else {
-        this.push(uncheckedGet(D.a, doc), PM_BREAK, ind);
+        this.push(D.aOf(doc), PM_BREAK, ind);
       }
     }
-    const id = uncheckedGet(D.c, doc);
+    const id = D.cOf(doc);
     if (id >= 0) {
-      this.groupMode[id] = this.cMI[this.nc - 1] & 3;
+      const groupMode = this.groupMode;
+      const cMI = this.cMI;
+      const nc = this.nc;
+      if (id < groupMode.length && nc > 0 && nc <= cMI.length) {
+        groupMode[id] = cMI[nc - 1] & 3;
+      } else {
+        this.stop();
+      }
     }
   }
 
+  /** Pushes (doc, mode) on the fitter's stack of ns entries; answers the new count. */
   spush(doc: i32, mode: i32, ns: i32): i32 {
-    if (ns >= toI32(this.sDoc.length)) {
-      this.sMI = growI32(this.sMI, ns * 2);
-      this.sDoc = growI32(this.sDoc, ns * 2);
+    const sMI = this.sMI;
+    const sDoc = this.sDoc;
+    if (ns >= 0 && ns < sMI.length && ns < sDoc.length) {
+      sMI[ns] = mode;
+      sDoc[ns] = doc;
+      return ns + 1;
     }
-    uncheckedSet(this.sMI, ns, mode);
-    uncheckedSet(this.sDoc, ns, doc);
-    return ns + 1;
+    return this.spushPast(doc, mode, ns);
+  }
+
+  /** spush past the end of the fitter's stack columns. */
+  spushPast(doc: i32, mode: i32, ns: i32): i32 {
+    const sMI = this.sMI;
+    const sDoc = this.sDoc;
+    if (ns === sDoc.length && ns === sMI.length && ns < 2000000000) {
+      sMI.push(mode);
+      sDoc.push(doc);
+      return ns + 1;
+    }
+    fault();
+    return 0;
+  }
+
+  /** Grows the fitter's stack columns to at least `need` entries. */
+  growFit(need: i32): void {
+    const sMI = this.sMI;
+    const sDoc = this.sDoc;
+    while (sMI.length < need) {
+      sMI.push(0);
+    }
+    while (sDoc.length < need) {
+      sDoc.push(0);
+    }
   }
 
   /** DocFitter.Fits for the command (doc, mode, ind) with the remaining commands after it. */
   fits(doc0: i32, mode0: i32): boolean {
     const D = this.D;
-    let remaining = this.width - this.currentWidth;
+    // The records do not change while fitting: no doc is added.
+    const rec = D.rec;
+    const pool = D.pool;
+    const cMI = this.cMI;
+    const cDoc = this.cDoc;
+    const groupMode = this.groupMode;
+    let sMI = this.sMI;
+    let sDoc = this.sDoc;
+    let remaining = sub32(this.width, this.currentWidth);
     let outputLength = 0;
     let trailingWhitespace = 0;
     let returnFalseIfMoreStringsFound = false;
     let ns = this.spush(doc0, mode0, 0);
-    let x = 0; // index into the remaining commands, from the top
-    while (x < this.nc || ns > 0) {
+    let ci = this.nc; // the remaining commands below ci, from the top
+    while (ci > 0 || ns > 0) {
       if (remaining < 0) {
         return false;
       }
       let mode = 0;
       let doc = 0;
       if (ns > 0) {
-        ns--;
-        mode = uncheckedGet(this.sMI, ns);
-        doc = uncheckedGet(this.sDoc, ns);
+        ns = ns - 1;
+        if (ns >= sMI.length || ns >= sDoc.length) {
+          fault();
+          return false;
+        }
+        mode = sMI[ns];
+        doc = sDoc[ns];
+      } else if (ci > 0 && ci <= cMI.length && ci <= cDoc.length) {
+        const c1 = ci - 1;
+        ci = c1;
+        mode = cMI[c1] & 3;
+        doc = cDoc[c1];
       } else {
-        const ci = this.nc - 1 - x;
-        x++;
-        mode = uncheckedGet(this.cMI, ci) & 3;
-        doc = uncheckedGet(this.cDoc, ci);
+        fault();
+        return false;
       }
-      const k = uncheckedGet(D.kind, doc);
+      if (doc < 0 || doc > 350000000) {
+        fault();
+        return false;
+      }
+      const o = doc * 6;
+      if (o > rec.length - 6) {
+        fault();
+        return false;
+      }
+      const k = rec[o];
+      const fa = rec[o + 1];
+      const fb = rec[o + 2];
+      const fc = rec[o + 3];
+      const fd = rec[o + 4];
+      const fe = rec[o + 5];
       switch (k) {
         case D_NULL:
           break;
         case D_STRING: {
-          if ((uncheckedGet(D.d, doc) & SF_DIRECTIVE) !== 0) {
+          if ((fd & SF_DIRECTIVE) !== 0) {
             continue;
           }
           if (returnFalseIfMoreStringsFound) {
             return false;
           }
-          const n = uncheckedGet(D.b, doc) - uncheckedGet(D.a, doc);
-          outputLength += n;
+          const a = fa;
+          const b = fb;
           // TrailingWhitespaceLength
-          const len = uncheckedGet(D.e, doc);
-          trailingWhitespace = len === n ? trailingWhitespace + len : len;
-          remaining -= uncheckedGet(D.c, doc);
+          const len = fe;
+          const w = fc;
+          // a string's text and width are never negative
+          if (a < 0 || b < a || w < 0) {
+            fault();
+            return false;
+          }
+          // b >= a >= 0, so the u32 difference is exact
+          const n = toI32(toU32(b) - toU32(a));
+          outputLength = add32(outputLength, n);
+          if (len === n) {
+            trailingWhitespace = add32(trailingWhitespace, len);
+          } else {
+            trailingWhitespace = len;
+          }
+          remaining = sub32(remaining, w);
           break;
         }
         case D_CONCAT: {
-          const n = uncheckedGet(D.b, doc);
-          for (let i = n - 1; i >= 0; i--) {
-            ns = this.spush(D.at(doc, i), mode, ns);
+          const off = fa;
+          const cnt = fb;
+          if (off < 0 || cnt < 0 || off > pool.length - cnt || ns < 0 || ns > 1000000000 || cnt > 1000000000) {
+            fault();
+            return false;
+          }
+          // the children, last first, in one copy: room for them first
+          const need = ns + cnt;
+          if (need > sMI.length || need > sDoc.length) {
+            this.growFit(need);
+            sMI = this.sMI;
+            sDoc = this.sDoc;
+          }
+          if (cnt === 0) {
+            break;
+          }
+          // off + cnt is at most the pool's length, so the u32 sum is exact
+          let p = toI32(toU32(off) + toU32(cnt - 1));
+          while (p >= off && p >= 0 && p < pool.length && ns >= 0 && ns < sMI.length && ns < sDoc.length) {
+            sMI[ns] = mode;
+            sDoc[ns] = pool[p];
+            ns = ns + 1;
+            p = p - 1;
+          }
+          if (p >= off) {
+            fault();
+            return false;
           }
           break;
         }
@@ -1118,48 +1788,64 @@ export class CsPrinter {
         case D_HARDLINE:
         case D_LITERALLINE:
           if (mode === PM_FLAT || mode === PM_FORCE_FLAT) {
-            if (k === D_HARDLINE && (uncheckedGet(D.b, doc) & HL_FOR_TRIVIA) !== 0) {
-              returnFalseIfMoreStringsFound = false;
-            } else if (k === D_HARDLINE || k === D_LITERALLINE) {
+            if (k === D_HARDLINE) {
+              if ((fb & HL_FOR_TRIVIA) !== 0) {
+                returnFalseIfMoreStringsFound = false;
+              } else {
+                return true;
+              }
+            } else if (k === D_LITERALLINE) {
               return true;
             }
             if (k !== D_SOFTLINE) {
-              outputLength += 1;
-              trailingWhitespace += 1;
-              remaining -= 1;
+              outputLength = add32(outputLength, 1);
+              trailingWhitespace = add32(trailingWhitespace, 1);
+              remaining = sub32(remaining, 1);
             }
             break;
           }
           return true;
         case D_GROUP:
         case D_CONDGROUP: {
-          const gm = uncheckedGet(D.b, doc) !== 0 ? PM_BREAK : mode;
-          let contents = uncheckedGet(D.a, doc);
+          const gm = fb !== 0 ? PM_BREAK : mode;
+          let contents = fa;
+          const id = fc;
           if (gm === PM_BREAK && k === D_CONDGROUP) {
-            contents = D.pool[uncheckedGet(D.d, doc) + uncheckedGet(D.e, doc) - 1];
+            contents = D.poolAt(fd, sub32(fe, 1));
           }
           ns = this.spush(contents, gm, ns);
-          const id = uncheckedGet(D.c, doc);
           if (id >= 0) {
-            this.groupMode[id] = gm;
+            if (id >= groupMode.length) {
+              fault();
+              return false;
+            }
+            groupMode[id] = gm;
           }
           break;
         }
         case D_INDENT:
-          ns = this.spush(uncheckedGet(D.a, doc), mode, ns);
+          ns = this.spush(fa, mode, ns);
           break;
         case D_IFBREAK: {
-          const id = uncheckedGet(D.c, doc);
+          const id = fc;
+          const ia = fa;
+          const ib = fb;
           let im = mode;
-          if (id >= 0 && this.groupMode[id] >= 0) {
-            im = this.groupMode[id];
+          if (id >= 0) {
+            if (id >= groupMode.length) {
+              fault();
+              return false;
+            }
+            if (groupMode[id] >= 0) {
+              im = groupMode[id];
+            }
           }
-          ns = this.spush(im === PM_BREAK ? uncheckedGet(D.a, doc) : uncheckedGet(D.b, doc), mode, ns);
+          ns = this.spush(im === PM_BREAK ? ia : ib, mode, ns);
           break;
         }
         case D_TRIM:
-          outputLength -= trailingWhitespace;
-          remaining += trailingWhitespace;
+          outputLength = sub32(outputLength, trailingWhitespace);
+          remaining = add32(remaining, trailingWhitespace);
           trailingWhitespace = 0;
           break;
         case D_LEADING_COMMENT:
@@ -1171,14 +1857,16 @@ export class CsPrinter {
         case D_REGION:
           return false;
         case D_FORCEFLAT:
-          ns = this.spush(uncheckedGet(D.a, doc), PM_FORCE_FLAT, ns);
+          ns = this.spush(fa, PM_FORCE_FLAT, ns);
           break;
         case D_BREAKPARENT:
           break;
         case D_ALWAYSFITS:
           break;
         default:
-          panic(`fits: unknown doc ${k}`);
+          // an unknown doc
+          fault();
+          return false;
       }
     }
     return remaining > 0;
@@ -1187,6 +1875,10 @@ export class CsPrinter {
 
 /** Whether buf[i] starts a char .NET's Trim removes (char.IsWhiteSpace). */
 const csIsTrimByte = (buf: u8[], i: i32, b: i32): boolean => {
+  if (i < 0 || i >= buf.length) {
+    fault();
+    return false;
+  }
   const c = toI32(buf[i]);
   if (c === 32 || (c >= 9 && c <= 13)) {
     return true;
@@ -1198,12 +1890,26 @@ const csIsTrimByte = (buf: u8[], i: i32, b: i32): boolean => {
 };
 
 const csTrimLen = (buf: u8[], i: i32): i32 => {
+  if (i < 0 || i >= buf.length) {
+    fault();
+    return 1;
+  }
   const c = toI32(buf[i]);
-  return c < 0x80 ? 1 : c < 0xe0 ? 2 : c < 0xf0 ? 3 : 4;
+  if (c < 0x80) {
+    return 1;
+  }
+  if (c < 0xe0) {
+    return 2;
+  }
+  return c < 0xf0 ? 3 : 4;
 };
 
 /** Whether the char ending at tb is .NET whitespace. */
 const csIsTrimByteEnd = (buf: u8[], ta: i32, tb: i32): boolean => {
+  if (tb <= 0 || tb > buf.length) {
+    fault();
+    return false;
+  }
   const c = toI32(buf[tb - 1]);
   if (c === 32 || (c >= 9 && c <= 13)) {
     return true;
@@ -1212,27 +1918,53 @@ const csIsTrimByteEnd = (buf: u8[], ta: i32, tb: i32): boolean => {
     return false;
   }
   let s = tb - 1;
-  while (s > ta && (toI32(buf[s]) & 0xc0) === 0x80) {
+  while (s > ta && s > 0 && s < buf.length && (toI32(buf[s]) & 0xc0) === 0x80) {
     s--;
   }
   return csIsDotnetWhiteSpaceCp(csCpAt(buf, s, tb));
 };
 
 const csTrimLenEnd = (buf: u8[], tb: i32): i32 => {
+  if (tb < 0 || tb > buf.length) {
+    fault();
+    return 1;
+  }
   let n = 1;
-  while (n < 4 && (toI32(buf[tb - n]) & 0xc0) === 0x80) {
+  while (n < 4) {
+    const i = tb - n;
+    if (i < 0 || i >= buf.length) {
+      fault();
+      return n;
+    }
+    if ((toI32(buf[i]) & 0xc0) !== 0x80) {
+      break;
+    }
     n++;
   }
   return n;
 };
 
 const csCpAt = (buf: u8[], i: i32, b: i32): i32 => {
-  const c = toI32(buf[i]);
-  if (c < 0xe0 && i + 1 < b) {
-    return ((c & 0x1f) << 6) | (toI32(buf[i + 1]) & 0x3f);
+  if (i < 0 || i >= buf.length || i > 2000000000) {
+    fault();
+    return 0x10000;
   }
-  if (c < 0xf0 && i + 2 < b) {
-    return ((c & 0x0f) << 12) | ((toI32(buf[i + 1]) & 0x3f) << 6) | (toI32(buf[i + 2]) & 0x3f);
+  const c = toI32(buf[i]);
+  const i1 = i + 1;
+  const i2 = i + 2;
+  if (c < 0xe0 && i1 < b) {
+    if (i1 >= buf.length) {
+      fault();
+      return 0x10000;
+    }
+    return ((c & 0x1f) << 6) | (toI32(buf[i1]) & 0x3f);
+  }
+  if (c < 0xf0 && i2 < b) {
+    if (i1 >= buf.length || i2 >= buf.length) {
+      fault();
+      return 0x10000;
+    }
+    return ((c & 0x0f) << 12) | ((toI32(buf[i1]) & 0x3f) << 6) | (toI32(buf[i2]) & 0x3f);
   }
   return 0x10000;
 };

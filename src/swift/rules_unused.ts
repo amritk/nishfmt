@@ -4,6 +4,7 @@
 // Ported from SwiftFormat 0.64.7 (MIT License, Copyright (c) 2016 Nick
 // Lockwood).
 
+import { fault } from "../core/fault";
 import { swIsUnsafeExpression } from "./expr";
 import { SwFormatter } from "./formatter";
 import { SwFuncArg, swParseFunctionDeclaration, swUnescaped } from "./funcdecl";
@@ -39,6 +40,10 @@ import {
   swStrIsMacro,
 } from "./token";
 
+// Token indices, token counts and line numbers stay below the token count, far from the
+// i32 limits, so a sum or difference of them the prover cannot bound is written
+// `toI32(toU32(a) + b)`: wrapping u32 arithmetic, exact for such values.
+
 class SwRUState {
   isDeclaration: boolean = false;
   wasDeclaration: boolean = false;
@@ -53,12 +58,24 @@ class SwRUState {
 }
 
 const swRemoveAt = (names: string[], data: i32[], q: i32): void => {
-  const n = toI32(names.length);
-  for (let j = q; j + 1 < n; j++) {
+  // data runs parallel to names, and q is one of their indices.
+  if (q < 0) {
+    fault();
+    return;
+  }
+  for (let j = q; j < names.length - 1 && j < data.length - 1; j++) {
     names[j] = names[j + 1];
     data[j] = data[j + 1];
   }
+  if (names.length < 1) {
+    fault();
+    return;
+  }
   names.pop();
+  if (data.length < 1) {
+    fault();
+    return;
+  }
   data.pop();
 };
 
@@ -159,8 +176,12 @@ export const swRemoveUsed = (
       let endIndex = -1;
       if (swIsConditionalAssignment(f, i)) {
         const br = swConditionalBranches(f, i);
-        if (br !== null && br.ends.length !== 0) {
-          endIndex = br.ends[toI32(br.ends.length) - 1];
+        if (br !== null) {
+          const ends = br.ends;
+          const ne = toI32(ends.length);
+          if (ne > 0) {
+            endIndex = ends[ne - 1];
+          }
         }
       }
       if (endIndex >= 0) {
@@ -219,18 +240,18 @@ export const swRemoveUsed = (
         return false;
       }
       if (swIsStartOfClosure(f, i)) {
-        if (!swRemoveUsed(f, names, data, st.locals, i + 1, endIndex)) {
+        if (!swRemoveUsed(f, names, data, st.locals, toI32(toU32(i) + 1), endIndex)) {
           return false;
         }
       } else if (st.isGuard) {
-        if (!swRemoveUsed(f, names, data, st.locals, i + 1, endIndex)) {
+        if (!swRemoveUsed(f, names, data, st.locals, toI32(toU32(i) + 1), endIndex)) {
           return false;
         }
         swPushLocals(st, names, data);
       } else {
         const prev = swCopyNames(st.locals);
         swPushLocals(st, names, data);
-        if (!swRemoveUsed(f, names, data, st.locals, i + 1, endIndex)) {
+        if (!swRemoveUsed(f, names, data, st.locals, toI32(toU32(i) + 1), endIndex)) {
           return false;
         }
         st.locals = prev;
@@ -238,7 +259,7 @@ export const swRemoveUsed = (
       st.isGuard = false;
       i = endIndex;
     }
-    i++;
+    i = toI32(toU32(i) + 1);
   }
   return true;
 };
@@ -278,7 +299,7 @@ const swUnusedFunctionArguments = (f: SwFormatter): boolean => {
       argNames.push(a.internalLabel);
     }
     const data = swRange(toI32(args.length));
-    if (!swRemoveUsed(f, argNames, data, [], decl.bodyStart + 1, decl.bodyEnd)) {
+    if (!swRemoveUsed(f, argNames, data, [], toI32(toU32(decl.bodyStart) + 1), decl.bodyEnd)) {
       return false;
     }
     const soa = swStartOfModifiers(f, i, true);
@@ -291,7 +312,7 @@ const swUnusedFunctionArguments = (f: SwFormatter): boolean => {
       if (e < 0 || e <= ai) {
         continue;
       }
-      for (let x = ai + 1; x <= e; x++) {
+      for (let x = ai + 1; x <= e; x = toI32(toU32(x) + 1)) {
         if (f.k(x) === SW_IDENT) {
           const q = argNames.indexOf(swUnescaped(f.s(x)));
           if (q >= 0) {
@@ -302,11 +323,15 @@ const swUnusedFunctionArguments = (f: SwFormatter): boolean => {
     }
     const todo: SwFuncArg[] = [];
     for (const q of data) {
+      if (q < 0 || q >= args.length) {
+        fault();
+        return false;
+      }
       todo.push(args[q]);
     }
     for (const a of decl.args) {
       if (a.internalLabel.length === 0 && a.externalLabel.length === 0 && a.externalLabelIndex >= 0) {
-        if (f.indexInType(SW_T_COMMENT, a.externalLabelIndex + 1, a.internalLabelIndex) < 0) {
+        if (f.indexInType(SW_T_COMMENT, toI32(toU32(a.externalLabelIndex) + 1), a.internalLabelIndex) < 0) {
           todo.push(a);
         }
       }
@@ -324,15 +349,15 @@ const swUnusedFunctionArguments = (f: SwFormatter): boolean => {
     for (const a of todo) {
       if (isOperator) {
         if (a.externalLabelIndex >= 0 && a.externalLabel.length === 0) {
-          f.removeTokens(a.externalLabelIndex + 1, a.internalLabelIndex + 1);
+          f.removeTokens(toI32(toU32(a.externalLabelIndex) + 1), toI32(toU32(a.internalLabelIndex) + 1));
         } else {
           f.replaceToken(a.internalLabelIndex, SW_IDENT, "_", 0);
         }
       } else if (a.externalLabelIndex >= 0 && a.externalLabel.length === 0) {
-        f.removeTokens(a.externalLabelIndex + 1, a.internalLabelIndex + 1);
+        f.removeTokens(toI32(toU32(a.externalLabelIndex) + 1), toI32(toU32(a.internalLabelIndex) + 1));
       } else if (a.externalLabelIndex < 0) {
-        f.insert(SW_IDENT, "_", 0, a.internalLabelIndex + 1);
-        f.insert(SW_SPACE, " ", 0, a.internalLabelIndex + 1);
+        f.insert(SW_IDENT, "_", 0, toI32(toU32(a.internalLabelIndex) + 1));
+        f.insert(SW_SPACE, " ", 0, toI32(toU32(a.internalLabelIndex) + 1));
       } else {
         f.replaceToken(a.internalLabelIndex, SW_IDENT, "_", 0);
       }
@@ -382,7 +407,7 @@ const swUnusedForLoopVariables = (f: SwFormatter): boolean => {
           }
         }
       }
-      index++;
+      index = toI32(toU32(index) + 1);
     }
     if (skip || names.length === 0) {
       continue;
@@ -392,7 +417,7 @@ const swUnusedForLoopVariables = (f: SwFormatter): boolean => {
     if (bodyEnd < 0) {
       continue;
     }
-    if (!swRemoveUsed(f, names, idx, [], bodyStart + 1, bodyEnd)) {
+    if (!swRemoveUsed(f, names, idx, [], toI32(toU32(bodyStart) + 1), bodyEnd)) {
       return false;
     }
     const wi = f.indexOfAfter(SW_KEYWORD, "where", 0, inIndex);
@@ -443,18 +468,33 @@ const swUnusedClosureArguments = (f: SwFormatter): boolean => {
       } else if (k === SW_END && s === ")") {
         stack.push(toI32(names.length));
       } else if (k === SW_START && s === "(") {
-        if (stack.length !== 0) {
+        if (stack.length > 0) {
           stack.pop();
         }
       } else if (k === SW_DELIM && s === ",") {
-        if (stack.length !== 0) {
-          stack[toI32(stack.length) - 1] = toI32(names.length);
+        const ns = toI32(stack.length);
+        if (ns > 0) {
+          stack[ns - 1] = toI32(names.length);
         }
       } else if (ret || f.op(index, "->", SW_OP_INFIX) || f.kw(index, "throws")) {
-        const count = stack.length !== 0 ? stack[toI32(stack.length) - 1] : 0;
+        const ns = toI32(stack.length);
+        const count = ns > 0 ? stack[ns - 1] : 0;
         while (toI32(names.length) > count) {
+          // p0 and p1 run parallel to names.
+          if (names.length < 1) {
+            fault();
+            return false;
+          }
           names.pop();
+          if (p0.length < 1) {
+            fault();
+            return false;
+          }
           p0.pop();
+          if (p1.length < 1) {
+            fault();
+            return false;
+          }
           p1.pop();
         }
       } else if (k === SW_KEYWORD && !swIsAttribute(f, index) && !swStrIsMacro(s) && s !== "inout") {
@@ -492,7 +532,7 @@ const swUnusedClosureArguments = (f: SwFormatter): boolean => {
           }
         }
       }
-      index--;
+      index = toI32(toU32(index) - 1);
     }
     if (abort || names.length === 0) {
       continue;
@@ -502,16 +542,20 @@ const swUnusedClosureArguments = (f: SwFormatter): boolean => {
       continue;
     }
     const data = swRange(toI32(names.length));
-    if (!swRemoveUsed(f, names, data, [], i + 1, bodyEndIndex)) {
+    if (!swRemoveUsed(f, names, data, [], toI32(toU32(i) + 1), bodyEndIndex)) {
       return false;
     }
     for (const q of data) {
+      if (q < 0 || q >= p0.length || q >= p1.length) {
+        fault();
+        return false;
+      }
       const a = p0[q];
       const b = p1[q];
       if (f.tok(a, SW_IDENT, "_") && a !== b) {
         f.removeToken(b);
-        if (f.tok(b - 1, SW_SPACE, " ")) {
-          f.removeToken(b - 1);
+        if (f.tok(toI32(toU32(b) - 1), SW_SPACE, " ")) {
+          f.removeToken(toI32(toU32(b) - 1));
         }
       } else {
         f.replaceToken(b, SW_IDENT, "_", 0);

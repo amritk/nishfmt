@@ -7,6 +7,8 @@
 // Ported from RuboCop 1.92.3 (MIT License, Copyright (c) 2012-24 Bozhidar
 // Batsov).
 
+import { fault } from "../../core/fault";
+import { add32 } from "../../core/arr";
 import {
   F_HEREDOC_BODY,
   F_HEREDOC_END,
@@ -29,7 +31,7 @@ import {
   V_NIL,
 } from "../ast";
 import { RbCop } from "../cop";
-import { rnHeredoc } from "../node";
+import { rbLine, rnHeredoc } from "../node";
 import { RbSource } from "../source";
 import { RbLayLines, rbLayRxSpace, rbLayStripWs } from "./layout_empty_help";
 import { ssxInList } from "./style_syntax_help";
@@ -151,7 +153,7 @@ export const mtxLineCount = (src: RbSource, n: i32): i32 => {
   if (src.a.exS(n) < 0) {
     return 0;
   }
-  return src.line(src.a.exE(n)) - src.line(src.a.exS(n)) + 1;
+  return rbLine(src, src.a.exE(n)) - rbLine(src, src.a.exS(n)) + 1;
 };
 
 // ---- CodeLengthCalculator ---------------------------------------------------------
@@ -162,14 +164,20 @@ export const mtxLineCount = (src: RbSource, n: i32): i32 => {
  */
 const mtxCountRange = (src: RbSource, s: i32, e: i32): i32 => {
   let cnt = 0;
+  const pts = src.pts;
+  // Every offset in [s, e) is read.
+  if (s < e && (s < 0 || e > pts.length)) {
+    fault();
+    return 0;
+  }
   let p = s;
-  while (p < e) {
+  while (p >= 0 && p < e) {
     let blank = true;
     let lead = true;
     let comment = false;
     let i = p;
-    while (i < e && src.pts[i] !== 10) {
-      const c = src.pts[i];
+    while (i < e && i < pts.length && pts[i] !== 10) {
+      const c = pts[i];
       if (lead && !rbLayRxSpace(c)) {
         lead = false;
         comment = c === 35;
@@ -180,7 +188,10 @@ const mtxCountRange = (src: RbSource, s: i32, e: i32): i32 => {
       i++;
     }
     if (!blank && !comment) {
-      cnt++;
+      cnt = add32(cnt, 1);
+    }
+    if (i >= e) {
+      break;
     }
     p = i + 1;
   }
@@ -252,17 +263,17 @@ const mtxClasslikeLength = (src: RbSource, L: RbLayLines, n: i32): i32 => {
   for (const d of ds) {
     if (mtxClasslike(src, d)) {
       const l2 = src.line(src.a.exE(d));
-      for (let l = src.line(src.a.exS(d)); l <= l2; l++) {
+      for (let l = src.line(src.a.exS(d)); l <= l2 && l < 2147483647; l++) {
         inner.add(l);
       }
     }
   }
   let len = 0;
-  for (let l = first + 1; l < last; l++) {
+  for (let l = add32(first, 1); l < last; l++) {
     if (inner.has(l) || mtxIrrelevantLine(L, l)) {
       continue;
     }
-    len++;
+    len = add32(len, 1);
   }
   return len;
 };
@@ -273,7 +284,7 @@ export const mtxCodeLength = (src: RbSource, L: RbLayLines, n: i32): i32 => {
     return mtxClasslikeLength(src, L, n);
   }
   if (mtxHeredocNode(src, n)) {
-    return mtxCountRange(src, src.a.fS(src.a.map(n), F_HEREDOC_BODY), src.a.fE(src.a.map(n), F_HEREDOC_BODY)) + 2;
+    return add32(mtxCountRange(src, src.a.fS(src.a.map(n), F_HEREDOC_BODY), src.a.fE(src.a.map(n), F_HEREDOC_BODY)), 2);
   }
   const body = mtxExtractBody(src, n);
   if (body === V_NIL || !src.a.isNode(body)) {
@@ -297,10 +308,10 @@ export const mtxCodeLength = (src: RbSource, L: RbLayLines, n: i32): i32 => {
     }
   }
   let len = 0;
-  const from = src.line(src.a.exS(body)) - 1;
-  for (let i = from; i <= lastLine - 1 && i < L.n; i++) {
+  const from = rbLine(src, src.a.exS(body)) - 1;
+  for (let i = from; i < lastLine && i < L.n; i++) {
     if (!mtxIrrelevantLine(L, i)) {
-      len++;
+      len = add32(len, 1);
     }
   }
   return len;

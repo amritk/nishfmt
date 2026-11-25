@@ -3,6 +3,7 @@
 // Ported from RuboCop 1.92.3 (MIT License, Copyright (c) 2012-24 Bozhidar
 // Batsov).
 
+import { rbByteAt } from "../util";
 import { NT_SYM } from "../ast";
 import { RbCop } from "../cop";
 import { RbSource } from "../source";
@@ -11,15 +12,15 @@ import { rbLitWordC } from "./lit_help";
 /** /\A:["'][A-Za-z_]\w*["']\z/ */
 const rbSlWordLike = (s: string): boolean => {
   const n = toI32(s.length);
-  if (n < 4 || s.charCodeAt(0) !== 58) {
+  if (n < 4 || rbByteAt(s, 0) !== 58) {
     return false;
   }
-  const q0 = s.charCodeAt(1);
+  const q0 = rbByteAt(s, 1);
   const q1 = s.charCodeAt(n - 1);
   if ((q0 !== 34 && q0 !== 39) || (q1 !== 34 && q1 !== 39)) {
     return false;
   }
-  const c = s.charCodeAt(2);
+  const c = rbByteAt(s, 2);
   if (!((c >= 65 && c <= 90) || (c >= 97 && c <= 122) || c === 95)) {
     return false;
   }

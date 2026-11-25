@@ -4,43 +4,180 @@
 //
 // For rustfmt 1.10.0 (MIT OR Apache-2.0, Copyright The Rust Project Developers).
 
-import { Out } from "../core/out";
+import { fault } from "../core/fault";
 import { rsUnicodeStrWidth } from "./uwidth";
 
-/** A growing string: appends in place instead of copying the whole result each time. */
+/** The byte count of an RsStrBuf; setting `n` to 0 empties the buffer. */
+export class RsStrBufLen {
+  n: i32 = 0;
+}
+
+/**
+ * A growing string: keeps the pieces and joins them once, instead of copying
+ * the whole result on each append. Empty pieces are never kept, so pieces
+ * with `b.n` at 0 mean the buffer was emptied through `b.n`.
+ */
 export class RsStrBuf {
-  b: Out;
+  parts: string[];
+  b: RsStrBufLen;
   constructor() {
-    this.b = new Out(256);
+    this.parts = [];
+    this.b = new RsStrBufLen();
+  }
+
+  sync(): void {
+    if (this.b.n === 0 && this.parts.length > 0) {
+      this.parts = [];
+    }
+  }
+
+  clear(): void {
+    this.parts = [];
+    this.b.n = 0;
   }
 
   add(s: string): void {
-    this.b.str(s);
+    this.sync();
+    const k = toI32(s.length);
+    if (k === 0) {
+      return;
+    }
+    const t = toI64(this.b.n) + toI64(k);
+    if (t > toI64(2147483647)) {
+      fault();
+      return;
+    }
+    this.parts.push(s);
+    this.b.n = toI32(t);
   }
 
   /** Appends `s[a, b)`. */
   addSlice(s: string, a: i32, b: i32): void {
-    this.b.reserve(b - a);
-    for (let i = a; i < b; i++) {
-      this.b.byte(s.charCodeAt(i));
+    if (b <= a) {
+      if (toI64(b) - toI64(a) < toI64(-2147483648)) {
+        fault();
+      }
+      return;
     }
+    if (a < 0 || b > toI32(s.length)) {
+      fault();
+      return;
+    }
+    this.add(s.substring(a, b));
   }
 
   len(): i32 {
+    this.sync();
     return this.b.n;
   }
 
   /** The text after the last newline. */
   lastLine(): string {
-    let i = this.b.n - 1;
-    while (i >= 0 && toI32(this.b.buf[i]) !== 10) {
-      i--;
+    this.sync();
+    const ps = this.parts;
+    const tail: string[] = [];
+    for (let i = toI32(ps.length) - 1; i >= 0 && i < ps.length; i--) {
+      const p = ps[i];
+      let j = toI32(p.length) - 1;
+      while (j >= 0 && j < p.length && p.charCodeAt(j) !== 10) {
+        j--;
+      }
+      if (j >= 0 && j < p.length) {
+        tail.push(p.substring(j + 1, toI32(p.length)));
+        break;
+      }
+      tail.push(p);
     }
-    return String.fromBytes(this.b.buf, i + 1, this.b.n);
+    if (tail.length === 1) {
+      return tail[0];
+    }
+    const out: string[] = [];
+    for (let i = toI32(tail.length) - 1; i >= 0 && i < tail.length; i--) {
+      out.push(tail[i]);
+    }
+    return out.join("");
   }
 
   str(): string {
-    return String.fromBytes(this.b.buf, 0, this.b.n);
+    this.sync();
+    const ps = this.parts;
+    if (ps.length === 1) {
+      return ps[0];
+    }
+    const s = ps.join("");
+    // One piece from now on, so asking again copies nothing.
+    if (s.length > 0) {
+      this.parts = [s];
+    }
+    return s;
+  }
+
+  /** The newlines in the buffer. */
+  newlineCount(): i32 {
+    return rsCountNewlines(this.str());
+  }
+
+  /** The newlines that end the buffer. */
+  trailingNewlines(): i32 {
+    this.sync();
+    const ps = this.parts;
+    let k = 0;
+    for (let i = toI32(ps.length) - 1; i >= 0 && i < ps.length; i--) {
+      const p = ps[i];
+      let j = toI32(p.length) - 1;
+      while (j >= 0 && j < p.length && p.charCodeAt(j) === 10) {
+        // At most one per byte of the buffer, whose length is an i32.
+        if (k > 1073741823) {
+          fault();
+          return 0;
+        }
+        k = k + 1;
+        j--;
+      }
+      if (j >= 0) {
+        break;
+      }
+    }
+    return k;
+  }
+
+  /** The final byte, or -1 when the buffer is empty. */
+  lastByte(): i32 {
+    this.sync();
+    const ps = this.parts;
+    const k = toI32(ps.length);
+    if (k > 0) {
+      const p = ps[k - 1];
+      const m = toI32(p.length);
+      if (m > 0) {
+        return p.charCodeAt(m - 1);
+      }
+    }
+    return -1;
+  }
+
+  /** Drops the final byte (the caller knows there is one). */
+  dropLast(): void {
+    this.sync();
+    const ps = this.parts;
+    const k = toI32(ps.length);
+    const n = this.b.n;
+    if (k > 0 && n > 0) {
+      const p = ps[k - 1];
+      const m = toI32(p.length);
+      if (m > 1) {
+        const q = p.substring(0, m - 1);
+        const j = k - 1;
+        if (j < ps.length) {
+          ps[j] = q;
+        }
+      } else if (ps.length > 0) {
+        ps.pop();
+      }
+      this.b.n = n - 1;
+    } else {
+      fault();
+    }
   }
 }
 
@@ -49,18 +186,23 @@ export const rsIsWsByte = (c: i32): boolean => c === 32 || (c >= 9 && c <= 13);
 
 /** The length of a Unicode whitespace character starting at `i` (0 if none). */
 export const rsWsLenAt = (s: string, i: i32): i32 => {
+  const n = toI32(s.length);
+  if (i < 0 || i >= n) {
+    fault();
+    return 0;
+  }
   const c = s.charCodeAt(i);
   if (c < 128) {
     return rsIsWsByte(c) ? 1 : 0;
   }
-  const n = toI32(s.length);
-  if (c === 0xc2 && i + 1 < n) {
-    const d = s.charCodeAt(i + 1);
+  const i1 = i + 1;
+  if (c === 0xc2 && i1 < n) {
+    const d = s.charCodeAt(i1);
     return d === 0x85 || d === 0xa0 ? 2 : 0;
   }
-  if ((c === 0xe1 || c === 0xe2 || c === 0xe3) && i + 2 < n) {
-    const d = s.charCodeAt(i + 1);
-    const e = s.charCodeAt(i + 2);
+  if ((c === 0xe1 || c === 0xe2 || c === 0xe3) && i1 < n && i1 + 1 < n) {
+    const d = s.charCodeAt(i1);
+    const e = s.charCodeAt(i1 + 1);
     if (c === 0xe1 && d === 0x9a && e === 0x80) return 3; // U+1680
     if (c === 0xe2 && d === 0x80 && ((e >= 0x80 && e <= 0x8a) || e === 0xa8 || e === 0xa9 || e === 0xaf)) return 3;
     if (c === 0xe2 && d === 0x81 && e === 0x9f) return 3; // U+205F
@@ -71,17 +213,31 @@ export const rsWsLenAt = (s: string, i: i32): i32 => {
 
 /** rsWsLenAt over the bytes `src[i, n)`. */
 export const rsWsLenAtBytes = (src: u8[], i: i32, n: i32): i32 => {
+  if (i < 0 || i >= src.length) {
+    fault();
+    return 0;
+  }
   const c = toI32(src[i]);
   if (c < 128) {
     return rsIsWsByte(c) ? 1 : 0;
   }
-  if (c === 0xc2 && i + 1 < n) {
-    const d = toI32(src[i + 1]);
+  const i1 = i + 1;
+  if (c === 0xc2 && i1 < n) {
+    if (i1 >= src.length) {
+      fault();
+      return 0;
+    }
+    const d = toI32(src[i1]);
     return d === 0x85 || d === 0xa0 ? 2 : 0;
   }
-  if ((c === 0xe1 || c === 0xe2 || c === 0xe3) && i + 2 < n) {
-    const d = toI32(src[i + 1]);
-    const e = toI32(src[i + 2]);
+  if ((c === 0xe1 || c === 0xe2 || c === 0xe3) && i1 < n && i1 + 1 < n) {
+    const i2 = i1 + 1;
+    if (i1 >= src.length || i2 >= src.length) {
+      fault();
+      return 0;
+    }
+    const d = toI32(src[i1]);
+    const e = toI32(src[i2]);
     if (c === 0xe1 && d === 0x9a && e === 0x80) return 3; // U+1680
     if (c === 0xe2 && d === 0x80 && ((e >= 0x80 && e <= 0x8a) || e === 0xa8 || e === 0xa9 || e === 0xaf)) return 3;
     if (c === 0xe2 && d === 0x81 && e === 0x9f) return 3; // U+205F
@@ -93,6 +249,10 @@ export const rsWsLenAtBytes = (src: u8[], i: i32, n: i32): i32 => {
 /** The length of a Unicode whitespace character ending at `j` (exclusive), or 0. */
 const wsLenBefore = (s: string, j: i32): i32 => {
   if (j <= 0) {
+    return 0;
+  }
+  if (j > toI32(s.length)) {
+    fault();
     return 0;
   }
   const c = s.charCodeAt(j - 1);
@@ -111,12 +271,15 @@ const wsLenBefore = (s: string, j: i32): i32 => {
 export const rsTrimStartIdx = (s: string): i32 => {
   const n = toI32(s.length);
   let i = 0;
-  while (i < n) {
+  while (i >= 0 && i < n) {
     const k = rsWsLenAt(s, i);
-    if (k === 0) {
+    // A whitespace character is at most 3 bytes.
+    if (k > 0 && k <= 3 && i >= 0 && i < n) {
+      // 0 <= i < n and k <= 3, so the u32 sum is the true one.
+      i = toI32(toU32(i) + toU32(k));
+    } else {
       break;
     }
-    i += k;
   }
   return i;
 };
@@ -125,12 +288,22 @@ export const rsTrimEndIdx = (s: string): i32 => {
   let j = toI32(s.length);
   while (j > 0) {
     const k = wsLenBefore(s, j);
-    if (k === 0) {
+    // A whitespace character is at most 3 bytes.
+    if (k <= 0 || k > 3) {
       break;
     }
-    j -= k;
+    j = j - k;
   }
   return j;
+};
+
+/** `s[a, b)`, which the caller found inside `s`; a range outside it faults. */
+export const rsCut = (s: string, a: i32, b: i32): string => {
+  if (a < 0 || b < a || b > toI32(s.length)) {
+    fault();
+    return "";
+  }
+  return s.substring(a, b);
 };
 
 export const rsTrim = (s: string): string => {
@@ -142,17 +315,17 @@ export const rsTrim = (s: string): string => {
   if (a === 0 && b === toI32(s.length)) {
     return s;
   }
-  return s.slice(a, b);
+  return rsCut(s, a, b);
 };
 
 export const rsTrimStart = (s: string): string => {
   const a = rsTrimStartIdx(s);
-  return a === 0 ? s : s.slice(a, toI32(s.length));
+  return a === 0 ? s : rsCut(s, a, toI32(s.length));
 };
 
 export const rsTrimEnd = (s: string): string => {
   const b = rsTrimEndIdx(s);
-  return b === toI32(s.length) ? s : s.slice(0, b);
+  return b === toI32(s.length) ? s : rsCut(s, 0, b);
 };
 
 /** Trims trailing bytes equal to `c`. */
@@ -161,7 +334,7 @@ export const rsTrimEndChar = (s: string, c: i32): string => {
   while (j > 0 && s.charCodeAt(j - 1) === c) {
     j--;
   }
-  return s.slice(0, j);
+  return s.substring(0, j);
 };
 
 export const rsTrimStartChar = (s: string, c: i32): string => {
@@ -170,7 +343,7 @@ export const rsTrimStartChar = (s: string, c: i32): string => {
   while (i < n && s.charCodeAt(i) === c) {
     i++;
   }
-  return s.slice(i, n);
+  return s.substring(i, n);
 };
 
 export const rsIsBlank = (s: string): boolean => rsTrimStartIdx(s) >= toI32(s.length);
@@ -180,8 +353,12 @@ export const rsContains = (s: string, sub: string): boolean => s.indexOf(sub) >=
 export const rsHasByte = (s: string, c: i32): boolean => rsIndexOfByte(s, c, 0) >= 0;
 
 export const rsIndexOfByte = (s: string, c: i32, from: i32): i32 => {
+  if (from < 0) {
+    fault();
+    return -1;
+  }
   const n = toI32(s.length);
-  for (let i = from; i < n; i++) {
+  for (let i = from; i >= 0 && i < n; i++) {
     if (s.charCodeAt(i) === c) {
       return i;
     }
@@ -203,24 +380,38 @@ export const rsIndexFrom = (s: string, sub: string, from: i32): i32 => {
   if (from <= 0) {
     return s.indexOf(sub);
   }
-  if (from > toI32(s.length)) {
+  const n = toI32(s.length);
+  if (from > n) {
     return -1;
   }
-  const k = s.slice(from, toI32(s.length)).indexOf(sub);
-  return k < 0 ? -1 : k + from;
+  const k = s.substring(from, n).indexOf(sub);
+  if (k < 0) {
+    return -1;
+  }
+  // A match in `s[from, n)` starts below n.
+  const r = toI64(k) + toI64(from);
+  if (r > toI64(n)) {
+    fault();
+    return -1;
+  }
+  return toI32(r);
 };
 
 export const rsLastIndexOf = (s: string, sub: string): i32 => {
+  const n = toI32(s.length);
   const m = toI32(sub.length);
-  for (let i = toI32(s.length) - m; i >= 0; i--) {
-    let ok = true;
-    for (let j = 0; j < m; j++) {
-      if (s.charCodeAt(i + j) !== sub.charCodeAt(j)) {
-        ok = false;
+  for (let i = n - m; i >= 0 && i <= n; i--) {
+    // i <= n - m, so p = i + j stays below n while j < m.
+    let j = 0;
+    let p = i;
+    while (j < m && j < sub.length && p >= 0 && p < n) {
+      if (s.charCodeAt(p) !== sub.charCodeAt(j)) {
         break;
       }
+      j++;
+      p++;
     }
-    if (ok) {
+    if (j >= m) {
       return i;
     }
   }
@@ -231,14 +422,22 @@ export const rsLastIndexOf = (s: string, sub: string): i32 => {
 export const rsCountMatches = (s: string, sub: string): i32 => {
   let n = 0;
   let i = 0;
+  const len = toI32(s.length);
   const m = toI32(sub.length);
   for (;;) {
     const k = rsIndexFrom(s, sub, i);
     if (k < 0) {
       return n;
     }
+    // Each match is a nonempty piece of `s` past the last, so neither the
+    // count nor the end can pass the length (an empty `sub` never ended).
+    const e = toI64(k) + toI64(m);
+    if (n >= len || e > toI64(len)) {
+      fault();
+      return n;
+    }
     n++;
-    i = k + m;
+    i = toI32(e);
   }
 };
 
@@ -247,6 +446,11 @@ export const rsCountNewlines = (s: string): i32 => {
   const k = toI32(s.length);
   for (let i = 0; i < k; i++) {
     if (s.charCodeAt(i) === 10) {
+      // n <= i < k.
+      if (n >= k) {
+        fault();
+        return 0;
+      }
       n++;
     }
   }
@@ -258,20 +462,24 @@ export const rsLines = (s: string): string[] => {
   const out: string[] = [];
   const n = toI32(s.length);
   let a = 0;
-  while (a < n) {
+  while (a >= 0 && a < n) {
     let b = rsIndexOfByte(s, 10, a);
     let next = 0;
     if (b < 0) {
       b = n;
       next = n;
-    } else {
+    } else if (b < n) {
       next = b + 1;
+    } else {
+      fault();
+      return out;
     }
     let e = b;
-    if (e > a && s.charCodeAt(e - 1) === 13) {
-      e--;
+    const e1 = e - 1;
+    if (e > a && e1 >= 0 && e1 < s.length && s.charCodeAt(e1) === 13) {
+      e = e1;
     }
-    out.push(s.slice(a, e));
+    out.push(s.substring(a, e));
     a = next;
   }
   return out;
@@ -286,11 +494,15 @@ export const rsFirstLineOpt = (s: string): string | null => {
   let e = rsIndexOfByte(s, 10, 0);
   if (e < 0) {
     e = n;
+  } else if (e > n) {
+    fault();
+    return null;
   }
-  if (e > 0 && s.charCodeAt(e - 1) === 13) {
-    e--;
+  const e1 = e - 1;
+  if (e1 >= 0 && e1 < s.length && s.charCodeAt(e1) === 13) {
+    e = e1;
   }
-  return s.slice(0, e);
+  return s.substring(0, e);
 };
 
 /** `s.lines().last()`: the last line without its `\r`, or null when `s` is empty. */
@@ -306,11 +518,13 @@ export const rsLastLineOpt = (s: string): string | null => {
   while (a >= 0 && s.charCodeAt(a) !== 10) {
     a--;
   }
+  // -1 <= a < n.
+  const a1 = a < 0 ? 0 : a + 1;
   let e = n;
-  if (e > a + 1 && s.charCodeAt(e - 1) === 13) {
+  if (e > a1 && e > 0 && e - 1 < s.length && s.charCodeAt(e - 1) === 13) {
     e--;
   }
-  return s.slice(a + 1, e);
+  return s.substring(a1, e);
 };
 
 /** Split at every `\n` (Rust's `split('\n')`), keeping empty pieces. */
@@ -321,10 +535,14 @@ export const rsSplitNl = (s: string): string[] => {
   for (;;) {
     const b = rsIndexOfByte(s, 10, a);
     if (b < 0) {
-      out.push(s.slice(a, n));
+      out.push(s.substring(a, n));
       return out;
     }
-    out.push(s.slice(a, b));
+    if (b >= n) {
+      fault();
+      return out;
+    }
+    out.push(s.substring(a, b));
     a = b + 1;
   }
 };
@@ -342,7 +560,7 @@ export const rsSpaces = (k: i32): string => {
     return "";
   }
   if (k <= 64) {
-    return "                                                                ".slice(0, k);
+    return "                                                                ".substring(0, k);
   }
   return rsRepeat(" ", k);
 };
@@ -350,30 +568,45 @@ export const rsSpaces = (k: i32): string => {
 /** The first line of `s` (up to the first `\n`). */
 export const rsFirstLine = (s: string): string => {
   const i = rsIndexOfByte(s, 10, 0);
-  return i < 0 ? s : s.slice(0, i);
+  return i < 0 ? s : s.substring(0, i);
 };
 
 /** The last line of `s` (after the last `\n`). */
 export const rsLastLine = (s: string): string => {
+  const n = toI32(s.length);
   const i = rsLastIndexOfByte(s, 10);
-  return i < 0 ? s : s.slice(i + 1, toI32(s.length));
+  if (i < 0) {
+    return s;
+  }
+  if (i >= n) {
+    fault();
+    return s;
+  }
+  return s.substring(i + 1, n);
 };
 
 /** The display width of `s`, as unicode-width's `UnicodeWidthStr::width` counts it. */
 export const rsWidth = (s: string): i32 => {
   const n = toI32(s.length);
-  let w = 0;
+  // The bytes that take no column: a line feed, and a carriage return before one.
+  let k = 0;
   for (let i = 0; i < n; i++) {
     const c = s.charCodeAt(i);
-    if (c >= 128) {
+    if (c <= 13) {
+      if (c === 10 || (c === 13 && i + 1 < n && s.charCodeAt(i + 1) === 10)) {
+        // k <= i < n.
+        if (k >= n) {
+          fault();
+          return 0;
+        }
+        k++;
+      }
+    } else if (c >= 128) {
       return rsUnicodeStrWidth(s);
     }
-    // A line feed takes no column, nor a carriage return before one.
-    if (c !== 10 && !(c === 13 && i + 1 < n && s.charCodeAt(i + 1) === 10)) {
-      w++;
-    }
   }
-  return w;
+  // Exact: 0 <= k <= n.
+  return toI32(toU32(n) - toU32(k));
 };
 
 /** The number of chars (code points) in `s`. */
@@ -383,6 +616,11 @@ export const rsCharCount = (s: string): i32 => {
   for (let i = 0; i < n; i++) {
     const c = s.charCodeAt(i);
     if (c < 0x80 || c >= 0xc0) {
+      // k <= i < n.
+      if (k >= n) {
+        fault();
+        return 0;
+      }
       k++;
     }
   }
@@ -395,3 +633,13 @@ export const rsIsAsciiAlpha = (c: i32): boolean => (c >= 97 && c <= 122) || (c >
 export const rsIsAlnumByte = (c: i32): boolean => rsIsAsciiAlpha(c) || rsIsAsciiDigit(c) || c >= 128;
 
 export const rsJoin = (xs: string[], sep: string): string => xs.join(sep);
+
+/** The last of `xs`, which the caller knows is not empty; an empty one faults. */
+export const rsLastOf = (xs: string[]): string => {
+  const k = toI32(xs.length);
+  if (k > 0) {
+    return xs[k - 1];
+  }
+  fault();
+  return "";
+};

@@ -5,6 +5,9 @@
 // Ported from RuboCop 1.92.3 and rubocop-ast 1.52.0 (MIT License, Copyright
 // (c) 2012-24 Bozhidar Batsov).
 
+import { rbAtOff } from "../help";
+import { fault } from "../../core/fault";
+import { sub32 } from "../../core/arr";
 import { RbCop } from "../cop";
 import { RbRewriter } from "../rewriter";
 import { RbSource } from "../source";
@@ -35,12 +38,22 @@ export class LspToks {
 
   /** first_token_index: bsearch_index { begin_pos >= pos } (-1 for nil). */
   firstIdx(pos: i32): i32 {
+    const xs = this.s;
     let lo = 0;
     let hi = this.n;
+    if (hi > xs.length) {
+      fault();
+      return -1;
+    }
     let ok = false;
-    while (lo < hi) {
-      const mid = lo + ((hi - lo) >> 1);
-      if (this.s[mid] >= pos) {
+    while (lo >= 0 && lo < hi && hi <= xs.length) {
+      // lo < hi <= xs.length, so the sum and the midpoint fit.
+      const mid = toI32((toI64(lo) + toI64(hi)) >> toI64(1));
+      if (mid < 0 || mid >= xs.length) {
+        fault();
+        return -1;
+      }
+      if (xs[mid] >= pos) {
         ok = true;
         hi = mid;
       } else {
@@ -52,12 +65,22 @@ export class LspToks {
 
   /** last_token_index: bsearch_index { end_pos >= pos } (-1 for nil). */
   lastIdx(pos: i32): i32 {
+    const xs = this.e;
     let lo = 0;
     let hi = this.n;
+    if (hi > xs.length) {
+      fault();
+      return -1;
+    }
     let ok = false;
-    while (lo < hi) {
-      const mid = lo + ((hi - lo) >> 1);
-      if (this.e[mid] >= pos) {
+    while (lo >= 0 && lo < hi && hi <= xs.length) {
+      // lo < hi <= xs.length, so the sum and the midpoint fit.
+      const mid = toI32((toI64(lo) + toI64(hi)) >> toI64(1));
+      if (mid < 0 || mid >= xs.length) {
+        fault();
+        return -1;
+      }
+      if (xs[mid] >= pos) {
         ok = true;
         hi = mid;
       } else {
@@ -76,7 +99,7 @@ export class LspToks {
   /** The last index of tokens_within(s...e) (inclusive; an empty slice when below withinFrom). */
   withinTo(e: i32): i32 {
     const i = this.lastIdx(e);
-    return i < 0 ? this.n - 1 : i;
+    return i < 0 ? sub32(this.n, 1) : i;
   }
 }
 
@@ -84,31 +107,55 @@ export class LspToks {
 export const lspSpaceAfter = (src: RbSource, e: i32): boolean => lspIsWs(src.at(e));
 
 /** Token#space_before?: /\G\s/ just before the token (at the token itself at offset 0). */
-export const lspSpaceBefore = (src: RbSource, s: i32): boolean => lspIsWs(src.at(s === 0 ? s : s - 1));
+export const lspSpaceBefore = (src: RbSource, s: i32): boolean => lspIsWs(s === 0 ? src.at(s) : rbAtOff(src, s, -1));
 
 /** SurroundingSpace#extra_space?: the whitespace next to the token is a space or a tab. */
 export const lspExtraSpace = (src: RbSource, s: i32, e: i32, left: boolean): boolean => {
   if (left) {
     return lspIsBlank(src.at(e));
   }
-  return lspIsBlank(src.at(s === 0 ? s : s - 1));
+  return lspIsBlank(s === 0 ? src.at(s) : rbAtOff(src, s, -1));
 };
 
 /** SurroundingSpace#reposition over [ \t] (and newlines when asked). */
 export const lspReposition = (src: RbSource, pos0: i32, step: i32, newlines: boolean): i32 => {
+  const n = src.n;
+  // Sources stay below 2^30 code points (node.ts, "Bounded values"); the
+  // reads below stop within [-n - 1, n + 1] of a position, so pos keeps to
+  // the bounds the loop states.
+  if (n < 0 || n > 1073741823) {
+    fault();
+    return 0;
+  }
   let pos = pos0;
-  const off = step === -1 ? -1 : 0;
-  while (true) {
-    // Ruby's src[-1] is the last character.
-    const i = pos + off;
-    const c = i < 0 ? src.at(src.n + i) : src.at(i);
+  if (step === -1) {
+    // Moving left, a position at or below 0 only falls further, and the
+    // answer is 0 then (whatever src[-1] and before, Ruby's wrap, hold).
+    while (pos > 0 && pos < 1073741823) {
+      const c = src.at(pos - 1);
+      if (lspIsBlank(c) || (newlines && c === 10)) {
+        pos--;
+      } else {
+        break;
+      }
+    }
+    return pos < 0 ? 0 : pos;
+  }
+  // Moving right from a token's end: never below 0, and src.at answers -1
+  // past the source, which stops the walk.
+  if (pos < 0) {
+    fault();
+    return 0;
+  }
+  while (pos >= 0 && pos < n) {
+    const c = src.at(pos);
     if (lspIsBlank(c) || (newlines && c === 10)) {
-      pos += step;
+      pos++;
     } else {
       break;
     }
   }
-  return pos < 0 ? 0 : pos;
+  return pos;
 };
 
 /** Identity sets of nodes (ignore_node / ignored_node?). */

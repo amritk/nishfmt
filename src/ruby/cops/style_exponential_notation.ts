@@ -4,6 +4,7 @@
 // Ported from RuboCop 1.92.3 (MIT License, Copyright (c) 2012-24 Bozhidar
 // Batsov).
 
+import { rbByteAt } from "../util";
 import { NT_FLOAT } from "../ast";
 import { RbCop } from "../cop";
 import { RbSource } from "../source";
@@ -23,7 +24,7 @@ const rbExpNotScientific = (s: string): boolean => {
   if (i === k) {
     return true;
   }
-  if (s.charCodeAt(i) !== 46 || i + 1 >= k) {
+  if (rbByteAt(s, i) !== 46 || i >= k - 1) {
     return false;
   }
   for (let j = i + 1; j < k; j++) {

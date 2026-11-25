@@ -3,6 +3,8 @@
 // Ported from RuboCop 1.92.3 (MIT License, Copyright (c) 2012-24 Bozhidar
 // Batsov).
 
+import { rbNKid } from "../node";
+import { atI32, sub32 } from "../../core/arr";
 import {
   F_BEGIN,
   F_KEYWORD,
@@ -56,7 +58,7 @@ export class CopStyleEmptyCaseCondition {
         }
       }
       const whens: i32[] = [];
-      for (let i = 1; i < a.nKid(n) - 1; i++) {
+      for (let i = 1; i < rbNKid(src, n) - 1; i++) {
         whens.push(a.kid(n, i));
       }
       const bodies: i32[] = [];
@@ -87,24 +89,24 @@ export class CopStyleEmptyCaseCondition {
       }
       // correct_case_when
       const cs = ssxFS(src, n, F_KEYWORD);
-      const ce = ssxFE(src, whens[0], F_KEYWORD);
+      const ce = ssxFE(src, atI32(whens, 0), F_KEYWORD);
       k.replace(cs, ce, "if");
       const col = src.column(cs);
       const ind = scnSpaces(col);
       const parts: string[] = [];
       for (const c of scnCommentsInLines(src, src.line(cs), src.line(ce))) {
-        parts.push(`${ind}${src.src(src.commS[c], src.commE[c])}\n`);
+        parts.push(`${ind}${src.src(atI32(src.commS, c), atI32(src.commE, c))}\n`);
       }
-      const ls = cs - col;
+      const ls = sub32(cs, col);
       k.insertBefore(ls, ce, parts.join(""));
       for (let i = 1; i < toI32(whens.length); i++) {
         k.replace(ssxFS(src, whens[i], F_KEYWORD), ssxFE(src, whens[i], F_KEYWORD), "elsif");
       }
       // correct_when_conditions
       for (const w of whens) {
-        const nc = a.nKid(w) - 1;
+        const nc = rbNKid(src, w) - 1;
         const first = a.kid(w, 0);
-        const last = a.kid(w, nc - 1);
+        const last = a.kid(w, rbNKid(src, w) - 2);
         if (src.parent(src.parent(w)) !== V_NIL && scnThen(src, w)) {
           k.replace(a.exE(last), ssxFE(src, w, F_BEGIN), "\n");
         }

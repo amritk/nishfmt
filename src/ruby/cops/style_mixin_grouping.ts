@@ -3,6 +3,7 @@
 // Ported from RuboCop 1.92.3 (MIT License, Copyright (c) 2012-24 Bozhidar
 // Batsov).
 
+import { rbNKid } from "../node";
 import { NT_BEGIN, NT_CLASS, NT_MODULE, NT_SEND } from "../ast";
 import { RbCop } from "../cop";
 import { RbSource } from "../source";
@@ -55,10 +56,10 @@ export class CopStyleMixinGrouping {
         const paren = ssxParenthesized(src, m);
         const parts: string[] = [];
         const ind = rmlSpaces(src.column(a.exS(m)));
-        for (let j = a.nKid(m) - 1; j >= 2; j--) {
+        for (let j = rbNKid(src, m) - 1; j >= 2; j--) {
           const as = src.nodeSrc(a.kid(m, j));
           const call = paren ? `${name}(${as})` : `${name} ${as}`;
-          parts.push(j === a.nKid(m) - 1 ? call : `${ind}${call}`);
+          parts.push(j === rbNKid(src, m) - 1 ? call : `${ind}${call}`);
         }
         k.replace(a.exS(m), a.exE(m), parts.join("\n"));
         this.c.commit(k);

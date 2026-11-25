@@ -142,7 +142,7 @@ export const ssxStripEq = (s: string, t: string): boolean => {
       break;
     }
   }
-  while (j > i) {
+  while (j > i && j > 0 && j <= s.length) {
     const c = s.charCodeAt(j - 1);
     if (c === 32 || (c >= 9 && c <= 13) || c === 0) {
       j--;

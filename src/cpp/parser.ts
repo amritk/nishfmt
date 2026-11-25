@@ -7,6 +7,8 @@
 // own and the code around it is parsed straight through.
 
 import { Doc } from "./doc";
+import { fault } from "../core/fault";
+import { add32, sub32 } from "../core/arr";
 import { prevCode, requiresIsClause } from "./classify";
 import {
   isIdentKind,
@@ -146,6 +148,85 @@ import {
   P_PLUSPLUS,
 } from "./tok";
 
+// The token and line tables are read through these. A token index the parser
+// holds is inside the table (the lexer ends it with K_EOF, and `push` stops
+// there), and so is a line index; out of range is a fault. The neutral values
+// end the parser's walks: 0 is K_EOF (and PP_NONE, BK_UNKNOWN), and -1 is no
+// token or line.
+
+/** `xs[i]`, or 0 (K_EOF) after a fault. */
+const psAt = (xs: i32[], i: i32): i32 => {
+  const u = toU32(i);
+  if (u < toU32(xs.length)) {
+    return xs[u];
+  }
+  fault();
+  return 0;
+};
+
+/** A link column's `xs[i]` (a token or line index), or -1 after a fault. */
+const psLink = (xs: i32[], i: i32): i32 => {
+  const u = toU32(i);
+  if (u < toU32(xs.length)) {
+    return xs[u];
+  }
+  fault();
+  return -1;
+};
+
+/** `xs[i] = v`, or a fault. */
+const psPut = (xs: i32[], i: i32, v: i32): void => {
+  const u = toU32(i);
+  if (u < toU32(xs.length)) {
+    xs[u] = v;
+    return;
+  }
+  fault();
+};
+
+/** The byte after token `t`'s first, or 0 past the end of the source. */
+const psByte1 = (d: Doc, t: i32): i32 => {
+  const s = psAt(d.start, t);
+  if (s < 2147483647) {
+    return d.at(s + 1);
+  }
+  fault();
+  return 0;
+};
+
+/** `n - 1` for a count `n`, which is never negative. */
+const psDec = (n: i32): i32 => {
+  if (n > 0) {
+    return n - 1;
+  }
+  if (n < 0) {
+    fault();
+  }
+  return -1;
+};
+
+/** `i + 1` for a token index; no table holds 2^31 tokens. */
+const psNext = (i: i32): i32 => {
+  if (i < 2147483647) {
+    return i + 1;
+  }
+  fault();
+  return -1;
+};
+
+/** The last entry of a stack the caller found nonempty, or -1 after a fault. */
+const psTop = (xs: i32[]): i32 => {
+  const n = toI32(xs.length);
+  if (n > 0) {
+    return xs[n - 1];
+  }
+  fault();
+  return -1;
+};
+
+/** The last token's index, K_EOF's (`ntok - 1`). */
+const psLast = (d: Doc): i32 => psDec(d.ntok);
+
 /**
  * Whether the directive at `#` token `h` is one calculateBraceTypes stops
  * skipping at (clang-format 23's `pp_not_keyword, pp_define`): `#define`, or
@@ -153,10 +234,15 @@ import {
  */
 const ppWordEndsBraceScan = (d: Doc, h: i32): boolean => {
   const w = h + 1;
-  if (w >= d.ntok - 1 || d.ppId[w] !== d.ppId[h] || d.nl[w] !== 0 || !isWordKind(d.kind[w])) {
+  if (
+    w >= psLast(d) ||
+    psLink(d.ppId, w) !== psLink(d.ppId, h) ||
+    psAt(d.nl, w) !== 0 ||
+    !isWordKind(psAt(d.kind, w))
+  ) {
     return false;
   }
-  const pk = d.ppKind[h];
+  const pk = psAt(d.ppKind, h);
   if (pk === PP_DEFINE) {
     return d.is(w, "define"); // (not `#undef`)
   }
@@ -211,36 +297,48 @@ export class Parser {
 
   cur(): i32 {
     // Inside a macro body, the end of the directive ends the input.
-    if (this.macro >= 0 && this.d.ppId[this.pos] !== this.macro) {
+    if (this.macro >= 0 && psLink(this.d.ppId, this.pos) !== this.macro) {
       return K_EOF;
     }
-    return this.d.kind[this.pos];
+    return psAt(this.d.kind, this.pos);
   }
 
   /** The kind of the token `k` places after `pos`, skipping comments. */
   peek(k: i32): i32 {
+    const nt = this.d.ntok;
     let i = this.pos;
     let left = k;
-    while (true) {
+    while (i < nt) {
       i++;
-      if (i >= this.d.ntok) {
+      if (i >= nt) {
         return K_EOF;
       }
-      const kk = this.d.kind[i];
+      const kk = psAt(this.d.kind, i);
       if (kk === K_COMMENT) {
         continue;
       }
-      left--;
-      if (left === 0) {
+      // (A count below 1 never reaches 0: every token is passed.)
+      if (left === 1) {
         return kk;
       }
+      if (left > 1) {
+        left--;
+      }
     }
+    if (i === 2147483647) {
+      fault();
+    }
+    return K_EOF;
   }
 
   /** The index of the next non-comment token after `i`. */
   nextNonComment(i: i32): i32 {
+    if (i >= 2147483647) {
+      fault();
+      return i;
+    }
     let j = i + 1;
-    while (j < this.d.ntok - 1 && this.d.kind[j] === K_COMMENT) {
+    while (j < psLast(this.d) && psAt(this.d.kind, j) === K_COMMENT) {
       j++;
     }
     return j;
@@ -253,16 +351,16 @@ export class Parser {
     if (this.first < 0) {
       this.first = t;
       this.lineLevel = this.level;
-      this.linePP = d.inPP[t];
-      d.prv[t] = -1;
+      this.linePP = psAt(d.inPP, t);
+      psPut(d.prv, t, -1);
     } else {
-      d.nxt[this.last] = t;
-      d.prv[t] = this.last;
+      psPut(d.nxt, this.last, t);
+      psPut(d.prv, t, this.last);
     }
-    d.nxt[t] = -1;
+    psPut(d.nxt, t, -1);
     this.last = t;
-    if (this.pos < d.ntok - 1) {
-      this.pos = this.pos + 1;
+    if (t < psLast(d)) {
+      this.pos = t + 1;
     }
   }
 
@@ -272,7 +370,7 @@ export class Parser {
     if (this.first < 0) {
       return;
     }
-    while (d.kind[this.pos] === K_COMMENT && d.nl[this.pos] === 0 && this.pos < d.ntok - 1) {
+    while (psAt(d.kind, this.pos) === K_COMMENT && psAt(d.nl, this.pos) === 0 && this.pos < psLast(d)) {
       this.push();
     }
     this.finishLine(LT_OTHER);
@@ -281,57 +379,79 @@ export class Parser {
   finishLine(type: i32): void {
     const d = this.d;
     const l = d.nline;
+    if (l < 0 || l >= 2147483647) {
+      fault();
+      return;
+    }
     d.growLines(l);
-    d.lFirst[l] = this.first;
-    d.lLast[l] = this.last;
-    d.lLevel[l] = this.lineLevel;
-    d.lPP[l] = this.linePP;
-    d.lType[l] = type;
-    d.lMustDecl[l] = this.mustDecl ? 1 : 0;
-    d.lMightFn[l] = 0;
-    d.lMultiVar[l] = 0;
-    d.lSibling[l] = -1;
+    psPut(d.lFirst, l, this.first);
+    psPut(d.lLast, l, this.last);
+    psPut(d.lLevel, l, this.lineLevel);
+    psPut(d.lPP, l, this.linePP);
+    psPut(d.lType, l, type);
+    psPut(d.lMustDecl, l, this.mustDecl ? 1 : 0);
+    psPut(d.lMightFn, l, 0);
+    psPut(d.lMultiVar, l, 0);
+    psPut(d.lSibling, l, -1);
     // A macro body's line is indented from the margin even inside a block
     // (clang-format moves directives out of the line being built).
-    d.lAbs[l] = this.macro >= 0 && this.listParent === this.macroList ? 1 : 0;
-    d.lInlineCmt[l] = 0;
-    d.lParent[l] = this.listParent;
-    d.lOpen[l] = -1;
-    d.lNamespace[l] = 0;
-    d.lInvalid[l] = 0;
-    d.lInClass[l] = 0;
-    d.lRetWrap[l] = 0;
-    d.lDefCode[l] = 0;
-    d.lObjC[l] = 0;
-    if (d.kind[this.first] === P_RBRACE) {
-      d.lOpen[l] = this.rbraceOpen;
+    psPut(d.lAbs, l, this.macro >= 0 && this.listParent === this.macroList ? 1 : 0);
+    psPut(d.lInlineCmt, l, 0);
+    psPut(d.lParent, l, this.listParent);
+    psPut(d.lOpen, l, -1);
+    psPut(d.lNamespace, l, 0);
+    psPut(d.lInvalid, l, 0);
+    psPut(d.lInClass, l, 0);
+    psPut(d.lRetWrap, l, 0);
+    psPut(d.lDefCode, l, 0);
+    psPut(d.lObjC, l, 0);
+    if (psAt(d.kind, this.first) === P_RBRACE) {
+      psPut(d.lOpen, l, this.rbraceOpen);
     }
-    if (this.linePP === 0 && d.kind[this.first] !== K_COMMENT) {
-      const li = this.listParent + 1;
+    if (this.linePP === 0 && psAt(d.kind, this.first) !== K_COMMENT) {
+      const lp = this.listParent;
+      if (lp >= 2147483647) {
+        fault();
+        return;
+      }
+      const li = lp + 1;
       if (toI32(this.codeTail.length) <= li) {
-        const n = (li > d.ntok ? li : d.ntok) + 2;
+        let m = d.ntok;
+        if (li > m) {
+          m = li;
+        }
+        if (m > 2147483645) {
+          fault();
+          return;
+        }
+        const n = m + 2;
         this.codeTail = growFill(this.codeTail, n);
         this.codeTailPrev = growFill(this.codeTailPrev, n);
       }
-      this.codeTail[li] = l;
-      this.codeTailPrev[li] = this.listParent < 0 ? d.topTail : d.childTail[this.listParent];
+      psPut(this.codeTail, li, l);
+      psPut(this.codeTailPrev, li, this.listParent < 0 ? d.topTail : psLink(d.childTail, this.listParent));
     }
     if (this.listParent < 0) {
       if (d.topTail < 0) {
         d.topHead = l;
       } else {
-        d.lSibling[d.topTail] = l;
+        psPut(d.lSibling, d.topTail, l);
       }
       d.topTail = l;
     } else {
       const p = this.listParent;
-      if (d.childTail[p] < 0) {
-        d.childHead[p] = l;
+      if (psLink(d.childTail, p) < 0) {
+        psPut(d.childHead, p, l);
       } else {
-        d.lSibling[d.childTail[p]] = l;
+        psPut(d.lSibling, psLink(d.childTail, p), l);
       }
-      d.childTail[p] = l;
-      d.childCount[p] = d.childCount[p] + 1;
+      psPut(d.childTail, p, l);
+      const cc = psAt(d.childCount, p);
+      if (cc >= 2147483647) {
+        fault();
+        return;
+      }
+      psPut(d.childCount, p, cc + 1);
     }
     d.nline = l + 1;
     this.first = -1;
@@ -353,7 +473,7 @@ export class Parser {
       // body at level 1 takes the body a level deeper.
       if (!switchLabel && (k === KW_CASE || (k === KW_DEFAULT && this.peek(1) === P_COLON))) {
         if (this.macro >= 0 && this.level === 1) {
-          this.level = this.level + 1;
+          this.level = 2;
         }
         switchLabel = true;
       }
@@ -383,7 +503,8 @@ export class Parser {
     // ends before any directive.)
     if (this.macro < 0 && this.unbracedLevel > 0 && this.commentsThenDirective()) {
       const save = this.level;
-      this.level = this.level > this.unbracedLevel ? this.level - this.unbracedLevel : 0;
+      const ub = this.unbracedLevel;
+      this.level = save > ub ? sub32(save, ub) : 0;
       const r = this.flushCommentsAtLevel();
       this.level = save;
       return r;
@@ -398,31 +519,36 @@ export class Parser {
       // An own-line comment under a trailing comment continues it: same line.
       const prevLine = this.pendingLine(true);
       const t = this.pos;
-      const last = d.lLast[prevLine];
-      d.nxt[last] = t;
-      d.prv[t] = last;
-      d.nxt[t] = -1;
-      d.lLast[prevLine] = t;
-      if (this.pos < d.ntok - 1) {
-        this.pos = this.pos + 1;
+      const last = psLink(d.lLast, prevLine);
+      psPut(d.nxt, last, t);
+      psPut(d.prv, t, last);
+      psPut(d.nxt, t, -1);
+      psPut(d.lLast, prevLine, t);
+      if (t < psLast(d)) {
+        this.pos = t + 1;
       }
       any = true;
     }
     while (this.cur() === K_COMMENT && this.first < 0) {
       // `/* x */ code` on one line belongs to the code.
-      const n = this.pos + 1;
+      const p = this.pos;
+      if (p >= 2147483647) {
+        fault();
+        return any;
+      }
+      const n = p + 1;
       if (
-        d.at(d.start[this.pos] + 1) === 42 &&
+        psByte1(d, p) === 42 &&
         n < d.ntok &&
-        d.nl[n] === 0 &&
-        d.kind[n] !== K_COMMENT &&
-        d.kind[n] !== K_EOF
+        psAt(d.nl, n) === 0 &&
+        psAt(d.kind, n) !== K_COMMENT &&
+        psAt(d.kind, n) !== K_EOF
       ) {
         break;
       }
       this.push();
       // A comment followed by more on its own line keeps them.
-      while (d.kind[this.pos] === K_COMMENT && d.nl[this.pos] === 0 && this.pos < d.ntok - 1) {
+      while (psAt(d.kind, this.pos) === K_COMMENT && psAt(d.nl, this.pos) === 0 && this.pos < psLast(d)) {
         this.push();
       }
       this.finishLine(LT_OTHER);
@@ -440,17 +566,20 @@ export class Parser {
   alignedWithNext(t: i32): boolean {
     const d = this.d;
     let s0 = t;
-    while (s0 > 0 && d.kind[s0 - 1] === K_COMMENT) {
+    while (s0 > 0 && psAt(d.kind, s0 - 1) === K_COMMENT) {
       s0--;
     }
     let n = t;
-    while (n < d.ntok - 1 && d.kind[n] === K_COMMENT) {
+    while (n < psLast(d) && psAt(d.kind, n) === K_COMMENT) {
       n++;
     }
-    if (d.kind[n] === K_EOF) {
+    if (psAt(d.kind, n) === K_EOF) {
       return false;
     }
     const nc = d.origCol(n);
+    if (s0 >= n) {
+      return false;
+    }
     for (let i = s0 + 1; i < n && i <= t; i++) {
       if (d.origCol(i) === nc) {
         return true;
@@ -467,35 +596,44 @@ export class Parser {
   continuesTrailingComment(): boolean {
     const d = this.d;
     const t = this.pos;
-    if (d.nl[t] !== 1 || d.unesc[t] !== 1 || d.at(d.start[t] + 1) !== 47 || d.inPP[t] === 1) {
+    if (psAt(d.nl, t) !== 1 || psAt(d.unesc, t) !== 1 || psByte1(d, t) !== 47 || psAt(d.inPP, t) === 1) {
       return false;
     }
     if (this.alignedWithNext(t)) {
       return false;
     }
     const prevLine = this.pendingLine(false);
-    if (prevLine < 0 || d.lPP[prevLine] === 1) {
+    if (prevLine < 0 || psAt(d.lPP, prevLine) === 1) {
       return false;
     }
-    const last = d.lLast[prevLine];
-    const f = d.lFirst[prevLine];
-    if (last === f || d.kind[last] !== K_COMMENT || d.at(d.start[last] + 1) !== 47 || d.kind[f] === K_COMMENT) {
+    const last = psLink(d.lLast, prevLine);
+    const f = psLink(d.lFirst, prevLine);
+    if (last === f || psAt(d.kind, last) !== K_COMMENT || psByte1(d, last) !== 47 || psAt(d.kind, f) === K_COMMENT) {
       return false;
     }
     // The min column token: a `{` before a line comment, else the last token starting a source line.
     let minTok = f;
-    for (let q = f; q >= 0; q = d.nxt[q]) {
-      const n = d.nxt[q];
-      if (n >= 0 && d.kind[q] === P_LBRACE && d.kind[n] === K_COMMENT && d.at(d.start[n] + 1) === 47) {
+    for (let q = f; q >= 0; q = psLink(d.nxt, q)) {
+      const n = psLink(d.nxt, q);
+      if (n >= 0 && psAt(d.kind, q) === P_LBRACE && psAt(d.kind, n) === K_COMMENT && psByte1(d, n) === 47) {
         minTok = q;
         break;
       }
-      if (q !== f && d.nl[q] > 0) {
+      if (q !== f && psAt(d.nl, q) > 0) {
         minTok = q;
       }
     }
-    const isLine = d.kind[minTok] === K_COMMENT && d.at(d.start[minTok] + 1) === 47;
-    return d.origCol(t) >= d.origCol(minTok) + (isLine ? 0 : 1);
+    const isLine = psAt(d.kind, minTok) === K_COMMENT && psByte1(d, minTok) === 47;
+    const oc = d.origCol(t);
+    const mc = d.origCol(minTok);
+    if (isLine) {
+      return oc >= mc;
+    }
+    if (mc === 2147483647) {
+      fault();
+      return false;
+    }
+    return oc > mc;
   }
 
   /**
@@ -508,68 +646,80 @@ export class Parser {
    */
   pendingLine(move: boolean): i32 {
     const d = this.d;
-    const tail = this.listParent < 0 ? d.topTail : d.childTail[this.listParent];
-    if (tail < 0 || d.lPP[tail] !== 1 || this.macro >= 0) {
+    const tail = this.listParent < 0 ? d.topTail : psLink(d.childTail, this.listParent);
+    if (tail < 0 || psAt(d.lPP, tail) !== 1 || this.macro >= 0) {
       return tail;
     }
-    const li = this.listParent + 1;
-    if (li >= toI32(this.codeTail.length) || this.codeTail[li] < 0) {
+    const lp = this.listParent;
+    if (lp >= 2147483647) {
+      fault();
       return tail;
     }
-    const l = this.codeTail[li];
+    const li = lp + 1;
+    if (li >= toI32(this.codeTail.length) || psLink(this.codeTail, li) < 0) {
+      return tail;
+    }
+    const l = psLink(this.codeTail, li);
     // (Only directive lines and the comment lines flushed before them may
     // follow it, read right after its last token.)
-    for (let x = d.lSibling[l]; x >= 0; x = d.lSibling[x]) {
-      if (d.lPP[x] !== 1 && !this.commentOnly(x)) {
+    for (let x = psLink(d.lSibling, l); x >= 0; x = psLink(d.lSibling, x)) {
+      if (psAt(d.lPP, x) !== 1 && !this.commentOnly(x)) {
         return tail;
       }
     }
-    let q = d.lLast[l] + 1;
+    const ll = psLink(d.lLast, l);
+    if (ll >= 2147483647) {
+      fault();
+      return tail;
+    }
+    let q = ll + 1;
     while (
       q < this.pos &&
-      (d.kind[q] === K_COMMENT || d.inPP[q] === 1 || (d.kind[q] === P_HASH && d.ppKind[q] !== PP_NONE))
+      (psAt(d.kind, q) === K_COMMENT ||
+        psAt(d.inPP, q) === 1 ||
+        (psAt(d.kind, q) === P_HASH && psAt(d.ppKind, q) !== PP_NONE))
     ) {
       q++;
     }
-    if (q !== this.pos || d.kind[d.lLast[l]] !== K_COMMENT) {
+    if (q !== this.pos || psAt(d.kind, psLink(d.lLast, l)) !== K_COMMENT) {
       return tail;
     }
     if (!move) {
       return l;
     }
-    const before = this.codeTailPrev[li];
-    const dHead = d.lSibling[l];
-    for (let x = dHead; x >= 0; x = d.lSibling[x]) {
-      if (d.lPP[x] !== 1) {
+    const before = psLink(this.codeTailPrev, li);
+    const dHead = psLink(d.lSibling, l);
+    for (let x = dHead; x >= 0; x = psLink(d.lSibling, x)) {
+      if (psAt(d.lPP, x) !== 1) {
         // Parked with the directives: clang-format flushed them there.
-        d.lInlineCmt[x] = 1;
+        psPut(d.lInlineCmt, x, 1);
       }
     }
     if (before < 0) {
       if (this.listParent < 0) {
         d.topHead = dHead;
       } else {
-        d.childHead[this.listParent] = dHead;
+        psPut(d.childHead, this.listParent, dHead);
       }
     } else {
-      d.lSibling[before] = dHead;
+      psPut(d.lSibling, before, dHead);
     }
-    d.lSibling[tail] = l;
-    d.lSibling[l] = -1;
+    psPut(d.lSibling, tail, l);
+    psPut(d.lSibling, l, -1);
     if (this.listParent < 0) {
       d.topTail = l;
     } else {
-      d.childTail[this.listParent] = l;
+      psPut(d.childTail, this.listParent, l);
     }
-    this.codeTailPrev[li] = tail;
+    psPut(this.codeTailPrev, li, tail);
     return l;
   }
 
   /** Whether line `x` holds comments only. */
   commentOnly(x: i32): boolean {
     const d = this.d;
-    for (let t = d.lFirst[x]; t >= 0; t = d.nxt[t]) {
-      if (d.kind[t] !== K_COMMENT) {
+    for (let t = psLink(d.lFirst, x); t >= 0; t = psLink(d.nxt, t)) {
+      if (psAt(d.kind, t) !== K_COMMENT) {
         return false;
       }
     }
@@ -582,13 +732,18 @@ export class Parser {
     // A directive in the middle of a statement ends the statement's line.
     this.addLine();
     const hash = this.pos;
-    if (d.ppKind[hash] === PP_DEFINE && this.macro < 0 && d.len(hash + 1) === 6 && d.at(d.start[hash + 1]) === 100) {
+    if (
+      psAt(d.ppKind, hash) === PP_DEFINE &&
+      this.macro < 0 &&
+      d.len(psNext(hash)) === 6 &&
+      d.at(psAt(d.start, psNext(hash))) === 100
+    ) {
       this.parseDefine(hash);
       return;
     }
-    const isInclude = d.ppKind[hash] === PP_INCLUDE;
+    const isInclude = psAt(d.ppKind, hash) === PP_INCLUDE;
     this.push();
-    while (d.inPP[this.pos] === 1 && d.kind[this.pos] !== K_EOF && d.ppKind[this.pos] === PP_NONE) {
+    while (psAt(d.inPP, this.pos) === 1 && psAt(d.kind, this.pos) !== K_EOF && psAt(d.ppKind, this.pos) === PP_NONE) {
       this.push();
     }
     this.finishLine(isInclude ? LT_IMPORT : LT_PREPROCESSOR);
@@ -602,16 +757,16 @@ export class Parser {
     const d = this.d;
     this.push(); // #
     this.push(); // define
-    if (d.ppId[this.pos] === hash && isWordKind(d.kind[this.pos])) {
+    if (psLink(d.ppId, this.pos) === hash && isWordKind(psAt(d.kind, this.pos))) {
       this.push();
-      if (d.ppId[this.pos] === hash && d.kind[this.pos] === P_LPAREN && d.ws[this.pos] === 0) {
+      if (psLink(d.ppId, this.pos) === hash && psAt(d.kind, this.pos) === P_LPAREN && psAt(d.ws, this.pos) === 0) {
         let depth = 0;
-        while (d.ppId[this.pos] === hash) {
-          const k = d.kind[this.pos];
+        while (psLink(d.ppId, this.pos) === hash) {
+          const k = psAt(d.kind, this.pos);
           if (k === P_LPAREN) {
-            depth++;
+            depth = add32(depth, 1);
           } else if (k === P_RPAREN) {
-            depth--;
+            depth = sub32(depth, 1);
           }
           this.push();
           if (depth === 0) {
@@ -622,12 +777,12 @@ export class Parser {
     }
     // Comments on the head's own line join it (clang-format's
     // distributeComments); one after an escaped newline starts the body.
-    while (d.ppId[this.pos] === hash && d.kind[this.pos] === K_COMMENT && d.nl[this.pos] === 0) {
+    while (psLink(d.ppId, this.pos) === hash && psAt(d.kind, this.pos) === K_COMMENT && psAt(d.nl, this.pos) === 0) {
       this.push();
     }
     this.finishLine(LT_PREPROCESSOR);
-    d.lDefCode[d.nline - 1] = 1;
-    if (d.ppId[this.pos] !== hash) {
+    psPut(d.lDefCode, psDec(d.nline), 1);
+    if (psLink(d.ppId, this.pos) !== hash) {
       return;
     }
     const saveLevel = this.level;
@@ -655,8 +810,8 @@ export class Parser {
       const l0 = d.nline;
       const any = this.flushComments();
       for (let l = l0; l < d.nline; l++) {
-        if (d.lParent[l] === this.listParent && d.kind[d.lFirst[l]] === K_COMMENT) {
-          d.lAbs[l] = 1;
+        if (psLink(d.lParent, l) === this.listParent && psAt(d.kind, psLink(d.lFirst, l)) === K_COMMENT) {
+          psPut(d.lAbs, l, 1);
         }
       }
       if (any) {
@@ -670,12 +825,12 @@ export class Parser {
     // dispatches on the statement's keyword.
     if (this.first < 0 && this.cur() === K_COMMENT) {
       let i = this.pos;
-      while (i < d.ntok - 1 && d.kind[i] === K_COMMENT && (i === this.pos || d.nl[i] === 0)) {
+      while (i < psLast(d) && psAt(d.kind, i) === K_COMMENT && (i === this.pos || psAt(d.nl, i) === 0)) {
         i++;
       }
-      const ki = d.kind[i];
+      const ki = psAt(d.kind, i);
       if (
-        d.nl[i] === 0 &&
+        psAt(d.nl, i) === 0 &&
         (ki === KW_IF || ki === KW_WHILE || ki === KW_FOR || ki === KW_SWITCH || ki === KW_DO || ki === KW_TRY)
       ) {
         while (this.pos < i) {
@@ -685,7 +840,7 @@ export class Parser {
     }
     // `asm { ... }`: the block is a line of its own, and what follows it
     // is read as the rest of the statement.
-    if (this.isAsmWord(this.pos) && this.cur() !== K_EOF && d.kind[this.pos + 1] === P_LBRACE) {
+    if (this.isAsmWord(this.pos) && this.cur() !== K_EOF && psAt(d.kind, psNext(this.pos)) === P_LBRACE) {
       this.parseAsmBlock();
       if (this.cur() === P_RBRACE || this.cur() === K_EOF) {
         return;
@@ -700,11 +855,21 @@ export class Parser {
       if (!(this.cur() === P_LSQUARE && this.peek(1) === P_LSQUARE)) {
         break;
       }
-      let i = this.pos + 2;
-      while (i < d.ntok - 1 && d.kind[i] !== P_RSQUARE) {
+      const p0 = this.pos;
+      // (No table holds 2^31 tokens.)
+      if (p0 >= 2147483645) {
+        fault();
+        return;
+      }
+      let i = p0 + 2;
+      while (i < psLast(d) && psAt(d.kind, i) !== P_RSQUARE) {
         i++;
       }
-      if (d.kind[i] !== P_RSQUARE || d.kind[i + 1] !== P_RSQUARE || d.kind[i + 2] === P_SEMI) {
+      if (i >= 2147483645) {
+        fault();
+        return;
+      }
+      if (psAt(d.kind, i) !== P_RSQUARE || psAt(d.kind, i + 1) !== P_RSQUARE || psAt(d.kind, i + 2) === P_SEMI) {
         break;
       }
       while (this.pos <= i + 1) {
@@ -713,7 +878,7 @@ export class Parser {
       attrOnly = true;
     }
     const k = this.cur();
-    if (k === P_HASH && d.ppKind[this.pos] !== PP_NONE) {
+    if (k === P_HASH && psAt(d.ppKind, this.pos) !== PP_NONE) {
       this.parsePP();
       return;
     }
@@ -818,10 +983,10 @@ export class Parser {
         break;
       case P_LBRACE:
         // clang-format tries a braced list first: `{a};` (not in a requires expression).
-        if (!this.inRequiresExpr && d.bk[this.pos] === BK_UNKNOWN) {
+        if (!this.inRequiresExpr && psAt(d.bk, this.pos) === BK_UNKNOWN) {
           this.calculateBraceTypes();
         }
-        if (!this.inRequiresExpr && d.bk[this.pos] === BK_BRACED_INIT) {
+        if (!this.inRequiresExpr && psAt(d.bk, this.pos) === BK_BRACED_INIT) {
           this.parseStatement();
           return;
         }
@@ -859,10 +1024,10 @@ export class Parser {
   /** Whether token `t` is `asm`, `_asm`, `__asm` or `__asm__` (clang-format's kw_asm). */
   isAsmWord(t: i32): boolean {
     const d = this.d;
-    if (d.kind[t] === KW_ASM) {
+    if (psAt(d.kind, t) === KW_ASM) {
       return true;
     }
-    if (d.kind[t] !== K_IDENT) {
+    if (psAt(d.kind, t) !== K_IDENT) {
       return false;
     }
     return d.is(t, "_asm") || d.is(t, "__asm") || d.is(t, "__asm__");
@@ -875,8 +1040,8 @@ export class Parser {
   parseAsmBlock(): void {
     const d = this.d;
     this.push();
-    d.type[this.pos] = TT_INLINE_ASM_BRACE;
-    d.final[this.pos] = 1;
+    psPut(d.type, this.pos, TT_INLINE_ASM_BRACE);
+    psPut(d.final, this.pos, 1);
     this.push();
     while (true) {
       const k = this.cur();
@@ -884,19 +1049,19 @@ export class Parser {
         return;
       }
       if (k === P_RBRACE) {
-        d.type[this.pos] = TT_INLINE_ASM_BRACE;
-        d.final[this.pos] = 1;
+        psPut(d.type, this.pos, TT_INLINE_ASM_BRACE);
+        psPut(d.final, this.pos, 1);
         this.push();
         this.addLine();
         return;
       }
-      if (k === P_HASH && d.ppKind[this.pos] !== PP_NONE) {
+      if (k === P_HASH && psAt(d.ppKind, this.pos) !== PP_NONE) {
         this.parsePPInline();
         continue;
       }
       // (Comments are not: clang-format reads them aside.)
       if (k !== K_COMMENT) {
-        d.asmFin[this.pos] = 1;
+        psPut(d.asmFin, this.pos, 1);
       }
       this.push();
     }
@@ -905,20 +1070,20 @@ export class Parser {
   parseBlock(addLevel: i32, mustDecl: boolean, lbraceType: i32): void {
     const d = this.d;
     const lb = this.pos;
-    d.bk[lb] = BK_BLOCK;
+    psPut(d.bk, lb, BK_BLOCK);
     if (lbraceType !== TT_UNKNOWN) {
-      d.type[lb] = lbraceType;
-      d.final[lb] = 1;
+      psPut(d.type, lb, lbraceType);
+      psPut(d.final, lb, 1);
     }
     this.push();
     this.addLine();
-    const openLine = d.nline - 1;
+    const openLine = psDec(d.nline);
     const saveLevel = this.level;
     const saveDecl = this.mustDecl;
     // A block's own labels are not in an unbraced body.
     const saveUnbraced = this.inUnbraced;
     this.inUnbraced = false;
-    this.level = saveLevel + addLevel;
+    this.level = add32(saveLevel, addLevel);
     this.mustDecl = mustDecl;
     this.parseLevel(true);
     this.addLine();
@@ -929,9 +1094,9 @@ export class Parser {
       // Unclosed at the end of the file.
       return;
     }
-    d.bk[this.pos] = BK_BLOCK;
-    d.match[lb] = this.pos;
-    d.match[this.pos] = lb;
+    psPut(d.bk, this.pos, BK_BLOCK);
+    psPut(d.match, lb, this.pos);
+    psPut(d.match, this.pos, lb);
     this.rbraceOpen = openLine;
     this.push();
     // clang-format's parseBlock takes a `;` right after the `}` (records
@@ -966,7 +1131,7 @@ export class Parser {
     if (this.cur() === P_LBRACE) {
       const startLine = d.nline;
       this.parseBlock(0, true, TT_NAMESPACE_LBRACE);
-      d.lNamespace[startLine] = 1;
+      psPut(d.lNamespace, startLine, 1);
       if (this.cur() === P_SEMI) {
         this.push();
       }
@@ -985,15 +1150,15 @@ export class Parser {
    */
   parseCaseLabel(): void {
     const d = this.d;
-    const isGoto = d.kind[this.pos] !== KW_CASE && d.kind[this.pos] !== KW_DEFAULT;
+    const isGoto = psAt(d.kind, this.pos) !== KW_CASE && psAt(d.kind, this.pos) !== KW_DEFAULT;
     const saveLevel = this.level;
     const unbraced = this.inUnbraced;
     // clang-format's parseLabel: one level out, but not to 0 inside a directive.
-    if (this.level > 1 || (this.macro < 0 && this.level > 0)) {
-      this.level = this.level - 1;
+    if (saveLevel > 0 && (saveLevel > 1 || this.macro < 0)) {
+      this.level = saveLevel - 1;
     }
     // (A label read into a line already started takes that line out too.)
-    if (this.first >= 0 && this.d.kind[this.first] !== P_RBRACE) {
+    if (this.first >= 0 && psAt(this.d.kind, this.first) !== P_RBRACE) {
       this.lineLevel = this.level;
     }
     // `case expr :` (a `::` is not the label's colon). clang-format's
@@ -1004,8 +1169,8 @@ export class Parser {
         break;
       }
       if (k === P_COLON) {
-        d.type[this.pos] = TT_CASE_LABEL_COLON;
-        d.final[this.pos] = 1;
+        psPut(d.type, this.pos, TT_CASE_LABEL_COLON);
+        psPut(d.final, this.pos, 1);
         this.push();
         break;
       }
@@ -1014,46 +1179,53 @@ export class Parser {
     // Comments on the label's line stay on it; directive lines between the
     // label and a block are read past.
     let q = this.pos;
-    while (d.kind[q] === K_COMMENT && d.nl[q] === 0) {
-      q++;
+    while (psAt(d.kind, q) === K_COMMENT && psAt(d.nl, q) === 0) {
+      q = psNext(q);
     }
     let r = q;
-    while (d.kind[r] === K_COMMENT) {
-      r++;
+    while (psAt(d.kind, r) === K_COMMENT) {
+      r = psNext(r);
     }
-    if ((d.kind[q] === P_HASH && d.ppKind[q] !== PP_NONE) || d.kind[r] === P_LBRACE) {
-      while (d.kind[this.pos] === K_COMMENT && d.nl[this.pos] === 0) {
+    if ((psAt(d.kind, q) === P_HASH && psAt(d.ppKind, q) !== PP_NONE) || psAt(d.kind, r) === P_LBRACE) {
+      while (psAt(d.kind, this.pos) === K_COMMENT && psAt(d.nl, this.pos) === 0) {
         this.push();
       }
       // So are line comments continuing the last one's section (clang-format
       // reads them into the line): the block then still follows the label.
-      const minCol = this.first >= 0 ? d.origCol(this.first) + 1 : 0;
+      const minCol = this.first >= 0 ? add32(d.origCol(this.first), 1) : 0;
       while (
-        d.kind[this.pos] === K_COMMENT &&
-        d.nl[this.pos] === 1 &&
-        d.at(d.start[this.pos] + 1) === 47 &&
+        psAt(d.kind, this.pos) === K_COMMENT &&
+        psAt(d.nl, this.pos) === 1 &&
+        psByte1(d, this.pos) === 47 &&
         this.last >= 0 &&
-        d.kind[this.last] === K_COMMENT &&
-        d.at(d.start[this.last] + 1) === 47 &&
+        psAt(d.kind, this.last) === K_COMMENT &&
+        psByte1(d, this.last) === 47 &&
         d.origCol(this.pos) >= minCol
       ) {
         this.push();
       }
     }
-    while (d.kind[this.pos] === P_HASH && d.ppKind[this.pos] !== PP_NONE && this.macro < 0) {
+    while (psAt(d.kind, this.pos) === P_HASH && psAt(d.ppKind, this.pos) !== PP_NONE && this.macro < 0) {
       this.parsePPInline();
     }
     if (this.cur() === P_LBRACE && !isGoto) {
       this.parseBlock(1, false, TT_UNKNOWN);
       let b = this.pos;
-      while (d.kind[b] === P_HASH && d.ppKind[b] !== PP_NONE) {
-        b++;
-        while (d.ppId[b] === d.ppId[b - 1] && d.inPP[b] === 1 && d.kind[b] !== K_EOF && d.ppKind[b] === PP_NONE) {
-          b++;
+      while (psAt(d.kind, b) === P_HASH && psAt(d.ppKind, b) !== PP_NONE) {
+        let b0 = b;
+        b = psNext(b);
+        while (
+          psLink(d.ppId, b) === psLink(d.ppId, b0) &&
+          psAt(d.inPP, b) === 1 &&
+          psAt(d.kind, b) !== K_EOF &&
+          psAt(d.ppKind, b) === PP_NONE
+        ) {
+          b0 = b;
+          b = psNext(b);
         }
       }
-      if (d.kind[b] === KW_BREAK && this.macro < 0) {
-        while (d.kind[this.pos] === P_HASH && d.ppKind[this.pos] !== PP_NONE) {
+      if (psAt(d.kind, b) === KW_BREAK && this.macro < 0) {
+        while (psAt(d.kind, this.pos) === P_HASH && psAt(d.ppKind, this.pos) !== PP_NONE) {
           this.parsePPInline();
         }
       }
@@ -1062,18 +1234,25 @@ export class Parser {
         // Comments before a directive are read with the `break;`, at the
         // label's level (past any directives that come first).
         let q = this.pos;
-        while (d.kind[q] === P_HASH && d.ppKind[q] !== PP_NONE) {
-          q++;
-          while (d.ppId[q] === d.ppId[q - 1] && d.inPP[q] === 1 && d.kind[q] !== K_EOF && d.ppKind[q] === PP_NONE) {
-            q++;
+        while (psAt(d.kind, q) === P_HASH && psAt(d.ppKind, q) !== PP_NONE) {
+          let q0 = q;
+          q = psNext(q);
+          while (
+            psLink(d.ppId, q) === psLink(d.ppId, q0) &&
+            psAt(d.inPP, q) === 1 &&
+            psAt(d.kind, q) !== K_EOF &&
+            psAt(d.ppKind, q) === PP_NONE
+          ) {
+            q0 = q;
+            q = psNext(q);
           }
         }
-        if (q !== this.pos && d.kind[q] === K_COMMENT && this.macro < 0) {
+        if (q !== this.pos && psAt(d.kind, q) === K_COMMENT && this.macro < 0) {
           let r = q;
-          while (d.kind[r] === K_COMMENT) {
-            r++;
+          while (psAt(d.kind, r) === K_COMMENT) {
+            r = psNext(r);
           }
-          if (d.kind[r] === P_HASH && d.ppKind[r] !== PP_NONE) {
+          if (psAt(d.kind, r) === P_HASH && psAt(d.ppKind, r) !== PP_NONE) {
             while (this.pos < q) {
               this.parsePPInline();
             }
@@ -1092,16 +1271,16 @@ export class Parser {
       // `label:` then comments then `;`: clang-format's parseLabel takes the
       // `;`, and the comments before it, into the label's line.
       let q = this.pos;
-      while (q < d.ntok - 1 && d.kind[q] === K_COMMENT) {
+      while (q < psLast(d) && psAt(d.kind, q) === K_COMMENT) {
         q++;
       }
-      if (d.kind[q] === P_SEMI) {
+      if (psAt(d.kind, q) === P_SEMI) {
         while (this.pos <= q) {
           this.push();
         }
       }
     }
-    const braced = this.first >= 0 && d.kind[this.first] === P_RBRACE;
+    const braced = this.first >= 0 && psAt(d.kind, this.first) === P_RBRACE;
     this.addLine();
     // Comments read past the block's `}` before a directive are flushed at
     // the `}`'s level, as clang-format reads them while consuming the brace.
@@ -1122,26 +1301,26 @@ export class Parser {
     // `if (x) // comment` then `{` on the next line: the comment trails the
     // control line and the block is still its body.
     const d = this.d;
-    if (d.kind[this.pos] === K_COMMENT && (d.nl[this.pos] === 0 || this.macro < 0)) {
+    if (psAt(d.kind, this.pos) === K_COMMENT && (psAt(d.nl, this.pos) === 0 || this.macro < 0)) {
       let i = this.pos;
-      while (i < d.ntok - 1 && d.kind[i] === K_COMMENT) {
+      while (i < psLast(d) && psAt(d.kind, i) === K_COMMENT) {
         i++;
       }
       // (So do own-line comments: clang-format reads them with the `{`.)
-      if (d.kind[i] === P_LBRACE) {
-        while (d.kind[this.pos] === K_COMMENT) {
+      if (psAt(d.kind, i) === P_LBRACE) {
+        while (psAt(d.kind, this.pos) === K_COMMENT) {
           this.push();
         }
-      } else if (d.kind[i] === P_HASH && d.ppKind[i] !== PP_NONE && this.macro < 0) {
+      } else if (psAt(d.kind, i) === P_HASH && psAt(d.ppKind, i) !== PP_NONE && this.macro < 0) {
         // `if (x) // comment` then a directive: the comment trails the line.
-        while (d.kind[this.pos] === K_COMMENT && d.nl[this.pos] === 0) {
+        while (psAt(d.kind, this.pos) === K_COMMENT && psAt(d.nl, this.pos) === 0) {
           this.push();
         }
       }
     }
     // Directive lines before the body are read past, as clang-format reads
     // tokens: the body is still the statement after them.
-    while (d.kind[this.pos] === P_HASH && d.ppKind[this.pos] !== PP_NONE && this.macro < 0) {
+    while (psAt(d.kind, this.pos) === P_HASH && psAt(d.ppKind, this.pos) !== PP_NONE && this.macro < 0) {
       this.parsePPInline();
     }
     if (this.cur() === P_LBRACE) {
@@ -1154,23 +1333,23 @@ export class Parser {
     // directive, and the body is still the statement after it.
     if (this.macro < 0 && this.commentsThenDirective()) {
       this.flushComments();
-      while (d.kind[this.pos] === P_HASH && d.ppKind[this.pos] !== PP_NONE) {
+      while (psAt(d.kind, this.pos) === P_HASH && psAt(d.ppKind, this.pos) !== PP_NONE) {
         this.parsePPInline();
       }
     }
-    this.level = this.level + 1;
+    this.level = add32(this.level, 1);
     const before = d.nline;
     this.eofLine = -1;
     this.bodyComments();
     const wasUnbraced = this.inUnbraced;
     this.inUnbraced = true;
-    this.unbracedLevel = this.unbracedLevel + 1;
+    this.unbracedLevel = add32(this.unbracedLevel, 1);
     this.parseStructuralElement();
     this.inUnbraced = wasUnbraced;
     // A body still open at the end of the input (a macro body without `;`)
     // is added after the level is restored: clang-format's parseUnbracedBody.
-    if (this.eofLine >= before && this.eofLine === d.nline - 1) {
-      d.lLevel[this.eofLine] = this.level - 1;
+    if (this.eofLine >= before && this.eofLine === psDec(d.nline)) {
+      psPut(d.lLevel, this.eofLine, sub32(this.level, 1));
     }
     // Comments between the body and a directive are read ahead inside the
     // body: flushed at its level less the unbraced bodies, this one included.
@@ -1179,32 +1358,32 @@ export class Parser {
     } else if (this.first < 0 && this.macro < 0 && this.directivesCommentsDirective()) {
       // Directives, then comments, then a directive: all read ahead with the
       // body's last token, as above.
-      while (d.kind[this.pos] === P_HASH && d.ppKind[this.pos] !== PP_NONE) {
+      while (psAt(d.kind, this.pos) === P_HASH && psAt(d.ppKind, this.pos) !== PP_NONE) {
         this.parsePPInline();
       }
       this.flushComments();
     }
-    this.unbracedLevel = this.unbracedLevel - 1;
-    this.level = this.level - 1;
+    this.unbracedLevel = sub32(this.unbracedLevel, 1);
+    this.level = sub32(this.level, 1);
   }
 
   /** Whether directives, then own-line comments, then a directive come next. */
   directivesCommentsDirective(): boolean {
     const d = this.d;
     let i = this.pos;
-    if (d.kind[i] !== P_HASH || d.ppKind[i] === PP_NONE) {
+    if (psAt(d.kind, i) !== P_HASH || psAt(d.ppKind, i) === PP_NONE) {
       return false;
     }
-    while (i < d.ntok - 1 && ((d.kind[i] === P_HASH && d.ppKind[i] !== PP_NONE) || d.inPP[i] === 1)) {
+    while (i < psLast(d) && ((psAt(d.kind, i) === P_HASH && psAt(d.ppKind, i) !== PP_NONE) || psAt(d.inPP, i) === 1)) {
       i++;
     }
-    if (d.kind[i] !== K_COMMENT || d.nl[i] === 0) {
+    if (psAt(d.kind, i) !== K_COMMENT || psAt(d.nl, i) === 0) {
       return false;
     }
-    while (i < d.ntok - 1 && d.kind[i] === K_COMMENT) {
+    while (i < psLast(d) && psAt(d.kind, i) === K_COMMENT) {
       i++;
     }
-    return d.kind[i] === P_HASH && d.ppKind[i] !== PP_NONE;
+    return psAt(d.kind, i) === P_HASH && psAt(d.ppKind, i) !== PP_NONE;
   }
 
   /**
@@ -1213,14 +1392,14 @@ export class Parser {
    */
   bodyComments(): void {
     const d = this.d;
-    if (this.first >= 0 || d.kind[this.pos] !== K_COMMENT || this.commentsThenDirective()) {
+    if (this.first >= 0 || psAt(d.kind, this.pos) !== K_COMMENT || this.commentsThenDirective()) {
       return;
     }
     let i = this.pos;
-    while (i < d.ntok - 1 && d.kind[i] === K_COMMENT) {
+    while (i < psLast(d) && psAt(d.kind, i) === K_COMMENT) {
       i++;
     }
-    if (d.kind[i] === K_EOF || d.kind[i] === P_RBRACE) {
+    if (psAt(d.kind, i) === K_EOF || psAt(d.kind, i) === P_RBRACE) {
       return;
     }
     this.flushComments();
@@ -1235,11 +1414,21 @@ export class Parser {
     if (this.cur() !== P_LSQUARE || this.peek(1) !== P_LSQUARE) {
       return;
     }
-    let i = this.pos + 2;
-    while (i < d.ntok - 1 && d.kind[i] !== P_RSQUARE && d.kind[i] !== K_EOF) {
+    const p0 = this.pos;
+    // (No table holds 2^31 tokens.)
+    if (p0 >= 2147483645) {
+      fault();
+      return;
+    }
+    let i = p0 + 2;
+    while (i < psLast(d) && psAt(d.kind, i) !== P_RSQUARE && psAt(d.kind, i) !== K_EOF) {
       i++;
     }
-    if (d.kind[i] !== P_RSQUARE || d.kind[i + 1] !== P_RSQUARE || d.kind[i + 2] === P_SEMI) {
+    if (i >= 2147483645) {
+      fault();
+      return;
+    }
+    if (psAt(d.kind, i) !== P_RSQUARE || psAt(d.kind, i + 1) !== P_RSQUARE || psAt(d.kind, i + 2) === P_SEMI) {
       return;
     }
     while (this.pos <= i + 1) {
@@ -1251,29 +1440,29 @@ export class Parser {
   directivesThenElse(): boolean {
     const d = this.d;
     let i = this.pos;
-    if (d.kind[i] !== P_HASH || d.ppKind[i] === PP_NONE) {
+    if (psAt(d.kind, i) !== P_HASH || psAt(d.ppKind, i) === PP_NONE) {
       return false;
     }
-    while (i < d.ntok - 1 && ((d.kind[i] === P_HASH && d.ppKind[i] !== PP_NONE) || d.inPP[i] === 1)) {
+    while (i < psLast(d) && ((psAt(d.kind, i) === P_HASH && psAt(d.ppKind, i) !== PP_NONE) || psAt(d.inPP, i) === 1)) {
       i++;
     }
-    while (i < d.ntok - 1 && d.kind[i] === K_COMMENT) {
+    while (i < psLast(d) && psAt(d.kind, i) === K_COMMENT) {
       i++;
     }
-    return d.kind[i] === KW_ELSE;
+    return psAt(d.kind, i) === KW_ELSE;
   }
 
   /** Whether own-line comments, then a directive, come next. */
   commentsThenDirective(): boolean {
     const d = this.d;
     let i = this.pos;
-    if (d.kind[i] !== K_COMMENT || d.nl[i] === 0) {
+    if (psAt(d.kind, i) !== K_COMMENT || psAt(d.nl, i) === 0) {
       return false;
     }
-    while (i < d.ntok - 1 && d.kind[i] === K_COMMENT) {
+    while (i < psLast(d) && psAt(d.kind, i) === K_COMMENT) {
       i++;
     }
-    return d.kind[i] === P_HASH && d.ppKind[i] !== PP_NONE;
+    return psAt(d.kind, i) === P_HASH && psAt(d.ppKind, i) !== PP_NONE;
   }
 
   parseIf(): void {
@@ -1291,24 +1480,24 @@ export class Parser {
     this.parseControlBody();
     const d = this.d;
     // Braced: the body's `}` has started the line being built.
-    const braced = this.first >= 0 && d.kind[this.first] === P_RBRACE;
+    const braced = this.first >= 0 && psAt(d.kind, this.first) === P_RBRACE;
     // Directives between the body and `else` are read past, as clang-format
     // reads tokens: the else still belongs to this if.
     if (this.macro < 0 && this.directivesThenElse()) {
-      while (d.kind[this.pos] === P_HASH && d.ppKind[this.pos] !== PP_NONE) {
+      while (psAt(d.kind, this.pos) === P_HASH && psAt(d.ppKind, this.pos) !== PP_NONE) {
         this.parsePPInline();
       }
     }
     // Comments between the body and `else`: clang-format looks past them.
-    if (d.kind[this.pos] === K_COMMENT) {
+    if (psAt(d.kind, this.pos) === K_COMMENT) {
       let i = this.pos;
-      while (i < d.ntok - 1 && d.kind[i] === K_COMMENT) {
+      while (i < psLast(d) && psAt(d.kind, i) === K_COMMENT) {
         i++;
       }
-      if (d.kind[i] === KW_ELSE) {
+      if (psAt(d.kind, i) === KW_ELSE) {
         if (braced) {
           // They join the `}` line.
-          while (d.kind[this.pos] === K_COMMENT) {
+          while (psAt(d.kind, this.pos) === K_COMMENT) {
             this.push();
           }
         } else {
@@ -1327,31 +1516,34 @@ export class Parser {
       // `if`): clang-format reads past the directives into `else if`.
       // (Own-line comments before a `{` are read with it too.)
       let ownLine = false;
-      if (d.kind[this.pos] === K_COMMENT && d.nl[this.pos] > 0 && this.macro < 0) {
+      if (psAt(d.kind, this.pos) === K_COMMENT && psAt(d.nl, this.pos) > 0 && this.macro < 0) {
         let i = this.pos;
-        while (i < d.ntok - 1 && d.kind[i] === K_COMMENT) {
+        while (i < psLast(d) && psAt(d.kind, i) === K_COMMENT) {
           i++;
         }
-        ownLine = d.kind[i] === P_LBRACE;
+        ownLine = psAt(d.kind, i) === P_LBRACE;
       }
-      if (d.kind[this.pos] === K_COMMENT && (d.nl[this.pos] === 0 || ownLine)) {
+      if (psAt(d.kind, this.pos) === K_COMMENT && (psAt(d.nl, this.pos) === 0 || ownLine)) {
         let i = this.pos;
-        while (i < d.ntok - 1 && d.kind[i] === K_COMMENT) {
+        while (i < psLast(d) && psAt(d.kind, i) === K_COMMENT) {
           i++;
         }
         let j = i;
         if (this.macro < 0) {
-          while (j < d.ntok - 1 && ((d.kind[j] === P_HASH && d.ppKind[j] !== PP_NONE) || d.inPP[j] === 1)) {
+          while (
+            j < psLast(d) &&
+            ((psAt(d.kind, j) === P_HASH && psAt(d.ppKind, j) !== PP_NONE) || psAt(d.inPP, j) === 1)
+          ) {
             j++;
           }
         }
-        if (d.kind[i] === P_LBRACE || (j > i && d.kind[j] === KW_IF)) {
-          while (d.kind[this.pos] === K_COMMENT) {
+        if (psAt(d.kind, i) === P_LBRACE || (j > i && psAt(d.kind, j) === KW_IF)) {
+          while (psAt(d.kind, this.pos) === K_COMMENT) {
             this.push();
           }
         }
       }
-      while (d.kind[this.pos] === P_HASH && d.ppKind[this.pos] !== PP_NONE && this.macro < 0) {
+      while (psAt(d.kind, this.pos) === P_HASH && psAt(d.ppKind, this.pos) !== PP_NONE && this.macro < 0) {
         this.parsePPInline();
       }
       this.handleAttributes();
@@ -1365,11 +1557,11 @@ export class Parser {
         return;
       }
       this.addLine();
-      this.level = this.level + 1;
+      this.level = add32(this.level, 1);
       this.bodyComments();
       const wasUnbraced = this.inUnbraced;
       this.inUnbraced = true;
-      this.unbracedLevel = this.unbracedLevel + 1;
+      this.unbracedLevel = add32(this.unbracedLevel, 1);
       this.parseStructuralElement();
       this.inUnbraced = wasUnbraced;
       // A body still open at the end of the input (a macro's last line) is
@@ -1378,7 +1570,7 @@ export class Parser {
       if (this.first >= 0 && this.cur() === K_EOF) {
         this.addLine();
       }
-      if (this.eofLine >= 0 && this.eofLine === d.nline - 1) {
+      if (this.eofLine >= 0 && this.eofLine === psDec(d.nline)) {
         this.eofLine = -1;
       }
       // Comments between the body and a directive: as after any control
@@ -1386,13 +1578,13 @@ export class Parser {
       if (this.first < 0 && this.commentsThenDirective()) {
         this.flushComments();
       } else if (this.first < 0 && this.macro < 0 && this.directivesCommentsDirective()) {
-        while (d.kind[this.pos] === P_HASH && d.ppKind[this.pos] !== PP_NONE) {
+        while (psAt(d.kind, this.pos) === P_HASH && psAt(d.ppKind, this.pos) !== PP_NONE) {
           this.parsePPInline();
         }
         this.flushComments();
       }
-      this.unbracedLevel = this.unbracedLevel - 1;
-      this.level = this.level - 1;
+      this.unbracedLevel = sub32(this.unbracedLevel, 1);
+      this.level = sub32(this.level, 1);
       return;
     }
     this.addLine();
@@ -1420,8 +1612,8 @@ export class Parser {
     if (
       braced &&
       this.cur() === K_COMMENT &&
-      this.d.nl[this.pos] === 0 &&
-      this.d.kind[this.nextNonComment(this.pos)] === KW_WHILE
+      psAt(this.d.nl, this.pos) === 0 &&
+      psAt(this.d.kind, this.nextNonComment(this.pos)) === KW_WHILE
     ) {
       while (this.cur() === K_COMMENT) {
         this.push();
@@ -1429,21 +1621,24 @@ export class Parser {
     }
     // (Directives before the `while` are read past, as clang-format reads
     // tokens.)
-    if (braced && this.macro < 0 && this.cur() === P_HASH && this.d.ppKind[this.pos] !== PP_NONE) {
+    if (braced && this.macro < 0 && this.cur() === P_HASH && psAt(this.d.ppKind, this.pos) !== PP_NONE) {
       const d = this.d;
       let i = this.pos;
-      while (i < d.ntok - 1 && ((d.kind[i] === P_HASH && d.ppKind[i] !== PP_NONE) || d.inPP[i] === 1)) {
+      while (
+        i < psLast(d) &&
+        ((psAt(d.kind, i) === P_HASH && psAt(d.ppKind, i) !== PP_NONE) || psAt(d.inPP, i) === 1)
+      ) {
         i++;
       }
-      if (d.kind[i] === KW_WHILE) {
-        while (d.kind[this.pos] === P_HASH && d.ppKind[this.pos] !== PP_NONE) {
+      if (psAt(d.kind, i) === KW_WHILE) {
+        while (psAt(d.kind, this.pos) === P_HASH && psAt(d.ppKind, this.pos) !== PP_NONE) {
           this.parsePPInline();
         }
       }
     }
     if (this.cur() === KW_WHILE) {
-      this.d.type[this.pos] = TT_DO_WHILE;
-      this.d.final[this.pos] = 1;
+      psPut(this.d.type, this.pos, TT_DO_WHILE);
+      psPut(this.d.final, this.pos, 1);
       this.push();
       if (this.cur() === P_LPAREN) {
         this.parseParens();
@@ -1471,12 +1666,12 @@ export class Parser {
     if (this.cur() === K_EOF || this.cur() === P_RBRACE) {
       return;
     }
-    this.level = this.level + 1;
+    this.level = add32(this.level, 1);
     const wasUnbraced = this.inUnbraced;
     this.inUnbraced = true;
     this.parseStructuralElement();
     this.inUnbraced = wasUnbraced;
-    this.level = this.level - 1;
+    this.level = sub32(this.level, 1);
   }
 
   /**
@@ -1486,11 +1681,11 @@ export class Parser {
   commentsBeforeBrace(): void {
     const d = this.d;
     let q = this.pos;
-    while (d.kind[q] === K_COMMENT && q < d.ntok - 1) {
+    while (psAt(d.kind, q) === K_COMMENT && q < psLast(d)) {
       q++;
     }
-    if (q !== this.pos && d.kind[q] === P_LBRACE) {
-      while (d.kind[this.pos] === K_COMMENT && d.nl[this.pos] === 0) {
+    if (q !== this.pos && psAt(d.kind, q) === P_LBRACE) {
+      while (psAt(d.kind, this.pos) === K_COMMENT && psAt(d.nl, this.pos) === 0) {
         this.push();
       }
     }
@@ -1506,11 +1701,11 @@ export class Parser {
       // Own-line comments before a `catch`: clang-format's parseTryCatch
       // reads them with the `catch`, flushing them as lines of their own,
       // which ends the `}` line, and goes on with the chain.
-      if (this.cur() === K_COMMENT && this.d.kind[this.nextNonComment(this.pos)] === KW_CATCH) {
+      if (this.cur() === K_COMMENT && psAt(this.d.kind, this.nextNonComment(this.pos)) === KW_CATCH) {
         // (A comment on the `}` line stays on it, and so does the `catch`;
         // so does one after an escaped newline, `\` in a #define: clang's
         // isOnNewLine counts only an unescaped one.)
-        while (this.cur() === K_COMMENT && (this.d.nl[this.pos] === 0 || this.d.unesc[this.pos] === 0)) {
+        while (this.cur() === K_COMMENT && (psAt(this.d.nl, this.pos) === 0 || psAt(this.d.unesc, this.pos) === 0)) {
           this.push();
         }
         if (this.cur() === K_COMMENT) {
@@ -1519,16 +1714,19 @@ export class Parser {
         }
       }
       // Directives before a `catch` are read past, as clang-format reads tokens.
-      if (this.macro < 0 && this.cur() === P_HASH && this.d.ppKind[this.pos] !== PP_NONE) {
+      if (this.macro < 0 && this.cur() === P_HASH && psAt(this.d.ppKind, this.pos) !== PP_NONE) {
         const d = this.d;
         let i = this.pos;
-        while (i < d.ntok - 1 && ((d.kind[i] === P_HASH && d.ppKind[i] !== PP_NONE) || d.inPP[i] === 1)) {
+        while (
+          i < psLast(d) &&
+          ((psAt(d.kind, i) === P_HASH && psAt(d.ppKind, i) !== PP_NONE) || psAt(d.inPP, i) === 1)
+        ) {
           i++;
         }
-        if (d.kind[i] !== KW_CATCH) {
+        if (psAt(d.kind, i) !== KW_CATCH) {
           break;
         }
-        while (d.kind[this.pos] === P_HASH && d.ppKind[this.pos] !== PP_NONE) {
+        while (psAt(d.kind, this.pos) === P_HASH && psAt(d.ppKind, this.pos) !== PP_NONE) {
           this.parsePPInline();
         }
       }
@@ -1539,8 +1737,8 @@ export class Parser {
       // `catch /* x */ (...)`: comments before the parameter stay on the line.
       while (
         this.cur() === K_COMMENT &&
-        this.d.nl[this.pos] === 0 &&
-        this.d.kind[this.nextNonComment(this.pos)] === P_LPAREN
+        psAt(this.d.nl, this.pos) === 0 &&
+        psAt(this.d.kind, this.nextNonComment(this.pos)) === P_LPAREN
       ) {
         this.push();
       }
@@ -1574,7 +1772,7 @@ export class Parser {
           continue;
         }
         if (k === P_LBRACE) {
-          const lk = this.last >= 0 ? d.kind[this.last] : -1;
+          const lk = this.last >= 0 ? psAt(d.kind, this.last) : -1;
           if (lk === K_IDENT || lk === P_GREATER) {
             this.parseBracedList();
             continue;
@@ -1614,12 +1812,12 @@ export class Parser {
         // clang-format 23: a `>` right before `()` closes a template.
         if (this.lastCode() === open) {
           const p = prevCode(d, open);
-          if (p >= 0 && d.kind[p] === P_GREATER) {
+          if (p >= 0 && psAt(d.kind, p) === P_GREATER) {
             this.markFinal(p, TT_TEMPLATE_CLOSER);
           }
         }
-        d.match[open] = this.pos;
-        d.match[this.pos] = open;
+        psPut(d.match, open, this.pos);
+        psPut(d.match, this.pos, open);
         this.push();
         return;
       }
@@ -1627,7 +1825,7 @@ export class Parser {
         // A `}` inside parentheses ends them unmatched, as in clang-format.
         return;
       }
-      if (k === P_HASH && d.ppKind[this.pos] !== PP_NONE) {
+      if (k === P_HASH && psAt(d.ppKind, this.pos) !== PP_NONE) {
         this.parsePPInline();
         continue;
       }
@@ -1638,7 +1836,7 @@ export class Parser {
   /** A directive inside an expression: parked as a line of its own. */
   parsePPInline(): void {
     const d = this.d;
-    if (this.first >= 0 && this.macro < 0 && this.linePP === 0 && d.nl[this.pos] > 0) {
+    if (this.first >= 0 && this.macro < 0 && this.linePP === 0 && psAt(d.nl, this.pos) > 0) {
       this.parkCommentsBeforeDirective();
     }
     const saveFirst = this.first;
@@ -1649,7 +1847,12 @@ export class Parser {
     this.last = -1;
     const hash = this.pos;
     // A #define inside a statement still has its body parsed as code.
-    if (d.ppKind[hash] === PP_DEFINE && this.macro < 0 && d.len(hash + 1) === 6 && d.at(d.start[hash + 1]) === 100) {
+    if (
+      psAt(d.ppKind, hash) === PP_DEFINE &&
+      this.macro < 0 &&
+      d.len(psNext(hash)) === 6 &&
+      d.at(psAt(d.start, psNext(hash))) === 100
+    ) {
       const saveRb = this.rbraceOpen;
       this.parseDefine(hash);
       this.rbraceOpen = saveRb;
@@ -1658,13 +1861,13 @@ export class Parser {
       this.lineLevel = saveLevel;
       this.linePP = savePP;
       if (this.last >= 0) {
-        d.nxt[this.last] = -1;
+        psPut(d.nxt, this.last, -1);
       }
       return;
     }
-    const isInclude = d.ppKind[hash] === PP_INCLUDE;
+    const isInclude = psAt(d.ppKind, hash) === PP_INCLUDE;
     this.push();
-    while (d.inPP[this.pos] === 1 && d.kind[this.pos] !== K_EOF && d.ppKind[this.pos] === PP_NONE) {
+    while (psAt(d.inPP, this.pos) === 1 && psAt(d.kind, this.pos) !== K_EOF && psAt(d.ppKind, this.pos) === PP_NONE) {
       this.push();
     }
     this.finishLine(isInclude ? LT_IMPORT : LT_PREPROCESSOR);
@@ -1673,7 +1876,7 @@ export class Parser {
     this.lineLevel = saveLevel;
     this.linePP = savePP;
     if (this.last >= 0) {
-      d.nxt[this.last] = -1;
+      psPut(d.nxt, this.last, -1);
     }
   }
 
@@ -1685,20 +1888,20 @@ export class Parser {
   parkCommentsBeforeDirective(): void {
     const d = this.d;
     let c = this.last;
-    while (c >= 0 && c !== this.first && d.kind[c] === K_COMMENT) {
-      c = d.prv[c];
+    while (c >= 0 && c !== this.first && psAt(d.kind, c) === K_COMMENT) {
+      c = psLink(d.prv, c);
     }
-    if (c < 0 || d.kind[c] === K_COMMENT) {
+    if (c < 0 || psAt(d.kind, c) === K_COMMENT) {
       return;
     }
     let split = -1;
-    for (let q = d.nxt[c]; q >= 0; q = d.nxt[q]) {
-      if (d.nl[q] === 0) {
+    for (let q = psLink(d.nxt, c); q >= 0; q = psLink(d.nxt, q)) {
+      if (psAt(d.nl, q) === 0) {
         continue;
       }
-      const p = d.prv[q];
-      const lineCmt = d.at(d.start[q] + 1) === 47 && d.kind[p] === K_COMMENT && d.at(d.start[p] + 1) === 47;
-      if (!(lineCmt && d.nl[q] === 1 && d.col[q] === d.col[p])) {
+      const p = psLink(d.prv, q);
+      const lineCmt = psByte1(d, q) === 47 && psAt(d.kind, p) === K_COMMENT && psByte1(d, p) === 47;
+      if (!(lineCmt && psAt(d.nl, q) === 1 && psAt(d.col, q) === psAt(d.col, p))) {
         split = q;
         break;
       }
@@ -1708,23 +1911,23 @@ export class Parser {
     }
     const saveLevel = this.lineLevel;
     const saveFirst = this.first;
-    const keep = d.prv[split];
-    d.nxt[keep] = -1;
+    const keep = psLink(d.prv, split);
+    psPut(d.nxt, keep, -1);
     let lf = -1;
     let ll = -1;
     for (let q = split; q >= 0; ) {
-      const nq = d.nxt[q];
-      if (lf < 0 || d.nl[q] > 0) {
+      const nq = psLink(d.nxt, q);
+      if (lf < 0 || psAt(d.nl, q) > 0) {
         if (lf >= 0) {
           this.parkCommentLine(lf, ll, saveLevel);
         }
         lf = q;
-        d.prv[q] = -1;
+        psPut(d.prv, q, -1);
       } else {
-        d.nxt[ll] = q;
-        d.prv[q] = ll;
+        psPut(d.nxt, ll, q);
+        psPut(d.prv, q, ll);
       }
-      d.nxt[q] = -1;
+      psPut(d.nxt, q, -1);
       ll = q;
       q = nq;
     }
@@ -1744,7 +1947,7 @@ export class Parser {
     this.lineLevel = level;
     this.linePP = 0;
     this.finishLine(LT_OTHER);
-    this.d.lInlineCmt[this.d.nline - 1] = 1;
+    psPut(this.d.lInlineCmt, psDec(this.d.nline), 1);
   }
 
   /** One token of an expression, descending into brackets it opens. */
@@ -1752,7 +1955,7 @@ export class Parser {
     const d = this.d;
     const k = this.cur();
     // A directive is never part of the line (clang-format reads it aside).
-    if (k === P_HASH && d.ppKind[this.pos] !== PP_NONE && this.macro < 0) {
+    if (k === P_HASH && psAt(d.ppKind, this.pos) !== PP_NONE && this.macro < 0) {
       this.parsePPInline();
       return;
     }
@@ -1770,22 +1973,22 @@ export class Parser {
     if (k === P_LBRACE) {
       if (this.isBlockLiteralBrace()) {
         // `^(T x) { ... }` or `^{ ... }`: a block literal's body.
-        d.bk[this.pos] = BK_BLOCK;
-        d.type[this.pos] = TT_BLOCK_LITERAL_LBRACE;
-        d.final[this.pos] = 1;
+        psPut(d.bk, this.pos, BK_BLOCK);
+        psPut(d.type, this.pos, TT_BLOCK_LITERAL_LBRACE);
+        psPut(d.final, this.pos, 1);
         this.parseChildBlock();
         return;
       }
       if (this.isRequiresExpressionBrace()) {
         // `requires { ... }` inside an expression (a requires clause's).
-        d.bk[this.pos] = BK_BLOCK;
+        psPut(d.bk, this.pos, BK_BLOCK);
         this.parseRequiresBody();
         return;
       }
-      if (d.bk[this.pos] === BK_UNKNOWN) {
+      if (psAt(d.bk, this.pos) === BK_UNKNOWN) {
         this.calculateBraceTypes();
       }
-      if (d.bk[this.pos] === BK_BLOCK) {
+      if (psAt(d.bk, this.pos) === BK_BLOCK) {
         // A block inside an expression (a statement expression or a lambda
         // the scan above could not see): parse it as child lines.
         this.parseChildBlock();
@@ -1808,15 +2011,15 @@ export class Parser {
         return;
       }
       if (k === P_RSQUARE) {
-        d.match[open] = this.pos;
-        d.match[this.pos] = open;
+        psPut(d.match, open, this.pos);
+        psPut(d.match, this.pos, open);
         this.push();
         return;
       }
       if (k === P_RPAREN) {
         return;
       }
-      if (k === P_HASH && d.ppKind[this.pos] !== PP_NONE) {
+      if (k === P_HASH && psAt(d.ppKind, this.pos) !== PP_NONE) {
         this.parsePPInline();
         continue;
       }
@@ -1828,7 +2031,7 @@ export class Parser {
   parseBracedList(isEnum: boolean = false): void {
     const d = this.d;
     const open = this.pos;
-    d.bk[open] = BK_BRACED_INIT;
+    psPut(d.bk, open, BK_BRACED_INIT);
     this.push();
     while (true) {
       const k = this.cur();
@@ -1840,26 +2043,26 @@ export class Parser {
         // clang-format's parseBracedList gives the `{` its kind, never the
         // `}`: one the brace scan found a block, or never reached, still
         // breaks before an own-line comment after it.
-        if (d.bk[this.pos] !== BK_BRACED_INIT) {
-          d.eqList[this.pos] = 1;
+        if (psAt(d.bk, this.pos) !== BK_BRACED_INIT) {
+          psPut(d.eqList, this.pos, 1);
         }
-        d.bk[this.pos] = BK_BRACED_INIT;
-        d.match[open] = this.pos;
-        d.match[this.pos] = open;
+        psPut(d.bk, this.pos, BK_BRACED_INIT);
+        psPut(d.match, open, this.pos);
+        psPut(d.match, this.pos, open);
         this.push();
         return;
       }
       if (k === P_LBRACE) {
-        d.bk[this.pos] = BK_BRACED_INIT;
+        psPut(d.bk, this.pos, BK_BRACED_INIT);
         // clang-format 23: a `>` right before a braced list closes a template.
         const p = this.lastCode();
-        if (p >= 0 && d.kind[p] === P_GREATER) {
+        if (p >= 0 && psAt(d.kind, p) === P_GREATER) {
           this.markFinal(p, TT_TEMPLATE_CLOSER);
         }
         this.parseBracedList();
         continue;
       }
-      if (k === P_HASH && d.ppKind[this.pos] !== PP_NONE) {
+      if (k === P_HASH && psAt(d.ppKind, this.pos) !== PP_NONE) {
         this.parsePPInline();
         continue;
       }
@@ -1880,12 +2083,12 @@ export class Parser {
   parseChildBlock(): void {
     const d = this.d;
     const lb = this.pos;
-    d.bk[lb] = BK_BLOCK;
+    psPut(d.bk, lb, BK_BLOCK);
     this.push();
     // A comment on the `{` line stays in the parent line, and the block's
     // lines hang off the last token there, as clang-format reads it.
     let tail = lb;
-    while (this.pos < d.ntok - 1 && d.kind[this.pos] === K_COMMENT && d.nl[this.pos] === 0) {
+    while (this.pos < psLast(d) && psAt(d.kind, this.pos) === K_COMMENT && psAt(d.nl, this.pos) === 0) {
       tail = this.pos;
       this.push();
     }
@@ -1899,7 +2102,7 @@ export class Parser {
     this.first = -1;
     this.last = -1;
     this.listParent = tail;
-    this.level = saveLineLevel + 1;
+    this.level = add32(saveLineLevel, 1);
     this.mustDecl = false;
     if (this.commentsThenDirective()) {
       // clang-format reads past `{` before it enters the block: own-line
@@ -1909,9 +2112,9 @@ export class Parser {
       const l0 = d.nline;
       this.flushComments();
       for (let l = l0; l < d.nline; l++) {
-        d.lAbs[l] = 1;
+        psPut(d.lAbs, l, 1);
       }
-      this.level = saveLineLevel + 1;
+      this.level = add32(saveLineLevel, 1);
     }
     this.parseLevel(true);
     this.addLine();
@@ -1926,11 +2129,11 @@ export class Parser {
       // Unclosed at the end of the file.
       return;
     }
-    d.bk[this.pos] = BK_BLOCK;
-    d.match[lb] = this.pos;
-    d.match[this.pos] = lb;
+    psPut(d.bk, this.pos, BK_BLOCK);
+    psPut(d.match, lb, this.pos);
+    psPut(d.match, this.pos, lb);
     // Re-link: the `}` follows the `{` (or its comment) in the parent line.
-    d.nxt[tail] = -1;
+    psPut(d.nxt, tail, -1);
     this.last = tail;
     this.push();
   }
@@ -1941,7 +2144,7 @@ export class Parser {
     const lsq = this.pos;
     const prev = this.last;
     if (prev >= 0) {
-      const pk = d.kind[prev];
+      const pk = psAt(d.kind, prev);
       if (
         pk === K_IDENT ||
         pk >= 200 ||
@@ -1951,7 +2154,7 @@ export class Parser {
         pk === P_LSQUARE ||
         pk === P_RPAREN ||
         pk === P_RSQUARE ||
-        (pk === P_RBRACE && d.bk[prev] !== BK_BLOCK) ||
+        (pk === P_RBRACE && psAt(d.bk, prev) !== BK_BLOCK) ||
         isSimpleTypeKind(pk) ||
         pk === K_NUMBER ||
         pk === K_STRING ||
@@ -1967,28 +2170,28 @@ export class Parser {
     let q = prev;
     while (
       q >= 0 &&
-      (d.kind[q] === KW_CONST ||
-        d.kind[q] === KW_VOLATILE ||
-        d.kind[q] === P_AMP ||
-        d.kind[q] === P_AMPAMP ||
-        d.kind[q] === K_COMMENT)
+      (psAt(d.kind, q) === KW_CONST ||
+        psAt(d.kind, q) === KW_VOLATILE ||
+        psAt(d.kind, q) === P_AMP ||
+        psAt(d.kind, q) === P_AMPAMP ||
+        psAt(d.kind, q) === K_COMMENT)
     ) {
-      q = d.prv[q];
+      q = psLink(d.prv, q);
     }
-    if (q >= 0 && d.kind[q] === KW_AUTO) {
+    if (q >= 0 && psAt(d.kind, q) === KW_AUTO) {
       return false;
     }
     // Find the matching `]`, then what follows it.
-    let i = lsq + 1;
+    let i = psNext(lsq);
     let depth = 1;
     // (A macro body ends at its directive's end: clang-format's token
     // source answers eof there.)
-    while (i < d.ntok - 1 && !(this.macro >= 0 && d.ppId[i] !== this.macro)) {
-      const k = d.kind[i];
+    while (i < psLast(d) && !(this.macro >= 0 && psLink(d.ppId, i) !== this.macro)) {
+      const k = psAt(d.kind, i);
       if (k === P_LSQUARE || k === P_LPAREN || k === P_LBRACE) {
-        depth++;
+        depth = add32(depth, 1);
       } else if (k === P_RSQUARE || k === P_RPAREN || k === P_RBRACE) {
-        depth--;
+        depth = sub32(depth, 1);
         if (depth === 0) {
           break;
         }
@@ -1997,7 +2200,7 @@ export class Parser {
       }
       i++;
     }
-    if (d.kind[i] !== P_RSQUARE) {
+    if (psAt(d.kind, i) !== P_RSQUARE) {
       return false;
     }
     const rsq = i;
@@ -2005,11 +2208,11 @@ export class Parser {
     let j = this.nextNonComment(rsq);
     let pdepth = 0;
     let seenArrow = false;
-    while (j < d.ntok - 1) {
-      if (this.macro >= 0 && d.ppId[j] !== this.macro) {
+    while (j < psLast(d)) {
+      if (this.macro >= 0 && psLink(d.ppId, j) !== this.macro) {
         return false;
       }
-      const k = d.kind[j];
+      const k = psAt(d.kind, j);
       if (k === P_LBRACE && pdepth === 0) {
         break;
       }
@@ -2024,9 +2227,9 @@ export class Parser {
         continue;
       }
       if (k === P_LESS) {
-        pdepth++;
+        pdepth = add32(pdepth, 1);
       } else if (k === P_GREATER) {
-        pdepth--;
+        pdepth = sub32(pdepth, 1);
       } else if (pdepth === 0) {
         if (k === P_ARROW) {
           seenArrow = true;
@@ -2072,28 +2275,28 @@ export class Parser {
       }
       j++;
     }
-    if (d.kind[j] !== P_LBRACE) {
+    if (psAt(d.kind, j) !== P_LBRACE) {
       return false;
     }
-    d.type[lsq] = TT_LAMBDA_LSQUARE;
-    d.final[lsq] = 1;
+    psPut(d.type, lsq, TT_LAMBDA_LSQUARE);
+    psPut(d.final, lsq, 1);
     // Introducer, then declarator, into the line.
     this.push();
     while (this.pos < rsq) {
       this.parseExprToken();
     }
-    d.match[lsq] = this.pos;
-    d.match[this.pos] = lsq;
+    psPut(d.match, lsq, this.pos);
+    psPut(d.match, this.pos, lsq);
     this.push(); // ]
     while (this.pos < j) {
       if (this.cur() === P_ARROW) {
-        d.type[this.pos] = TT_LAMBDA_ARROW;
-        d.final[this.pos] = 1;
+        psPut(d.type, this.pos, TT_LAMBDA_ARROW);
+        psPut(d.final, this.pos, 1);
       }
       this.parseExprToken();
     }
-    d.type[this.pos] = TT_LAMBDA_LBRACE;
-    d.final[this.pos] = 1;
+    psPut(d.type, this.pos, TT_LAMBDA_LBRACE);
+    psPut(d.final, this.pos, 1);
     this.parseChildBlock();
     return true;
   }
@@ -2109,59 +2312,61 @@ export class Parser {
     let tok = this.pos;
     let prevTok = this.last;
     while (true) {
-      let next = tok + 1;
-      while (next < d.ntok - 1 && d.kind[next] === K_COMMENT) {
+      let next = psNext(tok);
+      while (next < psLast(d) && psAt(d.kind, next) === K_COMMENT) {
         next++;
       }
       // Skip directives, the lines a `\` continues included (clang-format
       // 23 skips to the next unescaped newline), but not a `#define` or an
       // unknown directive: its word is the next token.
-      while (next < d.ntok - 1 && d.kind[next] === P_HASH && d.ppKind[next] !== PP_NONE && this.macro < 0) {
+      while (next < psLast(d) && psAt(d.kind, next) === P_HASH && psAt(d.ppKind, next) !== PP_NONE && this.macro < 0) {
         const word = next + 1;
         if (ppWordEndsBraceScan(d, next)) {
           next = word;
           break;
         }
-        next = word + 1;
+        next = psNext(word);
         while (
-          next < d.ntok - 1 &&
-          ((d.inPP[next] === 1 && d.ppKind[next] === PP_NONE) || (d.kind[next] === K_COMMENT && d.nl[next] === 0))
+          next < psLast(d) &&
+          ((psAt(d.inPP, next) === 1 && psAt(d.ppKind, next) === PP_NONE) ||
+            (psAt(d.kind, next) === K_COMMENT && psAt(d.nl, next) === 0))
         ) {
           next++;
         }
-        while (next < d.ntok - 1 && d.kind[next] === K_COMMENT) {
+        while (next < psLast(d) && psAt(d.kind, next) === K_COMMENT) {
           next++;
         }
       }
       // (Inside a macro body, the whole directive is skipped.)
-      while (this.macro >= 0 && next < d.ntok - 1 && d.kind[next] === P_HASH && d.ppKind[next] !== PP_NONE) {
+      while (this.macro >= 0 && next < psLast(d) && psAt(d.kind, next) === P_HASH && psAt(d.ppKind, next) !== PP_NONE) {
         next++;
         while (
-          next < d.ntok - 1 &&
-          (d.kind[next] === K_COMMENT || (d.inPP[next] === 1 && d.ppKind[next] === PP_NONE))
+          next < psLast(d) &&
+          (psAt(d.kind, next) === K_COMMENT || (psAt(d.inPP, next) === 1 && psAt(d.ppKind, next) === PP_NONE))
         ) {
           next++;
         }
       }
-      const k = d.kind[tok];
+      const k = psAt(d.kind, tok);
       if (k === P_LBRACE) {
-        if (d.bk[tok] === BK_UNKNOWN || tok !== this.pos) {
-          d.bk[tok] = BK_UNKNOWN;
+        if (psAt(d.bk, tok) === BK_UNKNOWN || tok !== this.pos) {
+          psPut(d.bk, tok, BK_UNKNOWN);
         }
         stack.push(tok);
         prevs.push(prevTok);
       } else if (k === P_RBRACE) {
         if (stack.length !== 0) {
-          const top = stack[stack.length - 1];
-          const topPrev = prevs[prevs.length - 1];
-          if (d.bk[top] === BK_UNKNOWN) {
+          const top = psTop(stack);
+          const topPrev = psTop(prevs);
+          if (psAt(d.bk, top) === BK_UNKNOWN) {
             // Inside a macro body the directive's end reads as the end of the
             // file (on clang-format's later runs, not after a trailing comment).
-            const trailing = tok + 1 < d.ntok && d.kind[tok + 1] === K_COMMENT && d.nl[tok + 1] === 0;
-            const nk = this.macro >= 0 && d.ppId[next] !== this.macro && !trailing ? K_EOF : d.kind[next];
+            const t1 = psNext(tok);
+            const trailing = t1 < d.ntok && psAt(d.kind, t1) === K_COMMENT && psAt(d.nl, t1) === 0;
+            const nk = this.macro >= 0 && psLink(d.ppId, next) !== this.macro && !trailing ? K_EOF : psAt(d.kind, next);
             let braced = false;
             // (clang-format 23: also after a literal, or before `->`.)
-            const pk = prevTok >= 0 ? d.kind[prevTok] : -1;
+            const pk = prevTok >= 0 ? psAt(d.kind, prevTok) : -1;
             if (nk === P_LPAREN || nk === P_ARROW || isLiteralKind(pk)) {
               braced = true;
             }
@@ -2175,14 +2380,20 @@ export class Parser {
             ) {
               braced = true;
             }
-            if (nk === P_LBRACE && topPrev >= 0 && (d.kind[topPrev] === K_IDENT || d.kind[topPrev] === P_GREATER)) {
+            if (
+              nk === P_LBRACE &&
+              topPrev >= 0 &&
+              (psAt(d.kind, topPrev) === K_IDENT || psAt(d.kind, topPrev) === P_GREATER)
+            ) {
               braced = true;
             }
             if (
               nk === K_IDENT &&
               !(
                 prevTok >= 0 &&
-                (d.kind[prevTok] === P_SEMI || d.kind[prevTok] === P_RBRACE || d.kind[prevTok] === P_LBRACE)
+                (psAt(d.kind, prevTok) === P_SEMI ||
+                  psAt(d.kind, prevTok) === P_RBRACE ||
+                  psAt(d.kind, prevTok) === P_LBRACE)
               )
             ) {
               braced = true;
@@ -2198,11 +2409,11 @@ export class Parser {
             }
             if (nk === P_LSQUARE) {
               // A subscript may follow a braced list; `[[` starts an attribute after a block.
-              let n2 = next + 1;
-              while (n2 < d.ntok - 1 && d.kind[n2] === K_COMMENT) {
+              let n2 = psNext(next);
+              while (n2 < psLast(d) && psAt(d.kind, n2) === K_COMMENT) {
                 n2++;
               }
-              braced = d.kind[n2] !== P_LSQUARE;
+              braced = psAt(d.kind, n2) !== P_LSQUARE;
             }
             // clang-format 23: a macro body that is one nonempty `{...}`, the
             // first token of its line, is a braced list unless its last token
@@ -2213,31 +2424,39 @@ export class Parser {
               top === this.pos &&
               this.first < 0 &&
               prevTok !== this.pos &&
-              d.ppId[next] !== this.macro &&
+              psLink(d.ppId, next) !== this.macro &&
               pk !== P_SEMI &&
               pk !== P_COLON &&
-              d.bk[prevTok] !== BK_BLOCK
+              psAt(d.bk, prevTok) !== BK_BLOCK
             ) {
               braced = true;
             }
             const v = braced ? BK_BRACED_INIT : BK_BLOCK;
-            d.bk[tok] = v;
-            d.bk[top] = v;
+            psPut(d.bk, tok, v);
+            psPut(d.bk, top, v);
           }
-          stack.pop();
-          prevs.pop();
+          if (stack.length > 0) {
+            stack.pop();
+          }
+          // (`prevs` holds one entry a `stack` entry.)
+          if (prevs.length > 0) {
+            prevs.pop();
+          } else {
+            fault();
+            break;
+          }
         }
       } else if (k === P_SEMI || k === KW_IF || k === KW_WHILE || k === KW_FOR || k === KW_SWITCH || k === KW_TRY) {
-        if (stack.length !== 0 && d.bk[stack[stack.length - 1]] === BK_UNKNOWN) {
-          d.bk[stack[stack.length - 1]] = BK_BLOCK;
+        if (stack.length !== 0 && psAt(d.bk, psTop(stack)) === BK_UNKNOWN) {
+          psPut(d.bk, psTop(stack), BK_BLOCK);
         }
       }
       // (So do the tokens another #if pass sees after this one, or after
       // the comments and directives skipped to the next.)
-      if (stack.length !== 0 && d.bk[stack[stack.length - 1]] === BK_UNKNOWN) {
+      if (stack.length !== 0 && psAt(d.bk, psTop(stack)) === BK_UNKNOWN) {
         for (let q = tok; q < next; q++) {
-          if (d.hidSemi[q] === 1) {
-            d.bk[stack[stack.length - 1]] = BK_BLOCK;
+          if (psAt(d.hidSemi, q) === 1) {
+            psPut(d.bk, psTop(stack), BK_BLOCK);
             break;
           }
         }
@@ -2245,13 +2464,17 @@ export class Parser {
       prevTok = tok;
       tok = next;
       // (A macro body ends at its directive's end.)
-      if (d.kind[tok] === K_EOF || stack.length === 0 || (this.macro >= 0 && d.ppId[tok] !== this.macro)) {
+      if (
+        psAt(d.kind, tok) === K_EOF ||
+        stack.length === 0 ||
+        (this.macro >= 0 && psLink(d.ppId, tok) !== this.macro)
+      ) {
         break;
       }
     }
     for (const t of stack) {
-      if (d.bk[t] === BK_UNKNOWN) {
-        d.bk[t] = BK_BLOCK;
+      if (psAt(d.bk, t) === BK_UNKNOWN) {
+        psPut(d.bk, t, BK_BLOCK);
       }
     }
   }
@@ -2264,21 +2487,21 @@ export class Parser {
    */
   classHasBody(): boolean {
     const d = this.d;
-    const n = d.ntok - 1;
+    const n = psLast(d);
     let i = this.nextNonComment(this.pos);
     const first = i;
     while (i < n) {
       // A directive between the keyword and the name is read past.
-      if (d.kind[i] === P_HASH && d.ppKind[i] !== PP_NONE && d.ppId[i] === i) {
+      if (psAt(d.kind, i) === P_HASH && psAt(d.ppKind, i) !== PP_NONE && psLink(d.ppId, i) === i) {
         let j = i + 1;
-        while (j < n && d.ppId[j] === i) {
+        while (j < n && psLink(d.ppId, j) === i) {
           j++;
         }
-        i = d.kind[j] === K_COMMENT ? this.nextNonComment(j) : j;
+        i = psAt(d.kind, j) === K_COMMENT ? this.nextNonComment(j) : j;
         continue;
       }
-      const k = d.kind[i];
-      if (k === P_LSQUARE && d.kind[this.nextNonComment(i)] === P_LSQUARE) {
+      const k = psAt(d.kind, i);
+      if (k === P_LSQUARE && psAt(d.kind, this.nextNonComment(i)) === P_LSQUARE) {
         // `[[attribute]]`
         i = this.skipBracket(i);
         continue;
@@ -2300,19 +2523,19 @@ export class Parser {
       i = this.nextNonComment(i);
       // Macros may sit between the keyword and the name (clang-format 23:
       // any word right after the keyword, `struct macro(a) S { ... };`).
-      if ((!this.isNonMacroIdent(prev) || prev === first) && i < n && d.kind[i] === P_LPAREN) {
+      if ((!this.isNonMacroIdent(prev) || prev === first) && i < n && psAt(d.kind, i) === P_LPAREN) {
         i = this.skipBracket(i);
       }
     }
-    if (i < n && (d.kind[i] === P_COLON || d.kind[i] === P_LESS)) {
+    if (i < n && (psAt(d.kind, i) === P_COLON || psAt(d.kind, i) === P_LESS)) {
       let angle = 0;
       let prev = -1;
       while (i < n) {
-        const k = d.kind[i];
+        const k = psAt(d.kind, i);
         if (k === P_LESS) {
-          angle++;
+          angle = add32(angle, 1);
         } else if (k === P_GREATER) {
-          angle--;
+          angle = sub32(angle, 1);
         }
         if (angle === 0 && k === P_LPAREN && prev >= 0 && this.isNonMacroIdent(prev)) {
           break;
@@ -2324,16 +2547,16 @@ export class Parser {
         i = this.nextNonComment(i);
       }
     }
-    return i < n && d.kind[i] === P_LBRACE;
+    return i < n && psAt(d.kind, i) === P_LBRACE;
   }
 
   /** Whether token `t` is an identifier with a lower-case letter (not a macro name). */
   isNonMacroIdent(t: i32): boolean {
     const d = this.d;
-    if (!isIdentKind(d.kind[t])) {
+    if (!isIdentKind(psAt(d.kind, t))) {
       return false;
     }
-    for (let i = d.start[t]; i < d.end[t]; i++) {
+    for (let i = psAt(d.start, t); i < psAt(d.end, t); i++) {
       const c = d.at(i);
       if (c >= 97 && c <= 122) {
         return true;
@@ -2347,19 +2570,19 @@ export class Parser {
     const d = this.d;
     let depth = 0;
     let i = t;
-    while (i < d.ntok - 1) {
-      const k = d.kind[i];
+    while (i < psLast(d)) {
+      const k = psAt(d.kind, i);
       if (k === P_LPAREN || k === P_LSQUARE || k === P_LBRACE) {
-        depth++;
+        depth = add32(depth, 1);
       } else if (k === P_RPAREN || k === P_RSQUARE || k === P_RBRACE) {
-        depth--;
+        depth = sub32(depth, 1);
         if (depth === 0) {
           return this.nextNonComment(i);
         }
       }
       i++;
     }
-    return d.ntok - 1;
+    return psLast(d);
   }
 
   enumHasBody(): boolean {
@@ -2367,23 +2590,30 @@ export class Parser {
     // parentheses may come before the `{`; two names in a row make an
     // elaborated return type (`enum E Cls::f() {`), not an enum.
     const d = this.d;
-    const n = d.ntok - 1;
+    const n = psLast(d);
     let i = this.nextNonComment(this.pos);
-    if (i < n && (d.kind[i] === KW_CLASS || d.kind[i] === KW_STRUCT)) {
+    if (i < n && (psAt(d.kind, i) === KW_CLASS || psAt(d.kind, i) === KW_STRUCT)) {
       i = this.nextNonComment(i);
     }
-    while (i < n && d.kind[i] === P_LSQUARE) {
+    while (i < n && psAt(d.kind, i) === P_LSQUARE) {
       i = this.skipBracket(i);
     }
     while (i < n) {
-      const k = d.kind[i];
+      const k = psAt(d.kind, i);
       // (Directive lines are read aside.)
-      if (k === P_HASH && d.ppKind[i] !== PP_NONE && this.macro < 0) {
+      if (k === P_HASH && psAt(d.ppKind, i) !== PP_NONE && this.macro < 0) {
+        let i0 = i;
         i++;
-        while (i < n && d.ppId[i] === d.ppId[i - 1] && d.inPP[i] === 1 && d.ppKind[i] === PP_NONE) {
+        while (
+          i < n &&
+          psLink(d.ppId, i) === psLink(d.ppId, i0) &&
+          psAt(d.inPP, i) === 1 &&
+          psAt(d.ppKind, i) === PP_NONE
+        ) {
+          i0 = i;
           i++;
         }
-        if (d.kind[i] === K_COMMENT) {
+        if (psAt(d.kind, i) === K_COMMENT) {
           i = this.nextNonComment(i);
         }
         continue;
@@ -2403,17 +2633,17 @@ export class Parser {
         break;
       }
       i = this.nextNonComment(i);
-      if (i < n && d.kind[i] === P_LPAREN) {
+      if (i < n && psAt(d.kind, i) === P_LPAREN) {
         i = this.skipBracket(i);
       }
-      if (i < n && d.kind[i] === K_IDENT) {
+      if (i < n && psAt(d.kind, i) === K_IDENT) {
         i = this.nextNonComment(i);
-        if (i < n && d.kind[i] === K_IDENT) {
+        if (i < n && psAt(d.kind, i) === K_IDENT) {
           return false;
         }
       }
     }
-    return i < n && d.kind[i] === P_LBRACE;
+    return i < n && psAt(d.kind, i) === P_LBRACE;
   }
 
   /**
@@ -2422,7 +2652,7 @@ export class Parser {
    */
   allCaps(t: i32): boolean {
     const d = this.d;
-    for (let i = d.start[t]; i < d.end[t]; i++) {
+    for (let i = psAt(d.start, t); i < psAt(d.end, t); i++) {
       const c = d.at(i);
       if (c >= 97 && c <= 122) {
         return false;
@@ -2450,14 +2680,14 @@ export class Parser {
         continue;
       }
       // A directive between the parameters: parked as a line of its own.
-      if (k === P_HASH && this.d.ppKind[this.pos] !== PP_NONE) {
+      if (k === P_HASH && psAt(this.d.ppKind, this.pos) !== PP_NONE) {
         this.parsePPInline();
         continue;
       }
       if (k === P_LESS) {
-        depth++;
+        depth = add32(depth, 1);
       } else if (k === P_GREATER) {
-        depth--;
+        depth = sub32(depth, 1);
       }
       this.push();
       if (depth <= 0) {
@@ -2473,27 +2703,27 @@ export class Parser {
     if (r < 0) {
       return false;
     }
-    if (d.kind[r] === P_RPAREN && d.match[r] >= 0) {
-      r = d.prv[d.match[r]];
+    if (psAt(d.kind, r) === P_RPAREN && psLink(d.match, r) >= 0) {
+      r = psLink(d.prv, psLink(d.match, r));
     }
     // (`^void(...) {`: a return type before the parameters.)
     if (
       r >= 0 &&
-      (d.kind[r] === K_IDENT || isSimpleTypeKind(d.kind[r])) &&
-      d.prv[r] >= 0 &&
-      d.kind[d.prv[r]] === P_CARET
+      (psAt(d.kind, r) === K_IDENT || isSimpleTypeKind(psAt(d.kind, r))) &&
+      psLink(d.prv, r) >= 0 &&
+      psAt(d.kind, psLink(d.prv, r)) === P_CARET
     ) {
-      r = d.prv[r];
+      r = psLink(d.prv, r);
     }
-    if (r < 0 || d.kind[r] !== P_CARET) {
+    if (r < 0 || psAt(d.kind, r) !== P_CARET) {
       return false;
     }
     // A prefix `^` only: `a ^ (b) {` is no block.
-    const p = d.prv[r];
+    const p = psLink(d.prv, r);
     if (p < 0) {
       return true;
     }
-    const pk = d.kind[p];
+    const pk = psAt(d.kind, p);
     return (
       pk === P_LPAREN ||
       pk === P_COMMA ||
@@ -2522,10 +2752,10 @@ export class Parser {
     if (r < 0) {
       return false;
     }
-    if (d.kind[r] === P_RPAREN && d.match[r] >= 0) {
-      r = d.prv[d.match[r]];
+    if (psAt(d.kind, r) === P_RPAREN && psLink(d.match, r) >= 0) {
+      r = psLink(d.prv, psLink(d.match, r));
     }
-    if (r < 0 || d.kind[r] !== KW_REQUIRES || d.prv[r] < 0) {
+    if (r < 0 || psAt(d.kind, r) !== KW_REQUIRES || psLink(d.prv, r) < 0) {
       return false;
     }
     return !requiresIsClause(d, r);
@@ -2534,7 +2764,7 @@ export class Parser {
   /** Whether token `x` is past the input being parsed: the end, or beyond the macro body. */
   outsideBody(x: i32): boolean {
     const d = this.d;
-    return d.kind[x] === K_EOF || (this.macro >= 0 && d.ppId[x] !== this.macro);
+    return psAt(d.kind, x) === K_EOF || (this.macro >= 0 && psLink(d.ppId, x) !== this.macro);
   }
 
   /**
@@ -2589,7 +2819,12 @@ export class Parser {
       this.addLine();
       return true;
     }
-    if (d.kind[t] === KW_PUBLIC || d.kind[t] === KW_PROTECTED || d.kind[t] === KW_PRIVATE || d.is(t, "package")) {
+    if (
+      psAt(d.kind, t) === KW_PUBLIC ||
+      psAt(d.kind, t) === KW_PROTECTED ||
+      psAt(d.kind, t) === KW_PRIVATE ||
+      d.is(t, "package")
+    ) {
       // clang-format's parseAccessSpecifier.
       this.push();
       if (this.cur() === P_COLON) {
@@ -2638,14 +2873,14 @@ export class Parser {
   /** Marks line `l` as clang-format's LT_ObjCDecl when it starts with the `@` at `first`. */
   markObjCDecl(l: i32, first: i32): void {
     const d = this.d;
-    if (l >= 0 && l < d.nline && d.lFirst[l] === first && d.kind[first] === P_AT) {
-      d.lObjC[l] = 2;
+    if (l >= 0 && l < d.nline && psLink(d.lFirst, l) === first && psAt(d.kind, first) === P_AT) {
+      psPut(d.lObjC, l, 2);
     }
   }
 
   /** Whether the tokens from `pos` are `@end`. */
   atObjCEnd(): boolean {
-    return this.cur() === P_AT && this.d.kind[this.pos + 1] === K_IDENT && this.d.is(this.pos + 1, "end");
+    return this.cur() === P_AT && psAt(this.d.kind, psNext(this.pos)) === K_IDENT && this.d.is(psNext(this.pos), "end");
   }
 
   /** clang-format's parseObjCLightweightGenerics, at the `<`. */
@@ -2658,9 +2893,9 @@ export class Parser {
         break;
       }
       if (k === P_LESS) {
-        open++;
+        open = add32(open, 1);
       } else if (k === P_GREATER) {
-        open--;
+        open = sub32(open, 1);
         if (open === 0) {
           break;
         }
@@ -2711,7 +2946,7 @@ export class Parser {
   /** clang-format's parseObjCUntilAtEnd: an @interface or @protocol body. */
   parseObjCUntilAtEnd(): void {
     const d = this.d;
-    this.objcDepth = this.objcDepth + 1;
+    this.objcDepth = add32(this.objcDepth, 1);
     while (true) {
       const k = this.cur();
       if (k === K_EOF) {
@@ -2744,7 +2979,7 @@ export class Parser {
       }
       this.parseStructuralElement();
     }
-    this.objcDepth = this.objcDepth - 1;
+    this.objcDepth = sub32(this.objcDepth, 1);
     d.objcSeen = true;
   }
 
@@ -2762,14 +2997,14 @@ export class Parser {
         d.objcOther = true;
         break;
       }
-      if (k === P_HASH && d.ppKind[this.pos] !== PP_NONE) {
+      if (k === P_HASH && psAt(d.ppKind, this.pos) !== PP_NONE) {
         this.parsePPInline();
         continue;
       }
       this.push();
     }
     this.addLine();
-    d.lObjC[d.nline - 1] = 1;
+    psPut(d.lObjC, psDec(d.nline), 1);
   }
 
   /** A statement or declaration, up to its `;` or its body. */
@@ -2777,17 +3012,17 @@ export class Parser {
     const d = this.d;
     // A free-standing macro on a line of its own (FOO_BEGIN, FOO(x)).
     const startTok = this.pos;
-    if (this.first < 0 && d.kind[startTok] === K_IDENT && this.allCaps(startTok)) {
-      const n = d.end[startTok] - d.start[startTok];
+    if (this.first < 0 && psAt(d.kind, startTok) === K_IDENT && this.allCaps(startTok)) {
+      const n = d.len(startTok);
       this.push();
       let functionLike = false;
       // (Comments are read past: `MACRO // c` then `(...)` on the next line
       // takes those parentheses for its arguments.)
       let pq = this.pos;
-      while (pq < d.ntok - 1 && d.kind[pq] === K_COMMENT) {
+      while (pq < psLast(d) && psAt(d.kind, pq) === K_COMMENT) {
         pq++;
       }
-      if (pq > this.pos && d.kind[pq] === P_LPAREN && this.macro < 0) {
+      if (pq > this.pos && psAt(d.kind, pq) === P_LPAREN && this.macro < 0) {
         while (this.pos < pq) {
           this.push();
         }
@@ -2799,21 +3034,21 @@ export class Parser {
       // Followed by a newline: comments on the macro's own line trail it, so
       // the first comment on a later line (or the next token) decides.
       let q = this.pos;
-      while (q < d.ntok - 1 && d.kind[q] === K_COMMENT && d.nl[q] === 0) {
+      while (q < psLast(d) && psAt(d.kind, q) === K_COMMENT && psAt(d.nl, q) === 0) {
         q++;
       }
       let nt = q;
-      while (nt < d.ntok - 1 && d.kind[nt] === K_COMMENT) {
+      while (nt < psLast(d) && psAt(d.kind, nt) === K_COMMENT) {
         nt++;
       }
       // (Directives in between are read past: the token after them decides.)
       if (this.macro < 0) {
-        while (nt < d.ntok - 1 && d.kind[nt] === P_HASH && d.ppKind[nt] !== PP_NONE) {
+        while (nt < psLast(d) && psAt(d.kind, nt) === P_HASH && psAt(d.ppKind, nt) !== PP_NONE) {
           nt++;
-          while (nt < d.ntok - 1 && d.inPP[nt] === 1 && d.ppKind[nt] === PP_NONE) {
+          while (nt < psLast(d) && psAt(d.inPP, nt) === 1 && psAt(d.ppKind, nt) === PP_NONE) {
             nt++;
           }
-          while (nt < d.ntok - 1 && d.kind[nt] === K_COMMENT) {
+          while (nt < psLast(d) && psAt(d.kind, nt) === K_COMMENT) {
             nt++;
           }
         }
@@ -2828,13 +3063,13 @@ export class Parser {
       // (clang-format 23: a function-like macro shorter than 5 characters
       // ends its line only when no `(` follows its arguments.)
       if (
-        (n >= 5 || (functionLike && d.kind[nt] !== P_LPAREN)) &&
-        d.nl[q] > 0 &&
+        (n >= 5 || (functionLike && psAt(d.kind, nt) !== P_LPAREN)) &&
+        psAt(d.nl, q) > 0 &&
         this.canStartNewLine(nt) &&
         !atEnd &&
         !trailed
       ) {
-        while (d.kind[this.pos] === K_COMMENT && d.nl[this.pos] === 0) {
+        while (psAt(d.kind, this.pos) === K_COMMENT && psAt(d.nl, this.pos) === 0) {
           this.push();
         }
         this.addLine();
@@ -2857,11 +3092,11 @@ export class Parser {
         this.addLine();
         return;
       }
-      if (k === P_HASH && d.ppKind[this.pos] !== PP_NONE) {
+      if (k === P_HASH && psAt(d.ppKind, this.pos) !== PP_NONE) {
         this.parsePPInline();
         continue;
       }
-      if (k === KW_TEMPLATE && d.kind[this.pos + 1] === P_LESS) {
+      if (k === KW_TEMPLATE && psAt(d.kind, psNext(this.pos)) === P_LESS) {
         this.parseTemplateParams();
         continue;
       }
@@ -2872,14 +3107,14 @@ export class Parser {
         continue;
       }
       // `typedef NS_ENUM(T, Name) {...}` and its kin: an enum.
-      if (k === KW_TYPEDEF && d.kind[this.pos + 1] === K_IDENT && isNSEnumMacro(d, this.pos + 1)) {
+      if (k === KW_TYPEDEF && psAt(d.kind, psNext(this.pos)) === K_IDENT && isNSEnumMacro(d, psNext(this.pos))) {
         this.push();
         this.parseEnum();
         return;
       }
       if (k === KW_CLASS || k === KW_STRUCT || k === KW_UNION) {
         // `enum class X` is an enum.
-        if (this.last >= 0 && d.kind[this.last] === KW_ENUM) {
+        if (this.last >= 0 && psAt(d.kind, this.last) === KW_ENUM) {
           this.push();
           continue;
         }
@@ -2905,10 +3140,10 @@ export class Parser {
         this.push();
         // (Comments between are read with the `{`.)
         let q = this.pos;
-        while (q < d.ntok - 1 && d.kind[q] === K_COMMENT) {
+        while (q < psLast(d) && psAt(d.kind, q) === K_COMMENT) {
           q++;
         }
-        if (q > this.pos && d.kind[q] === P_LBRACE) {
+        if (q > this.pos && psAt(d.kind, q) === P_LBRACE) {
           while (this.pos < q) {
             this.push();
           }
@@ -2924,19 +3159,19 @@ export class Parser {
         this.parseFunctionTry();
         return;
       }
-      if (k === P_CARET && this.lastCode() >= 0 && isIdentKind(d.kind[this.lastCode()])) {
+      if (k === P_CARET && this.lastCode() >= 0 && isIdentKind(psAt(d.kind, this.lastCode()))) {
         // clang-format 23: after an identifier a `^` starts no block literal
         // (`String ^ NAME { ... }`, a C++/CX handle).
         this.push();
         continue;
       }
-      if (k === P_CARET && !(this.last >= 0 && d.kind[this.last] === KW_OPERATOR)) {
+      if (k === P_CARET && !(this.last >= 0 && psAt(d.kind, this.last) === KW_OPERATOR)) {
         // clang-format's statement loop reads `^ type (args) { ... }` as a
         // block literal, whatever comes before the `^` (but `operator`).
         // (After an operand the `^` is binary: the body is a plain child
         // block, not an Objective-C block literal's.)
         const bp = this.last;
-        const bk = bp >= 0 ? d.kind[bp] : P_SEMI;
+        const bk = bp >= 0 ? psAt(d.kind, bp) : P_SEMI;
         const typed = !(
           bp < 0 ||
           bk === P_LPAREN ||
@@ -2960,10 +3195,10 @@ export class Parser {
           this.parseParens();
         }
         if (this.cur() === P_LBRACE) {
-          d.bk[this.pos] = BK_BLOCK;
+          psPut(d.bk, this.pos, BK_BLOCK);
           if (!typed) {
-            d.type[this.pos] = TT_BLOCK_LITERAL_LBRACE;
-            d.final[this.pos] = 1;
+            psPut(d.type, this.pos, TT_BLOCK_LITERAL_LBRACE);
+            psPut(d.final, this.pos, 1);
           }
           this.parseChildBlock();
         }
@@ -2980,14 +3215,14 @@ export class Parser {
         // `requires`: a requires expression, its body a block whatever
         // follows it.)
         if (this.isRequiresExpressionBrace()) {
-          d.bk[this.pos] = BK_BLOCK;
+          psPut(d.bk, this.pos, BK_BLOCK);
           this.parseRequiresBody();
           continue;
         }
-        if (d.bk[this.pos] === BK_UNKNOWN) {
+        if (psAt(d.bk, this.pos) === BK_UNKNOWN) {
           this.calculateBraceTypes();
         }
-        if (d.bk[this.pos] === BK_BRACED_INIT) {
+        if (psAt(d.bk, this.pos) === BK_BRACED_INIT) {
           this.parseBracedList();
           continue;
         }
@@ -3004,7 +3239,7 @@ export class Parser {
         // a template.
         const gt = this.pos;
         this.push();
-        if (d.kind[this.nextNonComment(gt)] === P_LBRACE) {
+        if (psAt(d.kind, this.nextNonComment(gt)) === P_LBRACE) {
           this.markFinal(gt, TT_TEMPLATE_CLOSER);
         }
         continue;
@@ -3015,8 +3250,8 @@ export class Parser {
 
   /** Gives token `t` type `tt` for good, as clang-format's setFinalizedType. */
   markFinal(t: i32, tt: i32): void {
-    this.d.type[t] = tt;
-    this.d.final[t] = 1;
+    psPut(this.d.type, t, tt);
+    psPut(this.d.final, t, 1);
   }
 
   /**
@@ -3044,7 +3279,7 @@ export class Parser {
         const p = this.lastCode();
         if (
           p > kwTok &&
-          isIdentKind(d.kind[p]) &&
+          isIdentKind(psAt(d.kind, p)) &&
           !d.is(p, "__capability") &&
           (d.len(p) === 1 || this.isNonMacroIdent(p))
         ) {
@@ -3056,16 +3291,16 @@ export class Parser {
       }
       if (baseOrArgs) {
         if (k === P_LESS) {
-          angle++;
+          angle = add32(angle, 1);
         } else if (k === P_GREATER) {
-          angle--;
+          angle = sub32(angle, 1);
         }
         if (angle === 0) {
           if (k === P_COLON) {
             derived = true;
           } else if (!derived && isIdentKind(k)) {
             const p = this.lastCode();
-            if (p >= 0 && d.kind[p] === P_COLONCOLON) {
+            if (p >= 0 && psAt(d.kind, p) === P_COLONCOLON) {
               className = this.pos;
             }
           }
@@ -3081,9 +3316,9 @@ export class Parser {
         }
         // clang-format's parseRecord: a braced list (`B<T{}>`) is read past.
         // (Its kind is found here, expecting a class body.)
-        d.bk[this.pos] = BK_UNKNOWN;
+        psPut(d.bk, this.pos, BK_UNKNOWN);
         this.calculateBraceTypes(true);
-        if (d.bk[this.pos] !== BK_BRACED_INIT) {
+        if (psAt(d.bk, this.pos) !== BK_BRACED_INIT) {
           break;
         }
         this.parseBracedList();
@@ -3100,7 +3335,7 @@ export class Parser {
         this.parseSquare();
         continue;
       }
-      if (k === P_HASH && d.ppKind[this.pos] !== PP_NONE) {
+      if (k === P_HASH && psAt(d.ppKind, this.pos) !== PP_NONE) {
         this.parsePPInline();
         continue;
       }
@@ -3122,19 +3357,22 @@ export class Parser {
         this.push();
         break;
       }
-      const afterEq = this.last >= 0 && d.kind[this.last] === P_EQUAL;
+      const afterEq = this.last >= 0 && psAt(d.kind, this.last) === P_EQUAL;
       // Directive lines before the declarators are read past (`}` `#endif`
       // `*GC;`): the declarators continue the record's line.
-      if (k === P_HASH && d.ppKind[this.pos] !== PP_NONE && this.macro < 0) {
+      if (k === P_HASH && psAt(d.ppKind, this.pos) !== PP_NONE && this.macro < 0) {
         let i = this.pos;
-        while (i < d.ntok - 1 && ((d.kind[i] === P_HASH && d.ppKind[i] !== PP_NONE) || d.inPP[i] === 1)) {
+        while (
+          i < psLast(d) &&
+          ((psAt(d.kind, i) === P_HASH && psAt(d.ppKind, i) !== PP_NONE) || psAt(d.inPP, i) === 1)
+        ) {
           i++;
         }
-        const ki = d.kind[i];
+        const ki = psAt(d.kind, i);
         if (ki !== K_IDENT && ki !== P_STAR && ki !== P_SEMI) {
           break;
         }
-        while (d.kind[this.pos] === P_HASH && d.ppKind[this.pos] !== PP_NONE) {
+        while (psAt(d.kind, this.pos) === P_HASH && psAt(d.ppKind, this.pos) !== PP_NONE) {
           this.parsePPInline();
         }
         continue;
@@ -3143,18 +3381,18 @@ export class Parser {
       if (
         k === K_EOF ||
         k === P_RBRACE ||
-        (d.nl[this.pos] > 0 && !afterEq && k !== K_IDENT && k !== P_STAR && k !== P_EQUAL)
+        (psAt(d.nl, this.pos) > 0 && !afterEq && k !== K_IDENT && k !== P_STAR && k !== P_EQUAL)
       ) {
         break;
       }
       if (k === P_LBRACE) {
         // `} name = {...};` (clang-format: a braced list after `=`) or `} name{...};`.
         if (afterEq) {
-          d.bk[this.pos] = BK_BRACED_INIT;
-        } else if (d.bk[this.pos] === BK_UNKNOWN) {
+          psPut(d.bk, this.pos, BK_BRACED_INIT);
+        } else if (psAt(d.bk, this.pos) === BK_UNKNOWN) {
           this.calculateBraceTypes();
         }
-        if (d.bk[this.pos] === BK_BLOCK) {
+        if (psAt(d.bk, this.pos) === BK_BLOCK) {
           break;
         }
         this.parseBracedList();
@@ -3177,13 +3415,13 @@ export class Parser {
       return false;
     }
     const p = this.lastCode();
-    if (p < 0 || p === className || !isIdentKind(d.kind[p]) || d.kind[p] === CW_FINAL) {
+    if (p < 0 || p === className || !isIdentKind(psAt(d.kind, p)) || psAt(d.kind, p) === CW_FINAL) {
       return false;
     }
-    if (d.bk[this.pos] === BK_UNKNOWN) {
+    if (psAt(d.bk, this.pos) === BK_UNKNOWN) {
       this.calculateBraceTypes();
     }
-    return d.bk[this.pos] !== BK_BLOCK;
+    return psAt(d.bk, this.pos) !== BK_BLOCK;
   }
 
   /** The last token of the line being built that is not a comment, or -1. */
@@ -3192,14 +3430,14 @@ export class Parser {
     if (this.first < 0) {
       return -1;
     }
-    return d.kind[this.last] === K_COMMENT ? prevCode(d, this.last) : this.last;
+    return psAt(d.kind, this.last) === K_COMMENT ? prevCode(d, this.last) : this.last;
   }
 
   /** `enum [class] Name [: type] { list };` — the list stays in the line. */
   parseEnum(): void {
     const d = this.d;
     while (this.cur() !== P_LBRACE && this.cur() !== K_EOF) {
-      if (this.cur() === P_HASH && d.ppKind[this.pos] !== PP_NONE && this.macro < 0) {
+      if (this.cur() === P_HASH && psAt(d.ppKind, this.pos) !== PP_NONE && this.macro < 0) {
         this.parsePPInline();
         continue;
       }
@@ -3210,13 +3448,13 @@ export class Parser {
       return;
     }
     const lb = this.pos;
-    d.type[lb] = TT_ENUM_LBRACE;
-    d.final[lb] = 1;
+    psPut(d.type, lb, TT_ENUM_LBRACE);
+    psPut(d.final, lb, 1);
     this.parseBracedList(true);
-    d.bk[lb] = BK_BLOCK;
-    const rb = d.match[lb];
+    psPut(d.bk, lb, BK_BLOCK);
+    const rb = psLink(d.match, lb);
     if (rb >= 0) {
-      d.bk[rb] = BK_BLOCK;
+      psPut(d.bk, rb, BK_BLOCK);
     }
     while (this.cur() !== P_SEMI && this.cur() !== K_EOF && this.cur() !== P_RBRACE) {
       this.parseExprToken();
@@ -3260,7 +3498,7 @@ const lambdaWord = (k: i32): boolean => {
 
 /** Whether token `t` is Qt's `slots`/`Q_SLOTS` (or, with `signals`, also `signals`/`Q_SIGNALS`). */
 export function isQtWord(d: Doc, t: i32, signals: boolean): boolean {
-  if (d.kind[t] !== K_IDENT) {
+  if (psAt(d.kind, t) !== K_IDENT) {
     return false;
   }
   return d.is(t, "slots") || d.is(t, "Q_SLOTS") || (signals && (d.is(t, "signals") || d.is(t, "Q_SIGNALS")));
@@ -3322,24 +3560,29 @@ export const isOperatorAfterVar = (k: i32): boolean => {
  * gives.
  */
 export const isForEachMacro = (d: Doc, t: i32): boolean => {
-  if (d.kind[t] !== K_IDENT) {
+  if (psAt(d.kind, t) !== K_IDENT) {
     return false;
   }
-  const n = d.end[t] - d.start[t];
+  const n = d.len(t);
   if (n !== 7 && n !== 9 && n !== 13) {
     return false;
   }
   if (!d.is(t, "foreach") && !d.is(t, "Q_FOREACH") && !d.is(t, "BOOST_FOREACH")) {
     return false;
   }
-  const p = d.prv[t];
-  return !(p >= 0 && d.prv[p] >= 0 && d.kind[d.prv[p]] === P_HASH && d.ppKind[d.prv[p]] === PP_DEFINE);
+  const p = psLink(d.prv, t);
+  return !(
+    p >= 0 &&
+    psLink(d.prv, p) >= 0 &&
+    psAt(d.kind, psLink(d.prv, p)) === P_HASH &&
+    psAt(d.ppKind, psLink(d.prv, p)) === PP_DEFINE
+  );
 };
 
 /** Whether token `t` can start a new line (clang-format's tokenCanStartNewLine). */
 export const tokenCanStartNewLine = (d: Doc, t: i32): boolean => {
   // clang-format's tokenCanStartNewLine.
-  switch (d.kind[t]) {
+  switch (psAt(d.kind, t)) {
     case P_SEMI:
     case P_LBRACE:
     case P_PERIOD:
@@ -3381,10 +3624,17 @@ const isNSEnumMacro = (d: Doc, t: i32): boolean =>
 
 /** `xs` grown to `n` entries, the new ones -1. */
 const growFill = (xs: i32[], n: i32): i32[] => {
-  const ys = new Array<i32>(n);
-  ys.fill(-1);
-  for (let i = 0; i < toI32(xs.length); i++) {
-    ys[i] = xs[i];
+  // (Called to grow: `n` is past `xs`.)
+  if (n < 0 || toI32(xs.length) > n) {
+    fault();
+    return xs;
+  }
+  const ys: i32[] = [];
+  for (const x of xs) {
+    ys.push(x);
+  }
+  while (toI32(ys.length) < n) {
+    ys.push(-1);
   }
   return ys;
 };

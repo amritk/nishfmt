@@ -3,6 +3,7 @@
 // Ported from RuboCop 1.92.3 (MIT License, Copyright (c) 2012-24 Bozhidar
 // Batsov).
 
+import { sub32 } from "../../core/arr";
 import { F_BEGIN, F_NAME, NT_DEF, NT_DEFS } from "../ast";
 import { RbCop } from "../cop";
 import { RbSource } from "../source";
@@ -33,7 +34,7 @@ export class CopLintToJSON {
       }
       if (ssxHas(src, args, F_BEGIN)) {
         const be = ssxFE(src, args, F_BEGIN);
-        k.insertAfter(be - 1, be, "*_args");
+        k.insertAfter(sub32(be, 1), be, "*_args");
       } else {
         const ne = ssxFE(src, n, F_NAME);
         k.insertAfter(ne, ne, "(*_args)");

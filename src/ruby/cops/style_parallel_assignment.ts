@@ -32,6 +32,8 @@ import {
   rbInspectSym,
   V_NIL,
 } from "../ast";
+import { add32, atI32, sub32 } from "../../core/arr";
+import { fault } from "../../core/fault";
 import { RbCop } from "../cop";
 import { RbRewriter } from "../rewriter";
 import { rnHeredoc } from "../node";
@@ -112,19 +114,29 @@ class SbhPaSorter {
     this.self = self;
   }
 
+  /** self[i]: i is an assignment's index. */
+  private selfAt(i: i32): boolean {
+    const s = this.self;
+    if (i >= 0 && i < s.length) {
+      return s[i];
+    }
+    fault();
+    return false;
+  }
+
   private eqRhs(i: i32, j: i32): boolean {
-    if (this.self[i] !== this.self[j]) {
+    if (this.selfAt(i) !== this.selfAt(j)) {
       return false;
     }
-    if (this.self[i]) {
-      return sbhMethodName(this.src, this.rhs[i]) === sbhMethodName(this.src, this.rhs[j]);
+    if (this.selfAt(i)) {
+      return sbhMethodName(this.src, atI32(this.rhs, i)) === sbhMethodName(this.src, atI32(this.rhs, j));
     }
-    return ssxAstEqual(this.src.a, this.rhs[i], this.src.a, this.rhs[j]);
+    return ssxAstEqual(this.src.a, atI32(this.rhs, i), this.src.a, atI32(this.rhs, j));
   }
 
   /** The assignment pairs i and j are == (structurally). */
   private eq(i: i32, j: i32): boolean {
-    return ssxAstEqual(this.src.a, this.lhs[i], this.src.a, this.lhs[j]) && this.eqRhs(i, j);
+    return ssxAstEqual(this.src.a, atI32(this.lhs, i), this.src.a, atI32(this.lhs, j)) && this.eqRhs(i, j);
   }
 
   /** var_name: {(casgn _ $_) (_ $_)} ("" for no match, a non-symbol capture as its inspect). */
@@ -143,28 +155,28 @@ class SbhPaSorter {
   private matchingCalls(j: i32, recv: i32, name: string, args: i32[], anyArgs: boolean): boolean {
     const src = this.src;
     const a = src.a;
-    if (this.self[j]) {
+    if (this.selfAt(j)) {
       if (
-        sbhMethodName(src, this.rhs[j]) !== name ||
+        sbhMethodName(src, atI32(this.rhs, j)) !== name ||
         !(a.isNode(recv) && a.type(recv) === NT_SELF && a.nKid(recv) === 0)
       ) {
         return false;
       }
       return anyArgs || args.length === 0;
     }
-    for (const n of sbhPaEachNode(src, this.rhs[j])) {
+    for (const n of sbhPaEachNode(src, atI32(this.rhs, j))) {
       if (a.type(n) !== NT_SEND || sbhMethodName(src, n) !== name || !ssxAstEqual(a, a.kid(n, 0), a, recv)) {
         continue;
       }
       if (anyArgs) {
         return true;
       }
-      if (a.nKid(n) - 2 !== args.length) {
+      if (sub32(a.nKid(n), 2) !== args.length) {
         continue;
       }
       let ok = true;
       for (let k = 0; k < toI32(args.length); k++) {
-        if (!ssxAstEqual(a, a.kid(n, k + 2), a, args[k])) {
+        if (!ssxAstEqual(a, a.kid(n, add32(k, 2)), a, args[k])) {
           ok = false;
           break;
         }
@@ -180,10 +192,10 @@ class SbhPaSorter {
   private dependency(i: i32, j: i32): boolean {
     const src = this.src;
     const a = src.a;
-    const l = this.lhs[i];
+    const l = atI32(this.lhs, i);
     const vn = this.varName(l);
-    if (vn.length > 0 && !this.self[j]) {
-      for (const n of sbhPaEachNode(src, this.rhs[j])) {
+    if (vn.length > 0 && !this.selfAt(j)) {
+      for (const n of sbhPaEachNode(src, atI32(this.rhs, j))) {
         const t = a.type(n);
         if (
           (t === NT_LVAR || t === NT_IVAR || t === NT_CVAR || t === NT_GVAR) &&
@@ -247,9 +259,10 @@ class SbhPaSorter {
       alive.push(true);
     }
     const result: i32[] = [];
+    // alive and deps hold an entry for each key.
     for (;;) {
       let found = -1;
-      for (let q = 0; q < toI32(keys.length); q++) {
+      for (let q = 0; q < toI32(keys.length) && q < alive.length && q < deps.length; q++) {
         if (alive[q] && deps[q].length === 0) {
           found = q;
           break;
@@ -258,10 +271,14 @@ class SbhPaSorter {
       if (found < 0) {
         break;
       }
+      if (found >= alive.length || found >= keys.length) {
+        fault();
+        return null;
+      }
       alive[found] = false;
       const m = keys[found];
       result.push(m);
-      for (let q = 0; q < toI32(keys.length); q++) {
+      for (let q = 0; q < toI32(keys.length) && q < alive.length && q < deps.length; q++) {
         if (!alive[q]) {
           continue;
         }
@@ -271,10 +288,14 @@ class SbhPaSorter {
             kept.push(j);
           }
         }
+        if (q >= deps.length) {
+          fault();
+          return null;
+        }
         deps[q] = kept;
       }
     }
-    for (let q = 0; q < toI32(keys.length); q++) {
+    for (let q = 0; q < toI32(keys.length) && q < alive.length; q++) {
       if (alive[q]) {
         return null;
       }
@@ -393,10 +414,10 @@ export class CopStyleParallelAssignment {
   private correct(src: RbSource, k: RbRewriter, n: i32, rhs: i32, lhs: i32[], rhsEls: i32[], order: i32[]): void {
     const a = src.a;
     const offset = rmlSpaces(src.column(a.exS(n)));
-    const indentation = rmlSpaces(src.column(a.exS(n)) + 2);
+    const indentation = rmlSpaces(add32(src.column(a.exS(n)), 2));
     const asg: string[] = [];
     for (const i of order) {
-      asg.push(`${src.nodeSrc(lhs[i])} = ${this.elementSource(src, rhsEls[i])}`);
+      asg.push(`${src.nodeSrc(atI32(lhs, i))} = ${this.elementSource(src, atI32(rhsEls, i))}`);
     }
     const p = src.parent(n);
     let modifier = V_NIL;

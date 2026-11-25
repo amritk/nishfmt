@@ -39,6 +39,8 @@ import {
   swStrIsMacro,
 } from "./token";
 import { swCpIsSpace } from "./tokenizer";
+import { add32, sub32 } from "../core/arr";
+import { fault } from "../core/fault";
 
 // Keyword sets for `excluding:` parameters, as bits.
 export const SW_EX_WHERE: i32 = 1;
@@ -182,17 +184,28 @@ export const swEndOfScope = (f: SwFormatter, index: i32): i32 => {
   if (index < 0 || index >= f.count()) {
     return -1;
   }
-  while (toI32(f.eoGen.length) <= index) {
-    f.eoGen.push(0);
-    f.eoVal.push(0);
+  const gen = f.eoGen;
+  const val = f.eoVal;
+  while (toI32(gen.length) <= index) {
+    gen.push(0);
   }
-  const stamp = f.mutations + 1;
-  if (f.eoGen[index] === stamp) {
-    return f.eoVal[index];
+  while (toI32(val.length) <= index) {
+    val.push(0);
+  }
+  const m = f.mutations;
+  if (m >= 2147483647) {
+    fault();
+    return -1;
+  }
+  const stamp = m + 1;
+  if (index < gen.length && index < val.length && gen[index] === stamp) {
+    return val[index];
   }
   const r = swEndOfScopeUncached(f, index);
-  f.eoGen[index] = stamp;
-  f.eoVal[index] = r;
+  if (index < gen.length && index < val.length) {
+    gen[index] = stamp;
+    val[index] = r;
+  }
   return r;
 };
 
@@ -446,7 +459,7 @@ export const swEndOfAttribute = (f: SwFormatter, i: i32): i32 => {
   if (startIndex < 0) {
     return i;
   }
-  const lb = swHasLinebreak(f, i + 1, startIndex);
+  const lb = swHasLinebreak(f, add32(i, 1), startIndex);
   if (f.tok(startIndex, SW_START, "(") && !lb) {
     return f.indexOfAfter(SW_END, ")", 0, startIndex);
   }
@@ -595,7 +608,7 @@ export const swIsStartOfClosure = (f: SwFormatter, i: i32): boolean => {
     }
     const kw = f.s(prevKeywordIndex);
     if (kw === "var") {
-      if (f.lastIndexOfIn(SW_OP, "=", SW_OP_INFIX, prevKeywordIndex + 1, i) >= 0) {
+      if (f.lastIndexOfIn(SW_OP, "=", SW_OP_INFIX, add32(prevKeywordIndex, 1), i) >= 0) {
         return true;
       }
       let index = prevKeywordIndex;
@@ -689,7 +702,7 @@ export const swClosureInKeyword = (f: SwFormatter, closureStart: i32): i32 => {
         const nn = f.indexAfter(SW_T_NON_SPACE_OR_COMMENT_OR_LINEBREAK, argIndex);
         if (nn >= 0) {
           if (f.tok(nn, SW_DELIM, ",")) {
-            argIndex = nn + 1;
+            argIndex = add32(nn, 1);
             continue;
           } else if (
             f.kw(nn, "in") ||
@@ -857,9 +870,11 @@ export const swParseType = (f: SwFormatter, start: i32, exclLower: boolean = fal
   if (baseEnd < 0) {
     return -1;
   }
-  if (swIsUnwrap(f, baseEnd + 1)) {
+  // swIsUnwrap is false past the last token.
+  const count = f.count();
+  if (baseEnd < count && swIsUnwrap(f, baseEnd + 1)) {
     let e = baseEnd + 1;
-    while (swIsUnwrap(f, e + 1)) {
+    while (e < count && swIsUnwrap(f, e + 1)) {
       e++;
     }
     return e;
@@ -945,7 +960,7 @@ const swParseNonOptionalType = (f: SwFormatter, start: i32, exclLower: boolean, 
           }
         }
       }
-      for (let j = start; j <= endOfScope; j++) {
+      for (let j = start; j <= endOfScope && j < 2147483647; j++) {
         if (swIsKeyword(f, j)) {
           const s = f.s(j);
           if (
@@ -1020,22 +1035,39 @@ const swIsLowercaseIdentifier = (name: string): boolean => {
 };
 
 const swCpAtStr = (s: string, i: i32): i32 => {
+  // A sequence cut off by the end of the string panicked: it faults.
+  if (i < 0 || i >= s.length) {
+    fault();
+    return -1;
+  }
   const c = s.charCodeAt(i);
   if (c < 0x80) {
     return c;
   }
+  const i1 = i + 1;
+  if (i1 >= s.length) {
+    fault();
+    return -1;
+  }
+  const c1 = s.charCodeAt(i1) & 0x3f;
   if (c < 0xe0) {
-    return ((c & 0x1f) << 6) | (s.charCodeAt(i + 1) & 0x3f);
+    return ((c & 0x1f) << 6) | c1;
   }
+  const i2 = i1 + 1;
+  if (i2 >= s.length) {
+    fault();
+    return -1;
+  }
+  const c2 = s.charCodeAt(i2) & 0x3f;
   if (c < 0xf0) {
-    return ((c & 0x0f) << 12) | ((s.charCodeAt(i + 1) & 0x3f) << 6) | (s.charCodeAt(i + 2) & 0x3f);
+    return ((c & 0x0f) << 12) | (c1 << 6) | c2;
   }
-  return (
-    ((c & 0x07) << 18) |
-    ((s.charCodeAt(i + 1) & 0x3f) << 12) |
-    ((s.charCodeAt(i + 2) & 0x3f) << 6) |
-    (s.charCodeAt(i + 3) & 0x3f)
-  );
+  const i3 = i2 + 1;
+  if (i3 >= s.length) {
+    fault();
+    return -1;
+  }
+  return ((c & 0x07) << 18) | (c1 << 12) | (c2 << 6) | (s.charCodeAt(i3) & 0x3f);
 };
 
 // MARK: statements
@@ -1146,7 +1178,7 @@ export const swIsEndOfStatement = (f: SwFormatter, i: i32, scope: string | null 
       return false;
     }
     if (a === SW_OP_POSTFIX && (s === "?" || s === "!")) {
-      if (f.kw(i - 1, "as") || f.kw(i - 1, "try")) {
+      if (i > 0 && (f.kw(i - 1, "as") || f.kw(i - 1, "try"))) {
         return false;
       }
       return true;
@@ -1338,7 +1370,8 @@ export const swIsStartOfStatement = (
 
 /** isCommentedCode(at:) (the indent option is four spaces). */
 export const swIsCommentedCode = (f: SwFormatter, i: i32): boolean => {
-  if (f.tok(i, SW_START, "//") && !(f.has(i - 1) && f.k(i - 1) === SW_SPACE)) {
+  // f.tok holds only inside the list, so i + 1 fits.
+  if (i >= 0 && i < f.count() && f.tok(i, SW_START, "//") && !(f.has(i - 1) && f.k(i - 1) === SW_SPACE)) {
     if (!f.has(i + 1) || f.k(i + 1) === SW_LINEBREAK) {
       return true;
     }
@@ -1455,58 +1488,78 @@ const swIfStatementBranches = (f: SwFormatter, ifIndex: i32): SwBranches => {
 
 const swScanIfdefEnd = (f: SwFormatter, ifIndex: i32, containsCase: boolean[]): i32 => {
   let depth = 1;
-  let brace = 0;
-  for (let i = ifIndex + 1; i < f.count(); i++) {
+  // Only brace === 0 is asked, so it counts modulo 2^32.
+  let brace: u32 = 0;
+  const n = f.count();
+  if (ifIndex >= n) {
+    return -1;
+  }
+  for (let i = ifIndex + 1; i < n; i++) {
     const k = f.k(i);
     const s = f.s(i);
     if (k === SW_START && s === "#if") {
-      depth++;
+      // depth counts tokens, far below 2^31.
+      if (depth < 2147483647) {
+        depth++;
+      }
     } else if (k === SW_END && s === "#endif") {
-      depth--;
+      // depth is at least 1 here: it returns at 0.
+      if (depth > 0) {
+        depth--;
+      }
       if (depth === 0) {
         return i;
       }
     } else if (k === SW_START && (s === "{" || s === "(" || s === "[")) {
       if (depth === 1) {
-        brace++;
+        brace = brace + toU32(1);
       }
     } else if (k === SW_END && (s === "}" || s === ")" || s === "]")) {
       if (depth === 1) {
-        brace--;
+        brace = brace - toU32(1);
       }
     } else if (
       depth === 1 &&
-      brace === 0 &&
+      brace === toU32(0) &&
       ((k === SW_END && (s === "case" || s === "default")) || (k === SW_KEYWORD && s === "@unknown"))
     ) {
-      containsCase[0] = true;
+      if (containsCase.length > 0) {
+        containsCase[0] = true;
+      }
     }
   }
   return -1;
 };
 
 const swFirstIfdefBoundary = (f: SwFormatter, start: i32, end: i32): i32 => {
-  let brace = 0;
+  // Only brace === 0 is asked, so it counts modulo 2^32.
+  let brace: u32 = 0;
+  if (start >= end) {
+    return -1;
+  }
   let i = start + 1;
   while (i < end) {
     const k = f.k(i);
     const s = f.s(i);
     if (k === SW_START && (s === "{" || s === "(" || s === "[")) {
-      brace++;
+      brace = brace + toU32(1);
     } else if (k === SW_END && (s === "}" || s === ")" || s === "]")) {
-      brace--;
-    } else if (k === SW_START && s === "#if" && brace === 0) {
+      brace = brace - toU32(1);
+    } else if (k === SW_START && s === "#if" && brace === toU32(0)) {
       const cc: boolean[] = [false];
       const e = swScanIfdefEnd(f, i, cc);
       if (e >= 0) {
-        if (cc[0]) {
+        if (cc.length > 0 && cc[0]) {
           return i;
         }
         i = e;
+        if (i >= end) {
+          break;
+        }
       }
     } else if (
       (k === SW_KEYWORD && (s === "#else" || s === "#elseif")) ||
-      (k === SW_END && s === "#endif" && brace === 0)
+      (k === SW_END && s === "#endif" && brace === toU32(0))
     ) {
       return i;
     }
@@ -1627,7 +1680,7 @@ export const swTokenLength = (f: SwFormatter, i: i32): i32 => {
     let n = swCharCount(s);
     for (let j = 0; j < toI32(s.length); j++) {
       if (s.charCodeAt(j) === 9) {
-        n += 3;
+        n = add32(n, 3);
       }
     }
     return n;
@@ -1640,7 +1693,7 @@ export const swSpaceWidth = (s: string): i32 => {
   let n = swCharCount(s);
   for (let j = 0; j < toI32(s.length); j++) {
     if (s.charCodeAt(j) === 9) {
-      n += 3;
+      n = add32(n, 3);
     }
   }
   return n;
@@ -1655,12 +1708,12 @@ export const swLineLengthFrom = (f: SwFormatter, start: i32, end: i32): i32 => {
       const si = f.indexOfAfter(SW_START, "(", 0, index);
       const ei = si >= 0 ? swEndOfScope(f, si) : -1;
       if (ei >= 0) {
-        length += 2;
-        index = ei + 1;
+        length = add32(length, 2);
+        index = add32(ei, 1);
         continue;
       }
     }
-    length += swTokenLength(f, index);
+    length = add32(length, swTokenLength(f, index));
     index++;
   }
   return length;
@@ -1693,8 +1746,9 @@ export const swSpaceEquivalentToTokens = (f: SwFormatter, start: i32, end: i32):
       const si = f.indexOfAfter(SW_START, "(", 0, index);
       const ei = si >= 0 ? swEndOfScope(f, si) : -1;
       if (ei >= 0) {
-        parts.push(swSpaces(swLineLengthFrom(f, index, ei + 1)));
-        index = ei + 1;
+        const after = add32(ei, 1);
+        parts.push(swSpaces(swLineLengthFrom(f, index, after)));
+        index = after;
         continue;
       }
       parts.push(swSpaces(swTokenLength(f, index)));
@@ -1714,13 +1768,21 @@ export const swStringBodyIndent = (f: SwFormatter, i: i32): string => {
     const s = f.s(index);
     let j = 0;
     const n = toI32(s.length);
-    while (j < n) {
+    while (j >= 0 && j < n && j < s.length) {
       const c = s.charCodeAt(j);
       const cp = c < 0x80 ? c : swCpAtStr(s, j);
       if (!swCpIsSpace(cp)) {
         break;
       }
-      j += c < 0x80 ? 1 : c < 0xe0 ? 2 : c < 0xf0 ? 3 : 4;
+      if (c < 0x80) {
+        j = j + 1;
+      } else if (c < 0xe0) {
+        j = add32(j, 2);
+      } else if (c < 0xf0) {
+        j = add32(j, 3);
+      } else {
+        j = add32(j, 4);
+      }
     }
     return s.substring(0, j);
   }
@@ -1729,7 +1791,7 @@ export const swStringBodyIndent = (f: SwFormatter, i: i32): string => {
 
 /** linewrapIndent(at:). */
 export const swLinewrapIndent = (f: SwFormatter, index: i32): string => {
-  const commaIndex = f.indexBefore(SW_T_NON_SPACE_OR_COMMENT_OR_LINEBREAK, index + 1);
+  const commaIndex = f.indexBefore(SW_T_NON_SPACE_OR_COMMENT_OR_LINEBREAK, add32(index, 1));
   let ok = commaIndex >= 0 && f.tok(commaIndex, SW_DELIM, ",");
   let firstToken = -1;
   let firstNonBrace = -1;
@@ -1768,7 +1830,7 @@ export const swLinewrapIndent = (f: SwFormatter, index: i32): string => {
   }
   if (
     f.k(firstToken) === SW_END &&
-    swNextIs(f, SW_T_NON_SPACE_OR_COMMENT_OR_LINEBREAK, firstNonBrace - 1, SW_DELIM, ",")
+    swNextIs(f, SW_T_NON_SPACE_OR_COMMENT_OR_LINEBREAK, sub32(firstNonBrace, 1), SW_DELIM, ",")
   ) {
     return "";
   }

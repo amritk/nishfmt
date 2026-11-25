@@ -1,82 +1,140 @@
 // A growable byte buffer for the formatted file.
+//
+// `buf` holds at least `n` bytes, the output so far; callers may read
+// `buf[0, n)` and lower `n`. Every write is guarded, and one past what the
+// buffer can hold faults (src/core/fault.ts) rather than panicking.
 
-import { uncheckedGet, uncheckedSet } from "nish:unsafe";
+import { fault } from "./fault";
 
 export class Out {
   buf: u8[];
   n: i32 = 0;
 
+  /**
+   * `cap` is a size hint the buffer no longer needs: it grows as bytes are
+   * written, so it is never zero-filled first.
+   */
   constructor(cap: i32) {
-    this.buf = new Array<u8>(cap < 64 ? 64 : cap);
+    this.buf = [];
   }
 
+  /** Makes room for `extra` more bytes after `n`, for callers that then write `buf` by index. */
   reserve(extra: i32): void {
-    const need = this.n + extra;
-    if (need <= toI32(this.buf.length)) {
+    const n = this.n;
+    if (extra <= 0) {
       return;
     }
-    let cap = toI32(this.buf.length) * 2;
-    if (cap < need) {
-      cap = need;
+    const need64 = toI64(n) + toI64(extra);
+    if (n < 0 || need64 > toI64(2147483647)) {
+      fault();
+      return;
     }
-    const nb = new Array<u8>(cap);
-    nb.set(this.buf);
-    this.buf = nb;
+    const need = toI32(need64);
+    const buf = this.buf;
+    while (buf.length < need) {
+      buf.push(0);
+    }
   }
 
   byte(c: i32): void {
-    this.reserve(1);
-    uncheckedSet(this.buf, this.n, toU8(c));
-    this.n = this.n + 1;
+    const buf = this.buf;
+    const n = this.n;
+    if (n >= 0 && n < buf.length) {
+      buf[n] = toU8(c);
+    } else if (n === buf.length && n < 2147483647) {
+      buf.push(toU8(c));
+    } else {
+      fault();
+      return;
+    }
+    this.n = n + 1;
+  }
+
+  /** Writes `k` copies of byte `c`. */
+  fill(k: i32, c: u8): void {
+    if (k <= 0 || !this.room(toI64(this.n) + toI64(k))) {
+      return;
+    }
+    const buf = this.buf;
+    let n = this.n;
+    for (let i = 0; i < k && n >= 0 && n < buf.length; i++) {
+      buf[n] = c;
+      n = n + 1;
+    }
+    this.n = n;
   }
 
   spaces(k: i32): void {
-    if (k <= 0) {
-      return;
-    }
-    this.reserve(k);
-    for (let i = 0; i < k; i++) {
-      uncheckedSet(this.buf, this.n + i, toU8(32));
-    }
-    this.n = this.n + k;
+    this.fill(k, toU8(32));
   }
 
   newlines(k: i32): void {
-    if (k <= 0) {
-      return;
+    this.fill(k, toU8(10));
+  }
+
+  /**
+   * Grows `buf` with zeroes so it holds at least `need` bytes; false (after a
+   * fault) when `n` is outside it, which its invariant rules out.
+   */
+  room(need: i64): boolean {
+    const buf = this.buf;
+    const n = this.n;
+    if (n < 0 || n > buf.length || need > toI64(2147483647)) {
+      fault();
+      return false;
     }
-    this.reserve(k);
-    for (let i = 0; i < k; i++) {
-      uncheckedSet(this.buf, this.n + i, toU8(10));
+    while (toI64(buf.length) < need) {
+      buf.push(0);
     }
-    this.n = this.n + k;
+    return true;
   }
 
   range(src: u8[], a: i32, b: i32): void {
-    const k = b - a;
-    if (k <= 0) {
+    if (b <= a) {
       return;
     }
-    this.reserve(k);
-    for (let i = 0; i < k; i++) {
-      uncheckedSet(this.buf, this.n + i, uncheckedGet(src, a + i));
+    if (a < 0 || b > src.length) {
+      fault();
+      return;
     }
-    this.n = this.n + k;
+    if (!this.room(toI64(this.n) + toI64(b) - toI64(a))) {
+      return;
+    }
+    // One copy loop with every index proven: `buf` now holds the bytes.
+    const buf = this.buf;
+    let n = this.n;
+    for (let i = a; i < b && i < src.length && n >= 0 && n < buf.length; i++) {
+      buf[n] = src[i];
+      n = n + 1;
+    }
+    this.n = n;
   }
 
   str(s: string): void {
     const k = toI32(s.length);
-    this.reserve(k);
-    for (let i = 0; i < k; i++) {
-      uncheckedSet(this.buf, this.n + i, toU8(s.charCodeAt(i)));
+    if (!this.room(toI64(this.n) + toI64(k))) {
+      return;
     }
-    this.n = this.n + k;
+    const buf = this.buf;
+    let n = this.n;
+    for (let i = 0; i < k && n >= 0 && n < buf.length; i++) {
+      buf[n] = toU8(s.charCodeAt(i));
+      n = n + 1;
+    }
+    this.n = n;
   }
 
   /** Drops trailing spaces before the end. */
   trimSpaces(): void {
-    while (this.n > 0 && toI32(uncheckedGet(this.buf, this.n - 1)) === 32) {
-      this.n = this.n - 1;
+    const buf = this.buf;
+    let n = this.n;
+    if (n > buf.length) {
+      fault();
+      return;
     }
+    while (n > 0 && n <= buf.length && toI32(buf[n - 1]) === 32) {
+      n = n - 1;
+    }
+    this.n = n;
   }
 }

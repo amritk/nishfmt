@@ -7,6 +7,7 @@
 // table was made from, or a virama, which the newer Indic conjunct rule GB9c
 // depends on) sets SW_UNI_UNCERTAIN; formatSwift then leaves the file alone.
 
+import { fault } from "../core/fault";
 import { SW_UNI_ENTRIES, SW_UNI_TABLE } from "./unicode_data";
 
 export const SW_GCB_OTHER: i32 = 0;
@@ -38,12 +39,29 @@ const SW_UNI_READY = new Int32Array(1);
 // Set when a count or case test met an uncertain code point; formatSwift resets and reads it.
 export const SW_UNI_UNCERTAIN = new Int32Array(1);
 
-const swHexDigit = (c: i32): i32 => (c <= 57 ? c - 48 : c - 87);
-
-const swUniInit = (): void => {
-  if (SW_UNI_READY[0] === 1) {
-    return;
+const swUniFlagFill = (flag: Int32Array, v: i32): void => {
+  for (let i = 0; i < flag.length; i++) {
+    flag[i] = v;
   }
+};
+
+const swUniFlagRead = (flag: Int32Array): i32 => (flag.length > 0 ? flag[0] : 0);
+
+/** Sets SW_UNI_UNCERTAIN: the file is left alone. */
+export const swUniMarkUncertain = (): void => {
+  swUniFlagFill(SW_UNI_UNCERTAIN, 1);
+};
+
+/** Clears SW_UNI_UNCERTAIN before a file is formatted. */
+export const swUniResetUncertain = (): void => {
+  swUniFlagFill(SW_UNI_UNCERTAIN, 0);
+};
+
+/** Whether SW_UNI_UNCERTAIN is set. */
+export const swUniIsUncertain = (): boolean => swUniFlagRead(SW_UNI_UNCERTAIN) !== 0;
+
+/** Parses SW_UNI_TABLE into starts and values; false after a fault. */
+const swUniFill = (starts: Int32Array, values: Int32Array): boolean => {
   const t = SW_UNI_TABLE;
   const n = toI32(t.length);
   let k = 0;
@@ -55,57 +73,117 @@ const swUniInit = (): void => {
       start = cur;
       cur = 0;
     } else if (c === 44) {
-      SW_UNI_START[k] = start;
-      SW_UNI_VALUE[k] = cur;
+      if (k < 0 || k >= starts.length || k >= values.length) {
+        fault();
+        return false;
+      }
+      starts[k] = start;
+      values[k] = cur;
       k++;
       cur = 0;
     } else {
-      cur = cur * 16 + swHexDigit(c);
+      // The table's hex numbers are code points and property bits, below 2^24.
+      if (cur < 0 || cur >= 0x1000000) {
+        fault();
+        return false;
+      }
+      // A hex digit, 0-9 or a-f: cur * 16 + digit is (cur << 4) | digit.
+      const d = c & 0xff;
+      const digit = d <= 57 ? d - 48 : d - 87;
+      if (digit < 0 || digit > 15) {
+        fault();
+        return false;
+      }
+      cur = (cur << 4) | digit;
     }
   }
-  SW_UNI_START[k] = start;
-  SW_UNI_VALUE[k] = cur;
-  SW_UNI_READY[0] = 1;
+  if (k < 0 || k >= starts.length || k >= values.length) {
+    fault();
+    return false;
+  }
+  starts[k] = start;
+  values[k] = cur;
+  return true;
 };
 
-/** The table value for code point cp. */
-export const swUniProps = (cp: i32): i32 => {
-  swUniInit();
+const swUniInit = (): void => {
+  if (swUniFlagRead(SW_UNI_READY) === 1) {
+    return;
+  }
+  if (swUniFill(SW_UNI_START, SW_UNI_VALUE)) {
+    swUniFlagFill(SW_UNI_READY, 1);
+  }
+};
+
+/** The table value for code point cp, by binary search of starts. */
+const swUniLookup = (starts: Int32Array, values: Int32Array, cp: i32): i32 => {
   let lo = 0;
   let hi = SW_UNI_ENTRIES - 1;
   while (lo < hi) {
-    const mid = (lo + hi + 1) >> 1;
-    if (SW_UNI_START[mid] <= cp) {
+    // lo and hi stay within [0, SW_UNI_ENTRIES), so the u32 sum is exact.
+    const mid = toI32((toU32(lo) + toU32(hi) + 1) >> 1);
+    if (mid < 0 || mid >= starts.length) {
+      fault();
+      return 0;
+    }
+    if (starts[mid] <= cp) {
       lo = mid;
     } else {
       hi = mid - 1;
     }
   }
-  const v = SW_UNI_VALUE[lo];
+  if (lo < 0 || lo >= values.length) {
+    fault();
+    return 0;
+  }
+  const v = values[lo];
   if ((v & SW_UNI_UNSURE) !== 0) {
-    SW_UNI_UNCERTAIN[0] = 1;
+    swUniMarkUncertain();
   }
   return v;
 };
 
+/** The table value for code point cp. */
+export const swUniProps = (cp: i32): i32 => {
+  swUniInit();
+  return swUniLookup(SW_UNI_START, SW_UNI_VALUE, cp);
+};
+
 /** The code point at byte i of s (valid UTF-8). */
 export const swUniCpAt = (s: string, i: i32): i32 => {
+  const n = toI32(s.length);
+  if (i < 0 || i >= n) {
+    fault();
+    return 0;
+  }
   const c = s.charCodeAt(i);
   if (c < 0x80) {
     return c;
   }
+  const i1 = i + 1;
+  if (i1 >= n) {
+    fault();
+    return 0;
+  }
+  const b1 = s.charCodeAt(i1) & 0x3f;
   if (c < 0xe0) {
-    return ((c & 0x1f) << 6) | (s.charCodeAt(i + 1) & 0x3f);
+    return ((c & 0x1f) << 6) | b1;
   }
+  const i2 = i1 + 1;
+  if (i2 >= n) {
+    fault();
+    return 0;
+  }
+  const b2 = s.charCodeAt(i2) & 0x3f;
   if (c < 0xf0) {
-    return ((c & 0x0f) << 12) | ((s.charCodeAt(i + 1) & 0x3f) << 6) | (s.charCodeAt(i + 2) & 0x3f);
+    return ((c & 0x0f) << 12) | (b1 << 6) | b2;
   }
-  return (
-    ((c & 0x07) << 18) |
-    ((s.charCodeAt(i + 1) & 0x3f) << 12) |
-    ((s.charCodeAt(i + 2) & 0x3f) << 6) |
-    (s.charCodeAt(i + 3) & 0x3f)
-  );
+  const i3 = i2 + 1;
+  if (i3 >= n) {
+    fault();
+    return 0;
+  }
+  return ((c & 0x07) << 18) | (b1 << 12) | (b2 << 6) | (s.charCodeAt(i3) & 0x3f);
 };
 
 const swUniLen = (c: i32): i32 => (c < 0x80 ? 1 : c < 0xe0 ? 2 : c < 0xf0 ? 3 : 4);
@@ -156,7 +234,12 @@ const swGraphemeBreak = (st: SwGraphemeState, v: i32): boolean => {
   } else {
     st.pict = 0;
   }
-  st.ri = cur === SW_GCB_RI ? st.ri + 1 : 0;
+  if (cur === SW_GCB_RI) {
+    // A count of the code points of one string: below 2^31 - 1.
+    st.ri = toI32(toU32(st.ri) + 1);
+  } else {
+    st.ri = 0;
+  }
   st.prev = cur;
   return brk;
 };
@@ -174,7 +257,7 @@ export const swGraphemeCount = (s: string): i32 => {
   if (ascii) {
     let count = n;
     for (let i = 1; i < n; i++) {
-      if (s.charCodeAt(i) === 10 && s.charCodeAt(i - 1) === 13) {
+      if (s.charCodeAt(i) === 10 && s.charCodeAt(i - 1) === 13 && count > 0) {
         count--;
       }
     }
@@ -183,13 +266,14 @@ export const swGraphemeCount = (s: string): i32 => {
   const st = new SwGraphemeState();
   let count = 0;
   let i = 0;
-  while (i < n) {
+  // i < n and count <= i, so the u32 sums below are exact.
+  while (i >= 0 && i < n) {
     const c = s.charCodeAt(i);
     const v = swUniProps(swUniCpAt(s, i));
     if (swGraphemeBreak(st, v)) {
-      count++;
+      count = toI32(toU32(count) + 1);
     }
-    i += swUniLen(c);
+    i = toI32(toU32(i) + toU32(swUniLen(c)));
   }
   return count;
 };
@@ -198,23 +282,34 @@ export const swGraphemeCount = (s: string): i32 => {
 export const swCharacterEnd = (s: string, i0: i32): i32 => {
   const n = toI32(s.length);
   const st = new SwGraphemeState();
+  if (i0 < 0) {
+    fault();
+    return n;
+  }
   let i = i0;
-  while (i < n) {
+  // i < n, so the u32 sum is exact.
+  while (i >= 0 && i < n) {
     const v = swUniProps(swUniCpAt(s, i));
     if (swGraphemeBreak(st, v) && i > i0) {
       return i;
     }
-    i += swUniLen(s.charCodeAt(i));
+    i = toI32(toU32(i) + toU32(swUniLen(s.charCodeAt(i))));
   }
   return n;
 };
 
 /** String(c).uppercased() == String(c) for the Character starting at byte i of s. */
 export const swCharacterUppercaseInvariant = (s: string, i: i32): boolean => {
+  const n = toI32(s.length);
+  if (i < 0 || i >= n) {
+    fault();
+    return false;
+  }
   const c = s.charCodeAt(i);
-  const e = c < 0x80 && (i + 1 >= toI32(s.length) || s.charCodeAt(i + 1) < 0x80) ? i + 1 : swCharacterEnd(s, i);
+  const e = c < 0x80 && (i + 1 >= n || s.charCodeAt(i + 1) < 0x80) ? i + 1 : swCharacterEnd(s, i);
   let j = i;
-  while (j < e) {
+  // e <= n, and j < n keeps the u32 sum below exact.
+  while (j >= 0 && j < e && j < n) {
     const d = s.charCodeAt(j);
     if (d < 0x80) {
       if (d >= 97 && d <= 122) {
@@ -223,20 +318,26 @@ export const swCharacterUppercaseInvariant = (s: string, i: i32): boolean => {
     } else if ((swUniProps(swUniCpAt(s, j)) & SW_UNI_UPPER_CHANGES) !== 0) {
       return false;
     }
-    j += swUniLen(d);
+    j = toI32(toU32(j) + toU32(swUniLen(d)));
   }
   return true;
 };
 
 /** Character.isUppercase for the Character starting at byte i of s. */
 export const swCharacterIsUppercase = (s: string, i: i32): boolean => {
+  const n = toI32(s.length);
+  if (i < 0 || i >= n) {
+    fault();
+    return false;
+  }
   const c = s.charCodeAt(i);
-  if (c < 0x80 && (i + 1 >= toI32(s.length) || s.charCodeAt(i + 1) < 0x80)) {
+  if (c < 0x80 && (i + 1 >= n || s.charCodeAt(i + 1) < 0x80)) {
     return c >= 65 && c <= 90;
   }
   const e = swCharacterEnd(s, i);
   const first = swUniProps(swUniCpAt(s, i));
-  if (e === i + swUniLen(c)) {
+  // i < n, so the u32 sums in this function are exact.
+  if (e === toI32(toU32(i) + toU32(swUniLen(c)))) {
     // One scalar: its Uppercase property, or cased and unchanged by uppercasing.
     if ((first & SW_UNI_UPPER) !== 0) {
       return true;
@@ -248,7 +349,7 @@ export const swCharacterIsUppercase = (s: string, i: i32): boolean => {
   let upperChanges = false;
   let lowerChanges = false;
   let j = i;
-  while (j < e) {
+  while (j >= 0 && j < e && j < n) {
     const d = s.charCodeAt(j);
     const v =
       d < 0x80
@@ -264,7 +365,7 @@ export const swCharacterIsUppercase = (s: string, i: i32): boolean => {
     if ((v & SW_UNI_LOWER_CHANGES) !== 0) {
       lowerChanges = true;
     }
-    j += swUniLen(d);
+    j = toI32(toU32(j) + toU32(swUniLen(d)));
   }
   return !upperChanges && lowerChanges;
 };
@@ -272,12 +373,17 @@ export const swCharacterIsUppercase = (s: string, i: i32): boolean => {
 /** Whether the scalar at byte i of s continues the Character before it (where byte-wise and
  *  Character-wise string operations would disagree). */
 export const swUniJoinsPrevious = (s: string, i: i32): boolean => {
-  if (i <= 0 || i >= toI32(s.length)) {
+  const n = toI32(s.length);
+  if (i <= 0 || i >= n) {
     return false;
   }
   let p = i - 1;
-  while (p > 0 && (s.charCodeAt(p) & 0xc0) === 0x80) {
+  while (p > 0 && p < n && (s.charCodeAt(p) & 0xc0) === 0x80) {
     p--;
+  }
+  if (p < 0 || p >= n) {
+    fault();
+    return false;
   }
   return (s.charCodeAt(i) >= 0x80 || s.charCodeAt(p) >= 0x80) && swCharacterEnd(s, p) > i;
 };
@@ -285,14 +391,15 @@ export const swUniJoinsPrevious = (s: string, i: i32): boolean => {
 /** Marks the file uncertain when a Character boundary among the first `upto` bytes of s is not
  *  where a byte-wise operation would put it. */
 export const swUniCheckPrefix = (s: string, upto: i32): void => {
-  const n = toI32(s.length) < upto ? toI32(s.length) : upto;
-  for (let i = 1; i < n; i++) {
+  const len = toI32(s.length);
+  const n = len < upto ? len : upto;
+  for (let i = 1; i < n && i < len; i++) {
     if (
       (s.charCodeAt(i) >= 0x80 || s.charCodeAt(i - 1) >= 0x80) &&
       (s.charCodeAt(i) & 0xc0) !== 0x80 &&
       swUniJoinsPrevious(s, i)
     ) {
-      SW_UNI_UNCERTAIN[0] = 1;
+      swUniMarkUncertain();
       return;
     }
   }

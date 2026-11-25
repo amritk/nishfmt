@@ -30,6 +30,10 @@ import {
   SW_T_NON_SPACE_OR_COMMENT_OR_LINEBREAK,
 } from "./token";
 
+// Token indices, token counts and line numbers stay below the token count, far from the
+// i32 limits, so a sum or difference of them the prover cannot bound is written
+// `toI32(toU32(a) + b)`: wrapping u32 arithmetic, exact for such values.
+
 /** _FormatRules.allModifiers. */
 export const swIsModifierStr = (s: string): boolean =>
   s === "override" ||
@@ -159,7 +163,7 @@ export const swModifiersForDeclaration = (f: SwFormatter, index0: i32): SwModifi
         }
       }
       out.idx.push(prevIndex);
-      out.names.push(f.text(prevIndex, hi + 1));
+      out.names.push(f.text(prevIndex, toI32(toU32(hi) + 1)));
     } else if (k === SW_END && s === ")") {
       const startIndex = f.indexOfBefore(SW_START, "(", 0, prevIndex);
       if (startIndex < 0) {
@@ -217,8 +221,11 @@ const swPrevIsOp = (f: SwFormatter, i: i32, s: string): boolean => {
 /** modifiersForDeclaration(at:contains: name): a modifier whose first token or full text is `name`. */
 export const swHasModifier = (f: SwFormatter, index: i32, name: string): boolean => {
   const m = swModifiersForDeclaration(f, index);
-  for (let j = 0; j < toI32(m.idx.length); j++) {
-    if (f.s(m.idx[j]) === name || m.names[j] === name) {
+  const idx = m.idx;
+  const names = m.names;
+  for (let j = 0; j < idx.length && j < names.length; j++) {
+    const nj = names[j];
+    if (f.s(idx[j]) === name || nj === name) {
       return true;
     }
   }
@@ -228,9 +235,11 @@ export const swHasModifier = (f: SwFormatter, index: i32, name: string): boolean
 /** indexOfModifier(_:forDeclarationAt:), or -1. */
 export const swIndexOfModifier = (f: SwFormatter, name: string, index: i32): i32 => {
   const m = swModifiersForDeclaration(f, index);
-  for (let j = 0; j < toI32(m.idx.length); j++) {
-    if (m.names[j] === name) {
-      return m.idx[j];
+  const idx = m.idx;
+  const names = m.names;
+  for (let j = 0; j < idx.length && j < names.length; j++) {
+    if (names[j] === name) {
+      return idx[j];
     }
   }
   return -1;
@@ -240,11 +249,13 @@ export const swIndexOfModifier = (f: SwFormatter, name: string, index: i32): i32
 export const swStartOfModifiers = (f: SwFormatter, index: i32, includingAttributes: boolean): i32 => {
   let startIndex = index;
   const m = swModifiersForDeclaration(f, index);
-  for (let j = 0; j < toI32(m.idx.length); j++) {
-    if (!includingAttributes && m.names[j].startsWith("@")) {
+  const idx = m.idx;
+  const names = m.names;
+  for (let j = 0; j < idx.length && j < names.length; j++) {
+    if (!includingAttributes && names[j].startsWith("@")) {
       break;
     }
-    startIndex = m.idx[j];
+    startIndex = idx[j];
   }
   return startIndex;
 };
@@ -259,8 +270,8 @@ export const swIsDocComment = (f: SwFormatter, i: i32): boolean => {
   } else {
     return false;
   }
-  if (!f.has(i + 1) || f.k(i + 1) !== SW_COMMENT) {
+  if (!f.has(toI32(toU32(i) + 1)) || f.k(toI32(toU32(i) + 1)) !== SW_COMMENT) {
     return false;
   }
-  return f.s(i + 1).startsWith(prefix);
+  return f.s(toI32(toU32(i) + 1)).startsWith(prefix);
 };

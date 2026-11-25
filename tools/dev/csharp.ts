@@ -1,7 +1,8 @@
 // A CSharp-only driver for quick builds while porting:
-//   nish tools/dev/csharp.ts --link /tmp/csharpdev && /tmp/csharpdev <file>
+//   nish tools/dev/csharp.ts --allow-panics --link /tmp/csharpdev && /tmp/csharpdev <file>
 // prints the formatted file, or exits 1 when it cannot be formatted.
 
+import { faultReset, faulted } from "../../src/core/fault";
 import { Out } from "../../src/core/out";
 import { CSharpEngine, formatCSharp } from "../../src/csharp/run";
 
@@ -17,7 +18,8 @@ export const main = (): i32 => {
   const out = new Out(n + 1024);
   const e = new CSharpEngine();
   e.debug = getenv("FFDEBUG") !== null;
-  if (!formatCSharp(e, path, src, n, out)) {
+  faultReset();
+  if (!formatCSharp(e, path, src, n, out) || faulted()) {
     return 1;
   }
   writeBytes(out.buf, 0, out.n);

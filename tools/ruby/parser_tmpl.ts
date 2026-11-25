@@ -34,6 +34,7 @@ import {
   vMake,
   vTag,
 } from "./ast";
+import { fault } from "../core/fault";
 import { RbBuilder, RbParseState } from "./builder";
 import {
   RbContext,
@@ -94,6 +95,169 @@ import {
 const RB_TRUE: i32 = 16777242; // vMake(VT_SCALAR, (1 << 20) | 1)
 const RB_FALSE: i32 = 16777226; // vMake(VT_SCALAR, 1 << 20)
 
+// racc's LALR driver. The decoded tables are lent as parameters, so each read
+// is checked against the table's own length; a state or rule outside its table
+// is one the tables never produce, and faults.
+const rbParseRun = (
+  p: RbParser,
+  aPtr: Int32Array,
+  aTab: Int32Array,
+  aChk: Int32Array,
+  aDef: Int32Array,
+  rLen: Int32Array,
+  rNt: Int32Array,
+  rAct: Int32Array,
+  gPtr: Int32Array,
+  gTab: Int32Array,
+  gChk: Int32Array,
+  gDef: Int32Array,
+): i32 => {
+  const states: i32[] = [0];
+  const vals: i32[] = [];
+  let readNext = true;
+  let t = -1;
+  while (true) {
+    if (p.failed || p.st.failed || p.lx.failed || p.lx.fatal) {
+      p.failed = true;
+      return V_NIL;
+    }
+    const sn = toI32(states.length);
+    if (sn <= 0) {
+      fault();
+      return V_NIL;
+    }
+    const s = states[sn - 1];
+    if (s < 0 || s >= aPtr.length) {
+      fault();
+      return V_NIL;
+    }
+    const ptr = aPtr[s];
+    let act = RB_NIL;
+    if (ptr !== RB_NIL) {
+      if (readNext) {
+        if (t !== 0) {
+          t = p.next();
+        }
+        readNext = false;
+      }
+      // ptr + t, in i64 so that no sum overflows.
+      const iw = toI64(ptr) + toI64(t);
+      let i = -1;
+      if (iw >= toI64(0) && iw < toI64(RP_ACTION_TABLE_N)) {
+        i = toI32(iw);
+      }
+      if (i >= 0 && i < aTab.length) {
+        act = aTab[i];
+        if (act !== RB_NIL) {
+          if (i >= aChk.length) {
+            fault();
+            return V_NIL;
+          }
+          if (aChk[i] !== s) {
+            act = RB_NIL;
+          }
+        }
+      }
+    }
+    if (act === RB_NIL) {
+      if (s >= aDef.length) {
+        fault();
+        return V_NIL;
+      }
+      act = aDef[s];
+    }
+    if (act > 0 && act < RP_SHIFT_N) {
+      vals.push(p.tokH);
+      states.push(act);
+      readNext = true;
+    } else if (act < 0 && act > -RP_REDUCE_N) {
+      // -act, which lies in (0, RP_REDUCE_N).
+      const r = toI32(toU32(0) - toU32(act));
+      if (r < 0 || r >= rLen.length || r >= rNt.length || r >= rAct.length) {
+        fault();
+        return V_NIL;
+      }
+      const len = rLen[r];
+      const nt = rNt[r];
+      const fn = rAct[r];
+      // The rule's values, from the top of the stack; each state but the first
+      // has one.
+      const vn = toI32(vals.length);
+      if (len < 0 || len > vn || len >= states.length) {
+        fault();
+        return V_NIL;
+      }
+      const v: i32[] = [];
+      for (let k = vn - len; k >= 0 && k < vn && k < vals.length; k++) {
+        v.push(vals[k]);
+      }
+      for (let j = 0; j < len; j++) {
+        if (vals.length > 0) {
+          vals.pop();
+        } else {
+          fault();
+          return V_NIL;
+        }
+        if (states.length > 0) {
+          states.pop();
+        } else {
+          fault();
+          return V_NIL;
+        }
+      }
+      let res = len > 0 && v.length > 0 ? v[0] : V_NIL;
+      if (fn >= 0) {
+        res = p.reduce(fn, v);
+      } else if (fn === -2) {
+        p.failed = true;
+      }
+      vals.push(res);
+      if (nt < RP_NT_BASE) {
+        fault();
+        return V_NIL;
+      }
+      // nt - RP_NT_BASE, both non-negative with nt the larger.
+      const k1 = toI32(toU32(nt) - toU32(RP_NT_BASE));
+      if (k1 < 0 || k1 >= gPtr.length || k1 >= gDef.length) {
+        fault();
+        return V_NIL;
+      }
+      const gp = gPtr[k1];
+      let next = RB_NIL;
+      if (gp !== RB_NIL) {
+        const tn = toI32(states.length);
+        if (tn <= 0) {
+          fault();
+          return V_NIL;
+        }
+        // gp + the state below, in i64 so that no sum overflows.
+        const gw = toI64(gp) + toI64(states[tn - 1]);
+        if (gw >= toI64(0) && gw < toI64(RP_GOTO_TABLE_N)) {
+          const gi = toI32(gw);
+          if (gi >= 0 && gi < gTab.length && gi < gChk.length) {
+            const cs = gTab[gi];
+            if (cs !== RB_NIL && gChk[gi] === k1) {
+              next = cs;
+            }
+          } else {
+            fault();
+            return V_NIL;
+          }
+        }
+      }
+      if (next === RB_NIL) {
+        next = gDef[k1];
+      }
+      states.push(next);
+    } else if (act === RP_SHIFT_N) {
+      return vals.length > 0 ? vals[0] : V_NIL;
+    } else {
+      p.failed = true;
+      return V_NIL;
+    }
+  }
+};
+
 export class RbParser {
   a: RbAst;
   b: RbBuilder;
@@ -102,10 +266,12 @@ export class RbParser {
   ctx: RbContext;
   env: RbStaticEnv;
   lastTok: i32 = 0;
+  tokH: i32 = 0;
   failed: boolean = false;
 
   constructor(pts: i32[]) {
     rbTablesInit();
+    this.tokH = V_NIL;
     this.a = new RbAst(pts);
     this.ctx = new RbContext();
     this.env = new RbStaticEnv();
@@ -123,88 +289,32 @@ export class RbParser {
 
   /** The program's AST, or V_NIL; `failed` tells an empty program from a syntax error. */
   parse(): i32 {
-    const states: i32[] = [0];
-    const vals: i32[] = [];
-    let readNext = true;
-    let t = -1;
-    let tokH = V_NIL;
-    while (true) {
-      if (this.failed || this.st.failed || this.lx.failed || this.lx.fatal) {
-        this.failed = true;
-        return V_NIL;
-      }
-      const s = states[states.length - 1];
-      const ptr = RP_ACTION_POINTER_D[s];
-      let act = 0;
-      if (ptr !== RB_NIL) {
-        if (readNext) {
-          if (t !== 0) {
-            t = this.lx.advance();
-            if (t === TK_tNL || t === TK_tSTRING_DVAR) {
-              tokH = this.a.nilValueToken(this.lx.tokS, this.lx.tokE);
-            } else {
-              tokH = this.a.token(this.lx.tokVal, this.lx.tokS, this.lx.tokE);
-            }
-            this.lastTok = t;
-          }
-          readNext = false;
-        }
-        const i = ptr + t;
-        act = i >= 0 && i < RP_ACTION_TABLE_N ? RP_ACTION_TABLE_D[i] : RB_NIL;
-        if (act === RB_NIL || RP_ACTION_CHECK_D[i] !== s) {
-          act = RP_ACTION_DEFAULT_D[s];
-        }
-      } else {
-        act = RP_ACTION_DEFAULT_D[s];
-      }
-      if (act > 0 && act < RP_SHIFT_N) {
-        vals.push(tokH);
-        states.push(act);
-        readNext = true;
-      } else if (act < 0 && act > -RP_REDUCE_N) {
-        const r = -act;
-        const len = RP_REDUCE_LEN_D[r];
-        const nt = RP_REDUCE_NT_D[r];
-        const fn = RP_REDUCE_ACT_D[r];
-        const v: i32[] = [];
-        const base = toI32(vals.length) - len;
-        for (let j = 0; j < len; j++) {
-          v.push(vals[base + j]);
-        }
-        for (let j = 0; j < len; j++) {
-          vals.pop();
-          states.pop();
-        }
-        let res = len > 0 ? v[0] : V_NIL;
-        if (fn >= 0) {
-          res = this.reduce(fn, v);
-        } else if (fn === -2) {
-          this.failed = true;
-        }
-        vals.push(res);
-        const k1 = nt - RP_NT_BASE;
-        const gp = RP_GOTO_POINTER_D[k1];
-        let next = RB_NIL;
-        if (gp !== RB_NIL) {
-          const gi = gp + states[states.length - 1];
-          if (gi >= 0 && gi < RP_GOTO_TABLE_N) {
-            const cs = RP_GOTO_TABLE_D[gi];
-            if (cs !== RB_NIL && RP_GOTO_CHECK_D[gi] === k1) {
-              next = cs;
-            }
-          }
-        }
-        if (next === RB_NIL) {
-          next = RP_GOTO_DEFAULT_D[k1];
-        }
-        states.push(next);
-      } else if (act === RP_SHIFT_N) {
-        return vals.length > 0 ? vals[0] : V_NIL;
-      } else {
-        this.failed = true;
-        return V_NIL;
-      }
+    return rbParseRun(
+      this,
+      RP_ACTION_POINTER_D,
+      RP_ACTION_TABLE_D,
+      RP_ACTION_CHECK_D,
+      RP_ACTION_DEFAULT_D,
+      RP_REDUCE_LEN_D,
+      RP_REDUCE_NT_D,
+      RP_REDUCE_ACT_D,
+      RP_GOTO_POINTER_D,
+      RP_GOTO_TABLE_D,
+      RP_GOTO_CHECK_D,
+      RP_GOTO_DEFAULT_D,
+    );
+  }
+
+  /** The next token, as the driver reads it: its id, with its handle left in `tokH`. */
+  next(): i32 {
+    const t = this.lx.advance();
+    if (t === TK_tNL || t === TK_tSTRING_DVAR) {
+      this.tokH = this.a.nilValueToken(this.lx.tokS, this.lx.tokE);
+    } else {
+      this.tokH = this.a.token(this.lx.tokVal, this.lx.tokS, this.lx.tokE);
     }
+    this.lastTok = t;
+    return t;
   }
 
   // ---- What the actions use -------------------------------------------------------
@@ -218,6 +328,17 @@ export class RbParser {
   /** val[k]: nil past the values the rule has. */
   va(v: i32[], k: i32): i32 {
     return k < toI32(v.length) ? v[k] : V_NIL;
+  }
+
+  /** this.a.len(l) - n: what a leading splat takes when n targets follow it. */
+  lenLess(l: i32, n: i32): i32 {
+    const k = this.a.len(l);
+    if (k < 0 || n < 0) {
+      // A list's length and a count of targets are never negative.
+      fault();
+      return 0;
+    }
+    return k - n;
   }
 
   hb(b: boolean): i32 {

@@ -7,6 +7,7 @@
 // Ported from the parser gem 3.3.13.0 (MIT License, Copyright (c) 2013-2024
 // parser contributors).
 
+import { fault } from "../core/fault";
 import { rbText } from "./lexer";
 
 /** One node of the action tree; never changed once made. */
@@ -136,8 +137,14 @@ const rbCombineChildren = (self: RbAction, more: RbAction[]): RbCombined => {
 const rbFirstEndAfter = (kids: RbAction[], from: i32, pos: i32): i32 => {
   let lo = from;
   let hi = toI32(kids.length);
-  while (lo < hi) {
-    const mid = (lo + hi) >> 1;
+  // `from` is an index of `kids`, so `0 <= lo <= hi <= kids.length` throughout.
+  while (lo >= 0 && hi >= 0 && lo < hi) {
+    // Both are non-negative, so the u32 sum is the true one.
+    const mid = toI32((toU32(lo) + toU32(hi)) >> 1);
+    if (mid < 0 || mid >= kids.length) {
+      fault();
+      return lo;
+    }
     if (kids[mid].e > pos) {
       hi = mid;
     } else {
@@ -150,8 +157,13 @@ const rbFirstEndAfter = (kids: RbAction[], from: i32, pos: i32): i32 => {
 const rbFirstStartFrom = (kids: RbAction[], from: i32, pos: i32): i32 => {
   let lo = from;
   let hi = toI32(kids.length);
-  while (lo < hi) {
-    const mid = (lo + hi) >> 1;
+  // As in rbFirstEndAfter.
+  while (lo >= 0 && hi >= 0 && lo < hi) {
+    const mid = toI32((toU32(lo) + toU32(hi)) >> 1);
+    if (mid < 0 || mid >= kids.length) {
+      fault();
+      return lo;
+    }
     if (kids[mid].s >= pos) {
       hi = mid;
     } else {
@@ -165,7 +177,11 @@ const rbCmp = (a: i32, b: i32): i32 => (a < b ? -1 : a > b ? 1 : 0);
 
 const rbSlice = (kids: RbAction[], a: i32, b: i32): RbAction[] => {
   const out: RbAction[] = [];
-  for (let i = a; i < b; i++) {
+  if (a < b && (a < 0 || b > kids.length)) {
+    fault();
+    return out;
+  }
+  for (let i = a; i >= 0 && i < b && i < kids.length; i++) {
     out.push(kids[i]);
   }
   return out;
@@ -175,8 +191,17 @@ const rbPlace = (self: RbAction, action: RbAction): RbCombined => {
   const kids = self.children;
   const n = toI32(kids.length);
   let left = rbFirstEndAfter(kids, 0, action.s);
+  // Both searches answer an index in [their start, n].
+  if (left < 0 || left > n) {
+    fault();
+    return rbFail();
+  }
   const start = left === 0 ? 0 : left - 1;
   let right = rbFirstStartFrom(kids, start, action.e);
+  if (right < 0 || right > n) {
+    fault();
+    return rbFail();
+  }
   const center = right - left;
   let parent: RbAction | null = null;
   let hasChild = false;
@@ -185,24 +210,36 @@ const rbPlace = (self: RbAction, action: RbAction): RbCombined => {
   if (center === 0) {
     // neither parent nor children
   } else if (center === -1) {
+    // `right` is `left - 1`: the two swap past each other.
+    right = left;
     left -= 1;
-    right += 1;
+    if (left < 0 || left >= kids.length) {
+      fault();
+      return rbFail();
+    }
     parent = kids[left];
   } else {
-    const ol = rbCmp(kids[left].s, action.s);
-    const or = rbCmp(kids[right - 1].e, action.e);
+    // Here `left < right`: `right` is at least `left - 1`, and center is neither 0 nor -1.
+    if (left < 0 || left >= kids.length || right < 1 || right > kids.length) {
+      fault();
+      return rbFail();
+    }
+    const kl = kids[left];
+    const kr = kids[right - 1];
+    const ol = rbCmp(kl.s, action.s);
+    const or = rbCmp(kr.e, action.e);
     if (center === 1 && ol <= 0 && or >= 0) {
-      parent = kids[left];
+      parent = kl;
     } else {
       hasChild = true;
       let a = left;
       let b = right;
       if (ol < 0) {
-        fusible.push(kids[a]);
+        fusible.push(kl);
         a++;
       }
       if (or > 0) {
-        fusible.push(kids[b - 1]);
+        fusible.push(kr);
         b--;
       }
       contained = rbSlice(kids, a, b);
@@ -302,7 +339,14 @@ export class RbRewriter {
   constructor(n: i32) {
     this.n = n;
     const none: RbAction[] = [];
-    this.root = new RbAction(-1, n + 1, "", false, "", "", none);
+    let end = n;
+    // `n` is a source length, below the i32 maximum.
+    if (n < 2147483647) {
+      end = n + 1;
+    } else {
+      fault();
+    }
+    this.root = new RbAction(-1, end, "", false, "", "", none);
   }
 
   empty(): boolean {
@@ -372,12 +416,16 @@ export class RbRewriter {
     rbOrdered(this.root, rs, re, rt);
     const parts: string[] = [];
     let last = 0;
-    for (let i = 0; i < toI32(rs.length); i++) {
-      if (rs[i] > last) {
-        parts.push(rbText(pts, last, rs[i]));
+    // The three grow together (rbOrdered).
+    for (let i = 0; i < rs.length && i < re.length && i < rt.length; i++) {
+      const s = rs[i];
+      const t = rt[i];
+      const e = re[i];
+      if (s > last) {
+        parts.push(rbText(pts, last, s));
       }
-      parts.push(rt[i]);
-      last = re[i];
+      parts.push(t);
+      last = e;
     }
     parts.push(rbText(pts, last, toI32(pts.length)));
     return parts.join("");

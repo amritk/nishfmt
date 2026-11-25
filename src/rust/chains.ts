@@ -31,6 +31,8 @@ import { RsListItem, rsExtractPreComment } from "./lists";
 import { RsShape } from "./shape";
 import { RsStrBuf, rsHasByte, rsIndexOfByte, rsIsBlank, rsLines, rsTrim, rsTrimEnd, rsWidth } from "./str";
 import { rsIdentStr, rsIsBlockExpr, rsLastLineExtendable } from "./utils";
+import { add32, atI32, sub32 } from "../core/arr";
+import { fault } from "../core/fault";
 
 const CI_PARENT: i32 = 0;
 const CI_METHOD: i32 = 1;
@@ -62,21 +64,21 @@ class ChainItem {
 /** The name of field access `f` (tuple indices split from a float token included). */
 export const rsFieldName = (ctx: RsCtx, f: i32): string => {
   const ast = ctx.ast;
-  const tok = ast.d[f];
-  const x = ast.x[f];
+  const tok = atI32(ast.d, f);
+  const x = atI32(ast.x, f);
   if (x >= 0) {
-    return ctx.snippet(ctx.f.t.lo[tok], x);
+    return ctx.snippet(atI32(ctx.f.t.lo, tok), x);
   }
   if (x <= -2) {
-    return ctx.snippet(-2 - x, ctx.f.t.hi[tok]);
+    return ctx.snippet(-2 - x, atI32(ctx.f.t.hi, tok));
   }
   return ctx.tokStr(tok);
 };
 
 /** The end of field access `f`'s name. */
 export const rsFieldNameHi = (ctx: RsCtx, f: i32): i32 => {
-  const x = ctx.ast.x[f];
-  return x >= 0 ? x : ctx.f.t.hi[ctx.ast.d[f]];
+  const x = atI32(ctx.ast.x, f);
+  return x >= 0 ? x : atI32(ctx.f.t.hi, atI32(ctx.ast.d, f));
 };
 
 const isTupFieldName = (s: string): boolean => {
@@ -91,15 +93,15 @@ const isTupFieldName = (s: string): boolean => {
 
 const shouldAddParens = (ctx: RsCtx, e: i32): boolean => {
   const ast = ctx.ast;
-  const k = ast.kind[e];
+  const k = atI32(ast.kind, e);
   if (k === N_EX_LIT) {
     return rsLitEndsInDot(ctx, e);
   }
   if (k === N_EX_CLOSURE) {
-    const body = ast.a[e];
-    const bk = ast.kind[body];
+    const body = atI32(ast.a, e);
+    const bk = atI32(ast.kind, body);
     if (bk === N_EX_RANGE) {
-      return (ast.fl[body] & RANGE_CLOSED) === 0;
+      return (atI32(ast.fl, body) & RANGE_CLOSED) === 0;
     }
     if (bk === N_EX_LIT) {
       return rsLitEndsInDot(ctx, body);
@@ -110,32 +112,32 @@ const shouldAddParens = (ctx: RsCtx, e: i32): boolean => {
 
 const itemFromAst = (ctx: RsCtx, e: i32, isPostfixReceiver: boolean, tries: i32): ChainItem => {
   const ast = ctx.ast;
-  const k = ast.kind[e];
+  const k = atI32(ast.kind, e);
   let kind = CI_PARENT;
   let lo = 0;
   let hi = 0;
   let nested = false;
   if (k === N_EX_METHOD) {
     kind = CI_METHOD;
-    lo = ast.hi[ast.a[e]];
-    hi = ast.hi[e];
+    lo = atI32(ast.hi, atI32(ast.a, e));
+    hi = atI32(ast.hi, e);
   } else if (k === N_EX_FIELD) {
     const name = rsFieldName(ctx, e);
     if (isTupFieldName(name)) {
       kind = CI_TUPLE_FIELD;
-      const inner = ast.a[e];
-      nested = ast.kind[inner] === N_EX_FIELD && isTupFieldName(rsFieldName(ctx, inner));
+      const inner = atI32(ast.a, e);
+      nested = atI32(ast.kind, inner) === N_EX_FIELD && isTupFieldName(rsFieldName(ctx, inner));
     } else {
       kind = CI_FIELD;
     }
-    lo = ast.hi[ast.a[e]];
+    lo = atI32(ast.hi, atI32(ast.a, e));
     hi = rsFieldNameHi(ctx, e);
   } else if (k === N_EX_AWAIT) {
     kind = CI_AWAIT;
-    lo = ast.hi[ast.a[e]];
-    hi = ast.hi[e];
+    lo = atI32(ast.hi, atI32(ast.a, e));
+    hi = atI32(ast.hi, e);
   } else {
-    const it = new ChainItem(CI_PARENT, ast.lo[e], ast.hi[e]);
+    const it = new ChainItem(CI_PARENT, atI32(ast.lo, e), atI32(ast.hi, e));
     it.expr = e;
     it.parens = isPostfixReceiver && shouldAddParens(ctx, e);
     it.tries = tries;
@@ -151,14 +153,14 @@ const itemFromAst = (ctx: RsCtx, e: i32, isPostfixReceiver: boolean, tries: i32)
 
 const rewriteMethodCall = (ctx: RsCtx, e: i32, lo: i32, hi: i32, shape: RsShape): string | null => {
   const ast = ctx.ast;
-  const seg = ast.b[e];
+  const seg = atI32(ast.b, e);
   let typeStr = "";
-  const ga = ast.a[seg];
+  const ga = atI32(ast.a, seg);
   if (ga >= 0) {
     const parts: string[] = [];
-    for (let i = 0; i < ast.ln[ga]; i++) {
+    for (let i = 0; i < atI32(ast.ln, ga); i++) {
       const arg = ast.kid(ga, i);
-      if (ast.kind[arg] === N_CONSTRAINT) {
+      if (atI32(ast.kind, arg) === N_CONSTRAINT) {
         continue;
       }
       const r = rsRewriteNode(ctx, arg, shape);
@@ -171,9 +173,9 @@ const rewriteMethodCall = (ctx: RsCtx, e: i32, lo: i32, hi: i32, shape: RsShape)
       typeStr = "::<" + parts.join(", ") + ">";
     }
   }
-  const callee = "." + rsIdentStr(ctx, ast.d[seg]) + typeStr;
+  const callee = "." + rsIdentStr(ctx, atI32(ast.d, seg)) + typeStr;
   const args: i32[] = [];
-  for (let i = 0; i < ast.ln[e]; i++) {
+  for (let i = 0; i < atI32(ast.ln, e); i++) {
     args.push(ast.kid(e, i));
   }
   return rsRewriteCall(ctx, callee, args, lo, hi, shape);
@@ -189,7 +191,7 @@ const rewriteItem = (ctx: RsCtx, it: ChainItem, shape0: RsShape): string | null 
   if (k === CI_PARENT) {
     if (it.parens) {
       const ast = ctx.ast;
-      rw = rsRewriteParen(ctx, it.expr, shape, ast.lo[it.expr], ast.hi[it.expr]);
+      rw = rsRewriteParen(ctx, it.expr, shape, atI32(ast.lo, it.expr), atI32(ast.hi, it.expr));
     } else {
       rw = rsRewriteExpr(ctx, it.expr, shape);
     }
@@ -261,9 +263,15 @@ const trimTries = (s: string): string => {
   const result = new RsStrBuf();
   const line = new RsStrBuf();
   let lineBlank = true;
-  for (let ci = 0; ci < r.nc; ci++) {
-    const i = r.starts[ci];
-    const j = ci + 1 < r.nc ? r.starts[ci + 1] : toI32(s.length);
+  const nc = r.nc;
+  for (let ci = 0; ci < nc; ci++) {
+    const i = atI32(r.starts, ci);
+    const j = ci + 1 < nc ? atI32(r.starts, ci + 1) : toI32(s.length);
+    // A char start is in `s`.
+    if (i < 0 || i >= toI32(s.length)) {
+      fault();
+      return "";
+    }
     const c = s.charCodeAt(i);
     if (c === 10) {
       if (result.len() === 0 || !lineBlank) {
@@ -272,7 +280,7 @@ const trimTries = (s: string): string => {
       }
       line.b.n = 0;
       lineBlank = true;
-    } else if (c === 63 && r.kinds[i] === K_NORMAL) {
+    } else if (c === 63 && atI32(r.kinds, i) === K_NORMAL) {
       continue;
     } else {
       line.addSlice(s, i, j);
@@ -293,10 +301,10 @@ const chTrimSpTab = (s: string): string => {
   while (a < b && (s.charCodeAt(a) === 32 || s.charCodeAt(a) === 9)) {
     a++;
   }
-  while (b > a && (s.charCodeAt(b - 1) === 32 || s.charCodeAt(b - 1) === 9)) {
+  while (b > a && b > 0 && (s.charCodeAt(b - 1) === 32 || s.charCodeAt(b - 1) === 9)) {
     b--;
   }
-  return s.slice(a, b);
+  return s.substring(a, b);
 };
 
 class Chain {
@@ -336,14 +344,14 @@ const chainFromAst = (ctx: RsCtx, e0: i32): Chain => {
   const postfix: boolean[] = [false];
   let e = e0;
   for (;;) {
-    const k = ast.kind[e];
+    const k = atI32(ast.kind, e);
     if (k === N_EX_METHOD || k === N_EX_FIELD || k === N_EX_AWAIT) {
-      e = ast.a[e];
+      e = atI32(ast.a, e);
       exprs.push(e);
       // rustfmt 1.10 adds parentheses (should_add_parens) only before a method call.
       postfix.push(k === N_EX_METHOD);
     } else if (k === N_EX_TRY) {
-      e = ast.a[e];
+      e = atI32(ast.a, e);
       exprs.push(e);
       postfix.push(false);
     } else {
@@ -354,18 +362,33 @@ const chainFromAst = (ctx: RsCtx, e0: i32): Chain => {
   let tries = 0;
   for (let i = 0; i < exprs.length; i++) {
     const x = exprs[i];
-    if (ast.kind[x] === N_EX_TRY) {
+    if (atI32(ast.kind, x) === N_EX_TRY) {
+      // One `?` an expression of the chain.
+      if (tries > i) {
+        fault();
+        break;
+      }
       tries++;
     } else {
+      // `exprs` and `postfix` grow together.
+      if (i >= postfix.length) {
+        fault();
+        break;
+      }
       rev.push(itemFromAst(ctx, x, postfix[i], tries));
       tries = 0;
     }
+  }
+  // The chain's root is not a `?`.
+  if (!(rev.length > 0)) {
+    fault();
+    return new Chain(new ChainItem(CI_COMMENT, 0, 0), []);
   }
   const parent = rev.pop();
   const children: ChainItem[] = [];
   const prev = new PrevEnd(parent.hi);
   const items: ChainItem[] = [];
-  for (let i = rev.length - 1; i >= 0; i--) {
+  for (let i = toI32(rev.length) - 1; i >= 0 && i < rev.length; i--) {
     items.push(rev[i]);
   }
   if (items.length > 0) {
@@ -396,6 +419,10 @@ const chainFromAst = (ctx: RsCtx, e0: i32): Chain => {
     if (!handleComment || i === items.length - 1) {
       continue;
     }
+    if (i + 1 >= items.length) {
+      fault();
+      break;
+    }
     const nextLo = items[i + 1].lo;
     handlePostComment(prev.v, nextLo, ctx.snippet(prev.v, nextLo), prev, children);
   }
@@ -425,11 +452,16 @@ const rewriteChainBlock = (ctx: RsCtx, chain: Chain, shape: RsShape): string | n
   }
   let root = root0;
   let rootEndsWithBlock = isBlockLikeItem(ctx, chain.parent, root);
-  let tabWidth = cfg.tabSpaces - shape.off;
+  let tabWidth = sub32(cfg.tabSpaces, shape.off);
   if (tabWidth < 0) {
     tabWidth = 0;
   }
   while (toI32(root.length) <= tabWidth && !rsHasByte(root, 10)) {
+    // The loop leaves once `children` is empty.
+    if (!(children.length > 0)) {
+      fault();
+      return null;
+    }
     const item = children[0];
     if (item.kind === CI_COMMENT) {
       break;
@@ -455,7 +487,7 @@ const rewriteChainBlock = (ctx: RsCtx, chain: Chain, shape: RsShape): string | n
   }
   rewrites.push(root);
   if (children.length === 0) {
-    return rsWrapStr(rewrites[0], cfg, shape);
+    return rsWrapStr(root, cfg, shape);
   }
   // child_shape.
   const childShape = (rootEndsWithBlock ? shape.blockIndent(0) : shape.blockIndent(cfg.tabSpaces)).withMaxWidth(cfg);
@@ -469,20 +501,27 @@ const rewriteChainBlock = (ctx: RsCtx, chain: Chain, shape: RsShape): string | n
   }
   // format_last_child.
   const childCount = chain.children.length;
-  const last = children[children.length - 1];
-  const extendable = rsLastLineExtendable(rewrites[0]);
-  const prevLastLineWidth = rsLastLineWidth(rewrites[0], cfg.tabSpaces);
+  const nch = toI32(children.length);
+  if (nch < 1 || nch > children.length) {
+    fault();
+    return null;
+  }
+  const last = children[nch - 1];
+  const extendable = rsLastLineExtendable(root);
+  const prevLastLineWidth = rsLastLineWidth(root, cfg.tabSpaces);
   let almostTotal = 0;
   if (extendable) {
     almostTotal = prevLastLineWidth;
   } else {
     for (const rw of rewrites) {
-      almostTotal += rsWidth(rw);
+      almostTotal = add32(almostTotal, rsWidth(rw));
     }
   }
-  almostTotal += last.tries;
-  let olb =
-    (childCount === 1 ? shape.width : shape.width < cfg.chainWidth ? shape.width : cfg.chainWidth) - almostTotal;
+  almostTotal = add32(almostTotal, last.tries);
+  let olb = sub32(
+    childCount === 1 ? shape.width : shape.width < cfg.chainWidth ? shape.width : cfg.chainWidth,
+    almostTotal,
+  );
   if (olb < 0) {
     olb = 0;
   }
@@ -505,7 +544,7 @@ const rewriteChainBlock = (ctx: RsCtx, chain: Chain, shape: RsShape): string | n
   } else if (extendable) {
     lastShape = childShape.subWidth(last.tries);
   } else {
-    lastShape = childShape.subWidth(shape.rhsOverhead(cfg) + last.tries);
+    lastShape = childShape.subWidth(add32(shape.rhsOverhead(cfg), last.tries));
   }
   if (lastShape === null) {
     return null;
@@ -523,7 +562,7 @@ const rewriteChainBlock = (ctx: RsCtx, chain: Chain, shape: RsShape): string | n
           lastStr = rw;
           fitsSingleLine = allInOneLine;
         } else {
-          const ls2 = childShape.subWidth(shape.rhsOverhead(cfg) + last.tries);
+          const ls2 = childShape.subWidth(add32(shape.rhsOverhead(cfg), last.tries));
           if (ls2 === null) {
             return null;
           }
@@ -559,8 +598,13 @@ const rewriteChainBlock = (ctx: RsCtx, chain: Chain, shape: RsShape): string | n
     }
     connector = childShape.strNl(cfg);
   }
-  let result = rewrites[0];
+  let result = root;
   for (let i = 1; i < rewrites.length; i++) {
+    // One rewrite for the root, then one a child.
+    if (i > children.length) {
+      fault();
+      return null;
+    }
     const it = children[i - 1];
     if (it.kind === CI_COMMENT && it.pos === CP_SAME_LINE) {
       result = result + " ";
@@ -572,4 +616,4 @@ const rewriteChainBlock = (ctx: RsCtx, chain: Chain, shape: RsShape): string | n
   return rsWrapStr(result, cfg, shape);
 };
 
-export const rsChainIsField = (ast: RsAst, e: i32): boolean => ast.kind[e] === N_EX_FIELD;
+export const rsChainIsField = (ast: RsAst, e: i32): boolean => atI32(ast.kind, e) === N_EX_FIELD;

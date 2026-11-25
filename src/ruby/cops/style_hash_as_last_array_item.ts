@@ -39,7 +39,7 @@ export class CopStyleHashAsLastArrayItem {
         continue;
       }
       const k0 = a.nKid(arr);
-      if ((k0 >= 2 && ssxIs(src, a.kid(arr, k0 - 2), NT_HASH)) || a.kid(arr, k0 - 1) !== n) {
+      if ((k0 >= 2 && ssxIs(src, a.kid(arr, k0 - 2), NT_HASH)) || a.kid(arr, -1) !== n) {
         continue;
       }
       if (!ssxBeginIs(src, arr, "[")) {

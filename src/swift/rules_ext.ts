@@ -5,6 +5,7 @@
 // Ported from SwiftFormat 0.64.7 (MIT License, Copyright (c) 2016 Nick
 // Lockwood).
 
+import { fault } from "../core/fault";
 import {
   SW_DECL_IFDEF,
   SW_DECL_SIMPLE,
@@ -44,6 +45,10 @@ import {
   SwTok,
 } from "./token";
 
+// Token indices, token counts and line numbers stay below the token count, far from the
+// i32 limits, so a sum or difference of them the prover cannot bound is written
+// `toI32(toU32(a) + b)`: wrapping u32 arithmetic, exact for such values.
+
 /** redundantFileprivate. */
 export const swRuleRedundantFileprivate = (f: SwFormatter): void => {
   for (let i = f.enumStart(); i >= 0; i = f.enumNext()) {
@@ -55,7 +60,7 @@ export const swRuleRedundantFileprivate = (f: SwFormatter): void => {
 
 /** TypeName(range: lo...hi).isOptionalType. */
 const swIsOptionalType = (f: SwFormatter, lo: i32, hi: i32): boolean => {
-  const u = f.indexBefore(SW_T_NON_SPACE_OR_COMMENT_OR_LINEBREAK, hi + 1);
+  const u = f.indexBefore(SW_T_NON_SPACE_OR_COMMENT_OR_LINEBREAK, toI32(toU32(hi) + 1));
   if (u < 0 || !swIsUnwrap(f, u)) {
     return false;
   }
@@ -91,8 +96,11 @@ export const swRuleRedundantNilInit = (f: SwFormatter): void => {
     if (pt !== null) {
       const ptk = swDeclKeywordIndex(f, pt);
       const c = swParseConformances(f, ptk);
-      for (let q = 0; q < toI32(c.starts.length); q++) {
-        const s = swStringExcludingLinebreaksAndComments(f, c.starts[q], c.ends[q] + 1);
+      const starts = c.starts;
+      const ends = c.ends;
+      for (let q = 0; q < starts.length && q < ends.length; q++) {
+        // A token index: the u32 sum is exact.
+        const s = swStringExcludingLinebreaksAndComments(f, starts[q], toI32(toU32(ends[q]) + 1));
         if (s === "Codable" || s === "Decodable") {
           skip = true;
         }
@@ -114,8 +122,8 @@ export const swRuleRedundantNilInit = (f: SwFormatter): void => {
     }
     if (p.assignment >= 0 && p.valueStart >= 0 && p.valueStart === p.valueEnd && f.tok(p.valueStart, SW_IDENT, "nil")) {
       const b = f.indexBefore(SW_T_NON_SPACE_OR_COMMENT_OR_LINEBREAK, p.assignment);
-      const startIndex = b >= 0 ? b : p.assignment - 1;
-      f.removeTokens(startIndex + 1, p.valueEnd + 1);
+      const startIndex = b >= 0 ? b : toI32(toU32(p.assignment) - 1);
+      f.removeTokens(toI32(toU32(startIndex) + 1), toI32(toU32(p.valueEnd) + 1));
     }
   }
   swReleaseDecls(f, decls);
@@ -224,7 +232,7 @@ export const swRuleEnumNamespaces = (f: SwFormatter): void => {
       continue;
     }
     let colon = false;
-    for (let j = i; j <= braceIndex; j++) {
+    for (let j = i; j <= braceIndex; j = toI32(toU32(j) + 1)) {
       if (f.tok(j, SW_DELIM, ":")) {
         colon = true;
         break;
@@ -241,8 +249,8 @@ export const swRuleEnumNamespaces = (f: SwFormatter): void => {
       continue;
     }
     if (
-      swRangeContainsTypeInit(f, name, braceIndex + 1, endIndex) ||
-      swRangeContainsSelfAssignment(f, braceIndex + 1, endIndex)
+      swRangeContainsTypeInit(f, name, toI32(toU32(braceIndex) + 1), endIndex) ||
+      swRangeContainsSelfAssignment(f, toI32(toU32(braceIndex) + 1), endIndex)
     ) {
       continue;
     }
@@ -283,17 +291,21 @@ const swHoistableAttributes = (f: SwFormatter, d: SwDecl): SwHoistable[] => {
   const out: SwHoistable[] = [];
   const m = swModifiersForDeclaration(f, swDeclKeywordIndex(f, d));
   const definesType = swIsTypeKeywordStr(d.keyword) && d.keyword !== "extension";
-  for (let j = 0; j < toI32(m.idx.length); j++) {
-    const name = m.names[j];
+  const idx = m.idx;
+  const names = m.names;
+  for (let j = 0; j < idx.length && j < names.length; j++) {
+    const name = names[j];
+    const at = idx[j];
     const ok = name === "@MainActor" ? !definesType : name.startsWith("@available(");
     if (!ok) {
       continue;
     }
-    const e = swEndOfAttribute(f, m.idx[j]);
+    const e = swEndOfAttribute(f, at);
     if (e < 0) {
       continue;
     }
-    out.push(new SwHoistable(name, f.slice(m.idx[j], e + 1)));
+    // A token index: the u32 sum is exact.
+    out.push(new SwHoistable(name, f.slice(at, toI32(toU32(e) + 1))));
   }
   return out;
 };
@@ -301,26 +313,28 @@ const swHoistableAttributes = (f: SwFormatter, d: SwDecl): SwHoistable[] => {
 /** removeHoistableAttribute(_:from:). */
 const swRemoveHoistableAttribute = (f: SwFormatter, attribute: string, d: SwDecl): void => {
   const m = swModifiersForDeclaration(f, swDeclKeywordIndex(f, d));
-  for (let j = 0; j < toI32(m.idx.length); j++) {
-    if (m.names[j] !== attribute) {
+  const idx = m.idx;
+  const names = m.names;
+  for (let j = 0; j < idx.length && j < names.length; j++) {
+    if (names[j] !== attribute) {
       continue;
     }
-    const startIndex = m.idx[j];
+    const startIndex = idx[j];
     const endIndex = swEndOfAttribute(f, startIndex);
     if (endIndex < 0) {
       continue;
     }
-    let end = endIndex + 1;
+    let end = toI32(toU32(endIndex) + 1);
     while (f.has(end) && f.k(end) === SW_SPACE) {
-      end++;
+      end = toI32(toU32(end) + 1);
     }
     if (f.isComment(end)) {
       continue;
     }
     if (f.has(end) && f.k(end) === SW_LINEBREAK) {
-      end++;
+      end = toI32(toU32(end) + 1);
       while (f.has(end) && f.k(end) === SW_SPACE) {
-        end++;
+        end = toI32(toU32(end) + 1);
       }
     }
     f.removeTokens(startIndex, end);
@@ -386,6 +400,11 @@ export const swRuleExtensionAttributes = (f: SwFormatter): void => {
       }
     }
     const toHoist: SwHoistable[] = [];
+    // body is not empty, so neither is bodyAttrs.
+    if (bodyAttrs.length < 1) {
+      fault();
+      break;
+    }
     for (const h of bodyAttrs[0]) {
       if (common.indexOf(h.text) >= 0 && extAttrs.indexOf(h.text) < 0) {
         toHoist.push(h);
@@ -412,9 +431,10 @@ export const swRuleExtensionAttributes = (f: SwFormatter): void => {
     }
     for (const b of body) {
       const attrs = swHoistableAttributes(f, b);
-      for (let q = toI32(attrs.length) - 1; q >= 0; q--) {
-        if (toRemove.indexOf(attrs[q].text) >= 0) {
-          swRemoveHoistableAttribute(f, attrs[q].text, b);
+      for (let q = toI32(attrs.length) - 1; q >= 0 && q < attrs.length; q--) {
+        const text = attrs[q].text;
+        if (toRemove.indexOf(text) >= 0) {
+          swRemoveHoistableAttribute(f, text, b);
         }
       }
     }

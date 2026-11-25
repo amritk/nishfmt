@@ -166,6 +166,8 @@ import {
   vTag,
   rbFloatInspect,
 } from "./ast";
+import { add32, sub32 } from "../core/arr";
+import { fault } from "../core/fault";
 import { RbContext, RbStaticEnv } from "./env";
 
 /** What the builder reads of the parser: the stacks and flags the grammar keeps. */
@@ -208,13 +210,23 @@ export class RbParseState {
   }
 
   npPop(): i32 {
-    const k = toI32(this.npValue.length);
-    if (k === 0) {
+    const vals = this.npValue;
+    const stat = this.npStatic;
+    const k = toI32(vals.length);
+    if (k <= 0) {
       return 0;
     }
-    const v = this.npValue[k - 1];
-    this.npValue.pop();
-    this.npStatic.pop();
+    const v = vals[k - 1];
+    if (vals.length > 0) {
+      vals.pop();
+    }
+    // npPush grows both stacks together.
+    if (stat.length > 0) {
+      stat.pop();
+    } else {
+      fault();
+      return 0;
+    }
     return v;
   }
 
@@ -292,10 +304,11 @@ export class RbParseState {
 
   varsDeclared(keys: boolean, name: string): boolean {
     const s = keys ? this.patternKeys : this.patternVars;
-    if (s.length === 0) {
+    const k = toI32(s.length);
+    if (k <= 0) {
       return false;
     }
-    for (const v of s[s.length - 1]) {
+    for (const v of s[k - 1]) {
       if (v === name) {
         return true;
       }
@@ -324,9 +337,14 @@ export class RbParseState {
   fillLines(n: i32): void {
     const t: i32[] = [];
     let l = 1;
-    const k = toI32(this.lineStarts.length);
+    const starts = this.lineStarts;
+    // n counts a source's code points, so the last offset has a successor.
+    if (n >= 2147483647) {
+      fault();
+      return;
+    }
     for (let i = 0; i <= n; i++) {
-      while (l < k && this.lineStarts[l] <= i) {
+      while (l >= 0 && l < starts.length && starts[l] <= i) {
         l++;
       }
       t.push(l);
@@ -340,15 +358,25 @@ export class RbParseState {
     if (k > 0) {
       return pos < 0 ? 1 : pos < k ? this.lineAt[pos] : this.lineAt[k - 1];
     }
+    const starts = this.lineStarts;
     let lo = 0;
-    let hi = toI32(this.lineStarts.length) - 1;
-    while (lo < hi) {
-      const mid = (lo + hi + 1) >> 1;
-      if (this.lineStarts[mid] <= pos) {
+    let hi = toI32(starts.length) - 1;
+    while (lo >= 0 && lo < hi) {
+      // 0 <= lo < hi < length, so the u32 sum is exact.
+      const mid = toI32((toU32(lo) + toU32(hi) + toU32(1)) >> toU32(1));
+      if (mid <= 0 || mid >= starts.length) {
+        fault();
+        return 1;
+      }
+      if (starts[mid] <= pos) {
         lo = mid;
       } else {
         hi = mid - 1;
       }
+    }
+    if (lo < 0 || lo >= 2147483647) {
+      fault();
+      return 1;
     }
     return lo + 1;
   }
@@ -416,15 +444,15 @@ export class RbBuilder {
     const s = this.tS(t);
     const e = this.tE(t);
     const m = this.map(M_COLLECTION, s, e);
-    this.a.setF(m, F_BEGIN, s, s + 1);
-    this.a.setF(m, F_END, e - 1, e);
+    this.a.setF(m, F_BEGIN, s, add32(s, 1));
+    this.a.setF(m, F_END, sub32(e, 1), e);
     return m;
   }
 
   prefixStringMap(t: i32): i32 {
     const s = this.tS(t);
     const m = this.map(M_COLLECTION, s, this.tE(t));
-    this.a.setF(m, F_BEGIN, s, s + 1);
+    this.a.setF(m, F_BEGIN, s, add32(s, 1));
     return m;
   }
 
@@ -532,7 +560,7 @@ export class RbBuilder {
   kwargMap(nameT: i32, value: i32): i32 {
     const e = value !== V_NIL ? this.exE(value) : this.tE(nameT);
     const m = this.map(M_VARIABLE, this.tS(nameT), e);
-    this.a.setF(m, F_NAME, this.tS(nameT), this.tE(nameT) - 1);
+    this.a.setF(m, F_NAME, this.tS(nameT), sub32(this.tE(nameT), 1));
     return m;
   }
 
@@ -855,7 +883,7 @@ export class RbBuilder {
     const t = this.a.type(node);
     if (t === NT_STR) {
       const s = this.a.kid(node, 0);
-      this.a.strs[vIdx(s)] = d.dedent(this.a.text(s));
+      rbSetStr(this.a, s, d.dedent(this.a.text(s)));
       return node;
     }
     if (t === NT_DSTR || t === NT_XSTR) {
@@ -866,7 +894,7 @@ export class RbBuilder {
         if (c !== V_NIL && this.a.type(c) === NT_STR) {
           const s = this.a.kid(c, 0);
           const v = d.dedent(this.a.text(s));
-          this.a.strs[vIdx(s)] = v;
+          rbSetStr(this.a, s, v);
           if (v.length === 0) {
             continue;
           }
@@ -947,25 +975,25 @@ export class RbBuilder {
   pairKeyword(keyT: i32, value: i32): i32 {
     const s = this.tS(keyT);
     const e = this.tE(keyT);
-    const keyMap = this.map(M_COLLECTION, s, e - 1);
+    const keyMap = this.map(M_COLLECTION, s, sub32(e, 1));
     const pairMap = this.map(M_OPERATOR, s, this.exE(value));
-    this.a.setF(pairMap, F_OPERATOR, e - 1, e);
+    this.a.setF(pairMap, F_OPERATOR, sub32(e, 1), e);
     const key = this.n(NT_SYM, this.a.list1(this.a.sym(this.value(keyT))), keyMap);
     return this.n(NT_PAIR, this.a.list2(key, value), pairMap);
   }
 
   pairQuoted(beginT: i32, parts: i32, endT: i32, value: i32): i32 {
     const ee = this.tE(endT);
-    const endT2 = this.a.token(this.value(endT), ee - 2, ee - 1);
+    const endT2 = this.a.token(this.value(endT), sub32(ee, 2), sub32(ee, 1));
     const pairMap = this.map(M_OPERATOR, this.tS(beginT), this.exE(value));
-    this.a.setF(pairMap, F_OPERATOR, ee - 1, ee);
+    this.a.setF(pairMap, F_OPERATOR, sub32(ee, 1), ee);
     const key = this.symbolCompose(beginT, parts, endT2);
     return this.n(NT_PAIR, this.a.list2(key, value), pairMap);
   }
 
   pairLabel(keyT: i32): i32 {
     const s = this.tS(keyT);
-    const e = this.tE(keyT) - 1;
+    const e = sub32(this.tE(keyT), 1);
     const label = this.value(keyT);
     let value = 0;
     if (rbStartsUpper(label)) {
@@ -1072,7 +1100,13 @@ export class RbBuilder {
       }
       // Outer block scopes that already use numbered parameters.
       for (let i = toI32(this.st.npValue.length) - 2; i >= 0; i--) {
-        if (this.st.npStatic[i]) {
+        const stat = this.st.npStatic;
+        // npPush grows both stacks together.
+        if (i >= stat.length) {
+          fault();
+          return false;
+        }
+        if (stat[i]) {
           break;
         }
         if (this.st.npValue[i] > 0) {
@@ -1080,7 +1114,12 @@ export class RbBuilder {
         }
       }
       this.st.env.declare(name);
-      this.st.npRegister(name.charCodeAt(1) - 48);
+      // rbIsNumparam held: name is `_1`..`_9`.
+      if (name.length < 2) {
+        fault();
+        return false;
+      }
+      this.st.npRegister((name.charCodeAt(1) & 0xff) - 48);
       return true;
     }
     return false;
@@ -1758,7 +1797,7 @@ export class RbBuilder {
     this.checkDuplicatePatternVariable(name);
     this.st.env.declare(name);
     const m = this.map(M_VARIABLE, this.tS(nameT), this.tE(nameT));
-    this.a.setF(m, F_NAME, this.tS(nameT), this.tE(nameT) - 1);
+    this.a.setF(m, F_NAME, this.tS(nameT), sub32(this.tE(nameT), 1));
     return this.n(NT_MATCH_VAR, this.a.list1(this.a.sym(name)), m);
   }
 
@@ -1777,10 +1816,10 @@ export class RbBuilder {
       let ns = this.exS(s);
       let ne = this.exE(s);
       if (this.a.has(sm, F_BEGIN)) {
-        ns += this.a.fE(sm, F_BEGIN) - this.a.fS(sm, F_BEGIN);
+        ns = add32(ns, sub32(this.a.fE(sm, F_BEGIN), this.a.fS(sm, F_BEGIN)));
       }
       if (this.a.has(sm, F_END)) {
-        ne -= this.a.fE(sm, F_END) - this.a.fS(sm, F_END);
+        ne = sub32(ne, sub32(this.a.fE(sm, F_END), this.a.fS(sm, F_END)));
       }
       const es = rbMin(this.tS(beginT), this.exS(s));
       const ee = rbMax(this.exE(s), this.tE(endT));
@@ -2054,7 +2093,7 @@ export class RbBuilder {
   /** static_string of nodes[from, end) minus `drop` trailing nodes; null when not static. */
   staticString(nodes: i32, drop: i32): string | null {
     let out = "";
-    for (let i = 0; i < this.a.len(nodes) - drop; i++) {
+    for (let i = 0; i < sub32(this.a.len(nodes), drop); i++) {
       const n = this.a.at(nodes, i);
       const t = this.a.type(n);
       if (t === NT_STR) {
@@ -2078,7 +2117,7 @@ export class RbBuilder {
       return false;
     }
     const k = this.a.kids(n);
-    for (let i = 0; i < this.a.len(k) - 1; i++) {
+    for (let i = 0; i < sub32(this.a.len(k), 1); i++) {
       if (this.a.type(this.a.at(k, i)) !== NT_STR) {
         return false;
       }
@@ -2100,11 +2139,15 @@ class RbDedenter {
     // Split at backslash-newline continuations.
     const lines: string[] = [];
     let a = 0;
-    for (let i = 0; i + 1 < toI32(s.length); i++) {
+    const n = toI32(s.length);
+    let i = 0;
+    while (i >= 0 && i < n && i + 1 < n) {
       if (s.charCodeAt(i) === 92 && s.charCodeAt(i + 1) === 10) {
         lines.push(s.substring(a, i));
         a = i + 2;
-        i++;
+        i = i + 2;
+      } else {
+        i = i + 1;
       }
     }
     lines.push(s.substring(a, toI32(s.length)));
@@ -2118,15 +2161,16 @@ class RbDedenter {
           if (left <= 0) {
             break;
           }
+          // Every step before this one removed a character: remove is i.
           const c = line.charCodeAt(i);
           if (c === 32) {
-            remove++;
+            remove = i + 1;
             left -= 1;
           } else if (c === 9) {
-            if (8 * ((remove - (remove % 8)) / 8 + 1) > this.level) {
+            if (toI64(8) * toI64((i - (i % 8)) / 8 + 1) > toI64(this.level)) {
               break;
             }
-            remove++;
+            remove = i + 1;
             left -= 8;
           } else {
             break;
@@ -2145,6 +2189,17 @@ class RbDedenter {
   }
 }
 
+/** `a.strs[vIdx(s)] = v`: s is a string handle of `a`. */
+const rbSetStr = (a: RbAst, s: i32, v: string): void => {
+  const strs = a.strs;
+  const k = vIdx(s);
+  if (k < 0 || k >= strs.length) {
+    fault();
+    return;
+  }
+  strs[k] = v;
+};
+
 const rbMin = (a: i32, b: i32): i32 => (a < 0 ? b : b < 0 ? a : a < b ? a : b);
 const rbMax = (a: i32, b: i32): i32 => (a > b ? a : b);
 
@@ -2160,22 +2215,26 @@ const rbRegexpNames = (src: string | null): string[] => {
   if (src === null) {
     return out;
   }
-  const k = toI32(src.length);
+  const text: string = src;
+  const k = toI32(text.length);
   let i = 0;
-  while (i < k) {
-    const c = src.charCodeAt(i);
+  while (i >= 0 && i < k) {
+    const c = text.charCodeAt(i);
     if (c === 92) {
+      if (i > k - 2) {
+        break;
+      }
       i += 2;
       continue;
     }
-    if (c === 40 && i + 3 < k && src.charCodeAt(i + 1) === 63 && src.charCodeAt(i + 2) === 60) {
-      const d = src.charCodeAt(i + 3);
+    if (c === 40 && i < k - 3 && text.charCodeAt(i + 1) === 63 && text.charCodeAt(i + 2) === 60) {
+      const d = text.charCodeAt(i + 3);
       if (d !== 61 && d !== 33) {
         let j = i + 3;
-        while (j < k && src.charCodeAt(j) !== 62) {
+        while (j < k && text.charCodeAt(j) !== 62) {
           j++;
         }
-        const name = src.substring(i + 3, j);
+        const name = text.substring(i + 3, j);
         let dup = false;
         for (const o of out) {
           if (o === name) {
@@ -2187,6 +2246,9 @@ const rbRegexpNames = (src: string | null): string[] => {
         }
         i = j;
       }
+    }
+    if (i >= k) {
+      break;
     }
     i++;
   }
@@ -2235,6 +2297,10 @@ const rbRationalText = (v: string): string => {
   const dot = t.indexOf(".");
   if (dot < 0) {
     return `${t}/1`;
+  }
+  if (dot >= toI32(t.length)) {
+    fault();
+    return "";
   }
   const digits = t.substring(0, dot) + t.substring(dot + 1, toI32(t.length));
   let num = parseFloat(digits);

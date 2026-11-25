@@ -3,9 +3,10 @@
 // Ported from RuboCop 1.92.3 (MIT License, Copyright (c) 2012-24 Bozhidar
 // Batsov).
 
+import { atI32 } from "../../core/arr";
 import { F_END, F_HEREDOC_END, NT_STR, V_NIL } from "../ast";
 import { RbCop } from "../cop";
-import { rnE, rnHeredoc, rnS } from "../node";
+import { rbNKid, rnE, rnHeredoc, rnS } from "../node";
 import { RbSource } from "../source";
 import { rbLayCommentAtLine } from "./layout_empty_help";
 import {
@@ -24,7 +25,7 @@ const rmlBenHeredoc = (src: RbSource, n: i32): i32 => {
     return V_NIL;
   }
   const a = src.a;
-  for (let i = a.nKid(n) - 1; i >= 2; i--) {
+  for (let i = rbNKid(src, n) - 1; i >= 2; i--) {
     const x = a.kid(n, i);
     if (a.isNode(x) && a.type(x) === NT_STR && rnHeredoc(src, x)) {
       return x;
@@ -70,8 +71,9 @@ const rmlBenCodeEnd = (src: RbSource, rs: i32, re: i32): i32 => {
   if (cm < 0) {
     return src.lineEnd(l);
   }
-  let e = src.commS[cm];
-  while (e > rs && lalIsStripWs(src.at(e - 1))) {
+  let e = atI32(src.commS, cm);
+  // src.at answers -1 before the source, which is not whitespace.
+  while (e > rs && e > 0 && lalIsStripWs(src.at(e - 1))) {
     e--;
   }
   return e;
@@ -125,7 +127,7 @@ export class CopLayoutBlockEndNewline {
         while (ts < te && lalIsStripWs(src.at(ts))) {
           ts++;
         }
-        while (te > ts && lalIsStripWs(src.at(te - 1))) {
+        while (te > ts && te > 0 && lalIsStripWs(src.at(te - 1))) {
           te--;
         }
         k.remove(rs, ce);

@@ -136,7 +136,7 @@ export class CopStyleHashLikeCase {
       }
       const k = a.nKid(n);
       // (case _ (when ...)+ nil?), at least 3 whens
-      if (k - 2 < 3 || a.kid(n, k - 1) !== V_NIL) {
+      if (k < 5 || a.kid(n, k - 1) !== V_NIL) {
         continue;
       }
       let ok = true;

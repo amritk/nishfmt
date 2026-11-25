@@ -5,6 +5,7 @@
 // Ported from SwiftFormat 0.64.7 (MIT License, Copyright (c) 2016 Nick
 // Lockwood).
 
+import { swRefHi, swRefLo } from "./decl";
 import { SwFormatter } from "./formatter";
 import { swIsDocComment, swIsModifier, swStartOfModifiers } from "./modifiers";
 import { swEndOfScope, swIsAttribute, swIsDeclarationTypeKeyword, swIsStartOfClosure, swStartOfScope } from "./parsing";
@@ -25,15 +26,19 @@ import {
   SwTok,
 } from "./token";
 
+// Token indices, token counts and line numbers stay below the token count, far from the
+// i32 limits, so a sum or difference of them the prover cannot bound is written
+// `toI32(toU32(a) + b)`: wrapping u32 arithmetic, exact for such values.
+
 /** tokens[lo...hi].numberOfLeadingLinebreaks(). */
 export const swLeadingLinebreaks = (f: SwFormatter, lo: i32, hi: i32): i32 => {
   let n = 0;
   let i = lo;
   while (i <= hi && f.has(i) && (f.k(i) === SW_SPACE || f.k(i) === SW_LINEBREAK)) {
     if (f.k(i) === SW_LINEBREAK) {
-      n++;
+      n = toI32(toU32(n) + 1);
     }
-    i++;
+    i = toI32(toU32(i) + 1);
   }
   return n;
 };
@@ -44,9 +49,9 @@ export const swTrailingLinebreaks = (f: SwFormatter, lo: i32, hi: i32): i32 => {
   let i = hi;
   while (i >= lo && f.has(i) && (f.k(i) === SW_SPACE || f.k(i) === SW_LINEBREAK)) {
     if (f.k(i) === SW_LINEBREAK) {
-      n++;
+      n = toI32(toU32(n) + 1);
     }
-    i--;
+    i = toI32(toU32(i) - 1);
   }
   return n;
 };
@@ -54,12 +59,13 @@ export const swTrailingLinebreaks = (f: SwFormatter, lo: i32, hi: i32): i32 => {
 /** removeLeadingBlankLinesIfPresent(in: lo...hi). */
 export const swRemoveLeadingBlankLines = (f: SwFormatter, lo: i32, hi: i32): void => {
   const h = f.ref(lo, hi);
-  while (swLeadingLinebreaks(f, f.refLo[h], f.refHi[h]) > 1) {
-    const first = f.indexInType(SW_T_LINEBREAK, f.refLo[h], f.refHi[h] + 1);
+  // Token indices: the u32 sums are exact.
+  while (swLeadingLinebreaks(f, swRefLo(f, h), swRefHi(f, h)) > 1) {
+    const first = f.indexInType(SW_T_LINEBREAK, swRefLo(f, h), toI32(toU32(swRefHi(f, h)) + 1));
     if (first < 0) {
       break;
     }
-    f.removeTokens(f.refLo[h], first + 1);
+    f.removeTokens(swRefLo(f, h), toI32(toU32(first) + 1));
   }
   f.unref(h);
 };
@@ -67,8 +73,9 @@ export const swRemoveLeadingBlankLines = (f: SwFormatter, lo: i32, hi: i32): voi
 /** removeTrailingBlankLinesIfPresent(in: lo...hi). */
 export const swRemoveTrailingBlankLines = (f: SwFormatter, lo: i32, hi: i32): void => {
   const h = f.ref(lo, hi);
-  while (swTrailingLinebreaks(f, f.refLo[h], f.refHi[h]) > 1) {
-    const last = f.lastIndexInType(SW_T_LINEBREAK, f.refLo[h], f.refHi[h] + 1);
+  // Token indices: the u32 sums are exact.
+  while (swTrailingLinebreaks(f, swRefLo(f, h), swRefHi(f, h)) > 1) {
+    const last = f.lastIndexInType(SW_T_LINEBREAK, swRefLo(f, h), toI32(toU32(swRefHi(f, h)) + 1));
     if (last < 0) {
       break;
     }
@@ -93,8 +100,8 @@ export const swRuleBlankLinesAtStartOfScope = (f: SwFormatter): void => {
     let startOfScope = i;
     if (swIsStartOfClosure(f, startOfScope)) {
       const e = swEndOfScope(f, startOfScope);
-      if (e >= 0 && startOfScope + 1 < e) {
-        const inIndex = f.indexOfIn(SW_KEYWORD, "in", 0, startOfScope + 1, e);
+      if (e >= 0 && toI32(toU32(startOfScope) + 1) < e) {
+        const inIndex = f.indexOfIn(SW_KEYWORD, "in", 0, toI32(toU32(startOfScope) + 1), e);
         if (inIndex >= 0 && swStartOfScope(f, inIndex) === startOfScope) {
           startOfScope = inIndex;
         }
@@ -104,7 +111,7 @@ export const swRuleBlankLinesAtStartOfScope = (f: SwFormatter): void => {
     if (endOfScope < 0 || f.indexAfter(SW_T_NON_SPACE_OR_COMMENT, startOfScope) === endOfScope) {
       continue;
     }
-    swRemoveLeadingBlankLines(f, startOfScope + 1, endOfScope - 1);
+    swRemoveLeadingBlankLines(f, toI32(toU32(startOfScope) + 1), endOfScope - 1);
   }
 };
 
@@ -126,7 +133,7 @@ export const swRuleBlankLinesAtEndOfScope = (f: SwFormatter): void => {
     if (n >= 0 && f.k(n) !== SW_LINEBREAK) {
       continue;
     }
-    swRemoveTrailingBlankLines(f, i + 1, endOfScope - 1);
+    swRemoveTrailingBlankLines(f, toI32(toU32(i) + 1), endOfScope - 1);
   }
 };
 
@@ -145,7 +152,7 @@ export const swRuleBlankLinesBetweenImports = (f: SwFormatter): void => {
       continue;
     }
     const indent = f.currentIndentForLine(next);
-    const toks: SwTok[] = [new SwTok(SW_LINEBREAK, "\n", f.linebreakLine(i + 1))];
+    const toks: SwTok[] = [new SwTok(SW_LINEBREAK, "\n", f.linebreakLine(toI32(toU32(i) + 1)))];
     if (indent.length !== 0) {
       toks.push(new SwTok(SW_SPACE, indent, 0));
     }
@@ -202,7 +209,7 @@ export const swRuleEmptyBraces = (f: SwFormatter): void => {
     if (t >= 0 && (f.kw(t, "else") || f.kw(t, "catch"))) {
       continue;
     }
-    f.removeTokens(i + 1, closing);
+    f.removeTokens(toI32(toU32(i) + 1), closing);
   }
 };
 
@@ -218,11 +225,11 @@ export const swRuleLeadingDelimiters = (f: SwFormatter): void => {
     }
     let nextIndex = f.indexAfter(SW_T_NON_SPACE, i);
     if (nextIndex < 0) {
-      nextIndex = i + 1;
+      nextIndex = toI32(toU32(i) + 1);
     }
     f.insertSpace(f.currentIndentForLine(i), nextIndex);
     f.insertLinebreak(nextIndex);
-    f.removeTokens(i + 1, nextIndex);
+    f.removeTokens(toI32(toU32(i) + 1), nextIndex);
     const lb = f.indexBefore(SW_T_NON_SPACE, endOfLine);
     if (lb < 0 || f.k(lb) !== SW_COMMENT) {
       f.removeTokens(endOfLine, i);
@@ -230,9 +237,9 @@ export const swRuleLeadingDelimiters = (f: SwFormatter): void => {
     }
     const startIndex = f.indexBefore(SW_T_NON_SPACE_OR_COMMENT, endOfLine);
     f.removeTokens(endOfLine, i);
-    const comment = f.slice(startIndex + 1, endOfLine);
-    f.insertToks(comment, endOfLine + 1);
-    f.removeTokens(startIndex + 1, endOfLine);
+    const comment = f.slice(toI32(toU32(startIndex) + 1), endOfLine);
+    f.insertToks(comment, toI32(toU32(endOfLine) + 1));
+    f.removeTokens(toI32(toU32(startIndex) + 1), endOfLine);
   }
 };
 
@@ -258,13 +265,22 @@ export const swRuleDocCommentsBeforeModifiers = (f: SwFormatter): void => {
         break;
       }
       if (swIsDocComment(f, index)) {
-        while (f.has(endIndex + 1) && (f.k(endIndex + 1) === SW_SPACE || f.k(endIndex + 1) === SW_LINEBREAK)) {
-          endIndex++;
+        // f.has(endIndex + 1) needs endIndex < f.count(), which bounds the sum.
+        while (endIndex < f.count()) {
+          const next = endIndex + 1;
+          if (!f.has(next)) {
+            break;
+          }
+          const nk = f.k(next);
+          if (!(nk === SW_SPACE || nk === SW_LINEBREAK)) {
+            break;
+          }
+          endIndex = next;
         }
         f.moveTokens(index, endIndex, insertionPoint);
-        insertionPoint += endIndex - index + 1;
+        insertionPoint = toI32(toU32(insertionPoint) + toU32(endIndex) - toU32(index) + 1);
       }
-      startIndex = endIndex + 1;
+      startIndex = toI32(toU32(endIndex) + 1);
     }
   }
 };

@@ -3,6 +3,8 @@
 // Ported from RuboCop 1.92.3 (MIT License, Copyright (c) 2012-24 Bozhidar
 // Batsov).
 
+import { rbByteAt } from "../util";
+import { atI32 } from "../../core/arr";
 import { F_OPERATOR, F_SELECTOR, NT_DSYM, NT_HASH, NT_RETURN, NT_SYM, V_NIL } from "../ast";
 import { RbCop } from "../cop";
 import { rbSpaceEnd } from "../help";
@@ -16,7 +18,7 @@ const rbAcceptable19 = (name: string): boolean => {
     return false;
   }
   // /\A[_a-z]\w*[?!]?\z/i
-  const c0 = name.charCodeAt(0);
+  const c0 = rbByteAt(name, 0);
   let plain = c0 === 95 || (c0 >= 97 && c0 <= 122) || (c0 >= 65 && c0 <= 90);
   if (plain) {
     for (let i = 1; i < k; i++) {
@@ -76,7 +78,7 @@ export class CopStyleHashSyntax {
       for (const p of pairs) {
         const os = rnS(src, p, F_OPERATOR);
         const oe = rnE(src, p, F_OPERATOR);
-        if (oe - os !== 2) {
+        if (toI64(oe) - toI64(os) !== toI64(2)) {
           continue; // a colon pair
         }
         const k = this.c.offense(a.exS(p), oe);
@@ -98,7 +100,7 @@ export class CopStyleHashSyntax {
         } else {
           k.replace(ks, re, src.src(ks, re));
         }
-        if (par !== V_NIL && a.type(par) === NT_RETURN && !rnBraces(src, n) && p === pairs[0]) {
+        if (par !== V_NIL && a.type(par) === NT_RETURN && !rnBraces(src, n) && p === atI32(pairs, 0)) {
           k.wrap(a.exS(n), a.exE(n), "{", "}");
         }
         this.c.commit(k);

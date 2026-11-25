@@ -168,11 +168,13 @@ written to make the same decisions clang-format makes.
 the tree, writes one file list, and spawns itself as `nishfmt --worker` once
 per core. Workers claim chunks of the list by creating the chunk's marker
 file exclusively; chunks shrink to single files near the end so no worker
-finishes long after the others. Each worker reuses one engine (token tables,
-search pools, output buffer) for every file it formats, and clears the
-annotation columns before each file (`Annot.clear`), so no file reads what
-the one before it left; `tests/cases/worker/` runs files through one worker
-in turn to hold that.
+finishes long after the others. A worker formats C++ files in batches of up
+to 32 files or 1 MB, each in a region of its own with one engine (token
+tables, search pools) the batch's files share and the region frees. The
+engine clears the annotation columns before each file (`Annot.clear`), and
+each search depth keeps a seen table of its own, so no file reads what the
+one before it left and a fresh engine formats a file as a warm one does;
+`tests/cases/worker/` runs files through one worker in turn to hold that.
 
 Set `FFPROF=1` to print per-phase timings and search counts, and `FFDEBUG=1`
 to dump each line's annotations.

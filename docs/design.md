@@ -29,8 +29,16 @@ parent walks it and formats its files in a round of workers of their own.
 
 ## A worker that dies
 
-A formatter that panics (a bounds check, an overflow) or a worker killed by
-a signal takes down that worker only. The parent starts a replacement
+No formatter can panic: every module but `src/main.ts` is held to no panic
+(package.json's `nish.noPanic`), so each index, signed sum and division in
+a formatter is proven safe by the compiler or guarded. A guard whose other
+branch is a state the formatter's invariants rule out calls `fault()`
+(`src/core/fault.ts`): the worker clears that flag before each file, and a
+file whose formatter faulted is skipped as one it could not format
+(`does not parse`). A worker can still die, killed by a signal or out of
+memory, or by a panic in `src/main.ts` (`NISHFMT_TEST_CRASH`, which
+`tests/run.sh` sets to take a worker down on purpose), and that takes down
+that worker only. The parent starts a replacement
 straight away while chunks are left unclaimed, and once every worker has
 exited it looks for entries with no line in any log:
 
@@ -48,22 +56,23 @@ exited it looks for entries with no line in any log:
 A crashed file is a skipped file: the run's exit status is the one it would
 have had if the formatter had answered `false` for that file, 0, or 1 under
 `--check` when another file would change. One file nishfmt cannot handle
-does not fail a run, whether its formatter gives up or crashes. The panic's
-own message is on stderr, and the `formatter crashed` line names the file
-for a bug report.
+does not fail a run, whether its formatter gives up or its worker dies. A
+panic's own message is on stderr, and the `formatter crashed` line names the
+file for a bug report.
 
 When there can be no workers, because the list cannot be written (`TMPDIR`
 is not writable) or no worker process will start, the parent formats the
-files itself, as it did for few files before, and a panic then ends the run.
+files itself, as it did for few files before, and a dying process then
+ends the run.
 
 ## Regions and batches
 
-C++ files are formatted one at a time by an engine each worker keeps. Every
-other language formats in a Nish region (`regionWith`) that is freed after
+Every language formats in a Nish region (`regionWith`) that is freed after
 the batch, so a worker's memory does not grow with the files it has
-formatted. Java and Kotlin share one engine across a batch of up to 32 files
-or 1 MB, so its arrays grow once rather than once a file; the other
-languages take one file a batch. A formatter that cannot handle a file
+formatted. C++, Java and Kotlin share one engine across a batch of up to 32
+files or 1 MB, so its arrays grow once rather than once a file; the other
+languages take one file a batch. A file whose name no language claims (one
+named on the command line) is formatted as C++. A formatter that cannot handle a file
 answers `false`, and the file is left as it was and counted as skipped:
 nishfmt never writes output it is not sure of.
 

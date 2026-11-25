@@ -81,22 +81,141 @@ import {
   T_USHR_EQ,
   dtKeyword,
 } from "./tokens";
+import { add32, bytesText, mul32 } from "../core/arr";
+import { fault } from "../core/fault";
 
 export const C_LINE: i32 = 1; // `//` comment
 export const C_BLOCK: i32 = 2; // `/* */` comment
 
-const dtGrowI32 = (a: i32[], cap: i32): i32[] => {
-  const b = new Array<i32>(cap);
-  b.set(a);
-  return b;
+/**
+ * `n` zeroes, as `new Array<i32>(n)` made them: an array of a u16 length
+ * needs no check, and only the rest past 65535 is pushed.
+ */
+const dtTokZeros = (n: i32): i32[] => {
+  if (n >= 0 && n <= 65535) {
+    return new Array<i32>(toU16(n));
+  }
+  if (n < 0) {
+    fault();
+    const none: i32[] = [];
+    return none;
+  }
+  const xs = new Array<i32>(65535);
+  dtGrowI32(xs, n);
+  return xs;
 };
 
-const dtGrowBool = (a: boolean[], cap: i32): boolean[] => {
-  const b = new Array<boolean>(cap);
-  for (let i = 0; i < toI32(a.length); i++) {
-    b[i] = a[i];
+/** `n` falses, as dtTokZeros. */
+const dtTokFalses = (n: i32): boolean[] => {
+  if (n >= 0 && n <= 65535) {
+    return new Array<boolean>(toU16(n));
   }
-  return b;
+  if (n < 0) {
+    fault();
+    const none: boolean[] = [];
+    return none;
+  }
+  const xs = new Array<boolean>(65535);
+  dtGrowBool(xs, n);
+  return xs;
+};
+
+/** Grows `a` in place to `cap` elements, the new ones 0. */
+const dtGrowI32 = (a: i32[], cap: i32): void => {
+  while (a.length < cap) {
+    a.push(0);
+  }
+};
+
+/**
+ * The UTF-16 code units of the UTF-8 string `s`, as Java's String.length
+ * counts them (core's strUtf16Len): a unit for each byte that is not a
+ * continuation byte, and one more for each four-byte lead.
+ */
+export const dtUtf16Units = (s: string): i32 => {
+  const k = toI32(s.length);
+  // Each below k: u32 counts that cannot wrap.
+  let cont: u32 = 0;
+  let four: u32 = 0;
+  for (let i = 0; i < k; i++) {
+    const c = s.charCodeAt(i);
+    if (c >= 0x80) {
+      if (c < 0xc0) {
+        cont = cont + 1;
+      } else if (c >= 0xf0) {
+        four = four + 1;
+      }
+    }
+  }
+  const n = toI64(k) - toI64(cont) + toI64(four);
+  // (Where the count passed i32 and its sum panicked.)
+  if (n > toI64(2147483647)) {
+    fault();
+    return 0;
+  }
+  return toI32(n);
+};
+
+/** Grows `a` in place to `cap` elements, the new ones false. */
+const dtGrowBool = (a: boolean[], cap: i32): void => {
+  while (a.length < cap) {
+    a.push(false);
+  }
+};
+
+/**
+ * `src[0, n)` as a string, a byte a character: bytesText, a chunk at a time,
+ * which keeps its parts list short.
+ */
+const dtSourceText = (src: u8[], n: i32): string => {
+  if (n < 0 || n > src.length) {
+    fault();
+    return "";
+  }
+  const chunks: string[] = [];
+  let a = 0;
+  while (a < n) {
+    let e = n;
+    // a < n - 4096 bounds a + 4096 by n; the constant says so to the prover.
+    if (a < n - 4096 && a <= 2147479551) {
+      e = a + 4096;
+    }
+    chunks.push(bytesText(src, a, e));
+    a = e;
+  }
+  return chunks.join("");
+};
+
+/** `xs[i]`, or `none` after a fault when `i` is outside `xs`. */
+const dtTokAt = (xs: i32[], i: i32, none: i32): i32 => {
+  const ui = toU32(i);
+  if (ui < toU32(xs.length)) {
+    return xs[ui];
+  }
+  fault();
+  return none;
+};
+
+/** Moves `xs[lo, hi)` up one place, to `xs[lo + 1, hi]`; false when `hi` is outside `xs`. */
+const dtShiftI32 = (xs: i32[], lo: i32, hi: i32): boolean => {
+  if (lo < 0 || hi >= xs.length) {
+    return false;
+  }
+  for (let i = hi; i > lo && i > 0 && i < xs.length; i--) {
+    xs[i] = xs[i - 1];
+  }
+  return true;
+};
+
+/** dtShiftI32 for booleans. */
+const dtShiftBool = (xs: boolean[], lo: i32, hi: i32): boolean => {
+  if (lo < 0 || hi >= xs.length) {
+    return false;
+  }
+  for (let i = hi; i > lo && i > 0 && i < xs.length; i--) {
+    xs[i] = xs[i - 1];
+  }
+  return true;
 };
 
 /** The tokens of one file and the comments before each. */
@@ -132,80 +251,190 @@ export class DtTokens {
   verMinor: i32 = -1;
   failed: boolean = false;
   why: string = "";
+  // src[0, n) as a string, which the caller makes with String.fromBytes
+  // (no proof covers it here), else made from the bytes at its first use: a
+  // token's text is cut from it.
+  srcText: string = "";
+  srcTextReady: boolean = false;
 
-  constructor(src: u8[], n: i32) {
+  constructor(src: u8[], n: i32, text: string) {
     this.src = src;
     this.n = n;
+    if (toI32(text.length) === n) {
+      this.srcText = text;
+      this.srcTextReady = true;
+    }
     // About one token per four bytes and a comment per 64; both grow.
     const cap = (n >> 2) + 16;
-    this.kind = new Array<i32>(cap);
-    this.kw = new Array<i32>(cap);
-    this.start = new Array<i32>(cap);
-    this.end = new Array<i32>(cap);
-    this.cFirst = new Array<i32>(cap);
-    this.cCount = new Array<i32>(cap);
-    this.lineS = new Array<i32>(cap);
-    this.lineE = new Array<i32>(cap);
-    this.pred = new Array<boolean>(cap);
-    this.gt = new Array<boolean>(cap);
+    this.kind = dtTokZeros(cap);
+    this.kw = dtTokZeros(cap);
+    this.start = dtTokZeros(cap);
+    this.end = dtTokZeros(cap);
+    this.cFirst = dtTokZeros(cap);
+    this.cCount = dtTokZeros(cap);
+    this.lineS = dtTokZeros(cap);
+    this.lineE = dtTokZeros(cap);
+    this.pred = dtTokFalses(cap);
+    this.gt = dtTokFalses(cap);
     const cc = (n >> 6) + 16;
-    this.cStart = new Array<i32>(cc);
-    this.cEnd = new Array<i32>(cc);
-    this.cKind = new Array<i32>(cc);
-    this.cLineS = new Array<i32>(cc);
-    this.cLineE = new Array<i32>(cc);
-    this.cCol1 = new Array<boolean>(cc);
+    this.cStart = dtTokZeros(cc);
+    this.cEnd = dtTokZeros(cc);
+    this.cKind = dtTokZeros(cc);
+    this.cLineS = dtTokZeros(cc);
+    this.cLineE = dtTokZeros(cc);
+    this.cCol1 = dtTokFalses(cc);
+  }
+
+  growTokens(cap: i32): void {
+    dtGrowI32(this.kind, cap);
+    dtGrowI32(this.kw, cap);
+    dtGrowI32(this.start, cap);
+    dtGrowI32(this.end, cap);
+    dtGrowI32(this.cFirst, cap);
+    dtGrowI32(this.cCount, cap);
+    dtGrowI32(this.lineS, cap);
+    dtGrowI32(this.lineE, cap);
+    dtGrowBool(this.pred, cap);
+    dtGrowBool(this.gt, cap);
+  }
+
+  growComments(cap: i32): void {
+    dtGrowI32(this.cStart, cap);
+    dtGrowI32(this.cEnd, cap);
+    dtGrowI32(this.cKind, cap);
+    dtGrowI32(this.cLineS, cap);
+    dtGrowI32(this.cLineE, cap);
+    dtGrowBool(this.cCol1, cap);
   }
 
   /** Makes room for at least one more token. */
   roomForToken(): void {
-    if (this.count + 1 < toI32(this.kind.length)) {
+    const len = toI32(this.kind.length);
+    if (this.count < len - 1) {
       return;
     }
-    const cap = toI32(this.kind.length) * 2;
-    this.kind = dtGrowI32(this.kind, cap);
-    this.kw = dtGrowI32(this.kw, cap);
-    this.start = dtGrowI32(this.start, cap);
-    this.end = dtGrowI32(this.end, cap);
-    this.cFirst = dtGrowI32(this.cFirst, cap);
-    this.cCount = dtGrowI32(this.cCount, cap);
-    this.lineS = dtGrowI32(this.lineS, cap);
-    this.lineE = dtGrowI32(this.lineE, cap);
-    this.pred = dtGrowBool(this.pred, cap);
-    this.gt = dtGrowBool(this.gt, cap);
+    this.growTokens(mul32(len, 2));
   }
 
   /** Makes room for at least one more comment. */
   roomForComment(): void {
-    if (this.nc + 1 < toI32(this.cStart.length)) {
+    const len = toI32(this.cStart.length);
+    if (this.nc < len - 1) {
       return;
     }
-    const cap = toI32(this.cStart.length) * 2;
-    this.cStart = dtGrowI32(this.cStart, cap);
-    this.cEnd = dtGrowI32(this.cEnd, cap);
-    this.cKind = dtGrowI32(this.cKind, cap);
-    this.cLineS = dtGrowI32(this.cLineS, cap);
-    this.cLineE = dtGrowI32(this.cLineE, cap);
-    this.cCol1 = dtGrowBool(this.cCol1, cap);
+    this.growComments(mul32(len, 2));
+  }
+
+  // Guarded reads of one token's fields: an index outside the tokens faults
+  // and answers a neutral value (EOF, no keyword, no comments).
+  kindAt(t: i32): i32 {
+    return dtTokAt(this.kind, t, T_EOF);
+  }
+  kwAt(t: i32): i32 {
+    return dtTokAt(this.kw, t, K_NONE);
+  }
+  startAt(t: i32): i32 {
+    return dtTokAt(this.start, t, 0);
+  }
+  endAt(t: i32): i32 {
+    return dtTokAt(this.end, t, 0);
+  }
+  lineSAt(t: i32): i32 {
+    return dtTokAt(this.lineS, t, 0);
+  }
+  lineEAt(t: i32): i32 {
+    return dtTokAt(this.lineE, t, 0);
+  }
+  cFirstAt(t: i32): i32 {
+    return dtTokAt(this.cFirst, t, -1);
+  }
+  cCountAt(t: i32): i32 {
+    return dtTokAt(this.cCount, t, 0);
+  }
+  // And of one comment's.
+  cStartAt(c: i32): i32 {
+    return dtTokAt(this.cStart, c, 0);
+  }
+  cEndAt(c: i32): i32 {
+    return dtTokAt(this.cEnd, c, 0);
+  }
+  cKindAt(c: i32): i32 {
+    return dtTokAt(this.cKind, c, 0);
+  }
+  cLineSAt(c: i32): i32 {
+    return dtTokAt(this.cLineS, c, 0);
+  }
+  cLineEAt(c: i32): i32 {
+    return dtTokAt(this.cLineE, c, 0);
+  }
+  cCol1At(c: i32): boolean {
+    const xs = this.cCol1;
+    if (c >= 0 && c < xs.length) {
+      return xs[c];
+    }
+    fault();
+    return false;
   }
 
   /** Whether token `t` is spelled `s`. */
   is(t: i32, s: string): boolean {
-    const a = this.start[t];
-    const k = this.end[t] - a;
+    const starts = this.start;
+    const ends = this.end;
+    const src = this.src;
+    if (t < 0 || t >= starts.length || t >= ends.length) {
+      fault();
+      return false;
+    }
+    const a = starts[t];
+    const e = ends[t];
+    // A token lies inside the source.
+    if (a < 0 || e < a || e > src.length) {
+      fault();
+      return false;
+    }
+    // e >= a >= 0: the u32 difference is exact.
+    const k = toI32(toU32(e) - toU32(a));
     if (k !== toI32(s.length)) {
       return false;
     }
-    for (let i = 0; i < k; i++) {
-      if (toI32(this.src[a + i]) !== s.charCodeAt(i)) {
+    let j = a;
+    for (let i = 0; i < k && i < s.length; i++) {
+      const uj = toU32(j);
+      if (uj >= toU32(src.length)) {
+        fault();
         return false;
       }
+      const b = toI32(src[uj]);
+      if (b !== s.charCodeAt(i)) {
+        return false;
+      }
+      // uj < src.length: the sum fits.
+      j = toI32(uj + 1);
     }
     return true;
   }
 
   text(t: i32): string {
-    return String.fromBytes(this.src, this.start[t], this.end[t]);
+    const starts = this.start;
+    const ends = this.end;
+    if (t >= 0 && t < starts.length && t < ends.length) {
+      return this.rangeText(starts[t], ends[t]);
+    }
+    fault();
+    return "";
+  }
+
+  /** The source bytes `[a, e)` as a string, as String.fromBytes makes it; the range lies in src[0, n). */
+  rangeText(a: i32, e: i32): string {
+    if (a < 0 || e < a || e > this.n || e > this.src.length) {
+      fault();
+      return "";
+    }
+    if (!this.srcTextReady) {
+      this.srcText = dtSourceText(this.src, this.n);
+      this.srcTextReady = true;
+    }
+    return this.srcText.substring(a, e);
   }
 
   /**
@@ -213,7 +442,12 @@ export class DtTokens {
    * `>` `=`, and so on. Shifts the following tokens up by one.
    */
   splitGt(t: i32): void {
-    const k = this.kind[t];
+    const kinds = this.kind;
+    if (t < 0 || t >= kinds.length) {
+      fault();
+      return;
+    }
+    const k = kinds[t];
     let rest = T_GT;
     if (k === T_GE) {
       rest = T_EQ;
@@ -227,32 +461,74 @@ export class DtTokens {
       rest = T_SHR_EQ;
     }
     this.roomForToken();
-    for (let i = this.count; i > t + 1; i--) {
-      this.kind[i] = this.kind[i - 1];
-      this.kw[i] = this.kw[i - 1];
-      this.start[i] = this.start[i - 1];
-      this.end[i] = this.end[i - 1];
-      this.cFirst[i] = this.cFirst[i - 1];
-      this.cCount[i] = this.cCount[i - 1];
-      this.lineS[i] = this.lineS[i - 1];
-      this.lineE[i] = this.lineE[i - 1];
-      this.pred[i] = this.pred[i - 1];
-      this.gt[i] = this.gt[i - 1];
+    const count = this.count;
+    const t1 = t + 1;
+    // roomForToken left count + 1 elements in every array, and t < count.
+    if (
+      count < t1 ||
+      !dtShiftI32(this.kind, t1, count) ||
+      !dtShiftI32(this.kw, t1, count) ||
+      !dtShiftI32(this.start, t1, count) ||
+      !dtShiftI32(this.end, t1, count) ||
+      !dtShiftI32(this.cFirst, t1, count) ||
+      !dtShiftI32(this.cCount, t1, count) ||
+      !dtShiftI32(this.lineS, t1, count) ||
+      !dtShiftI32(this.lineE, t1, count) ||
+      !dtShiftBool(this.pred, t1, count) ||
+      !dtShiftBool(this.gt, t1, count)
+    ) {
+      fault();
+      return;
     }
-    this.count = this.count + 1;
-    const s = this.start[t];
-    this.kind[t + 1] = rest;
-    this.kw[t + 1] = K_NONE;
-    this.start[t + 1] = s + 1;
-    this.end[t + 1] = this.end[t];
-    this.cFirst[t + 1] = -1;
-    this.cCount[t + 1] = 0;
-    this.lineS[t + 1] = this.lineS[t];
-    this.lineE[t + 1] = this.lineE[t];
-    this.pred[t + 1] = false;
-    this.gt[t + 1] = false;
-    this.kind[t] = T_GT;
-    this.end[t] = s + 1;
+    const kind = this.kind;
+    const kw = this.kw;
+    const start = this.start;
+    const end = this.end;
+    const cFirst = this.cFirst;
+    const cCount = this.cCount;
+    const lineS = this.lineS;
+    const lineE = this.lineE;
+    const pred = this.pred;
+    const gt = this.gt;
+    if (
+      t1 >= kind.length ||
+      t1 >= kw.length ||
+      t1 >= start.length ||
+      t1 >= end.length ||
+      t1 >= cFirst.length ||
+      t1 >= cCount.length ||
+      t1 >= lineS.length ||
+      t1 >= lineE.length ||
+      t1 >= pred.length ||
+      t1 >= gt.length ||
+      t >= kind.length ||
+      t >= start.length ||
+      t >= end.length ||
+      t >= lineS.length ||
+      t >= lineE.length ||
+      count >= kind.length
+    ) {
+      fault();
+      return;
+    }
+    this.count = count + 1;
+    const s = start[t];
+    if (s < 0 || s >= end[t]) {
+      fault();
+      return;
+    }
+    kind[t1] = rest;
+    kw[t1] = K_NONE;
+    start[t1] = s + 1;
+    end[t1] = end[t];
+    cFirst[t1] = -1;
+    cCount[t1] = 0;
+    lineS[t1] = lineS[t];
+    lineE[t1] = lineE[t];
+    pred[t1] = false;
+    gt[t1] = false;
+    kind[t] = T_GT;
+    end[t] = s + 1;
   }
 }
 
@@ -305,16 +581,42 @@ export class DtScanner {
 
   at(i: i32): i32 {
     if (i < this.n) {
-      return toI32(this.src[i]);
+      const src = this.src;
+      const ui = toU32(i);
+      if (ui < toU32(src.length)) {
+        return toI32(src[ui]);
+      }
+      fault();
     }
+    return -1;
+  }
+
+  /** at(i + k), for a small offset `k >= 0`. */
+  peek(i: i32, k: i32): i32 {
+    const j = toI64(i) + toI64(k);
+    if (j >= toI64(this.n)) {
+      return -1;
+    }
+    const src = this.src;
+    const jj = toI32(j);
+    if (jj >= 0 && jj < src.length) {
+      return toI32(src[jj]);
+    }
+    fault();
     return -1;
   }
 
   /** Notes the byte `c` at `i` when it is `\n` or `\r` (`\r\n` counts at the `\n`). */
   newlineAt(c: i32, i: i32): void {
-    if (c === 10 || (c === 13 && this.at(i + 1) !== 10)) {
-      this.line = this.line + 1;
-      this.lineStart = i + 1;
+    if (c === 10 || (c === 13 && this.peek(i, 1) !== 10)) {
+      const line = this.line;
+      // `c` is the byte at `i`, inside the source; a line per byte at most.
+      if (i < this.n && line < 2147483647) {
+        this.line = line + 1;
+        this.lineStart = i + 1;
+      } else {
+        fault();
+      }
     }
   }
 
@@ -322,37 +624,90 @@ export class DtScanner {
     const t = this.t;
     t.roomForToken();
     const i = t.count;
-    t.kind[i] = kind;
-    t.kw[i] = K_NONE;
-    t.start[i] = a;
-    t.end[i] = b;
-    t.lineS[i] = this.segLine >= 0 ? this.segLine : this.line;
-    t.lineE[i] = this.line;
-    if (this.pendFirst >= 0) {
-      t.cFirst[i] = this.pendFirst;
-      t.cCount[i] = t.nc - this.pendFirst;
+    const kinds = t.kind;
+    const kws = t.kw;
+    const starts = t.start;
+    const ends = t.end;
+    const lineS = t.lineS;
+    const lineE = t.lineE;
+    const cFirst = t.cFirst;
+    const cCount = t.cCount;
+    // roomForToken left room at count in every array.
+    if (
+      i < 0 ||
+      i >= kinds.length ||
+      i >= kws.length ||
+      i >= starts.length ||
+      i >= ends.length ||
+      i >= lineS.length ||
+      i >= lineE.length ||
+      i >= cFirst.length ||
+      i >= cCount.length
+    ) {
+      fault();
+      return;
+    }
+    kinds[i] = kind;
+    kws[i] = K_NONE;
+    starts[i] = a;
+    ends[i] = b;
+    lineS[i] = this.segLine >= 0 ? this.segLine : this.line;
+    lineE[i] = this.line;
+    const pf = this.pendFirst;
+    if (pf >= 0) {
+      const nc = t.nc;
+      // The pending comments are the last ones added.
+      if (nc < pf) {
+        fault();
+        return;
+      }
+      cFirst[i] = pf;
+      // nc >= pf >= 0: the u32 difference is exact.
+      cCount[i] = toI32(toU32(nc) - toU32(pf));
     } else {
-      t.cFirst[i] = -1;
-      t.cCount[i] = 0;
+      cFirst[i] = -1;
+      cCount[i] = 0;
     }
     this.pendFirst = -1;
     t.count = i + 1;
     this.header = false;
+    const lt = this.lt;
     if (kind === T_LT) {
-      this.lt = this.lt + 1;
+      // At most one `<` a token.
+      if (lt >= i) {
+        fault();
+        return;
+      }
+      this.lt = lt + 1;
     } else if (kind === T_GT) {
-      if (this.lt > 0) {
-        this.lt = this.lt - 1;
+      if (lt > 0) {
+        this.lt = lt - 1;
       }
     } else if (kind === T_SHR || kind === T_USHR) {
-      const m = kind === T_SHR ? 2 : 3;
-      if (this.predict && this.lt >= m) {
+      let m = 3;
+      if (kind === T_SHR) {
+        m = 2;
+      }
+      if (this.predict && lt >= m) {
         for (let j = 1; j < m; j++) {
-          t.pred[t.count - 1] = true;
-          t.splitGt(t.count - 1);
+          const c = t.count;
+          const pred = t.pred;
+          if (c <= 0 || c > pred.length) {
+            fault();
+            return;
+          }
+          pred[c - 1] = true;
+          t.splitGt(c - 1);
         }
-        t.npred = t.npred + m - 1;
-        this.lt = this.lt - m;
+        const np = t.npred;
+        // At most two a token.
+        if (np >= 2147483645) {
+          fault();
+          return;
+        }
+        t.npred = np + m - 1;
+        // lt >= m >= 2: the u32 difference is exact.
+        this.lt = toI32(toU32(lt) - toU32(m));
       } else {
         this.lt = 0;
       }
@@ -372,8 +727,15 @@ export class DtScanner {
   commentStart(a: i32): void {
     const t = this.t;
     t.roomForComment();
-    t.cLineS[t.nc] = this.line;
-    t.cCol1[t.nc] = a === this.lineStart;
+    const nc = t.nc;
+    const cLineS = t.cLineS;
+    const cCol1 = t.cCol1;
+    if (nc < 0 || nc >= cLineS.length || nc >= cCol1.length) {
+      fault();
+      return;
+    }
+    cLineS[nc] = this.line;
+    cCol1[nc] = a === this.lineStart;
   }
 
   /** add, for a string segment that starts on line `segLine`. */
@@ -387,10 +749,18 @@ export class DtScanner {
     const t = this.t;
     t.roomForComment();
     const i = t.nc;
-    t.cStart[i] = a;
-    t.cEnd[i] = b;
-    t.cKind[i] = kind;
-    t.cLineE[i] = this.line;
+    const cStart = t.cStart;
+    const cEnd = t.cEnd;
+    const cKind = t.cKind;
+    const cLineE = t.cLineE;
+    if (i < 0 || i >= cStart.length || i >= cEnd.length || i >= cKind.length || i >= cLineE.length) {
+      fault();
+      return;
+    }
+    cStart[i] = a;
+    cEnd[i] = b;
+    cKind[i] = kind;
+    cLineE[i] = this.line;
     if (this.pendFirst < 0) {
       this.pendFirst = i;
     }
@@ -400,23 +770,46 @@ export class DtScanner {
   scan(): void {
     const t = this.t;
     // BOF.
-    t.kind[0] = T_BOF;
-    t.kw[0] = K_NONE;
-    t.start[0] = 0;
-    t.end[0] = 0;
-    t.cFirst[0] = -1;
-    t.cCount[0] = 0;
-    t.lineS[0] = 1;
-    t.lineE[0] = 1;
+    const kinds = t.kind;
+    const kws = t.kw;
+    const starts = t.start;
+    const ends = t.end;
+    const cFirst = t.cFirst;
+    const cCount = t.cCount;
+    const lineS = t.lineS;
+    const lineE = t.lineE;
+    // The constructor left 16 tokens' room at least.
+    if (
+      kinds.length < 1 ||
+      kws.length < 1 ||
+      starts.length < 1 ||
+      ends.length < 1 ||
+      cFirst.length < 1 ||
+      cCount.length < 1 ||
+      lineS.length < 1 ||
+      lineE.length < 1
+    ) {
+      fault();
+      return;
+    }
+    kinds[0] = T_BOF;
+    kws[0] = K_NONE;
+    starts[0] = 0;
+    ends[0] = 0;
+    cFirst[0] = -1;
+    cCount[0] = 0;
+    lineS[0] = 1;
+    lineE[0] = 1;
     t.count = 1;
     // Skip a UTF-8 byte order mark.
     if (this.n >= 3 && this.at(0) === 0xef && this.at(1) === 0xbb && this.at(2) === 0xbf) {
       this.p = 3;
     }
-    if (this.at(this.p) === 35 && this.at(this.p + 1) === 33) {
+    if (this.at(this.p) === 35 && this.peek(this.p, 1) === 33) {
       const a = this.p;
+      const n = this.n;
       let i = a;
-      while (i < this.n && this.at(i) !== 10 && this.at(i) !== 13) {
+      while (i < n && this.at(i) !== 10 && this.at(i) !== 13) {
         i++;
       }
       this.p = i;
@@ -439,24 +832,43 @@ export class DtScanner {
   /** Skips whitespace and comments; answers the next byte or -1 at the end. */
   skipTrivia(): i32 {
     const n = this.n;
+    const src = this.src;
     while (this.p < n) {
-      const c = toI32(this.src[this.p]);
+      const p = this.p;
+      const up = toU32(p);
+      if (up >= toU32(src.length)) {
+        fault();
+        return -1;
+      }
+      const c = toI32(src[up]);
+      // up < src.length: p + 1 fits.
+      const p1 = toI32(up + 1);
       if (c === 32 || c === 9 || c === 12 || c === 11) {
-        this.p = this.p + 1;
+        this.p = p1;
         continue;
       }
       if (c === 10 || c === 13) {
-        this.newlineAt(c, this.p);
-        this.p = this.p + 1;
+        this.newlineAt(c, p);
+        this.p = p1;
         continue;
       }
       if (c === 47) {
-        const d = this.at(this.p + 1);
+        const d = this.at(p1);
         if (d === 47) {
-          const a = this.p;
-          let i = a + 2;
-          while (i < n) {
-            const e = toI32(this.src[i]);
+          // `d` is the byte at p1, inside the source.
+          if (p1 >= src.length) {
+            fault();
+            return -1;
+          }
+          const a = p;
+          let i = p1 + 1;
+          while (i >= 0 && i < n) {
+            const ui = toU32(i);
+            if (ui >= toU32(src.length)) {
+              fault();
+              return -1;
+            }
+            const e = toI32(src[ui]);
             if (e === 10 || e === 13) {
               break;
             }
@@ -471,18 +883,38 @@ export class DtScanner {
           continue;
         }
         if (d === 42) {
-          const a = this.p;
+          if (p1 >= src.length) {
+            fault();
+            return -1;
+          }
+          const a = p;
           this.commentStart(a);
-          let i = a + 2;
+          let i = p1 + 1;
           let depth = 1;
           while (i < n && depth > 0) {
-            const e = toI32(this.src[i]);
-            if (e === 42 && this.at(i + 1) === 47) {
+            const ui = toU32(i);
+            if (ui >= toU32(src.length)) {
+              fault();
+              return -1;
+            }
+            const e = toI32(src[ui]);
+            const i1 = i + 1;
+            if (e === 42 && this.at(i1) === 47) {
+              // The `/` is at i1, inside the source.
+              if (i1 >= n) {
+                fault();
+                return -1;
+              }
               depth--;
-              i += 2;
-            } else if (e === 47 && this.at(i + 1) === 42) {
+              i = i1 + 1;
+            } else if (e === 47 && this.at(i1) === 42) {
+              // A comment opens at most every other byte.
+              if (i1 >= n || depth >= i) {
+                fault();
+                return -1;
+              }
               depth++;
-              i += 2;
+              i = i1 + 1;
             } else {
               if (e === 10 || e === 13) {
                 this.newlineAt(e, i);
@@ -506,29 +938,41 @@ export class DtScanner {
 
   /** Recognizes `// @dart = 2.12` in the file header. */
   languageVersion(a: i32, b: i32): void {
-    let i = a + 2;
+    // `src[a, b)` is a `//` comment.
+    if (a < 0 || a >= b) {
+      fault();
+      return;
+    }
+    const a1 = a + 1;
+    if (a1 >= b) {
+      fault();
+      return;
+    }
+    let i = a1 + 1;
     if (this.at(i) === 47) {
       return; // a doc comment
     }
     while (i < b && this.at(i) === 32) {
       i++;
     }
+    // `@dart` is inside the comment, which ends at a newline or the end.
     if (
+      toI64(i) >= toI64(b) - toI64(4) ||
       !(
         this.at(i) === 64 &&
-        this.at(i + 1) === 100 &&
-        this.at(i + 2) === 97 &&
-        this.at(i + 3) === 114 &&
-        this.at(i + 4) === 116
+        this.peek(i, 1) === 100 &&
+        this.peek(i, 2) === 97 &&
+        this.peek(i, 3) === 114 &&
+        this.peek(i, 4) === 116
       )
     ) {
       return;
     }
-    i += 5;
+    i = add32(i, 5);
     while (i < b && this.at(i) === 32) {
       i++;
     }
-    if (this.at(i) !== 61) {
+    if (i >= b || this.at(i) !== 61) {
       return;
     }
     i++;
@@ -538,20 +982,26 @@ export class DtScanner {
     let major = 0;
     const ms = i;
     while (i < b && dtIsDigit(this.at(i))) {
-      major = major * 10 + this.at(i) - 48;
+      if (major < 0 || major > 100000) {
+        return;
+      }
+      major = major * 10 + (this.at(i) & 0xff) - 48;
       if (major > 100000) {
         return;
       }
       i++;
     }
-    if (i === ms || this.at(i) !== 46) {
+    if (i === ms || i >= b || this.at(i) !== 46) {
       return;
     }
     i++;
     let minor = 0;
     const ns = i;
     while (i < b && dtIsDigit(this.at(i))) {
-      minor = minor * 10 + this.at(i) - 48;
+      if (minor < 0 || minor > 100000) {
+        return;
+      }
+      minor = minor * 10 + (this.at(i) & 0xff) - 48;
       if (minor > 100000) {
         return;
       }
@@ -571,24 +1021,54 @@ export class DtScanner {
   }
 
   op(kind: i32, len: i32): void {
-    this.add(kind, this.p, this.p + len);
-    this.p += len;
+    const p = this.p;
+    const e = add32(p, len);
+    this.add(kind, p, e);
+    this.p = e;
+  }
+
+  /** Sets the keyword of the token just added, the identifier `src[a, b)`. */
+  setKeyword(a: i32, b: i32): void {
+    const kw = dtKeyword(this.src, a, b);
+    const t = this.t;
+    const c = t.count;
+    const kws = t.kw;
+    if (c > 0 && c <= kws.length) {
+      kws[c - 1] = kw;
+    } else {
+      fault();
+    }
   }
 
   token(c: i32): void {
     const p = this.p;
+    const n = this.n;
+    // skipTrivia found `c` at p.
+    if (p < 0 || p >= n) {
+      fault();
+      return;
+    }
     if (dtIsIdStart(c)) {
       // A raw string?
       if (c === 114 && (this.at(p + 1) === 39 || this.at(p + 1) === 34)) {
         this.string(p, p + 1, true);
         return;
       }
+      const src = this.src;
       let i = p + 1;
-      while (i < this.n && dtIsIdPart(toI32(this.src[i]))) {
+      while (i >= 0 && i < n) {
+        const ui = toU32(i);
+        if (ui >= toU32(src.length)) {
+          fault();
+          return;
+        }
+        if (!dtIsIdPart(toI32(src[ui]))) {
+          break;
+        }
         i++;
       }
       this.add(T_IDENT, p, i);
-      this.t.kw[this.t.count - 1] = dtKeyword(this.src, p, i);
+      this.setKeyword(p, i);
       this.p = i;
       return;
     }
@@ -610,12 +1090,17 @@ export class DtScanner {
         return;
       case 91: {
         // `[]` and `[]=` are single tokens only as operator names.
-        const prev = this.t.count - 1;
-        if (
-          d === 93 &&
-          ((this.t.kind[prev] === T_IDENT && this.t.kw[prev] === K_OPERATOR) || this.t.kind[prev] === T_HASH)
-        ) {
-          if (this.at(p + 2) === 61) {
+        const cnt = this.t.count;
+        const kinds = this.t.kind;
+        const kws = this.t.kw;
+        // BOF comes first.
+        if (cnt <= 0 || cnt > kinds.length || cnt > kws.length) {
+          fault();
+          return;
+        }
+        const prev = cnt - 1;
+        if (d === 93 && ((kinds[prev] === T_IDENT && kws[prev] === K_OPERATOR) || kinds[prev] === T_HASH)) {
+          if (this.peek(p, 2) === 61) {
             this.op(T_INDEX_EQ, 3);
           } else {
             this.op(T_INDEX, 2);
@@ -628,25 +1113,55 @@ export class DtScanner {
       case 93:
         this.op(T_RBRACKET, 1);
         return;
-      case 123:
-        if (this.ns > 0) {
-          this.sDepth[this.ns - 1] = this.sDepth[this.ns - 1] + 1;
+      case 123: {
+        const ns = this.ns;
+        if (ns > 0) {
+          const sDepth = this.sDepth;
+          if (ns > sDepth.length) {
+            fault();
+            return;
+          }
+          const v = sDepth[ns - 1];
+          // A brace a byte at most.
+          if (v >= p) {
+            fault();
+            return;
+          }
+          sDepth[ns - 1] = v + 1;
         }
         this.op(T_LBRACE, 1);
         return;
-      case 125:
-        if (this.ns > 0) {
-          const top = this.ns - 1;
-          if (this.sDepth[top] === 0) {
-            this.op(T_RBRACE, 1);
-            this.ns = top;
-            this.stringBody(this.p, this.sQuote[top], this.sTriple[top], false);
+      }
+      case 125: {
+        const ns = this.ns;
+        if (ns > 0) {
+          const top = ns - 1;
+          const sDepth = this.sDepth;
+          const sQuote = this.sQuote;
+          const sTriple = this.sTriple;
+          if (top >= sDepth.length || top >= sQuote.length || top >= sTriple.length) {
+            fault();
             return;
           }
-          this.sDepth[top] = this.sDepth[top] - 1;
+          const v = sDepth[top];
+          if (v === 0) {
+            const quote = sQuote[top];
+            const triple = sTriple[top];
+            this.op(T_RBRACE, 1);
+            this.ns = top;
+            this.stringBody(this.p, quote, triple, false);
+            return;
+          }
+          // The depth counts open braces.
+          if (v < 0) {
+            fault();
+            return;
+          }
+          sDepth[top] = v - 1;
         }
         this.op(T_RBRACE, 1);
         return;
+      }
       case 59:
         this.op(T_SEMI, 1);
         return;
@@ -655,8 +1170,8 @@ export class DtScanner {
         return;
       case 46:
         if (d === 46) {
-          if (this.at(p + 2) === 46) {
-            if (this.at(p + 3) === 63) {
+          if (this.peek(p, 2) === 46) {
+            if (this.peek(p, 3) === 63) {
               this.op(T_ELLIPSIS_Q, 4);
             } else {
               this.op(T_ELLIPSIS, 3);
@@ -670,13 +1185,13 @@ export class DtScanner {
         return;
       case 63:
         if (d === 63) {
-          if (this.at(p + 2) === 61) {
+          if (this.peek(p, 2) === 61) {
             this.op(T_QQ_EQ, 3);
           } else {
             this.op(T_QQ, 2);
           }
         } else if (d === 46) {
-          if (this.at(p + 2) === 46) {
+          if (this.peek(p, 2) === 46) {
             this.op(T_QDOTDOT, 3);
           } else {
             this.op(T_QDOT, 2);
@@ -708,7 +1223,7 @@ export class DtScanner {
         if (d === 61) {
           this.op(T_LE, 2);
         } else if (d === 60) {
-          if (this.at(p + 2) === 61) {
+          if (this.peek(p, 2) === 61) {
             this.op(T_SHL_EQ, 3);
           } else {
             this.op(T_SHL, 2);
@@ -721,11 +1236,11 @@ export class DtScanner {
         if (d === 61) {
           this.op(T_GE, 2);
         } else if (d === 62) {
-          const e = this.at(p + 2);
+          const e = this.peek(p, 2);
           if (e === 61) {
             this.op(T_SHR_EQ, 3);
           } else if (e === 62) {
-            if (this.at(p + 3) === 61) {
+            if (this.peek(p, 3) === 61) {
               this.op(T_USHR_EQ, 4);
             } else {
               this.op(T_USHR, 3);
@@ -771,7 +1286,7 @@ export class DtScanner {
         return;
       case 126:
         if (d === 47) {
-          if (this.at(p + 2) === 61) {
+          if (this.peek(p, 2) === 61) {
             this.op(T_TILDE_SLASH_EQ, 3);
           } else {
             this.op(T_TILDE_SLASH, 2);
@@ -789,7 +1304,7 @@ export class DtScanner {
         return;
       case 38:
         if (d === 38) {
-          if (this.at(p + 2) === 61) {
+          if (this.peek(p, 2) === 61) {
             this.op(T_AMPAMP_EQ, 3);
           } else {
             this.op(T_AMPAMP, 2);
@@ -802,7 +1317,7 @@ export class DtScanner {
         return;
       case 124:
         if (d === 124) {
-          if (this.at(p + 2) === 61) {
+          if (this.peek(p, 2) === 61) {
             this.op(T_BARBAR_EQ, 3);
           } else {
             this.op(T_BARBAR, 2);
@@ -837,37 +1352,38 @@ export class DtScanner {
   }
 
   number(p: i32): void {
+    const n = this.n;
     let i = p;
     let isDouble = false;
-    if (this.at(i) === 48 && (this.at(i + 1) === 120 || this.at(i + 1) === 88) && dtIsHex(this.at(i + 2))) {
-      i += 3;
-      while (dtIsHex(this.at(i)) || (this.at(i) === 95 && this.sepOk(i, true))) {
+    if (this.at(i) === 48 && (this.peek(i, 1) === 120 || this.peek(i, 1) === 88) && dtIsHex(this.peek(i, 2))) {
+      i = add32(i, 3);
+      while (i < n && (dtIsHex(this.at(i)) || (this.at(i) === 95 && this.sepOk(i, true)))) {
         i++;
       }
       this.add(T_INT, p, i);
       this.p = i;
       return;
     }
-    while (dtIsDigit(this.at(i)) || (this.at(i) === 95 && this.sepOk(i, false))) {
+    while (i < n && (dtIsDigit(this.at(i)) || (this.at(i) === 95 && this.sepOk(i, false)))) {
       i++;
     }
-    if (this.at(i) === 46 && dtIsDigit(this.at(i + 1))) {
+    if (i < n && this.at(i) === 46 && dtIsDigit(this.at(i + 1))) {
       isDouble = true;
       i++;
-      while (dtIsDigit(this.at(i)) || (this.at(i) === 95 && this.sepOk(i, false))) {
+      while (i < n && (dtIsDigit(this.at(i)) || (this.at(i) === 95 && this.sepOk(i, false)))) {
         i++;
       }
     }
     const e = this.at(i);
-    if (e === 101 || e === 69) {
+    if ((e === 101 || e === 69) && i < n) {
       let j = i + 1;
-      if (this.at(j) === 43 || this.at(j) === 45) {
+      if (j < n && (this.at(j) === 43 || this.at(j) === 45)) {
         j++;
       }
       if (dtIsDigit(this.at(j))) {
         isDouble = true;
         i = j;
-        while (dtIsDigit(this.at(i)) || (this.at(i) === 95 && this.sepOk(i, false))) {
+        while (i < n && (dtIsDigit(this.at(i)) || (this.at(i) === 95 && this.sepOk(i, false)))) {
           i++;
         }
       }
@@ -878,8 +1394,9 @@ export class DtScanner {
 
   /** Whether the `_` run at `i` separates two digits. */
   sepOk(i: i32, hex: boolean): boolean {
+    const n = this.n;
     let j = i;
-    while (this.at(j) === 95) {
+    while (j < n && this.at(j) === 95) {
       j++;
     }
     const c = this.at(j);
@@ -889,11 +1406,16 @@ export class DtScanner {
   /** Scans a string literal starting at `a` whose quote is at `q`. */
   string(a: i32, q: i32, raw: boolean): void {
     const quote = this.at(q);
+    // The quote is inside the source.
+    if (q < 0 || q >= this.n) {
+      fault();
+      return;
+    }
     let triple = false;
     let i = q + 1;
-    if (this.at(q + 1) === quote && this.at(q + 2) === quote) {
+    if (this.at(q + 1) === quote && this.peek(q, 2) === quote) {
       triple = true;
-      i = q + 3;
+      i = add32(q, 3);
     }
     this.stringBody(a, quote, triple, raw, i);
   }
@@ -906,25 +1428,33 @@ export class DtScanner {
     let a = a0;
     let i = from < 0 ? a0 : from;
     const n = this.n;
+    const src = this.src;
     let segLine = this.line;
     while (true) {
       if (i >= n) {
         this.fail("unterminated string");
         return;
       }
-      const c = toI32(this.src[i]);
+      const ui = toU32(i);
+      if (ui >= toU32(src.length)) {
+        fault();
+        return;
+      }
+      const c = toI32(src[ui]);
+      const i1 = i + 1;
       if (c === quote) {
         if (!triple) {
-          this.addSeg(T_STRING, a, i + 1, segLine);
-          this.p = i + 1;
+          this.addSeg(T_STRING, a, i1, segLine);
+          this.p = i1;
           return;
         }
-        if (this.at(i + 1) === quote && this.at(i + 2) === quote) {
-          this.addSeg(T_STRING, a, i + 3, segLine);
-          this.p = i + 3;
+        if (this.at(i1) === quote && this.peek(i, 2) === quote) {
+          const e = add32(i, 3);
+          this.addSeg(T_STRING, a, e, segLine);
+          this.p = e;
           return;
         }
-        i++;
+        i = i1;
         continue;
       }
       if (c === 10 || c === 13) {
@@ -935,43 +1465,71 @@ export class DtScanner {
         this.newlineAt(c, i);
       }
       if (c === 92 && !raw) {
-        const d = this.at(i + 1);
+        const d = this.at(i1);
         if (d === 10 || d === 13) {
-          this.newlineAt(d, i + 1);
+          this.newlineAt(d, i1);
         }
-        i += 2;
+        if (i1 >= n) {
+          // A `\` at the end: past it, the string is unterminated.
+          this.fail("unterminated string");
+          return;
+        }
+        i = i1 + 1;
         continue;
       }
       if (c === 36 && !raw) {
-        const d = this.at(i + 1);
+        const d = this.at(i1);
         if (d === 123) {
+          // The `{` is at i1, inside the source.
+          if (i1 >= n) {
+            fault();
+            return;
+          }
           this.addSeg(T_STRING, a, i, segLine);
-          this.add(T_INTERP_EXPR, i, i + 2);
-          this.p = i + 2;
-          if (this.ns >= toI32(this.sQuote.length)) {
+          this.add(T_INTERP_EXPR, i, i1 + 1);
+          this.p = i1 + 1;
+          const ns = this.ns;
+          const sQuote = this.sQuote;
+          if (ns >= toI32(sQuote.length)) {
             this.fail("interpolation too deep");
             return;
           }
-          this.sQuote[this.ns] = quote;
-          this.sTriple[this.ns] = triple;
-          this.sDepth[this.ns] = 0;
-          this.ns = this.ns + 1;
+          const sTriple = this.sTriple;
+          const sDepth = this.sDepth;
+          if (ns < 0 || ns >= sTriple.length || ns >= sDepth.length) {
+            fault();
+            return;
+          }
+          sQuote[ns] = quote;
+          sTriple[ns] = triple;
+          sDepth[ns] = 0;
+          this.ns = ns + 1;
           return;
         }
         if ((d >= 97 && d <= 122) || (d >= 65 && d <= 90) || d === 95) {
+          // The letter is at i1, inside the source.
+          if (i1 >= n) {
+            fault();
+            return;
+          }
           this.addSeg(T_STRING, a, i, segLine);
-          this.add(T_INTERP_IDENT, i, i + 1);
-          let j = i + 2;
+          this.add(T_INTERP_IDENT, i, i1);
+          let j = i1 + 1;
           while (j < n) {
-            const e = toI32(this.src[j]);
+            const uj = toU32(j);
+            if (uj >= toU32(src.length)) {
+              fault();
+              return;
+            }
+            const e = toI32(src[uj]);
             if ((e >= 97 && e <= 122) || (e >= 65 && e <= 90) || e === 95 || (e >= 48 && e <= 57)) {
               j++;
             } else {
               break;
             }
           }
-          this.add(T_IDENT, i + 1, j);
-          this.t.kw[this.t.count - 1] = dtKeyword(this.src, i + 1, j);
+          this.add(T_IDENT, i1, j);
+          this.setKeyword(i1, j);
           // The rest of the string is the next segment.
           a = j;
           i = j;
@@ -981,22 +1539,22 @@ export class DtScanner {
         this.fail("bad interpolation");
         return;
       }
-      i++;
+      i = i1;
     }
   }
 }
 
-/** Scans `src[0, n)`. */
-export const dtScan = (src: u8[], n: i32): DtTokens => {
-  const t = new DtTokens(src, n);
+/** Scans `src[0, n)`; `text` is those bytes as a string, or "" to make it from them. */
+export const dtScan = (src: u8[], n: i32, text: string): DtTokens => {
+  const t = new DtTokens(src, n, text);
   const s = new DtScanner(t);
   s.scan();
   return t;
 };
 
 /** Scans without splitting any `>>` up front (see DtTokens.pred). */
-export const dtScanPlain = (src: u8[], n: i32): DtTokens => {
-  const t = new DtTokens(src, n);
+export const dtScanPlain = (src: u8[], n: i32, text: string): DtTokens => {
+  const t = new DtTokens(src, n, text);
   const s = new DtScanner(t);
   s.predict = false;
   s.scan();
@@ -1008,8 +1566,15 @@ export const dtPredictionsHeld = (t: DtTokens): boolean => {
   if (t.npred === 0) {
     return true;
   }
-  for (let i = 0; i < t.count; i++) {
-    if (t.pred[i] && !t.gt[i]) {
+  const count = t.count;
+  const pred = t.pred;
+  const gt = t.gt;
+  if (count > pred.length || count > gt.length) {
+    fault();
+    return false;
+  }
+  for (let i = 0; i < count && i < pred.length && i < gt.length; i++) {
+    if (pred[i] && !gt[i]) {
       return false;
     }
   }

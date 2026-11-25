@@ -3,9 +3,10 @@
 // Ported from RuboCop 1.92.3 (MIT License, Copyright (c) 2012-24 Bozhidar
 // Batsov).
 
+import { add32 } from "../../core/arr";
 import { F_ASSIGNMENT, F_END, NT_DEF, NT_DEFS, V_NIL } from "../ast";
 import { RbCop } from "../cop";
-import { rnHas, rnS } from "../node";
+import { rbB, rbLine, rnHas, rnS } from "../node";
 import { RbSource } from "../source";
 import { RbLayLines, rbLayBodyCheck } from "./layout_empty_help";
 
@@ -30,11 +31,12 @@ export class CopLayoutEmptyLinesAroundMethodBody {
         // offending_endless_method?
         const body = a.kid(n, -1);
         const al = src.line(rnS(src, n, F_ASSIGNMENT));
-        if (body !== V_NIL && src.line(a.exS(body)) > al + 1 && L.empty(al)) {
-          const s = L.start(al + 1);
-          const k = this.c.offense(s, s + 1);
+        if (body !== V_NIL && src.line(a.exS(body)) > rbLine(src, rnS(src, n, F_ASSIGNMENT)) + 1 && L.empty(al)) {
+          const s = L.start(add32(al, 1));
+          const se = rbB(s) + 1;
+          const k = this.c.offense(s, se);
           if (k !== null) {
-            k.remove(s, s + 1);
+            k.remove(s, se);
             this.c.commit(k);
           }
         }

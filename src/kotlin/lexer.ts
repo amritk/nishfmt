@@ -4,6 +4,7 @@
 // JFlex; string templates and comments keep JFlex's state stack.
 
 import { growI32 } from "../core/arr";
+import { fault } from "../core/fault";
 import {
   T_ANDAND,
   T_AND,
@@ -158,7 +159,7 @@ const kIsHex = (c: i32): boolean => kIsDigit(c) || (c >= 97 && c <= 102) || (c >
 /** The lexemes of a Kotlin file: every token, whitespace run and comment. */
 export class KLexemes {
   src: u8[];
-  n: i32 = 0;
+  n: integer<0, 1073741823> = 0;
   count: i32 = 0;
   type: i32[];
   start: i32[];
@@ -185,34 +186,74 @@ export class KLexemes {
     this.cpTmp = new KCp();
   }
 
+  /** Gives up on the file: the lexer met a state its invariants rule out. */
+  private lexFault(): void {
+    fault();
+    this.failed = true;
+  }
+
   private at(i: i32): i32 {
-    return i < this.n ? toI32(this.src[i]) : -1;
+    if (i >= this.n) {
+      return -1;
+    }
+    const src = this.src;
+    if (i >= 0 && i < src.length) {
+      return toI32(src[i]);
+    }
+    // lex() checked n against the source, and offsets never go negative.
+    this.lexFault();
+    return -1;
   }
 
   private add(t: i32, a: i32, b: i32): void {
     const i = this.count;
     if (i >= toI32(this.type.length)) {
+      // At most two lexemes a byte, and n is below 2^30.
+      if (i < 0 || i > 1000000000) {
+        this.lexFault();
+        return;
+      }
       const c = i * 2 + 16;
       this.type = growI32(this.type, c);
       this.start = growI32(this.start, c);
       this.end = growI32(this.end, c);
     }
-    this.type[i] = t;
-    this.start[i] = a;
-    this.end[i] = b;
-    this.count = i + 1;
+    const ty = this.type;
+    const st = this.start;
+    const en = this.end;
+    if (i >= 0 && i < ty.length && i < st.length && i < en.length) {
+      ty[i] = t;
+      st[i] = a;
+      en[i] = b;
+      this.count = i + 1;
+      return;
+    }
+    this.lexFault();
   }
 
   private pushState(s: i32): void {
-    if (this.nSt >= toI32(this.stStack.length)) {
-      this.stStack = growI32(this.stStack, this.nSt * 2 + 8);
-      this.stBrace = growI32(this.stBrace, this.nSt * 2 + 8);
-      this.stPrefix = growI32(this.stPrefix, this.nSt * 2 + 8);
+    const k = this.nSt;
+    if (k >= toI32(this.stStack.length)) {
+      // A push consumes a byte, and n is below 2^30.
+      if (k < 0 || k > 1000000000) {
+        this.lexFault();
+        return;
+      }
+      this.stStack = growI32(this.stStack, k * 2 + 8);
+      this.stBrace = growI32(this.stBrace, k * 2 + 8);
+      this.stPrefix = growI32(this.stPrefix, k * 2 + 8);
     }
-    this.stStack[this.nSt] = this.state;
-    this.stBrace[this.nSt] = this.lBraceCount;
-    this.stPrefix[this.nSt] = this.requiredPrefix;
-    this.nSt = this.nSt + 1;
+    const ss = this.stStack;
+    const sb = this.stBrace;
+    const sp = this.stPrefix;
+    if (k < 0 || k >= ss.length || k >= sb.length || k >= sp.length) {
+      this.lexFault();
+      return;
+    }
+    ss[k] = this.state;
+    sb[k] = this.lBraceCount;
+    sp[k] = this.requiredPrefix;
+    this.nSt = k + 1;
     this.lBraceCount = 0;
     this.requiredPrefix = -1;
     this.state = s;
@@ -224,19 +265,34 @@ export class KLexemes {
   }
 
   private popState(): void {
-    if (this.nSt === 0) {
-      this.state = S_INITIAL;
+    const k = this.nSt;
+    if (k <= 0) {
+      if (k === 0) {
+        this.state = S_INITIAL;
+      } else {
+        this.lexFault();
+      }
       return;
     }
-    this.nSt = this.nSt - 1;
-    this.state = this.stStack[this.nSt];
-    this.lBraceCount = this.stBrace[this.nSt];
-    this.requiredPrefix = this.stPrefix[this.nSt];
+    const ss = this.stStack;
+    const sb = this.stBrace;
+    const sp = this.stPrefix;
+    const j = k - 1;
+    if (j >= ss.length || j >= sb.length || j >= sp.length) {
+      this.lexFault();
+      return;
+    }
+    this.nSt = j;
+    this.state = ss[j];
+    this.lBraceCount = sb[j];
+    this.requiredPrefix = sp[j];
   }
 
   private cpAt(i: i32, out: KCp): void {
+    const n = this.n;
     const c = this.at(i);
-    if (c < 0x80) {
+    // A byte of 0x80 or more lies before n, so i + 3 fits below.
+    if (c < 0x80 || i >= n) {
       out.cp = c;
       out.len = 1;
       return;
@@ -283,14 +339,23 @@ export class KLexemes {
 
   /** The end of an identifier at `i` (plain or backticked), or -1. */
   private identEnd(i: i32): i32 {
+    const n = this.n;
+    if (i >= n) {
+      // at(i) is -1 there: no identifier starts.
+      return -1;
+    }
     const c = this.at(i);
     const l0 = this.letterLen(i);
     if (l0 > 0) {
+      // A letter is at most four bytes.
+      if (l0 > 4) {
+        this.lexFault();
+        return -1;
+      }
       let j = i + l0;
       // ASCII letters, digits and `_` without the code point decoder.
       const src = this.src;
-      const n = this.n;
-      while (j < n) {
+      while (j < n && j < src.length) {
         const d = toI32(src[j]);
         if ((d >= 97 && d <= 122) || (d >= 65 && d <= 90) || (d >= 48 && d <= 57) || d === 95) {
           j++;
@@ -300,6 +365,11 @@ export class KLexemes {
       }
       let k = this.identPartLen(j);
       while (k > 0) {
+        // A part is at most four bytes, and starts before n.
+        if (k > 4 || j >= n) {
+          this.lexFault();
+          return -1;
+        }
         j += k;
         k = this.identPartLen(j);
       }
@@ -307,10 +377,10 @@ export class KLexemes {
     }
     if (c === 96) {
       let j = i + 1;
-      while (j < this.n && this.at(j) !== 96 && this.at(j) !== 10) {
+      while (j < n && this.at(j) !== 96 && this.at(j) !== 10) {
         j++;
       }
-      if (j > i + 1 && this.at(j) === 96) {
+      if (j > i + 1 && j < n && this.at(j) === 96) {
         return j + 1;
       }
     }
@@ -319,15 +389,27 @@ export class KLexemes {
 
   lex(src: u8[], n: i32): void {
     this.src = src;
-    this.n = n;
+    this.n = 0;
     this.count = 0;
     this.failed = false;
     this.state = S_INITIAL;
     this.lBraceCount = 0;
     this.requiredPrefix = -1;
     this.nSt = 0;
+    // The longest source the lexer takes: offsets stay below 2^30, so an
+    // offset plus a few bytes fits in an i32.
+    if (n < 0 || n > src.length || n > 1073741823) {
+      this.lexFault();
+      return;
+    }
+    this.n = n;
     let i = 0;
     while (i < n) {
+      // Every rule answers an offset past the one it was given.
+      if (i < 0) {
+        this.lexFault();
+        return;
+      }
       const s = this.state;
       if (s === S_STRING_PREFIX) {
         if (this.at(i) === 34 && this.at(i + 1) === 34 && this.at(i + 2) === 34) {
@@ -353,7 +435,7 @@ export class KLexemes {
         const e = this.identEnd(i);
         if (e > i) {
           const isThis =
-            e - i === 4 &&
+            e === i + 4 &&
             this.at(i) === 116 &&
             this.at(i + 1) === 104 &&
             this.at(i + 2) === 105 &&
@@ -371,17 +453,28 @@ export class KLexemes {
       if (s === S_LONG_TEMPLATE_ENTRY) {
         const c = this.at(i);
         if (c === 123) {
-          this.lBraceCount = this.lBraceCount + 1;
+          const lb = this.lBraceCount;
+          // One per `{` byte, so below n.
+          if (lb < 0 || lb >= 1073741823) {
+            this.lexFault();
+            return;
+          }
+          this.lBraceCount = lb + 1;
           this.add(T_LBRACE, i, i + 1);
           i++;
           continue;
         }
         if (c === 125) {
-          if (this.lBraceCount === 0) {
+          const lb = this.lBraceCount;
+          if (lb === 0) {
             this.popState();
             this.add(T_LONG_TEMPLATE_ENTRY_END, i, i + 1);
           } else {
-            this.lBraceCount = this.lBraceCount - 1;
+            if (lb < 0) {
+              this.lexFault();
+              return;
+            }
+            this.lBraceCount = lb - 1;
             this.add(T_RBRACE, i, i + 1);
           }
           i++;
@@ -398,6 +491,7 @@ export class KLexemes {
   }
 
   private lexString(i: i32, raw: boolean): i32 {
+    const n = this.n;
     const c = this.at(i);
     if (c === 10) {
       if (raw) {
@@ -412,7 +506,7 @@ export class KLexemes {
     if (c === 34) {
       if (raw) {
         let q = i;
-        while (this.at(q) === 34) {
+        while (q < n && this.at(q) === 34) {
           q++;
         }
         const len = q - i;
@@ -448,8 +542,8 @@ export class KLexemes {
         this.add(T_ESCAPE_SEQUENCE, i, i + 6);
         return i + 6;
       }
-      if (i + 1 < this.n && this.at(i + 1) !== 10) {
-        const e = i + 1 + kUtf8Len(this.at(i + 1));
+      if (i + 1 < n && this.at(i + 1) !== 10) {
+        const e = this.utf8End(i + 1, this.at(i + 1));
         this.add(T_ESCAPE_SEQUENCE, i, e);
         return e;
       }
@@ -459,12 +553,12 @@ export class KLexemes {
     }
     if (c === 36) {
       let d = i;
-      while (this.at(d) === 36) {
+      while (d < n && this.at(d) === 36) {
         d++;
       }
       const prefix = d - i;
       const req = this.requiredPrefix;
-      if (this.at(d) === 123) {
+      if (d < n && this.at(d) === 123) {
         // LONG_TEMPLATE_ENTRY_START
         if (prefix === req) {
           this.pushState(S_LONG_TEMPLATE_ENTRY);
@@ -476,12 +570,11 @@ export class KLexemes {
           return d;
         }
         // Too many dollars: the extra ones are text.
-        const keep = prefix - req;
-        this.add(T_REGULAR_STRING_PART, i, i + keep);
-        return i + keep;
+        return this.extraDollars(i, d, req);
       }
+      // identEnd answers -1 from n on.
       const ie = this.identEnd(d);
-      if (ie > d) {
+      if (d < n && ie > d) {
         // SHORT_TEMPLATE_ENTRY
         if (prefix === req) {
           this.pushState(S_SHORT_TEMPLATE_ENTRY);
@@ -492,9 +585,7 @@ export class KLexemes {
           this.add(T_REGULAR_STRING_PART, i, d);
           return d;
         }
-        const keep = prefix - req;
-        this.add(T_REGULAR_STRING_PART, i, i + keep);
-        return i + keep;
+        return this.extraDollars(i, d, req);
       }
       // LONELY_DOLLAR
       this.add(T_REGULAR_STRING_PART, i, d);
@@ -505,7 +596,7 @@ export class KLexemes {
     }
     // REGULAR_STRING_PART: [^\\\"\n\$]+
     let j = i;
-    while (j < this.n) {
+    while (j < n) {
       const d = this.at(j);
       if (d === 92 || d === 34 || d === 10 || d === 36) {
         break;
@@ -516,14 +607,37 @@ export class KLexemes {
     return j;
   }
 
+  /**
+   * Lexes the dollars of `[i, d)` that a string's prefix `req` does not take
+   * as text: the part `[i, i + (d - i - req))`, which ends at `d - req`.
+   */
+  private extraDollars(i: i32, d: i32, req: i32): i32 {
+    // d is below n, and req is -1 or a prefix's dollar count.
+    if (d < 0 || d > 1073741823) {
+      this.lexFault();
+      return this.n;
+    }
+    let e = d + 1;
+    if (req !== -1) {
+      if (req < 0 || req > 1073741823) {
+        this.lexFault();
+        return this.n;
+      }
+      e = d - req;
+    }
+    this.add(T_REGULAR_STRING_PART, i, e);
+    return e;
+  }
+
   /** The longest-match rules of the initial state (also active in LONG_TEMPLATE_ENTRY). */
   private lexMain(i: i32): i32 {
+    const n = this.n;
     const c = this.at(i);
     const c1 = this.at(i + 1);
     // {INTERPOLATION}?\" : a string start.
     if (c === 34 || (c === 36 && this.dollarsThenQuote(i))) {
       let d = i;
-      while (this.at(d) === 36) {
+      while (d < n && this.at(d) === 36) {
         d++;
       }
       const prefix = d - i;
@@ -540,10 +654,18 @@ export class KLexemes {
         return i + 4;
       }
       const doc = this.at(i + 2) === 42;
-      let j = i + (doc ? 3 : 2);
+      let j = i + 2;
+      if (doc) {
+        j = i + 3;
+      }
       let depth = 0;
-      while (j < this.n) {
+      while (j < n) {
         if (this.at(j) === 47 && this.at(j + 1) === 42) {
+          // A level opens every two bytes at most, so depth stays below n.
+          if (depth < 0 || depth >= 1073741823) {
+            this.lexFault();
+            return n;
+          }
           depth++;
           j += 2;
           continue;
@@ -561,12 +683,12 @@ export class KLexemes {
         j++;
       }
       // Unterminated: to the end.
-      this.add(doc ? T_DOC_COMMENT : T_BLOCK_COMMENT, i, this.n);
-      return this.n;
+      this.add(doc ? T_DOC_COMMENT : T_BLOCK_COMMENT, i, n);
+      return n;
     }
     if (c === 32 || c === 10 || c === 9 || c === 12) {
       let j = i;
-      while (j < this.n) {
+      while (j < n) {
         const d = this.at(j);
         if (d === 32 || d === 10 || d === 9 || d === 12) {
           j++;
@@ -579,7 +701,7 @@ export class KLexemes {
     }
     if (c === 47 && c1 === 47) {
       let j = i;
-      while (j < this.n && this.at(j) !== 10) {
+      while (j < n && this.at(j) !== 10) {
         j++;
       }
       this.add(T_EOL_COMMENT, i, j);
@@ -588,7 +710,7 @@ export class KLexemes {
     if (c === 35 && c1 === 33) {
       if (i === 0) {
         let j = i;
-        while (j < this.n && this.at(j) !== 10) {
+        while (j < n && this.at(j) !== 10) {
           j++;
         }
         this.add(T_SHEBANG_COMMENT, i, j);
@@ -603,7 +725,7 @@ export class KLexemes {
     if (c === 39) {
       // CHARACTER_LITERAL: '([^\\'\n]|ESC)*('|\\)?
       let j = i + 1;
-      while (j < this.n) {
+      while (j >= 0 && j < n) {
         const d = this.at(j);
         if (d === 39 || d === 10) {
           break;
@@ -619,8 +741,8 @@ export class KLexemes {
             j += 6;
             continue;
           }
-          if (j + 1 < this.n && this.at(j + 1) !== 10) {
-            j += 1 + kUtf8Len(this.at(j + 1));
+          if (j + 1 < n && this.at(j + 1) !== 10) {
+            j = this.utf8End(j + 1, this.at(j + 1));
             continue;
           }
           // A trailing backslash ends the literal.
@@ -630,7 +752,7 @@ export class KLexemes {
         }
         j++;
       }
-      if (this.at(j) === 39) {
+      if (j < n && this.at(j) === 39) {
         j++;
       }
       this.add(T_CHARACTER_LITERAL, i, j);
@@ -642,7 +764,7 @@ export class KLexemes {
       if (e > i) {
         const kw = c === 96 ? -1 : keywordOf(this.src, i, e);
         // `as?` is longer than `as`.
-        if (kw === T_AS_KEYWORD && this.at(e) === 63) {
+        if (kw === T_AS_KEYWORD && e < n && this.at(e) === 63) {
           this.add(T_AS_SAFE, i, e + 1);
           return e + 1;
         }
@@ -844,8 +966,9 @@ export class KLexemes {
 
   /** Whether `$`s at `i` are followed by a quote. */
   private dollarsThenQuote(i: i32): boolean {
+    const n = this.n;
     let d = i;
-    while (this.at(d) === 36) {
+    while (d < n && this.at(d) === 36) {
       d++;
     }
     return this.at(d) === 34;
@@ -868,6 +991,7 @@ export class KLexemes {
   }
 
   private intLiteralEnd(i: i32): i32 {
+    const n = this.n;
     const c = this.at(i);
     if (!kIsDigit(c)) {
       return i;
@@ -875,48 +999,51 @@ export class KLexemes {
     let j = i + 1;
     if (c === 48 && (this.at(j) === 120 || this.at(j) === 88)) {
       j++;
-      while (kIsHex(this.at(j)) || this.at(j) === 95) {
+      while (j < n && (kIsHex(this.at(j)) || this.at(j) === 95)) {
         j++;
       }
     } else if (c === 48 && (this.at(j) === 98 || this.at(j) === 66)) {
       j++;
-      while (kIsDigit(this.at(j)) || this.at(j) === 95) {
+      while (j < n && (kIsDigit(this.at(j)) || this.at(j) === 95)) {
         j++;
       }
     } else {
-      while (kIsDigit(this.at(j)) || this.at(j) === 95) {
+      while (j < n && (kIsDigit(this.at(j)) || this.at(j) === 95)) {
         j++;
       }
     }
-    if (this.at(j) === 85 || this.at(j) === 117) {
+    if (j < n && (this.at(j) === 85 || this.at(j) === 117)) {
       j++;
     }
-    if (this.at(j) === 76 || this.at(j) === 108) {
+    if (j < n && (this.at(j) === 76 || this.at(j) === 108)) {
       j++;
     }
     return j;
   }
 
   private digits(i: i32): i32 {
+    const n = this.n;
     if (!kIsDigit(this.at(i))) {
       return i;
     }
     let j = i + 1;
-    while (kIsDigit(this.at(j)) || this.at(j) === 95) {
+    while (j < n && (kIsDigit(this.at(j)) || this.at(j) === 95)) {
       j++;
     }
     return j;
   }
 
   private exponent(i: i32): i32 {
-    if (this.at(i) !== 69 && this.at(i) !== 101) {
+    const n = this.n;
+    // at(i) is -1 from n on.
+    if (i >= n || (this.at(i) !== 69 && this.at(i) !== 101)) {
       return i;
     }
     let j = i + 1;
     if (this.at(j) === 43 || this.at(j) === 45) {
       j++;
     }
-    while (kIsDigit(this.at(j)) || this.at(j) === 95) {
+    while (j < n && (kIsDigit(this.at(j)) || this.at(j) === 95)) {
       j++;
     }
     return j;
@@ -924,14 +1051,15 @@ export class KLexemes {
 
   /** DOUBLE_LITERAL = DIGITS? "." DIGITS EXP? [Ff]? | DIGITS (EXP [Ff]? | [Ff]); -1 when none. */
   private doubleLiteralEnd(i: i32): i32 {
+    const n = this.n;
     let best = -1;
     const d1 = this.digits(i);
     // DIGITS? . DIGITS ...
-    if (this.at(d1) === 46) {
+    if (d1 < n && this.at(d1) === 46) {
       const d2 = this.digits(d1 + 1);
       if (d2 > d1 + 1) {
         let j = this.exponent(d2);
-        if (this.at(j) === 70 || this.at(j) === 102) {
+        if (j < n && (this.at(j) === 70 || this.at(j) === 102)) {
           j++;
         }
         best = j;
@@ -941,13 +1069,13 @@ export class KLexemes {
       const e = this.exponent(d1);
       if (e > d1) {
         let j = e;
-        if (this.at(j) === 70 || this.at(j) === 102) {
+        if (j < n && (this.at(j) === 70 || this.at(j) === 102)) {
           j++;
         }
         if (j > best) {
           best = j;
         }
-      } else if (this.at(d1) === 70 || this.at(d1) === 102) {
+      } else if (d1 < n && (this.at(d1) === 70 || this.at(d1) === 102)) {
         if (d1 + 1 > best) {
           best = d1 + 1;
         }
@@ -955,110 +1083,142 @@ export class KLexemes {
     }
     return best;
   }
+
+  /** The end of the UTF-8 sequence that starts at `j`, before n, with the byte `c`. */
+  private utf8End(j: i32, c: i32): i32 {
+    const n = this.n;
+    if (j < 0 || j >= n) {
+      this.lexFault();
+      return n;
+    }
+    if (c < 0x80) {
+      return j + 1;
+    }
+    if (c >= 0xf0) {
+      return j + 4;
+    }
+    if (c >= 0xe0) {
+      return j + 3;
+    }
+    return j + 2;
+  }
 }
 
-const kUtf8Len = (c: i32): i32 => {
-  if (c < 0x80) {
-    return 1;
+/** Whether the `n` bytes at `src[a]` spell `s`. */
+const kKwEq = (src: u8[], a: i32, n: i32, s: string): boolean => {
+  const k = toI32(s.length);
+  if (n !== k) {
+    return false;
   }
-  if (c >= 0xf0) {
-    return 4;
+  for (let t = 0; t < n && t < k; t++) {
+    const p = a + t;
+    if (p < 0 || p >= src.length) {
+      fault();
+      return false;
+    }
+    if (toI32(src[p]) !== s.charCodeAt(t)) {
+      return false;
+    }
   }
-  if (c >= 0xe0) {
-    return 3;
-  }
-  return 2;
+  return true;
 };
 
 /** The hard keyword spelled by src[a, b), or -1. */
 const keywordOf = (src: u8[], a: i32, b: i32): i32 => {
+  // a is an offset below n, so b - a fits once b is not negative.
+  if (b < 0) {
+    return -1;
+  }
   const n = b - a;
   if (n < 2 || n > 9) {
     return -1;
   }
-  const s = String.fromBytes(src, a, b);
-  if (s === "typealias") {
+  if (a < 0 || b > src.length) {
+    fault();
+    return -1;
+  }
+  if (kKwEq(src, a, n, "typealias")) {
     return T_TYPE_ALIAS_KEYWORD;
   }
-  if (s === "interface") {
+  if (kKwEq(src, a, n, "interface")) {
     return T_INTERFACE_KEYWORD;
   }
-  if (s === "continue") {
+  if (kKwEq(src, a, n, "continue")) {
     return T_CONTINUE_KEYWORD;
   }
-  if (s === "package") {
+  if (kKwEq(src, a, n, "package")) {
     return T_PACKAGE_KEYWORD;
   }
-  if (s === "return") {
+  if (kKwEq(src, a, n, "return")) {
     return T_RETURN_KEYWORD;
   }
-  if (s === "object") {
+  if (kKwEq(src, a, n, "object")) {
     return T_OBJECT_KEYWORD;
   }
-  if (s === "while") {
+  if (kKwEq(src, a, n, "while")) {
     return T_WHILE_KEYWORD;
   }
-  if (s === "break") {
+  if (kKwEq(src, a, n, "break")) {
     return T_BREAK_KEYWORD;
   }
-  if (s === "class") {
+  if (kKwEq(src, a, n, "class")) {
     return T_CLASS_KEYWORD;
   }
-  if (s === "throw") {
+  if (kKwEq(src, a, n, "throw")) {
     return T_THROW_KEYWORD;
   }
-  if (s === "false") {
+  if (kKwEq(src, a, n, "false")) {
     return T_FALSE_KEYWORD;
   }
-  if (s === "super") {
+  if (kKwEq(src, a, n, "super")) {
     return T_SUPER_KEYWORD;
   }
-  if (s === "typeof") {
+  if (kKwEq(src, a, n, "typeof")) {
     return T_TYPEOF_KEYWORD;
   }
-  if (s === "when") {
+  if (kKwEq(src, a, n, "when")) {
     return T_WHEN_KEYWORD;
   }
-  if (s === "true") {
+  if (kKwEq(src, a, n, "true")) {
     return T_TRUE_KEYWORD;
   }
-  if (s === "this") {
+  if (kKwEq(src, a, n, "this")) {
     return T_THIS_KEYWORD;
   }
-  if (s === "null") {
+  if (kKwEq(src, a, n, "null")) {
     return T_NULL_KEYWORD;
   }
-  if (s === "else") {
+  if (kKwEq(src, a, n, "else")) {
     return T_ELSE_KEYWORD;
   }
-  if (s === "try") {
+  if (kKwEq(src, a, n, "try")) {
     return T_TRY_KEYWORD;
   }
-  if (s === "val") {
+  if (kKwEq(src, a, n, "val")) {
     return T_VAL_KEYWORD;
   }
-  if (s === "var") {
+  if (kKwEq(src, a, n, "var")) {
     return T_VAR_KEYWORD;
   }
-  if (s === "fun") {
+  if (kKwEq(src, a, n, "fun")) {
     return T_FUN_KEYWORD;
   }
-  if (s === "for") {
+  if (kKwEq(src, a, n, "for")) {
     return T_FOR_KEYWORD;
   }
-  if (s === "is") {
+  if (kKwEq(src, a, n, "is")) {
     return T_IS_KEYWORD;
   }
-  if (s === "in") {
+  if (kKwEq(src, a, n, "in")) {
     return T_IN_KEYWORD;
   }
-  if (s === "if") {
+  if (kKwEq(src, a, n, "if")) {
     return T_IF_KEYWORD;
   }
-  if (s === "do") {
+  if (kKwEq(src, a, n, "do")) {
     return T_DO_KEYWORD;
   }
-  if (s === "as") {
+  if (kKwEq(src, a, n, "as")) {
     return T_AS_KEYWORD;
   }
   return -1;

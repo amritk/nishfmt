@@ -155,7 +155,11 @@ export class CopStyleExplicitBlockArgument {
         return;
       }
     }
-    const last = dargs.length > 0 ? dargs[dargs.length - 1] : V_NIL;
+    let last = V_NIL;
+    const dl = toI32(dargs.length) - 1;
+    if (dl >= 0 && dl < dargs.length) {
+      last = dargs[dl];
+    }
     const hasBlockArg = last !== V_NIL && (sbhEbIs(src, last, NT_BLOCK_PASS) || sbhEbIs(src, last, NT_BLOCKARG));
     const name = hasBlockArg ? sbhEbName(src, last) : "block";
     const k = this.c.offense(a.exS(b), a.exE(b));
@@ -204,9 +208,10 @@ export class CopStyleExplicitBlockArgument {
     const a = src.a;
     const t = a.type(n);
     const args = sbhEbArgs(src, n);
-    if (args.length > 0) {
+    const al = toI32(args.length) - 1;
+    if (al >= 0 && al < args.length) {
       // insert_argument
-      const last = args[args.length - 1];
+      const last = args[al];
       const lt = sbhEbIs(src, last, NT_SEND) || sbhEbIs(src, last, NT_CSEND);
       if (
         lt &&
@@ -220,11 +225,13 @@ export class CopStyleExplicitBlockArgument {
         k.insertAfter(a.exS(a.kid(last, -1)), a.exE(a.kid(last, -1)), ")");
       }
       let e = a.exE(last);
-      while (src.at(e) === 44) {
+      // A comma is at a position below the source's length.
+      while (e < 2147483647 && src.at(e) === 44) {
         e++;
       }
       let rep = ` &${name}`;
-      if (src.at(e - 1) !== 44) {
+      // `src.at` answers -1 before the source, so e <= 0 needs no read.
+      if (e <= 0 || src.at(e - 1) !== 44) {
         rep = `,${rep}`;
       }
       if (!sbhEbIs(src, last, NT_BLOCKARG)) {

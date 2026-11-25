@@ -143,7 +143,7 @@ export const rmxParenthesized = (src: RbSource, n: i32): boolean => {
     return false;
   }
   const s = rnS(src, n, F_END);
-  return rnE(src, n, F_END) - s === 1 && src.at(s) === 41;
+  return toI64(rnE(src, n, F_END)) - toI64(s) === toI64(1) && src.at(s) === 41;
 };
 
 /** argument_in_method_call(node, kind) (V_NIL for none). */

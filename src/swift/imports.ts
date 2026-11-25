@@ -5,7 +5,8 @@
 // Ported from SwiftFormat 0.64.7 (MIT License, Copyright (c) 2016 Nick
 // Lockwood).
 
-import { SW_UNI_UNCERTAIN } from "./unicode";
+import { fault } from "../core/fault";
+import { swUniMarkUncertain } from "./unicode";
 import { SwFormatter } from "./formatter";
 import { swIsAclModifierStr } from "./modifiers";
 import { swEndOfAttribute, swEndOfScope, swIsAttribute, swStartOfScope } from "./parsing";
@@ -55,8 +56,10 @@ export class SwImportGroup {
 export const swCommentDirective = (s: string): string => {
   const parts: string[] = [];
   let start = 0;
-  for (let i = 0; i <= toI32(s.length); i++) {
-    if (i === toI32(s.length) || s.charCodeAt(i) === 58) {
+  const n = toI32(s.length);
+  // n is a string length, so i < 2147483647 changes nothing.
+  for (let i = 0; i <= n && i < 2147483647; i++) {
+    if (i === n || (i < n && s.charCodeAt(i) === 58)) {
       if (i > start) {
         parts.push(s.substring(start, i));
       }
@@ -67,11 +70,12 @@ export const swCommentDirective = (s: string): string => {
     return "";
   }
   const p0 = parts[0];
+  const p1 = parts[1];
   if (p0.indexOf(" ") >= 0) {
     return "";
   }
   const l = swLower(p0);
-  if (l === "note" || l === "warning" || parts[1].startsWith("//")) {
+  if (l === "note" || l === "warning" || p1.startsWith("//")) {
     return "";
   }
   return p0;
@@ -86,23 +90,34 @@ const swHasNonAscii = (s: string): boolean => {
   return false;
 };
 
+/** The bytes of s with ASCII capitals lowered (the other bytes kept as they are). */
 const swLower = (s: string): string => {
   const n = toI32(s.length);
-  const b = new Array<u8>(n);
+  const parts: string[] = [];
+  let from = 0;
   for (let i = 0; i < n; i++) {
     const c = s.charCodeAt(i);
-    b[i] = toU8(c >= 65 && c <= 90 ? c + 32 : c);
+    if (c >= 65 && c <= 90) {
+      parts.push(s.substring(from, i));
+      parts.push(String.fromCharCode(c + 32));
+      from = i + 1;
+    }
   }
-  return String.fromBytes(b, 0, n);
+  if (from === 0) {
+    return s;
+  }
+  parts.push(s.substring(from));
+  return parts.join("");
 };
 
 /** The file's name (the last path component). */
 const swFileName = (path: string): string => {
   let base = path;
   let i = path.indexOf("/");
+  // indexOf answers below path.length, so the u32 sums are exact.
   while (i >= 0) {
-    base = path.substring(i + 1);
-    i = path.indexOf("/", i + 1);
+    base = path.substring(toI32(toU32(i) + 1));
+    i = path.indexOf("/", toI32(toU32(i) + 1));
   }
   return base;
 };
@@ -304,7 +319,7 @@ export const swHasImport = (f: SwFormatter, module: string): boolean => {
 const swImportLess = (a: SwImport, b: SwImport): boolean => {
   if (swHasNonAscii(a.module) || swHasNonAscii(b.module)) {
     // Unicode lowercasing and String ordering (canonical equivalence) are not ported.
-    SW_UNI_UNCERTAIN[0] = 1;
+    swUniMarkUncertain();
   }
   const la = swLower(a.module);
   const lb = swLower(b.module);
@@ -318,7 +333,7 @@ const swLess = (a: string, b: string): boolean => {
   const n = toI32(a.length);
   const m = toI32(b.length);
   const k = n < m ? n : m;
-  for (let i = 0; i < k; i++) {
+  for (let i = 0; i < k && i < n && i < m; i++) {
     const x = a.charCodeAt(i);
     const y = b.charCodeAt(i);
     if (x !== y) {
@@ -340,14 +355,24 @@ export const swSortImportRanges = (rs: SwImport[]): SwImport[] => {
     out.push(r);
   }
   // insertion sort (stable)
-  for (let i = 1; i < toI32(out.length); i++) {
+  for (let i = 1; i < out.length; i++) {
     const x = out[i];
     let j = i - 1;
-    while (j >= 0 && swImportBefore(x, out[j])) {
+    while (j >= 0 && j < out.length && swImportBefore(x, out[j])) {
+      // j < i < out.length.
+      if (j >= out.length - 1) {
+        fault();
+        return out;
+      }
       out[j + 1] = out[j];
       j--;
     }
-    out[j + 1] = x;
+    const k = j + 1;
+    if (k < 0 || k >= out.length) {
+      fault();
+      return out;
+    }
+    out[k] = x;
   }
   return out;
 };
@@ -379,11 +404,13 @@ const swIsInsidePreprocessorCondition = (f: SwFormatter, index: i32): boolean =>
 
 /** removeImportGroupLines(_:). */
 const swRemoveImportGroupLines = (f: SwFormatter, first: SwImport, last: SwImport): void => {
+  // Token indices: each u32 sum is exact.
   const sol = first.lo;
-  const eoll = last.hi + 1 < f.count() ? last.hi + 1 : f.count();
+  const afterLast = toI32(toU32(last.hi) + 1);
+  const eoll = afterLast < f.count() ? afterLast : f.count();
   const p = f.indexBefore(SW_T_NON_SPACE, sol);
   const blank = p >= 0 && f.k(p) === SW_LINEBREAK;
-  f.removeTokens(blank ? sol : sol + 1, eoll);
+  f.removeTokens(blank ? sol : toI32(toU32(sol) + 1), eoll);
 };
 
 /** hoistStrayImports(). */
@@ -391,18 +418,26 @@ const swHoistStrayImports = (f: SwFormatter): void => {
   const all = swParseImports(f);
   const groups: SwImportGroup[] = [];
   for (const g of all) {
-    if (g.items.length !== 0 && !swIsInsidePreprocessorCondition(f, g.items[0].lo)) {
+    const items = g.items;
+    if (items.length > 0 && !swIsInsidePreprocessorCondition(f, items[0].lo)) {
       groups.push(g);
     }
   }
   if (groups.length <= 1) {
     return;
   }
+  // Every group kept has an item.
   let stray = false;
-  for (let i = 1; i < toI32(groups.length); i++) {
+  for (let i = 1; i < groups.length; i++) {
     const a = groups[i - 1].items;
-    const start = a[toI32(a.length) - 1].hi;
-    const end = groups[i].items[0].lo;
+    const b = groups[i].items;
+    const na = toI32(a.length);
+    if (na < 1 || b.length < 1) {
+      fault();
+      return;
+    }
+    const start = a[na - 1].hi;
+    const end = b[0].lo;
     if (start < end && f.indexInType(SW_T_NON_SPACE_OR_COMMENT_OR_LINEBREAK, start, end) >= 0) {
       stray = true;
     }
@@ -420,7 +455,7 @@ const swHoistStrayImports = (f: SwFormatter): void => {
     }
     const across = swSortImportRanges(flat);
     let same = within.length === across.length;
-    for (let q = 0; same && q < toI32(across.length); q++) {
+    for (let q = 0; same && q < across.length && q < within.length; q++) {
       if (across[q].lo !== within[q]) {
         same = false;
       }
@@ -429,8 +464,17 @@ const swHoistStrayImports = (f: SwFormatter): void => {
       return;
     }
   }
+  if (groups.length < 1) {
+    fault();
+    return;
+  }
   const g0 = groups[0].items;
-  const insertionIndex = g0[toI32(g0.length) - 1].hi;
+  const ng0 = toI32(g0.length);
+  if (ng0 < 1) {
+    fault();
+    return;
+  }
+  const insertionIndex = g0[ng0 - 1].hi;
   const hoisted: SwTok[] = [];
   for (let gi = 1; gi < toI32(groups.length); gi++) {
     for (const r of groups[gi].items) {
@@ -444,9 +488,14 @@ const swHoistStrayImports = (f: SwFormatter): void => {
       }
     }
   }
-  for (let gi = toI32(groups.length) - 1; gi >= 1; gi--) {
+  for (let gi = toI32(groups.length) - 1; gi >= 1 && gi < groups.length; gi--) {
     const it = groups[gi].items;
-    swRemoveImportGroupLines(f, it[0], it[toI32(it.length) - 1]);
+    const ni = toI32(it.length);
+    if (ni < 1 || it.length < 1) {
+      fault();
+      return;
+    }
+    swRemoveImportGroupLines(f, it[0], it[ni - 1]);
   }
   f.insertToks(hoisted, insertionIndex);
 };
@@ -455,13 +504,14 @@ const swHoistStrayImports = (f: SwFormatter): void => {
 export const swRuleSortImports = (f: SwFormatter): void => {
   swHoistStrayImports(f);
   const groups = swParseImports(f);
-  for (let gi = toI32(groups.length) - 1; gi >= 0; gi--) {
+  for (let gi = toI32(groups.length) - 1; gi >= 0 && gi < groups.length; gi--) {
     const rs = groups[gi].items;
-    if (rs.length <= 1) {
+    const nr = toI32(rs.length);
+    if (nr <= 1 || rs.length <= 1) {
       continue;
     }
     const lo = rs[0].lo;
-    const hi = rs[toI32(rs.length) - 1].hi;
+    const hi = rs[nr - 1].hi;
     const sorted = swSortImportRanges(rs);
     let inserted = false;
     const toks: SwTok[] = [];
@@ -474,7 +524,13 @@ export const swRuleSortImports = (f: SwFormatter): void => {
         toks.push(t);
       }
     }
-    const final: SwTok[] = inserted && toks.length > 0 ? toks.slice(1, toI32(toks.length)) : toks;
+    let final: SwTok[] = toks;
+    if (inserted && toks.length > 0) {
+      final = [];
+      for (let q = 1; q < toks.length; q++) {
+        final.push(toks[q]);
+      }
+    }
     f.replaceTokens(lo, hi, final);
   }
 };
@@ -492,7 +548,9 @@ const swImportAttributes = (f: SwFormatter, lo: i32, hi: i32): string[] => {
       const cp = swEndOfScope(f, op);
       if (cp >= 0) {
         const parts: string[] = [a];
-        for (let j = op; j <= cp; j++) {
+        // cp < f.count(), so `j < n` changes nothing.
+        const n = f.count();
+        for (let j = op; j <= cp && j < n; j++) {
           const k = f.k(j);
           if (!(k === 9 || k === SW_LINEBREAK || f.isComment(j))) {
             parts.push(f.s(j));
@@ -520,7 +578,7 @@ const swIsSubset = (a: string[], b: string[]): boolean => {
 /** duplicateImports. */
 export const swRuleDuplicateImports = (f: SwFormatter): void => {
   const groups = swParseImports(f);
-  for (let gi = toI32(groups.length) - 1; gi >= 0; gi--) {
+  for (let gi = toI32(groups.length) - 1; gi >= 0 && gi < groups.length; gi--) {
     const rs: SwImport[] = [];
     for (const r of groups[gi].items) {
       rs.push(r);
@@ -533,6 +591,11 @@ export const swRuleDuplicateImports = (f: SwFormatter): void => {
       for (let q = i; q < toI32(rs.length) - 1; q++) {
         rs[q] = rs[q + 1];
       }
+      // rs held rs[i].
+      if (rs.length < 1) {
+        fault();
+        return;
+      }
       rs.pop();
       let j = -1;
       for (let q = 0; q < toI32(rs.length); q++) {
@@ -543,6 +606,10 @@ export const swRuleDuplicateImports = (f: SwFormatter): void => {
       }
       if (j < 0) {
         continue;
+      }
+      if (j >= rs.length) {
+        fault();
+        return;
       }
       const range2 = rs[j];
       const a1 = swImportAttributes(f, range.lo, range.hi);
@@ -555,6 +622,11 @@ export const swRuleDuplicateImports = (f: SwFormatter): void => {
         f.removeTokens(range2.lo, range2.hi);
         for (let q = j; q < toI32(rs.length) - 1; q++) {
           rs[q] = rs[q + 1];
+        }
+        // rs held rs[j].
+        if (rs.length < 1) {
+          fault();
+          return;
         }
         rs.pop();
       }
@@ -579,7 +651,7 @@ export const swRuleDuplicateImports = (f: SwFormatter): void => {
       imports.push(r);
     }
   }
-  for (let q = toI32(imports.length) - 1; q >= 0; q--) {
+  for (let q = toI32(imports.length) - 1; q >= 0 && q < imports.length; q--) {
     const r = imports[q];
     let firstLo = -1;
     let firstHi = -1;

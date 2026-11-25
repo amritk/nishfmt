@@ -3,6 +3,9 @@
 // Ported from RuboCop 1.92.3 (MIT License, Copyright (c) 2012-24 Bozhidar
 // Batsov).
 
+import { rbLine } from "../node";
+import { rbByteAt } from "../util";
+import { add32, atI32, sub32 } from "../../core/arr";
 import { V_NIL } from "../ast";
 import { RbCop } from "../cop";
 import { RbRewriter } from "../rewriter";
@@ -25,7 +28,7 @@ const rbCommIndLess = (text: string): boolean => {
     return true;
   }
   if (rbLayHasAt(text, p, "end")) {
-    return p + 3 >= k || !rbLayWordByte(text.charCodeAt(p + 3));
+    return p >= k - 3 || !rbLayWordByte(rbByteAt(text, p + 3));
   }
   return false;
 };
@@ -39,8 +42,8 @@ const rbCommIndTwoAlternatives = (text: string): boolean => {
   }
   const words = ["else", "elsif", "when", "in", "rescue", "ensure"];
   for (const w of words) {
-    const wl = toI32(w.length);
-    if (rbLayHasAt(text, p, w) && (p + wl >= k || !rbLayWordByte(text.charCodeAt(p + wl)))) {
+    const q = add32(p, toI32(w.length));
+    if (rbLayHasAt(text, p, w) && (q >= k || !rbLayWordByte(rbByteAt(text, q)))) {
       return true;
     }
   }
@@ -60,9 +63,10 @@ export class CopLayoutCommentIndentation {
     this.c.begin(src);
     this.al.begin(src);
     const L = new RbLayLines(src);
-    const nc = toI32(src.commS.length);
-    for (let ix = 0; ix < nc; ix++) {
-      const s = src.commS[ix];
+    const commS = src.commS;
+    const nc = toI32(commS.length);
+    for (let ix = 0; ix < nc && ix < commS.length; ix++) {
+      const s = commS[ix];
       if (!this.ownLine(src, L, ix)) {
         continue;
       }
@@ -84,19 +88,19 @@ export class CopLayoutCommentIndentation {
           p++;
         }
         // =~ /\S/ counts characters; the leading whitespace is ASCII.
-        correct = p + (rbCommIndLess(nextText) ? 2 : 0);
+        correct = rbCommIndLess(nextText) ? add32(p, 2) : p;
       }
       const column = src.column(s);
-      const delta = correct - column;
+      const delta = sub32(correct, column);
       if (delta === 0) {
         continue;
       }
       if (next >= 0 && rbCommIndTwoAlternatives(nextText)) {
-        if (column === correct + 2) {
+        if (toI64(column) === toI64(correct) + toI64(2)) {
           continue;
         }
       }
-      const k = this.c.offense(s, src.commE[ix]);
+      const k = this.c.offense(s, atI32(src.commE, ix));
       if (k === null) {
         continue;
       }
@@ -116,22 +120,24 @@ export class CopLayoutCommentIndentation {
 
   /** own_line_comment?: /\A\s*#/ on the comment's line. */
   private ownLine(src: RbSource, L: RbLayLines, ix: i32): boolean {
-    const l = src.line(src.commS[ix]);
-    return L.commentLine(l - 1) && L.has(l - 1);
+    const i = rbLine(src, atI32(src.commS, ix)) - 1;
+    return L.commentLine(i) && L.has(i);
   }
 
   /** should_correct?(above, below). */
   private shouldCorrect(src: RbSource, L: RbLayLines, above: i32, below: i32): boolean {
-    const as = src.commS[above];
-    const bs = src.commS[below];
+    const as = atI32(src.commS, above);
+    const bs = atI32(src.commS, below);
     if (src.column(as) !== src.column(bs)) {
       return false;
     }
     if (!this.ownLine(src, L, above)) {
       return false;
     }
-    for (let l = src.line(as) + 1; l < src.line(bs); l++) {
-      if (!L.blank(l - 1)) {
+    // Lines line(as) + 1 up to line(bs), each read at its 0-based index.
+    const lb = rbLine(src, bs) - 1;
+    for (let l = rbLine(src, as); l < lb; l++) {
+      if (!L.blank(l)) {
         return false;
       }
     }
@@ -139,6 +145,6 @@ export class CopLayoutCommentIndentation {
   }
 
   private correctOne(src: RbSource, k: RbRewriter, ix: i32, delta: i32): void {
-    this.al.correct(src, k, src.commS[ix], src.commE[ix], delta, V_NIL);
+    this.al.correct(src, k, atI32(src.commS, ix), atI32(src.commE, ix), delta, V_NIL);
   }
 }

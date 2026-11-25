@@ -3,6 +3,7 @@
 // Ported from RuboCop 1.92.3 (MIT License, Copyright (c) 2012-24 Bozhidar
 // Batsov).
 
+import { atI32 } from "../../core/arr";
 import { NT_LVAR, NT_OR, NT_SEND, V_NIL } from "../ast";
 import { RbCop } from "../cop";
 import { RbSource } from "../source";
@@ -48,7 +49,7 @@ export class CopStyleMultipleComparison {
         continue;
       }
       const fv = this.values[0];
-      const lv = this.values[this.values.length - 1];
+      const lv = atI32(this.values, toI32(this.values.length) - 1);
       const s = a.exS(src.parent(fv));
       const e = a.exE(src.parent(lv));
       let skip = false;
@@ -70,7 +71,7 @@ export class CopStyleMultipleComparison {
       for (const v of this.values) {
         parts.push(src.nodeSrc(v));
       }
-      const v0 = this.vars[0];
+      const v0 = atI32(this.vars, 0);
       const arg = ssxIs(src, v0, NT_LVAR) ? a.text(a.kid(v0, 0)) : src.nodeSrc(v0);
       k.replace(s, e, `[${parts.join(", ")}].include?(${arg})`);
       this.c.commit(k);
@@ -132,8 +133,8 @@ export class CopStyleMultipleComparison {
     if (cmp === null) {
       return;
     }
-    const v = cmp[0];
-    const obj = cmp[1];
+    const v = atI32(cmp, 0);
+    const obj = atI32(cmp, 1);
     if (ssxIsCall(src, obj)) {
       this.skipped.push(n);
       return;
