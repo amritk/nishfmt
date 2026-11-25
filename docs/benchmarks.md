@@ -144,10 +144,12 @@ clang-format's second run changes its first; nishfmt gives the second.
 
 `bench/corpus/verify.sh`, after `cmp.sh <nishfmt> cpp`, runs that check on
 nishfmt's output: clang-format once on each file, failing those it would
-change. It fails 6 files of the first corpus and 38 of the second; nishfmt
-skips the first corpus's 2 files that never settle. Ten files of the second
-corpus differ from the settled output and pass the check all the same, a
-layout clang-format leaves as it is too.
+change. It fails 6 files of the first corpus and 38 of the second. nishfmt
+skips 3 files of the first corpus, the 2 that never settle and one whose
+formatting would change its code, and 1 of the second, that one's kind
+([C++](cpp.md#what-it-leaves-alone)). Nine files of the second corpus
+differ from the settled output and pass the check all the same, a layout
+clang-format leaves as it is too.
 [C++](cpp.md#results-by-repository) lists the files that fail it.
 
 ## Comparing

@@ -86,8 +86,11 @@ they are built are in [Benchmarks](benchmarks.md#c-one-run-and-the-settled-outpu
 
 What counts for a project that checks its formatting in CI is whether one
 clang-format run leaves nishfmt's output as it is (`bench/corpus/verify.sh`).
-It does on every file but 6 of the first corpus and 38 of the second; the
-first corpus's two files that never settle are skipped. Each of these is a
+It does on every file but 6 of the first corpus and 38 of the second; it
+skips 3 files of the first corpus (two never settle, and in opencv's
+`hb-algs.hh` a comment leads a directive) and 1 of the second (taskflow's
+`ff/parallel_for_internals.hpp`, where formatting would change the code;
+see [What it leaves alone](#what-it-leaves-alone)). Each of the 44 is a
 decision nishfmt does not make as clang-format does:
 
 | What differs | Files |
