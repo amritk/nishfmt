@@ -15,11 +15,22 @@ work=$(mktemp -d)
 trap 'rm -rf "$work"' EXIT
 fail=0 pass=0
 
+# limited <cmd>...: runs it with a minute to finish, where timeout(1) exists
+# (macOS has none), so a formatter that never ends fails its case rather than
+# stalling the run.
+limited() {
+  if command -v timeout > /dev/null 2>&1; then
+    timeout 60 "$@"
+  else
+    "$@"
+  fi
+}
+
 for src in "$here"/cases/*.cpp; do
   name=$(basename "$src" .cpp)
   expected="$here/cases/$name.expected"
   [ -f "$expected" ] || continue
-  if "$bin" "$src" > "$work/out" && cmp -s "$work/out" "$expected"; then
+  if limited "$bin" "$src" > "$work/out" && cmp -s "$work/out" "$expected"; then
     pass=$((pass + 1))
   else
     echo "FAIL $name: output differs from $name.expected"
@@ -28,7 +39,7 @@ for src in "$here"/cases/*.cpp; do
   fi
   # Idempotence: the expected output is already formatted.
   cp "$expected" "$work/idem.cpp"
-  if ! "$bin" --check -q "$work/idem.cpp" > /dev/null; then
+  if ! limited "$bin" --check -q "$work/idem.cpp" > /dev/null; then
     echo "FAIL $name: formatting $name.expected changes it"
     fail=$((fail + 1))
   fi
