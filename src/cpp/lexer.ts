@@ -788,6 +788,7 @@ export const lex = (d: Doc): boolean => {
   let ppWordNext = false; // the next word names the directive
   let ppHashTok = -1;
   let atLineStart = true; // only whitespace since the last unescaped newline
+  let commentsOnly = true; // only whitespace and comments since then
   let ok = true;
   let t = 0;
   let cap = toI32(d.kind.length);
@@ -819,6 +820,7 @@ export const lex = (d: Doc): boolean => {
         i++;
         lineStart = i;
         atLineStart = true;
+        commentsOnly = true;
         if (inPP) {
           inPP = false;
           ppIncludeNext = false;
@@ -886,6 +888,18 @@ export const lex = (d: Doc): boolean => {
     const c = toI32(src[i]);
     let k = K_UNKNOWN;
     let ppk = PP_NONE;
+    // clang-format takes a `#` after nothing but comments on its line for a
+    // directive (UnwrappedLineParser::readToken: a comment keeps the line's
+    // first-on-line state), `/* c */ #define X` and a comment line escaped
+    // onto the directive alike. nishfmt does not lay those out as it does,
+    // and reading the `#` as code joins the lines after it into the
+    // directive, so such a file is left alone.
+    if (c === 35 && !startOfLine && commentsOnly && !inPP) {
+      ok = false;
+    }
+    if (!(c === 47 && (d.at(i + 1) === 42 || d.at(i + 1) === 47))) {
+      commentsOnly = false;
+    }
     if (startOfLine && c === 35) {
       // `#` opens a directive.
       inPP = true;

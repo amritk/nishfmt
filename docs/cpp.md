@@ -13,6 +13,15 @@ against clang-format's behaviour and source.
   `// clang-format off` and `// clang-format on`;
 - whole files that do not parse, such as files with unbalanced brackets or an
   unterminated literal. These count as skipped.
+- whole files with a `#` that only comments precede on its line, outside a
+  directive (`/* c */ #define X`, or a comment line escaped onto a
+  directive): clang-format takes it for a directive and keeps the comment
+  with it, which nishfmt does not lay out (`tests/cases/cpp/skip_comment_*`).
+  A `#` after code on the line is not a directive to either, and is
+  formatted; `tests/cases/hash_after_code_and_comment.cpp` guards that, and
+  fails on a lexer that skips every `#` not first on its line.
+- whole files whose output still changes when formatted again after eight
+  runs ("does not settle"): no output passes a clang-format check.
 - Objective-C beyond declarations: a header with literals, `@implementation`
   or method bodies is left untouched.
 
