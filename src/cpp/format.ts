@@ -431,6 +431,8 @@ export class Formatter {
   fileStamp: i32 = 1;
   // lineOfTok: the line each line-head token starts, for annotation stamp tlStamp.
   tlHead: i32[];
+  // lineOfTok: the line of each token, for the same stamp.
+  tlLine: i32[];
   tlStamp: i32 = 0;
   firstEmitted: boolean = false;
   acLev: i32[];
@@ -526,6 +528,7 @@ export class Formatter {
     this.cls = new Classifier(d);
     this.ann = new Annot(d);
     this.tlHead = new Array<i32>(0);
+    this.tlLine = new Array<i32>(0);
     this.ind = new Indenter(d, this.ann);
     this.ind.debug = getenv("FFDEBUG") !== null;
     const cap = fwAdd(d.ntok, 16);
@@ -6795,31 +6798,29 @@ export class Formatter {
   /** The line whose token chain holds `t`, or -1. */
   lineOfTok(t: i32): i32 {
     const d = this.d;
-    const prv = d.prv;
-    if (t < 0 || t >= prv.length) {
-      fault();
+    if (t < 0 || t >= d.ntok) {
+      if (t < 0 || t >= d.prv.length) {
+        fault();
+      }
       return -1;
     }
-    // Back to the chain's head (a token's prv is before it).
-    let f = t;
-    let p = prv[f];
-    while (p >= 0) {
-      if (p >= prv.length) {
-        fault();
-        return -1;
-      }
-      f = p;
-      p = prv[p];
-    }
+    // The map is rebuilt once an annotation stamp: walking `prv` back to the
+    // chain's head on each call made a long line quadratic, since the line
+    // breaker asks once a state.
     if (this.tlStamp !== this.ann.stamp) {
       this.tlStamp = this.ann.stamp;
       const nt1 = add32(d.ntok, 1);
       if (toI32(this.tlHead.length) < nt1) {
         this.tlHead = newI32s(nt1);
       }
+      if (toI32(this.tlLine.length) < nt1) {
+        this.tlLine = newI32s(nt1);
+      }
       const tlHead = this.tlHead;
+      const tlLine = this.tlLine;
       tlHead.fill(-1);
       const lFirst = d.lFirst;
+      const prv = d.prv;
       const nline = d.nline;
       const ntok = d.ntok;
       for (let l = 0; l < nline; l++) {
@@ -6833,8 +6834,24 @@ export class Formatter {
           tlHead[h] = l;
         }
       }
+      // The head of each token's chain, in one pass: a token's prv is before
+      // it, so the head of prv's chain is already known.
+      for (let q = 0; q < ntok && q < tlLine.length && q < prv.length; q++) {
+        const p = prv[q];
+        if (p < 0) {
+          tlLine[q] = q;
+        } else if (p < q) {
+          tlLine[q] = tlLine[p];
+        } else {
+          fault();
+          return -1;
+        }
+      }
+      for (let q = 0; q < ntok && q < tlLine.length; q++) {
+        tlLine[q] = fwAt0(tlHead, tlLine[q]);
+      }
     }
-    return f < d.ntok ? fwAt0(this.tlHead, f) : -1;
+    return fwAt0(this.tlLine, t);
   }
 
   /**
@@ -6847,9 +6864,15 @@ export class Formatter {
     // clang-format computes every line's CanBreakBefore; here only the line
     // breaker's lines have them, so annotate this token's line in full first
     // (a line that fits, a directive, would otherwise show stale flags).
+    // annotateFull's tailsAndLists leaves each token's tail in `tail`, which
+    // the line breaker asks for once a state; walking the line each time
+    // made a long table line quadratic.
     const l = this.lineOfTok(t);
     if (l >= 0) {
       a.annotateFull(l);
+      if (t >= 0 && t < a.tail.length) {
+        return a.tail[t];
+      }
     }
     const nxt = d.nxt;
     const canB = a.canB;
