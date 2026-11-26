@@ -404,6 +404,7 @@ export class Formatter {
   gPre: i32 = 0;
   bcFirstW: i32 = 0; // blockCommentPenalty: the width of the comment's first line
   bcShrink: i32 = 0; // blockCommentPenalty: how much narrower the comment got, kept on one line
+  bcLastEnd: i32 = 0; // blockCommentPenalty: the column past a comment over several lines
   bcScratch: Out; // blockCommentPenalty's dry run
   secScratch: Out; // sectionWidth's dry run
   secW: i32 = 0; // sectionWidth: the widest line
@@ -7407,6 +7408,7 @@ export class Formatter {
         }
       }
       const wl = add32(widthOf(ob, ls, on), first ? col : 0);
+      this.bcLastEnd = wl;
       if (wl > lim) {
         mp = cppfAddPen(mp, excessPenalty(sub32(wl, lim)));
       }
