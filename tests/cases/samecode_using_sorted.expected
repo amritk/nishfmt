@@ -1,0 +1,6 @@
+namespace n {
+using std::string;
+using std::vector;
+using namespace foo;
+using T = int;
+} // namespace n

@@ -59,7 +59,10 @@ export const formatCpp = (e: CppEngine, path: string, src: u8[], n: i32, out: Ou
   let prevN = n;
   let runs = 1;
   let printed = false;
-  while (okRun && !cppSameBytes(prev, prevN, out.buf, out.n)) {
+  // (A run writes LF; a CRLF source the first run otherwise left alone has
+  // settled already, and finishCpp writes its CRs back.)
+  let settled = okRun && crlf && cppSameButCR(src, n, out.buf, out.n);
+  while (okRun && !settled && !cppSameBytes(prev, prevN, out.buf, out.n)) {
     const once = sliceU8s(out.buf, 0, out.n);
     const onceN = toI32(once.length);
     // Each run that changed the file must have kept its code: one that did
@@ -102,11 +105,21 @@ export const formatCpp = (e: CppEngine, path: string, src: u8[], n: i32, out: Ou
     f.setPath(path);
     out.n = 0;
     okRun = f.run(out, prof);
+    if (!okRun) {
+      // nishfmt's own output did not parse: a nishfmt bug.
+      fault();
+      return false;
+    }
+    settled = false;
   }
   return okRun && finishCpp(out, crlf);
 };
 
-/** The most runs a file may take to settle; mk.sh's ref-settled allows clang-format six. */
+/**
+ * The most runs a file may take to settle. (mk.sh's ref-settled gives
+ * clang-format its first run and five more; nishfmt, which formats the
+ * source as clang-format's first run does, is given a few to spare.)
+ */
 const CPP_MAX_RUNS: i32 = 8;
 
 /** Whether `a[0, an)` and `b[0, bn)` hold the same bytes. */
@@ -120,6 +133,28 @@ const cppSameBytes = (a: u8[], an: i32, b: u8[], bn: i32): boolean => {
     }
   }
   return true;
+};
+
+/**
+ * Whether LF text `b[0, bn)` is CRLF text `a[0, an)` with each CR before an LF
+ * dropped.
+ */
+const cppSameButCR = (a: u8[], an: i32, b: u8[], bn: i32): boolean => {
+  if (an < bn || an > a.length || bn < 0 || bn > b.length) {
+    return false;
+  }
+  let j = 0;
+  for (let i = 0; i < an && i < a.length; i++) {
+    const c = a[i];
+    if (c === 13 && i + 1 < an && i + 1 < a.length && a[i + 1] === 10) {
+      continue;
+    }
+    if (j >= bn || j >= b.length || b[j] !== c) {
+      return false;
+    }
+    j++;
+  }
+  return j === bn;
 };
 
 /** clang-format's derived line ending, applied once the file has settled. */

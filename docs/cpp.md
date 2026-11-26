@@ -31,7 +31,11 @@ against clang-format's behaviour and source.
   sorts them. When a `#` stands in code, which clang-format may move to the
   start of a line and so make a directive, the directives are not compared.
   A difference is a nishfmt bug, reported as a formatter fault
-  (`tests/cases/cpp/fault_*`).
+  (`tests/cases/cpp/fault_*`). Three guard cases keep what clang-format may
+  change accepted, each failing on a one-line mutation that was run:
+  `samecode_include_repeated.cpp` (includes counted as a multiset),
+  `samecode_using_sorted.cpp` (no using-declaration taken out of the order)
+  and `samecode_string_split.cpp` (adjacent string literals not joined).
 - Objective-C beyond declarations: a header with literals, `@implementation`
   or method bodies is left untouched.
 

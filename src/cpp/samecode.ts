@@ -1,6 +1,6 @@
 // Whether a C++ formatting run kept the code. clang-format changes only
 // whitespace and comments, splits a long string literal into adjacent ones,
-// and sorts #include lines and using-declarations; a run that changed
+// and sorts #include lines and plain using-declarations; a run that changed
 // anything else (dropped a directive's line continuation, say, which takes
 // the lines after it out of the macro) is a nishfmt bug, and its output is
 // not used. formatCpp prints each run's input and output with cppCodePrint
@@ -8,14 +8,18 @@
 
 import { Doc } from "./doc";
 import {
+  CW_OVERRIDE,
   K_CHAR,
   K_COMMENT,
   K_EOF,
+  K_IDENT,
   K_STRING,
   P_HASH,
   P_HASHHASH,
   P_LBRACE,
   P_LPAREN,
+  P_COLONCOLON,
+  P_COMMA,
   P_LSQUARE,
   P_RBRACE,
   P_RPAREN,
@@ -49,7 +53,7 @@ const cppMixMul = (): u64 => {
  * but for comments, each marked as code, directive or a directive's `#`, with
  * adjacent string literals joined. #include directives are left out of it and
  * counted as a set, since clang-format sorts them and drops one that repeats
- * another; using-declarations, which it sorts, as a multiset.
+ * another; the using-declarations it sorts, as a multiset.
  */
 export class CppCodePrint {
   seq: u64 = 0;
@@ -129,6 +133,47 @@ const cppOpenQuote = (src: u8[], a: i32, e: i32): i32 => {
     }
   }
   return -1;
+};
+
+/** The first token after `t` that is not a comment, or -1. */
+const cppNextCode = (d: Doc, t: i32): i32 => {
+  const kind = d.kind;
+  for (let i = add32(t, 1); i >= 0 && i < d.ntok && i < kind.length; i++) {
+    if (kind[i] !== K_COMMENT) {
+      return i;
+    }
+  }
+  return -1;
+};
+
+/**
+ * Whether the `using` at `t` opens a declaration clang-format sorts:
+ * `using [typename] [::]a::b;` or with a `,`, as UsingDeclarationsSorter's
+ * computeUsingDeclarationLabel reads it. `using namespace`, an alias and
+ * `using enum` stay where they are.
+ */
+const cppSortedUsing = (d: Doc, t: i32): boolean => {
+  const kind = d.kind;
+  const start = d.start;
+  const end = d.end;
+  let q = cppNextCode(d, t);
+  if (q >= 0 && q < start.length && q < end.length && cppBytesAre(d.src, start[q], end[q], "typename")) {
+    q = cppNextCode(d, q);
+  }
+  if (q >= 0 && q < kind.length && kind[q] === P_COLONCOLON) {
+    q = cppNextCode(d, q);
+  }
+  let named = false;
+  // (Identifiers, contextual words among them, as clang-format lexes them.)
+  while (q >= 0 && q < kind.length && (kind[q] === K_IDENT || kind[q] >= CW_OVERRIDE)) {
+    named = true;
+    q = cppNextCode(d, q);
+    if (q < 0 || q >= kind.length || kind[q] !== P_COLONCOLON) {
+      break;
+    }
+    q = cppNextCode(d, q);
+  }
+  return named && q >= 0 && q < kind.length && (kind[q] === P_SEMI || kind[q] === P_COMMA);
 };
 
 /** Prints the code of `d`, already lexed, into `p`. */
@@ -214,7 +259,7 @@ export const cppCodePrint = (d: Doc, p: CppCodePrint): void => {
         // a `for (using T = U; ...)` init-statement, which stay in place.)
         starts = inPP[last] === 1 || !(lk === P_LSQUARE || lk === P_LPAREN);
       }
-      if (starts) {
+      if (starts && cppSortedUsing(d, t)) {
         inUsing = true;
         depth = 0;
         unit = cppFnvOffset();

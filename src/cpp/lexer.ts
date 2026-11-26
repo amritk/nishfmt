@@ -891,9 +891,10 @@ export const lex = (d: Doc): boolean => {
     // clang-format takes a `#` after nothing but comments on its line for a
     // directive (UnwrappedLineParser::readToken: a comment keeps the line's
     // first-on-line state), `/* c */ #define X` and a comment line escaped
-    // onto the directive alike. nishfmt does not lay those out as it does,
-    // and reading the `#` as code joins the lines after it into the
-    // directive, so such a file is left alone.
+    // onto the directive alike, where nishfmt would read the `#` as code and
+    // lay the lines after it out as code: such a file is left alone. A `#`
+    // after code on its line is code to clang-format too, and is formatted
+    // (hash_after_code_and_comment.cpp).
     if (c === 35 && !startOfLine && commentsOnly && !inPP) {
       ok = false;
     }

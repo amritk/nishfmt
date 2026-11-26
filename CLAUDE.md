@@ -116,6 +116,12 @@ stands in for the fix's own failing case.
 file and a clean `--check`, so the case fails on a binary that formats the
 file. Never pin a skip with a `.expected` equal to the input.
 
+**A fault case is `tests/cases/<lang>/fault_<name>.<ext>`, with no
+`.expected`**: a file a formatter is known to write different code for, which
+`src/cpp/samecode.ts` must catch. `tests/run.sh` requires the "formatter
+fault" message and an unchanged file; once the formatter is fixed, the case
+becomes an ordinary one.
+
 **The worker-crash cases in `tests/run.sh` take a worker down with
 `NISHFMT_TEST_CRASH`** (see the comment above `crash_src`): no formatter
 panics on any input, so the trigger is a panic `src/main.ts` raises on purpose.
