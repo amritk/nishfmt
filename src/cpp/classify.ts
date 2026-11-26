@@ -248,6 +248,9 @@ export class Classifier {
   fnEarly: boolean = false; // isFunctionName decided on the token before `operator` alone
   depth: i32 = 0;
   inClass: boolean = false; // the enclosing scope is a class body
+  // The line is in a #define's body inside one of its braces: clang-format's
+  // MacroBodyScopes is not empty (TokenAnnotator::annotate).
+  macroScope: boolean = false;
   lineHasRequires: boolean = false; // the line being classified holds `requires`
   lineHasOperator: boolean = false; // ... `operator`
   lineHasStarSquare: boolean = false; // ... `*` right before `[`
@@ -1119,9 +1122,14 @@ export class Classifier {
       return 0;
     }
     // In a directive (a macro body), parens after a name keep the outer
-    // context; any other parens hold an expression.
+    // context; any other parens hold an expression. So do a name's, on a
+    // body line inside one of the macro's braces that need not be a
+    // declaration (parseParens: `Line.InMacroBody && !Scopes.empty()`).
     if (clAt(d.inPP, t) === 1) {
-      return p >= 0 && isIdentKind(pk) ? outer : 1;
+      if (!(p >= 0 && isIdentKind(pk))) {
+        return 1;
+      }
+      return this.macroScope && clAt(d.lMustDecl, this.line) === 0 ? 1 : outer;
     }
     // After a function type's parentheses (`(*fn)(...)`): parameters.
     if (
@@ -1917,7 +1925,11 @@ export class Classifier {
       let c = clAt(d.childHead, t);
       while (c >= 0) {
         const saveFirst = this.first;
+        const saveScope = this.macroScope;
+        // (A child line of a macro body is inside one of its braces.)
+        this.macroScope = clAt(d.inPP, clAt(d.lFirst, c)) === 1;
         this.classifyLine(c);
+        this.macroScope = saveScope;
         this.line = l;
         this.first = saveFirst;
         c = clAt(d.lSibling, c);
@@ -3203,6 +3215,16 @@ export const isTrailingComment = (d: Doc, t: i32): boolean => {
   return clAt(d.type, t) === TT_LINE_COMMENT || n < 0 || clAt(d.nl, n) > 0;
 };
 
+/** Whether a `<name>` header token comes before `r` on the line that starts at `f`. */
+const headerBefore = (d: Doc, f: i32, r: i32): boolean => {
+  for (let t = f; t >= 0 && t !== r; t = clAt(d.nxt, t)) {
+    if (clAt(d.kind, t) === K_HEADER) {
+      return true;
+    }
+  }
+  return false;
+};
+
 /** Spacing inside a directive: `#word`, then its arguments; `#define` bodies as code. */
 const ppSpace = (d: Doc, l: i32, r: i32): boolean => {
   const f = clAt(d.lFirst, l);
@@ -3212,6 +3234,19 @@ const ppSpace = (d: Doc, l: i32, r: i32): boolean => {
     return false; // `#include`
   }
   if (clAt(d.kind, r) === K_COMMENT) {
+    // A line comment trails with one space. A block comment is spaced as
+    // code: none after an opening bracket (`#if (/*c*/ X)`), and past a
+    // `<name>` (`#include <a.h>`, `__has_include(<a.h>)`), after which the
+    // line is implicit string literals to clang-format, the whitespace it
+    // was written with.
+    const lineComment = clCommentType(d, r) === TT_LINE_COMMENT;
+    const lk = clAt(d.kind, left);
+    if (!lineComment && headerBefore(d, f, r)) {
+      return clAt(d.ws, r) === 1;
+    }
+    if (!lineComment && (lk === P_LPAREN || lk === P_LSQUARE)) {
+      return false;
+    }
     return true;
   }
   if (clAt(d.prv, left) === f) {

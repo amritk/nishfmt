@@ -12,6 +12,14 @@ import { add32, sub32 } from "../core/arr";
 import { prevCode, requiresIsClause } from "./classify";
 import {
   isIdentKind,
+  KW_CHAR,
+  KW_DOUBLE,
+  KW_FLOAT,
+  KW_INT,
+  KW_LONG,
+  KW_REGISTER,
+  KW_SHORT,
+  KW_UNSIGNED,
   CW_FINAL,
   CW_OVERRIDE,
   TT_CLASS_HEAD_NAME,
@@ -227,6 +235,17 @@ const psTop = (xs: i32[]): i32 => {
 /** The last token's index, K_EOF's (`ntok - 1`). */
 const psLast = (d: Doc): i32 => psDec(d.ntok);
 
+/** clang-format's isC78Type: a type word of a K&R C parameter declaration. */
+const isC78TypeKind = (k: i32): boolean =>
+  k === KW_CHAR ||
+  k === KW_SHORT ||
+  k === KW_INT ||
+  k === KW_LONG ||
+  k === KW_UNSIGNED ||
+  k === KW_FLOAT ||
+  k === KW_DOUBLE ||
+  isIdentKind(k);
+
 /**
  * Whether the directive at `#` token `h` is one calculateBraceTypes stops
  * skipping at (clang-format 23's `pp_not_keyword, pp_define`): `#define`, or
@@ -272,6 +291,7 @@ export class Parser {
   inRequiresExpr: boolean = false; // parsing a requires expression's body
   compoundReqs: i32[]; // the `{` of each compound requirement (clang-format's TT_CompoundRequirementLBrace)
   objcDepth: i32 = 0; // inside an Objective-C @interface/@protocol body (parseObjCUntilAtEnd)
+  inBraces: boolean = false; // the level being parsed is a block's (clang-format's OpeningBrace)
   // Per line list (index: its parent `{` + 1, 0 for the top): the last line
   // that is no directive, and the line before it in the list (-1: none).
   codeTail: i32[];
@@ -464,8 +484,16 @@ export class Parser {
     this.addLine();
   }
 
-  /** Parses structural elements until EOF or (in a block) a `}`. */
+  /** clang-format's parseLevel: `inBlock` when it has an OpeningBrace. */
   parseLevel(inBlock: boolean): void {
+    const save = this.inBraces;
+    this.inBraces = inBlock;
+    this.parseLevelIn(inBlock);
+    this.inBraces = save;
+  }
+
+  /** Parses structural elements until EOF or (in a block) a `}`. */
+  parseLevelIn(inBlock: boolean): void {
     let switchLabel = false;
     while (true) {
       const k = this.cur();
@@ -3244,8 +3272,160 @@ export class Parser {
         }
         continue;
       }
+      if (k === P_LPAREN) {
+        // clang-format's parseStructuralElement: outside any block, a K&R C
+        // function's first parameter declaration starts a line of its own
+        // (`int f(a) int a;`).
+        const lp = this.pos;
+        const fn = this.lastCode();
+        this.parseParens();
+        // (Comments are read aside: the check is on the token after them,
+        // and those on the `)`'s line stay on its line.)
+        const tok = this.cur() === K_COMMENT ? this.codeAfter(this.pos) : this.pos;
+        if (
+          fn >= 0 &&
+          !this.inBraces &&
+          psAt(d.kind, tok) !== K_EOF &&
+          !this.recordHeadTakes(lp) &&
+          this.isC78ParameterDecl(tok, fn)
+        ) {
+          while (this.cur() === K_COMMENT && psAt(d.nl, this.pos) === 0) {
+            this.push();
+          }
+          this.addLine();
+          return;
+        }
+        continue;
+      }
       this.parseExprToken();
     }
+  }
+
+  /**
+   * clang-format's isC78ParameterDecl: whether `tok`, after the `)` of the
+   * call of `fn`, starts the first parameter declaration of a K&R C
+   * function definition (`int f(a, b) short a, b;`). The token after `tok`
+   * is the stream's next, past the end of a directive.
+   */
+  isC78ParameterDecl(tok: i32, fn: i32): boolean {
+    const d = this.d;
+    if (!isIdentKind(psAt(d.kind, fn))) {
+      return false;
+    }
+    // (The name's previous token on its own line: a name that starts the
+    // line has none, whatever a directive before it ends with.)
+    let fp = psAt(d.prv, fn);
+    while (fp >= 0 && psAt(d.kind, fp) === K_COMMENT) {
+      fp = psAt(d.prv, fp);
+    }
+    if (fp < 0 || (psAt(d.kind, fp) !== P_STAR && !isC78TypeKind(psAt(d.kind, fp)))) {
+      return false;
+    }
+    const tk = psAt(d.kind, tok);
+    if (!isC78TypeKind(tk) && tk !== KW_REGISTER && tk !== KW_STRUCT && tk !== KW_UNION) {
+      return false;
+    }
+    let next = add32(tok, 1);
+    while (next < d.ntok && psAt(d.kind, next) === K_COMMENT) {
+      next = add32(next, 1);
+    }
+    const nk = next < d.ntok ? psAt(d.kind, next) : K_EOF;
+    if (nk !== P_STAR && !isWordKind(nk)) {
+      return false;
+    }
+    // (The tokens before, which skip comments here: `)`, then an identifier
+    // after `(` or `,`.)
+    const rp = this.codeBefore(tok);
+    if (rp < 0 || psAt(d.kind, rp) !== P_RPAREN) {
+      return false;
+    }
+    const id = this.codeBefore(rp);
+    if (id < 0 || !isIdentKind(psAt(d.kind, id))) {
+      return false;
+    }
+    const before = this.codeBefore(id);
+    return before >= 0 && (psAt(d.kind, before) === P_LPAREN || psAt(d.kind, before) === P_COMMA);
+  }
+
+  /** The token before `t` that is not a comment, or -1. */
+  codeBefore(t: i32): i32 {
+    const d = this.d;
+    let q = sub32(t, 1);
+    while (q >= 0 && psAt(d.kind, q) === K_COMMENT) {
+      q = sub32(q, 1);
+    }
+    return q;
+  }
+
+  /** The token after `t` that is not a comment (K_EOF's at the end). */
+  codeAfter(t: i32): i32 {
+    const d = this.d;
+    let q = add32(t, 1);
+    while (q < psLast(d) && psAt(d.kind, q) === K_COMMENT) {
+      q = add32(q, 1);
+    }
+    return q;
+  }
+
+  /**
+   * Whether clang-format's parseRecord reads the `(` at `lp` while it reads
+   * a record's head (`struct MACRO(a) S`, `struct S G(a)`: a macro-like name
+   * or one right after the keyword), so its statement loop never sees it.
+   */
+  recordHeadTakes(lp: i32): boolean {
+    const d = this.d;
+    // The record keyword the head starts at: back past what the head reads.
+    let k0 = -1;
+    let q = this.codeBefore(lp);
+    while (q >= 0) {
+      const k = psAt(d.kind, q);
+      if (k === KW_STRUCT || k === KW_CLASS || k === KW_UNION) {
+        k0 = q;
+        break;
+      }
+      if (isIdentKind(k) || k === P_COLONCOLON || k === P_HASHHASH || k === KW_ALIGNAS || k === KW_ATTRIBUTE) {
+        q = this.codeBefore(q);
+      } else if ((k === P_RPAREN || k === P_RSQUARE) && psAt(d.match, q) >= 0 && psAt(d.match, q) < q) {
+        q = this.codeBefore(psAt(d.match, q));
+      } else {
+        return false;
+      }
+    }
+    if (k0 < 0) {
+      return false;
+    }
+    // The head's loop, forward from the keyword, up to `lp`.
+    let t = this.codeAfter(k0);
+    while (t < lp) {
+      const k = psAt(d.kind, t);
+      if (k === P_LSQUARE && psAt(d.kind, this.codeAfter(t)) === P_LSQUARE && psAt(d.match, t) > t) {
+        // An attribute, `[[...]]`.
+        t = this.codeAfter(psAt(d.match, t));
+        continue;
+      }
+      if (!(isIdentKind(k) || k === P_COLONCOLON || k === P_HASHHASH || k === KW_ALIGNAS || k === KW_ATTRIBUTE)) {
+        return false;
+      }
+      const prev = t;
+      t = this.codeAfter(t);
+      if (psAt(d.kind, t) === P_LPAREN) {
+        // Read for a macro between the keyword and the name: a name in
+        // capitals (or anything but a name), or one right after the keyword.
+        const takes = !(isIdentKind(psAt(d.kind, prev)) && !this.allCaps(prev)) || this.codeBefore(prev) === k0;
+        if (!takes) {
+          return false;
+        }
+        if (t === lp) {
+          return true;
+        }
+        const m = psAt(d.match, t);
+        if (m <= t) {
+          return false;
+        }
+        t = this.codeAfter(m);
+      }
+    }
+    return false;
   }
 
   /** Gives token `t` type `tt` for good, as clang-format's setFinalizedType. */

@@ -1403,6 +1403,9 @@ export class Formatter {
   classifyAll(): void {
     const d = this.d;
     const scopes = new Array<i32>(0);
+    // clang-format's MacroBodyScopes: the braces a #define body's lines leave
+    // open, cleared by every line outside a macro body (its head included).
+    let macroDepth = 0;
     let l = d.topHead;
     while (l >= 0) {
       const f = fwAt(d.lFirst, l);
@@ -1411,7 +1414,24 @@ export class Formatter {
       }
       const ns = scopes.length;
       fwPut(d.lInClass, l, ns > 0 && scopes[ns - 1] === 1 ? 1 : 0);
+      const body = fwAt(d.inPP, f) === 1 && fwAt(d.lType, l) !== LT_PREPROCESSOR;
+      if (!body) {
+        macroDepth = 0;
+      }
+      this.cls.macroScope = body && macroDepth > 0;
       this.cls.classifyLine(l);
+      this.cls.macroScope = false;
+      if (body) {
+        // (Each `{` pushes a scope and each `}` pops one, if any is left.)
+        for (let t = f; t >= 0; t = fwAt(d.nxt, t)) {
+          const k = fwAt(d.kind, t);
+          if (k === P_LBRACE) {
+            macroDepth = fwAdd(macroDepth, 1);
+          } else if (k === P_RBRACE && macroDepth > 0) {
+            macroDepth--;
+          }
+        }
+      }
       // (A trailing comment may follow the `{`.)
       let last = fwAt(d.lLast, l);
       while (last !== f && fwAt(d.kind, last) === K_COMMENT) {
@@ -5727,7 +5747,10 @@ export class Formatter {
           // A break inside a directive: each newline is escaped, `\` at the directive's column.
           out.trimSpaces();
           const esc = fwAt0(this.escCol, pp);
-          let sp = sub32(sub32(esc, sub32(col, this.asmSkew)), 1);
+          // (Measured from where clang-format takes the token before to end.)
+          const pt0 = fwAt0(emTok, i - 1);
+          const short = pt0 >= 0 && fwAt0(d.multi, pt0) === 0 ? sub32(this.emWidth(pt0), this.escLen(pt0)) : 0;
+          let sp = sub32(sub32(esc, sub32(sub32(col, short), this.asmSkew)), 1);
           const esc1 = sub32(esc, 1);
           for (let k = 0; k < nl; k++) {
             out.spaces(sp < 1 && k === 0 ? 1 : sp);
@@ -5995,7 +6018,7 @@ export class Formatter {
         escStamp[pp] = this.fileStamp;
         escCol[pp] = d.opts.columnLimit;
       }
-      let end = add32(add32(fwAt0(emCol, i - 1), this.emWidth(p)), 2);
+      let end = add32(add32(fwAt0(emCol, i - 1), this.escLen(p)), 2);
       if (p >= 0 && fwAt0(d.multi, p) === 1) {
         // A token over several lines ends on its last: a raw string where
         // it was, a block comment's lines moved with it.
@@ -6008,6 +6031,23 @@ export class Formatter {
         cppfSet(this.escCol, pp, end);
       }
     }
+  }
+
+  /**
+   * How far past its start clang-format takes token `t` to end where it
+   * lines up escaped newlines: the change's TokenLength, which
+   * WhitespaceManager::calculateLineBreakInformation sets to the token's
+   * bytes in the source or its width, whichever is less, so that a tab
+   * counts one column.
+   */
+  escLen(t: i32): i32 {
+    const d = this.d;
+    const w = this.emWidth(t);
+    if (t < 0 || fwAt0(d.plain, t) === 1) {
+      return w;
+    }
+    const bytes = sub32(fwAt0(d.end, t), fwAt0(d.start, t));
+    return bytes < w ? bytes : w;
   }
 
   /**
