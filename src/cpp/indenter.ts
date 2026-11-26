@@ -95,6 +95,9 @@ import {
   KW_OPERATOR,
   KW_RETURN,
   KW_CONSTEXPR,
+  KW_CLASS,
+  KW_STRUCT,
+  KW_UNION,
   KW_TEMPLATE,
   KW_WHILE,
   KW_SWITCH,
@@ -166,9 +169,9 @@ import {
 const H: i32 = 9;
 const S_NEXT: i32 = 1;
 
-// One record per open bracket or implicit paren: PS (12) fields, R_TOK to R_FL.
+// One record per open bracket or implicit paren: PS (14) fields, R_TOK to R_AL.
 // A record in the pool: its parent, its hash (with everything under it), then the PS fields.
-const RS: i32 = 14;
+const RS: i32 = 16;
 const RP: i32 = 0;
 const RH: i32 = 1;
 const RF: i32 = 2;
@@ -184,8 +187,12 @@ const R_CC: i32 = 8; // call continuation column
 const R_VP: i32 = 9; // variable position (after `=`)
 const R_COLON: i32 = 10; // where an Objective-C selector's colons align (ColonPos)
 const R_FL: i32 = 11;
+// clang-format 23's IndentationAndAlignment: the column R_IND was indented
+// from, which the whitespace pass reads; states compare R_IND alone.
+const R_INDF: i32 = 12;
+// The token the level's continuation lines are aligned to (AlignedTo), or -1.
+const R_AL: i32 = 13;
 
-const F_ALIGNED: i32 = 1;
 const F_BBCB: i32 = 2; // break before the closing brace
 const F_AVOID: i32 = 8; // avoid bin packing
 const F_BBP: i32 = 16; // break before the next parameter
@@ -214,9 +221,9 @@ const LC_SIZE: i32 = 4096;
 const CC_SIZE: i32 = 65536; // power of two
 const IGNORE_AFTER: i32 = 50000;
 // The guards below write their bounds as literals, which the compiler's
-// proofs read: 153391689 records is what a pool of i32 length can hold (the
-// last field of record 153391688 still has an i32 offset), and 12 is PS.
-const REC0: i32 = 57344; // RS * 4096
+// proofs read: 134217727 records is what a pool of i32 length can hold (the
+// last field of record 134217726 still has an i32 offset), and 14 is PS.
+const REC0: i32 = 65536; // RS * 4096
 // A depth's seen table starts small and doubles as it fills (search), so a
 // nested depth that expands few states costs a few KB, not 512 KB.
 const SEEN0: i32 = 1024;
@@ -301,7 +308,7 @@ const indAtI64 = (xs: i64[], i: i32): i64 => {
   return toI64(0);
 };
 
-// A record index is -1 or one newRec made, below 153391689: its u32 offset
+// A record index is -1 or one newRec made, below 134217727: its u32 offset
 // is the true one, or (for -1) past any pool, so one compare tests both ends.
 
 /** The u32 offset of slot `k` (RP, RH, or RF + an R_* field) of record `r`. */
@@ -309,7 +316,7 @@ const indSlot = (r: i32, k: i32): u32 => toU32(r) * toU32(RS) + toU32(k);
 
 /** Field `f` (an R_* index) of record `r` in pool `rec`, or 0 after a fault when it is outside. */
 const indField = (rec: i32[], r: i32, f: i32): i32 => {
-  if (f >= 0 && f < 12) {
+  if (f >= 0 && f < 14) {
     const i = indSlot(r, RF + f);
     if (i < toU32(rec.length)) {
       return rec[i];
@@ -321,7 +328,7 @@ const indField = (rec: i32[], r: i32, f: i32): i32 => {
 
 /** Sets field `f` of record `r`; faults when it is outside the pool. */
 const indSetField = (rec: i32[], r: i32, f: i32, v: i32): void => {
-  if (f >= 0 && f < 12) {
+  if (f >= 0 && f < 14) {
     const i = indSlot(r, RF + f);
     if (i < toU32(rec.length)) {
       rec[i] = v;
@@ -392,6 +399,8 @@ export class Indenter {
   sol: i32 = 0;
   lowest: i32 = 0;
   sosl: i32 = 0;
+  /** The column newLineColumn's answer was indented from (its IndentedFrom). */
+  nlFrom: i32 = 0;
   noLB: i32 = 0;
   sp: i32 = 0;
   // The stack is a chain of records shared between states: a step copies
@@ -702,8 +711,8 @@ export class Indenter {
 
   newRec(parent: i32): i32 {
     const r = this.nrec;
-    // (`(r + 1) * RS` leaves i32 from 153391689 on.)
-    if (r < 0 || r >= 153391689) {
+    // (`(r + 1) * RS` leaves i32 from 134217727 on.)
+    if (r < 0 || r >= 134217727) {
       fault();
       return -1;
     }
@@ -727,11 +736,11 @@ export class Indenter {
   cloneRec(r: i32): i32 {
     const c = this.newRec(indParent(this.rec, r));
     const rec = this.rec;
-    if (r >= 0 && r < 153391689 && c >= 0 && c < 153391689) {
+    if (r >= 0 && r < 134217727 && c >= 0 && c < 134217727) {
       const a = r * RS + RF;
       const b = c * RS + RF;
-      // The PS fields, R_TOK (+0) to R_FL (+11).
-      if (a + 11 < rec.length && b + 11 < rec.length) {
+      // The PS fields, R_TOK (+0) to R_AL (+13).
+      if (a + 13 < rec.length && b + 13 < rec.length) {
         rec[b] = rec[a];
         rec[b + 1] = rec[a + 1];
         rec[b + 2] = rec[a + 2];
@@ -744,11 +753,19 @@ export class Indenter {
         rec[b + 9] = rec[a + 9];
         rec[b + 10] = rec[a + 10];
         rec[b + 11] = rec[a + 11];
+        rec[b + 12] = rec[a + 12];
+        rec[b + 13] = rec[a + 13];
         return c;
       }
     }
     fault();
     return c;
+  }
+
+  /** Sets the top record's indent, indented from column `from`. */
+  setInd(v: i32, from: i32): void {
+    this.setTop(R_IND, v);
+    this.setTop(R_INDF, from);
   }
 
   setTop(f: i32, v: i32): void {
@@ -852,13 +869,13 @@ export class Indenter {
     this.setTop(R_FL, on ? v | fl : v & ~fl);
   }
 
-  push(tok: i32, ind: i32, ls: i32, avoid: boolean, noLB: boolean): void {
+  push(tok: i32, ind: i32, indFrom: i32, ls: i32, avoid: boolean, noLB: boolean): void {
     const r = this.newRec(this.topRec);
     const x = this.rec;
     let ok = false;
-    if (r >= 0 && r < 153391689) {
+    if (r >= 0 && r < 134217727) {
       const o = r * RS + RF;
-      if (o + 11 < x.length) {
+      if (o + 13 < x.length) {
         x[o] = tok; // R_TOK
         x[o + 1] = ind; // R_IND
         x[o + 2] = ls; // R_LS
@@ -871,6 +888,8 @@ export class Indenter {
         x[o + 9] = 0; // R_VP
         x[o + 10] = 0; // R_COLON
         x[o + 11] = F_LOW | (avoid ? F_AVOID : 0) | (noLB ? F_NOLB : 0); // R_FL
+        x[o + 12] = indFrom; // R_INDF
+        x[o + 13] = -1; // R_AL
         ok = true;
       }
     }
@@ -928,7 +947,7 @@ export class Indenter {
       let h = 0x2545f491;
       if (p >= 0) {
         // The parent's hash, its RH.
-        if (p >= 153391689) {
+        if (p >= 134217727) {
           fault();
           return;
         }
@@ -939,17 +958,17 @@ export class Indenter {
         }
         h = rec[ph];
       }
-      if (x < 0 || x >= 153391689) {
+      if (x < 0 || x >= 134217727) {
         fault();
         return;
       }
       const o = x * RS + RF;
-      if (o + 11 >= rec.length) {
+      if (o + 13 >= rec.length) {
         fault();
         return;
       }
-      // The PS fields from R_IND (+1) to R_COLON (+10), then R_FL (+11); the
-      // record's own hash is its RH (-1).
+      // The PS fields from R_IND (+1) to R_COLON (+10), then R_FL (+11) and
+      // R_AL (+13), not R_INDF; the record's own hash is its RH (-1).
       const f1 = rec[o + 1];
       const f2 = rec[o + 2];
       const f3 = rec[o + 3];
@@ -961,6 +980,7 @@ export class Indenter {
       const f9 = rec[o + 9];
       const f10 = rec[o + 10];
       const f11 = rec[o + 11] & F_CMP;
+      const f13 = rec[o + 13];
       h = Math.imul(h ^ f1, 0x01000193);
       h = Math.imul(h ^ f2, 0x01000193);
       h = Math.imul(h ^ f3, 0x01000193);
@@ -972,6 +992,7 @@ export class Indenter {
       h = Math.imul(h ^ f9, 0x01000193);
       h = Math.imul(h ^ f10, 0x01000193);
       h = Math.imul(h ^ f11, 0x01000193);
+      h = Math.imul(h ^ f13, 0x01000193);
       if (o + 11 >= rec.length) {
         fault();
         return;
@@ -1330,23 +1351,37 @@ export class Indenter {
    * placed, indented so its colon is past the longest of the others; after,
    * at the aligned colons.
    */
-  selectorColumn(cur: i32, ind: i32): i32 {
+  /** A selector part's new-line column; sets nlFrom (newLineTotal's). */
+  selectorColumn(cur: i32, ind: i32, indF: i32): i32 {
     const d = this.d;
     const w = indAt(d.width, cur);
+    this.nlFrom = indF;
     if (!this.topHas(F_OSNF)) {
       let minInd = ind;
-      const ci = indAdd(this.firstIndent, d.opts.continuationIndent);
-      if (indAt(d.type, indLink(d.lFirst, this.line)) === TT_OBJC_METHOD_SPECIFIER && ci > minInd) {
+      const fi = this.firstIndent;
+      const ci = indAdd(fi, d.opts.continuationIndent);
+      // max(Indent, FirstIndent + ContinuationIndentWidth): of equal
+      // columns, the one indented from further left.
+      if (
+        indAt(d.type, indLink(d.lFirst, this.line)) === TT_OBJC_METHOD_SPECIFIER &&
+        (ci > minInd || (ci === minInd && fi < indF))
+      ) {
         minInd = ci;
+        this.nlFrom = fi;
       }
       const longest = this.longestSelector(cur);
+      // addPadding keeps what the indent was indented from.
       return indSub(indAdd(minInd, longest > w ? longest : w), w);
     }
     if (this.topHas(F_NOALIGN)) {
       return ind;
     }
     const cp = this.top(R_COLON);
-    return cp > w ? indSub(cp, w) : ind;
+    if (cp > w) {
+      this.nlFrom = -1;
+      return indSub(cp, w);
+    }
+    return ind;
   }
 
   /**
@@ -1381,6 +1416,7 @@ export class Indenter {
   }
 
   newLineColumn(): i32 {
+    this.nlFrom = 0;
     const cur = this.next;
     if (cur < 0 || indLink(this.d.prv, cur) < 0) {
       return 0;
@@ -1388,12 +1424,12 @@ export class Indenter {
     const r = indAt(this.a.nlc, cur);
     const rc = this.rec;
     const tr = this.topRec;
-    if (tr < 0 || tr >= 153391689) {
+    if (tr < 0 || tr >= 134217727) {
       fault();
       return 0;
     }
     const o = tr * RS + RF;
-    if (o + 11 >= rc.length) {
+    if (o + 13 >= rc.length) {
       fault();
       return 0;
     }
@@ -1406,12 +1442,47 @@ export class Indenter {
     const cc = rc[o + 8];
     const vp = rc[o + 9];
     const fl = rc[o + 11];
+    const indF = rc[o + 12];
     const parent = rc[o - 2];
-    const ci = indAdd(ls > ind ? ls : ind, this.d.opts.continuationIndent);
+    // clang-format 23 keeps where each indent was indented from: `x + n`
+    // is indented from x, a plain column from itself, and the larger of two
+    // equal columns is the one indented from further left.
+    const lsInd = ls > ind ? ls : ind;
+    const ci = indAdd(lsInd, this.d.opts.continuationIndent);
+    const col = this.newLineTotal(r, cur, parent, ind, indF, ls, fll, qc, soas, cc, vp, fl, ci);
+    const from = this.nlFrom;
+    // A plain column (-1) is indented from itself; -2 is `ci`'s base.
+    this.nlFrom = from === -1 ? col : from === -2 ? lsInd : from;
+    return col;
+  }
+
+  /** newLineColumn's column; sets nlFrom to its IndentedFrom, -1 for the column itself, -2 for `ci`'s. */
+  newLineTotal(
+    r: i32,
+    cur: i32,
+    parent: i32,
+    ind: i32,
+    indF: i32,
+    ls: i32,
+    fll: i32,
+    qc: i32,
+    soas: i32,
+    cc: i32,
+    vp: i32,
+    fl: i32,
+    ci: i32,
+  ): i32 {
+    const rc = this.rec;
+    this.nlFrom = -1;
     if ((r & N_BLOCK) !== 0) {
-      return indAt(this.a.nest, cur) === 0 ? this.firstIndent : ind;
+      if (indAt(this.a.nest, cur) === 0) {
+        return this.firstIndent;
+      }
+      this.nlFrom = indF;
+      return ind;
     }
     if ((r & N_LARROW) !== 0) {
+      this.nlFrom = -2;
       return ci;
     }
     if ((r & N_CLOSEBR) !== 0 && this.sp > 1) {
@@ -1438,7 +1509,7 @@ export class Indenter {
       return this.sosl;
     }
     if (indAt(this.d.type, cur) === TT_SELECTOR_NAME) {
-      return this.selectorColumn(cur, ind);
+      return this.selectorColumn(cur, ind, indF);
     }
     if ((r & N_LESSLESS) !== 0) {
       if (fll !== 0) {
@@ -1446,7 +1517,11 @@ export class Indenter {
       }
     }
     if ((r & N_MEMBER) !== 0) {
-      return cc === 0 ? ci : cc;
+      if (cc === 0) {
+        this.nlFrom = -2;
+        return ci;
+      }
+      return cc;
     }
     if ((r & N_QC) !== 0) {
       if (qc !== 0) {
@@ -1462,32 +1537,50 @@ export class Indenter {
       }
     }
     if ((r & N_RQC) !== 0) {
+      this.nlFrom = ind;
       return indAdd(ind, this.d.opts.indentWidth);
     }
     if ((r & N_CTORCOL) !== 0) {
       return indAdd(this.firstIndent, 4);
     }
     if ((r & N_MAXLSIND) !== 0) {
-      return ls > ind ? ls : ind;
+      if (ind > ls) {
+        this.nlFrom = indF;
+        return ind;
+      }
+      if (ind === ls && indF < ls) {
+        this.nlFrom = indF;
+      }
+      return ls;
     }
     if ((r & N_SUBSCRIPT) !== 0) {
-      return soas !== 0 ? soas : ci;
+      if (soas !== 0) {
+        return soas;
+      }
+      this.nlFrom = -2;
+      return ci;
     }
     if ((r & N_OMP) !== 0) {
+      this.nlFrom = ind;
       return indAdd(ind, this.d.opts.continuationIndent);
     }
     if ((r & N_CI) !== 0) {
+      this.nlFrom = -2;
       return ci;
     }
     if ((r & N_IND) !== 0) {
+      this.nlFrom = indF;
       return ind;
     }
     if ((r & N_CI2) !== 0) {
+      this.nlFrom = -2;
       return ci;
     }
     if ((r & N_PNCOK) !== 0 && ind === this.firstIndent) {
+      this.nlFrom = ind;
       return indAdd(ind, this.d.opts.continuationIndent);
     }
+    this.nlFrom = indF;
     return ind;
   }
 
@@ -1550,8 +1643,8 @@ export class Indenter {
       fm.emit(cur, 0, indAdd(this.col, spaces));
     }
     if ((r & C_ALIGN) !== 0) {
-      this.setTop(R_IND, indAdd(this.col, spaces));
-      this.setTopFlag(F_ALIGNED, true);
+      this.setInd(indAdd(this.col, spaces), indAdd(this.col, spaces));
+      this.setTop(R_AL, indLink(d.prv, cur));
     }
     if ((r & C_NEXTPARAM) !== 0 && this.topHas(F_AVOID)) {
       this.setTopFlag(F_NOLB, true);
@@ -1587,7 +1680,7 @@ export class Indenter {
     } else if (ls === 2) {
       this.setTop(R_LS, this.col);
     } else if (ls === 3) {
-      this.setTop(R_IND, this.col);
+      this.setInd(this.col, this.col);
       this.setTop(R_LS, this.col);
     } else if (ls === 4) {
       const sp = this.sp;
@@ -1641,6 +1734,7 @@ export class Indenter {
       pen = indAdd64(pen, toI64(PEN_FIRST_LESSLESS));
     }
     this.col = this.newLineColumn();
+    const from = this.nlFrom;
     if (indAt(d.type, nnc) === TT_SELECTOR_NAME) {
       const w = indAt(d.width, nnc);
       if (!this.topHas(F_OSNF)) {
@@ -1681,8 +1775,30 @@ export class Indenter {
     if (indAt(d.kind, nnc) === P_QUESTION || pnk === P_QUESTION) {
       this.setTopFlag(F_BBP, true);
     }
+    // What the line is aligned to (BreakInheritanceList BeforeColon).
+    if (indAt(d.type, cur) === TT_INHERITANCE_COLON || indAt(d.type, prev) === TT_INHERITANCE_COMMA) {
+      let k = indLink(d.prv, prev);
+      while (k >= 0) {
+        const kk = indAt(d.kind, k);
+        if (kk === KW_CLASS || kk === KW_STRUCT || kk === KW_UNION) {
+          break;
+        }
+        k = indLink(d.prv, k);
+      }
+      this.setTop(R_AL, k);
+    }
     if (indAt(d.type, cur) === TT_BINARY_OPERATOR && indAt(a.canB, cur) === 1) {
       this.setTopFlag(F_BBP, false);
+      this.setTop(R_AL, cur);
+    }
+    if (indAt(d.type, cur) === TT_CONDITIONAL_EXPR) {
+      // AlignOperands Align: a `?` to the `=` before it, a `:` to its `?`.
+      const want = indAt(d.kind, cur) === P_QUESTION ? P_EQUAL : P_QUESTION;
+      let k = prev;
+      while (k >= 0 && indAt(d.kind, k) !== want) {
+        k = indLink(d.prv, k);
+      }
+      this.setTop(R_AL, k);
     }
     if (!this.dry) {
       let nls = indAt(d.nl, cur);
@@ -1700,7 +1816,7 @@ export class Indenter {
       }
       const fm = this.fm;
       if (fm !== null) {
-        fm.emit(cur, nls, this.col);
+        fm.emitAligned(cur, nls, this.col, from, this.top(R_AL));
       }
     }
     if (!a.isTrailingComment(cur)) {
@@ -1786,12 +1902,12 @@ export class Indenter {
       this.setTop(R_SOFC, indLink(a.nextOp, cur) < 0 ? 0 : this.col);
     }
     if ((mf & M_CTORCOLON) !== 0) {
-      this.setTop(R_IND, indAdd(this.col, 2));
+      this.setInd(indAdd(this.col, 2), indAdd(this.col, 2));
       this.setTop(R_NBI, this.top(R_IND));
       this.setTopFlag(F_BBP, false);
     }
     if ((mf & M_INHCOLON) !== 0) {
-      this.setTop(R_IND, indAdd(this.firstIndent, 4));
+      this.setInd(indAdd(this.firstIndent, 4), indAdd(this.firstIndent, 4));
     }
     if ((mf & M_NBINL) !== 0 && newline) {
       this.setTop(R_NBI, indAdd(indAdd(this.col, indAt(d.width, cur)), 1));
@@ -1884,14 +2000,20 @@ export class Indenter {
       }
       this.setTop(R_TOK, fakeTok(p));
       if (!trailing && (prev < 0 || indAt(d.kind, prev) !== KW_RETURN || p > 0)) {
+        // max({Column, Indent, LastSpace}): of equal columns, the one
+        // indented from further left.
         let ind = this.top(R_IND);
-        if (this.col > ind) {
-          ind = this.col;
+        let from = this.top(R_INDF);
+        const c = this.col;
+        if (c > ind || (c === ind && c < from)) {
+          ind = c;
+          from = c;
         }
-        if (topLs > ind) {
+        if (topLs > ind || (topLs === ind && topLs < from)) {
           ind = topLs;
+          from = topLs;
         }
-        this.setTop(R_IND, ind);
+        this.setInd(ind, from);
       }
       // A `_Generic` selection's associations are continuation-indented
       // from the state around the keyword's parenthesis, not under it
@@ -1901,7 +2023,8 @@ export class Indenter {
       if (prev >= 0 && indAt(d.kind, prev) === P_LPAREN && sp > 2) {
         const gk = a.prevNonComment(prev);
         if (gk >= 0 && indAt(d.kind, gk) === KW_GENERIC) {
-          this.setTop(R_IND, indAdd(this.at(sp - 3, R_IND), d.opts.continuationIndent));
+          const base = this.at(sp - 3, R_IND);
+          this.setInd(indAdd(base, d.opts.continuationIndent), base);
         }
       }
       if (
@@ -1912,7 +2035,7 @@ export class Indenter {
             indAt(d.type, prev) === TT_CONDITIONAL_EXPR)) &&
         !newline
       ) {
-        fl = fl | F_ALIGNED;
+        this.setTop(R_AL, prev);
       }
       if (p > PREC_UNKNOWN && this.col > this.top(R_LS)) {
         this.setTop(R_LS, this.col);
@@ -1930,7 +2053,8 @@ export class Indenter {
       ) {
         fl = fl | F_ICC;
       } else if (p === PREC_CONDITIONAL || (!skipFirst && p > PREC_ASSIGNMENT && !trailing)) {
-        this.setTop(R_IND, indAdd(this.top(R_IND), d.opts.continuationIndent));
+        const base = this.top(R_IND);
+        this.setInd(indAdd(base, d.opts.continuationIndent), base);
       }
       if ((prev >= 0 && !a.opensScope(prev)) || p !== PREC_COMMA) {
         fl = fl & ~F_BBP;
@@ -1974,12 +2098,14 @@ export class Indenter {
     }
     if (indLink(d.match, cur) >= 0 && indAt(d.kind, cur) === P_LBRACE && indAt(d.bk, cur) === BK_BLOCK) {
       const nbi = this.top(R_NBI);
-      this.push(cur, indAdd(nbi, d.opts.indentWidth), this.top(R_LS), true, false);
+      const bi = indAdd(nbi, d.opts.indentWidth);
+      this.push(cur, bi, bi, this.top(R_LS), true, false);
       this.setTop(R_NBI, nbi);
       this.setTopFlag(F_BBP, true);
       return;
     }
     let newIndent = 0;
+    let newFrom = 0; // what newIndent is indented from
     let ls = this.top(R_LS);
     let avoid = false;
     let bbp = false;
@@ -1989,8 +2115,12 @@ export class Indenter {
     if (ck === P_LBRACE || indAt(d.type, cur) === TT_ARRAY_INITIALIZER_LSQUARE) {
       if (a.opensBlockList(cur)) {
         newIndent = indAdd(d.opts.indentWidth, this.col < this.top(R_NBI) ? this.col : this.top(R_NBI));
+        newFrom = newIndent;
       } else {
         newIndent = indAdd(this.top(R_LS), d.opts.continuationIndent);
+        // A braced list's indent is LastSpace's plus the width; an array
+        // initializer's is a plain column.
+        newFrom = ck === P_LBRACE ? this.top(R_LS) : newIndent;
       }
       const nn = a.nextNonComment(cur);
       // (clang-format 23 looks past comments before the `}`.)
@@ -2008,14 +2138,18 @@ export class Indenter {
     } else {
       const base = this.top(R_LS) > this.top(R_SOFC) ? this.top(R_LS) : this.top(R_SOFC);
       newIndent = indAdd(d.opts.continuationIndent, base);
+      newFrom = base;
       // A `_Generic` selection takes one association per line.
       const gp = a.prevNonComment(cur);
       if (ck === P_LPAREN && gp >= 0 && indAt(d.kind, gp) === KW_GENERIC) {
         avoid = true;
       }
       if (ck === P_LESS && this.parentIsParen(cur)) {
-        if (this.top(R_IND) > newIndent) {
-          newIndent = this.top(R_IND);
+        const ti = this.top(R_IND);
+        const tf = this.top(R_INDF);
+        if (ti > newIndent || (ti === newIndent && tf < newFrom)) {
+          newIndent = ti;
+          newFrom = tf;
         }
         if (this.top(R_IND) > ls) {
           ls = this.top(R_IND);
@@ -2028,7 +2162,7 @@ export class Indenter {
       (this.topHas(F_NOLB) ||
         this.topHas(F_NOLBOP) ||
         (indAt(d.type, cur) === TT_TEMPLATE_OPENER && this.topHas(F_CUB)));
-    this.push(cur, newIndent, ls, avoid, noLB);
+    this.push(cur, newIndent, newFrom, ls, avoid, noLB);
     this.setTop(R_NBI, nbi);
     this.setTopFlag(F_BBP, bbp);
     this.setTopFlag(F_HMNB, indAt(a.bpcnt, cur) > 1);
@@ -2133,7 +2267,8 @@ export class Indenter {
       ) {
         const fm = this.fm;
         if (!this.dry && fm !== null) {
-          fm.emit(this.next, 1, startCol);
+          // Aligned to the section's first comment when that one trails code.
+          fm.emitAligned(this.next, 1, startCol, startCol, indAt(d.nl, cur) === 0 ? cur : -1);
         }
         // Each is split or overflows where the section's column puts it.
         if (fm !== null && indAt(d.lType, this.line) !== LT_PREPROCESSOR) {
@@ -3047,7 +3182,7 @@ export class Indenter {
     this.sp = 0;
     this.topRec = -1;
     this.fresh0 = this.nrec;
-    this.push(-1, this.firstIndent, this.firstIndent, false, false);
+    this.push(-1, this.firstIndent, this.firstIndent, this.firstIndent, false, false);
     return this.moveToNext(false);
   }
 
@@ -3421,7 +3556,7 @@ export class Indenter {
       h = Math.imul(h ^ p[o + 7], 0x01000193); // S_DEPTH
       const t = p[o + 8]; // S_TOP
       const rc = this.rec;
-      if (t < 0 || t >= 153391689) {
+      if (t < 0 || t >= 134217727) {
         fault();
         return 0;
       }
@@ -3465,17 +3600,18 @@ export class Indenter {
     let ry = p[oy + 8];
     const rc = this.rec;
     while (rx !== ry) {
-      if (rx < 0 || rx >= 153391689 || ry < 0 || ry >= 153391689) {
+      if (rx < 0 || rx >= 134217727 || ry < 0 || ry >= 134217727) {
         fault();
         return false;
       }
       const a = rx * RS + RF;
       const b = ry * RS + RF;
-      if (a + 11 >= rc.length || b + 11 >= rc.length) {
+      if (a + 13 >= rc.length || b + 13 >= rc.length) {
         fault();
         return false;
       }
-      // The PS fields from R_IND (+1) to R_COLON (+10), then R_FL (+11).
+      // The PS fields from R_IND (+1) to R_COLON (+10), then R_FL (+11) and
+      // R_AL (+13): clang-format compares an Indent by its Total alone.
       if (
         rc[a + 1] !== rc[b + 1] ||
         rc[a + 2] !== rc[b + 2] ||
@@ -3490,7 +3626,7 @@ export class Indenter {
       ) {
         return false;
       }
-      if ((rc[a + 11] & F_CMP) !== (rc[b + 11] & F_CMP)) {
+      if ((rc[a + 11] & F_CMP) !== (rc[b + 11] & F_CMP) || rc[a + 13] !== rc[b + 13]) {
         return false;
       }
       // The parents, at RP (-2).
