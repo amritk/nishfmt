@@ -3224,6 +3224,18 @@ const ppSpace = (d: Doc, l: i32, r: i32): boolean => {
     return false; // `#include`
   }
   if (clAt(d.kind, r) === K_COMMENT) {
+    // A line comment trails with one space. A block comment is spaced as
+    // code: none after an opening bracket (`#if (/*c*/ X)`), and after an
+    // `#include <name>`, whose tokens are implicit string literals to
+    // clang-format, the whitespace it was written with.
+    const lineComment = clCommentType(d, r) === TT_LINE_COMMENT;
+    const lk = clAt(d.kind, left);
+    if (!lineComment && lk === K_HEADER) {
+      return clAt(d.ws, r) === 1;
+    }
+    if (!lineComment && (lk === P_LPAREN || lk === P_LSQUARE)) {
+      return false;
+    }
     return true;
   }
   if (clAt(d.prv, left) === f) {
