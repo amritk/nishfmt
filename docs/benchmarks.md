@@ -197,14 +197,14 @@ profile-guided binary took this much less time than the plain one:
 
 | Language | Plain | Profile-guided |
 | --- | ---: | ---: |
-| C++ (a third of `repos2.txt`) | 15.54 s | 13.81 s |
-| Java | 1.06 s | 0.96 s |
-| Kotlin | 1.13 s | 1.02 s |
-| Ruby | 1.81 s | 1.77 s |
-| Swift | 3.38 s | 3.01 s |
-| Rust | 1.04 s | 0.91 s |
-| Dart | 0.88 s | 0.80 s |
-| C# | 0.78 s | 0.68 s |
+| C++ (a third of `repos2.txt`) | 15.44 s | 13.94 s |
+| Java | 1.11 s | 0.97 s |
+| Kotlin | 1.15 s | 1.03 s |
+| Ruby | 1.90 s | 1.82 s |
+| Swift | 3.39 s | 2.95 s |
+| Rust | 1.00 s | 0.87 s |
+| Dart | 0.89 s | 0.78 s |
+| C# | 0.81 s | 0.69 s |
 
 (Every language but C++ is a tenth of its `repos.txt` corpus, the files after
 those the profile trains on.) The README's times were measured before the
