@@ -12,7 +12,8 @@ read `.nish/docs/AI.md` (the language as rules, traps first), then
 | Command | What it does |
 | --- | --- |
 | `bash scripts/fetch-nish.sh` | install the pinned compiler into `.nish/` |
-| `npm run build` | compile `src/main.ts` to `dist/nishfmt` (about two minutes) |
+| `npm run build` | compile `src/main.ts` to `dist/nishfmt` (about two minutes; on Linux profile-guided, with `pgo/nishfmt.profdata`, longer) |
+| `bash scripts/pgo-train.sh` | train `pgo/nishfmt.profdata` on every tenth file of each corpus ([docs/benchmarks.md](docs/benchmarks.md#profile-guided-build)) |
 | `npm test` | every regression case in `tests/cases/`, against `dist/nishfmt` |
 | `npm run lint` | biome, over the sources and scripts |
 | `.nish/bin/nish tools/dev/<lang>.ts --allow-panics --link dist/<lang>dev` | one language's formatter alone, in seconds |

@@ -185,6 +185,38 @@ bash bench/corpus/time.sh dist/nishfmt cpp     # or java, kt, rb, swift, rust, d
   .NET 10, with `--no-cache`) over the directory. On one core every one of
   them runs under `taskset -c 0`, one process at a time.
 
+## Profile-guided build
+
+On Linux, `build.sh` links nishfmt with the profile in `pgo/nishfmt.profdata`
+(nish's `--pgo-use`), and so do CI and the Linux release builds. macOS links
+with Xcode's clang, which may not read the LLVM 18 profile, and builds
+without it; so does `NISHFMT_PGO=0 bash build.sh`. The profile changes no
+output, only how the binary is laid out: on 2026-11-26, on files the profile
+was not trained on, one core, median of five interleaved runs each, the
+profile-guided binary took this much less time than the plain one:
+
+| Language | Plain | Profile-guided |
+| --- | ---: | ---: |
+| C++ (a third of `repos2.txt`) | 15.54 s | 13.81 s |
+| Java | 1.06 s | 0.96 s |
+| Kotlin | 1.13 s | 1.02 s |
+| Ruby | 1.81 s | 1.77 s |
+| Swift | 3.38 s | 3.01 s |
+| Rust | 1.04 s | 0.91 s |
+| Dart | 0.88 s | 0.80 s |
+| C# | 0.78 s | 0.68 s |
+
+(Every language but C++ is a tenth of its `repos.txt` corpus, the files after
+those the profile trains on.) The README's times were measured before the
+profile.
+
+`bash scripts/pgo-train.sh` trains it again: it links a `--pgo-generate`
+binary, formats every tenth file of each corpus under `$CORPUS` with it and
+merges the runs with LLVM 18's `llvm-profdata`. A function whose code changed
+since the profile is optimised without it, so the gain fades as the code
+moves: train again now and then, and after a nish upgrade that changes the
+LLVM it links with.
+
 ## Rust reimplementations
 
 RuboCop has a Rust reimplementation that also matches it on the whole

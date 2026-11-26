@@ -55,10 +55,10 @@ jobs:
       mode: app
       versioning: release-please
       npm: true
-      # As build.sh: every module but src/main.ts is held to no panic by
-      # package.json's nish.noPanic, and --allow-panics leaves main.ts out of
-      # that scope for the calls no proof removes.
-      link-flags: --allow-panics
+      # build.sh links src/main.ts with --allow-panics (every module but
+      # main.ts is held to no panic by package.json's nish.noPanic) and, on
+      # Linux, with the profile in pgo/nishfmt.profdata.
+      build: bash build.sh "$OUT"
       test: bash build.sh && bash tests/run.sh dist/nishfmt
       smoke: |
         printf 'int  main( ){return 0;}\n' > smoke.cpp
