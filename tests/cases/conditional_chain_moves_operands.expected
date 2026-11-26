@@ -1,0 +1,7 @@
+enum {
+  CoeffReadCost = InnerSize == 0 ? NumTraits<Scalar>::ReadCost
+  : InnerSize == Dynamic         ? HugeCost
+                                 : InnerSize * (NumTraits<Scalar>::MulCost + LhsCoeffReadCost + RhsCoeffReadCost) +
+                                       (InnerSize - 1) * NumTraits<Scalar>::AddCost,
+  Other = 1
+};

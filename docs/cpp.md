@@ -79,30 +79,30 @@ and memory are for the whole tree.
 
 The regression corpus (`bench/corpus/repos.txt`, 10343 files from the same
 kind of repositories, each capped at 250 KB) matches clang-format 23.1.5's
-settled output (`ref-settled/`) on 10331 of the 10341 files that settle, and
-one `clang-format -i` run on 10295: nishfmt formats a file again until it
+settled output (`ref-settled/`) on 10332 of the 10341 files that settle, and
+one `clang-format -i` run on 10296: nishfmt formats a file again until it
 stops changing, as a CI check needs, and where clang-format's second run
 changes its first, nishfmt gives the second. Its times are in the
 [README](../README.md#languages-and-speed). The second corpus
-(`bench/corpus/repos2.txt`, 13902 files) matches the settled output on 13857
-of the 13901 files that settle, and one run on 13813; both counts and how
+(`bench/corpus/repos2.txt`, 13902 files) matches the settled output on 13859
+of the 13901 files that settle, and one run on 13814; both counts and how
 they are built are in [Benchmarks](benchmarks.md#c-one-run-and-the-settled-output).
 
 What counts for a project that checks its formatting in CI is whether one
 clang-format run leaves nishfmt's output as it is (`bench/corpus/verify.sh`).
-It does on every file but 6 of the first corpus and 33 of the second; it
+It does on every file but 5 of the first corpus and 31 of the second; it
 skips 3 files of the first corpus (two never settle, and in opencv's
 `hb-algs.hh` a comment leads a directive) and 1 of the second (taskflow's
 `ff/parallel_for_internals.hpp`, where formatting would change the code;
-see [What it leaves alone](#what-it-leaves-alone)). Each of the 39 is a
+see [What it leaves alone](#what-it-leaves-alone)). Each of the 36 is a
 decision nishfmt does not make as clang-format does:
 
 | What differs | Files |
 | --- | --- |
 | a layout that depends on how clang-format's `#if` passes share tokens: a braced list `{{ a, b }}` gets spaces, a block or a constructor's initializer is laid out differently (clang-format's passes over each combination of branches share tokens that keep what an earlier pass set on them) | eigen `Tensor.h`, `TensorRef.h`, `TensorFixedSize.h`, `TensorDimensions.h`, `TensorMap.h` (in taskflow); spdlog `pattern_formatter-inl.h`, `common.h`, `tests/utils.cpp`; duckdb `shared_ptr_ipp.hpp`, `weak_ptr_ipp.hpp`; mbedtls `pk.cpp` (in duckdb); tbb `custom_scheduler.h`, `tbbmalloc/frontend.cpp` (in taskflow) |
 | macro bodies and lines clang-format cannot annotate (`SPDLOG_TRY{`, generator macros, assembler-like `.macro` bodies, a `SIMD_ONLY(` argument, a macro-generated block) | spdlog `async_logger-inl.h`, `stopwatch.h`, `fmt/bin_to_hex.h`; eigen `bench/basicbenchmark.cpp`; grpc `iomgr/closure.h`; tbb `perf/time_framework.h`, `flow_graph.h`, `internal/_flow_graph_cache_impl.h`; opencv `mlas/lib/x86_64/FgemmKernelCommon.h`, `core/src/minmax.simd.hpp`, `dnn/.../conv2_kernels.simd.hpp` |
-| a chained conditional's alignment: clang-format 23 counts a continuation line aligned to an operand (`AlignedTo`) in the width that limits the alignment, and nishfmt only the operand's own line | opencv `imgcodecs/src/grfmt_exr.cpp`; opencv `carotene/hal/tegra_hal.hpp` (a long `#define` of nested conditionals); eigen `ProductEvaluators.h` |
-| line breaking: designated initializers, `<<` chains, a conditional's operand column, lambdas among arguments | bitcoin `test/checkqueue_tests.cpp`, `test/fuzz/package_eval.cpp`; eigen `Tutorial_commainit_02.cpp`, `GlobalFunctions.h`; flatbuffers `src/idl_gen_ts.cpp`; grpc `xds_server_config_fetcher.cc` |
+| a long `#define` of nested conditionals, with a block comment that is reflowed over many lines | opencv `carotene/hal/tegra_hal.hpp` |
+| line breaking: designated initializers, `<<` chains, a conditional's operand column, lambdas among arguments | bitcoin `test/checkqueue_tests.cpp`; eigen `Tutorial_commainit_02.cpp`, `GlobalFunctions.h`; flatbuffers `src/idl_gen_ts.cpp`; grpc `xds_server_config_fetcher.cc` |
 | comments: trailing comment alignment and reflow, a block comment holding a line comment inside a condition, a comment's indent beside a preprocessor conditional | eigen `util/XprHelper.h`; opencv `dnn/src/graph_const_fold.cpp` |
 | a string with wide characters | bitcoin `test/cluster_linearize_tests.cpp` |
 | `__asm` statements | tbb `tbb/scheduler.cpp`, `machine/msvc_ia32_common.h` (in taskflow) |
@@ -121,6 +121,17 @@ and on main alike:
 - `}  /* blk */` then `// c1` under a namespace: `// c1` goes to column 0;
 - a `#pragma mark` line past the limit with a `.` in it: its `#pragma   mark`
   spacing is normalized, where clang-format, finding no layout, keeps it.
+- a block comment over two lines right after a chained conditional's `?`:
+  clang-format breaks before that `?` and leaves the comment's second line
+  where it was written, where nishfmt keeps the `?` on the condition's line.
+
+A chained conditional is aligned as clang-format 23 aligns it: a line that
+continues an operand moves with the operand's line, and counts in the width
+that limits the alignment, when it is aligned to a token and indented from
+the operand's column or right of it. A block comment over several lines
+counts its first line there; `tests/cases/conditional_chain_block_comment_first_line.cpp`
+guards that: it passes on main 90d343e as well, and fails when the comment
+counts its last line instead, a one-line mutation that was run.
 
 On a generated corpus of 30,194 files (108.8 MB) of SDK code (measured
 against clang-format 18.1.3), every file

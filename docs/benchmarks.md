@@ -76,12 +76,12 @@ The harder corpora are built from a language's `raw/`:
 Files the reference tool accepts, and how many of them nishfmt formats byte
 for byte as it does, on the corpora the README's table is measured on
 (`repos.txt`). For C++, "Identical" is against clang-format's settled output,
-of the 10341 files that settle; against one `clang-format -i` run it is 10295
+of the 10341 files that settle; against one `clang-format -i` run it is 10296
 of 10343 ([below](#c-one-run-and-the-settled-output)).
 
 | Corpus | Files | Identical |
 | --- | ---: | ---: |
-| C++ | 10341 | 10331 |
+| C++ | 10341 | 10332 |
 | Java | 7627 | 7627 |
 | Kotlin | 9602 | 9602 |
 | C# | 13988 | 13988 |
@@ -96,18 +96,18 @@ of 10343 ([below](#c-one-run-and-the-settled-output)).
 | Rust, `rust2` (other configs first) | 8321 | 8321 |
 | Ruby | 1999 | 1999 |
 
-The 10 C++ files left are described in [C++](cpp.md#results-by-repository).
+The 9 C++ files left are described in [C++](cpp.md#results-by-repository).
 Swift counts 6707 files where it counted 6710: rebuilt at the same commits on
 2026-11-25, SwiftFormat 0.64.7 rejects 5 of the 6712 files, not 2.
 
 On the second corpus, `repos2.txt`, every language measured on 2026-11-20
 at main 0d672fc, except C++, measured again on 2026-11-26 (against the
-settled output, of the 13901 files that settle; against one run, 13813 of
+settled output, of the 13901 files that settle; against one run, 13814 of
 13902):
 
 | Corpus | Files | Identical |
 | --- | ---: | ---: |
-| C++ | 13901 | 13857 |
+| C++ | 13901 | 13859 |
 | Java | 11914 | 11914 |
 | Kotlin | 6219 | 6219 |
 | C# | 18673 | 18673 |
@@ -136,15 +136,15 @@ changes after eight runs ("does not settle").
 
 | Corpus | Files | Identical to the settled output | Identical to one run | Never settle |
 | --- | ---: | ---: | ---: | ---: |
-| `repos.txt` | 10343 | 10331 of 10341 | 10295 | 2 |
-| `repos2.txt` | 13902 | 13857 of 13901 | 13813 | 1 |
+| `repos.txt` | 10343 | 10332 of 10341 | 10296 | 2 |
+| `repos2.txt` | 13902 | 13859 of 13901 | 13814 | 1 |
 
 Every file that matches one run and not the settled output is one where
 clang-format's second run changes its first; nishfmt gives the second.
 
 `bench/corpus/verify.sh`, after `cmp.sh <nishfmt> cpp`, runs that check on
 nishfmt's output: clang-format once on each file, failing those it would
-change. It fails 6 files of the first corpus and 33 of the second. nishfmt
+change. It fails 5 files of the first corpus and 31 of the second. nishfmt
 skips 3 files of the first corpus, the 2 that never settle and one whose
 formatting would change its code, and 1 of the second, that one's kind
 ([C++](cpp.md#what-it-leaves-alone)). Ten files of the second corpus

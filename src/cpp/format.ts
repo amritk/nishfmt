@@ -86,6 +86,11 @@ import {
   K_STRING,
   KW_USING,
   KW_TYPENAME,
+  P_EQUAL,
+  P_LSQUARE,
+  TT_POINTER_OR_REFERENCE,
+  TT_TEMPLATE_CLOSER,
+  TT_TEMPLATE_OPENER,
 } from "./tok";
 
 const PIECE: i32 = -1048576;
@@ -317,6 +322,11 @@ export class Formatter {
   emTok: i32[];
   emNl: i32[];
   emCol: i32[];
+  // clang-format 23's IndentedFromColumn and AlignedTo of each entry: the
+  // column a new line's indent was indented from (0 for any other entry),
+  // and the token its line is aligned to (-1 for none).
+  emFrom: i32[];
+  emAl: i32[];
   emColPre: i32[]; // emCol before trailing comments were aligned
   synth: string[]; // text of synthetic tokens, emitted as -1 - index
   // Pieces of a split string literal, emitted as PIECE - index: the token's
@@ -533,6 +543,8 @@ export class Formatter {
     this.emTok = newI32s(cap);
     this.emNl = newI32s(cap);
     this.emCol = newI32s(cap);
+    this.emFrom = newI32s(cap);
+    this.emAl = newI32s(cap);
     this.emColPre = new Array<i32>(0);
     this.synth = [];
     this.rawA = new Array<i32>(8);
@@ -658,6 +670,11 @@ export class Formatter {
   }
 
   emit(t: i32, nl: i32, col: i32): void {
+    this.emitAligned(t, nl, col, 0, -1);
+  }
+
+  /** emit, for an entry starting a line indented from column `from` and aligned to token `al`. */
+  emitAligned(t: i32, nl: i32, col: i32, from: i32, al: i32): void {
     if (nl > 0) {
       this.lineStartCol = col;
     }
@@ -671,14 +688,20 @@ export class Formatter {
       this.emTok = growI32(this.emTok, i + 1);
       this.emNl = growI32(this.emNl, i + 1);
       this.emCol = growI32(this.emCol, i + 1);
+      this.emFrom = growI32(this.emFrom, i + 1);
+      this.emAl = growI32(this.emAl, i + 1);
     }
     const tok = this.emTok;
     const nls = this.emNl;
     const cols = this.emCol;
-    if (i < tok.length && i < nls.length && i < cols.length) {
+    const froms = this.emFrom;
+    const als = this.emAl;
+    if (i < tok.length && i < nls.length && i < cols.length && i < froms.length && i < als.length) {
       tok[i] = t;
       nls[i] = nl;
       cols[i] = col;
+      froms[i] = from;
+      als[i] = al;
       this.nem = i + 1;
     } else {
       fault();
@@ -2671,9 +2694,13 @@ export class Formatter {
     const tok = newI32s(cnt);
     const nl = newI32s(cnt);
     const col = newI32s(cnt);
+    const from = newI32s(cnt);
+    const al = newI32s(cnt);
     const emTok = this.emTok;
     const emNl = this.emNl;
     const emCol = this.emCol;
+    const emFrom = this.emFrom;
+    const emAl = this.emAl;
     let o = 0;
     let p = pend;
     let h = hostStart;
@@ -2688,7 +2715,7 @@ export class Formatter {
       }
       const hashTok = p < hostStart ? fwAt(emTok, p) : 0;
       while (h < n && (p >= hostStart || this.hostSourceTok(fwAt(emTok, h)) < hashTok)) {
-        if (o < 0 || o >= tok.length || o >= nl.length || o >= col.length) {
+        if (o < 0 || o >= tok.length || o >= nl.length || o >= col.length || o >= from.length || o >= al.length) {
           // (Where `tok[o]` panicked.)
           fault();
           return;
@@ -2696,17 +2723,21 @@ export class Formatter {
         tok[o] = fwAt(emTok, h);
         nl[o] = fwAt(emNl, h);
         col[o] = fwAt(emCol, h);
+        from[o] = fwAt(emFrom, h);
+        al[o] = fwAt(emAl, h);
         o++;
         h++;
       }
       while (p < pe) {
-        if (o < 0 || o >= tok.length || o >= nl.length || o >= col.length) {
+        if (o < 0 || o >= tok.length || o >= nl.length || o >= col.length || o >= from.length || o >= al.length) {
           fault();
           return;
         }
         tok[o] = fwAt(emTok, p);
         nl[o] = fwAt(emNl, p);
         col[o] = fwAt(emCol, p);
+        from[o] = fwAt(emFrom, p);
+        al[o] = fwAt(emAl, p);
         o++;
         p++;
       }
@@ -2721,9 +2752,13 @@ export class Formatter {
         k >= emTok.length ||
         k >= emNl.length ||
         k >= emCol.length ||
+        k >= emFrom.length ||
+        k >= emAl.length ||
         i >= tok.length ||
         i >= nl.length ||
-        i >= col.length
+        i >= col.length ||
+        i >= from.length ||
+        i >= al.length
       ) {
         // (Where `emTok[pend + i]` panicked.)
         fault();
@@ -2732,6 +2767,8 @@ export class Formatter {
       emTok[k] = tok[i];
       emNl[k] = nl[i];
       emCol[k] = col[i];
+      emFrom[k] = from[i];
+      emAl[k] = al[i];
       k++;
     }
   }
@@ -4937,35 +4974,140 @@ export class Formatter {
     return fkPrec[h] !== PREC_CONDITIONAL;
   }
 
-  /** The column just past the last entry on `i`'s output line. */
-  acLineEnd(i: i32): i32 {
+  /**
+   * The width from entry `i`'s start to the end of its line, and of each line
+   * after it that moves with it: one aligned to a token, or after a bracket
+   * opened on `i`'s line, up to one indented from left of `i` (clang-format
+   * 23's AlignTokens).
+   */
+  acWidthRight(i: i32): i32 {
     const n = this.nem;
-    const emNl = this.emNl;
-    let j = i;
-    while (j >= 0 && j < emNl.length) {
-      const j1 = j + 1;
-      if (j1 >= n) {
-        break;
-      }
-      if (j1 >= emNl.length) {
-        fault();
-        return 0;
-      }
-      if (emNl[j1] !== 0) {
-        break;
-      }
-      j = j1;
-    }
-    const emCol = this.emCol;
+    const d = this.d;
+    const kind = d.kind;
+    const type = d.type;
+    const match = d.match;
     const emTok = this.emTok;
-    if (j < 0 || j >= emCol.length || j >= emTok.length) {
+    const emNl = this.emNl;
+    const emCol = this.emCol;
+    const emFrom = this.emFrom;
+    const emAl = this.emAl;
+    if (i < 0 || i >= emTok.length || i >= emCol.length) {
       fault();
       return 0;
     }
-    return add32(emCol[j], this.emWidth(emTok[j]));
+    const start = emCol[i];
+    let right = 0;
+    let cur = this.acTokLen(i);
+    let prevEnd = this.acEndCol(i);
+    // The bracket closer to reach (clang-format compares it with the
+    // closer's opener, so it stays set).
+    let toEncounter = -1;
+    for (let j = i + 1; j < n; j++) {
+      if (j >= emTok.length || j >= emNl.length || j >= emCol.length || j >= emFrom.length || j >= emAl.length) {
+        fault();
+        return 0;
+      }
+      const nl = emNl[j];
+      if (nl !== 0 && toEncounter < 0 && emAl[j] < 0) {
+        break;
+      }
+      const t = emTok[j];
+      if (t >= 0) {
+        if (t >= kind.length || t >= type.length || t >= match.length) {
+          fault();
+          return 0;
+        }
+        const m = match[t];
+        if (m >= 0) {
+          const k = kind[t];
+          if (
+            (k === P_LPAREN || k === P_LBRACE || k === P_LSQUARE || type[t] === TT_TEMPLATE_OPENER) &&
+            toEncounter < 0
+          ) {
+            const j1 = j + 1;
+            if (j1 < n && j1 < emNl.length && emNl[j1] === 0) {
+              toEncounter = m;
+            }
+          } else if (toEncounter === m) {
+            toEncounter = -1;
+          }
+        }
+      }
+      if (nl !== 0) {
+        if (cur > right) {
+          right = cur;
+        }
+        if (emFrom[j] < start) {
+          break;
+        }
+        cur = sub32(emCol[j], start);
+      } else {
+        cur = add32(cur, sub32(emCol[j], prevEnd));
+      }
+      cur = add32(cur, this.acTokLen(j));
+      prevEnd = this.acEndCol(j);
+      if (this.acInner(j) > 0) {
+        // The comment's next line is a change of its own, aligned to the
+        // comment and indented from column 0: it ends the lines that move.
+        if (cur > right) {
+          right = cur;
+        }
+        break;
+      }
+    }
+    return cur > right ? cur : right;
   }
 
-  /** One level's runs of matches, from entry `start`; answers where it stopped. */
+  /** clang-format's TokenLength of entry `i`: a token over several lines counts its first. */
+  acTokLen(i: i32): i32 {
+    const t = fwAt0(this.emTok, i);
+    if (t < 0) {
+      return this.emWidth(t);
+    }
+    if (fwAt0(this.d.multi, t) === 1) {
+      return fwAt0(this.d.width, t);
+    }
+    return this.escLen(t);
+  }
+
+  /** The column just past entry `i`. */
+  acEndCol(i: i32): i32 {
+    const t = fwAt0(this.emTok, i);
+    const w = this.emWidth(t);
+    if (t >= 0 && fwAt0(this.d.multi, t) === 1) {
+      return w;
+    }
+    return add32(fwAt0(this.emCol, i), w);
+  }
+
+  /**
+   * The line breaks inside entry `i` when it is a block comment over several
+   * lines: clang-format re-indents each line after the first as a change of
+   * its own, which starts a line.
+   */
+  acInner(i: i32): i32 {
+    const d = this.d;
+    const t = fwAt0(this.emTok, i);
+    if (
+      t < 0 ||
+      fwAt0(d.kind, t) !== K_COMMENT ||
+      fwAt0(d.type, t) !== TT_BLOCK_COMMENT ||
+      fwAt0(d.multi, t) !== 1 ||
+      this.verbatimAt(i)
+    ) {
+      return 0;
+    }
+    let k = 0;
+    const en = fwAt0(d.end, t);
+    for (let q = fwAt0(d.start, t); q < en; q++) {
+      if (d.at(q) === 10 && k < 2147483647) {
+        k++;
+      }
+    }
+    return k;
+  }
+
+  /** One level's runs of matches, from entry `start`; answers where it stopped (clang-format 23's AlignTokens). */
   acTokens(start: i32): i32 {
     const n = this.nem;
     const lim = this.d.opts.columnLimit;
@@ -4976,8 +5118,8 @@ export class Formatter {
     let seqEnd = 0;
     let commasBefore = 0;
     let commasBeforeLast = 0;
-    let found = false;
-    let lineIsComment = true;
+    let matchCol = -1; // the column of the line's match, -1 for none
+    let matched: i32[] = [];
     let i = start;
     while (i < n) {
       if (this.acCmp(i, start) < 0) {
@@ -4986,7 +5128,9 @@ export class Formatter {
       // (acCmp checked 0 <= i.)
       const emTok = this.emTok;
       const emNl = this.emNl;
-      if (i < 0 || i >= emTok.length || i >= emNl.length) {
+      const emCol = this.emCol;
+      const emFrom = this.emFrom;
+      if (i < 0 || i >= emTok.length || i >= emNl.length || i >= emCol.length || i >= emFrom.length) {
         fault();
         return n;
       }
@@ -4996,23 +5140,23 @@ export class Formatter {
         fault();
         return n;
       }
-      const tk = t >= 0 ? kind[t] : -1;
       if (nli !== 0) {
         commasBefore = 0;
         seqEnd = i;
-        if (nli > 1 || (!found && !lineIsComment) || !found) {
-          this.acAlign(seqStart, seqEnd, widthLeft);
+        if (nli > 1 || matchCol < 0) {
+          this.acAlign(seqStart, seqEnd, widthLeft, matched);
           widthLeft = 0;
           widthRight = 0;
           seqStart = -1;
+          seqEnd = 0;
+          matched = [];
         }
-        found = false;
-        lineIsComment = true;
+        // A line indented from left of the match does not continue its line.
+        if (matchCol >= 0 && emFrom[i] < matchCol) {
+          matchCol = -1;
+        }
       }
-      if (t < 0 || tk !== K_COMMENT) {
-        lineIsComment = false;
-      }
-      if (t >= 0 && tk === P_COMMA) {
+      if (t >= 0 && kind[t] === P_COMMA) {
         if (commasBefore >= 2147483647) {
           fault();
           return n;
@@ -5029,35 +5173,49 @@ export class Formatter {
         continue;
       }
       if (!this.acMatch(i)) {
+        // The lines of a block comment after its first start lines too.
+        for (let k = this.acInner(i); k > 0; k--) {
+          commasBefore = 0;
+          seqEnd = i + 1;
+          if (matchCol < 0) {
+            this.acAlign(seqStart, seqEnd, widthLeft, matched);
+            widthLeft = 0;
+            widthRight = 0;
+            seqStart = -1;
+            seqEnd = 0;
+            matched = [];
+          }
+          matchCol = -1;
+        }
         i++;
         continue;
       }
-      if (found || commasBefore !== commasBeforeLast) {
-        this.acAlign(seqStart, i, widthLeft);
+      if ((nli === 0 && matchCol >= 0) || commasBefore !== commasBeforeLast) {
+        matched.push(i);
+        this.acAlign(seqStart, seqEnd, widthLeft, matched);
         widthLeft = 0;
         widthRight = 0;
         seqStart = -1;
+        seqEnd = 0;
+        matched = [];
       }
       commasBeforeLast = commasBefore;
-      found = true;
-      if (seqStart < 0) {
-        seqStart = i;
-      }
-      const emCol = this.emCol;
       if (i >= emCol.length) {
         fault();
         return n;
       }
       const left = emCol[i];
-      const right = sub32(this.acLineEnd(i), left);
+      matchCol = left;
+      if (seqStart < 0) {
+        seqStart = i;
+      }
+      const right = this.acWidthRight(i);
       const nl = left > widthLeft ? left : widthLeft;
       const nr = right > widthRight ? right : widthRight;
       if (toI64(lim) < toI64(nl) + toI64(nr)) {
-        if (toI64(nl) + toI64(nr) > toI64(2147483647)) {
-          fault();
-          return n;
-        }
-        this.acAlign(seqStart, i, widthLeft);
+        this.acAlign(seqStart, seqEnd, widthLeft, matched);
+        matched = [];
+        seqEnd = 0;
         seqStart = i;
         widthLeft = left;
         widthRight = right;
@@ -5065,115 +5223,134 @@ export class Formatter {
         widthLeft = nl;
         widthRight = nr;
       }
+      matched.push(i);
       i++;
     }
-    this.acAlign(seqStart, i, widthLeft);
+    // The sequence takes in the rest of the last line.
+    let e = i;
+    const emNl = this.emNl;
+    while (e >= 0 && e < n && e < emNl.length && emNl[e] === 0) {
+      e++;
+    }
+    this.acAlign(seqStart, e, widthLeft, matched);
     return i;
   }
 
-  /** Moves each line's first match in [s, e) (and what follows it on the line) to `col`. */
-  acAlign(s: i32, e: i32, col: i32): void {
+  /** Moves entry `i`, and the rest of its output line, right by `delta`. */
+  acShift(i: i32, delta: i32): void {
+    const n = this.nem;
+    const emNl = this.emNl;
+    const emCol = this.emCol;
+    for (let j = i; j < n; j++) {
+      if (j < 0 || j >= emNl.length || j >= emCol.length) {
+        fault();
+        return;
+      }
+      if (j !== i && emNl[j] !== 0) {
+        break;
+      }
+      emCol[j] = add32(emCol[j], delta);
+    }
+  }
+
+  /** The spaces before entry `i`: its column, when it starts a line. */
+  acSpaces(i: i32): i32 {
+    const emNl = this.emNl;
+    const emCol = this.emCol;
+    const emTok = this.emTok;
+    if (i < 0 || i >= emNl.length || i >= emCol.length) {
+      fault();
+      return 0;
+    }
+    if (emNl[i] !== 0 || i === 0 || i - 1 >= emTok.length) {
+      return emCol[i];
+    }
+    return sub32(emCol[i], this.acEndCol(i - 1));
+  }
+
+  /**
+   * Moves the matches `matched` in [s, e) to column `col`, with the rest of
+   * their lines and the lines continuing them (clang-format 23's
+   * AlignTokenSequence).
+   */
+  acAlign(s: i32, e: i32, col: i32, matched: i32[]): void {
     if (s < 0 || s >= e) {
       return;
     }
     const d = this.d;
     const kind = d.kind;
     const type = d.type;
-    const prv = d.prv;
-    let found = false;
+    let origCol = 0; // the match's column before it moved
     let shift = 0;
-    let eff = 0; // how far the current output line's tokens have moved
-    const scope: i32[] = [];
+    // The scope stack: the match's level, and a level under it that stays.
+    let ss0 = -1;
+    let ss1 = -1;
+    let mi = 0;
     for (let i = s; i < e; i++) {
-      const sl = toI32(scope.length);
-      if (sl > 0 && this.acCmp(i, scope[sl - 1]) < 0 && scope.length > 0) {
-        scope.pop();
+      if (mi < matched.length && matched[mi] < i) {
+        mi++;
       }
-      const emTok = this.emTok;
+      if (ss1 >= 0 && this.acCmp(i, ss1) < 0) {
+        ss1 = -1;
+      }
+      if (ss1 < 0 && ss0 >= 0 && this.acCmp(i, ss0) < 0) {
+        ss0 = -1;
+      }
       const emNl = this.emNl;
       const emCol = this.emCol;
-      // (The sequence lies among the entries.)
-      if (i >= emTok.length || i >= emNl.length || i >= emCol.length) {
-        fault();
-        return;
-      }
-      let pnc = i - 1;
-      while (pnc > s && pnc >= 0 && pnc < emTok.length) {
-        const tp = emTok[pnc];
-        if (tp < 0) {
-          break;
-        }
-        if (tp >= kind.length) {
-          fault();
-          return;
-        }
-        if (kind[tp] !== K_COMMENT) {
-          break;
-        }
-        pnc--;
-      }
-      if (i !== s && this.acCmp(i, pnc) > 0) {
-        scope.push(i);
-      }
-      const inside = scope.length > 0;
-      if (i >= emNl.length || i >= emTok.length || i >= emCol.length) {
+      const emFrom = this.emFrom;
+      const emTok = this.emTok;
+      if (i < 0 || i >= emNl.length || i >= emCol.length || i >= emFrom.length || i >= emTok.length) {
         fault();
         return;
       }
       const nli = emNl[i];
-      if (nli > 0) {
-        // clang-format adds the shift to a token's spaces: what follows on
-        // its output line moves by what the tokens before it moved.
-        eff = 0;
-        if (!inside) {
-          shift = 0;
-          found = false;
-        }
+      // A continuation line deeper than the match and indented from left of
+      // it stays where it is, and so does what is nested in it.
+      if (ss0 >= 0 && ss1 < 0 && nli !== 0 && this.acCmp(i, ss0) > 0 && emFrom[i] < origCol) {
+        ss1 = i;
       }
-      if (!found && !inside && this.acMatch(i)) {
-        found = true;
-        if (i >= emCol.length) {
+      let inside = false;
+      if (ss0 >= 0) {
+        const c = this.acCmp(i, ss0);
+        inside = c > 0 || (c === 0 && emFrom[i] >= origCol);
+      }
+      if (nli > 0 && !inside) {
+        shift = 0;
+      }
+      const isMatch = mi < matched.length && matched[mi] === i;
+      if (isMatch) {
+        origCol = emCol[i];
+        shift = sub32(col, emCol[i]);
+        ss0 = i;
+        ss1 = -1;
+      }
+      if (shift === 0) {
+        continue;
+      }
+      if (isMatch || (ss0 >= 0 && ss1 < 0 && nli > 0 && inside)) {
+        emFrom[i] = add32(emFrom[i], shift);
+        this.acShift(i, shift);
+      }
+      // PointerAlignment Right: a `*` or `&` before a moved token stays
+      // against it.
+      const t = emTok[i];
+      if (t >= 0 && this.acSpaces(i) !== 0) {
+        if (t >= kind.length || t >= type.length) {
           fault();
           return;
         }
-        shift = sub32(col, emCol[i]);
-        eff = add32(eff, shift);
-      } else if (shift !== 0 && inside && nli > 0) {
-        const t = emTok[i];
-        if (t >= 0) {
-          if (t >= type.length || t >= prv.length) {
-            fault();
-            return;
-          }
-          const p = prv[t];
-          if (p >= type.length) {
-            fault();
-            return;
-          }
-          if (type[t] === TT_CONDITIONAL_EXPR || (p >= 0 && type[p] === TT_CONDITIONAL_EXPR)) {
-            eff = add32(eff, shift);
+        if (kind[t] !== P_EQUAL && kind[t] !== P_RPAREN && type[t] !== TT_TEMPLATE_CLOSER) {
+          for (let p = i - 1; p >= 0 && p < emTok.length; p--) {
+            const pt = emTok[p];
+            if (pt < 0 || pt >= type.length || type[pt] !== TT_POINTER_OR_REFERENCE) {
+              break;
+            }
+            this.acShift(p + 1, sub32(0, shift));
+            this.acShift(p, shift);
           }
         }
       }
-      if (i >= emCol.length) {
-        fault();
-        return;
-      }
-      emCol[i] = add32(emCol[i], eff);
-    }
-    // The rest of the last output line, past the sequence, moves with it.
-    const n = this.nem;
-    const emNl = this.emNl;
-    const emCol = this.emCol;
-    for (let i = e; eff !== 0 && i < n; i++) {
-      if (i < 0 || i >= emNl.length || i >= emCol.length) {
-        fault();
-        return;
-      }
-      if (emNl[i] !== 0) {
-        break;
-      }
-      emCol[i] = add32(emCol[i], eff);
     }
   }
 
