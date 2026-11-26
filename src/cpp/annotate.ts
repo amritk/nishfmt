@@ -796,7 +796,11 @@ export class Annot {
       }
       if (closes && sp > 0) {
         const o = annGet(this.stk, sp - 1);
-        const m = annGet(d.passMul, o);
+        let m = annGet(d.passMul, o);
+        // Each failed template parse it lay in read it once more.
+        for (let k = annGet(d.angDbl, o); k > 0; k--) {
+          m = mul32(m > 1 ? m : 1, 2);
+        }
         if (m > 1) {
           annSet(this.bpcnt, o, mul32(annGet(this.bpcnt, o), m));
           const pc = annGet(this.pcnt, o);

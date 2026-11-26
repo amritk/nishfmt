@@ -7617,6 +7617,18 @@ export class Formatter {
     return cppfAddPen(pen, excessPenalty(sub32(add32(csc, rem), lim)));
   }
 
+  /** Whether commentPenalty prices line comment `t` with the rest of its section. */
+  pricesSection(t: i32): boolean {
+    const d = this.d;
+    return (
+      d.opts.reflowComments &&
+      !this.isPragma(t) &&
+      !this.switchesFormatting(t) &&
+      fwAt0(d.multi, t) === 0 &&
+      this.sectionNext(t) >= 0
+    );
+  }
+
   /** The line comment continuing `t`'s section on the next line, or -1. */
   sectionNext(t: i32): i32 {
     const d = this.d;
