@@ -1,0 +1,2 @@
+int z;   /* a */ #define Q 2
+int  x;

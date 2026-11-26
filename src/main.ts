@@ -144,7 +144,9 @@ const usage = (): string =>
     "",
     "A file nishfmt cannot format exactly as the reference tool would (one that",
     "does not parse, say, or one its formatter crashes or faults on) is left",
-    "untouched and counted as skipped. In C++, a `// nishfmt off` ...",
+    "untouched and counted as skipped. C++ output is formatted again until it",
+    "stops changing, so that one clang-format run leaves it as it is; a file",
+    "that never settles is skipped too. In C++, a `// nishfmt off` ...",
     "`// nishfmt on` region is left as written.",
     "",
     "Exit status: 0; 1 with --check when a file would change; 2 for a bad command",
@@ -300,16 +302,19 @@ const runJob = (job: Job): JobRoot => {
     testCrash(path, crashOn);
     faultReset();
     let ok = false;
+    let unsettled = false;
     if (job.lang === LANG_CPP) {
       const c0 = engines.cpp;
       if (c0 !== null) {
         ok = formatCpp(c0, path, src, n, out, prof);
+        unsettled = c0.unsettled;
       } else {
         const fresh = new CppEngine(job.width, job.indent);
         fresh.once = job.once;
         fresh.showReruns = job.showReruns;
         engines.cpp = fresh;
         ok = formatCpp(fresh, path, src, n, out, prof);
+        unsettled = fresh.unsettled;
       }
     } else if (job.lang === LANG_KOTLIN) {
       const k0 = engines.kotlin;
@@ -376,7 +381,9 @@ const runJob = (job: Job): JobRoot => {
       if (fell) {
         console.error(`nishfmt: skipped ${path} (formatter fault)`);
       } else if (job.mode !== MODE_STDOUT && !job.quiet) {
-        console.error(`nishfmt: skipped ${path} (does not parse)`);
+        // A C++ file whose output still changes when formatted again has no
+        // output a clang-format check would pass.
+        console.error(`nishfmt: skipped ${path} (${unsettled ? "does not settle" : "does not parse"})`);
       }
       logEntry(job.log, at, 1, 0, 1, n, fell ? 1 : 0);
     } else {

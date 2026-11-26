@@ -13,6 +13,29 @@ against clang-format's behaviour and source.
   `// clang-format off` and `// clang-format on`;
 - whole files that do not parse, such as files with unbalanced brackets or an
   unterminated literal. These count as skipped.
+- whole files with a `#` that only comments precede on its line, outside a
+  directive (`/* c */ #define X`, or a comment line escaped onto a
+  directive): clang-format takes it for a directive and keeps the comment
+  with it, which nishfmt does not lay out (`tests/cases/cpp/skip_comment_*`).
+  A `#` after code on the line is not a directive to either, and is
+  formatted; `tests/cases/hash_after_code_and_comment.cpp` guards that, and
+  fails on a lexer that skips every `#` not first on its line.
+- whole files whose output still changes when formatted again after eight
+  runs ("does not settle"): no output passes a clang-format check.
+- whole files on which a run would change the code, not only its layout
+  (`src/cpp/samecode.ts`). Each run that changes a file has its input and its
+  output lexed again and compared: the same tokens in the same directives,
+  once comments are set aside, adjacent string literals joined, and the
+  #include lines (a set: clang-format drops a repeated one) and
+  using-declarations (a multiset) taken out of the order, since clang-format
+  sorts them. When a `#` stands in code, which clang-format may move to the
+  start of a line and so make a directive, the directives are not compared.
+  A difference is a nishfmt bug, reported as a formatter fault
+  (`tests/cases/cpp/fault_*`). Three guard cases keep what clang-format may
+  change accepted, each failing on a one-line mutation that was run:
+  `samecode_include_repeated.cpp` (includes counted as a multiset),
+  `samecode_using_sorted.cpp` (no using-declaration taken out of the order)
+  and `samecode_string_split.cpp` (adjacent string literals not joined).
 - Objective-C beyond declarations: a header with literals, `@implementation`
   or method bodies is left untouched.
 
@@ -55,41 +78,35 @@ Objective-C (literals, `@implementation`, method bodies) untouched. Times
 and memory are for the whole tree.
 
 The regression corpus (`bench/corpus/repos.txt`, 10343 files from the same
-kind of repositories, each capped at 250 KB, the reference one clang-format
-23.1.5 `-i` run) matches on 10307, and against clang-format's settled
-output (`ref-settled/`) on 10319 of the 10341 files that settle. Of the 36 left, 27 are files on which a
-second clang-format run changes its own output; nishfmt gives the settled
-output on 24 of them. Its times are in the [README](../README.md#languages-and-speed).
-The second corpus (`bench/corpus/repos2.txt`, 13902 files) matches on 13829
-against one run, and on 13830 of the 13901 files that settle against the
-settled output; both counts and how they are built are in
-[Benchmarks](benchmarks.md#c-one-run-and-the-settled-output).
+kind of repositories, each capped at 250 KB) matches clang-format 23.1.5's
+settled output (`ref-settled/`) on 10331 of the 10341 files that settle, and
+one `clang-format -i` run on 10295: nishfmt formats a file again until it
+stops changing, as a CI check needs, and where clang-format's second run
+changes its first, nishfmt gives the second. Its times are in the
+[README](../README.md#languages-and-speed). The second corpus
+(`bench/corpus/repos2.txt`, 13902 files) matches the settled output on 13853
+of the 13901 files that settle, and one run on 13809; both counts and how
+they are built are in [Benchmarks](benchmarks.md#c-one-run-and-the-settled-output).
 
-On the second corpus, 30 of the 73 files that differ from one run are files
-a rerun of clang-format changes. nishfmt gives the second run's output on 24.
-The other 6 match neither clang-format's first run nor its second, and are
-real gaps:
+What counts for a project that checks its formatting in CI is whether one
+clang-format run leaves nishfmt's output as it is (`bench/corpus/verify.sh`).
+It does on every file but 6 of the first corpus and 38 of the second; it
+skips 3 files of the first corpus (two never settle, and in opencv's
+`hb-algs.hh` a comment leads a directive) and 1 of the second (taskflow's
+`ff/parallel_for_internals.hpp`, where formatting would change the code;
+see [What it leaves alone](#what-it-leaves-alone)). Each of the 44 is a
+decision nishfmt does not make as clang-format does:
 
-| File (`repos2.txt`) | What differs |
+| What differs | Files |
 | --- | --- |
-| eigen `Eigen/src/Core/util/Macros.h` (in taskflow) | comment indentation beside preprocessor conditionals |
-| tbb `include/tbb/tbb_config.h` (in taskflow) | comment indentation beside preprocessor conditionals, and a long `#define` condition |
-| tbb `include/tbb/machine/msvc_ia32_common.h` (in taskflow) | comment indentation beside preprocessor conditionals, and an `_asm { }` block |
-| brotli `common/brotli_platform.h` (in duckdb) | a run of macro invocations without semicolons, and a function under `#if`; never settles |
-| jemalloc `internal/rb.h` (in duckdb) | assembler-like macro bodies: the red-black tree generator macros, `*` spacing in declarations |
-| eigen `Eigen/src/Core/ProductEvaluators.h` (in taskflow) | continuation alignment in a template argument, and the space after `//` in commented-out code |
-
-The 43 files that differ on the second corpus and that clang-format leaves
-as they are on a rerun are the long tail, mostly one construct each:
-
-| What differs | Files (`repos2.txt`) |
-| --- | --- |
-| a layout that depends on how clang-format's `#if` passes share tokens (a braced list `{{ a, b... }}` gets spaces, a block indents differently) | eigen `Tensor.h`, `TensorRef.h`, `TensorFixedSize.h`, `TensorDimensions.h`, `TensorMap.h` (in taskflow); spdlog `pattern_formatter-inl.h`, `common.h`, `tests/utils.cpp`; duckdb `shared_ptr_ipp.hpp`, `weak_ptr_ipp.hpp`; mbedtls `pk.cpp` (in duckdb); tbb `custom_scheduler.h`, `tbbmalloc/frontend.cpp` (in taskflow) |
-| macro bodies and lines clang-format cannot annotate (`SPDLOG_TRY{`, generator macros, a lambda in a macro) | spdlog `async_logger-inl.h`, `stopwatch.h`, `fmt/bin_to_hex.h`; ff `parallel_for_internals.hpp`; eigen `lapack/lapack_common.h`, `bench/basicbenchmark.cpp`; jemalloc `tsd_internals.h`, fsst `libfsst.hpp` (in duckdb); grpc `iomgr/closure.h`; tbb `perf/time_framework.h`, `flow_graph.h`, `internal/_flow_graph_cache_impl.h`, lodepng `lodepng.cpp` |
-| trailing comment alignment and reflow (a reflowed section inside an aligned run, an enum's comments, a comment before `// clang-format off`) | eigen `doc/tutorial.cpp`, `util/XprHelper.h`, `util/Constants.h`, `test/main.h`; flatbuffers `src/idl_gen_text.cpp`; tbb `rml/include/rml_base.h` |
-| string literals: a tab inside a string (clang-format's rerun emulation), emoji widths when splitting, macro-adjacent literals | duckdb `holistic_functions.hpp`, `string_functions.hpp`; utf8proc `utf8proc.cpp` (in duckdb); bitcoin `test/cluster_linearize_tests.cpp` |
-| line breaking: a conditional's operand column, designated initializers, `<<` chains, lambdas among arguments | bitcoin `test/fuzz/package_eval.cpp`, `test/checkqueue_tests.cpp`; eigen `Tutorial_commainit_02.cpp`; flatbuffers `src/idl_gen_ts.cpp`; grpc `xds_server_config_fetcher.cc`; tbb `graph/cholesky/cholesky.cpp` |
-| other: `__asm` statements | tbb `tbb/scheduler.cpp` (in taskflow) |
+| a layout that depends on how clang-format's `#if` passes share tokens: a braced list `{{ a, b }}` gets spaces, a block or a constructor's initializer is laid out differently (clang-format's passes over each combination of branches share tokens that keep what an earlier pass set on them) | eigen `Tensor.h`, `TensorRef.h`, `TensorFixedSize.h`, `TensorDimensions.h`, `TensorMap.h` (in taskflow); spdlog `pattern_formatter-inl.h`, `common.h`, `tests/utils.cpp`; duckdb `shared_ptr_ipp.hpp`, `weak_ptr_ipp.hpp`; mbedtls `pk.cpp` (in duckdb); tbb `custom_scheduler.h`, `tbbmalloc/frontend.cpp` (in taskflow) |
+| macro bodies and lines clang-format cannot annotate (`SPDLOG_TRY{`, generator macros, assembler-like `.macro` bodies, a `SIMD_ONLY(` argument, a macro-generated block) | spdlog `async_logger-inl.h`, `stopwatch.h`, `fmt/bin_to_hex.h`; eigen `lapack/lapack_common.h`, `bench/basicbenchmark.cpp`; grpc `iomgr/closure.h`; tbb `perf/time_framework.h`, `flow_graph.h`, `internal/_flow_graph_cache_impl.h`; lodepng `lodepng.cpp` (in tbb); opencv `mlas/lib/x86_64/FgemmKernelCommon.h`, `core/src/minmax.simd.hpp`, `dnn/.../conv2_kernels.simd.hpp` |
+| a chained conditional's alignment: clang-format 23 counts a continuation line aligned to an operand (`AlignedTo`) in the width that limits the alignment, and nishfmt only the operand's own line | opencv `imgcodecs/src/grfmt_exr.cpp`; opencv `carotene/hal/tegra_hal.hpp` (a long `#define` of nested conditionals); eigen `ProductEvaluators.h` |
+| line breaking: designated initializers, `<<` chains, a conditional's operand column, lambdas among arguments | bitcoin `test/checkqueue_tests.cpp`, `test/fuzz/package_eval.cpp`; eigen `Tutorial_commainit_02.cpp`, `GlobalFunctions.h`; flatbuffers `src/idl_gen_ts.cpp`; grpc `xds_server_config_fetcher.cc` |
+| comments: trailing comment alignment and reflow, a block comment holding a line comment inside a condition, a comment's indent beside a preprocessor conditional | eigen `util/XprHelper.h`; tbb `rml/include/rml_base.h`; jemalloc `internal/rb.h` (in duckdb); opencv `dnn/src/graph_const_fold.cpp` |
+| spacing: `&&#a` (a stringized operand), a string with a tab or wide characters | eigen `test/main.h`; bitcoin `test/cluster_linearize_tests.cpp` |
+| `__asm` statements | tbb `tbb/scheduler.cpp`, `machine/msvc_ia32_common.h` (in taskflow) |
+| not C++: a gnuplot script named `.hh` | eigen `bench/btl/data/gnuplot_common_settings.hh` |
 
 Some forms next to the fixed ones still differ, on both corpora's sources
 and on main alike:
@@ -112,14 +129,15 @@ clang-format itself), in 2.9 s against clang-format's 23.4 s.
 
 What is left, roughly by size:
 
-- A long tail of single constructs, most of them one file each:
-  assembler-like macro bodies, comment sections that span several lines
-  and reflow, deeply nested lambdas in braced lists, and rare spacing
-  rules.
+- A long tail of single constructs, most of them one file each (the table
+  above): assembler-like macro bodies, comment sections that span several
+  lines and reflow, and rare spacing rules.
 - Run time and memory are dominated by a few files with conditional
   compilation (each combination of `#if` branches is a formatting pass, as
   in clang-format) and by large lookup tables, which are slow for both
-  tools.
+  tools. A file the first run changes takes a second run, to show that it
+  has settled: about three quarters more time on a tree of unformatted
+  sources, and none on one already formatted.
 
 ## Design
 

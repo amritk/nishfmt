@@ -23,40 +23,38 @@ pinned to one core:
 
 | Language | Matches | Identical | Reference tool, 4 cores / 1 core | nishfmt, 4 cores / 1 core |
 | --- | --- | ---: | ---: | ---: |
-| C++ | clang-format 23.1.5, `{BasedOnStyle: LLVM, ColumnLimit: 120}` | 99.7% of 10,343 | 87.0 s / 212.9 s | **7.07 s / 28.9 s** |
-| Java | google-java-format 2.0.0 | 100% of 7,627 | 32.1 s / 113.6 s | **1.66 s / 6.10 s** |
-| Kotlin | ktfmt 0.65, `--kotlinlang-style` | 100% of 9,602 | 89.5 s / not run | **2.00 s / 7.48 s** |
-| C# | CSharpier 1.4.0, default options except `end_of_line = crlf` | 100% of 13,988 | 63.0 s / 122.7 s | **3.10 s / 6.63 s** |
-| Dart, tall style | `dart format` 3.14.1 | 100% of 10,313 | 55.2 s / 59.9 s | **3.08 s / 8.50 s** |
-| Dart, short style (below 3.7) | `dart format` 3.14.1 | 100% of 8,218 | 25.4 s / 25.6 s | **3.76 s / 6.27 s** |
-| Swift | SwiftFormat 0.64.7, default rules | 100% of 6,710 | 131.7 s / 262.5 s | **10.2 s / 29.4 s** |
-| Rust | rustfmt 1.10.0, edition 2024, `style_edition = "2024"`, `max_width = 120` | 100% of 8,321 | 19.8 s / 45.6 s | **1.89 s / 7.06 s** |
-| Ruby | `rubocop -a` 1.92.3, default config, `TargetRubyVersion: 3.3` | 100% of 1,999 | 303.9 s / 289.6 s | **4.00 s / 12.7 s** |
+| C++ | clang-format 23.1.5, `{BasedOnStyle: LLVM, ColumnLimit: 120}` | 99.9% of 10,341 | 90.9 s / 230.5 s | **14.0 s / 58.3 s** |
+| Java | google-java-format 2.0.0 | 100% of 7,627 | 39.4 s / 143.5 s | **2.46 s / 9.13 s** |
+| Kotlin | ktfmt 0.65, `--kotlinlang-style` | 100% of 9,602 | 130.0 s / 407.1 s | **2.99 s / 11.0 s** |
+| C# | CSharpier 1.4.0, default options except `end_of_line = crlf` | 100% of 13,988 | 49.0 s / 126.6 s | **2.17 s / 7.63 s** |
+| Dart, tall style | `dart format` 3.14.1 | 100% of 10,313 | 58.9 s / 62.8 s | **2.50 s / 9.10 s** |
+| Dart, short style (below 3.7) | `dart format` 3.14.1 | 100% of 8,218 | 23.0 s / 23.6 s | **1.41 s / 4.91 s** |
+| Swift | SwiftFormat 0.64.7, default rules | 100% of 6,707 | 208.6 s / 713.1 s | **7.78 s / 31.2 s** |
+| Rust | rustfmt 1.10.0, edition 2024, `style_edition = "2024"`, `max_width = 120` | 100% of 8,321 | 21.1 s / 50.3 s | **2.09 s / 7.86 s** |
+| Ruby | `rubocop -a` 1.92.3, default config, `TargetRubyVersion: 3.3` | 100% of 1,999 | 243.7 s / 254.7 s | **2.96 s / 10.8 s** |
 
 - **Identical** is the share of the corpus files the reference tool accepts
   that nishfmt formats byte for byte as it does; the exact counts, and those
   on a second corpus of other repositories, are in
-  [Benchmarks](docs/benchmarks.md#corpus-results). For C++ the reference is
-  one `clang-format -i` run, which is not always stable: against
-  clang-format's settled output (its own output rerun until it stops
-  changing) nishfmt matches 10,319 of the 10,341 files that settle
+  [Benchmarks](docs/benchmarks.md#corpus-results). clang-format is not
+  always stable on its own output, so a CI check (`clang-format --dry-run
+  --Werror`, one run) can fail on a file clang-format itself just formatted.
+  nishfmt formats C++ again until its output stops changing, and the C++
+  reference is clang-format's settled output, its own output rerun until it
+  stops changing; 10,341 of the corpus's 10,343 files settle. Of the files
+  nishfmt formats, 6 fail a clang-format check
   ([Benchmarks](docs/benchmarks.md#c-one-run-and-the-settled-output)).
   Times cover the whole corpus directory, including the few files the
   reference rejects.
-- One core is `taskset -c 0`, with `-j 1` for nishfmt. nishfmt's times are
-  the best of three. The C++ and Ruby rows were measured together on an
-  otherwise idle machine, the reference tools one run each; the Java row
-  alone on another idle machine, with google-java-format on JDK 21; the
-  others during porting on a busier shared machine, so compare within a row.
-  The C# times predate the change to CRLF output and were taken on the LF
-  corpus. The C++ times were taken against clang-format 18.1.3 on the
-  10,344-file corpus, before the move to 23.1.5, and not measured again.
+- Every row was measured on one otherwise idle 4-core x86_64 container on
+  2026-11-25, with `bench/corpus/time.sh`: one core is `taskset -c 0`, with
+  `-j 1` for nishfmt; nishfmt's times are the median of five runs, the
+  reference tools' one run each, google-java-format and ktfmt on JDK 21.
 - How the reference tools ran: clang-format 50 files a process; one
-  google-java-format JVM over all files; CSharpier on .NET 10 with
-  `--no-cache`; rustfmt 100 files a process; RuboCop with `--parallel` on 4
-  cores; ktfmt with `--kotlinlang-style`, 300 files a process, 4 at a time,
-  as `mk.sh` runs it, and not on one core. The Kotlin row was re-measured on
-  a 4-core container for the move to kotlinlang style.
+  google-java-format JVM over all files; ktfmt with `--kotlinlang-style`, 300
+  files a process; rustfmt 100 files a process; RuboCop with `--parallel`;
+  SwiftFormat, `dart format` and CSharpier (on .NET 10, with `--no-cache`)
+  over the directory.
 - nishfmt picks the language from the file name: `.cpp .cc .cxx .hpp .hh
   .hxx .h`, `.java`, `.kt .kts`, `.cs`, `.dart`, `.swift`, `.rs`, and
   RuboCop's default `Include` for Ruby (`.rb`, `Gemfile`, `.gemspec`, ...).
@@ -196,7 +194,9 @@ A single file with no mode prints the result to stdout.
 
 A file nishfmt cannot format exactly as the reference tool would (one that
 does not parse, say, or one its formatter crashes or faults on) is left
-untouched and counted as skipped. In C++, a `// nishfmt off` ...
+untouched and counted as skipped. C++ output is formatted again until it
+stops changing, so that one clang-format run leaves it as it is; a file
+that never settles is skipped too. In C++, a `// nishfmt off` ...
 `// nishfmt on` region is left as written.
 
 Exit status: 0; 1 with --check when a file would change; 2 for a bad command

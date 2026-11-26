@@ -37,6 +37,7 @@
       "src/cpp/lexer.ts",
       "src/cpp/parser.ts",
       "src/cpp/run.ts",
+      "src/cpp/samecode.ts",
       "src/cpp/tok.ts",
       "src/csharp/doc.ts",
       "src/csharp/kinds.ts",
