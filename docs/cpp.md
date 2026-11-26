@@ -84,17 +84,17 @@ one `clang-format -i` run on 10295: nishfmt formats a file again until it
 stops changing, as a CI check needs, and where clang-format's second run
 changes its first, nishfmt gives the second. Its times are in the
 [README](../README.md#languages-and-speed). The second corpus
-(`bench/corpus/repos2.txt`, 13902 files) matches the settled output on 13856
-of the 13901 files that settle, and one run on 13812; both counts and how
+(`bench/corpus/repos2.txt`, 13902 files) matches the settled output on 13857
+of the 13901 files that settle, and one run on 13813; both counts and how
 they are built are in [Benchmarks](benchmarks.md#c-one-run-and-the-settled-output).
 
 What counts for a project that checks its formatting in CI is whether one
 clang-format run leaves nishfmt's output as it is (`bench/corpus/verify.sh`).
-It does on every file but 6 of the first corpus and 34 of the second; it
+It does on every file but 6 of the first corpus and 33 of the second; it
 skips 3 files of the first corpus (two never settle, and in opencv's
 `hb-algs.hh` a comment leads a directive) and 1 of the second (taskflow's
 `ff/parallel_for_internals.hpp`, where formatting would change the code;
-see [What it leaves alone](#what-it-leaves-alone)). Each of the 40 is a
+see [What it leaves alone](#what-it-leaves-alone)). Each of the 39 is a
 decision nishfmt does not make as clang-format does:
 
 | What differs | Files |
@@ -103,7 +103,7 @@ decision nishfmt does not make as clang-format does:
 | macro bodies and lines clang-format cannot annotate (`SPDLOG_TRY{`, generator macros, assembler-like `.macro` bodies, a `SIMD_ONLY(` argument, a macro-generated block) | spdlog `async_logger-inl.h`, `stopwatch.h`, `fmt/bin_to_hex.h`; eigen `bench/basicbenchmark.cpp`; grpc `iomgr/closure.h`; tbb `perf/time_framework.h`, `flow_graph.h`, `internal/_flow_graph_cache_impl.h`; opencv `mlas/lib/x86_64/FgemmKernelCommon.h`, `core/src/minmax.simd.hpp`, `dnn/.../conv2_kernels.simd.hpp` |
 | a chained conditional's alignment: clang-format 23 counts a continuation line aligned to an operand (`AlignedTo`) in the width that limits the alignment, and nishfmt only the operand's own line | opencv `imgcodecs/src/grfmt_exr.cpp`; opencv `carotene/hal/tegra_hal.hpp` (a long `#define` of nested conditionals); eigen `ProductEvaluators.h` |
 | line breaking: designated initializers, `<<` chains, a conditional's operand column, lambdas among arguments | bitcoin `test/checkqueue_tests.cpp`, `test/fuzz/package_eval.cpp`; eigen `Tutorial_commainit_02.cpp`, `GlobalFunctions.h`; flatbuffers `src/idl_gen_ts.cpp`; grpc `xds_server_config_fetcher.cc` |
-| comments: trailing comment alignment and reflow, a block comment holding a line comment inside a condition, a comment's indent beside a preprocessor conditional | eigen `util/XprHelper.h`; tbb `rml/include/rml_base.h`; opencv `dnn/src/graph_const_fold.cpp` |
+| comments: trailing comment alignment and reflow, a block comment holding a line comment inside a condition, a comment's indent beside a preprocessor conditional | eigen `util/XprHelper.h`; opencv `dnn/src/graph_const_fold.cpp` |
 | a string with wide characters | bitcoin `test/cluster_linearize_tests.cpp` |
 | `__asm` statements | tbb `tbb/scheduler.cpp`, `machine/msvc_ia32_common.h` (in taskflow) |
 | not C++: a gnuplot script named `.hh` | eigen `bench/btl/data/gnuplot_common_settings.hh` |
