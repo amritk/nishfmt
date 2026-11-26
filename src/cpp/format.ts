@@ -5747,7 +5747,10 @@ export class Formatter {
           // A break inside a directive: each newline is escaped, `\` at the directive's column.
           out.trimSpaces();
           const esc = fwAt0(this.escCol, pp);
-          let sp = sub32(sub32(esc, sub32(col, this.asmSkew)), 1);
+          // (Measured from where clang-format takes the token before to end.)
+          const pt0 = fwAt0(emTok, i - 1);
+          const short = pt0 >= 0 && fwAt0(d.multi, pt0) === 0 ? sub32(this.emWidth(pt0), this.escLen(pt0)) : 0;
+          let sp = sub32(sub32(esc, sub32(sub32(col, short), this.asmSkew)), 1);
           const esc1 = sub32(esc, 1);
           for (let k = 0; k < nl; k++) {
             out.spaces(sp < 1 && k === 0 ? 1 : sp);
@@ -6015,7 +6018,7 @@ export class Formatter {
         escStamp[pp] = this.fileStamp;
         escCol[pp] = d.opts.columnLimit;
       }
-      let end = add32(add32(fwAt0(emCol, i - 1), this.emWidth(p)), 2);
+      let end = add32(add32(fwAt0(emCol, i - 1), this.escLen(p)), 2);
       if (p >= 0 && fwAt0(d.multi, p) === 1) {
         // A token over several lines ends on its last: a raw string where
         // it was, a block comment's lines moved with it.
@@ -6028,6 +6031,22 @@ export class Formatter {
         cppfSet(this.escCol, pp, end);
       }
     }
+  }
+
+  /**
+   * How far past its start clang-format takes token `t` to end where it
+   * lines up escaped newlines: WhitespaceManager's TokenLength, the token's
+   * bytes in the source or its width, whichever is less, so that a tab
+   * counts one column.
+   */
+  escLen(t: i32): i32 {
+    const d = this.d;
+    const w = this.emWidth(t);
+    if (t < 0 || fwAt0(d.plain, t) === 1) {
+      return w;
+    }
+    const bytes = sub32(fwAt0(d.end, t), fwAt0(d.start, t));
+    return bytes < w ? bytes : w;
   }
 
   /**
