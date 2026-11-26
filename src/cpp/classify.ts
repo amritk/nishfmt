@@ -3215,6 +3215,16 @@ export const isTrailingComment = (d: Doc, t: i32): boolean => {
   return clAt(d.type, t) === TT_LINE_COMMENT || n < 0 || clAt(d.nl, n) > 0;
 };
 
+/** Whether a `<name>` header token comes before `r` on the line that starts at `f`. */
+const headerBefore = (d: Doc, f: i32, r: i32): boolean => {
+  for (let t = f; t >= 0 && t !== r; t = clAt(d.nxt, t)) {
+    if (clAt(d.kind, t) === K_HEADER) {
+      return true;
+    }
+  }
+  return false;
+};
+
 /** Spacing inside a directive: `#word`, then its arguments; `#define` bodies as code. */
 const ppSpace = (d: Doc, l: i32, r: i32): boolean => {
   const f = clAt(d.lFirst, l);
@@ -3225,12 +3235,13 @@ const ppSpace = (d: Doc, l: i32, r: i32): boolean => {
   }
   if (clAt(d.kind, r) === K_COMMENT) {
     // A line comment trails with one space. A block comment is spaced as
-    // code: none after an opening bracket (`#if (/*c*/ X)`), and after an
-    // `#include <name>`, whose tokens are implicit string literals to
-    // clang-format, the whitespace it was written with.
+    // code: none after an opening bracket (`#if (/*c*/ X)`), and past a
+    // `<name>` (`#include <a.h>`, `__has_include(<a.h>)`), after which the
+    // line is implicit string literals to clang-format, the whitespace it
+    // was written with.
     const lineComment = clCommentType(d, r) === TT_LINE_COMMENT;
     const lk = clAt(d.kind, left);
-    if (!lineComment && lk === K_HEADER) {
+    if (!lineComment && headerBefore(d, f, r)) {
       return clAt(d.ws, r) === 1;
     }
     if (!lineComment && (lk === P_LPAREN || lk === P_LSQUARE)) {

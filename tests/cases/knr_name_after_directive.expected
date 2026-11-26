@@ -1,0 +1,2 @@
+#define X int
+bar(a) int b;

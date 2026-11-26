@@ -484,7 +484,6 @@ export class Parser {
     this.addLine();
   }
 
-  /** Parses structural elements until EOF or (in a block) a `}`. */
   /** clang-format's parseLevel: `inBlock` when it has an OpeningBrace. */
   parseLevel(inBlock: boolean): void {
     const save = this.inBraces;
@@ -493,6 +492,7 @@ export class Parser {
     this.inBraces = save;
   }
 
+  /** Parses structural elements until EOF or (in a block) a `}`. */
   parseLevelIn(inBlock: boolean): void {
     let switchLabel = false;
     while (true) {
@@ -3312,7 +3312,12 @@ export class Parser {
     if (!isIdentKind(psAt(d.kind, fn))) {
       return false;
     }
-    const fp = this.codeBefore(fn);
+    // (The name's previous token on its own line: a name that starts the
+    // line has none, whatever a directive before it ends with.)
+    let fp = psAt(d.prv, fn);
+    while (fp >= 0 && psAt(d.kind, fp) === K_COMMENT) {
+      fp = psAt(d.prv, fp);
+    }
     if (fp < 0 || (psAt(d.kind, fp) !== P_STAR && !isC78TypeKind(psAt(d.kind, fp)))) {
       return false;
     }

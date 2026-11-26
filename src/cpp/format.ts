@@ -6035,7 +6035,8 @@ export class Formatter {
 
   /**
    * How far past its start clang-format takes token `t` to end where it
-   * lines up escaped newlines: WhitespaceManager's TokenLength, the token's
+   * lines up escaped newlines: the change's TokenLength, which
+   * WhitespaceManager::calculateLineBreakInformation sets to the token's
    * bytes in the source or its width, whichever is less, so that a tab
    * counts one column.
    */
