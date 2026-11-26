@@ -1,0 +1,10 @@
+class job {
+  virtual a f() const P(t)
+
+  // c1
+  // c2
+};
+void f() {
+  g()
+  /* c */
+}

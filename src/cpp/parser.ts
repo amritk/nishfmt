@@ -3120,6 +3120,9 @@ export class Parser {
         this.addLine();
         return;
       }
+      if (k === K_COMMENT && this.first >= 0 && this.endsBeforeComments()) {
+        return;
+      }
       if (k === P_HASH && psAt(d.ppKind, this.pos) !== PP_NONE) {
         this.parsePPInline();
         continue;
@@ -3426,6 +3429,41 @@ export class Parser {
       }
     }
     return false;
+  }
+
+  /**
+   * clang-format's distributeComments, for comments read before a `}` that
+   * ends an unfinished statement: those on the statement's own line stay on
+   * it, and the line ends before the first one on a new line, which with the
+   * rest becomes lines of its own (one that continues the statement's
+   * trailing comment rejoins it, as for any statement). Answers whether it
+   * ended the line.
+   */
+  endsBeforeComments(): boolean {
+    const d = this.d;
+    let e = this.pos;
+    while (e < psLast(d) && psAt(d.kind, e) === K_COMMENT) {
+      e = add32(e, 1);
+    }
+    // (At the end of the file they stay on the line.)
+    if (psAt(d.kind, e) !== P_RBRACE) {
+      return false;
+    }
+    let split = -1;
+    for (let i = this.pos; i < e; i = add32(i, 1)) {
+      if (psAt(d.nl, i) > 0) {
+        split = i;
+        break;
+      }
+    }
+    if (split < 0) {
+      return false;
+    }
+    while (this.pos < split) {
+      this.push();
+    }
+    this.addLine();
+    return true;
   }
 
   /** Gives token `t` type `tt` for good, as clang-format's setFinalizedType. */
