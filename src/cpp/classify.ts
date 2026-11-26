@@ -248,6 +248,9 @@ export class Classifier {
   fnEarly: boolean = false; // isFunctionName decided on the token before `operator` alone
   depth: i32 = 0;
   inClass: boolean = false; // the enclosing scope is a class body
+  // The line is in a #define's body inside one of its braces: clang-format's
+  // MacroBodyScopes is not empty (TokenAnnotator::annotate).
+  macroScope: boolean = false;
   lineHasRequires: boolean = false; // the line being classified holds `requires`
   lineHasOperator: boolean = false; // ... `operator`
   lineHasStarSquare: boolean = false; // ... `*` right before `[`
@@ -1119,9 +1122,14 @@ export class Classifier {
       return 0;
     }
     // In a directive (a macro body), parens after a name keep the outer
-    // context; any other parens hold an expression.
+    // context; any other parens hold an expression. So do a name's, on a
+    // body line inside one of the macro's braces that need not be a
+    // declaration (parseParens: `Line.InMacroBody && !Scopes.empty()`).
     if (clAt(d.inPP, t) === 1) {
-      return p >= 0 && isIdentKind(pk) ? outer : 1;
+      if (!(p >= 0 && isIdentKind(pk))) {
+        return 1;
+      }
+      return this.macroScope && clAt(d.lMustDecl, this.line) === 0 ? 1 : outer;
     }
     // After a function type's parentheses (`(*fn)(...)`): parameters.
     if (
@@ -1917,7 +1925,11 @@ export class Classifier {
       let c = clAt(d.childHead, t);
       while (c >= 0) {
         const saveFirst = this.first;
+        const saveScope = this.macroScope;
+        // (A child line of a macro body is inside one of its braces.)
+        this.macroScope = clAt(d.inPP, clAt(d.lFirst, c)) === 1;
         this.classifyLine(c);
+        this.macroScope = saveScope;
         this.line = l;
         this.first = saveFirst;
         c = clAt(d.lSibling, c);

@@ -1403,6 +1403,9 @@ export class Formatter {
   classifyAll(): void {
     const d = this.d;
     const scopes = new Array<i32>(0);
+    // clang-format's MacroBodyScopes: the braces a #define body's lines leave
+    // open, cleared by every line outside a macro body (its head included).
+    let macroDepth = 0;
     let l = d.topHead;
     while (l >= 0) {
       const f = fwAt(d.lFirst, l);
@@ -1411,7 +1414,24 @@ export class Formatter {
       }
       const ns = scopes.length;
       fwPut(d.lInClass, l, ns > 0 && scopes[ns - 1] === 1 ? 1 : 0);
+      const body = fwAt(d.inPP, f) === 1 && fwAt(d.lType, l) !== LT_PREPROCESSOR;
+      if (!body) {
+        macroDepth = 0;
+      }
+      this.cls.macroScope = body && macroDepth > 0;
       this.cls.classifyLine(l);
+      this.cls.macroScope = false;
+      if (body) {
+        // (Each `{` pushes a scope and each `}` pops one, if any is left.)
+        for (let t = f; t >= 0; t = fwAt(d.nxt, t)) {
+          const k = fwAt(d.kind, t);
+          if (k === P_LBRACE) {
+            macroDepth = fwAdd(macroDepth, 1);
+          } else if (k === P_RBRACE && macroDepth > 0) {
+            macroDepth--;
+          }
+        }
+      }
       // (A trailing comment may follow the `{`.)
       let last = fwAt(d.lLast, l);
       while (last !== f && fwAt(d.kind, last) === K_COMMENT) {
