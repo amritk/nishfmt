@@ -2252,6 +2252,11 @@ export class Indenter {
       if (indAt(d.multi, cur) === 0 && fmc.bcShrink > 0) {
         this.col = indSub(this.col, fmc.bcShrink);
       }
+      if (indAt(d.multi, cur) === 1 && d.opts.reflowComments && !fmc.switchesFormatting(cur)) {
+        // clang-format's breakProtrudingToken leaves the column where the
+        // comment's last line ends, its lines re-indented with it.
+        this.col = fmc.bcLastEnd;
+      }
     } else if (this.col > this.lim) {
       pen = indAdd64(pen, PEN_EXCESS * toI64(indSub(this.col, this.lim)));
     }

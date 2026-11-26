@@ -79,8 +79,8 @@ and memory are for the whole tree.
 
 The regression corpus (`bench/corpus/repos.txt`, 10343 files from the same
 kind of repositories, each capped at 250 KB) matches clang-format 23.1.5's
-settled output (`ref-settled/`) on 10332 of the 10341 files that settle, and
-one `clang-format -i` run on 10296: nishfmt formats a file again until it
+settled output (`ref-settled/`) on 10333 of the 10341 files that settle, and
+one `clang-format -i` run on 10297: nishfmt formats a file again until it
 stops changing, as a CI check needs, and where clang-format's second run
 changes its first, nishfmt gives the second. Its times are in the
 [README](../README.md#languages-and-speed). The second corpus
@@ -90,11 +90,11 @@ they are built are in [Benchmarks](benchmarks.md#c-one-run-and-the-settled-outpu
 
 What counts for a project that checks its formatting in CI is whether one
 clang-format run leaves nishfmt's output as it is (`bench/corpus/verify.sh`).
-It does on every file but 5 of the first corpus and 31 of the second; it
+It does on every file but 4 of the first corpus and 31 of the second; it
 skips 3 files of the first corpus (two never settle, and in opencv's
 `hb-algs.hh` a comment leads a directive) and 1 of the second (taskflow's
 `ff/parallel_for_internals.hpp`, where formatting would change the code;
-see [What it leaves alone](#what-it-leaves-alone)). Each of the 36 is a
+see [What it leaves alone](#what-it-leaves-alone)). Each of the 35 is a
 decision nishfmt does not make as clang-format does:
 
 | What differs | Files |
@@ -103,7 +103,7 @@ decision nishfmt does not make as clang-format does:
 | macro bodies and lines clang-format cannot annotate (`SPDLOG_TRY{`, generator macros, assembler-like `.macro` bodies, a `SIMD_ONLY(` argument, a macro-generated block) | spdlog `async_logger-inl.h`, `stopwatch.h`, `fmt/bin_to_hex.h`; eigen `bench/basicbenchmark.cpp`; grpc `iomgr/closure.h`; tbb `perf/time_framework.h`, `flow_graph.h`, `internal/_flow_graph_cache_impl.h`; opencv `mlas/lib/x86_64/FgemmKernelCommon.h`, `core/src/minmax.simd.hpp`, `dnn/.../conv2_kernels.simd.hpp` |
 | a long `#define` of nested conditionals, with a block comment that is reflowed over many lines | opencv `carotene/hal/tegra_hal.hpp` |
 | line breaking: designated initializers, `<<` chains, a conditional's operand column, lambdas among arguments | bitcoin `test/checkqueue_tests.cpp`; eigen `Tutorial_commainit_02.cpp`, `GlobalFunctions.h`; flatbuffers `src/idl_gen_ts.cpp`; grpc `xds_server_config_fetcher.cc` |
-| comments: trailing comment alignment and reflow, a block comment holding a line comment inside a condition, a comment's indent beside a preprocessor conditional | eigen `util/XprHelper.h`; opencv `dnn/src/graph_const_fold.cpp` |
+| comments: trailing comment alignment and reflow, a comment's indent beside a preprocessor conditional | eigen `util/XprHelper.h` |
 | a string with wide characters | bitcoin `test/cluster_linearize_tests.cpp` |
 | `__asm` statements | tbb `tbb/scheduler.cpp`, `machine/msvc_ia32_common.h` (in taskflow) |
 | not C++: a gnuplot script named `.hh` | eigen `bench/btl/data/gnuplot_common_settings.hh` |
@@ -121,9 +121,16 @@ and on main alike:
 - `}  /* blk */` then `// c1` under a namespace: `// c1` goes to column 0;
 - a `#pragma mark` line past the limit with a `.` in it: its `#pragma   mark`
   spacing is normalized, where clang-format, finding no layout, keeps it.
-- a block comment over two lines right after a chained conditional's `?`:
-  clang-format breaks before that `?` and leaves the comment's second line
-  where it was written, where nishfmt keeps the `?` on the condition's line.
+
+Past a block comment over several lines, the line goes on from where the
+comment's last line ends, its lines re-indented by as much as its first
+moved (clang-format's breakProtrudingToken). A token after it must start a
+line unless that column is left of where the line would start, so a layout
+that moves the comment left can be the only one; where none is, the line is
+left as written. `tests/cases/block_comment_before_closer_no_layout.cpp`
+guards that last part: it passes on main 22b6162 too, and fails when the
+column past the comment is taken to be the line's indent, a one-line
+mutation that was run.
 
 A chained conditional is aligned as clang-format 23 aligns it: a line that
 continues an operand moves with the operand's line, and counts in the width
