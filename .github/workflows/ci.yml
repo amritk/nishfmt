@@ -58,7 +58,12 @@ jobs:
       - name: The pinned nish, and the LLVM toolchain it links with
         uses: amritk/workflows/actions/setup-nish@d0672b6994cc142bccf836ab1e185b9be990e832
 
+      # Plain: the profile-guided link takes about 18 minutes here, against
+      # 3. The release builds with the profile and runs the regression cases
+      # on that binary before it ships (release.yml's test).
       - name: Build
+        env:
+          NISHFMT_PGO: "0"
         run: npm run build
 
       - name: Regression cases

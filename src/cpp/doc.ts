@@ -64,6 +64,10 @@ export class Doc {
   // clang-format's parameter counts on a bracket are never reset between
   // passes, so they grow with every pass that annotates the bracket again.
   passMul: i32[];
+  // clang-format's failed template parses a bracket's whole parse lies in:
+  // parseAngle consumes, then backs off and the line is read again, and the
+  // bracket's parameter counts are never reset (classify sets it per line).
+  angDbl: i32[];
   // clang-format's FormatDecision, left by the pass that first formatted the
   // token: 0 unformatted, 1 continue, 2 break. A later pass's search keeps it.
   dec: i32[];
@@ -146,6 +150,7 @@ export class Doc {
     this.fap = newI32s(cap);
     this.asmFin = newI32s(cap);
     this.passMul = newI32s(cap);
+    this.angDbl = newI32s(cap);
     this.keepWs = newI32s(cap);
     this.dec = newI32s(cap);
     this.match = newI32s(cap);
@@ -224,6 +229,7 @@ export class Doc {
     this.fap = growI32(this.fap, n);
     this.asmFin = growI32(this.asmFin, n);
     this.passMul = growI32(this.passMul, n);
+    this.angDbl = growI32(this.angDbl, n);
     this.keepWs = growI32(this.keepWs, n);
     this.dec = growI32(this.dec, n);
     this.match = growI32(this.match, n);

@@ -9,6 +9,7 @@
 import { isForEachMacro, isQtWord } from "./parser";
 import { Doc } from "./doc";
 import { fault } from "../core/fault";
+import { growI32 } from "../core/arr";
 import {
   KW_TRY,
   KW_CONST_CAST,
@@ -228,7 +229,6 @@ class CppClassLevel {
   open: i32 = -1; // the level's opening token (-1 at the top)
   expr: i32 = 0; // 1 when the level holds an expression
   tmpl: i32 = 0; // 1 inside template arguments
-  asg: i32 = 0; // 1 once the level has passed an assignment
   ques: i32 = 0; // pending `?` count, for matching `:`
   afterNew: i32 = 0; // 1 past a `new` at this depth: clang-format's CanBeExpression off
   caret: i32 = 0; // 1 past a unary `^` at this depth: clang-format's CaretFound
@@ -239,6 +239,14 @@ class CppClassLevel {
 export class Classifier {
   d: Doc;
   first: i32 = -1;
+  // Where findCloser's last failed walk stopped: the token clang-format's
+  // parseAngle gave up at, or -1 at the end of the line.
+  fcStop: i32 = -1;
+  // The line's failed template parses: each `<` and where it stopped, the
+  // first angN of each.
+  angLt: i32[] = [];
+  angStop: i32[] = [];
+  angN: i32 = 0;
   line: i32 = -1;
   subObjC: i32 = -1; // a subscript's `[` a `:` made an Objective-C message (subscriptColon)
   // Per-depth state: MAXD levels, and a spare a level past them answers after a fault.
@@ -459,6 +467,51 @@ export class Classifier {
   }
 
   /**
+   * clang-format's parseAngle read the brackets after `lt` up to `stop` (-1:
+   * the line's end) before it gave up and read them again: each bracket
+   * whose parse lies in between counts its parameters twice.
+   */
+  failedAngle(lt: i32, stop: i32): void {
+    const n = this.angN;
+    // (A line holds fewer `<` than this.)
+    if (n < 0 || n >= 1073741824) {
+      fault();
+      return;
+    }
+    if (n >= toI32(this.angLt.length) || n >= toI32(this.angStop.length)) {
+      this.angLt = growI32(this.angLt, n + 16);
+      this.angStop = growI32(this.angStop, n + 16);
+    }
+    const a = this.angLt;
+    const b = this.angStop;
+    if (n < a.length && n < b.length) {
+      a[n] = lt;
+      b[n] = stop;
+      this.angN = n + 1;
+    } else {
+      fault();
+    }
+  }
+
+  /** How many of the line's failed template parses bracket `o`, closed at `c`, lies wholly in. */
+  angleDoubling(o: i32, c: i32): i32 {
+    const as = this.angLt;
+    const bs = this.angStop;
+    let n = 0;
+    for (let i = 0; i < this.angN && i < as.length && i < bs.length; i++) {
+      const a = as[i];
+      const b = bs[i];
+      if (n >= 30) {
+        break;
+      }
+      if (o > a && (b < 0 || c < b)) {
+        n++;
+      }
+    }
+    return n;
+  }
+
+  /**
    * The `>` closing the template bracket at `lt`, or -1 if `<` compares
    * (clang-format 23's parseAngle). A `>` the parser already made a closer
    * (before `{` or an empty `()`) closes whatever the checks below say.
@@ -480,29 +533,35 @@ export class Classifier {
             // `a < b >> 2`: a `>` right against another closes nothing unless
             // the `<` sits in template arguments.
             if (n >= 0 && clAt(d.kind, n) === P_GREATER && clAt(d.ws, n) === 0 && !parentLess) {
+              this.fcStop = t;
               return -1;
             }
             // `a < b ? c : d > e`: after a `?:` in an expression, only a `>`
             // before `(` or `{` closes.
             if (inExpr && seenTernary && (n < 0 || (clAt(d.kind, n) !== P_LPAREN && clAt(d.kind, n) !== P_LBRACE))) {
+              this.fcStop = t;
               return -1;
             }
             if (!maybeAngles) {
+              this.fcStop = t;
               return -1;
             }
             // `static_assert(N < M > -1)`: nor in a static_assert's first
             // argument before `-` or a name.
             if (saFirst && n >= 0 && (clAt(d.kind, n) === P_MINUS || isIdentKind(clAt(d.kind, n)))) {
+              this.fcStop = t;
               return -1;
             }
           }
           if (n >= 0 && isLiteralKind(clAt(d.kind, n))) {
+            this.fcStop = t;
             return -1;
           }
           return t;
         }
         // (A `{` is nested, as in `X<T{}>`: clang-format bails only on closers.)
         if (k === P_SEMI || k === P_RBRACE || k === P_RPAREN || k === P_RSQUARE) {
+          this.fcStop = t;
           return -1;
         }
         // An `&&` or `||` that is a binary operator, in an expression, makes
@@ -535,6 +594,7 @@ export class Classifier {
           // expression, a `>` among it a comparison.
           const c = this.conditionalColon(t);
           if (c < 0) {
+            this.fcStop = t;
             return -1;
           }
           t = clAt(d.nxt, c);
@@ -544,18 +604,21 @@ export class Classifier {
       if (k === P_LPAREN || k === P_LSQUARE || k === P_LBRACE) {
         if (depth >= CL_I32_MAX) {
           fault();
+          this.fcStop = t;
           return -1;
         }
         depth++;
       } else if (k === P_RPAREN || k === P_RSQUARE || k === P_RBRACE) {
         // (`depth` never drops below 0: a closer at 0 ends the walk.)
         if (depth <= 0) {
+          this.fcStop = t;
           return -1;
         }
         depth--;
       }
       t = clAt(d.nxt, t);
     }
+    this.fcStop = t;
     return -1;
   }
 
@@ -1184,13 +1247,12 @@ export class Classifier {
       fault();
       return;
     }
+    this.angN = 0;
     const top = lv[0];
     this.depth = 0;
     top.open = -1;
     // `#if` and `#elif` conditions are expressions.
     top.expr = lt === LT_PREPROCESSOR && (pk === PP_IF || pk === PP_ELIF) ? 1 : 0;
-    // (An #if condition stays an expression after any parentheses close.)
-    top.asg = top.expr;
     top.tmpl = 0;
     top.ques = 0;
     top.afterNew = 0;
@@ -1314,7 +1376,6 @@ export class Classifier {
           !(p >= 0 && (this.k(p) === P_LSQUARE || this.k(p) === KW_OPERATOR))
         ) {
           L.expr = 1;
-          L.asg = 1;
           // What precedes an initializer is a declarator: `T *x = ...`.
           if (this.ty(this.first) !== TT_UNARY_OPERATOR) {
             let q = p;
@@ -1437,7 +1498,6 @@ export class Classifier {
           const N = lv[nd];
           this.depth = nd;
           N.open = t;
-          N.asg = 0;
           N.tmpl = 0;
           N.ques = 0;
           N.afterNew = 0;
@@ -1448,7 +1508,6 @@ export class Classifier {
           } else {
             N.expr = 1;
           }
-          N.asg = N.expr;
           // (A level binds at most 12 more than the one outside it, so with
           // MAXD levels the sum stays far below 2^30.)
           const outerBind = L.bindAt;
@@ -1469,7 +1528,7 @@ export class Classifier {
           // Close the innermost matching level (template levels left open
           // by a stray `<` are dropped).
           let dd = dep;
-          while (dd > 0 && dd <= dep) {
+          while (dd > 0 && dd <= dep && dd < lv.length) {
             const o = lv[dd].open;
             const ok = this.k(o);
             if (
@@ -1481,7 +1540,7 @@ export class Classifier {
             }
             dd--;
           }
-          if (dd > 0) {
+          if (dd > 0 && dd < lv.length) {
             // Closing across an open `(`, `[` or `{` breaks the line for
             // clang-format (only stray `<` levels may be dropped).
             for (let x = dd + 1; x <= dep && x < lv.length; x++) {
@@ -1493,6 +1552,7 @@ export class Classifier {
             const o = D.open;
             clSet(d.match, o, t);
             clSet(d.match, t, o);
+            clSet(d.angDbl, o, this.angN > 0 ? this.angleDoubling(o, t) : 0);
             clSet(d.nest, t, dd);
             clSet(d.bind, t, D.bindAt);
             this.depth = dd - 1;
@@ -1538,16 +1598,9 @@ export class Classifier {
           if (k === P_RPAREN) {
             this.markPtrRun(t);
           }
-          if (clAt(d.lMustDecl, l) === 1 && !this.ctorSeen) {
-            // (The level the closer returned to, at or below `dep`.)
-            const cur = this.depth;
-            if (cur < 0 || cur >= lv.length) {
-              fault();
-              return;
-            }
-            const C = lv[cur];
-            C.expr = C.asg;
-          }
+          // (clang-format's modifyContext also turns a declaration's context
+          // off expression at a `)`, but in the parenthesis's own context,
+          // which parseParens then drops: the context around keeps its own.)
           break;
         }
         case P_LESS: {
@@ -1569,6 +1622,9 @@ export class Classifier {
               );
             if (okPrev) {
               const c = this.findCloser(t, L.expr === 1, dep > 0 && this.ty(L.open) === TT_TEMPLATE_OPENER, L.sa === 1);
+              if (c < 0) {
+                this.failedAngle(t, this.fcStop);
+              }
               if (c >= 0) {
                 isTmpl = true;
                 this.set(t, TT_TEMPLATE_OPENER);
@@ -1585,7 +1641,6 @@ export class Classifier {
                 const N = lv[nd];
                 this.depth = nd;
                 N.open = t;
-                N.asg = 0;
                 N.expr = 0;
                 N.tmpl = pk === KW_TEMPLATE ? 0 : 1;
                 N.ques = 0;
@@ -1774,10 +1829,10 @@ export class Classifier {
           // TT_EnumEqual (consumeToken, `Scopes.back() == ST_Enum`).
           if (k === P_EQUAL && this.ty(t) !== TT_OVERLOADED_OPERATOR) {
             let x = dep;
-            while (x > 0 && x <= dep && this.k(lv[x].open) !== P_LBRACE) {
+            while (x > 0 && x <= dep && x < lv.length && this.k(lv[x].open) !== P_LBRACE) {
               x--;
             }
-            if (x > 0 && x <= dep && this.ty(lv[x].open) === TT_ENUM_LBRACE) {
+            if (x > 0 && x <= dep && x < lv.length && this.ty(lv[x].open) === TT_ENUM_LBRACE) {
               clSet(d.type, t, TT_ENUM_EQUAL);
               clSet(d.final, t, 1);
             }

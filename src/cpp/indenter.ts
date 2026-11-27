@@ -2263,6 +2263,10 @@ export class Indenter {
     // Line comments continuing this one's section go under it, each on its own line.
     if (indAt(d.kind, cur) === K_COMMENT && indAt(d.type, cur) === TT_LINE_COMMENT) {
       const startCol = indSub(this.col, indAt(d.width, cur));
+      // The lines the first one priced as its section cost nothing more:
+      // clang-format's section token takes them in (updateNextToken).
+      let priced = fmc !== null && indAt(d.lType, this.line) !== LT_IMPORT && fmc.pricesSection(cur);
+      let prevC = cur;
       while (
         this.next >= 0 &&
         indAt(d.kind, this.next) === K_COMMENT &&
@@ -2275,10 +2279,12 @@ export class Indenter {
           // Aligned to the section's first comment when that one trails code.
           fm.emitAligned(this.next, 1, startCol, startCol, indAt(d.nl, cur) === 0 ? cur : -1);
         }
-        // Each is split or overflows where the section's column puts it.
-        if (fm !== null && indAt(d.lType, this.line) !== LT_PREPROCESSOR) {
+        priced = priced && fm !== null && fm.sectionNext(prevC) === this.next;
+        // Each other is split or overflows where the section's column puts it.
+        if (!priced && fm !== null && indAt(d.lType, this.line) !== LT_PREPROCESSOR) {
           pen = indAdd64(pen, fm.commentPenalty(this.next, startCol));
         }
+        prevC = this.next;
         this.next = this.next === this.lineLast ? -1 : indLink(d.nxt, this.next);
       }
     }

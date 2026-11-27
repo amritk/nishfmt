@@ -102,12 +102,12 @@ Swift counts 6707 files where it counted 6710: rebuilt at the same commits on
 
 On the second corpus, `repos2.txt`, every language measured on 2026-11-20
 at main 0d672fc, except C++, measured again on 2026-11-26 (against the
-settled output, of the 13901 files that settle; against one run, 13814 of
+settled output, of the 13901 files that settle; against one run, 13817 of
 13902):
 
 | Corpus | Files | Identical |
 | --- | ---: | ---: |
-| C++ | 13901 | 13859 |
+| C++ | 13901 | 13862 |
 | Java | 11914 | 11914 |
 | Kotlin | 6219 | 6219 |
 | C# | 18673 | 18673 |
@@ -137,14 +137,14 @@ changes after eight runs ("does not settle").
 | Corpus | Files | Identical to the settled output | Identical to one run | Never settle |
 | --- | ---: | ---: | ---: | ---: |
 | `repos.txt` | 10343 | 10333 of 10341 | 10297 | 2 |
-| `repos2.txt` | 13902 | 13859 of 13901 | 13814 | 1 |
+| `repos2.txt` | 13902 | 13862 of 13901 | 13817 | 1 |
 
 Every file that matches one run and not the settled output is one where
 clang-format's second run changes its first; nishfmt gives the second.
 
 `bench/corpus/verify.sh`, after `cmp.sh <nishfmt> cpp`, runs that check on
 nishfmt's output: clang-format once on each file, failing those it would
-change. It fails 4 files of the first corpus and 31 of the second. nishfmt
+change. It fails 4 files of the first corpus and 28 of the second. nishfmt
 skips 3 files of the first corpus, the 2 that never settle and one whose
 formatting would change its code, and 1 of the second, that one's kind
 ([C++](cpp.md#what-it-leaves-alone)). Ten files of the second corpus
@@ -184,6 +184,40 @@ bash bench/corpus/time.sh dist/nishfmt cpp     # or java, kt, rb, swift, rust, d
   RuboCop with `--parallel`; SwiftFormat, `dart format` and CSharpier (on
   .NET 10, with `--no-cache`) over the directory. On one core every one of
   them runs under `taskset -c 0`, one process at a time.
+
+## Profile-guided build
+
+On Linux, `build.sh` links nishfmt with the profile in `pgo/nishfmt.profdata`
+(nish's `--pgo-use`), and so do the Linux release builds, which run the
+regression cases on that binary before it ships. macOS links with Xcode's
+clang, which may not read the LLVM 18 profile, and builds without it; so does
+`NISHFMT_PGO=0 bash build.sh`, which CI uses: the profile-guided link is five
+to ten times slower (about 18 minutes in CI, against 3). The profile changes no
+output, only how the binary is laid out: on 2026-11-26, on files the profile
+was not trained on, one core, median of five interleaved runs each, the
+profile-guided binary took this much less time than the plain one:
+
+| Language | Plain | Profile-guided |
+| --- | ---: | ---: |
+| C++ (a third of `repos2.txt`) | 15.44 s | 13.94 s |
+| Java | 1.11 s | 0.97 s |
+| Kotlin | 1.15 s | 1.03 s |
+| Ruby | 1.90 s | 1.82 s |
+| Swift | 3.39 s | 2.95 s |
+| Rust | 1.00 s | 0.87 s |
+| Dart | 0.89 s | 0.78 s |
+| C# | 0.81 s | 0.69 s |
+
+(Every language but C++ is a tenth of its `repos.txt` corpus, the files after
+those the profile trains on.) The README's times were measured before the
+profile.
+
+`bash scripts/pgo-train.sh` trains it again: it links a `--pgo-generate`
+binary, formats every tenth file of each corpus under `$CORPUS` with it and
+merges the runs with LLVM 18's `llvm-profdata`. A function whose code changed
+since the profile is optimised without it, so the gain fades as the code
+moves: train again now and then, and after a nish upgrade that changes the
+LLVM it links with.
 
 ## Rust reimplementations
 
