@@ -4,8 +4,8 @@
 // so the file is skipped rather than formatted from that value.
 //
 // The standard library's `new Array<T>(n)` with a length the compiler cannot
-// bound, an array's `set` and `slice`, and `String.fromBytes` keep a check no
-// proof removes, so the modules held to no panic use these instead.
+// bound, `set`, `slice` and `String.fromBytes` kept a check nish 0.45.1 could
+// not prove, so no-panic modules use these; since 0.47 a range test proves it.
 
 import { tryCopyBytes } from "nish/bytes";
 import { fault } from "./fault";

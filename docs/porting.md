@@ -104,7 +104,11 @@ What the 0.45.1 prover credits, learned the hard way:
 - **`new Array<T>(n)` is proven only for a literal, constant or `u16`
   length.** A ranged `integer<0, N>` length is not, whatever the message
   says. So the helpers allocate up to 65,535 elements with `toU16`, and
-  `push` past that.
+  `push` past that. Since 0.47 a range test proves it and the other calls
+  the helpers stand in for: `if (n >= 0)` before `new Array<T>(n)` of an
+  `i32`, `if (a >= 0 && a <= b && b <= xs.length)` before `xs.slice(a, b)`
+  or `String.fromBytes(xs, a, b)`, `if (src.length <= dst.length)` before
+  `dst.set(src, 0)`. The helpers predate that.
 - **A field typed `integer<0, N>` does bound the indexes it guards.**
 - **Module storage is proven only through a function parameter** typed
   `Int32Array`. Indexed directly, it never is.
