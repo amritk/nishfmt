@@ -188,9 +188,11 @@ bash bench/corpus/time.sh dist/nishfmt cpp     # or java, kt, rb, swift, rust, d
 ## Profile-guided build
 
 On Linux, `build.sh` links nishfmt with the profile in `pgo/nishfmt.profdata`
-(nish's `--pgo-use`), and so do CI and the Linux release builds. macOS links
-with Xcode's clang, which may not read the LLVM 18 profile, and builds
-without it; so does `NISHFMT_PGO=0 bash build.sh`. The profile changes no
+(nish's `--pgo-use`), and so do the Linux release builds, which run the
+regression cases on that binary before it ships. macOS links with Xcode's
+clang, which may not read the LLVM 18 profile, and builds without it; so does
+`NISHFMT_PGO=0 bash build.sh`, which CI uses: the profile-guided link is five
+to ten times slower (about 18 minutes in CI, against 3). The profile changes no
 output, only how the binary is laid out: on 2026-11-26, on files the profile
 was not trained on, one core, median of five interleaved runs each, the
 profile-guided binary took this much less time than the plain one:
