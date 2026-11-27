@@ -57,9 +57,11 @@ read `.nish/docs/AI.md` (the language as rules, traps first), then
   before a loop. Where the code's invariants guarantee a site the prover
   cannot see, guard it and call `fault()` (`src/core/fault.ts`) on the other
   branch, which makes nishfmt skip the file: never answer a made-up value
-  without it. `src/core/arr.ts` and `src/core/sort.ts` replace the std calls
-  no proof covers (`new Array(n)`, `set`, `slice`, `String.fromBytes`,
-  `.sort`). A new module joins the list: `node scripts/no-panic-list.mjs --write`.
+  without it. `src/core/sort.ts` replaces `.sort`, which no proof covers.
+  `src/core/arr.ts` replaces `new Array(n)`, `set`, `slice` and
+  `String.fromBytes`, which nish 0.45.1 could not prove; since 0.47 a range
+  test before the call proves each ([docs/porting.md](docs/porting.md#no-panics)).
+  A new module joins the list: `node scripts/no-panic-list.mjs --write`.
 - **Run the compiler rather than guess.** When unsure whether something
   compiles or what it does, `.nish/bin/nish run <file>` answers in seconds.
 
