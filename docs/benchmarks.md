@@ -219,6 +219,16 @@ since the profile is optimised without it, so the gain fades as the code
 moves: train again now and then, and after a nish upgrade that changes the
 LLVM it links with.
 
+On 2026-11-28 the Rust part alone was trained again, after the Rust
+formatter's comment scanner changed, without the other corpora: the same
+834 Rust training files were formatted by a `--pgo-generate` binary of
+main and of the change. Each Rust function's record was then replaced by
+the change's, and each shared function's counters (`src/main.ts`,
+`src/core/`, the runtime) became old minus main's Rust run plus the
+change's, which is what training every corpus again would give: main's run
+reproduced the old Rust records, 617 of 663 exactly and the rest to within
+a few counts. Every other language's records are unchanged.
+
 ## Rust reimplementations
 
 RuboCop has a Rust reimplementation that also matches it on the whole
