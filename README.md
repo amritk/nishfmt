@@ -163,7 +163,7 @@ nishfmt --check src/    # list the files that would change; exit 1 if any
 <!-- x-release-please-start-version -->
 ```text
 $ nishfmt --version
-nishfmt 0.2.0
+nishfmt 0.2.1
 ```
 <!-- x-release-please-end -->
 
