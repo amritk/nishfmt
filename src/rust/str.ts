@@ -555,14 +555,29 @@ export const rsRepeat = (s: string, k: i32): string => {
   return out;
 };
 
+// 256 spaces after a newline: rsSpaces and rsNlSpaces cut their text from it.
+const RS_NL_SPACES: string =
+  "\n                                                                                                                                                                                                                                                                ";
+
 export const rsSpaces = (k: i32): string => {
   if (k <= 0) {
     return "";
   }
-  if (k <= 64) {
-    return "                                                                ".substring(0, k);
+  if (k <= 256) {
+    return RS_NL_SPACES.substring(1, k + 1);
   }
   return rsRepeat(" ", k);
+};
+
+/** `"\n" + rsSpaces(k)`, as one string. */
+export const rsNlSpaces = (k: i32): string => {
+  if (k <= 0) {
+    return "\n";
+  }
+  if (k <= 256) {
+    return RS_NL_SPACES.substring(0, k + 1);
+  }
+  return "\n" + rsRepeat(" ", k);
 };
 
 /** The first line of `s` (up to the first `\n`). */
@@ -607,6 +622,33 @@ export const rsWidth = (s: string): i32 => {
   }
   // Exact: 0 <= k <= n.
   return toI32(toU32(n) - toU32(k));
+};
+
+/** `rsWidth(s.substring(a, b))`, without cutting the substring out of an ASCII `s`. */
+export const rsWidthRange = (s: string, a: i32, b: i32): i32 => {
+  if (a < 0 || a > b || b > toI32(s.length)) {
+    fault();
+    return 0;
+  }
+  // The bytes that take no column: a line feed, and a carriage return before one.
+  let k = 0;
+  for (let i = a; i < b; i++) {
+    const c = s.charCodeAt(i);
+    if (c <= 13) {
+      if (c === 10 || (c === 13 && i + 1 < b && s.charCodeAt(i + 1) === 10)) {
+        // k <= i - a < b - a.
+        if (k >= b - a) {
+          fault();
+          return 0;
+        }
+        k++;
+      }
+    } else if (c >= 128) {
+      return rsUnicodeStrWidth(s.substring(a, b));
+    }
+  }
+  // Exact: 0 <= k <= b - a.
+  return toI32(toU32(b - a) - toU32(k));
 };
 
 /** The number of chars (code points) in `s`. */

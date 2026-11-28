@@ -22,6 +22,7 @@ import {
   rsTrimEnd,
   rsTrimStart,
   rsWidth,
+  rsWidthRange,
   rsWsLenAt,
 } from "./str";
 
@@ -141,6 +142,71 @@ export class RsCharScan {
     this.n = n;
   }
 
+  /**
+   * The end of the run of chars from `i` that `next` would give as plain code
+   * without a change of state (K_NORMAL from the Normal state); `i` itself
+   * outside that state. A caller that handles the run in a loop of its own
+   * moves past it with `skipTo`.
+   */
+  plainEnd(): i32 {
+    let i = this.i;
+    if (this.st !== S_NORMAL) {
+      return i;
+    }
+    const n = this.n;
+    const src = this.src;
+    while (i >= 0 && i < n && i < src.length) {
+      const c = toI32(src[i]);
+      if (c >= 128 || c === 114 || c === 34 || c === 39 || c === 47) {
+        break;
+      }
+      i++;
+    }
+    return i;
+  }
+
+  /**
+   * The end of the line comment the scan is in: the `\n` that ends it, or the
+   * end; `i` itself outside one. `next` gives every char before it
+   * K_IN_COMMENT, without a change of state.
+   */
+  lineCommentEnd(): i32 {
+    let i = this.i;
+    if (this.st !== S_LINE_COMMENT) {
+      return i;
+    }
+    const n = this.n;
+    const src = this.src;
+    while (i >= 0 && i < n && i < src.length && toI32(src[i]) !== 10) {
+      i++;
+    }
+    return i;
+  }
+
+  /**
+   * Moves past the chars before `e` (from `plainEnd` or `lineCommentEnd`), as
+   * a `next` for each would: `cs` is the start of the last of them.
+   */
+  skipTo(e: i32): void {
+    const i = this.i;
+    if (e <= i) {
+      return;
+    }
+    const src = this.src;
+    // Both ends come from a scan inside `src`.
+    if (i < 0 || e > src.length) {
+      fault();
+      return;
+    }
+    // `\n` and plain code are single bytes, so `e` starts a char.
+    let c = sub32(e, 1);
+    while (c > i && c > 0 && c < src.length && (toI32(src[c]) & 0xc0) === 0x80) {
+      c--;
+    }
+    this.cs = c;
+    this.i = e;
+  }
+
   /** The kind of the next char (its start in `cs`), or -1 at the end. */
   next(): i32 {
     const src = this.src;
@@ -155,15 +221,40 @@ export class RsCharScan {
       return -1;
     }
     const chr = toI32(src[i]);
-    if (this.st === S_NORMAL) {
+    const st0 = this.st;
+    if (st0 === S_NORMAL) {
       // Plain code: no state change.
       if (chr < 128 && chr !== 114 && chr !== 34 && chr !== 39 && chr !== 47) {
         this.cs = i;
         this.i = i + 1;
         return K_NORMAL;
       }
+    } else if (chr < 128) {
+      // Inside a comment or a string most chars change nothing: those the
+      // general path below gives the state's own kind without a transition,
+      // when the char is one byte (the next is not a continuation byte).
+      const i1 = i + 1;
+      if (i1 >= n || i1 >= src.length || (toI32(src[i1]) & 0xc0) !== 0x80) {
+        let k = -1;
+        if (st0 === S_LINE_COMMENT) {
+          k = chr !== 10 ? K_IN_COMMENT : -1;
+        } else if (st0 === S_BLOCK_COMMENT) {
+          k = chr !== 42 && chr !== 47 && chr !== 34 ? K_IN_COMMENT : -1;
+        } else if (st0 === S_LIT_STRING) {
+          k = chr !== 34 && chr !== 92 ? K_IN_STRING : -1;
+        } else if (st0 === S_LIT_RAW_STRING) {
+          k = chr !== 34 ? K_IN_STRING : -1;
+        } else if (st0 === S_STRING_IN_BLOCK_COMMENT) {
+          k = chr !== 34 && chr !== 42 ? K_IN_STRING_COMMENTED : -1;
+        }
+        if (k >= 0) {
+          this.cs = i;
+          this.i = i1;
+          return k;
+        }
+      }
     }
-    let st = this.st;
+    let st = st0;
     let arg = this.arg;
     // A count of `#`s or a comment depth: never more than the bytes scanned.
     if (arg < 0 || arg >= n) {
@@ -346,6 +437,13 @@ const strToBytes = (s: string): u8[] => {
   return b;
 };
 
+/**
+ * Whether CharClasses can find a comment in `s`: one starts only at a `/` of
+ * plain code followed by `/` or `*`, so a text with neither pair has none,
+ * and every char of it is code or string.
+ */
+export const rsMayHaveComment = (s: string): boolean => s.indexOf("//") >= 0 || s.indexOf("/*") >= 0;
+
 /** Runs CharClasses over `s`. */
 export const rsCharClasses = (s: string): RsClasses => {
   const n = toI32(s.length);
@@ -355,6 +453,18 @@ export const rsCharClasses = (s: string): RsClasses => {
   const kinds = r.kinds;
   let nc = 0;
   for (;;) {
+    // A run of plain code: one char a byte, each K_NORMAL.
+    const pe = sc.plainEnd();
+    for (let k = sc.i; k >= 0 && k < pe && k < kinds.length; k++) {
+      if (nc < 0 || nc >= starts.length) {
+        fault();
+        break;
+      }
+      starts[nc] = k;
+      nc++;
+      kinds[k] = K_NORMAL;
+    }
+    sc.skipTo(pe);
     const kind = sc.next();
     if (kind < 0) {
       break;
@@ -383,6 +493,19 @@ export const rsFindUncommentedIn = (src: u8[], lo: i32, hi: i32, pat: string): i
   const sc = new RsCharScan(src, lo, hi);
   let ni = 0;
   for (;;) {
+    // A run of plain code, matched here as the loop below would match it a char at a time.
+    const pe = sc.plainEnd();
+    for (let i = sc.i; i >= 0 && i < pe && i < src.length; i++) {
+      if (ni >= m) {
+        return sub32(sub32(i, m), lo);
+      }
+      if (ni >= 0 && toI32(src[i]) === pat.charCodeAt(ni)) {
+        ni++;
+      } else {
+        ni = 0;
+      }
+    }
+    sc.skipTo(pe);
     const k = sc.next();
     if (k < 0) {
       break;
@@ -405,12 +528,12 @@ export const rsFindUncommentedIn = (src: u8[], lo: i32, hi: i32, pat: string): i
 /** Whether `text` contains any comment. */
 export const rsContainsComment = (text: string): boolean => {
   const n = toI32(text.length);
-  // Fast path: no '/' means no comment.
-  if (rsIndexOfByte(text, 47, 0) < 0) {
+  if (!rsMayHaveComment(text)) {
     return false;
   }
   const sc = new RsCharScan(strToBytes(text), 0, n);
   for (;;) {
+    sc.skipTo(sc.plainEnd());
     const k = sc.next();
     if (k < 0) {
       return false;
@@ -577,7 +700,7 @@ export class RsSlices {
 export const rsCommentCodeSlices = (s: string): RsSlices => {
   const out = new RsSlices();
   const n = toI32(s.length);
-  if (n > 0 && rsIndexOfByte(s, 47, 0) < 0) {
+  if (n > 0 && !rsMayHaveComment(s)) {
     // No comment: one code slice.
     out.add(CK_NORMAL, 0, n);
     return out;
@@ -641,7 +764,7 @@ export const rsCommentCodeSlices = (s: string): RsSlices => {
 export const rsUngroupedSlices = (s: string): RsSlices => {
   const out = new RsSlices();
   const n = toI32(s.length);
-  if (rsIndexOfByte(s, 47, 0) < 0) {
+  if (!rsMayHaveComment(s)) {
     // No comment: one code slice.
     if (n > 0) {
       out.add(CK_NORMAL, 0, n);
@@ -658,6 +781,7 @@ export const rsUngroupedSlices = (s: string): RsSlices => {
     at = sc.cs;
     if (kind === K_NORMAL || kind === K_IN_STRING) {
       while (k >= 0 && !rsKindIsComment(k)) {
+        sc.skipTo(sc.plainEnd());
         k = sc.next();
         at = sc.cs;
       }
@@ -667,6 +791,15 @@ export const rsUngroupedSlices = (s: string): RsSlices => {
       for (;;) {
         if (k < 0) {
           break;
+        }
+        // The rest of a line comment, each char K_IN_COMMENT: the loop would
+        // go on over every one of them.
+        if (k === K_IN_COMMENT) {
+          const le = sc.lineCommentEnd();
+          if (le > sc.i) {
+            sc.skipTo(le);
+            at = sc.cs;
+          }
         }
         const kk = k;
         k = sc.next();
@@ -758,6 +891,9 @@ const commentPayload = (comment: string): string => {
 };
 
 const commentContent = (code: string): string => {
+  if (!rsMayHaveComment(code)) {
+    return "";
+  }
   const sl = rsUngroupedSlices(code);
   const out = new RsStrBuf();
   for (let i = 0; i < sl.n; i++) {
@@ -770,8 +906,8 @@ const commentContent = (code: string): string => {
 
 /** changed_comment_content. */
 export const rsChangedCommentContent = (orig: string, nw: string): boolean => {
-  // Without a '/' neither has a comment.
-  if (rsIndexOfByte(orig, 47, 0) < 0 && rsIndexOfByte(nw, 47, 0) < 0) {
+  // Without a comment opener neither has a comment.
+  if (!rsMayHaveComment(orig) && !rsMayHaveComment(nw)) {
     return false;
   }
   return commentContent(orig) !== commentContent(nw);
@@ -779,8 +915,8 @@ export const rsChangedCommentContent = (orig: string, nw: string): boolean => {
 
 /** filter_normal_code. */
 export const rsFilterNormalCode = (code: string): string => {
-  // Without a '/' (no comments) or a '\r' every line is kept as it is.
-  if (rsIndexOfByte(code, 47, 0) < 0 && rsIndexOfByte(code, 13, 0) < 0) {
+  // Without a comment or a '\r' every line is kept as it is.
+  if (!rsMayHaveComment(code) && rsIndexOfByte(code, 13, 0) < 0) {
     return code;
   }
   const lc = rsLineClasses(code);
@@ -1197,18 +1333,31 @@ export const rsRecoverMissingCommentInSpan = (
 
 export const rsFirstLineWidth = (s: string): i32 => {
   const i = rsIndexOfByte(s, 10, 0);
-  return rsWidth(i < 0 ? s : rsSliceStr(s, 0, i));
+  return rsWidthRange(s, 0, i < 0 ? toI32(s.length) : i);
 };
 
 export const rsLastLineWidth = (s: string, tabSpaces: i32): i32 => {
-  let i = toI32(s.length) - 1;
-  while (i >= 0 && s.charCodeAt(i) !== 10) {
+  const n = toI32(s.length);
+  let i = n - 1;
+  while (i >= 0 && i < n && s.charCodeAt(i) !== 10) {
     i--;
   }
-  const last = i < 0 ? s : rsSliceStr(s, i + 1, toI32(s.length));
-  const pw = rsPrefixSpaceWidth(last, tabSpaces);
-  const pe = rsPrefixSpaceEnd(last);
-  return add32(pw, rsWidth(pe === 0 ? last : rsSliceStr(last, pe, toI32(last.length))));
+  // The last line is `s[i + 1, n)`: its leading spaces and tabs, as
+  // rsPrefixSpaceWidth and rsPrefixSpaceEnd count them, then the rest's width.
+  let pe = i + 1;
+  let pw = 0;
+  while (pe >= 0 && pe < n) {
+    const c = s.charCodeAt(pe);
+    if (c === 32) {
+      pw = add32(pw, 1);
+    } else if (c === 9) {
+      pw = add32(pw, tabSpaces);
+    } else {
+      break;
+    }
+    pe++;
+  }
+  return add32(pw, rsWidthRange(s, pe, n));
 };
 
 export const rsLastLineUsedWidth = (s: string, offset: i32, tabSpaces: i32): i32 => {

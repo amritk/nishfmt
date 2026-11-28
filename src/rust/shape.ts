@@ -4,7 +4,7 @@
 // Ported from rustfmt 1.10.0 (MIT OR Apache-2.0, Copyright The Rust Project
 // Developers): config/, shape.rs.
 
-import { rsRepeat, rsSpaces } from "./str";
+import { rsNlSpaces, rsRepeat, rsSpaces } from "./str";
 import { add32, mul32, sub32 } from "../core/arr";
 import { fault } from "../core/fault";
 
@@ -99,7 +99,8 @@ export const rsIndentStr = (cfg: RsConfig, bi: i32, al: i32): string => {
   return rsSpaces(add32(bi, al));
 };
 
-export const rsIndentStrNl = (cfg: RsConfig, bi: i32, al: i32): string => "\n" + rsIndentStr(cfg, bi, al);
+export const rsIndentStrNl = (cfg: RsConfig, bi: i32, al: i32): string =>
+  cfg.hardTabs ? "\n" + rsIndentStr(cfg, bi, al) : rsNlSpaces(add32(bi, al));
 
 export const INFINITE_SHAPE_WIDTH: i32 = 8096;
 

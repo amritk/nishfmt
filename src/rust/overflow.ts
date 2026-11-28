@@ -492,7 +492,8 @@ class OvContext {
     const extendWidth = itemsStr.length === 0 ? 2 : add32(rsFirstLineWidth(itemsStr), 1);
     const nestedIndentStr = rsIndentStrNl(cfg, this.nestedShape.bi, this.nestedShape.al);
     const indentStr = rsIndentStrNl(cfg, shape.bi, 0);
-    let result = this.ident + prefix;
+    // The pieces of the result, joined once: `itemsStr` can be long.
+    const parts: string[] = [this.ident, prefix];
     // use_block_indent is always true here (indent_style Block).
     let forceSingleLine = isExtendable && extendWidth <= shape.width;
     if (cfg.styleEdition < 2024) {
@@ -501,14 +502,16 @@ class OvContext {
       forceSingleLine = forceSingleLine || (ctx.insideMacro && !rsHasByte(itemsStr, 10) && fitsOneLine);
     }
     if (forceSingleLine) {
-      result = result + itemsStr;
+      parts.push(itemsStr);
     } else {
       if (itemsStr.length !== 0) {
-        result = result + nestedIndentStr + itemsStr;
+        parts.push(nestedIndentStr);
+        parts.push(itemsStr);
       }
-      result = result + indentStr;
+      parts.push(indentStr);
     }
-    return result + suffix;
+    parts.push(suffix);
+    return parts.join("");
   }
 
   rewrite(shape: RsShape): string | null {

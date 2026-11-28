@@ -520,14 +520,13 @@ export const rsRewriteAttrs = (ctx: RsCtx, attrs: i32[], shape: RsShape): string
   while (i < n) {
     const docLen = takeWhileWithPred(ctx, attrs, i, 0);
     if (docLen > 0) {
-      let snippet = "";
+      // The doc comments' lines, joined once (a doc block can run to hundreds of lines).
+      const lines: string[] = [];
       for (let k = 0; k < docLen; k++) {
         const a = atI32(attrs, add32(i, k));
-        if (k > 0) {
-          snippet = snippet + "\n";
-        }
-        snippet = snippet + ctx.snippet(atI32(ast.lo, a), atI32(ast.hi, a));
+        lines.push(ctx.snippet(atI32(ast.lo, a), atI32(ast.hi, a)));
       }
+      const snippet = lines.join("\n");
       const ds = rsRewriteDocComment(snippet, shape.comment(cfg), cfg);
       if (ds === null) {
         return null;
