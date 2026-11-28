@@ -1,5 +1,21 @@
 # Changelog
 
+## [0.2.1](https://github.com/amritk/nishfmt/compare/v0.2.0...v0.2.1) (2026-11-28)
+
+
+### Bug Fixes
+
+* **cpp:** align chained conditionals with clang-format 23's IndentedFrom and AlignedTo ([#73](https://github.com/amritk/nishfmt/issues/73)) ([22b6162](https://github.com/amritk/nishfmt/commit/22b61625288d231e8432966acd14293f1156a05b))
+* **cpp:** end an unfinished statement before the comments that precede its `}` ([#72](https://github.com/amritk/nishfmt/issues/72)) ([90d343e](https://github.com/amritk/nishfmt/commit/90d343ebb50cede83c8292fcb7c0252de92eb5b6))
+* **cpp:** format until a clang-format check passes, and never change code ([#69](https://github.com/amritk/nishfmt/issues/69)) ([0d353f0](https://github.com/amritk/nishfmt/commit/0d353f04ccc03eec97fb0b7c282cf1c2f5c67dbd))
+* **cpp:** go on past a multi-line block comment from where its last line ends ([#74](https://github.com/amritk/nishfmt/issues/74)) ([b19475c](https://github.com/amritk/nishfmt/commit/b19475ca89246a1c76bc35cd0a6337b67b375d3d))
+* **cpp:** match clang-format on four macro, directive and K&R forms ([#71](https://github.com/amritk/nishfmt/issues/71)) ([12409f0](https://github.com/amritk/nishfmt/commit/12409f038045c1537ea149b404fc414c27dde8c6))
+
+
+### Performance
+
+* build Linux with a trained profile, and match clang-format on three C++ decisions ([#75](https://github.com/amritk/nishfmt/issues/75)) ([1d71c89](https://github.com/amritk/nishfmt/commit/1d71c8922521ea50afe39b937a44897e386fff04))
+
 ## [0.2.0](https://github.com/amritk/nishfmt/compare/v0.1.0...v0.2.0) (2026-11-25)
 
 

@@ -113,7 +113,7 @@ const plus = (a: i64, b: i64): i64 => toI64(toU64(a) + toU64(b));
 const nsBetween = (t0: i64, t1: i64): i64 => (t0 >= 0 && t1 >= 0 ? t1 - t0 : 0);
 
 /** The version `--version` prints; release-please bumps it. */
-const NISHFMT_VERSION: string = "0.2.0"; // x-release-please-version
+const NISHFMT_VERSION: string = "0.2.1"; // x-release-please-version
 
 const ms = (x: i64): i64 => x / toI64(1000000);
 
